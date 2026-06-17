@@ -22,7 +22,6 @@ import { ROLE_LABELS } from '@/utils/format'
 // ─── Role badge ───────────────────────────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
   student:  'bg-blue-100 text-blue-700',
-  parent:   'bg-sky-100 text-sky-700',
   teacher:  'bg-green-100 text-green-700',
   curator:  'bg-yellow-100 text-yellow-700',
   admin:    'bg-red-100 text-red-700',
@@ -191,7 +190,7 @@ export function AdminDashboard() {
 
           {/* Role breakdown */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {(['student','parent','teacher','curator','admin','owner'] as const).map(role => {
+            {(['student','teacher','curator','admin','owner'] as const).map(role => {
               const count = profiles.filter(p => p.role === role).length
               return (
                 <button
@@ -327,7 +326,7 @@ export function AdminDashboard() {
               />
             </div>
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
-              {['all','student','teacher','curator','parent','admin'].map(r => (
+              {['all','student','teacher','curator','admin'].map(r => (
                 <button key={r} onClick={() => setRoleFilter(r)}
                   className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                     roleFilter === r ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -398,7 +397,7 @@ export function AdminDashboard() {
                                   isSaving && 'opacity-50'
                                 )}
                               >
-                                {(['student','parent','teacher','curator','admin',
+                                {(['student','teacher','curator','admin',
                                   ...(currentProfile?.role === 'owner' ? ['owner'] : [])
                                 ] as const).map(r => (
                                   <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>

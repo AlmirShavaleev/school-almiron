@@ -11,7 +11,6 @@ export function DashboardPage() {
     if (!profile) return
     const routes: Record<string, string> = {
       student: '/student',
-      parent: '/parent',
       teacher: '/teacher',
       curator: '/curator',
       admin: '/admin',

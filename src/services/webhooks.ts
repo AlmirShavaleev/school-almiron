@@ -21,10 +21,6 @@ export const webhooks = {
   remindStudent: (studentId: string, homeworkTitle: string, dueDate: string) =>
     sendWebhook('remind-student', { studentId, homeworkTitle, dueDate }),
 
-  // Отправить отчёт родителю
-  sendParentReport: (parentId: string, studentId: string, reportData: Record<string, unknown>) =>
-    sendWebhook('parent-report', { parentId, studentId, reportData }),
-
   // Уведомить о просроченном ДЗ
   notifyOverdueHomework: (studentId: string, homeworkId: string) =>
     sendWebhook('overdue-homework', { studentId, homeworkId }),

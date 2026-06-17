@@ -47,22 +47,6 @@ export function usePayments() {
             .limit(50)
           setPayments((data || []) as any)
 
-        } else if (role === 'parent') {
-          const { data: par } = await (supabase as any)
-            .from('parents').select('id').eq('profile_id', profile!.id).single()
-          if (!par) return
-          const { data: ps } = await (supabase as any)
-            .from('parent_students').select('student_id').eq('parent_id', par.id)
-          const ids = (ps || []).map((p: any) => p.student_id)
-          if (!ids.length) { setPayments([]); return }
-          const { data } = await supabase
-            .from('payments')
-            .select('*, plans(name, billing_period), students(profiles(full_name))')
-            .in('student_id', ids)
-            .order('created_at', { ascending: false })
-            .limit(50)
-          setPayments((data || []) as any)
-
         } else {
           // admin / owner — все платежи
           const { data } = await supabase

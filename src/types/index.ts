@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'parent' | 'teacher' | 'curator' | 'admin' | 'owner'
+export type UserRole = 'student' | 'teacher' | 'curator' | 'admin' | 'owner'
 export type HomeworkStatus = 'not_submitted' | 'submitted' | 'checked' | 'revision'
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled'
 export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'refunded'
@@ -28,13 +28,6 @@ export interface Student {
   league: LeagueType
   is_active: boolean
   notes?: string
-  created_at: string
-  profile?: Profile
-}
-
-export interface Parent {
-  id: string
-  profile_id: string
   created_at: string
   profile?: Profile
 }

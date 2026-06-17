@@ -85,41 +85,6 @@ export function useLessons() {
             ...l, student_profile: l.student || null,
           })) as Lesson[])
 
-        } else if (profile!.role === 'parent') {
-          const { data: parent } = await (supabase as any)
-            .from('parents').select('id').eq('profile_id', profile!.id).single()
-          if (!parent) { setLoading(false); return }
-
-          const { data: ps } = await (supabase as any)
-            .from('parent_students').select('students(id)').eq('parent_id', parent.id)
-
-          const studentIds = (ps || []).map((p: any) => p.students?.id).filter(Boolean)
-          if (studentIds.length === 0) { setLessons([]); setLoading(false); return }
-
-          const { data: gs } = await supabase
-            .from('group_students').select('group_id').in('student_id', studentIds)
-
-          const groupIds = [...new Set((gs || []).map((g: any) => g.group_id))]
-          if (groupIds.length === 0) { setLessons([]); setLoading(false); return }
-
-          const [groupRes2, indivRes2] = await Promise.all([
-            groupIds.length > 0
-              ? supabase.from('lessons')
-                  .select('*, groups(name), teachers(profiles(full_name)), topics(title,module_id,modules(title))')
-                  .in('group_id', groupIds).eq('format', 'group')
-                  .order('scheduled_at', { ascending: true })
-              : Promise.resolve({ data: [] }),
-            supabase.from('lessons')
-              .select('*, teachers(profiles(full_name)), topics(title,module_id,modules(title)), student:student_id(full_name,avatar_url)')
-              .eq('format', 'individual').in('student_id', studentIds)
-              .order('scheduled_at', { ascending: true }),
-          ])
-          const combined2 = [
-            ...((groupRes2 as any).data || []),
-            ...((indivRes2.data || []).map((l: any) => ({ ...l, student_profile: l.student || null }))),
-          ].sort((a: any, b: any) => a.scheduled_at.localeCompare(b.scheduled_at))
-          setLessons(combined2 as Lesson[])
-
         } else {
           // curator, admin, owner — all lessons
           const { data } = await supabase
