@@ -73,7 +73,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       .eq('user_id', profile.id)
       .eq('read', false)
       .then(({ count }) => setUnreadCount(count || 0))
-      .catch(() => {})
   }, [profile])
 
   if (!profile) return null

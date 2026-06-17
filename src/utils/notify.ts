@@ -15,7 +15,7 @@ interface NotifPayload {
 
 async function send(payloads: NotifPayload[]) {
   if (payloads.length === 0) return
-  await supabase.from('notifications').insert(payloads)
+  await supabase.from('notifications').insert(payloads as any)
 }
 
 /** Новое ДЗ: уведомить всех студентов группы */

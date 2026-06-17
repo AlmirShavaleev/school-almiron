@@ -63,12 +63,12 @@ export function useParentDashboard(profileId: string | undefined) {
   async function load(pid: string) {
     try {
       // 1. Parent record
-      const { data: parent } = await supabase
+      const { data: parent } = await (supabase as any)
         .from('parents').select('id').eq('profile_id', pid).single()
       if (!parent) { setLoading(false); return }
 
       // 2. Children list
-      const { data: ps } = await supabase
+      const { data: ps } = await (supabase as any)
         .from('parent_students')
         .select('students(id, xp_points, league, grade, target_exam, target_subject, target_score, profile_id, profiles(full_name, email, avatar_url))')
         .eq('parent_id', parent.id)

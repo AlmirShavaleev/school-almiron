@@ -187,7 +187,7 @@ function StaffCard({
     setAssigning(true)
     const field = role === 'teacher' ? 'teacher_id' : 'curator_id'
     const { error } = await supabase.from('groups')
-      .update({ [field]: member.id })
+      .update({ [field]: member.id } as any)
       .eq('id', groupId)
     setAssigning(false)
     if (error) { alert(error.message); return }
@@ -199,7 +199,7 @@ function StaffCard({
     setRemoving(groupId)
     const field = role === 'teacher' ? 'teacher_id' : 'curator_id'
     const { error } = await supabase.from('groups')
-      .update({ [field]: null })
+      .update({ [field]: null } as any)
       .eq('id', groupId)
     setRemoving(null)
     if (error) { alert(error.message); return }

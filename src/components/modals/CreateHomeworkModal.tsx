@@ -46,7 +46,7 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     mode: 'onChange',
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: { max_score: 100, group_id: defaultGroupId || '' },
   })
 
@@ -122,10 +122,10 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
           group_id:    values.group_id,
           due_date:    new Date(values.due_date).toISOString(),
           max_score:   values.max_score,
-          created_by:  teacherId,
+          created_by:  teacherId!,
           ...(defaultLessonId ? { lesson_id: defaultLessonId } : {}),
           ...(defaultTopicId  ? { topic_id:  defaultTopicId  } : {}),
-        })
+        } as any)
         .select('id')
         .single()
 

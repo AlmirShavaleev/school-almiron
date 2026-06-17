@@ -93,7 +93,7 @@ export function StudentProfilePage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => { setSubscription(data || null); setSubLoading(false) })
+      .then(({ data }) => { setSubscription((data || null) as any); setSubLoading(false) })
   }, [s?.student_id])
 
   if (loading) return (

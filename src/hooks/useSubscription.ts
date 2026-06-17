@@ -83,7 +83,7 @@ export function useSubscription() {
         .limit(1)
         .maybeSingle()
 
-      setSubscription(data || null)
+      setSubscription((data || null) as any)
       setLoading(false)
     }
     load()

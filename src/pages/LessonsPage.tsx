@@ -561,7 +561,7 @@ export function LessonsPage() {
         open={!!attendanceTarget}
         onClose={() => setAttendanceTarget(null)}
         onSaved={() => setAttendanceTarget(null)}
-        lesson={attendanceTarget}
+        lesson={attendanceTarget as any}
       />
     </div>
   )

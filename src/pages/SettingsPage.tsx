@@ -505,7 +505,7 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
       target_exam:    examType,
       target_subject: subject,
       target_score:   target === '' ? null : Number(target),
-    }).eq('id', data.id)
+    } as any).eq('id', data.id)
     setSaving(false)
     if (error) return showMsg('err', error.message)
     showMsg('ok', 'Цели обновлены')

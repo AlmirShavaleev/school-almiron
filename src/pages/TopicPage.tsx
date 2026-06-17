@@ -206,12 +206,12 @@ export function TopicPage() {
 
       if (subExists) {
         const { error } = await supabase.from('homework_submissions')
-          .update(payload)
+          .update(payload as any)
           .eq('homework_id', hw.id).eq('student_id', studentId)
         if (error) throw error
       } else {
         const { error } = await supabase.from('homework_submissions')
-          .insert({ ...payload, homework_id: hw.id, student_id: studentId })
+          .insert({ ...payload, homework_id: hw.id, student_id: studentId } as any)
         if (error) throw error
       }
 

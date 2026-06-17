@@ -29,7 +29,7 @@ export function useNotifications() {
           .select('*')
           .eq('user_id', profile!.id)
           .order('created_at', { ascending: false })
-        setNotifications(data || [])
+        setNotifications((data || []) as any)
       } finally {
         setLoading(false)
       }

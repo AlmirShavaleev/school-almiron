@@ -56,7 +56,7 @@ export function EditCourseModal({ open, onClose, onSaved, course }: Props) {
     register, handleSubmit, reset, watch,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: {
       title: '', subject: 'physics', exam_type: 'ege', description: '',
       price: 0, duration_weeks: undefined,

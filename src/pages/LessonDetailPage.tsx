@@ -186,7 +186,7 @@ export function LessonDetailPage() {
       }
 
       // Round 2: topic materials + group students (parallel if needed)
-      const round2: Promise<any>[] = []
+      const round2: any[] = []
 
       if (built.topic) {
         round2.push(
@@ -285,7 +285,7 @@ export function LessonDetailPage() {
     const { error } = await supabase
       .from('attendance')
       .upsert(
-        { lesson_id: id, student_id: studentId, status: newStatus },
+        { lesson_id: id, student_id: studentId, status: newStatus } as any,
         { onConflict: 'lesson_id,student_id' }
       )
     setSavingAtt(prev => { const s = new Set(prev); s.delete(studentId); return s })

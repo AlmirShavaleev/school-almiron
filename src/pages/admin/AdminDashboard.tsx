@@ -81,7 +81,7 @@ export function AdminDashboard() {
     setRoleError(null)
     const { error } = await supabase
       .from('profiles')
-      .update({ role: newRole })
+      .update({ role: newRole } as any)
       .eq('id', profileId)
     setSavingRole(null)
     if (error) {

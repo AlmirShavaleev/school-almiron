@@ -109,7 +109,7 @@ function AppAuth() {
 
     async function loadProfile(userId: string) {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-      if (!cancelled && data) setProfile(data)
+      if (!cancelled && data) setProfile(data as any)
       if (!cancelled) setLoading(false)
     }
 

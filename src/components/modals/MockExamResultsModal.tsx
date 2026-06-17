@@ -43,13 +43,13 @@ export function MockExamResultsModal({ open, onClose, onSaved, examId, groupId, 
         .eq('group_id', groupId!)
 
       // Existing results for this exam
-      const { data: existing } = await supabase
+      const { data: existing } = await (supabase as any)
         .from('mock_exam_results')
         .select('student_id, score, feedback')
         .eq('mock_exam_id', examId!)
 
       const existMap: Record<string, { score: number; feedback: string }> = {}
-      for (const r of existing || []) existMap[r.student_id] = r
+      for (const r of (existing || []) as any[]) existMap[r.student_id] = r
 
       setRows((gs || []).map((g: any) => ({
         student_id: g.student_id,
@@ -86,7 +86,7 @@ export function MockExamResultsModal({ open, onClose, onSaved, examId, groupId, 
 
     const { error } = await supabase
       .from('mock_exam_results')
-      .upsert(toUpsert, { onConflict: 'mock_exam_id,student_id' })
+      .upsert(toUpsert as any, { onConflict: 'mock_exam_id,student_id' })
 
     setSaving(false)
     if (error) { alert(error.message); return }

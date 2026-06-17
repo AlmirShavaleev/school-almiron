@@ -34,7 +34,7 @@ export function PaymentResultPage() {
     let attempts = 0
     const poll = setInterval(async () => {
       attempts++
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('payments')
         .select('status, amount, currency, plans(name)')
         .eq('yookassa_payment_id', paymentId)

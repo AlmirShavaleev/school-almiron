@@ -42,6 +42,7 @@ export function HomeworkReviewPage() {
   useEffect(() => { if (id) loadAll() }, [id])
 
   async function loadAll() {
+    if (!id) return
     setLoading(true)
     try {
       const { data: hwData } = await supabase

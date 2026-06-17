@@ -54,10 +54,10 @@ export function useCourseProgram() {
           const ids = [...new Set((gs || []).map((g: any) => g.course_id).filter(Boolean))]
           if (!ids.length) { setCourses([]); return }
           const { data } = await supabase.from('courses').select('*').in('id', ids).order('title')
-          setCourses(data || [])
+          setCourses((data || []) as any)
         } else {
           const { data } = await supabase.from('courses').select('*').order('title')
-          setCourses(data || [])
+          setCourses((data || []) as any)
         }
       } finally {
         setLoading(false)
@@ -88,13 +88,13 @@ export function useCourseProgram() {
   }
 
   async function saveCourse(id: string, values: Partial<Course>) {
-    const { error } = await supabase.from('courses').update(values).eq('id', id)
+    const { error } = await supabase.from('courses').update(values as any).eq('id', id)
     if (error) throw error
     reload()
   }
 
   async function createCourse(values: Omit<Course, 'id'>) {
-    const { data, error } = await supabase.from('courses').insert(values).select('id').single()
+    const { data, error } = await supabase.from('courses').insert(values as any).select('id').single()
     if (error) throw error
     reload()
     return data!.id as string

@@ -29,7 +29,7 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
       const { data: student } = await supabase
         .from('students')
         .select('*')
-        .eq('profile_id', profileId)
+        .eq('profile_id', profileId!)
         .single()
 
       if (!student) {

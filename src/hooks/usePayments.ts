@@ -45,13 +45,13 @@ export function usePayments() {
             .eq('student_id', st.id)
             .order('created_at', { ascending: false })
             .limit(50)
-          setPayments(data || [])
+          setPayments((data || []) as any)
 
         } else if (role === 'parent') {
-          const { data: par } = await supabase
+          const { data: par } = await (supabase as any)
             .from('parents').select('id').eq('profile_id', profile!.id).single()
           if (!par) return
-          const { data: ps } = await supabase
+          const { data: ps } = await (supabase as any)
             .from('parent_students').select('student_id').eq('parent_id', par.id)
           const ids = (ps || []).map((p: any) => p.student_id)
           if (!ids.length) { setPayments([]); return }
@@ -61,7 +61,7 @@ export function usePayments() {
             .in('student_id', ids)
             .order('created_at', { ascending: false })
             .limit(50)
-          setPayments(data || [])
+          setPayments((data || []) as any)
 
         } else {
           // admin / owner — все платежи
@@ -70,7 +70,7 @@ export function usePayments() {
             .select('*, plans(name, billing_period), students(profiles(full_name))')
             .order('created_at', { ascending: false })
             .limit(200)
-          setPayments(data || [])
+          setPayments((data || []) as any)
         }
       } finally {
         setLoading(false)

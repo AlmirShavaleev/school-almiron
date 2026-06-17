@@ -353,24 +353,14 @@ function ModuleCard({
             <div className="text-sm text-gray-400 px-4 py-3 italic">Нет тем</div>
           )}
           {module.topics.map(t => (
-            editMode ? (
-              <TopicRowEdit
-                key={t.id}
-                topic={t}
-                moduleTitle={module.title}
-                onSave={onSaveTopic}
-                onDelete={onDeleteTopic}
-                onOpenMaterials={onOpenMaterials}
-              />
-            ) : (
-              <TopicRowView
-                key={t.id}
-                topic={t}
-                moduleTitle={module.title}
-                hwStat={hwStats[t.id]}
-                onOpenMaterials={onOpenMaterials}
-              />
-            )
+            <TopicRowEdit
+              key={t.id}
+              topic={t}
+              moduleTitle={module.title}
+              onSave={onSaveTopic}
+              onDelete={onDeleteTopic}
+              onOpenMaterials={onOpenMaterials}
+            />
           ))}
 
           {canEdit && (
@@ -737,7 +727,7 @@ export function CourseProgramPage() {
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [modules,     setModules]     = useState<Module[]>([])
   const [loadingMods, setLoadingMods] = useState(false)
-  const [tab,         setTab]         = useState<'program' | 'settings'>('program')
+  const [tab,         setTab]         = useState<'program' | 'materials' | 'settings'>('program')
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [hwStats,       setHwStats]       = useState<Record<string, HwStat>>({})
@@ -764,7 +754,7 @@ export function CourseProgramPage() {
       const [mods] = await Promise.all([
         loadModules(selectedId!),
         supabase
-          .from('groups').select('id').eq('course_id', selectedId)
+          .from('groups').select('id').eq('course_id', selectedId!)
           .then(async ({ data: gs }) => {
             const gids = (gs || []).map((g: any) => g.id)
             if (!gids.length) { setTotalStudents(0); return }

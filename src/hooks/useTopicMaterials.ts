@@ -28,7 +28,7 @@ export function useTopicMaterials(topicId: string | null) {
       .eq('topic_id', topicId)
       .then(({ data }) => {
         const map: Record<string, TopicMaterial> = {}
-        for (const row of data || []) map[row.type] = row
+        for (const row of data || []) map[row.type] = row as any
         setMaterials(map as any)
         setLoading(false)
       })

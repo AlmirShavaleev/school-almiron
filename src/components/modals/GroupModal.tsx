@@ -70,7 +70,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   const [adding,    setAdding]    = useState<string | null>(null)
   const [removing,  setRemoving]  = useState<string | null>(null)
   const [addedIds,  setAddedIds]  = useState<Set<string>>(new Set())
-  const searchRef = useRef<ReturnType<typeof setTimeout>>()
+  const searchRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // ── Load options + fill form ─────────────────────────────────────────────
 

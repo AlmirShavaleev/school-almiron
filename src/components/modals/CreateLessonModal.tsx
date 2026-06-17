@@ -61,7 +61,7 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate }: Pro
     register, handleSubmit, reset, setValue, watch,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     mode: 'onChange',
     defaultValues: { duration_minutes: 90, group_id: '', student_id: '', teacher_id: '' },
   })
@@ -136,7 +136,7 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate }: Pro
         const { data: mods } = await supabase
           .from('modules')
           .select('id, title, order_index')
-          .eq('course_id', group!.course_id)
+          .eq('course_id', group!.course_id!)
           .order('order_index')
 
         if (!mods?.length) { setTopics([]); return }

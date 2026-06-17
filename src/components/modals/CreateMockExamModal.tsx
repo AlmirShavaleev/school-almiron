@@ -32,7 +32,7 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
   const [loadingData, setLoadingData] = useState(true)
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     mode: 'onChange',
     defaultValues: { max_score: 100 },
   })
@@ -72,7 +72,7 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
         group_id:   values.group_id,
         max_score:  values.max_score,
         created_by: teacherId,
-      })
+      } as any)
       .select()
       .single()
 

@@ -55,7 +55,7 @@ export function useAchievements() {
             ...a,
             earned: earnedIds.has(a.id),
             earned_at: earnedMap[a.id],
-          }))
+          })) as any
         )
       } finally {
         setLoading(false)

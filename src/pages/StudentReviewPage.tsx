@@ -70,6 +70,7 @@ export function StudentReviewPage() {
   }, [hwId, studentId])
 
   async function loadAll() {
+    if (!hwId || !studentId) return
     setLoading(true)
     try {
       // Load homework

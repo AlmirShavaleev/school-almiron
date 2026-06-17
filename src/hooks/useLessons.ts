@@ -86,11 +86,11 @@ export function useLessons() {
           })) as Lesson[])
 
         } else if (profile!.role === 'parent') {
-          const { data: parent } = await supabase
+          const { data: parent } = await (supabase as any)
             .from('parents').select('id').eq('profile_id', profile!.id).single()
           if (!parent) { setLoading(false); return }
 
-          const { data: ps } = await supabase
+          const { data: ps } = await (supabase as any)
             .from('parent_students').select('students(id)').eq('parent_id', parent.id)
 
           const studentIds = (ps || []).map((p: any) => p.students?.id).filter(Boolean)

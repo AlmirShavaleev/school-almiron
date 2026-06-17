@@ -60,7 +60,7 @@ export function useHomeworks() {
           setHomeworks(hws.map((hw: any) => ({ ...hw, homework_submissions: subsByHw[hw.id] || [] })))
 
         } else if (role === 'curator') {
-          const { data: cur } = await supabase
+          const { data: cur } = await (supabase as any)
             .from('curators').select('id, group_id').eq('profile_id', profile!.id).single()
           if (!cur) return
 

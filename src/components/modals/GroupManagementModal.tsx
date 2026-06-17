@@ -38,7 +38,7 @@ export function GroupManagementModal({ open, onClose, onChanged, group }: Props)
   const [removing,  setRemoving]  = useState<string | null>(null)
   const [adding,    setAdding]    = useState<string | null>(null)
   const [addedIds,  setAddedIds]  = useState<Set<string>>(new Set())
-  const searchRef = useRef<ReturnType<typeof setTimeout>>()
+  const searchRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Reset on open
   useEffect(() => {
