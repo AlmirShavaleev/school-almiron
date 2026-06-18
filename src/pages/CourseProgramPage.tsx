@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, GraduationCap, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, ClipboardList,
+  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -63,7 +63,7 @@ function InlineEdit({
 }
 
 // ─── Topic row ───────────────────────────────────────────────────────────────
-interface HwStat { submitted: number; pending: number; total: number }
+interface HwStat { submitted: number; pending: number; revision: number; total: number }
 
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
@@ -95,6 +95,12 @@ function HwTable({
               </div>
             </th>
             <th className="px-3 py-3 text-center w-24">
+              <div className="flex flex-col items-center gap-0.5 text-yellow-500">
+                <RotateCcw size={12} className="text-yellow-600" />
+                <span className="text-[10px] font-medium text-gray-500">На доработке</span>
+              </div>
+            </th>
+            <th className="px-3 py-3 text-center w-24">
               <div className="flex flex-col items-center gap-0.5 text-red-400">
                 <X size={12} className="text-red-500" />
                 <span className="text-[10px] font-medium text-gray-500">Не сдали</span>
@@ -112,16 +118,17 @@ function HwTable({
           {modules.map(mod => (
             <>
               <tr key={`mod-${mod.id}`} className="bg-primary-50/50">
-                <td colSpan={5} className="px-4 py-2">
+                <td colSpan={6} className="px-4 py-2">
                   <span className="text-xs font-semibold text-primary-700 uppercase tracking-wide">{mod.title}</span>
                   <span className="text-xs text-primary-400 ml-2">{mod.topics.length} тем</span>
                 </td>
               </tr>
 
               {mod.topics.map((topic, ti) => {
-                const s       = hwStats[topic.id]
-                const checked = s ? Math.max(0, s.submitted - s.pending) : 0
-                const notDone = s ? Math.max(0, s.total - s.submitted) : 0
+                const s        = hwStats[topic.id]
+                const revision = s ? s.revision : 0
+                const checked  = s ? Math.max(0, s.submitted - s.pending - revision) : 0
+                const notDone  = s ? Math.max(0, s.total - s.submitted) : 0
                 const pct     = s && s.total > 0 ? Math.round(s.submitted / s.total * 100) : null
                 const hw      = hwByTopic[topic.id]
 
@@ -169,6 +176,16 @@ function HwTable({
                         ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-orange-100 rounded-full text-xs font-semibold text-orange-600">{s.pending}</span>
                         : s
                           ? <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full mx-auto"><Check size={11} className="text-green-500" /></span>
+                          : <span className="text-xs text-gray-200">—</span>
+                      }
+                    </td>
+
+                    {/* На доработке */}
+                    <td className="px-3 py-3 text-center">
+                      {revision > 0
+                        ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-yellow-100 rounded-full text-xs font-semibold text-yellow-700">{revision}</span>
+                        : s
+                          ? <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full mx-auto"><X size={11} className="text-gray-300" /></span>
                           : <span className="text-xs text-gray-200">—</span>
                       }
                     </td>
@@ -811,7 +828,7 @@ export function CourseProgramPage() {
 
     for (const h of hws as any[]) {
       const tid = h.topic_id
-      if (!stats[tid]) stats[tid] = { submitted: 0, pending: 0, total: 0 }
+      if (!stats[tid]) stats[tid] = { submitted: 0, pending: 0, revision: 0, total: 0 }
       if (!countedHws.has(h.id)) {
         stats[tid].total += hwMeta[h.id].groupSize
         countedHws.add(h.id)
@@ -822,7 +839,8 @@ export function CourseProgramPage() {
       const meta = hwMeta[s.homework_id]
       if (!meta) continue
       stats[meta.topicId].submitted++
-      if (s.status === 'submitted') stats[meta.topicId].pending++ // ещё не проверено
+      if (s.status === 'submitted') stats[meta.topicId].pending++  // ещё не проверено
+      if (s.status === 'revision')  stats[meta.topicId].revision++ // отправлено на доработку
     }
 
     setHwStats(stats)
@@ -1063,13 +1081,14 @@ export function CourseProgramPage() {
                 {!loadingMods && (() => {
                   const totalSubmitted = Object.values(hwStats).reduce((s, h) => s + h.submitted, 0)
                   const totalPending   = Object.values(hwStats).reduce((s, h) => s + h.pending, 0)
+                  const totalRevision  = Object.values(hwStats).reduce((s, h) => s + h.revision, 0)
                   const totalExpected  = Object.values(hwStats).reduce((s, h) => s + h.total, 0)
                   const totalNotDone   = Math.max(0, totalExpected - totalSubmitted)
                   const totalTopics    = modules.reduce((s, m) => s + m.topics.length, 0)
                   const topicsWithHw   = Object.keys(hwStats).length
 
                   return (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       <div className="bg-blue-50 rounded-xl p-3 text-center">
                         <div className="text-xl font-bold text-blue-700">{totalStudents}</div>
                         <div className="text-xs text-blue-500 mt-0.5">учеников</div>
@@ -1085,6 +1104,10 @@ export function CourseProgramPage() {
                       <div className={cn('rounded-xl p-3 text-center', totalPending > 0 ? 'bg-orange-50' : 'bg-gray-50')}>
                         <div className={cn('text-xl font-bold', totalPending > 0 ? 'text-orange-600' : 'text-gray-400')}>{totalPending}</div>
                         <div className={cn('text-xs mt-0.5', totalPending > 0 ? 'text-orange-400' : 'text-gray-400')}>на проверке</div>
+                      </div>
+                      <div className={cn('rounded-xl p-3 text-center', totalRevision > 0 ? 'bg-yellow-50' : 'bg-gray-50')}>
+                        <div className={cn('text-xl font-bold', totalRevision > 0 ? 'text-yellow-700' : 'text-gray-400')}>{totalRevision}</div>
+                        <div className={cn('text-xs mt-0.5', totalRevision > 0 ? 'text-yellow-600' : 'text-gray-400')}>на доработке</div>
                       </div>
                     </div>
                   )
