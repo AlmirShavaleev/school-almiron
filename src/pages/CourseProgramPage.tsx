@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, GraduationCap, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw,
+  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw, Users,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -752,6 +752,8 @@ export function CourseProgramPage() {
   const [hwByTopic,     setHwByTopic]     = useState<Record<string, { id: string; title: string; max_score: number }>>({})
   const [totalStudents, setTotalStudents] = useState(0)
   const [editMode,      setEditMode]      = useState(false)
+  const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
 
   // Topic materials modal
   const [matTopic, setMatTopic] = useState<{ topic: Topic; moduleTitle: string } | null>(null)
@@ -762,93 +764,77 @@ export function CourseProgramPage() {
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
-  // Load modules + stats when course selected
+  // Load modules + groups when course selected
   useEffect(() => {
     if (!selectedId) return
     setLoadingMods(true)
     setEditMode(false)
 
     async function loadAll() {
-      const [mods] = await Promise.all([
+      const [mods, gsRes] = await Promise.all([
         loadModules(selectedId!),
-        supabase
-          .from('groups').select('id').eq('course_id', selectedId!)
-          .then(async ({ data: gs }) => {
-            const gids = (gs || []).map((g: any) => g.id)
-            if (!gids.length) { setTotalStudents(0); return }
-            const { count } = await supabase
-              .from('group_students').select('id', { count: 'exact', head: true })
-              .in('group_id', gids)
-            setTotalStudents(count || 0)
-          }),
+        supabase.from('groups').select('id, name').eq('course_id', selectedId!).order('name'),
       ])
+      const grps = (gsRes.data || []) as { id: string; name: string }[]
       setModules(mods)
-      await loadHwStats(mods)
+      setGroups(grps)
+      setSelectedGroupId(grps[0]?.id ?? null)   // по умолчанию — первая группа
     }
 
     loadAll().finally(() => setLoadingMods(false))
   }, [selectedId])
 
-  async function loadHwStats(mods: Module[]) {
-    const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
-    if (!topicIds.length) { setHwStats({}); return }
+  // Recompute HW stats whenever the selected group (or modules) change
+  useEffect(() => {
+    loadHwStats(modules, selectedGroupId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGroupId, modules])
 
+  async function loadHwStats(mods: Module[], groupId: string | null) {
+    const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
+    if (!topicIds.length || !groupId) {
+      setHwStats({}); setHwByTopic({}); setTotalStudents(0)
+      return
+    }
+
+    // Размер выбранной группы
+    const { count: groupSize } = await supabase
+      .from('group_students').select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId)
+    setTotalStudents(groupSize || 0)
+
+    // ДЗ только выбранной группы
     const { data: hws } = await supabase
       .from('homeworks')
-      .select('id, topic_id, group_id, title, max_score')
+      .select('id, topic_id, title, max_score')
+      .eq('group_id', groupId)
       .in('topic_id', topicIds)
     if (!hws?.length) { setHwStats({}); setHwByTopic({}); return }
 
-    const hwIds   = hws.map((h: any) => h.id)
-    const groupIds = [...new Set(hws.map((h: any) => h.group_id).filter(Boolean))]
+    const hwIds = hws.map((h: any) => h.id)
+    const { data: subs } = await supabase
+      .from('homework_submissions').select('homework_id, status').in('homework_id', hwIds)
 
-    const [subsRes, gsRes] = await Promise.all([
-      supabase.from('homework_submissions').select('homework_id, status').in('homework_id', hwIds),
-      groupIds.length
-        ? supabase.from('group_students').select('group_id').in('group_id', groupIds)
-        : Promise.resolve({ data: [] }),
-    ])
-
-    // group size map
-    const groupSize: Record<string, number> = {}
-    for (const row of (gsRes.data || []) as any[]) {
-      groupSize[row.group_id] = (groupSize[row.group_id] || 0) + 1
-    }
-
-    // hw → topic + group size
-    const hwMeta: Record<string, { topicId: string; groupSize: number }> = {}
-    for (const h of hws as any[]) {
-      hwMeta[h.id] = { topicId: h.topic_id, groupSize: groupSize[h.group_id] || 0 }
-    }
-
-    // Accumulate stats per topic
-    // total = sum of group sizes for all unique HWs of this topic
+    const hwTopic: Record<string, string> = {}
     const stats: Record<string, HwStat> = {}
-    const countedHws = new Set<string>()
-
     for (const h of hws as any[]) {
-      const tid = h.topic_id
-      if (!stats[tid]) stats[tid] = { submitted: 0, pending: 0, revision: 0, total: 0 }
-      if (!countedHws.has(h.id)) {
-        stats[tid].total += hwMeta[h.id].groupSize
-        countedHws.add(h.id)
-      }
+      hwTopic[h.id] = h.topic_id
+      if (!stats[h.topic_id]) stats[h.topic_id] = { submitted: 0, pending: 0, revision: 0, total: groupSize || 0 }
     }
 
-    for (const s of (subsRes.data || []) as any[]) {
-      const meta = hwMeta[s.homework_id]
-      if (!meta) continue
-      stats[meta.topicId].submitted++
-      if (s.status === 'submitted') stats[meta.topicId].pending++  // ещё не проверено
-      if (s.status === 'revision')  stats[meta.topicId].revision++ // отправлено на доработку
+    for (const s of (subs || []) as any[]) {
+      const tid = hwTopic[s.homework_id]
+      if (!tid) continue
+      stats[tid].submitted++
+      if (s.status === 'submitted') stats[tid].pending++
+      if (s.status === 'revision')  stats[tid].revision++
     }
 
     setHwStats(stats)
 
-    // Сохраняем первое ДЗ по каждой теме для открытия модала
     const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
     for (const h of hws as any[]) {
-      if (!byTopic[h.topic_id]) byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
+      byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
     }
     setHwByTopic(byTopic)
   }
@@ -857,7 +843,7 @@ export function CourseProgramPage() {
     if (!selectedId) return
     const mods = await loadModules(selectedId)
     setModules(mods)
-    await loadHwStats(mods)
+    await loadHwStats(mods, selectedGroupId)
   }
 
   async function handleAddModule() {
@@ -1076,6 +1062,29 @@ export function CourseProgramPage() {
             {/* Program tab */}
             {tab === 'program' && (
               <div className="space-y-4">
+
+                {/* ── Group selector ── */}
+                {!loadingMods && groups.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium text-gray-400 flex items-center gap-1">
+                      <Users size={13} /> Группа:
+                    </span>
+                    {groups.map(g => (
+                      <button
+                        key={g.id}
+                        onClick={() => setSelectedGroupId(g.id)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                          selectedGroupId === g.id
+                            ? 'bg-primary-50 border-primary-300 text-primary-700'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        )}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* ── Course summary ── */}
                 {!loadingMods && (() => {
