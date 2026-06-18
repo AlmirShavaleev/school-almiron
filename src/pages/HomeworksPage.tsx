@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useHomeworks } from '@/hooks/useHomeworks'
-import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
 import { formatDate, isOverdue, HW_STATUS_COLORS, HW_STATUS_LABELS } from '@/utils/format'
@@ -31,7 +30,6 @@ export function HomeworksPage() {
   }, [profile, isStudent])
 
   // Modals
-  const [showCreate,    setShowCreate]    = useState(false)
   const [submitTarget,  setSubmitTarget]  = useState<{ id: string; title: string; max_score: number; file_url?: string } | null>(null)
   const [reviewTarget,  setReviewTarget]  = useState<{ id: string; title: string; max_score: number } | null>(null)
 
@@ -87,11 +85,6 @@ export function HomeworksPage() {
               exportHomeworks(rows)
             }}>
               <Download size={15} className="mr-1.5" />Excel
-            </Button>
-          )}
-          {canCreate && (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={16} className="mr-1" />Новое ДЗ
             </Button>
           )}
         </div>
@@ -215,11 +208,6 @@ export function HomeworksPage() {
       </Card>
 
       {/* Modals */}
-      <CreateHomeworkModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreated={reload}
-      />
       <SubmitHomeworkModal
         open={!!submitTarget}
         onClose={() => setSubmitTarget(null)}

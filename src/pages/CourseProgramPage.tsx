@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
+import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -230,13 +231,14 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, onSave, onDelete, onOpenMaterials, moduleTitle,
+  topic, onSave, onDelete, onOpenMaterials, onCreateHw, moduleTitle,
 }: {
   topic: Topic
   moduleTitle: string
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  onCreateHw: (topic: Topic) => void
 }) {
   const [deleting, setDeleting] = useState(false)
   const [dateVal,  setDateVal]  = useState(topic.available_from || '')
@@ -281,6 +283,14 @@ function TopicRowEdit({
       </div>
 
       <button
+        onClick={() => onCreateHw(topic)}
+        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-primary-600 transition-all shrink-0"
+        title="Создать ДЗ для темы"
+      >
+        <ClipboardList size={14} />
+      </button>
+
+      <button
         onClick={() => onOpenMaterials(topic, moduleTitle)}
         className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-primary-500 transition-all shrink-0"
         title="Материалы темы"
@@ -301,7 +311,7 @@ function TopicRowEdit({
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, hwStats,
+  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCreateHw, hwStats,
 }: {
   module: Module
   canEdit: boolean
@@ -313,6 +323,7 @@ function ModuleCard({
   onDeleteTopic: (id: string) => Promise<void>
   onAddTopic: (moduleId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  onCreateHw: (topic: Topic) => void
 }) {
   const [open,     setOpen]     = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -379,6 +390,7 @@ function ModuleCard({
               onSave={onSaveTopic}
               onDelete={onDeleteTopic}
               onOpenMaterials={onOpenMaterials}
+              onCreateHw={onCreateHw}
             />
           ))}
 
@@ -758,6 +770,7 @@ export function CourseProgramPage() {
 
   // Topic materials modal
   const [matTopic, setMatTopic] = useState<{ topic: Topic; moduleTitle: string } | null>(null)
+  const [hwTopic,  setHwTopic]  = useState<Topic | null>(null)
 
   function openMaterials(topic: Topic, moduleTitle: string) {
     setMatTopic({ topic, moduleTitle })
@@ -1177,6 +1190,7 @@ export function CourseProgramPage() {
                           onDeleteTopic={handleDeleteTopic}
                           onAddTopic={handleAddTopic}
                           onOpenMaterials={openMaterials}
+                          onCreateHw={t => setHwTopic(t)}
                         />
                       ))}
                     </div>
@@ -1222,6 +1236,14 @@ export function CourseProgramPage() {
       topicId={matTopic?.topic.id ?? null}
       topicTitle={matTopic?.topic.title ?? ''}
       moduleTitle={matTopic?.moduleTitle ?? ''}
+    />
+
+    {/* ДЗ создаётся только здесь — в Course Builder, привязано к теме курса */}
+    <CreateHomeworkModal
+      open={!!hwTopic}
+      onClose={() => setHwTopic(null)}
+      onCreated={() => { setHwTopic(null); refreshModules() }}
+      defaultTopicId={hwTopic?.id}
     />
     </>
   )

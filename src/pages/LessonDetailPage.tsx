@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
-import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
 
 interface LessonFull {
   id:               string
@@ -100,7 +99,6 @@ export function LessonDetailPage() {
   const [materials,     setMaterials]     = useState<TopicMaterial[]>([])
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
-  const [showCreateHW,  setShowCreateHW]  = useState(false)
   const [hwTick,        setHwTick]        = useState(0)
 
   // Notes editing
@@ -770,14 +768,6 @@ export function LessonDetailPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><ClipboardList size={17} />Домашние задания</CardTitle>
               <div className="flex items-center gap-2">
-                {canEdit && (
-                  <button
-                    onClick={() => setShowCreateHW(true)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-800 bg-primary-50 hover:bg-primary-100 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    + ДЗ
-                  </button>
-                )}
                 <Link to="/homeworks" className="text-xs text-primary-600 hover:text-primary-700">Все →</Link>
               </div>
             </CardHeader>
@@ -811,15 +801,6 @@ export function LessonDetailPage() {
           </Card>
         </div>
       </div>
-
-      {/* Create HW modal — pre-filled with this lesson's group + lesson_id */}
-      <CreateHomeworkModal
-        open={showCreateHW}
-        onClose={() => setShowCreateHW(false)}
-        onCreated={() => setHwTick(t => t + 1)}
-        defaultGroupId={lesson?.group?.id}
-        defaultLessonId={id}
-      />
     </div>
   )
 }

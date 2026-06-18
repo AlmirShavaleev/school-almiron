@@ -77,6 +77,14 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
           setCourseId(g?.course_id || '')
           if (profile!.role !== 'teacher') setTeacherId(g?.teacher_id || null)
           if (g?.course_id) await loadTopics(g.course_id)
+        } else if (defaultTopicId) {
+          // курс резолвится из темы (создание из Course Builder)
+          const { data: t } = await supabase
+            .from('topics').select('modules(course_id)').eq('id', defaultTopicId).single()
+          const cid = (t as any)?.modules?.course_id || ''
+          setCourseLocked(true)
+          setCourseId(cid)
+          if (cid) await loadTopics(cid)
         } else {
           // выбор курса (teacher → его курсы, иначе все)
           setCourseLocked(false)
@@ -96,7 +104,7 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
       }
     }
     loadData()
-  }, [open, profile, defaultGroupId])
+  }, [open, profile, defaultGroupId, defaultTopicId])
 
   async function loadTopics(cid: string) {
     const { data: mods } = await supabase

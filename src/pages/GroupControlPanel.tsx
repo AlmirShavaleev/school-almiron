@@ -13,7 +13,6 @@ import { StudentManager } from '@/components/group/StudentManager'
 import { TransferStudentModal } from '@/components/group/TransferStudentModal'
 import { GroupModal } from '@/components/modals/GroupModal'
 import { CreateLessonModal } from '@/components/modals/CreateLessonModal'
-import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
 
 export function GroupControlPanel() {
   const { id } = useParams<{ id: string }>()
@@ -27,7 +26,6 @@ export function GroupControlPanel() {
   const [editOpen, setEditOpen]       = useState(false)
   const [studentsOpen, setStudentsOpen] = useState(false)
   const [lessonOpen, setLessonOpen]   = useState(false)
-  const [hwOpen, setHwOpen]           = useState(false)
   const [transfer, setTransfer]       = useState<GroupStudent | null>(null)
 
   async function archiveToggle() {
@@ -103,7 +101,6 @@ export function GroupControlPanel() {
             group={group} canManage={canManage} canTeach={canTeach}
             onEdit={() => setEditOpen(true)}
             onAddLesson={() => setLessonOpen(true)}
-            onAddHomework={() => setHwOpen(true)}
             onArchiveToggle={archiveToggle}
             onDelete={remove}
           />
@@ -157,7 +154,6 @@ export function GroupControlPanel() {
         defaultGroupId={group.id}
         defaultTeacherId={group.teacher_id ?? undefined}
       />
-      <CreateHomeworkModal open={hwOpen} onClose={() => setHwOpen(false)} onCreated={reload} defaultGroupId={group.id} />
       {transfer && (
         <TransferStudentModal
           open={!!transfer} onClose={() => setTransfer(null)} onDone={reload}
