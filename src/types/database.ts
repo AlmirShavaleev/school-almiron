@@ -14,39 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      achievements: {
-        Row: {
-          condition_type: string
-          condition_value: number
-          created_at: string
-          description: string | null
-          icon: string
-          id: string
-          title: string
-          xp_reward: number
-        }
-        Insert: {
-          condition_type: string
-          condition_value?: number
-          created_at?: string
-          description?: string | null
-          icon?: string
-          id?: string
-          title: string
-          xp_reward?: number
-        }
-        Update: {
-          condition_type?: string
-          condition_value?: number
-          created_at?: string
-          description?: string | null
-          icon?: string
-          id?: string
-          title?: string
-          xp_reward?: number
-        }
-        Relationships: []
-      }
       attendance: {
         Row: {
           created_at: string | null
@@ -404,54 +371,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      hw_subs_backup: {
-        Row: {
-          answer_text: string | null
-          checked_at: string | null
-          checked_by: string | null
-          feedback: string | null
-          file_url: string | null
-          group_id: string | null
-          homework_id: string | null
-          id: string | null
-          score: number | null
-          status: Database["public"]["Enums"]["homework_status"] | null
-          student_id: string | null
-          submitted_at: string | null
-          topic_id: string | null
-        }
-        Insert: {
-          answer_text?: string | null
-          checked_at?: string | null
-          checked_by?: string | null
-          feedback?: string | null
-          file_url?: string | null
-          group_id?: string | null
-          homework_id?: string | null
-          id?: string | null
-          score?: number | null
-          status?: Database["public"]["Enums"]["homework_status"] | null
-          student_id?: string | null
-          submitted_at?: string | null
-          topic_id?: string | null
-        }
-        Update: {
-          answer_text?: string | null
-          checked_at?: string | null
-          checked_by?: string | null
-          feedback?: string | null
-          file_url?: string | null
-          group_id?: string | null
-          homework_id?: string | null
-          id?: string | null
-          score?: number | null
-          status?: Database["public"]["Enums"]["homework_status"] | null
-          student_id?: string | null
-          submitted_at?: string | null
-          topic_id?: string | null
-        }
-        Relationships: []
       }
       leaderboard_points: {
         Row: {
@@ -1038,42 +957,6 @@ export type Database = {
             columns: ["topic_id"]
             isOneToOne: false
             referencedRelation: "topics"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      student_achievements: {
-        Row: {
-          achievement_id: string
-          earned_at: string
-          id: string
-          student_id: string
-        }
-        Insert: {
-          achievement_id: string
-          earned_at?: string
-          id?: string
-          student_id: string
-        }
-        Update: {
-          achievement_id?: string
-          earned_at?: string
-          id?: string
-          student_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "student_achievements_achievement_id_fkey"
-            columns: ["achievement_id"]
-            isOneToOne: false
-            referencedRelation: "achievements"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "student_achievements_student_id_fkey"
-            columns: ["student_id"]
-            isOneToOne: false
-            referencedRelation: "students"
             referencedColumns: ["id"]
           },
         ]

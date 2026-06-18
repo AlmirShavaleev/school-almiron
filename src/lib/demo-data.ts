@@ -1,5 +1,5 @@
 // Demo data for offline/development mode (when Supabase is not connected)
-import type { Profile, Student, Group, Lesson, Homework, MockExam, Payment, Achievement, LeaderboardEntry } from '@/types'
+import type { Profile, Student, Group, Lesson, Homework, MockExam, Payment, LeaderboardEntry } from '@/types'
 
 export const demoProfiles: Profile[] = [
   { id: 'student-1', email: 'alex@demo.ru', full_name: 'Алексей Петров', role: 'student', created_at: '2024-09-01', updated_at: '2024-09-01' },
@@ -82,15 +82,6 @@ export const demoPayments: Payment[] = [
   { id: 'p4', student_id: 's3', amount: 6000, status: 'overdue', description: 'Оплата за октябрь', due_date: '2024-10-01', created_at: '2024-09-25' },
   { id: 'p5', student_id: 's4', amount: 8000, status: 'paid', description: 'Оплата за ноябрь', due_date: '2024-11-01', paid_at: '2024-11-01', created_at: '2024-10-25' },
   { id: 'p6', student_id: 's5', amount: 6000, status: 'paid', description: 'Оплата за ноябрь', due_date: '2024-11-01', paid_at: '2024-10-29', created_at: '2024-10-25' },
-]
-
-export const demoAchievements: Achievement[] = [
-  { id: 'a1', title: 'Первое ДЗ', description: 'Сдал первое домашнее задание', icon: '📝', xp_reward: 50, condition_type: 'homework', condition_value: 1, created_at: '2024-09-01' },
-  { id: 'a2', title: 'Отличник', description: 'Набрал 90+ баллов за ДЗ', icon: '⭐', xp_reward: 100, condition_type: 'score', condition_value: 90, created_at: '2024-09-01' },
-  { id: 'a3', title: 'Посещаемость 100%', description: '10 занятий без пропусков', icon: '✅', xp_reward: 150, condition_type: 'attendance', condition_value: 10, created_at: '2024-09-01' },
-  { id: 'a4', title: 'Пробник сдан', description: 'Прошёл первый пробный экзамен', icon: '📋', xp_reward: 100, condition_type: 'exam', condition_value: 1, created_at: '2024-09-01' },
-  { id: 'a5', title: 'Серия 5', description: 'Сдал 5 ДЗ подряд', icon: '🔥', xp_reward: 200, condition_type: 'streak', condition_value: 5, created_at: '2024-09-01' },
-  { id: 'a6', title: 'Топ-3 рейтинга', description: 'Вошёл в топ-3 класса', icon: '🏆', xp_reward: 300, condition_type: 'score', condition_value: 95, created_at: '2024-09-01' },
 ]
 
 export const demoLeaderboard: LeaderboardEntry[] = demoStudents

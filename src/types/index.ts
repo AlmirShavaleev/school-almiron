@@ -172,25 +172,6 @@ export interface MockExamResult {
   mock_exam?: MockExam
 }
 
-export interface Achievement {
-  id: string
-  title: string
-  description?: string
-  icon: string
-  xp_reward: number
-  condition_type: string
-  condition_value: number
-  created_at: string
-}
-
-export interface StudentAchievement {
-  id: string
-  student_id: string
-  achievement_id: string
-  earned_at: string
-  achievement?: Achievement
-}
-
 export interface Payment {
   id: string
   student_id: string
