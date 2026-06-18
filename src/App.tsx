@@ -56,7 +56,7 @@ import { OwnerDashboard } from '@/pages/owner/OwnerDashboard'
 
 // Shared pages
 import { GroupsPage } from '@/pages/GroupsPage'
-import { GroupDetailPage } from '@/pages/GroupDetailPage'
+import { GroupControlPanel } from '@/pages/GroupControlPanel'
 import { TeacherDetailPage } from '@/pages/TeacherDetailPage'
 import { LessonDetailPage } from '@/pages/LessonDetailPage'
 import { HomeworkDetailPage } from '@/pages/HomeworkDetailPage'
@@ -172,7 +172,7 @@ export default function App() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/owner" element={<OwnerDashboard />} />
           <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/groups/:id" element={<GroupDetailPage />} />
+          <Route path="/groups/:id" element={<GroupControlPanel />} />
           <Route path="/teachers/:id" element={<TeacherDetailPage />} />
           <Route path="/lessons" element={<LessonsPage />} />
           <Route path="/lessons/:id" element={<LessonDetailPage />} />
