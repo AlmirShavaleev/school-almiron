@@ -41,7 +41,7 @@ export function usePayments() {
           if (!st) return
           const { data } = await supabase
             .from('payments')
-            .select('*, plans(name, billing_period)')
+            .select('*')
             .eq('student_id', st.id)
             .order('created_at', { ascending: false })
             .limit(50)
@@ -51,7 +51,7 @@ export function usePayments() {
           // admin / owner — все платежи
           const { data } = await supabase
             .from('payments')
-            .select('*, plans(name, billing_period), students(profiles(full_name))')
+            .select('*, students(profiles(full_name))')
             .order('created_at', { ascending: false })
             .limit(200)
           setPayments((data || []) as any)

@@ -177,7 +177,7 @@ export function MyCoursesPage() {
             .select('course_id, topics(id)')
             .in('course_id', courseIds),
           supabase.from('homework_submissions')
-            .select('homework_id, status, homeworks(topic_id, group_id)')
+            .select('homework_id, status, homeworks(topic_id)')
             .eq('student_id', student.id)
             .eq('status', 'checked')
             .not('homeworks', 'is', null),
@@ -185,20 +185,28 @@ export function MyCoursesPage() {
 
         if (cancelled) return
 
-        // topics per course
+        // topics per course + карта topic→course
         const topicsByCourse: Record<string, number> = {}
+        const topicCourse: Record<string, string> = {}
         for (const mod of modsRes.data || []) {
           const cid = (mod as any).course_id
-          topicsByCourse[cid] = (topicsByCourse[cid] || 0) + ((mod as any).topics?.length || 0)
+          const tops = (mod as any).topics || []
+          topicsByCourse[cid] = (topicsByCourse[cid] || 0) + tops.length
+          for (const t of tops) topicCourse[t.id] = cid
         }
+        // курс → группа ученика (один курс = одна группа ученика)
+        const courseGroup: Record<string, string> = {}
+        for (const g of groupsWithCourse as any[]) courseGroup[g.courses.id] = g.id
 
-        // done topics per group (checked submissions where hw belongs to group)
+        // done topics per group (через тему → курс → группа)
         const doneByGroup: Record<string, Set<string>> = {}
         for (const sub of subsRes.data || []) {
-          const hw: any = (sub as any).homeworks
-          if (!hw?.group_id || !hw?.topic_id) continue
-          if (!doneByGroup[hw.group_id]) doneByGroup[hw.group_id] = new Set()
-          doneByGroup[hw.group_id].add(hw.topic_id)
+          const tid = (sub as any).homeworks?.topic_id
+          if (!tid) continue
+          const gid = courseGroup[topicCourse[tid]]
+          if (!gid) continue
+          if (!doneByGroup[gid]) doneByGroup[gid] = new Set()
+          doneByGroup[gid].add(tid)
         }
 
         const result: CourseCard[] = groupsWithCourse.map((g: any) => ({

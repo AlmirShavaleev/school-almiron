@@ -115,12 +115,16 @@ export function useStudentProfile(studentId: string | null) {
         }))
       }
 
-      // 4. Homeworks
-      const { data: hws } = groupIds.length
+      // 4. Homeworks (на уровне темы курса)
+      const topicIdsForHw = courseIds.length
+        ? ((await supabase.from('modules').select('topics(id)').in('course_id', courseIds)).data || [])
+            .flatMap((m: any) => (m.topics || []).map((t: any) => t.id))
+        : []
+      const { data: hws } = topicIdsForHw.length
         ? await supabase
             .from('homeworks')
-            .select('id, title, due_date, max_score, group_id, groups(name)')
-            .in('group_id', groupIds)
+            .select('id, title, due_date, max_score, topics(title)')
+            .in('topic_id', topicIdsForHw)
             .order('due_date', { ascending: false })
         : { data: [] }
 

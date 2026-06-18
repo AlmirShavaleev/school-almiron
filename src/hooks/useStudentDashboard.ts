@@ -39,10 +39,11 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
 
       const { data: groupStudents } = await supabase
         .from('group_students')
-        .select('group_id')
+        .select('group_id, groups(course_id)')
         .eq('student_id', student.id)
 
       const groupIds = (groupStudents || []).map((gs: any) => gs.group_id)
+      const courseIds = [...new Set((groupStudents || []).map((gs: any) => gs.groups?.course_id).filter(Boolean))]
 
       let nextLesson = null
       if (groupIds.length > 0) {
@@ -58,13 +59,22 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
       }
 
       let homeworks: any[] = []
-      if (groupIds.length > 0) {
-        const { data: hws } = await supabase
-          .from('homeworks')
-          .select('*, homework_submissions(status, score, feedback, submitted_at)')
-          .in('group_id', groupIds)
-          .order('due_date', { ascending: true })
-        homeworks = hws || []
+      if (courseIds.length > 0) {
+        const { data: mods } = await supabase
+          .from('modules').select('topics(id)').in('course_id', courseIds)
+        const topicIds = (mods || []).flatMap((m: any) => (m.topics || []).map((t: any) => t.id))
+        if (topicIds.length) {
+          const { data: hws } = await supabase
+            .from('homeworks')
+            .select('*, homework_submissions(status, score, feedback, submitted_at, student_id)')
+            .in('topic_id', topicIds)
+            .order('due_date', { ascending: true })
+          // только сдачи этого ученика
+          homeworks = (hws || []).map((hw: any) => ({
+            ...hw,
+            homework_submissions: (hw.homework_submissions || []).filter((s: any) => s.student_id === student.id),
+          }))
+        }
       }
 
       const { data: mockResults } = await supabase
