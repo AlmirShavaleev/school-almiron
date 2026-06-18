@@ -62,6 +62,7 @@ import { LessonDetailPage } from '@/pages/LessonDetailPage'
 import { HomeworkDetailPage } from '@/pages/HomeworkDetailPage'
 import { HomeworkReviewPage } from '@/pages/HomeworkReviewPage'
 import { StudentReviewPage } from '@/pages/StudentReviewPage'
+import { HomeworkQueuePage } from '@/pages/HomeworkQueuePage'
 import { LessonsPage } from '@/pages/LessonsPage'
 import { HomeworksPage } from '@/pages/HomeworksPage'
 import { MockExamsPage } from '@/pages/MockExamsPage'
@@ -175,6 +176,7 @@ export default function App() {
           <Route path="/teachers/:id" element={<TeacherDetailPage />} />
           <Route path="/lessons" element={<LessonsPage />} />
           <Route path="/lessons/:id" element={<LessonDetailPage />} />
+          <Route path="/inbox" element={<HomeworkQueuePage />} />
           <Route path="/homeworks" element={<HomeworksPage />} />
           <Route path="/homeworks/:id" element={<HomeworkDetailPage />} />
           <Route path="/homeworks/:id/review/:groupId" element={<HomeworkReviewPage />} />

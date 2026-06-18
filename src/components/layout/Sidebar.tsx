@@ -8,7 +8,7 @@ import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, CheckSquare, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, TrendingUp,
+  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox,
 } from 'lucide-react'
 
 interface NavItem {
@@ -22,6 +22,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   // Non-student roles
   { label: 'Главная',           path: '/dashboard',      icon: <Home size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Очередь задач',     path: '/inbox',          icon: <Inbox size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
 
   // Student navigation (grouped)
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
