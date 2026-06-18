@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Users, Calendar, Plus, BookOpen, Pencil } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Users, Calendar, Plus, BookOpen, Pencil, ArrowRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useAuthStore } from '@/store/authStore'
@@ -21,6 +22,7 @@ interface GroupForModal {
 }
 
 export function GroupsPage() {
+  const navigate  = useNavigate()
   const profile   = useAuthStore(s => s.profile)
   const canManage = profile?.role && ['admin', 'owner'].includes(profile.role)
 
@@ -103,7 +105,12 @@ export function GroupsPage() {
                 {/* Card header */}
                 <div className="px-5 pt-5 pb-3">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="font-bold text-gray-900 text-base leading-tight">{group.name}</h3>
+                    <button
+                      onClick={() => navigate(`/groups/${group.id}`)}
+                      className="font-bold text-gray-900 text-base leading-tight text-left hover:text-primary-600 hover:underline underline-offset-2 transition-colors"
+                    >
+                      {group.name}
+                    </button>
                     <span className={cn(
                       'text-xs font-semibold px-2 py-0.5 rounded-full shrink-0',
                       group.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -194,22 +201,32 @@ export function GroupsPage() {
                 </div>
 
                 {/* Actions */}
-                {canManage && (
-                  <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex gap-2">
-                    <button
-                      onClick={() => openEdit(group)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                    >
-                      <Pencil size={13} />Настройки
-                    </button>
-                    <button
-                      onClick={() => openEdit(group, 'students')}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-50 transition-colors"
-                    >
-                      <Users size={13} />Ученики
-                    </button>
-                  </div>
-                )}
+                <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex gap-2">
+                  <button
+                    onClick={() => navigate(`/groups/${group.id}`)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors"
+                  >
+                    Открыть<ArrowRight size={13} />
+                  </button>
+                  {canManage && (
+                    <>
+                      <button
+                        onClick={() => openEdit(group)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        title="Настройки"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => openEdit(group, 'students')}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-50 transition-colors"
+                        title="Ученики"
+                      >
+                        <Users size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )
           })}

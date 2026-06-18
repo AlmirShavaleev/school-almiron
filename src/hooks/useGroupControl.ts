@@ -76,14 +76,15 @@ export function useGroupControl(groupId: string | undefined): GroupControlData {
     load().catch(e => { if (!cancelled) setError(e.message || 'Ошибка загрузки') }).finally(() => { if (!cancelled) setLoading(false) })
 
     async function load() {
-      // 1. group meta
+      // 1. group meta (maybeSingle → отсутствие группы = null без 406/PGRST116)
       const { data: g, error: gErr } = await supabase.from('groups')
         .select(`id, name, is_active, max_students, schedule_days, schedule_time, course_id,
                  courses(id, title, subject, exam_type),
                  teachers(id, profiles(full_name)), curators(id, profiles(full_name))`)
-        .eq('id', groupId!).single()
+        .eq('id', groupId!).maybeSingle()
       if (gErr) throw gErr
       if (cancelled) return
+      if (!g) { setGroup(null); return }   // группа не найдена/удалена → дружелюбный экран
       const gg: any = g
       const meta: GroupMeta = {
         id: gg.id, name: gg.name, is_active: gg.is_active !== false,

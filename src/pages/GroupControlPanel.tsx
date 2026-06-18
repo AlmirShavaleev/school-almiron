@@ -49,11 +49,19 @@ export function GroupControlPanel() {
       <span className="text-gray-500 text-sm">Загружаем панель группы…</span>
     </div>
   )
-  if (error || !group) return (
-    <div className="max-w-md mx-auto mt-12 text-center space-y-4">
-      <AlertCircle size={40} className="mx-auto text-red-400" />
-      <p className="text-gray-700">{error || 'Группа не найдена'}</p>
-      <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline">Назад</button>
+  if (!group) return (
+    <div className="max-w-md mx-auto mt-16 text-center space-y-4">
+      <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
+        <AlertCircle size={28} className="text-gray-400" />
+      </div>
+      <h2 className="text-xl font-bold text-gray-800">Группа не найдена</h2>
+      <p className="text-gray-500 text-sm">Возможно, она была удалена или перемещена.</p>
+      <button
+        onClick={() => navigate('/groups')}
+        className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
+      >
+        <ArrowLeft size={15} />Вернуться к списку групп
+      </button>
     </div>
   )
 
@@ -144,7 +152,11 @@ export function GroupControlPanel() {
           schedule_time: group.schedule_time, is_active: group.is_active,
         }}
       />
-      <CreateLessonModal open={lessonOpen} onClose={() => setLessonOpen(false)} onCreated={reload} />
+      <CreateLessonModal
+        open={lessonOpen} onClose={() => setLessonOpen(false)} onCreated={reload}
+        defaultGroupId={group.id}
+        defaultTeacherId={group.teacher_id ?? undefined}
+      />
       <CreateHomeworkModal open={hwOpen} onClose={() => setHwOpen(false)} onCreated={reload} defaultGroupId={group.id} />
       {transfer && (
         <TransferStudentModal

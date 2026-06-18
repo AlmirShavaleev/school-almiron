@@ -37,9 +37,12 @@ interface Props {
   onClose: () => void
   onCreated: () => void
   defaultDate?: Date | null
+  /** Контекст группы — предзаполнить группу и её преподавателя (для запуска со страницы группы) */
+  defaultGroupId?: string
+  defaultTeacherId?: string
 }
 
-export function CreateLessonModal({ open, onClose, onCreated, defaultDate }: Props) {
+export function CreateLessonModal({ open, onClose, onCreated, defaultDate, defaultGroupId, defaultTeacherId }: Props) {
   const profile = useAuthStore(s => s.profile)
 
   const [format,      setFormat]      = useState<LessonFormat>('group')
@@ -120,6 +123,13 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate }: Pro
     const d = String(base.getDate()).padStart(2, '0')
     setValue('scheduled_at', `${y}-${m}-${d}T18:00`)
   }, [open, defaultDate, setValue])
+
+  // ── Pre-fill group + teacher from context (after options loaded) ─────────────
+  useEffect(() => {
+    if (!open || loadingData) return
+    if (defaultGroupId)   setValue('group_id', defaultGroupId)
+    if (defaultTeacherId) setValue('teacher_id', defaultTeacherId)
+  }, [open, loadingData, defaultGroupId, defaultTeacherId, setValue])
 
   // ── Load topics when group changes ──────────────────────────────────────────
   useEffect(() => {
