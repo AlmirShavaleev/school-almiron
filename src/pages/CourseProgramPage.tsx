@@ -249,8 +249,9 @@ function TopicRowEdit({
         <span>б.</span>
       </div>
 
-      <div className="flex items-center gap-1 shrink-0 relative">
+      <div className="flex items-center gap-1 shrink-0 relative" title="Дата, с которой тема открывается ученикам. Пусто — доступна сразу">
         <Calendar size={12} className="text-gray-300" />
+        <span className="text-xs text-gray-400 hidden sm:inline">Открыть с:</span>
         <input
           type="date"
           value={dateVal}

@@ -231,7 +231,10 @@ export function TopicPage() {
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
   const embedUrl   = ytEmbed || vimeoEmbed
-  const isLocked   = topic?.available_from ? new Date(topic.available_from) > new Date() : false
+  // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
+  const isLocked   = topic?.available_from
+    ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA')
+    : false
   const solutionLocked = hw.status !== 'checked'
   const canSubmit  = hw.status === 'not_submitted' || hw.status === 'revision'
 
@@ -258,7 +261,7 @@ export function TopicPage() {
       </div>
       <h2 className="text-xl font-bold text-gray-800">Тема ещё не открыта</h2>
       <p className="text-gray-500 text-sm">
-        Откроется {new Date(topic.available_from!).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+        Откроется {new Date(topic.available_from!.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
       <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">← Назад</button>
     </div>

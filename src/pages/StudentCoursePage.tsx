@@ -210,9 +210,11 @@ function TopicCard({
   onOpenTopic: (t: TopicProgress) => void
   onSubmitHW: (t: TopicProgress) => void
 }) {
-  const today      = new Date()
-  const availDate  = topic.available_from ? new Date(topic.available_from) : null
-  const isLocked   = !!availDate && availDate > today
+  // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
+  const todayStr   = new Date().toLocaleDateString('en-CA')
+  const availStr   = topic.available_from ? topic.available_from.slice(0, 10) : null
+  const availDate  = availStr ? new Date(availStr + 'T00:00:00') : null
+  const isLocked   = !!availStr && availStr > todayStr
   const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
     topic.has_homework || topic.has_solution || topic.has_video
   const isDone     = topic.hw_status === 'checked'
