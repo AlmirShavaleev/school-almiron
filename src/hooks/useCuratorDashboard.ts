@@ -81,11 +81,22 @@ export function useCuratorDashboard(profileId: string | undefined) {
     // 2. Curator's groups with basic data
     const { data: rawGroups } = await supabase
       .from('groups')
-      .select('id, name, schedule_days, schedule_time, courses(title, subject)')
+      .select('id, name, course_id, schedule_days, schedule_time, courses(title, subject)')
       .eq('curator_id', curator.id)
     if (!rawGroups || rawGroups.length === 0) return
 
     const groupIds = rawGroups.map((g: any) => g.id)
+
+    // ДЗ привязаны к темам курса → собираем темы курсов куратора
+    const groupCourse: Record<string, string> = {}
+    for (const g of rawGroups as any[]) groupCourse[g.id] = g.course_id
+    const courseIds = [...new Set((rawGroups as any[]).map(g => g.course_id).filter(Boolean))]
+    const { data: modRows } = await supabase
+      .from('modules').select('course_id, topics(id)').in('course_id', courseIds)
+    const topicCourse: Record<string, string> = {}
+    for (const m of (modRows || []) as any[])
+      for (const t of (m.topics || [])) topicCourse[t.id] = m.course_id
+    const topicIds = Object.keys(topicCourse)
 
     // 3. Parallel: students, lessons, overdue HW, all HW ids for pending submissions
     const [
@@ -99,15 +110,19 @@ export function useCuratorDashboard(profileId: string | undefined) {
         .in('group_id', groupIds),
       supabase.from('lessons').select('id, group_id, scheduled_at')
         .in('group_id', groupIds),
-      supabase.from('homeworks')
-        .select('id, title, due_date, group_id, groups(name)')
-        .in('group_id', groupIds)
-        .lt('due_date', new Date().toISOString())
-        .order('due_date', { ascending: false })
-        .limit(20),
-      supabase.from('homeworks')
-        .select('id, title, group_id, groups(name)')
-        .in('group_id', groupIds),
+      topicIds.length
+        ? supabase.from('homeworks')
+            .select('id, title, due_date, topic_id')
+            .in('topic_id', topicIds)
+            .lt('due_date', new Date().toISOString())
+            .order('due_date', { ascending: false })
+            .limit(20)
+        : Promise.resolve({ data: [] as any[] }),
+      topicIds.length
+        ? supabase.from('homeworks')
+            .select('id, title, topic_id')
+            .in('topic_id', topicIds)
+        : Promise.resolve({ data: [] as any[] }),
     ])
 
     const lessonIds = (allLessons || []).map((l: any) => l.id)
@@ -189,8 +204,9 @@ export function useCuratorDashboard(profileId: string | undefined) {
     // Pending count per student (overdue HW not submitted)
     const studentPendingHW: Record<string, number> = {}
     for (const hw of rawOverdueHW || []) {
+      const hwCourse = topicCourse[(hw as any).topic_id]
       const studentsInGroup = Array.from(studentMap.values())
-        .filter((st: any) => studentGroupMap[st.id]?.includes(hw.group_id))
+        .filter((st: any) => (studentGroupMap[st.id] || []).some(gid => groupCourse[gid] === hwCourse))
       for (const st of studentsInGroup) {
         if (!submissionMap[hw.id]?.has(st.id)) {
           studentPendingHW[st.id] = (studentPendingHW[st.id] || 0) + 1

@@ -68,11 +68,12 @@ interface HwStat { submitted: number; pending: number; revision: number; total: 
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
 function HwTable({
-  modules, hwStats, hwByTopic,
+  modules, hwStats, hwByTopic, groupId,
 }: {
   modules: Module[]
   hwStats: Record<string, HwStat>
   hwByTopic: Record<string, { id: string; title: string; max_score: number }>
+  groupId: string | null
 }) {
   const navigate = useNavigate()
 
@@ -144,7 +145,7 @@ function HwTable({
                     <td className="px-4 py-3">
                       {hw ? (
                         <button
-                          onClick={() => navigate(`/homeworks/${hw.id}/review`)}
+                          onClick={() => navigate(`/homeworks/${hw.id}/review/${groupId}`)}
                           className="group flex items-center gap-1.5 text-left hover:text-primary-600 transition-colors"
                         >
                           <ChevronRight size={13} className="text-gray-300 group-hover:text-primary-400 shrink-0 transition-colors" />
@@ -797,23 +798,27 @@ export function CourseProgramPage() {
       return
     }
 
-    // Размер выбранной группы
-    const { count: groupSize } = await supabase
-      .from('group_students').select('id', { count: 'exact', head: true })
-      .eq('group_id', groupId)
-    setTotalStudents(groupSize || 0)
+    // Ученики выбранной группы
+    const { data: gsRows } = await supabase
+      .from('group_students').select('student_id').eq('group_id', groupId)
+    const studentIds = (gsRows || []).map((r: any) => r.student_id)
+    const groupSize = studentIds.length
+    setTotalStudents(groupSize)
 
-    // ДЗ только выбранной группы
+    // ДЗ курса (на уровне темы — общие для всех групп курса)
     const { data: hws } = await supabase
       .from('homeworks')
       .select('id, topic_id, title, max_score')
-      .eq('group_id', groupId)
       .in('topic_id', topicIds)
     if (!hws?.length) { setHwStats({}); setHwByTopic({}); return }
 
     const hwIds = hws.map((h: any) => h.id)
-    const { data: subs } = await supabase
-      .from('homework_submissions').select('homework_id, status').in('homework_id', hwIds)
+    // Сдачи — только учеников этой группы
+    const { data: subs } = studentIds.length
+      ? await supabase
+          .from('homework_submissions').select('homework_id, status')
+          .in('homework_id', hwIds).in('student_id', studentIds)
+      : { data: [] as any[] }
 
     const hwTopic: Record<string, string> = {}
     const stats: Record<string, HwStat> = {}
@@ -1184,6 +1189,7 @@ export function CourseProgramPage() {
                     modules={modules}
                     hwStats={hwStats}
                     hwByTopic={hwByTopic}
+                    groupId={selectedGroupId}
                   />
                 )}
               </div>

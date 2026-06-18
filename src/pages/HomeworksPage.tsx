@@ -65,7 +65,7 @@ export function HomeworksPage() {
                 const subs = Array.isArray(hw.homework_submissions) ? hw.homework_submissions : []
                 if (subs.length === 0) return [{
                   studentName: '—',
-                  groupName:   hw.groups?.name || '—',
+                  groupName:   hw.topics?.title || '—',
                   hwTitle:     hw.title,
                   status:      'not_submitted',
                   score:       null,
@@ -75,7 +75,7 @@ export function HomeworksPage() {
                 }]
                 return subs.map((s: any) => ({
                   studentName: s.students?.profiles?.full_name || '—',
-                  groupName:   hw.groups?.name || '—',
+                  groupName:   hw.topics?.title || '—',
                   hwTitle:     hw.title,
                   status:      s.status,
                   score:       s.score ?? null,
@@ -118,7 +118,7 @@ export function HomeworksPage() {
             {withStatus.map(hw => {
               const overdue    = isOverdue(hw.due_date)
               const status: string = hw._sub?.status || 'not_submitted'
-              const groupName  = hw.groups?.name || '—'
+              const groupName  = hw.topics?.title || '—'
               const subList    = Array.isArray(hw.homework_submissions) ? hw.homework_submissions : []
               const submittedCount = subList.filter((s: any) => s.status === 'submitted').length
 

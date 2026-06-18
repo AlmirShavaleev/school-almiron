@@ -26,10 +26,9 @@ export interface TeacherHW {
   id:             string
   title:          string
   due_date:       string
-  group_id:       string
-  group_name:     string
+  group_name:     string   // тема курса (ДЗ — на уровне темы)
   max_score:      number
-  total_students: number   // students in group
+  total_students: number   // учеников, имеющих сдачу
   submitted_count: number  // submitted + checked (any response)
   pending_count:  number   // submitted only — awaiting review
   checked_count:  number   // already graded
@@ -106,7 +105,7 @@ export function useTeacherDashboard(profileId: string | undefined) {
         .limit(20),
 
       supabase.from('homeworks')
-        .select('id, title, due_date, max_score, group_id, groups(name)')
+        .select('id, title, due_date, max_score, topics(title)')
         .eq('created_by', tid)
         .order('due_date', { ascending: false })
         .limit(30),
@@ -175,10 +174,9 @@ export function useTeacherDashboard(profileId: string | undefined) {
         id:             hw.id,
         title:          hw.title,
         due_date:       hw.due_date,
-        group_id:       hw.group_id,
-        group_name:     (hw as any).groups?.name || '—',
+        group_name:     (hw as any).topics?.title || '—',
         max_score:      hw.max_score || 100,
-        total_students: groupStudentCount[hw.group_id] || 0,
+        total_students: new Set(subs.map(s => s.student_id)).size,
         submitted_count: submitted,
         pending_count:  pending,
         checked_count:  checked,

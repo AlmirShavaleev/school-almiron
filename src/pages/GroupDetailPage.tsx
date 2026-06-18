@@ -80,8 +80,8 @@ export function GroupDetailPage() {
     return () => { cancelled = true }
 
     async function load(gid: string) {
-      // ── Round 1: group + students + lessons + homeworks (parallel) ─────────
-      const [gRes, gsRes, lRes, hRes] = await Promise.all([
+      // ── Round 1: group + students + lessons (parallel) ─────────────────────
+      const [gRes, gsRes, lRes] = await Promise.all([
         supabase.from('groups')
           .select(`
             id, name, is_active, max_students, schedule_days, schedule_time, created_at,
@@ -101,12 +101,6 @@ export function GroupDetailPage() {
           .eq('group_id', gid)
           .order('scheduled_at', { ascending: false })
           .limit(50),
-
-        supabase.from('homeworks')
-          .select('id, title, due_date')
-          .eq('group_id', gid)
-          .order('due_date', { ascending: false })
-          .limit(30),
       ])
 
       if (gRes.error) throw gRes.error
@@ -133,7 +127,23 @@ export function GroupDetailPage() {
       const rawStudents: any[] = (gsRes.data || []).map((r: any) => r.students).filter(Boolean)
       const studentIds = rawStudents.map(s => s.id)
       const rawLessons: any[] = lRes.data || []
-      const rawHW: any[] = hRes.data || []
+
+      // ДЗ группы = ДЗ тем курса группы (курс-уровень)
+      let rawHW: any[] = []
+      if (builtGroup.course?.id) {
+        const { data: mods } = await supabase
+          .from('modules').select('topics(id)').eq('course_id', builtGroup.course.id)
+        const topicIds = (mods || []).flatMap((m: any) => (m.topics || []).map((t: any) => t.id))
+        if (topicIds.length) {
+          const { data: hwData } = await supabase
+            .from('homeworks')
+            .select('id, title, due_date')
+            .in('topic_id', topicIds)
+            .order('due_date', { ascending: false })
+            .limit(30)
+          rawHW = hwData || []
+        }
+      }
 
       const lessonIds = rawLessons.map(l => l.id)
       const hwIds = rawHW.map(h => h.id)

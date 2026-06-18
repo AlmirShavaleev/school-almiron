@@ -10,7 +10,6 @@ interface HwInfo {
   id: string
   title: string
   max_score: number
-  group_id: string
 }
 
 interface StudentRow {
@@ -32,27 +31,28 @@ const STATUS_LABEL: Record<string, { label: string; color: string; dot: string }
 }
 
 export function HomeworkReviewPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, groupId } = useParams<{ id: string; groupId: string }>()
   const navigate = useNavigate()
 
   const [hw,      setHw]      = useState<HwInfo | null>(null)
   const [students, setStudents] = useState<StudentRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (id) loadAll() }, [id])
+  useEffect(() => { if (id && groupId) loadAll() }, [id, groupId])
 
   async function loadAll() {
-    if (!id) return
+    if (!id || !groupId) return
     setLoading(true)
     try {
       const { data: hwData } = await supabase
         .from('homeworks')
-        .select('id, title, max_score, group_id')
+        .select('id, title, max_score')
         .eq('id', id)
         .single()
       setHw(hwData)
       if (!hwData) return
 
+      // Список учеников — из выбранной группы (контекст проверки)
       const [subsRes, gsRes] = await Promise.all([
         supabase
           .from('homework_submissions')
@@ -61,7 +61,7 @@ export function HomeworkReviewPage() {
         supabase
           .from('group_students')
           .select('student_id, students(id, profile_id, profiles(full_name))')
-          .eq('group_id', hwData.group_id),
+          .eq('group_id', groupId),
       ])
 
       const subMap: Record<string, any> = {}
@@ -133,7 +133,7 @@ export function HomeworkReviewPage() {
                 <button
                   key={s.studentId}
                   disabled={!canReview}
-                  onClick={() => navigate(`/homeworks/${id}/review/${s.studentId}`)}
+                  onClick={() => navigate(`/homeworks/${id}/review/${groupId}/${s.studentId}`)}
                   className={cn(
                     'w-full flex items-center gap-4 px-4 py-3.5 text-left transition-colors',
                     canReview ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default opacity-60'

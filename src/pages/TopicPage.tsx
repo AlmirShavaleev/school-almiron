@@ -136,11 +136,11 @@ export function TopicPage() {
           group_name:     gd?.name || '',
         })
 
-        // 3. HW for this topic + group (may not exist)
+        // 3. HW for this topic (курс-уровень, общее для всех групп; может не быть)
         const { data: hwData } = await supabase
           .from('homeworks')
           .select('id, max_score, due_date, file_url')
-          .eq('topic_id', topicId!).eq('group_id', groupId!)
+          .eq('topic_id', topicId!)
           .maybeSingle()
 
         if (cancelled) return

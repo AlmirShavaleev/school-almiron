@@ -177,8 +177,8 @@ export default function App() {
           <Route path="/lessons/:id" element={<LessonDetailPage />} />
           <Route path="/homeworks" element={<HomeworksPage />} />
           <Route path="/homeworks/:id" element={<HomeworkDetailPage />} />
-          <Route path="/homeworks/:id/review" element={<HomeworkReviewPage />} />
-          <Route path="/homeworks/:id/review/:studentId" element={<StudentReviewPage />} />
+          <Route path="/homeworks/:id/review/:groupId" element={<HomeworkReviewPage />} />
+          <Route path="/homeworks/:id/review/:groupId/:studentId" element={<StudentReviewPage />} />
           <Route path="/mock-exams" element={<MockExamsPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />

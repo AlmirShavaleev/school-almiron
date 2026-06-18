@@ -101,11 +101,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         matMap[mat.topic_id].add(mat.type)
       }
 
-      // 5. Homeworks for this group + student submissions
+      // 5. Homeworks курса (на уровне темы) + сдачи студента
       const { data: hws } = await supabase
         .from('homeworks')
         .select('id, topic_id, max_score, due_date, file_url')
-        .eq('group_id', group.id)
+        .in('topic_id', topicIds)
 
       const hwByTopic: Record<string, { id: string; max_score: number; due_date: string | null; file_url: string | null }> = {}
       for (const hw of hws || []) {

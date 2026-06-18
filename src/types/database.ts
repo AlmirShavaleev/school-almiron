@@ -291,6 +291,48 @@ export type Database = {
           },
         ]
       }
+      homework_submissions_bak_20260618: {
+        Row: {
+          answer_text: string | null
+          checked_at: string | null
+          checked_by: string | null
+          feedback: string | null
+          file_url: string | null
+          homework_id: string | null
+          id: string | null
+          score: number | null
+          status: Database["public"]["Enums"]["homework_status"] | null
+          student_id: string | null
+          submitted_at: string | null
+        }
+        Insert: {
+          answer_text?: string | null
+          checked_at?: string | null
+          checked_by?: string | null
+          feedback?: string | null
+          file_url?: string | null
+          homework_id?: string | null
+          id?: string | null
+          score?: number | null
+          status?: Database["public"]["Enums"]["homework_status"] | null
+          student_id?: string | null
+          submitted_at?: string | null
+        }
+        Update: {
+          answer_text?: string | null
+          checked_at?: string | null
+          checked_by?: string | null
+          feedback?: string | null
+          file_url?: string | null
+          homework_id?: string | null
+          id?: string | null
+          score?: number | null
+          status?: Database["public"]["Enums"]["homework_status"] | null
+          student_id?: string | null
+          submitted_at?: string | null
+        }
+        Relationships: []
+      }
       homeworks: {
         Row: {
           created_at: string
@@ -298,13 +340,12 @@ export type Database = {
           description: string | null
           due_date: string
           file_url: string | null
-          group_id: string
           id: string
           lesson_id: string | null
           max_score: number
           teacher_id: string
           title: string
-          topic_id: string | null
+          topic_id: string
         }
         Insert: {
           created_at?: string
@@ -312,13 +353,12 @@ export type Database = {
           description?: string | null
           due_date: string
           file_url?: string | null
-          group_id: string
           id?: string
           lesson_id?: string | null
           max_score?: number
           teacher_id: string
           title: string
-          topic_id?: string | null
+          topic_id: string
         }
         Update: {
           created_at?: string
@@ -326,13 +366,12 @@ export type Database = {
           description?: string | null
           due_date?: string
           file_url?: string | null
-          group_id?: string
           id?: string
           lesson_id?: string | null
           max_score?: number
           teacher_id?: string
           title?: string
-          topic_id?: string | null
+          topic_id?: string
         }
         Relationships: [
           {
@@ -340,13 +379,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "teachers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "homeworks_group_id_fkey"
-            columns: ["group_id"]
-            isOneToOne: false
-            referencedRelation: "groups"
             referencedColumns: ["id"]
           },
           {
@@ -371,6 +403,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      homeworks_bak_20260618: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          file_url: string | null
+          group_id: string | null
+          id: string | null
+          lesson_id: string | null
+          max_score: number | null
+          teacher_id: string | null
+          title: string | null
+          topic_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          file_url?: string | null
+          group_id?: string | null
+          id?: string | null
+          lesson_id?: string | null
+          max_score?: number | null
+          teacher_id?: string | null
+          title?: string | null
+          topic_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          file_url?: string | null
+          group_id?: string | null
+          id?: string | null
+          lesson_id?: string | null
+          max_score?: number | null
+          teacher_id?: string | null
+          title?: string | null
+          topic_id?: string | null
+        }
+        Relationships: []
       }
       leaderboard_points: {
         Row: {
@@ -1439,6 +1516,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auth_can_see_topic: { Args: { p_topic_id: string }; Returns: boolean }
       auth_is_curator_of_homework: { Args: { hw_id: string }; Returns: boolean }
       auth_is_student_in_group: { Args: { grp_id: string }; Returns: boolean }
       auth_is_student_of_submission: {

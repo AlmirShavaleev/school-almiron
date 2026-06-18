@@ -14,7 +14,6 @@ interface HwInfo {
   id: string
   title: string
   max_score: number
-  group_id: string
 }
 
 interface Submission {
@@ -40,7 +39,7 @@ const QUICK_PHRASES = [
 ]
 
 export function StudentReviewPage() {
-  const { id: hwId, studentId } = useParams<{ id: string; studentId: string }>()
+  const { id: hwId, groupId, studentId } = useParams<{ id: string; groupId: string; studentId: string }>()
   const navigate  = useNavigate()
   const profile   = useAuthStore(s => s.profile)
 
@@ -65,29 +64,29 @@ export function StudentReviewPage() {
   }, [profile])
 
   useEffect(() => {
-    if (!hwId || !studentId) return
+    if (!hwId || !groupId || !studentId) return
     loadAll()
-  }, [hwId, studentId])
+  }, [hwId, groupId, studentId])
 
   async function loadAll() {
-    if (!hwId || !studentId) return
+    if (!hwId || !groupId || !studentId) return
     setLoading(true)
     try {
       // Load homework
       const { data: hwData } = await supabase
         .from('homeworks')
-        .select('id, title, max_score, group_id')
+        .select('id, title, max_score')
         .eq('id', hwId)
         .single()
       setHw(hwData)
       if (!hwData) return
 
-      // Parallel: student profile + submission + sibling list
+      // Parallel: student profile + submission + sibling list (в контексте группы)
       const [stuRes, subRes, gsRes] = await Promise.all([
         supabase
           .from('group_students')
           .select('student_id, students(id, profile_id, profiles(full_name))')
-          .eq('group_id', hwData.group_id)
+          .eq('group_id', groupId)
           .eq('student_id', studentId)
           .single(),
         supabase
@@ -99,7 +98,7 @@ export function StudentReviewPage() {
         supabase
           .from('group_students')
           .select('student_id, students(profiles(full_name))')
-          .eq('group_id', hwData.group_id),
+          .eq('group_id', groupId),
       ])
 
       const gs = stuRes.data as any
@@ -155,7 +154,7 @@ export function StudentReviewPage() {
     const idx = siblings.findIndex(s => s.studentId === studentId)
     const next = siblings.slice(idx + 1).find(s => true) // just go to next
     if (next) {
-      setTimeout(() => navigate(`/homeworks/${hwId}/review/${next.studentId}`), 600)
+      setTimeout(() => navigate(`/homeworks/${hwId}/review/${groupId}/${next.studentId}`), 600)
     }
   }
 
@@ -175,7 +174,7 @@ export function StudentReviewPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => navigate(`/homeworks/${hwId}/review`)}
+          onClick={() => navigate(`/homeworks/${hwId}/review/${groupId}`)}
           className="flex items-center gap-1.5 text-gray-400 hover:text-gray-700 transition-colors text-sm"
         >
           <ArrowLeft size={18} />
@@ -186,7 +185,7 @@ export function StudentReviewPage() {
         <div className="flex items-center gap-1">
           <button
             disabled={!prevStu}
-            onClick={() => prevStu && navigate(`/homeworks/${hwId}/review/${prevStu.studentId}`)}
+            onClick={() => prevStu && navigate(`/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}`)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
             title={prevStu?.name}
           >
@@ -195,7 +194,7 @@ export function StudentReviewPage() {
           <span className="text-xs text-gray-400">{sibIdx + 1} / {siblings.length}</span>
           <button
             disabled={!nextStu}
-            onClick={() => nextStu && navigate(`/homeworks/${hwId}/review/${nextStu.studentId}`)}
+            onClick={() => nextStu && navigate(`/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}`)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
             title={nextStu?.name}
           >
