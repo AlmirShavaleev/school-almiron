@@ -33,6 +33,7 @@ import { useAuthStore } from '@/store/authStore'
 
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { RoleGuard } from '@/components/auth/RoleGuard'
 
 // Auth pages
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -108,8 +109,20 @@ function AppAuth() {
   useEffect(() => {
     let cancelled = false
 
-    async function loadProfile(userId: string) {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    async function loadProfile(user: { id: string; email?: string; user_metadata?: any }) {
+      let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      // Самозарегистрированный пользователь без профиля (email-подтверждение) →
+      // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО role='student'.
+      if (!data) {
+        await supabase.from('profiles').insert({
+          id:        user.id,
+          email:     user.email || '',
+          full_name: user.user_metadata?.full_name || '',
+          role:      'student',
+        } as any)
+        const res = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        data = res.data
+      }
       if (!cancelled && data) setProfile(data as any)
       if (!cancelled) setLoading(false)
     }
@@ -119,7 +132,7 @@ function AppAuth() {
       if (cancelled) return
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) loadProfile(session.user.id)
+      if (session?.user) loadProfile(session.user)
       else setLoading(false)
     })
 
@@ -129,7 +142,7 @@ function AppAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        await loadProfile(session.user.id)
+        await loadProfile(session.user)
       } else if (event === 'SIGNED_OUT') {
         reset()
         setLoading(false)
@@ -165,34 +178,43 @@ export default function App() {
 
         {/* Protected — dashboard layout */}
         <Route element={<DashboardLayout />}>
+          {/* Доступно всем авторизованным */}
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/student" element={<StudentDashboard />} />
-          <Route path="/teacher" element={<TeacherDashboard />} />
-          <Route path="/curator" element={<CuratorDashboard />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/owner" element={<OwnerDashboard />} />
-          <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/groups/:id" element={<GroupControlPanel />} />
-          <Route path="/teachers/:id" element={<TeacherDetailPage />} />
-          <Route path="/lessons" element={<LessonsPage />} />
-          <Route path="/lessons/:id" element={<LessonDetailPage />} />
-          <Route path="/inbox" element={<HomeworkQueuePage />} />
-          <Route path="/homeworks" element={<HomeworksPage />} />
-          <Route path="/homeworks/:id" element={<HomeworkDetailPage />} />
-          <Route path="/homeworks/:id/review/:groupId" element={<HomeworkReviewPage />} />
-          <Route path="/homeworks/:id/review/:groupId/:studentId" element={<StudentReviewPage />} />
-          <Route path="/mock-exams" element={<MockExamsPage />} />
-          <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/course-program" element={<CourseProgramPage />} />
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="/my-course" element={<MyCoursesPage />} />
-          <Route path="/my-course/:groupId" element={<StudentCoursePage />} />
-          <Route path="/my-course/:groupId/topic/:topicId" element={<TopicPage />} />
-          <Route path="/students/:id" element={<StudentProfilePage />} />
-          <Route path="/schedule" element={<SchedulePage />} />
-          <Route path="/my-progress" element={<MyProgressPage />} />
+          <Route path="/payments" element={<PaymentsPage />} />
+
+          {/* Дашборды по ролям */}
+          <Route path="/student" element={<RoleGuard allow={['student']}><StudentDashboard /></RoleGuard>} />
+          <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
+          <Route path="/curator" element={<RoleGuard allow={['curator','admin','owner']}><CuratorDashboard /></RoleGuard>} />
+          <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
+          <Route path="/owner" element={<RoleGuard allow={['owner']}><OwnerDashboard /></RoleGuard>} />
+
+          {/* Только персонал (teacher/curator/admin/owner) */}
+          <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
+          <Route path="/groups/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupControlPanel /></RoleGuard>} />
+          <Route path="/teachers/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TeacherDetailPage /></RoleGuard>} />
+          <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
+          <Route path="/course-program" element={<RoleGuard allow={['teacher','admin','owner']}><CourseProgramPage /></RoleGuard>} />
+          <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
+          <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
+          <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
+          <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><LessonDetailPage /></RoleGuard>} />
+          <Route path="/homeworks/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkDetailPage /></RoleGuard>} />
+          <Route path="/homeworks/:id/review/:groupId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewPage /></RoleGuard>} />
+          <Route path="/homeworks/:id/review/:groupId/:studentId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentReviewPage /></RoleGuard>} />
+
+          {/* Списки, общие для student (своё) и персонала */}
+          <Route path="/lessons" element={<LessonsPage />} />
+          <Route path="/homeworks" element={<HomeworksPage />} />
+          <Route path="/mock-exams" element={<MockExamsPage />} />
+
+          {/* Только ученик */}
+          <Route path="/my-course" element={<RoleGuard allow={['student']}><MyCoursesPage /></RoleGuard>} />
+          <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']}><StudentCoursePage /></RoleGuard>} />
+          <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']}><TopicPage /></RoleGuard>} />
+          <Route path="/my-progress" element={<RoleGuard allow={['student']}><MyProgressPage /></RoleGuard>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
