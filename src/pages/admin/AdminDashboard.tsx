@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { StaffTab } from '@/components/admin/StaffTab'
 import { CreateUserModal } from '@/components/modals/CreateUserModal'
+import { QuickLogin } from '@/components/demo/QuickLogin'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
@@ -132,6 +133,9 @@ export function AdminDashboard() {
           <RefreshCw size={14} />Обновить
         </button>
       </div>
+
+      {/* ── Быстрый вход (демо impersonation) ─────────────────────── */}
+      <QuickLogin />
 
       {/* ── Stats ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

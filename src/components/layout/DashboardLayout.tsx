@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { NotificationBell } from './NotificationBell'
+import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
@@ -57,6 +58,7 @@ export function DashboardLayout() {
 
       {/* Main content: no left margin on mobile, 256px on md+ */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        <ImpersonationBanner />
         {/* Top bar */}
         <header className="h-14 bg-white border-b border-gray-100 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30">
           {/* Hamburger — visible only on mobile */}
