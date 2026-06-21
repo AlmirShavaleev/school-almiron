@@ -16,13 +16,15 @@ export interface TopicProgress {
   has_solution: boolean
   has_video:    boolean
   // homework submission
-  hw_status:   string | null   // null = no HW assigned
-  hw_score:    number | null
-  hw_max:      number | null
-  hw_id:       string | null
-  hw_file_url: string | null
-  hw_deadline: string | null
-  lesson_date: string | null
+  hw_status:      string | null   // null = no HW assigned
+  hw_score:       number | null
+  hw_max:         number | null
+  hw_id:          string | null
+  hw_file_url:    string | null
+  hw_deadline:    string | null
+  hw_description: string | null
+  hw_feedback:    string | null
+  lesson_date:    string | null
 }
 
 export interface ModuleProgress {
@@ -34,12 +36,22 @@ export interface ModuleProgress {
   total:       number
 }
 
+export interface StaffInfo {
+  id:         string
+  full_name:  string
+  email:      string
+  phone:      string | null
+  avatar_url: string | null
+}
+
 export interface CourseInfo {
   id:          string
   title:       string
   subject:     string
   exam_type:   string
   group_name:  string
+  teacher:     StaffInfo | null
+  curator:     StaffInfo | null
 }
 
 export function useStudentCourseProgram(targetGroupId?: string | null) {
@@ -66,7 +78,12 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       // 2. Get student's groups with courses
       const gsQuery = supabase
         .from('group_students')
-        .select('group_id, groups(id, name, course_id, courses(id,title,subject,exam_type))')
+        .select(`group_id, groups(
+          id, name, course_id,
+          courses(id, title, subject, exam_type),
+          teachers(id, profiles(id, full_name, email, phone, avatar_url)),
+          curators(id, profiles(id, full_name, email, phone, avatar_url))
+        )`)
         .eq('student_id', student.id)
 
       const { data: gs } = targetGroupId
@@ -78,7 +95,24 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
 
       const group   = (groupWithCourse as any).groups
       const course  = group.courses
-      setCourse({ id: course.id, title: course.title, subject: course.subject, exam_type: course.exam_type, group_name: group.name })
+
+      // PostgREST может вернуть объект или массив в зависимости от схемы FK
+      function extractStaff(raw: any): StaffInfo | null {
+        const obj = Array.isArray(raw) ? raw[0] : raw
+        const p   = Array.isArray(obj?.profiles) ? obj?.profiles[0] : obj?.profiles
+        if (!p?.full_name) return null
+        return { id: p.id, full_name: p.full_name, email: p.email ?? '', phone: p.phone ?? null, avatar_url: p.avatar_url ?? null }
+      }
+
+      const teacher = extractStaff(group.teachers)
+      const curator = extractStaff(group.curators)
+
+      setCourse({
+        id: course.id, title: course.title, subject: course.subject, exam_type: course.exam_type,
+        group_name: group.name,
+        teacher,
+        curator,
+      })
 
       // 3. Modules + topics
       const { data: mods } = await supabase
@@ -104,10 +138,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       // 5. Homeworks курса (на уровне темы) + сдачи студента
       const { data: hws } = await supabase
         .from('homeworks')
-        .select('id, topic_id, max_score, due_date, file_url')
+        .select('id, topic_id, max_score, due_date, file_url, description')
         .in('topic_id', topicIds)
+        .eq('is_archived', false)
 
-      const hwByTopic: Record<string, { id: string; max_score: number; due_date: string | null; file_url: string | null }> = {}
+      const hwByTopic: Record<string, { id: string; max_score: number; due_date: string | null; file_url: string | null; description: string | null }> = {}
       for (const hw of hws || []) {
         if (hw.topic_id) hwByTopic[hw.topic_id] = hw
       }
@@ -128,12 +163,12 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       const { data: subs } = hwIds.length
         ? await supabase
             .from('homework_submissions')
-            .select('homework_id, status, score')
+            .select('homework_id, status, score, feedback')
             .eq('student_id', student.id)
             .in('homework_id', hwIds)
         : { data: [] }
 
-      const subByHw: Record<string, { status: string; score: number | null }> = {}
+      const subByHw: Record<string, { status: string; score: number | null; feedback: string | null }> = {}
       for (const s of subs || []) subByHw[s.homework_id] = s
 
       // 6. Assemble
@@ -156,13 +191,15 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               has_homework: types.has('homework'),
               has_solution: types.has('solution'),
               has_video:    types.has('video'),
-              hw_status:   sub?.status  || (hw ? 'not_submitted' : null),
-              hw_score:    sub?.score   ?? null,
-              hw_max:      hw?.max_score ?? null,
-              hw_id:       hw?.id        ?? null,
-              hw_file_url: hw?.file_url  ?? null,
-              hw_deadline: hw?.due_date  ?? null,
-              lesson_date: lessonByTopic[t.id] ?? null,
+              hw_status:      sub?.status    || (hw ? 'not_submitted' : null),
+              hw_score:       sub?.score     ?? null,
+              hw_max:         hw?.max_score  ?? null,
+              hw_id:          hw?.id         ?? null,
+              hw_file_url:    hw?.file_url   ?? null,
+              hw_deadline:    hw?.due_date   ?? null,
+              hw_description: hw?.description ?? null,
+              hw_feedback:    sub?.feedback  ?? null,
+              lesson_date:    lessonByTopic[t.id] ?? null,
             }
           })
 

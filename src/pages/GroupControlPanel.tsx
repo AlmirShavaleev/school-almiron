@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen, Loader2, AlertCircle, Calendar, Clock, Layers } from 'lucide-react'
+import { ArrowLeft, BookOpen, Loader2, AlertCircle, Calendar, Clock, Layers, UserX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
@@ -13,6 +13,7 @@ import { StudentManager } from '@/components/group/StudentManager'
 import { TransferStudentModal } from '@/components/group/TransferStudentModal'
 import { GroupModal } from '@/components/modals/GroupModal'
 import { CreateLessonModal } from '@/components/modals/CreateLessonModal'
+import { ArchiveGroupModal } from '@/components/modals/ArchiveGroupModal'
 
 export function GroupControlPanel() {
   const { id } = useParams<{ id: string }>()
@@ -27,18 +28,12 @@ export function GroupControlPanel() {
   const [studentsOpen, setStudentsOpen] = useState(false)
   const [lessonOpen, setLessonOpen]   = useState(false)
   const [transfer, setTransfer]       = useState<GroupStudent | null>(null)
+  const [archiveOpen, setArchiveOpen] = useState(false)
 
   async function archiveToggle() {
     if (!group) return
     await supabase.from('groups').update({ is_active: !group.is_active } as any).eq('id', group.id)
     reload()
-  }
-  async function remove() {
-    if (!group) return
-    if (!confirm(`Удалить группу «${group.name}»? Ученики и занятия группы будут отвязаны. Действие необратимо.`)) return
-    const { error: e } = await supabase.from('groups').delete().eq('id', group.id)
-    if (e) { alert(e.message); return }
-    navigate('/groups')
   }
 
   if (loading) return (
@@ -87,7 +82,6 @@ export function GroupControlPanel() {
                   <BookOpen size={13} />{group.course.title}
                 </Link>
               )}
-              <span className="inline-flex items-center gap-1"><Layers size={13} />{students.length}/{group.max_students}</span>
               {(group.schedule_days?.length || group.schedule_time) && (
                 <span className="inline-flex items-center gap-1">
                   <Calendar size={13} />{group.schedule_days?.join(', ') || '—'}
@@ -102,10 +96,24 @@ export function GroupControlPanel() {
             onEdit={() => setEditOpen(true)}
             onAddLesson={() => setLessonOpen(true)}
             onArchiveToggle={archiveToggle}
-            onDelete={remove}
+            onDelete={() => setArchiveOpen(true)}
           />
         </div>
       </div>
+
+      {/* Inactive staff warning */}
+      {(!group.teacher_active || !group.curator_active) && (
+        <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <UserX size={16} className="shrink-0 text-amber-600" />
+          <span>
+            {[
+              !group.teacher_active && group.teacher_name && `Преподаватель «${group.teacher_name}» деактивирован`,
+              !group.curator_active && group.curator_name && `Куратор «${group.curator_name}» деактивирован`,
+            ].filter(Boolean).join(' · ')}
+            {' '}— замените в настройках группы.
+          </span>
+        </div>
+      )}
 
       {/* KPI */}
       <GroupKPI kpi={kpi} />
@@ -160,6 +168,14 @@ export function GroupControlPanel() {
           studentId={transfer.id} studentName={transfer.full_name} fromGroupId={group.id}
         />
       )}
+      <ArchiveGroupModal
+        open={archiveOpen}
+        groupId={group.id}
+        groupName={group.name}
+        onClose={() => setArchiveOpen(false)}
+        onArchived={reload}
+        onDeleted={() => navigate('/groups')}
+      />
     </div>
   )
 }

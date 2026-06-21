@@ -83,6 +83,7 @@ export function useCuratorDashboard(profileId: string | undefined) {
       .from('groups')
       .select('id, name, course_id, schedule_days, schedule_time, courses(title, subject)')
       .eq('curator_id', curator.id)
+      .eq('is_active', true)
     if (!rawGroups || rawGroups.length === 0) return
 
     const groupIds = rawGroups.map((g: any) => g.id)
@@ -114,6 +115,7 @@ export function useCuratorDashboard(profileId: string | undefined) {
         ? supabase.from('homeworks')
             .select('id, title, due_date, topic_id')
             .in('topic_id', topicIds)
+            .eq('is_archived', false)
             .lt('due_date', new Date().toISOString())
             .order('due_date', { ascending: false })
             .limit(20)
@@ -122,6 +124,7 @@ export function useCuratorDashboard(profileId: string | undefined) {
         ? supabase.from('homeworks')
             .select('id, title, topic_id')
             .in('topic_id', topicIds)
+            .eq('is_archived', false)
         : Promise.resolve({ data: [] as any[] }),
     ])
 

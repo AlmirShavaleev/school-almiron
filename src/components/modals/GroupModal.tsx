@@ -98,8 +98,8 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
     // Load select options
     Promise.all([
       supabase.from('courses').select('id, title, subject, exam_type').order('title'),
-      supabase.from('teachers').select('id, profiles(full_name, email)').order('id'),
-      supabase.from('curators').select('id, profiles(full_name, email)').order('id'),
+      supabase.from('teachers').select('id, profiles(full_name, email)').eq('is_active', true).order('id'),
+      supabase.from('curators').select('id, profiles(full_name, email)').eq('is_active', true).order('id'),
     ]).then(([cRes, tRes, curRes]) => {
       setCourses((cRes.data || []).map((c: any) => ({
         id:    c.id,
@@ -236,7 +236,14 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
       setAddedIds(prev => new Set(prev).add(s.student_id))
       setResults(prev => prev.filter(r => r.student_id !== s.student_id))
       onSaved()
-    } catch (e: any) { alert(e.message) } finally { setAdding(null) }
+    } catch (e: any) {
+      const msg = (e.message || '') as string
+      if (msg.includes('GROUP_FULL')) {
+        alert(`Группа заполнена — достигнут лимит в ${maxStudents} учеников`)
+      } else {
+        alert(msg)
+      }
+    } finally { setAdding(null) }
   }
 
   // ── Remove student ───────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Calendar, Plus, BookOpen, Pencil, ArrowRight } from 'lucide-react'
+import { Users, Calendar, Plus, BookOpen, Pencil, ArrowRight, Archive } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useAuthStore } from '@/store/authStore'
@@ -31,6 +31,7 @@ export function GroupsPage() {
   const [modalOpen,   setModalOpen]   = useState(false)
   const [editTarget,  setEditTarget]  = useState<GroupForModal | null>(null)
   const [initialTab,  setInitialTab]  = useState<'settings' | 'students'>('settings')
+  const [filter,      setFilter]      = useState<'active' | 'archived' | 'all'>('active')
 
   function openCreate() { setEditTarget(null); setInitialTab('settings'); setModalOpen(true) }
   function openEdit(g: any, initialTab?: 'settings' | 'students') {
@@ -63,6 +64,28 @@ export function GroupsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Группы</h1>
           <p className="text-gray-500 mt-1">Учебные группы школы · {groups.length} групп</p>
+          <div className="flex items-center gap-1.5 mt-3">
+            {(
+              [
+                { key: 'active',   label: 'Активные', icon: undefined },
+                { key: 'archived', label: 'Архив',     icon: <Archive size={11} /> },
+                { key: 'all',      label: 'Все',       icon: undefined },
+              ] as Array<{ key: 'active' | 'archived' | 'all'; label: string; icon: React.ReactNode }>
+            ).map(f => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                className={cn(
+                  'flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
+                  filter === f.key
+                    ? 'bg-primary-50 border-primary-300 text-primary-700'
+                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                )}
+              >
+                {f.icon}{f.label}
+              </button>
+            ))}
+          </div>
         </div>
         {canManage && (
           <button
@@ -74,22 +97,37 @@ export function GroupsPage() {
         )}
       </div>
 
-      {groups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-4 text-gray-400">
-          <Users size={44} className="opacity-25" />
-          <p className="text-sm">Групп пока нет</p>
-          {canManage && (
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
-            >
-              <Plus size={14} />Создать первую группу
-            </button>
-          )}
-        </div>
-      ) : (
+      {(() => {
+        const filteredGroups = groups.filter(g =>
+          filter === 'all' ? true :
+          filter === 'active' ? (g.is_active !== false) :
+          g.is_active === false
+        )
+
+        if (groups.length === 0) return (
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-gray-400">
+            <Users size={44} className="opacity-25" />
+            <p className="text-sm">Групп пока нет</p>
+            {canManage && (
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
+              >
+                <Plus size={14} />Создать первую группу
+              </button>
+            )}
+          </div>
+        )
+
+        return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {groups.map(group => {
+          {filteredGroups.length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+              <Archive size={36} className="opacity-25" />
+              <p className="text-sm">{filter === 'archived' ? 'Нет архивных групп' : 'Нет активных групп'}</p>
+            </div>
+          )}
+          {filteredGroups.map(group => {
             const fill        = Math.round((group.student_count / (group.max_students || 1)) * 100)
             const teacherName = group.teachers?.profiles?.full_name
             const courseName  = group.courses?.title
@@ -138,6 +176,9 @@ export function GroupsPage() {
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-0.5 rounded-full shrink-0">учитель</span>
                       <span className="truncate">{teacherName}</span>
+                      {group.teachers?.is_active === false && (
+                        <span className="text-xs text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md shrink-0">неактивен</span>
+                      )}
                     </div>
                   )}
                   {!teacherName && (
@@ -151,6 +192,9 @@ export function GroupsPage() {
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <span className="text-xs bg-yellow-100 text-yellow-700 font-medium px-2 py-0.5 rounded-full shrink-0">куратор</span>
                       <span className="truncate">{curatorName}</span>
+                      {group.curators?.is_active === false && (
+                        <span className="text-xs text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md shrink-0">неактивен</span>
+                      )}
                     </div>
                   )}
 
@@ -242,7 +286,8 @@ export function GroupsPage() {
             </button>
           )}
         </div>
-      )}
+        )
+      })()}
 
       <GroupModal
         open={modalOpen}

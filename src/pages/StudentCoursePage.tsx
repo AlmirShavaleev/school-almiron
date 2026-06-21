@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   BookOpen, Check, Clock, Video, Lightbulb, BookMarked, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
-  Upload, ArrowLeft, ChevronRight, Play,
+  Upload, ArrowLeft, ChevronRight, Play, FileText, MessageSquare,
 } from 'lucide-react'
-import { useStudentCourseProgram, type TopicProgress, type ModuleProgress } from '@/hooks/useStudentCourseProgram'
+import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
+import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
-import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { SUBJECT_LABELS, EXAM_LABELS, formatDate, isOverdue } from '@/utils/format'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 
@@ -329,6 +330,229 @@ function TopicCard({
   )
 }
 
+// ─── STAFF CARDS ──────────────────────────────────────────────────────────────
+
+function StaffCard({
+  person,
+  role,
+}: {
+  person: StaffInfo | null
+  role: 'Преподаватель' | 'Куратор'
+}) {
+  const initials = person?.full_name
+    .split(' ')
+    .map(w => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() ?? '?'
+
+  return (
+    <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex-1 min-w-0">
+      {/* Avatar */}
+      <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center shrink-0 overflow-hidden">
+        {person?.avatar_url
+          ? <img src={person.avatar_url} alt="" className="w-full h-full object-cover" />
+          : <span className="text-sm font-bold text-primary-600">{person ? initials : '—'}</span>
+        }
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">{role}</div>
+        {person ? (
+          <>
+            <div className="text-sm font-semibold text-gray-900 truncate leading-tight">{person.full_name}</div>
+            {(person.phone || person.email) && (
+              <div className="text-xs text-gray-400 truncate mt-0.5">
+                {person.phone || person.email}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-sm text-gray-400 italic">Не назначен</div>
+        )}
+      </div>
+
+      {/* Contact button */}
+      {person && (
+        <a
+          href={`mailto:${person.email}`}
+          className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+          title={`Написать ${person.full_name}`}
+        >
+          <MessageSquare size={12} />
+          <span className="hidden sm:inline">Написать</span>
+        </a>
+      )}
+    </div>
+  )
+}
+
+// ─── HOMEWORK BLOCK ───────────────────────────────────────────────────────────
+
+type FlatHw = TopicProgress & { moduleTitle: string }
+
+function HwStatusBadge({ status, score, max }: { status: string; score: number | null; max: number | null }) {
+  const cfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+    not_submitted: { label: 'Не сдано',    cls: 'bg-gray-100 text-gray-500',    icon: <AlertCircle size={11} /> },
+    submitted:     { label: 'На проверке', cls: 'bg-blue-100 text-blue-700',    icon: <Clock size={11} /> },
+    checked:       { label: score != null ? `${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
+    revision:      { label: 'Доработать',  cls: 'bg-orange-100 text-orange-700', icon: <RotateCcw size={11} /> },
+  }
+  const c = cfg[status] || { label: status, cls: 'bg-gray-100 text-gray-400', icon: null }
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap', c.cls)}>
+      {c.icon}{c.label}
+    </span>
+  )
+}
+
+function HomeworkBlock({
+  modules,
+  onSubmit,
+}: {
+  modules: ModuleProgress[]
+  onSubmit: (t: TopicProgress) => void
+}) {
+  const flatHws = useMemo<FlatHw[]>(() => {
+    const list: FlatHw[] = []
+    for (const mod of modules) {
+      for (const t of mod.topics) {
+        if (t.hw_id !== null) list.push({ ...t, moduleTitle: mod.title })
+      }
+    }
+    // Sort: overdue not_submitted first, then by deadline asc, null deadline last
+    return list.sort((a, b) => {
+      const aOverdue = a.hw_deadline && isOverdue(a.hw_deadline) && a.hw_status === 'not_submitted'
+      const bOverdue = b.hw_deadline && isOverdue(b.hw_deadline) && b.hw_status === 'not_submitted'
+      if (aOverdue && !bOverdue) return -1
+      if (!aOverdue && bOverdue) return 1
+      if (!a.hw_deadline && !b.hw_deadline) return 0
+      if (!a.hw_deadline) return 1
+      if (!b.hw_deadline) return -1
+      return a.hw_deadline.localeCompare(b.hw_deadline)
+    })
+  }, [modules])
+
+  if (flatHws.length === 0) return null
+
+  const notSubmitted = flatHws.filter(t => t.hw_status === 'not_submitted').length
+  const submitted    = flatHws.filter(t => t.hw_status === 'submitted').length
+  const checked      = flatHws.filter(t => t.hw_status === 'checked').length
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+        <ClipboardList size={20} className="text-primary-600" />
+        Домашние задания
+      </h2>
+
+      {/* StatCards */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard title="Не сдано"    value={notSubmitted} icon={<AlertCircle size={18} />} color="red" />
+        <StatCard title="На проверке" value={submitted}    icon={<Clock size={18} />}       color="orange" />
+        <StatCard title="Проверено"   value={checked}      icon={<CheckCircle size={18} />} color="green" />
+      </div>
+
+      {/* Flat list */}
+      <div className="space-y-3">
+        {flatHws.map(hw => {
+          const overdue     = !!hw.hw_deadline && isOverdue(hw.hw_deadline)
+          const overdueFlag = overdue && hw.hw_status === 'not_submitted'
+          const canSubmit   = hw.hw_status === 'not_submitted' || hw.hw_status === 'revision'
+
+          return (
+            <div
+              key={hw.id}
+              className={cn(
+                'rounded-2xl border bg-white p-4 transition-all',
+                overdueFlag ? 'border-red-200 bg-red-50' : 'border-gray-200'
+              )}
+            >
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  {/* Title + module breadcrumb */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-0.5">
+                    <span>{hw.moduleTitle}</span>
+                    <ChevronRight size={10} />
+                    <span>{hw.title}</span>
+                  </div>
+
+                  {/* Description */}
+                  {hw.hw_description && (
+                    <p className="text-sm text-gray-600 mt-1 mb-1.5">{hw.hw_description}</p>
+                  )}
+
+                  {/* Meta row */}
+                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                    {hw.hw_deadline && (
+                      <span className={cn('flex items-center gap-1', overdueFlag && 'text-red-500 font-semibold')}>
+                        <Clock size={11} />
+                        {overdueFlag ? 'Просрочено · ' : 'До '}
+                        {formatDate(hw.hw_deadline)}
+                      </span>
+                    )}
+                    {hw.hw_max && <span>Макс: {hw.hw_max} б.</span>}
+                  </div>
+
+                  {/* Teacher file */}
+                  {hw.hw_file_url && (
+                    <a
+                      href={hw.hw_file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 mt-2 text-xs text-primary-600 hover:text-primary-800 bg-primary-50 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <FileText size={12} />
+                      Файл задания
+                    </a>
+                  )}
+
+                  {/* Feedback */}
+                  {hw.hw_feedback && (
+                    <div className="mt-2.5 flex items-start gap-2 p-2.5 bg-blue-50 rounded-xl border border-blue-100">
+                      <MessageSquare size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-blue-800 leading-relaxed">
+                        <span className="font-semibold">Комментарий: </span>
+                        {hw.hw_feedback}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right column: status + button */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {hw.hw_status && (
+                    <HwStatusBadge
+                      status={hw.hw_status}
+                      score={hw.hw_score}
+                      max={hw.hw_max}
+                    />
+                  )}
+                  {canSubmit && (
+                    <button
+                      onClick={() => onSubmit(hw)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors',
+                        hw.hw_status === 'revision'
+                          ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
+                          : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
+                      )}
+                    >
+                      <Upload size={12} />
+                      {hw.hw_status === 'revision' ? 'Переделать' : 'Сдать ДЗ'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function StudentCoursePage() {
@@ -443,6 +667,14 @@ export function StudentCoursePage() {
         </div>
       </div>
 
+      {/* ══ STAFF CARDS ══ */}
+      {!activeMod && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <StaffCard person={course.teacher} role="Преподаватель" />
+          <StaffCard person={course.curator} role="Куратор" />
+        </div>
+      )}
+
       {/* ══ LEVEL 1: MODULE CARDS ══ */}
       {!activeMod && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -472,6 +704,14 @@ export function StudentCoursePage() {
             />
           ))}
         </div>
+      )}
+
+      {/* ══ HOMEWORK BLOCK (main view only) ══ */}
+      {!activeMod && (
+        <HomeworkBlock
+          modules={modules}
+          onSubmit={setSubmitTopic}
+        />
       )}
 
       {/* ── Modals ── */}

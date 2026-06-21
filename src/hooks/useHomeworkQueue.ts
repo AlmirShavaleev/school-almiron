@@ -56,7 +56,7 @@ export function useHomeworkQueue() {
       } else if (role !== 'admin' && role !== 'owner') {
         if (!cancelled) setItems([]); return   // студентам очередь не нужна
       }
-      const { data: groups } = await groupsQ
+      const { data: groups } = await groupsQ.eq('is_active', true)
       if (!groups?.length) { if (!cancelled) setItems([]); return }
 
       const groupById: Record<string, { id: string; name: string; course_id: string | null }> = {}
@@ -90,6 +90,7 @@ export function useHomeworkQueue() {
       const { data: hws } = await supabase
         .from('homeworks').select('id, title, due_date, topic_id')
         .in('topic_id', topicIds)
+        .eq('is_archived', false)
       if (!hws?.length) { if (!cancelled) setItems([]); return }
       const hwById: Record<string, any> = {}
       for (const h of hws as any[]) hwById[h.id] = h

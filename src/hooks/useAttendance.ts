@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
-export type AttendanceStatus = 'present' | 'absent' | 'late'
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 
 export interface AttendanceRecord {
   id?: string

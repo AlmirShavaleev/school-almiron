@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Calendar, BookOpen, TrendingUp, Target, Clock, CheckCircle, AlertCircle, ArrowRight, CreditCard, RefreshCw } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
@@ -182,17 +181,12 @@ export function StudentDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Домашние задания</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant={pendingHW.length > 0 ? 'warning' : 'success'}>
-                {pendingHW.length} не сдано
-              </Badge>
-              <button
-                onClick={() => navigate('/homeworks')}
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
-              >
-                Все <ArrowRight size={12} />
-              </button>
-            </div>
+            <button
+              onClick={() => navigate('/homeworks')}
+              className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
+            >
+              Все <ArrowRight size={12} />
+            </button>
           </CardHeader>
           {allHW.length === 0 ? (
             <p className="text-gray-400 text-sm py-4 text-center">Домашних заданий нет</p>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   GraduationCap, Shield, Users, ChevronDown,
-  Loader2, Check, BookOpen, Plus, AlertCircle,
+  Loader2, Check, BookOpen, Plus, AlertCircle, UserX, UserCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
@@ -14,6 +14,7 @@ interface StaffMember {
   full_name:  string
   email:      string
   avatar_url: string | null
+  is_active:  boolean
   groups:     { id: string; name: string }[]
 }
 
@@ -38,17 +39,18 @@ export function StaffTab() {
     Promise.all([
       // Teachers with their groups
       supabase.from('teachers')
-        .select('id, profile_id, profiles(full_name, email, avatar_url)')
+        .select('id, profile_id, is_active, profiles(full_name, email, avatar_url)')
         .order('id'),
 
       // Curators with their groups
       supabase.from('curators')
-        .select('id, profile_id, profiles(full_name, email, avatar_url)')
+        .select('id, profile_id, is_active, profiles(full_name, email, avatar_url)')
         .order('id'),
 
-      // All groups
+      // All active groups
       supabase.from('groups')
         .select('id, name, teacher_id, curator_id')
+        .eq('is_active', true)
         .order('name'),
     ]).then(([tRes, cRes, gRes]) => {
       const allGroups: any[] = gRes.data || []
@@ -60,6 +62,7 @@ export function StaffTab() {
         full_name:  t.profiles?.full_name  || '—',
         email:      t.profiles?.email      || '',
         avatar_url: t.profiles?.avatar_url || null,
+        is_active:  t.is_active ?? true,
         groups:     allGroups.filter(g => g.teacher_id === t.id).map(g => ({ id: g.id, name: g.name })),
       })))
 
@@ -69,6 +72,7 @@ export function StaffTab() {
         full_name:  c.profiles?.full_name  || '—',
         email:      c.profiles?.email      || '',
         avatar_url: c.profiles?.avatar_url || null,
+        is_active:  c.is_active ?? true,
         groups:     allGroups.filter(g => g.curator_id === c.id).map(g => ({ id: g.id, name: g.name })),
       })))
 
@@ -175,8 +179,20 @@ function StaffCard({
   bgCls:      string
   onReload:   () => void
 }) {
-  const [assigning, setAssigning] = useState(false)
-  const [removing,  setRemoving]  = useState<string | null>(null)
+  const [assigning,    setAssigning]    = useState(false)
+  const [removing,     setRemoving]     = useState<string | null>(null)
+  const [toggling,     setToggling]     = useState(false)
+
+  async function toggleActive() {
+    setToggling(true)
+    const table = role === 'teacher' ? 'teachers' : 'curators'
+    const { error } = await supabase.from(table as any)
+      .update({ is_active: !member.is_active } as any)
+      .eq('id', member.id)
+    setToggling(false)
+    if (error) { alert(error.message); return }
+    onReload()
+  }
 
   // Groups not yet assigned to this member
   const assignedIds  = new Set(member.groups.map(g => g.id))
@@ -207,7 +223,7 @@ function StaffCard({
   }
 
   return (
-    <div className={cn('rounded-2xl border p-4 bg-white', borderCls)}>
+    <div className={cn('rounded-2xl border p-4 bg-white transition-opacity', borderCls, !member.is_active && 'opacity-60')}>
       <div className="flex items-start gap-3">
 
         {/* Avatar */}
@@ -220,7 +236,12 @@ function StaffCard({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-gray-900">{member.full_name}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900">{member.full_name}</span>
+            {!member.is_active && (
+              <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">неактивен</span>
+            )}
+          </div>
           <div className="text-xs text-gray-400 mt-0.5">{member.email}</div>
 
           {/* Current groups */}
@@ -248,16 +269,33 @@ function StaffCard({
           </div>
         </div>
 
-        {/* Assign group dropdown */}
-        {available.length > 0 && (
-          <div className="shrink-0">
+        {/* Actions */}
+        <div className="shrink-0 flex items-center gap-1.5">
+          {member.is_active && available.length > 0 && (
             <AssignDropdown
               available={available}
               onAssign={assignGroup}
               loading={assigning}
             />
-          </div>
-        )}
+          )}
+          <button
+            onClick={toggleActive}
+            disabled={toggling}
+            title={member.is_active ? 'Деактивировать' : 'Восстановить'}
+            className={cn(
+              'flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition-colors disabled:opacity-50',
+              member.is_active
+                ? 'border-gray-200 text-gray-500 hover:border-red-200 hover:text-red-600 hover:bg-red-50'
+                : 'border-green-200 text-green-600 hover:bg-green-50'
+            )}
+          >
+            {toggling
+              ? <Loader2 size={12} className="animate-spin" />
+              : member.is_active ? <UserX size={12} /> : <UserCheck size={12} />
+            }
+            {member.is_active ? 'Деакт.' : 'Восстановить'}
+          </button>
+        </div>
       </div>
     </div>
   )

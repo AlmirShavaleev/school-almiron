@@ -22,7 +22,7 @@ export function TransferStudentModal({
   useEffect(() => {
     if (!open) return
     setTarget(''); setError('')
-    supabase.from('groups').select('id, name').neq('id', fromGroupId).order('name')
+    supabase.from('groups').select('id, name').neq('id', fromGroupId).eq('is_active', true).order('name')
       .then(({ data }) => setGroups((data || []) as any))
   }, [open, fromGroupId])
 

@@ -22,6 +22,7 @@ export type Database = {
           note: string | null
           status: Database["public"]["Enums"]["attendance_status"]
           student_id: string
+          updated_at: string | null
         }
         Insert: {
           created_at?: string | null
@@ -30,6 +31,7 @@ export type Database = {
           note?: string | null
           status?: Database["public"]["Enums"]["attendance_status"]
           student_id: string
+          updated_at?: string | null
         }
         Update: {
           created_at?: string | null
@@ -38,6 +40,7 @@ export type Database = {
           note?: string | null
           status?: Database["public"]["Enums"]["attendance_status"]
           student_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -105,16 +108,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_active: boolean
           profile_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          is_active?: boolean
           profile_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_active?: boolean
           profile_id?: string
         }
         Relationships: [
@@ -341,6 +347,7 @@ export type Database = {
           due_date: string
           file_url: string | null
           id: string
+          is_archived: boolean
           lesson_id: string | null
           max_score: number
           teacher_id: string
@@ -354,6 +361,7 @@ export type Database = {
           due_date: string
           file_url?: string | null
           id?: string
+          is_archived?: boolean
           lesson_id?: string | null
           max_score?: number
           teacher_id: string
@@ -367,6 +375,7 @@ export type Database = {
           due_date?: string
           file_url?: string | null
           id?: string
+          is_archived?: boolean
           lesson_id?: string | null
           max_score?: number
           teacher_id?: string
@@ -1277,6 +1286,7 @@ export type Database = {
           created_at: string
           hourly_rate: number | null
           id: string
+          is_active: boolean
           profile_id: string
           rating: number | null
           subjects: Database["public"]["Enums"]["subject_type"][]
@@ -1286,6 +1296,7 @@ export type Database = {
           created_at?: string
           hourly_rate?: number | null
           id?: string
+          is_active?: boolean
           profile_id: string
           rating?: number | null
           subjects?: Database["public"]["Enums"]["subject_type"][]
@@ -1295,6 +1306,7 @@ export type Database = {
           created_at?: string
           hourly_rate?: number | null
           id?: string
+          is_active?: boolean
           profile_id?: string
           rating?: number | null
           subjects?: Database["public"]["Enums"]["subject_type"][]
@@ -1525,6 +1537,14 @@ export type Database = {
       }
       auth_is_teacher_of_group: { Args: { grp_id: string }; Returns: boolean }
       auth_is_teacher_of_homework: { Args: { hw_id: string }; Returns: boolean }
+      fn_check_lesson_deletable: {
+        Args: { p_lesson_id: string }
+        Returns: { allowed: boolean; reason: string | null }
+      }
+      fn_safe_delete_lesson: {
+        Args: { p_lesson_id: string }
+        Returns: void
+      }
       get_my_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
@@ -1532,7 +1552,7 @@ export type Database = {
       is_admin_or_owner: { Args: never; Returns: boolean }
     }
     Enums: {
-      attendance_status: "present" | "absent" | "late"
+      attendance_status: "present" | "absent" | "late" | "excused"
       billing_cycle: "per_lesson" | "biweekly" | "monthly"
       enrollment_source: "purchase" | "manual" | "trial" | "gift"
       enrollment_status: "active" | "expired" | "cancelled" | "trial"

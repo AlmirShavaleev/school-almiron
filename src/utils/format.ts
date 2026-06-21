@@ -47,10 +47,11 @@ export const LEAGUE_COLORS: Record<string, string> = {
 
 export const ROLE_LABELS: Record<string, string> = {
   student: 'Ученик',
+  parent:  'Родитель',
   teacher: 'Преподаватель',
   curator: 'Куратор',
-  admin: 'Администратор',
-  owner: 'Владелец',
+  admin:   'Администратор',
+  owner:   'Владелец',
 }
 
 export const SUBJECT_LABELS: Record<string, string> = {

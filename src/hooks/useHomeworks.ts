@@ -46,6 +46,7 @@ export function useHomeworks() {
             .from('homeworks')
             .select('*, topics(title), homework_submissions(status,score,feedback,submitted_at,student_id)')
             .in('topic_id', topicIds)
+            .eq('is_archived', false)
             .order('due_date', { ascending: true })
           // оставить только сдачи этого ученика
           setHomeworks((data || []).map((hw: any) => ({
@@ -77,7 +78,7 @@ export function useHomeworks() {
           if (!cur) { setHomeworks([]); return }
 
           const { data: grps } = await supabase
-            .from('groups').select('course_id').eq('curator_id', cur.id)
+            .from('groups').select('course_id').eq('curator_id', cur.id).eq('is_active', true)
           const courseIds = [...new Set((grps || []).map((g: any) => g.course_id).filter(Boolean))]
           const topicIds = await topicIdsForCourses(courseIds)
           if (!topicIds.length) { setHomeworks([]); return }
@@ -86,6 +87,7 @@ export function useHomeworks() {
             .from('homeworks')
             .select('*, topics(title)')
             .in('topic_id', topicIds)
+            .eq('is_archived', false)
             .order('due_date', { ascending: false })
           if (!hws?.length) { setHomeworks([]); return }
 
@@ -100,6 +102,7 @@ export function useHomeworks() {
           const { data } = await supabase
             .from('homeworks')
             .select('*, topics(title), homework_submissions(status,score,student_id,submitted_at,checked_at,students(profiles(full_name)))')
+            .eq('is_archived', false)
             .order('due_date', { ascending: false })
           setHomeworks(data || [])
         }

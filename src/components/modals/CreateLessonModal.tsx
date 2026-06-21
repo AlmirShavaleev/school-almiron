@@ -93,19 +93,24 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate, defau
           if (teacher) {
             setMyTeacherId(teacher.id)
             const { data: grps } = await supabase
-              .from('groups').select('id, name, course_id').eq('teacher_id', teacher.id).order('name')
+              .from('groups').select('id, name, course_id').eq('teacher_id', teacher.id).eq('is_active', true).order('name')
             setGroups(grps || [])
           }
         } else {
           const [grpsRes, teachRes] = await Promise.all([
-            supabase.from('groups').select('id, name, course_id').order('name'),
-            supabase.from('teachers').select('id, profiles(full_name)').order('id'),
+            supabase.from('groups').select('id, name, course_id').eq('is_active', true).order('name'),
+            supabase.from('teachers')
+              .select('id, profiles(full_name, role)')
+              .eq('is_active' as any, true)
+              .order('id'),
           ])
           setGroups(grpsRes.data || [])
-          setTeachers((teachRes.data || []).map((t: any) => ({
-            id: t.id,
-            full_name: t.profiles?.full_name || '—',
-          })))
+          const STAFF_ROLES = ['teacher', 'admin', 'owner']
+          setTeachers(
+            ((teachRes.data || []) as any[])
+              .filter(t => STAFF_ROLES.includes(t.profiles?.role))
+              .map(t => ({ id: t.id, full_name: t.profiles?.full_name || '—' }))
+          )
         }
       } finally {
         setLoadingData(false)

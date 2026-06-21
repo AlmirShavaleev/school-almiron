@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tailwindcss *)",
+      "Bash(npx tailwindcss@latest init -p)",
+      "Bash(node_modules/.bin/tailwindcss init *)",
+      "mcp__cce48dc4-dac2-497b-a52e-ac0134b01193__execute_sql",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__cce48dc4-dac2-497b-a52e-ac0134b01193__get_logs",
+      "mcp__cce48dc4-dac2-497b-a52e-ac0134b01193__apply_migration",
+      "Bash(npx tsc *)",
+      "PowerShell(node --check \"D:\\\\����� Almiron\\\\doc_web\\\\static\\\\app.js\")",
+      "PowerShell(if \\($LASTEXITCODE -eq 0\\) { \"OK: ᨭ⠪�� ���४⥭\" })",
+      "PowerShell($bytes = [System.IO.File]::ReadAllBytes\\(\"D:\\\\Школа Almiron\\\\doc_web\\\\data\\\\config.json\"\\); \"Размер: $\\($bytes.Length\\) байт\"; \"Первые 60 байт \\(hex\\):\"; \\($bytes[0..59] | ForEach-Object { $_.ToString\\('X2'\\) }\\) -join ' ')",
+      "PowerShell(Start-Sleep -Seconds 2; try { $r = Invoke-RestMethod -Uri \"http://localhost:8000/api/initials\" -Method Get; \"OK. Инициалы:\"; $r | ConvertTo-Json } catch { \"Ошибка: $_\" })",
+      "PowerShell(cd \"D:\\\\Школа Almiron\\\\doc_web\"; $p = Start-Process python -ArgumentList \"server.py\" -PassThru -RedirectStandardError \"_err.txt\" -RedirectStandardOutput \"_out.txt\" -WindowStyle Hidden; Start-Sleep -Seconds 3; if \\($p.HasExited\\) { \"ВЫШЕЛ код $\\($p.ExitCode\\)\"; Get-Content _err.txt -Tail 20 } else { \"Работает \\(PID $\\($p.Id\\)\\)\"; try { \\(Invoke-WebRequest http://localhost:8000/ -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { $_ } })",
+      "Bash(curl -s http://127.0.0.1:8000/)",
+      "Bash(python -c \"import platform; print\\(platform.architecture\\(\\)[0]\\)\")",
+      "Bash(curl -s --max-time 5 https://www.python.org/ftp/python/ -o nul)",
+      "Bash(unzip -q python_embed.zip -d python)",
+      "Bash(ls \"C:\\\\Program Files\\\\LibreOffice\\\\program\\\\\" | Select-String \"soffice\")",
+      "Bash(python -c ' *)",
+      "Bash(wmic process *)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(xargs grep -l \"homework_submissions\")"
+    ]
+  }
+}

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DocEditor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+
+<div id="upload-progress"><div id="upload-fill"></div></div>
+
+<div id="header">
+  <span class="logo"><span class="logo-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2h7l3 3v7H2V2z" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 2v3h3" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 7h6M4 9.5h4" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg></span>DocEditor</span>
+  <button class="h-btn" id="btn-organize" disabled title="Упорядочить страницы (Ctrl+2)">
+    <span style="font-size:15px">▦</span> Страницы
+  </button>
+  <label class="h-btn" style="cursor:pointer">
+    📂 Открыть
+    <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.bmp,.doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp" style="display:none">
+    <input type="file" id="append-input" multiple accept=".pdf,.png,.jpg,.jpeg,.bmp,.doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp" style="display:none">
+  </label>
+  <select id="export-fmt" class="h-btn" disabled title="Формат сохранения">
+    <option value="pdf">PDF</option>
+    <option value="png">PNG (картинка)</option>
+    <option value="jpg">JPG (картинка)</option>
+    <option value="docx">Word (DOCX)</option>
+    <option value="xlsx">Excel (XLSX)</option>
+  </select>
+  <button class="h-btn primary" id="btn-export" disabled>⬇ Сохранить</button>
+  <button class="h-btn" id="btn-print" disabled>🖨 Печать</button>
+  <input id="file-name" value="Файл не выбран" disabled title="Имя файла — можно изменить">
+</div>
+
+<!-- Draw bar (visible only for draw tools) -->
+<div id="draw-bar">
+  <button class="d-sub active" data-dt="pencil" title="Карандаш">✏️</button>
+  <button class="d-sub" data-dt="marker" title="Маркер">🖊</button>
+  <button class="d-sub" data-dt="eraser" title="Ластик">🩹</button>
+  <span class="f-sep"></span>
+  <div class="d-colors">
+    <button class="d-color active" data-c="#000000" style="background:#000000" title="Чёрный"></button>
+    <button class="d-color" data-c="#cc0000" style="background:#cc0000" title="Красный"></button>
+    <button class="d-color" data-c="#1a6fbf" style="background:#1a6fbf" title="Синий"></button>
+    <button class="d-color" data-c="#1a8a1a" style="background:#1a8a1a" title="Зелёный"></button>
+    <button class="d-color" data-c="#e68000" style="background:#e68000" title="Оранжевый"></button>
+    <button class="d-color" data-c="#8833cc" style="background:#8833cc" title="Фиолетовый"></button>
+    <button class="d-color" data-c="#ffffff" style="background:#ffffff;border:1px solid #ccc" title="Белый"></button>
+  </div>
+  <span class="f-sep"></span>
+  <div class="d-sizes">
+    <button class="d-size active" data-s="2">S</button>
+    <button class="d-size" data-s="5">M</button>
+    <button class="d-size" data-s="12">L</button>
+    <button class="d-size" data-s="25">XL</button>
+  </div>
+  <span class="f-sep"></span>
+  <div class="d-opacities">
+    <button class="d-op" data-o="25">25%</button>
+    <button class="d-op" data-o="50">50%</button>
+    <button class="d-op" data-o="75">75%</button>
+    <button class="d-op active" data-o="100">100%</button>
+  </div>
+  <span class="f-sep"></span>
+  <button class="d-clear" id="dc-clear" title="Очистить рисование на странице">🗑</button>
+</div>
+
+<!-- Format bar (visible only for text tool) -->
+<div id="fmt-bar">
+  <select id="ff">
+    <option>Arial</option>
+    <option>Times New Roman</option>
+    <option>Courier New</option>
+    <option>Georgia</option>
+  </select>
+  <input type="number" id="fs" value="16" min="6" max="96">
+  <span class="f-sep"></span>
+  <button class="f-btn" id="fb" title="Жирный"><b>B</b></button>
+  <button class="f-btn" id="fi" title="Курсив"><i>I</i></button>
+  <button class="f-btn" id="fu" title="Подчёркнутый"><u>U</u></button>
+  <span class="f-sep"></span>
+  <input type="color" id="fc" value="#000000" title="Цвет">
+</div>
+
+<div id="body">
+
+  <!-- Date format dropdown -->
+  <div id="date-dropdown" style="display:none">
+    <button class="date-fmt-btn active" data-fmt="dot">дд.мм.гггг</button>
+    <button class="date-fmt-btn" data-fmt="slash">дд/мм/гггг</button>
+    <button class="date-fmt-btn" data-fmt="dash">дд-мм-гггг</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button class="t-btn active" data-tool="select" title="Выделение / перемещение">
+      ↖<span class="lbl">Рука</span>
+    </button>
+    <button class="t-btn" data-tool="text" title="Текст — кликни на документе и пиши">
+      T<span class="lbl">Текст</span>
+    </button>
+    <button class="t-btn" id="btn-date-tool" data-tool="date" title="Вставить текущую дату">
+      📅<span class="lbl">Дата</span>
+    </button>
+    <div class="t-sep"></div>
+    <button class="t-btn" data-tool="draw" title="Рисование (карандаш / маркер / ластик)">
+      ✏️<span class="lbl">Рисунок</span>
+    </button>
+    <div class="t-sep"></div>
+    <button class="t-btn" data-tool="check" title="Галочка ✓">
+      ✓<span class="lbl">Галочка</span>
+    </button>
+    <button class="t-btn" data-tool="cross" title="Крестик ✗">
+      ✗<span class="lbl">Крестик</span>
+    </button>
+    <button class="t-btn" data-tool="arrow" title="Стрелка →">
+      →<span class="lbl">Стрелка</span>
+    </button>
+    <select id="date-fmt" title="Формат даты" style="display:none;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:3px 6px;background:var(--surface);color:var(--text);cursor:pointer">
+      <option value="dot">дд.мм.гггг</option>
+      <option value="slash">дд/мм/гггг</option>
+      <option value="dash">дд-мм-гггг</option>
+    </select>
+  </div>
+
+  <div id="main">
+
+    <!-- Page thumbs -->
+    <div id="thumbs"></div>
+
+    <!-- Document viewer -->
+    <div id="viewer">
+      <div id="welcome">
+        <svg class="welcome-cloud" viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M60 42H20a14 14 0 1 1 2.18-27.82A18 18 0 1 1 60 26h0a10 10 0 0 1 0 16z" stroke="#6366F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M40 52V30M32 38l8-8 8 8" stroke="#6366F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="welcome-heading">Открой документ</div>
+        <label class="welcome-btn" for="file-input">
+          <span>+</span> Выбери файлы
+        </label>
+        <div class="welcome-text">Перетащи файлы сюда или нажми кнопку выше</div>
+        <div class="welcome-formats">
+          <span class="wf pdf">PDF</span>
+          <span class="wf doc">DOC</span>
+          <span class="wf xls">XLS</span>
+          <span class="wf ppt">PPT</span>
+          <span class="wf png">PNG</span>
+          <span class="wf jpg">JPG</span>
+        </div>
+      </div>
+      <div id="page-sizer" style="display:none">
+        <div id="page-wrap">
+          <img id="page-img" alt="">
+          <canvas id="page-draw-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div id="panel">
+      <div class="p-tabs">
+        <div class="p-tab active" data-p="sig">Подписи</div>
+        <div class="p-tab" data-p="ini">Инициалы</div>
+        <div class="p-tab" data-p="stamp">Печати</div>
+      </div>
+
+      <div class="p-body active" id="pb-sig">
+        <div class="p-scroll">
+          <button class="p-btn pri" id="btn-draw-sig">+ Нарисовать подпись</button>
+          <div id="sig-list"></div>
+        </div>
+      </div>
+
+      <div class="p-body" id="pb-ini">
+        <div class="p-scroll">
+          <button class="p-btn pri" id="btn-add-ini">+ Добавить инициалы</button>
+          <div id="ini-list"></div>
+        </div>
+      </div>
+
+      <div class="p-body" id="pb-stamp">
+        <div class="p-scroll">
+          <label class="p-btn" style="cursor:pointer">
+            📁 Загрузить PNG
+            <input type="file" id="stamp-upload" accept=".png" style="display:none">
+          </label>
+          <div id="stamp-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Floating nav / zoom / page bar -->
+<div id="navbar" style="display:none">
+  <button class="nav-btn" id="nav-prev" title="Предыдущая страница">‹</button>
+  <span id="nav-info">1 / 1</span>
+  <button class="nav-btn" id="nav-next" title="Следующая страница">›</button>
+  <span class="nav-sep"></span>
+  <button class="nav-btn" id="nav-zoom-out" title="Уменьшить">−</button>
+  <span id="nav-zoom">100%</span>
+  <button class="nav-btn" id="nav-zoom-in" title="Увеличить">+</button>
+</div>
+
+<div id="drop-zone">Отпусти для открытия 📄</div>
+
+<!-- Organizer (полноэкранный режим упорядочивания страниц) -->
+<div id="organizer" style="display:none">
+  <div id="org-bar">
+    <button class="h-btn" id="org-close" title="Закрыть"><span style="font-size:15px">▦</span></button>
+    <span class="org-title">Упорядочить страницы</span>
+    <div style="flex:1"></div>
+    <button class="h-btn" id="org-add">⊕ Добавить</button>
+    <button class="h-btn" id="org-rot-ccw" title="Повернуть выбранную влево">↺ Влево</button>
+    <button class="h-btn" id="org-rot-cw"  title="Повернуть выбранную вправо">↻ Вправо</button>
+    <button class="h-btn primary" id="org-done">Готово</button>
+  </div>
+  <div id="org-grid"></div>
+</div>
+
+<!-- Modal: edit signature color -->
+<div class="modal-bg" id="m-sig-edit">
+  <div class="modal" style="min-width:420px">
+    <h3>Изменить цвет подписи</h3>
+    <div class="sig-edit-wrap">
+      <canvas id="sig-edit-preview"></canvas>
+    </div>
+    <div class="sig-color-row">
+      <span class="sig-color-label">Цвет:</span>
+      <div class="sig-color-swatches" id="sig-edit-swatches">
+        <button class="sig-swatch active" data-color="#1a1a2e" style="background:#1a1a2e" title="Чёрный"></button>
+        <button class="sig-swatch" data-color="#1a3fa3" style="background:#1a3fa3" title="Синий"></button>
+        <button class="sig-swatch" data-color="#cc0000" style="background:#cc0000" title="Красный"></button>
+        <button class="sig-swatch" data-color="#1a7a1a" style="background:#1a7a1a" title="Зелёный"></button>
+        <button class="sig-swatch" data-color="#7b2d8b" style="background:#7b2d8b" title="Фиолетовый"></button>
+        <label class="sig-swatch sig-swatch-custom" title="Любой цвет">
+          <span>🎨</span>
+          <input type="color" id="sig-edit-color-custom" value="#1a1a2e" style="opacity:0;position:absolute;width:0;height:0">
+        </label>
+      </div>
+    </div>
+    <div class="m-actions">
+      <button class="btn-cancel" onclick="closeM('m-sig-edit')">Отмена</button>
+      <button class="btn-ok" id="sig-edit-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: draw signature -->
+<div class="modal-bg" id="m-sig">
+  <div class="modal" style="min-width:420px">
+    <h3>Нарисуй подпись мышью</h3>
+    <div class="sig-color-row">
+      <span class="sig-color-label">Цвет подписи:</span>
+      <div class="sig-color-swatches">
+        <button class="sig-swatch active" data-color="#1a1a2e" style="background:#1a1a2e" title="Чёрный"></button>
+        <button class="sig-swatch" data-color="#1a3fa3" style="background:#1a3fa3" title="Синий"></button>
+        <button class="sig-swatch" data-color="#cc0000" style="background:#cc0000" title="Красный"></button>
+        <button class="sig-swatch" data-color="#1a7a1a" style="background:#1a7a1a" title="Зелёный"></button>
+        <button class="sig-swatch" data-color="#7b2d8b" style="background:#7b2d8b" title="Фиолетовый"></button>
+        <label class="sig-swatch sig-swatch-custom" title="Любой цвет">
+          <span>🎨</span>
+          <input type="color" id="sig-color-custom" value="#1a1a2e" style="opacity:0;position:absolute;width:0;height:0">
+        </label>
+      </div>
+    </div>
+    <canvas id="draw-sig" width="380" height="140"></canvas>
+    <input type="text" id="sig-name" placeholder="Название (напр. Иванов И.И.)" style="margin-top:10px">
+    <div class="m-actions">
+      <button class="btn-cancel" onclick="closeM('m-sig')">Отмена</button>
+      <button class="btn-cancel" id="sig-clear">Очистить</button>
+      <button class="btn-ok" id="sig-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: initials -->
+<div class="modal-bg" id="m-ini">
+  <div class="modal">
+    <h3>Инициалы</h3>
+    <input type="text" id="ini-name" placeholder="Имя (напр. Иванов И.И.)">
+    <input type="text" id="ini-text" placeholder="Текст на документе (напр. И.И.)">
+    <div class="m-actions">
+      <button class="btn-cancel" onclick="closeM('m-ini')">Отмена</button>
+      <button class="btn-ok" id="ini-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: text stamp -->
+<div class="modal-bg" id="m-stamp">
+  <div class="modal">
+    <h3>Текстовая печать</h3>
+    <input type="text" id="st-name" placeholder="Название печати">
+    <input type="text" id="st-text" placeholder="Текст на печати">
+    <div class="m-row">
+      <label>Цвет:</label>
+      <input type="color" id="st-color" value="#CC0000">
+    </div>
+    <div class="m-actions">
+      <button class="btn-cancel" onclick="closeM('m-stamp')">Отмена</button>
+      <button class="btn-ok" id="st-save">Создать</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=4"></script>
+</body>
+</html>

@@ -67,12 +67,13 @@ export function useCourseProgram() {
   }, [profile, tick])
 
   async function loadModules(courseId: string): Promise<Module[]> {
-    const { data: mods } = await supabase
+    const { data: mods, error: modsErr } = await supabase
       .from('modules')
       .select('*')
       .eq('course_id', courseId)
       .order('order_index')
 
+    if (modsErr) throw new Error(modsErr.message)
     if (!mods?.length) return []
 
     const { data: tops } = await supabase

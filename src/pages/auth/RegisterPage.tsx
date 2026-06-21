@@ -12,7 +12,11 @@ const schema = z.object({
   full_name: z.string().min(2, 'Введите ФИО'),
   email: z.string().email('Введите корректный email'),
   password: z.string().min(6, 'Минимум 6 символов'),
+  confirm: z.string().min(1, 'Повторите пароль'),
   role: z.enum(['student']),
+}).refine(d => d.password === d.confirm, {
+  message: 'Пароли не совпадают',
+  path: ['confirm'],
 })
 type FormData = z.infer<typeof schema>
 
@@ -64,6 +68,7 @@ export function RegisterPage() {
                 <Input label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
                 <Input label="Email" type="email" placeholder="your@email.ru" icon={<Mail size={16} />} error={errors.email?.message} {...register('email')} />
                 <Input label="Пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.password?.message} {...register('password')} />
+                <Input label="Повторите пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.confirm?.message} {...register('confirm')} />
                 <Select
                   label="Роль"
                   options={[{ value: 'student', label: 'Ученик' }]}

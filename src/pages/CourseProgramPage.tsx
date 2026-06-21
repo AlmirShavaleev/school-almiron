@@ -231,12 +231,16 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, onSave, onDelete, onOpenMaterials, onCreateHw, moduleTitle,
+  topic, onSave, onDelete, onOpenMaterials, onCreateHw, onDeleteHw, onRestoreHw, hwId, archivedHwId, moduleTitle,
 }: {
   topic: Topic
   moduleTitle: string
+  hwId?: string
+  archivedHwId?: string
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onDeleteHw?: (hwId: string) => Promise<void>
+  onRestoreHw?: (hwId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
   onCreateHw: (topic: Topic) => void
 }) {
@@ -282,13 +286,31 @@ function TopicRowEdit({
         {savingDate && <Loader2 size={10} className="absolute right-1 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
       </div>
 
-      <button
-        onClick={() => onCreateHw(topic)}
-        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-primary-600 transition-all shrink-0"
-        title="Создать ДЗ для темы"
-      >
-        <ClipboardList size={14} />
-      </button>
+      {hwId ? (
+        <button
+          onClick={() => onDeleteHw?.(hwId)}
+          className="opacity-0 group-hover:opacity-100 text-orange-300 hover:text-orange-600 transition-all shrink-0"
+          title="Удалить / архивировать ДЗ"
+        >
+          <ClipboardList size={14} />
+        </button>
+      ) : archivedHwId ? (
+        <button
+          onClick={() => onRestoreHw?.(archivedHwId)}
+          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-green-600 transition-all shrink-0"
+          title="Восстановить архивное ДЗ"
+        >
+          <RotateCcw size={14} />
+        </button>
+      ) : (
+        <button
+          onClick={() => onCreateHw(topic)}
+          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-primary-600 transition-all shrink-0"
+          title="Создать ДЗ для темы"
+        >
+          <ClipboardList size={14} />
+        </button>
+      )}
 
       <button
         onClick={() => onOpenMaterials(topic, moduleTitle)}
@@ -311,12 +333,14 @@ function TopicRowEdit({
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCreateHw, hwStats,
+  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCreateHw, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic,
 }: {
   module: Module
   canEdit: boolean
   editMode: boolean
   hwStats: Record<string, HwStat>
+  hwByTopic: Record<string, { id: string; title: string; max_score: number }>
+  archivedHwByTopic: Record<string, { id: string; title: string; max_score: number }>
   onSaveModule: (id: string, title: string) => Promise<void>
   onDeleteModule: (id: string) => Promise<void>
   onSaveTopic: (id: string, v: Partial<Topic>) => Promise<void>
@@ -324,6 +348,8 @@ function ModuleCard({
   onAddTopic: (moduleId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
   onCreateHw: (topic: Topic) => void
+  onDeleteHw: (hwId: string) => Promise<void>
+  onRestoreHw: (hwId: string) => Promise<void>
 }) {
   const [open,     setOpen]     = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -387,8 +413,12 @@ function ModuleCard({
               key={t.id}
               topic={t}
               moduleTitle={module.title}
+              hwId={hwByTopic[t.id]?.id}
+              archivedHwId={archivedHwByTopic[t.id]?.id}
               onSave={onSaveTopic}
               onDelete={onDeleteTopic}
+              onDeleteHw={onDeleteHw}
+              onRestoreHw={onRestoreHw}
               onOpenMaterials={onOpenMaterials}
               onCreateHw={onCreateHw}
             />
@@ -758,19 +788,24 @@ export function CourseProgramPage() {
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [modules,     setModules]     = useState<Module[]>([])
   const [loadingMods, setLoadingMods] = useState(false)
+  const [loadError,   setLoadError]   = useState<string | null>(null)
+  const [loadKey,     setLoadKey]     = useState(0)
   const [tab,         setTab]         = useState<'program' | 'materials' | 'settings'>('program')
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [hwStats,       setHwStats]       = useState<Record<string, HwStat>>({})
-  const [hwByTopic,     setHwByTopic]     = useState<Record<string, { id: string; title: string; max_score: number }>>({})
-  const [totalStudents, setTotalStudents] = useState(0)
+  const [hwByTopic,         setHwByTopic]         = useState<Record<string, { id: string; title: string; max_score: number }>>({})
+  const [archivedHwByTopic, setArchivedHwByTopic] = useState<Record<string, { id: string; title: string; max_score: number }>>({})
+  const [totalStudents,     setTotalStudents]      = useState(0)
   const [editMode,      setEditMode]      = useState(false)
   const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
 
   // Topic materials modal
-  const [matTopic, setMatTopic] = useState<{ topic: Topic; moduleTitle: string } | null>(null)
-  const [hwTopic,  setHwTopic]  = useState<Topic | null>(null)
+  const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
+  const [hwTopic,   setHwTopic]   = useState<Topic | null>(null)
+  const [toastMsg,  setToastMsg]  = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function openMaterials(topic: Topic, moduleTitle: string) {
     setMatTopic({ topic, moduleTitle })
@@ -782,21 +817,31 @@ export function CourseProgramPage() {
   useEffect(() => {
     if (!selectedId) return
     setLoadingMods(true)
+    setLoadError(null)
     setEditMode(false)
 
     async function loadAll() {
-      const [mods, gsRes] = await Promise.all([
-        loadModules(selectedId!),
-        supabase.from('groups').select('id, name').eq('course_id', selectedId!).order('name'),
-      ])
-      const grps = (gsRes.data || []) as { id: string; name: string }[]
-      setModules(mods)
-      setGroups(grps)
-      setSelectedGroupId(grps[0]?.id ?? null)   // по умолчанию — первая группа
+      try {
+        const [mods, gsRes] = await Promise.all([
+          loadModules(selectedId!),
+          supabase.from('groups').select('id, name').eq('course_id', selectedId!).order('name'),
+        ])
+        const grps = (gsRes.data || []) as { id: string; name: string }[]
+        setModules(mods)
+        setGroups(grps)
+        setSelectedGroupId(grps[0]?.id ?? null)
+      } catch (e: any) {
+        setLoadError(e.message || 'Не удалось загрузить программу курса')
+        setModules([])
+      }
     }
 
     loadAll().finally(() => setLoadingMods(false))
-  }, [selectedId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, loadKey])
+
+  // Clean up toast timer on unmount
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
   // Recompute HW stats whenever the selected group (or modules) change
   useEffect(() => {
@@ -806,26 +851,38 @@ export function CourseProgramPage() {
 
   async function loadHwStats(mods: Module[], groupId: string | null) {
     const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
-    if (!topicIds.length || !groupId) {
-      setHwStats({}); setHwByTopic({}); setTotalStudents(0)
+    if (!topicIds.length) {
+      setHwStats({}); setHwByTopic({}); setArchivedHwByTopic({}); setTotalStudents(0)
+      return
+    }
+
+    // ДЗ курса (на уровне темы — общие для всех групп курса)
+    // Загружаем НЕЗАВИСИМО от выбранной группы — нужны для кнопок в TopicRowEdit
+    const [{ data: hws }, { data: archivedHws }] = await Promise.all([
+      supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', false),
+      supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', true),
+    ])
+    const archivedByTopic: Record<string, { id: string; title: string; max_score: number }> = {}
+    for (const h of (archivedHws || []) as any[]) archivedByTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
+    setArchivedHwByTopic(archivedByTopic)
+
+    const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
+    for (const h of (hws || []) as any[]) byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
+    setHwByTopic(byTopic)
+
+    if (!groupId || !hws?.length) {
+      setHwStats({}); setTotalStudents(0)
       return
     }
 
     // Ученики выбранной группы
+    const hwIds = (hws as any[]).map((h: any) => h.id)
     const { data: gsRows } = await supabase
       .from('group_students').select('student_id').eq('group_id', groupId)
     const studentIds = (gsRows || []).map((r: any) => r.student_id)
     const groupSize = studentIds.length
     setTotalStudents(groupSize)
 
-    // ДЗ курса (на уровне темы — общие для всех групп курса)
-    const { data: hws } = await supabase
-      .from('homeworks')
-      .select('id, topic_id, title, max_score')
-      .in('topic_id', topicIds)
-    if (!hws?.length) { setHwStats({}); setHwByTopic({}); return }
-
-    const hwIds = hws.map((h: any) => h.id)
     // Сдачи — только учеников этой группы
     const { data: subs } = studentIds.length
       ? await supabase
@@ -849,19 +906,17 @@ export function CourseProgramPage() {
     }
 
     setHwStats(stats)
-
-    const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
-    for (const h of hws as any[]) {
-      byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
-    }
-    setHwByTopic(byTopic)
   }
 
   async function refreshModules() {
     if (!selectedId) return
-    const mods = await loadModules(selectedId)
-    setModules(mods)
-    await loadHwStats(mods, selectedGroupId)
+    try {
+      const mods = await loadModules(selectedId)
+      setModules(mods)
+      await loadHwStats(mods, selectedGroupId)
+    } catch (e: any) {
+      setLoadError(e.message || 'Не удалось обновить программу курса')
+    }
   }
 
   async function handleAddModule() {
@@ -899,6 +954,35 @@ export function CourseProgramPage() {
       ...m,
       topics: m.topics.filter(t => t.id !== id),
     })))
+  }
+
+  async function handleDeleteHw(hwId: string) {
+    const { count } = await supabase
+      .from('homework_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('homework_id', hwId)
+
+    if (count && count > 0) {
+      const n = count
+      const doArchive = confirm(
+        `У этого ДЗ есть ${n} сдач${n === 1 ? 'а' : n < 5 ? 'и' : ''}. Удаление невозможно.\n\nАрхивировать ДЗ? (Сдачи сохранятся, ДЗ будет скрыто от учеников)`
+      )
+      if (!doArchive) return
+      const { error } = await supabase.from('homeworks').update({ is_archived: true } as any).eq('id', hwId)
+      if (error) { alert(error.message); return }
+    } else {
+      if (!confirm('Удалить это домашнее задание?')) return
+      const { error } = await supabase.from('homeworks').delete().eq('id', hwId)
+      if (error) { alert(error.message); return }
+    }
+    await refreshModules()
+  }
+
+  async function handleRestoreHw(hwId: string) {
+    if (!confirm('Восстановить это домашнее задание? Оно снова станет видно ученикам.')) return
+    const { error } = await supabase.from('homeworks').update({ is_archived: false } as any).eq('id', hwId)
+    if (error) { alert(error.message); return }
+    await refreshModules()
   }
 
   async function handleAddTopic(moduleId: string) {
@@ -1162,6 +1246,16 @@ export function CourseProgramPage() {
                   <div className="flex items-center gap-2 text-gray-400 py-8 justify-center">
                     <Loader2 size={18} className="animate-spin" />Загрузка программы…
                   </div>
+                ) : loadError ? (
+                  <div className="text-center py-12">
+                    <p className="text-red-500 text-sm mb-3">{loadError}</p>
+                    <button
+                      onClick={() => setLoadKey(k => k + 1)}
+                      className="text-sm text-primary-600 underline hover:no-underline"
+                    >
+                      Повторить
+                    </button>
+                  </div>
                 ) : modules.length === 0 ? (
                   <div className="text-center text-gray-400 py-12">
                     <BookOpen size={32} className="mx-auto mb-3 opacity-30" />
@@ -1184,6 +1278,8 @@ export function CourseProgramPage() {
                           canEdit={canEdit}
                           editMode={editMode}
                           hwStats={hwStats}
+                          hwByTopic={hwByTopic}
+                          archivedHwByTopic={archivedHwByTopic}
                           onSaveModule={handleSaveModule}
                           onDeleteModule={handleDeleteModule}
                           onSaveTopic={handleSaveTopic}
@@ -1191,6 +1287,8 @@ export function CourseProgramPage() {
                           onAddTopic={handleAddTopic}
                           onOpenMaterials={openMaterials}
                           onCreateHw={t => setHwTopic(t)}
+                          onDeleteHw={handleDeleteHw}
+                          onRestoreHw={handleRestoreHw}
                         />
                       ))}
                     </div>
@@ -1242,9 +1340,22 @@ export function CourseProgramPage() {
     <CreateHomeworkModal
       open={!!hwTopic}
       onClose={() => setHwTopic(null)}
-      onCreated={() => { setHwTopic(null); refreshModules() }}
+      onCreated={() => {
+        setHwTopic(null)
+        refreshModules()
+        setToastMsg('Домашнее задание создано')
+        if (toastTimer.current) clearTimeout(toastTimer.current)
+        toastTimer.current = setTimeout(() => setToastMsg(null), 3000)
+      }}
       defaultTopicId={hwTopic?.id}
     />
+
+    {toastMsg && (
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 bg-gray-900 text-white text-sm font-medium rounded-xl shadow-lg pointer-events-none">
+        <Check size={16} className="text-green-400 shrink-0" />
+        {toastMsg}
+      </div>
+    )}
     </>
   )
 }

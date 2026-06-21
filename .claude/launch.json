@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "DocEditor",
+      "runtimeExecutable": "D:\Школа Almiron\DocEditor_Portable\python\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "server:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "error", "--app-dir", "app"],
+      "cwd": "D:\Школа Almiron\DocEditor_Portable",
+      "port": 8000,
+      "autoPort": false
+    }
+  ]
+}

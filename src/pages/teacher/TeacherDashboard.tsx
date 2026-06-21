@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Users, Calendar, CheckCircle2,
   ArrowRight, ClipboardList, ClipboardCheck,
-  AlertTriangle, GraduationCap,
+  GraduationCap,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -63,12 +63,6 @@ export function TeacherDashboard() {
             {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
-        {stats && stats.pending_reviews > 0 && (
-          <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-xl">
-            <AlertTriangle size={15} className="text-orange-500" />
-            <span className="text-sm font-semibold text-orange-700">{stats.pending_reviews} на проверке</span>
-          </div>
-        )}
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}

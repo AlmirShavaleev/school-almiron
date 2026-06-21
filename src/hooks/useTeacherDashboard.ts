@@ -95,6 +95,7 @@ export function useTeacherDashboard(profileId: string | undefined) {
       supabase.from('groups')
         .select('id, name, is_active, schedule_days, schedule_time, group_students(count), courses(title, subject)')
         .eq('teacher_id', tid)
+        .eq('is_active', true)
         .order('name'),
 
       supabase.from('lessons')
@@ -107,6 +108,7 @@ export function useTeacherDashboard(profileId: string | undefined) {
       supabase.from('homeworks')
         .select('id, title, due_date, max_score, topics(title)')
         .eq('created_by', tid)
+        .eq('is_archived', false)
         .order('due_date', { ascending: false })
         .limit(30),
     ])

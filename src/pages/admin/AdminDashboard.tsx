@@ -471,9 +471,8 @@ export function AdminDashboard() {
                       {g.is_active ? 'Активна' : 'Закрыта'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                    <span>{g.student_count} / {g.max_students} учеников</span>
-                    <span className={cn(fill >= 90 ? 'text-red-500 font-medium' : '')}>{fill}%</span>
+                  <div className="text-xs text-gray-500 mb-2">
+                    {g.student_count} / {g.max_students} учеников
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
                     <div className={cn('h-2 rounded-full', fill >= 90 ? 'bg-red-400' : fill >= 70 ? 'bg-orange-400' : 'bg-primary-500')}

@@ -12,8 +12,10 @@ export interface GroupMeta {
   course: { id: string; title: string; subject: string | null; exam_type: string | null } | null
   teacher_id: string | null
   teacher_name: string | null
+  teacher_active: boolean
   curator_id: string | null
   curator_name: string | null
+  curator_active: boolean
 }
 
 export interface GroupStudent {
@@ -80,7 +82,7 @@ export function useGroupControl(groupId: string | undefined): GroupControlData {
       const { data: g, error: gErr } = await supabase.from('groups')
         .select(`id, name, is_active, max_students, schedule_days, schedule_time, course_id,
                  courses(id, title, subject, exam_type),
-                 teachers(id, profiles(full_name)), curators(id, profiles(full_name))`)
+                 teachers(id, is_active, profiles(full_name)), curators(id, is_active, profiles(full_name))`)
         .eq('id', groupId!).maybeSingle()
       if (gErr) throw gErr
       if (cancelled) return
@@ -91,8 +93,8 @@ export function useGroupControl(groupId: string | undefined): GroupControlData {
         max_students: gg.max_students || 20, schedule_days: gg.schedule_days, schedule_time: gg.schedule_time,
         course_id: gg.course_id,
         course: gg.courses ? { id: gg.courses.id, title: gg.courses.title, subject: gg.courses.subject, exam_type: gg.courses.exam_type } : null,
-        teacher_id: gg.teachers?.id || null, teacher_name: gg.teachers?.profiles?.full_name || null,
-        curator_id: gg.curators?.id || null, curator_name: gg.curators?.profiles?.full_name || null,
+        teacher_id: gg.teachers?.id || null, teacher_name: gg.teachers?.profiles?.full_name || null, teacher_active: gg.teachers?.is_active !== false,
+        curator_id: gg.curators?.id || null, curator_name: gg.curators?.profiles?.full_name || null, curator_active: gg.curators?.is_active !== false,
       }
       setGroup(meta)
 

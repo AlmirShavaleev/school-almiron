@@ -85,8 +85,29 @@ export function useLessons() {
             ...l, student_profile: l.student || null,
           })) as Lesson[])
 
+        } else if (profile!.role === 'curator') {
+          // Curator sees only lessons for groups they curate
+          const { data: curatorRow } = await supabase
+            .from('curators').select('id').eq('profile_id', profile!.id).single()
+
+          if (!curatorRow) { setLessons([]); return }
+
+          const { data: curatedGroups } = await supabase
+            .from('groups').select('id').eq('curator_id', curatorRow.id)
+
+          const groupIds = (curatedGroups || []).map((g: any) => g.id)
+          if (!groupIds.length) { setLessons([]); return }
+
+          const { data } = await supabase
+            .from('lessons')
+            .select('*, groups(name), teachers(profiles(full_name)), topics(title,module_id,modules(title))')
+            .in('group_id', groupIds)
+            .order('scheduled_at', { ascending: true })
+
+          setLessons((data || []) as Lesson[])
+
         } else {
-          // curator, admin, owner — all lessons
+          // admin, owner — all lessons
           const { data } = await supabase
             .from('lessons')
             .select('*, groups(name), teachers(profiles(full_name)), topics(title,module_id,modules(title)), student:student_id(full_name,avatar_url)')

@@ -17,7 +17,7 @@ export function useGroups() {
       try {
         const role = profile!.role
 
-        const baseSelect = '*, courses(title,subject,exam_type), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name)), curators(profiles(full_name))'
+        const baseSelect = '*, courses(title,subject,exam_type), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
 
         if (role === 'student') {
           const { data: st } = await supabase
@@ -28,7 +28,7 @@ export function useGroups() {
           const ids = (gs || []).map((g: any) => g.group_id)
           if (!ids.length) { setGroups([]); return }
           const { data } = await supabase
-            .from('groups').select(baseSelect).in('id', ids)
+            .from('groups').select(baseSelect).in('id', ids).eq('is_active', true)
           setGroups(addCount(data))
 
         } else if (role === 'teacher') {
@@ -36,7 +36,7 @@ export function useGroups() {
             .from('teachers').select('id').eq('profile_id', profile!.id).single()
           if (!tc) return
           const { data } = await supabase
-            .from('groups').select(baseSelect).eq('teacher_id', tc.id)
+            .from('groups').select(baseSelect).eq('teacher_id', tc.id).eq('is_active', true)
           setGroups(addCount(data))
 
         } else if (role === 'curator') {
@@ -44,7 +44,7 @@ export function useGroups() {
             .from('curators').select('id').eq('profile_id', profile!.id).single()
           if (!cur) return
           const { data } = await supabase
-            .from('groups').select(baseSelect).eq('curator_id', cur.id)
+            .from('groups').select(baseSelect).eq('curator_id', cur.id).eq('is_active', true)
           setGroups(addCount(data))
 
         } else {

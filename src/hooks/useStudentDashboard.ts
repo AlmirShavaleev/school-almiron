@@ -68,6 +68,7 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
             .from('homeworks')
             .select('*, homework_submissions(status, score, feedback, submitted_at, student_id)')
             .in('topic_id', topicIds)
+            .eq('is_archived', false)
             .order('due_date', { ascending: true })
           // только сдачи этого ученика
           homeworks = (hws || []).map((hw: any) => ({

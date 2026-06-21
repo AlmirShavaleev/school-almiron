@@ -1,19 +1,21 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Calendar, Clock, Video, FileText, BookOpen, Users,
   CheckCircle2, XCircle, Loader2, AlertCircle, ChevronRight,
   GraduationCap, ClipboardList, ExternalLink, Pencil, Save,
   PlayCircle, BookMarked, Lightbulb, ClipboardCheck, Check, User,
-  UserCheck, UserX, Timer, ShieldCheck,
+  UserCheck, UserX, Timer, ShieldCheck, Trash2, Ban,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/store/toastStore'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
+import { EditLessonModal } from '@/components/modals/EditLessonModal'
 
 interface LessonFull {
   id:               string
@@ -26,9 +28,11 @@ interface LessonFull {
   recording_url:    string | null
   notes:            string | null
   created_at:       string
+  teacher_id:       string | null   // teachers.id (raw FK for updates)
+  group_id:         string | null
   group:   { id: string; name: string; course_title: string | null } | null
   student: { id: string; full_name: string; avatar_url: string | null } | null
-  teacher: { id: string; full_name: string; avatar_url: string | null } | null
+  teacher: { id: string; profile_id: string; full_name: string; avatar_url: string | null } | null
   topic:   { id: string; title: string; module_title: string | null } | null
 }
 
@@ -85,6 +89,42 @@ const ATT_STATUSES = [
 
 const ATT_META = Object.fromEntries(ATT_STATUSES.map(s => [s.key, s]))
 
+// ── Inline confirm modal ────────────────────────────────────────────────────
+interface ConfirmModalProps {
+  open:         boolean
+  title:        string
+  message:      string
+  confirmLabel: string
+  confirmCls?:  string
+  onConfirm:    () => void
+  onCancel:     () => void
+}
+function ConfirmModal({ open, title, message, confirmLabel, confirmCls, onConfirm, onCancel }: ConfirmModalProps) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+        <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{message}</p>
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:border-gray-300 hover:text-gray-900 transition-colors cursor-pointer"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={onConfirm}
+            className={cn('px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors cursor-pointer', confirmCls || 'bg-primary-600 hover:bg-primary-700')}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LessonDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -101,6 +141,27 @@ export function LessonDetailPage() {
   const [error,         setError]         = useState<string | null>(null)
   const [hwTick,        setHwTick]        = useState(0)
 
+  const [completing,   setCompleting]   = useState(false)
+  const [cancelling,   setCancelling]   = useState(false)
+  const [deleting,     setDeleting]     = useState(false)
+  const [deleteCheck,  setDeleteCheck]  = useState<{ allowed: boolean; reason: string | null } | null>(null)
+  const [editOpen,     setEditOpen]     = useState(false)
+
+  // Modal state: holds a resolve callback that settles a Promise<boolean>
+  const modalResolveRef = useRef<((ok: boolean) => void) | null>(null)
+  const [modalCfg, setModalCfg] = useState<{
+    title: string; message: string; confirmLabel: string; confirmCls?: string
+  } | null>(null)
+
+  function openConfirm(cfg: typeof modalCfg): Promise<boolean> {
+    return new Promise(resolve => {
+      modalResolveRef.current = resolve
+      setModalCfg(cfg)
+    })
+  }
+  function handleModalConfirm() { modalResolveRef.current?.(true);  setModalCfg(null) }
+  function handleModalCancel()  { modalResolveRef.current?.(false); setModalCfg(null) }
+
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesDraft,   setNotesDraft]   = useState('')
@@ -112,6 +173,15 @@ export function LessonDetailPage() {
     supabase.from('homeworks').select('id, title, due_date').eq('lesson_id', id)
       .then(({ data }) => setHomeworks(data || []))
   }, [id, hwTick])
+
+  // Check if lesson is deletable (for admin/owner only)
+  useEffect(() => {
+    if (!lesson || !profile?.role || !['admin', 'owner'].includes(profile.role)) return
+    supabase.rpc('fn_check_lesson_deletable', { p_lesson_id: lesson.id })
+      .then(({ data }) => {
+        if (data) setDeleteCheck(data as { allowed: boolean; reason: string | null })
+      })
+  }, [lesson?.id, lesson?.status, profile?.role])
 
   useEffect(() => {
     if (!id) return
@@ -132,7 +202,7 @@ export function LessonDetailPage() {
             status, format, zoom_link, recording_url, notes, created_at,
             groups(id, name, courses(title)),
             student:student_id(id, full_name, avatar_url),
-            teachers(id, profiles(full_name, avatar_url)),
+            teachers(id, profile_id, profiles(full_name, avatar_url)),
             topics(id, title, modules(title))
           `)
           .eq('id', id!)
@@ -163,6 +233,8 @@ export function LessonDetailPage() {
         recording_url: l.recording_url,
         notes: l.notes,
         created_at: l.created_at,
+        teacher_id: l.teacher_id ?? null,
+        group_id: l.group_id ?? null,
         group: l.groups ? {
           id: l.groups.id, name: l.groups.name,
           course_title: l.groups.courses?.title || null,
@@ -174,6 +246,7 @@ export function LessonDetailPage() {
         } : null,
         teacher: l.teachers ? {
           id: l.teachers.id,
+          profile_id: l.teachers.profile_id,
           full_name: l.teachers.profiles?.full_name || '—',
           avatar_url: l.teachers.profiles?.avatar_url || null,
         } : null,
@@ -255,18 +328,85 @@ export function LessonDetailPage() {
 
   async function markCompleted() {
     if (!lesson) return
+    const ok = await openConfirm({
+      title:        'Завершить занятие?',
+      message:      'Статус изменится на «Завершено».\n\nВнимание: если для студентов группы настроены тарифы, будет автоматически списана оплата.',
+      confirmLabel: 'Завершить',
+      confirmCls:   'bg-green-600 hover:bg-green-700',
+    })
+    if (!ok) return
+    setCompleting(true)
     const { error } = await supabase.from('lessons').update({ status: 'completed' }).eq('id', lesson.id)
-    if (!error) setLesson({ ...lesson, status: 'completed' })
+    setCompleting(false)
+    if (error) {
+      toast.error('Ошибка: ' + error.message)
+    } else {
+      setLesson({ ...lesson, status: 'completed' })
+      setDeleteCheck({ allowed: false, reason: 'Нельзя удалить завершённое занятие — история посещаемости и биллинга должна сохраняться.' })
+      toast.success('Занятие отмечено завершённым')
+    }
+  }
+
+  async function cancelLesson() {
+    if (!lesson) return
+    const ok = await openConfirm({
+      title:        'Отменить занятие?',
+      message:      'Статус изменится на «Отменено». Посещаемость и данные занятия сохранятся.',
+      confirmLabel: 'Отменить',
+      confirmCls:   'bg-gray-700 hover:bg-gray-800',
+    })
+    if (!ok) return
+    setCancelling(true)
+    const { error } = await supabase.from('lessons').update({ status: 'cancelled' }).eq('id', lesson.id)
+    setCancelling(false)
+    if (error) {
+      toast.error('Ошибка: ' + error.message)
+    } else {
+      setLesson({ ...lesson, status: 'cancelled' })
+      setDeleteCheck({ allowed: false, reason: 'Нельзя удалить отменённое занятие — используйте архивирование.' })
+      toast.success('Занятие отменено')
+    }
+  }
+
+  async function deleteLesson() {
+    if (!lesson) return
+    // Block if server check says no
+    if (deleteCheck?.allowed === false) {
+      toast.error(deleteCheck.reason || 'Удаление запрещено')
+      return
+    }
+    const ok = await openConfirm({
+      title:        `Удалить «${lesson.title}»?`,
+      message:      'Занятие будет удалено безвозвратно.\n\nДомашние задания и транзакции отвяжутся (не удалятся).',
+      confirmLabel: 'Удалить',
+      confirmCls:   'bg-red-600 hover:bg-red-700',
+    })
+    if (!ok) return
+    setDeleting(true)
+    const { error } = await supabase.rpc('fn_safe_delete_lesson', { p_lesson_id: lesson.id })
+    setDeleting(false)
+    if (error) {
+      // Strip SQL EXCEPTION prefix (e.g. "not_allowed: ...")
+      const msg = error.message.replace(/^[A-Z0-9_]+:\s*/i, '')
+      toast.error(msg || 'Ошибка удаления')
+    } else {
+      toast.success('Занятие удалено')
+      navigate('/lessons')
+    }
   }
 
   // Inline attendance: auto-save on click
   const handleAttChange = useCallback(async (studentId: string, newStatus: string) => {
     if (!id) return
+    // Prevent double-save for this student
+    if (savingAtt.has(studentId)) return
 
-    // Optimistic update
+    // Remember previous status for rollback
+    let prevStatus: string | null = null
     setAttendance(prev => {
-      const exists = prev.some(a => a.student_id === studentId)
-      if (exists) {
+      const existing = prev.find(a => a.student_id === studentId)
+      prevStatus = existing?.status ?? null
+      if (existing) {
         return prev.map(a => a.student_id === studentId ? { ...a, status: newStatus } : a)
       }
       const gs = groupStudents.find(s => s.student_id === studentId)
@@ -289,21 +429,17 @@ export function LessonDetailPage() {
     setSavingAtt(prev => { const s = new Set(prev); s.delete(studentId); return s })
 
     if (error) {
-      alert('Ошибка сохранения: ' + error.message)
-      // Revert optimistic update — reload full attendance
-      const { data } = await supabase
-        .from('attendance')
-        .select('student_id, status, note, students(profiles(full_name, avatar_url))')
-        .eq('lesson_id', id)
-      setAttendance((data || []).map((a: any) => ({
-        student_id: a.student_id,
-        status:     a.status,
-        note:       a.note,
-        full_name:  a.students?.profiles?.full_name  || '—',
-        avatar_url: a.students?.profiles?.avatar_url || null,
-      })))
+      toast.error('Ошибка сохранения посещаемости')
+      // Rollback optimistic update
+      if (prevStatus === null) {
+        setAttendance(prev => prev.filter(a => a.student_id !== studentId))
+      } else {
+        setAttendance(prev => prev.map(a =>
+          a.student_id === studentId ? { ...a, status: prevStatus! } : a
+        ))
+      }
     }
-  }, [id, groupStudents])
+  }, [id, groupStudents, savingAtt])
 
   if (loading) {
     return (
@@ -407,6 +543,19 @@ export function LessonDetailPage() {
 
           {/* Action buttons */}
           <div className="flex flex-col gap-2 shrink-0">
+            {/* Edit — admin/owner always; teacher only for own lesson */}
+            {lesson.status === 'scheduled' && (() => {
+              const isAdminOwner = profile?.role && ['admin', 'owner'].includes(profile.role)
+              const isOwnLesson  = profile?.role === 'teacher' && lesson.teacher?.profile_id === profile.id
+              return (isAdminOwner || isOwnLesson) ? (
+                <button
+                  onClick={() => setEditOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
+                >
+                  <Pencil size={15} />Редактировать
+                </button>
+              ) : null
+            })()}
             {lesson.zoom_link && (isLive || isFuture) && (
               <a href={lesson.zoom_link} target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-900 rounded-xl font-semibold text-sm hover:bg-gray-100 transition-colors shadow-sm">
@@ -418,6 +567,42 @@ export function LessonDetailPage() {
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 backdrop-blur text-white rounded-xl font-medium text-sm hover:bg-white/25 transition-colors border border-white/20">
                 <PlayCircle size={16} />Запись урока
               </a>
+            )}
+            {canEdit && lesson.status === 'scheduled' && (
+              <button
+                onClick={markCompleted}
+                disabled={completing}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white rounded-xl font-semibold text-sm transition-colors shadow-sm cursor-pointer"
+              >
+                {completing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                Завершить
+              </button>
+            )}
+            {canEdit && lesson.status === 'scheduled' && (
+              <button
+                onClick={cancelLesson}
+                disabled={cancelling}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 disabled:opacity-60 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
+              >
+                {cancelling ? <Loader2 size={15} className="animate-spin" /> : <Ban size={15} />}
+                Отменить
+              </button>
+            )}
+            {profile?.role && ['admin', 'owner'].includes(profile.role) && (
+              <button
+                onClick={deleteLesson}
+                disabled={deleting || deleteCheck?.allowed === false}
+                title={deleteCheck?.allowed === false ? (deleteCheck.reason ?? undefined) : undefined}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-medium text-sm transition-colors',
+                  deleteCheck?.allowed === false
+                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                    : 'bg-red-500/80 hover:bg-red-500 cursor-pointer'
+                )}
+              >
+                {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                Удалить
+              </button>
             )}
           </div>
         </div>
@@ -522,11 +707,6 @@ export function LessonDetailPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><FileText size={17} />Заметки урока</CardTitle>
           <div className="flex items-center gap-2">
-            {canEdit && isPast && lesson.status === 'scheduled' && (
-              <Button size="sm" variant="success" onClick={markCompleted}>
-                <CheckCircle2 size={13} className="mr-1" />Отметить завершённым
-              </Button>
-            )}
             {canEdit && !editingNotes && (
               <button onClick={() => { setEditingNotes(true); setNotesDraft(lesson.notes || '') }}
                 className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
@@ -656,9 +836,10 @@ export function LessonDetailPage() {
                           <button
                             key={s.key}
                             onClick={() => handleAttChange(gs.student_id, s.key)}
+                            aria-label={s.label}
                             title={s.label}
                             className={cn(
-                              'w-7 h-7 rounded-lg border text-xs font-bold flex items-center justify-center transition-all',
+                              'w-11 h-11 rounded-lg border text-xs font-bold flex items-center justify-center transition-all cursor-pointer',
                               current === s.key
                                 ? cn(s.cls, 'shadow-sm scale-105')
                                 : 'border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 bg-white'
@@ -801,6 +982,46 @@ export function LessonDetailPage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmModal
+        open={modalCfg !== null}
+        title={modalCfg?.title ?? ''}
+        message={modalCfg?.message ?? ''}
+        confirmLabel={modalCfg?.confirmLabel ?? 'Подтвердить'}
+        confirmCls={modalCfg?.confirmCls}
+        onConfirm={handleModalConfirm}
+        onCancel={handleModalCancel}
+      />
+
+      {lesson.status === 'scheduled' && (
+        <EditLessonModal
+          open={editOpen}
+          lesson={{
+            id:               lesson.id,
+            title:            lesson.title,
+            scheduled_at:     lesson.scheduled_at,
+            duration_minutes: lesson.duration_minutes,
+            zoom_link:        lesson.zoom_link,
+            notes:            lesson.notes,
+            teacher_id:       lesson.teacher_id,
+            group_id:         lesson.group_id,
+          }}
+          onClose={() => setEditOpen(false)}
+          onSaved={patch => {
+            setLesson(prev => prev ? {
+              ...prev,
+              title:            patch.title,
+              scheduled_at:     patch.scheduled_at,
+              duration_minutes: patch.duration_minutes,
+              zoom_link:        patch.zoom_link,
+              notes:            patch.notes,
+              teacher_id:       patch.teacher_id,
+            } : prev)
+            setEditOpen(false)
+            toast.success('Занятие обновлено')
+          }}
+        />
+      )}
     </div>
   )
 }

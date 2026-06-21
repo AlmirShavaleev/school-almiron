@@ -32,9 +32,6 @@ export function HomeworkQueuePage() {
             <Inbox size={24} className="text-primary-600" />
             Очередь задач
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            {counts.total === 0 ? 'Нет работ в очереди' : `${counts.total} работ ждут проверки`}
-          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button

@@ -45,6 +45,8 @@ export function LoginPage() {
       if (demoProfile && data.password === 'demo123') {
         setProfile(demoProfile)
         navigate('/dashboard')
+      } else if ((error as any).code === 'email_not_confirmed' || /email not confirmed/i.test(error.message)) {
+        setError('Email не подтверждён. Проверьте почту и перейдите по ссылке из письма, затем войдите снова.')
       } else {
         setError('Неверный email или пароль')
       }

@@ -59,6 +59,7 @@ export interface AdminStats {
   total_students:     number
   total_teachers:     number
   active_groups:      number
+  archived_groups:    number
   active_subs:        number
   monthly_revenue:    number
   pending_subs:       number
@@ -94,7 +95,10 @@ export function useAdminDashboard() {
         .order('created_at', { ascending: false })
         .limit(100),
       supabase.from('students').select('id, profile_id'),
-      supabase.from('homework_submissions').select('id', { count: 'exact', head: true }).eq('status', 'submitted'),
+      supabase.from('homework_submissions')
+        .select('id, homeworks!inner(id)', { count: 'exact', head: true })
+        .eq('status', 'submitted')
+        .eq('homeworks.is_archived', false),
     ])
 
     // Profiles with student/teacher ids lookup
@@ -172,6 +176,7 @@ export function useAdminDashboard() {
       total_students:   builtProfiles.filter(p => p.role === 'student').length,
       total_teachers:   builtProfiles.filter(p => p.role === 'teacher').length,
       active_groups:    builtGroups.filter(g => g.is_active).length,
+      archived_groups:  builtGroups.filter(g => !g.is_active).length,
       active_subs:      activeSubs.length,
       monthly_revenue:  monthRev,
       pending_subs:     builtSubs.filter(s => s.status === 'past_due').length,

@@ -10,13 +10,21 @@ export function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError('')
     setLoading(true)
-    await resetPassword(email)
-    setSent(true)
+    const { error } = await resetPassword(email)
     setLoading(false)
+    if (error) {
+      setError(/rate limit/i.test(error.message)
+        ? 'Слишком много запросов. Попробуйте позже.'
+        : error.message)
+      return
+    }
+    setSent(true)
   }
 
   return (
@@ -40,6 +48,9 @@ export function ForgotPasswordPage() {
             <>
               <h2 className="text-lg font-semibold mb-2">Восстановление пароля</h2>
               <p className="text-gray-500 text-sm mb-6">Введите email, и мы отправим ссылку для сброса пароля</p>
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.ru" icon={<Mail size={16} />} required />
                 <Button type="submit" loading={loading} className="w-full">Отправить ссылку</Button>

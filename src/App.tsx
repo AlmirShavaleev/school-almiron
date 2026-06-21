@@ -30,6 +30,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { Toaster } from '@/components/ui/Toaster'
 
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -39,6 +40,7 @@ import { RoleGuard } from '@/components/auth/RoleGuard'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { RegisterPage } from '@/pages/auth/RegisterPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 
 // Public
 import { LandingPage }       from '@/pages/LandingPage'
@@ -167,6 +169,7 @@ export default function App() {
     <ErrorBoundary>
     <BrowserRouter>
       <AppAuth />
+      <Toaster />
       <Routes>
         {/* Public */}
         <Route path="/"               element={<RootRedirect />} />
@@ -175,6 +178,7 @@ export default function App() {
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password"  element={<ResetPasswordPage />} />
 
         {/* Protected — dashboard layout */}
         <Route element={<DashboardLayout />}>

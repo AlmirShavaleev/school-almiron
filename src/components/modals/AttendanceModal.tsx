@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Check, X as XIcon, Clock, Loader2, Save, ChevronDown, Users } from 'lucide-react'
+import { X, Check, X as XIcon, Clock, ShieldCheck, Loader2, Save, ChevronDown, Users } from 'lucide-react'
 import { useAttendance, type AttendanceStatus, type StudentWithAttendance } from '@/hooks/useAttendance'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -34,6 +34,12 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; icon: React.React
     icon:   <Clock size={14} />,
     btn:    'border-gray-200 text-gray-400 hover:border-orange-400 hover:text-orange-600',
     active: 'border-orange-400 bg-orange-50 text-orange-600',
+  },
+  excused: {
+    label:  'Уважительная',
+    icon:   <ShieldCheck size={14} />,
+    btn:    'border-gray-200 text-gray-400 hover:border-blue-400 hover:text-blue-600',
+    active: 'border-blue-400 bg-blue-50 text-blue-700',
   },
 }
 
