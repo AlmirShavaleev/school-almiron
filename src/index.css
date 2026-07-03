@@ -18,3 +18,315 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* ── Catalog task HTML content ─────────────────────────── */
+.catalog-html p        { margin: 0.35em 0; line-height: 1.6; }
+
+/* Base: inline images (formulas, symbols within text) — natural size */
+.catalog-html img {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  height: auto;
+}
+
+/*
+ * Illustrations attached to a task: condition figures (diagrams, graphs,
+ * geometry drawings, physics setups, charts, image-tables) and solution/
+ * explanation figures. One shared rule — every place that renders catalog
+ * task HTML goes through resolveTaskHtml() + this same .catalog-html class
+ * (catalog list/detail, cart, saved/assigned collections, variant builder,
+ * inline PDF preview, print portal, final PDF), so a single CSS rule here
+ * is enough; no per-surface overrides.
+ * Specificity 0,2,1 overrides .catalog-html img (0,1,1). !important beats
+ * the @media print generic ".catalog-html img { max-width:100% !important }"
+ * safety rule below (importance ties are broken by specificity, but ties
+ * only exist among !important rules of differing specificity — this one is
+ * both more specific AND !important, so it always wins).
+ * width:auto prevents upscaling small images; max-width caps large ones.
+ */
+.catalog-html img.catalog-condition-figure,
+.catalog-html img.catalog-solution-image {
+  display: block;
+  width: auto;
+  max-width: 50% !important;
+  height: auto;
+  margin: 8px auto;
+  object-fit: contain;
+}
+
+/*
+ * Math-display block formulas — keep full width (these are formulas, not diagrams).
+ */
+.catalog-html img.math-display,
+.catalog-html .math-display > img {
+  display: block;
+  margin: 0.75em auto;
+  height: auto;
+  max-width: 100%;
+}
+
+/*
+ * PDF documents only (.print-document — shared by catalog collection export
+ * and Variant Builder export, in both the inline preview and the print
+ * portal, so this base scope — not @media print — keeps them identical):
+ * formula images render at a fixed pixel size from an external LaTeX-to-SVG
+ * pipeline (measured: ~18px tall per formula "row", independent of the
+ * surrounding font-size). That was fine against the old ~12pt body text, but
+ * after shrinking print typography, formulas ended up ~1.6x taller than the
+ * text around them. Scoped to img[class~="math"] (exact token — excludes
+ * "math-display") vs img.math-display below: two different rules for two
+ * different content types, per explicit constraint.
+ */
+.print-document .catalog-html img[class~="math"] {
+  display: inline-block !important;
+  width: auto !important;
+  height: 1.05em !important;
+  max-width: none !important;
+  max-height: 1.2em !important;
+  margin: 0 0.06em !important;
+  vertical-align: -0.15em;
+  object-fit: contain;
+}
+
+/*
+ * Block formulas vary a lot in natural size (measured on the same task:
+ * single equality 187x18px vs a 4-line derivation 308x120px) — a flat
+ * max-width/max-height cap either does nothing for the already-small ones
+ * (any % cap under their natural width is a no-op — confirmed: 55% of a
+ * ~700px content column is ~385px, wider than every formula measured here)
+ * or squashes the tall multi-line ones far more than the short ones, making
+ * derivations unreadable. zoom (not transform:scale — that leaves the old
+ * layout box behind, per explicit constraint) genuinely reflows the box, so
+ * every formula shrinks by the same proportion relative to its OWN natural
+ * size regardless of complexity. Chromium (both the live preview and the
+ * PDF's print portal run on it) and current Firefox/Safari support zoom.
+ */
+.print-document .catalog-html img.math-display,
+.print-document .catalog-html .math-display > img {
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 55% !important;
+  margin: 0.45em auto !important;
+  object-fit: contain;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  zoom: 0.55;
+}
+
+/*
+ * Answer-template blanks (TeX-rendered А|Б / А|Б|В tables).
+ * Detected in resolveHtml by ASCII-table alt pattern; gets this class added.
+ * Override math-display margins with a compact block.
+ */
+.catalog-html img.catalog-answer-template {
+  display: block;
+  width: auto;
+  max-width: min(160px, 100%);
+  height: auto;
+  margin: 4px auto;
+}
+
+.catalog-html .math-display { display: block; margin: 0.5em auto; text-align: center; }
+
+/* Table horizontal scroll wrapper */
+.catalog-html .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.75em 0; }
+
+/* Tables */
+.catalog-html table    { border-collapse: collapse; min-width: max-content; }
+.catalog-html td,
+.catalog-html th       { border: 1px solid #e5e7eb; padding: 5px 10px; font-size: 0.9375rem; white-space: nowrap; }
+
+/* ── Print preview page (A4 simulation in modal) ─────────── */
+.print-preview-page {
+  width: 794px;       /* A4 at 96dpi */
+  min-height: 1123px;
+  background: white;
+  padding: 56px 48px; /* ~15mm margins */
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 8.5pt;    /* ~30% smaller than the previous 12pt — literal /2 (6pt) was illegible on paper */
+  line-height: 1.6;
+  color: #111;
+  box-shadow: 0 2px 16px rgba(0,0,0,.18);
+}
+
+/* ── Print document content ───────────────────────────────── */
+/* Typography below scaled ~0.7x from the previous size (not a literal /2 —
+   that made body text (5.75pt) illegible and disproportionate to formula
+   images, which are SVGs and don't scale with text CSS at all). */
+.print-document {}
+
+.print-header          { margin-bottom: 1.8em; border-bottom: 1px solid #ccc; padding-bottom: 0.8em; }
+.print-title           { font-size: 11pt; font-weight: 700; margin: 0 0 0.3em; }
+.print-meta            { font-size: 7pt; color: #444; margin: 0.2em 0; }
+.print-fields-row      { display: flex; gap: 2em; margin-top: 0.6em; flex-wrap: wrap; }
+.print-field           { font-size: 7pt; }
+.print-blank           { display: inline-block; border-bottom: 1px solid #333; width: 180px; }
+.print-blank--sm       { width: 60px; }
+
+.print-running-header   { display: flex; justify-content: space-between; font-size: 6.5pt; color: #888;
+                           margin-bottom: 0.6em; }
+.print-comment          { font-size: 7pt; color: #444; margin: 0.3em 0; }
+.print-instruction      { font-size: 7pt; color: #333; margin: 0.5em 0; }
+
+.print-task            { margin-bottom: 1.5em; }
+.print-task-head        { display: flex; align-items: baseline; justify-content: space-between; gap: 1em; }
+.print-task-number     { font-weight: 700; font-size: 7.5pt; margin: 0 0 0.4em; }
+.print-task-section     { font-size: 6.5pt; color: #888; margin: 0 0 0.4em; }
+.print-task-unavailable { font-style: italic; color: #888; font-size: 7pt; }
+.print-no-content      { font-style: italic; color: #888; font-size: 7pt; margin: 0; }
+.print-source            { font-size: 6.5pt; color: #777; margin: 0.3em 0 0; }
+
+.print-section         { margin-top: 0.8em; padding-top: 0.5em; border-top: 1px dashed #ccc; }
+.print-section-label   { font-weight: 600; font-size: 6.5pt; text-transform: uppercase;
+                          letter-spacing: 0.05em; color: #555; margin: 0 0 0.3em; }
+.print-section--answer  .print-section-label { color: #1d4ed8; }
+.print-section--solution .print-section-label { color: #6d28d9; }
+.print-section--explanation .print-section-label { color: #047857; }
+
+.print-section-heading { font-size: 10pt; font-weight: 700; margin: 1.5em 0 0.8em; }
+.print-key-table       { border-collapse: collapse; width: 100%; font-size: 7pt; }
+.print-key-table th,
+.print-key-table td    { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+.print-key-table th    { background: #f3f4f6; font-weight: 600; }
+
+/* portal wrapper: hidden normally, shown during print */
+.print-portal-wrapper {
+  display: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* ── @media print ─────────────────────────────────────────── */
+:root {
+  --print-margins: 15mm 12mm;
+  --print-font-size: 8pt; /* ~30% smaller than the previous 11.5pt */
+}
+
+@media print {
+  /* Hide the entire React app shell */
+  #root { display: none !important; }
+
+  /* Show only the portal wrapper */
+  .print-portal-wrapper {
+    display: block !important;
+    position: static;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: var(--print-margins, 15mm 12mm);
+  }
+
+  /* Orientation is switched by injecting a `#print-orientation-override`
+     <style> tag with `@page { size: A4 landscape; }` right before printing —
+     `@page` cannot be scoped with a class/attribute selector, so JS toggles
+     the whole rule instead of just a class (see VariantPrintPanel.handlePrint). */
+
+  .print-document {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: var(--print-font-size, 11.5pt);
+    line-height: 1.6;
+    color: #000;
+    background: white;
+  }
+
+  /* Task number + start of statement should not be split by a page break */
+  .print-task-head {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .print-task-number { break-after: avoid; page-break-after: avoid; }
+
+  /* Task block: allow long tasks to break across pages */
+  .print-task {
+    break-inside: auto;
+    page-break-inside: auto;
+    margin-bottom: 1.5em;
+  }
+
+  /* One-per-page mode: force page break before each task (except first) */
+  .print-task--page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /*
+   * Answer/explanation/solution blocks flow as part of the same task —
+   * must be allowed to break across pages like the rest of .print-task.
+   * break-inside:avoid here previously forced the *entire* explanation onto
+   * a fresh page whenever it didn't fit the remaining space (even a single
+   * long "Пояснение" block), producing near-empty pages and, combined with
+   * one-per-page mode, an extra dedicated page per explanation instead of a
+   * single continuous flow. Only the label (.print-section-label below)
+   * stays glued to its first line of content.
+   */
+  .print-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Section label should stay with its content */
+  .print-section-label {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Task number stays with first line of content */
+  .print-task-number {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Images: never split across pages */
+  .catalog-html img {
+    max-width: 100% !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    display: block;
+  }
+
+  /*
+   * Inline math formula images (class="math", distinct from the block-level
+   * "math-display") must stay inline — the rule above forcing display:block
+   * on every image was ripping single-symbol formulas (M, N, M₁, Sисх.) out
+   * of their sentences onto their own lines, one per page-break-avoid group,
+   * inflating a short explanation into many pages. Higher specificity
+   * ([class~=] attribute selector, 0,2,1 vs 0,1,1) wins without !important.
+   * Condition/solution figures are untouched by this — they never carry the
+   * "math" class (resolveTaskHtml only adds it there when hasMathClass is
+   * false), so their block sizing from earlier rules still applies.
+   */
+  .catalog-html img[class~="math"] {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* Tables: horizontal scroll becomes visible, cap width */
+  .catalog-html .tbl-wrap {
+    overflow: visible;
+    max-width: 100%;
+  }
+  .catalog-html table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  /* Header */
+  .print-header {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* No empty trailing page from forced breaks */
+  .print-task:last-child { break-after: avoid; page-break-after: avoid; }
+}
+
+/* ── Inline live preview area (VariantPrintPanel) — sheet reuses
+   .print-preview-page as its base; the panel sets width/minHeight/font-size
+   inline based on orientation/fontSize. ──────────────────────────────────── */
