@@ -1,0 +1,374 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  buildVariantAssignedTelegramMessage,
+  buildVariantDeadlineTelegramMessage,
+  classifyTelegramError,
+  isTelegramPreferenceEnabled,
+} from '../_shared/variant-telegram.ts'
+
+const TG_API    = 'https://api.telegram.org'
+const MAX_RETRY = 3
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let res = 0
+  for (let i = 0; i < a.length; i++) res |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return res === 0
+}
+
+interface QueueItem {
+  id:                string
+  profile_id:        string
+  event_type:        string
+  payload:           Record<string, unknown>
+  attempts:          number
+}
+
+function buildMessage(item: QueueItem, appUrl: string) {
+  const p = item.payload
+
+  switch (item.event_type) {
+    case 'new_homework':
+      return {
+        text: (
+        `📚 <b>Новое домашнее задание</b>\n\n` +
+        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
+        `Тема: ${p.title}\n` +
+        `Дедлайн: ${p.due_date}\n` +
+        (p.entity_id ? `\n<a href="${appUrl}/homeworks/${p.entity_id}">Открыть задание →</a>` : '')
+        ),
+        replyMarkup: null,
+      }
+
+    case 'lesson_reminder': {
+      const is24h = p.reminder_type === '24h'
+      const time  = String(p.time_hhmm ?? p.scheduled_at ?? '')
+      const course = p.course_title ? `Курс: ${p.course_title}\n` : ''
+      const teacher = p.teacher_name ? `Преподаватель: ${p.teacher_name}\n` : ''
+      const zoom  = p.zoom_link ? `\n<a href="${p.zoom_link}">Ссылка на занятие →</a>` : ''
+
+      if (is24h) {
+        return {
+          text: (
+          `📅 <b>Напоминание о занятии</b>\n\n` +
+          `Завтра в ${time} состоится занятие\n` +
+          course +
+          `Тема: ${p.title ?? 'Занятие'}\n` +
+          teacher +
+          zoom
+          ),
+          replyMarkup: null,
+        }
+      }
+      return {
+        text: (
+        `⏰ <b>Занятие через час</b>\n\n` +
+        `Начало в ${time}\n` +
+        course +
+        `Тема: ${p.title ?? 'Занятие'}\n` +
+        teacher +
+        zoom
+        ),
+        replyMarkup: null,
+      }
+    }
+
+    case 'lesson_rescheduled':
+      return {
+        text: (
+        `🔄 <b>Занятие перенесено</b>\n\n` +
+        `Тема: ${p.title ?? 'Занятие'}\n` +
+        `Было: ${p.old_scheduled_at}\n` +
+        `Стало: ${p.new_scheduled_at}`
+        ),
+        replyMarkup: null,
+      }
+
+    case 'lesson_cancelled':
+      return {
+        text: (
+        `❌ <b>Занятие отменено</b>\n\n` +
+        `Тема: ${p.title ?? 'Занятие'}\n` +
+        `Дата: ${p.scheduled_at}\n` +
+        (p.group_name ? `Группа: ${p.group_name}` : '')
+        ),
+        replyMarkup: null,
+      }
+
+    case 'homework_reviewed': {
+      const statusLabel = p.status === 'checked' ? '✅ Принято' : '🔄 На доработку'
+      return {
+        text: (
+        `📝 <b>Домашнее задание проверено</b>\n\n` +
+        `Тема: ${p.title}\n` +
+        `Статус: ${statusLabel}\n` +
+        (p.score != null ? `Баллы: ${p.score}/${p.max_score}\n` : '') +
+        (p.feedback ? `Комментарий: ${p.feedback}` : '')
+        ),
+        replyMarkup: null,
+      }
+    }
+
+    case 'collection_assigned':
+      return {
+        text: `📚 <b>Новое домашнее задание</b>\n\n«${String(p.title ?? 'Без названия')}»` +
+          (p.due_at ? `\nДедлайн: ${String(p.due_at)}` : '\nБез дедлайна') +
+          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Открыть ДЗ →</a>` : ''),
+        replyMarkup: null,
+      }
+
+    case 'collection_submitted':
+    case 'collection_resubmitted':
+      return {
+        text: `${item.event_type === 'collection_resubmitted' ? '🔄 <b>Повторная сдача ДЗ</b>' : '📥 <b>Новая сдача ДЗ</b>'}\n\n` +
+          `${String(p.student_name ?? 'Ученик')} ${item.event_type === 'collection_resubmitted' ? 'повторно сдал' : 'сдал'} «${String(p.title ?? 'Без названия')}»` +
+          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Проверить работу →</a>` : ''),
+        replyMarkup: null,
+      }
+
+    case 'collection_reviewed': {
+      const statusLabel = p.status === 'accepted'
+        ? '✅ Принято'
+        : p.status === 'returned'
+          ? '🔄 Возвращено на доработку'
+          : '❌ Отклонено'
+      return {
+        text: `📝 <b>Домашнее задание проверено</b>\n\n«${String(p.title ?? 'Без названия')}»\nСтатус: ${statusLabel}` +
+          (p.score != null ? `\nБалл: ${String(p.score)}` : '') +
+          (p.comment ? `\nКомментарий: ${String(p.comment)}` : '') +
+          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Открыть ДЗ →</a>` : ''),
+        replyMarkup: null,
+      }
+    }
+
+    case 'variant_assigned': {
+      const { text, replyMarkup } = buildVariantAssignedTelegramMessage({
+        title: typeof p.title === 'string' ? p.title : undefined,
+        subject: typeof p.subject === 'string' ? p.subject : null,
+        exam_type: typeof p.exam_type === 'string' ? p.exam_type : null,
+        group_name: typeof p.group_name === 'string' ? p.group_name : null,
+        tasks_count: typeof p.tasks_count === 'number' ? p.tasks_count : null,
+        due_at: typeof p.due_at === 'string' ? p.due_at : null,
+        available_from: typeof p.available_from === 'string' ? p.available_from : null,
+        link: typeof p.link === 'string' ? p.link : null,
+        button_text: typeof p.button_text === 'string' ? p.button_text : null,
+      }, appUrl)
+      return { text, replyMarkup }
+    }
+
+    case 'variant_deadline_changed': {
+      const { text, replyMarkup } = buildVariantDeadlineTelegramMessage({
+        title: typeof p.title === 'string' ? p.title : undefined,
+        due_at: typeof p.due_at === 'string' ? p.due_at : null,
+        link: typeof p.link === 'string' ? p.link : null,
+        button_text: typeof p.button_text === 'string' ? p.button_text : null,
+      }, appUrl)
+      return { text, replyMarkup }
+    }
+
+    default:
+      return {
+        text: `📬 Новое уведомление: ${String(p.title ?? item.event_type)}`,
+        replyMarkup: null,
+      }
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return new Response('Method Not Allowed', { status: 405 })
+  }
+
+  // Fail-closed: без CRON_SECRET функция не запускается
+  const cronSecret = Deno.env.get('CRON_SECRET')
+  if (!cronSecret) {
+    console.error('process-notification-queue: CRON_SECRET not configured')
+    return new Response(JSON.stringify({ error: 'CRON_SECRET not configured' }), { status: 500 })
+  }
+  const got = req.headers.get('X-Cron-Secret') ?? ''
+  if (!safeEqual(got, cronSecret)) {
+    console.warn('process-notification-queue: rejected (bad or missing X-Cron-Secret)')
+    return new Response('Unauthorized', { status: 401 })
+  }
+
+  const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
+  const appUrl   = Deno.env.get('APP_URL') ?? ''
+
+  if (!botToken) {
+    console.error('process-notification-queue: TELEGRAM_BOT_TOKEN not configured')
+    return new Response(JSON.stringify({ error: 'Bot token not configured' }), { status: 500 })
+  }
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  // Атомарно захватываем пачку (claim также восстанавливает зависшие processing > 10 мин)
+  const { data: items, error: claimErr } = await supabase
+    .rpc('claim_notification_queue', { batch_size: 20 })
+
+  if (claimErr) {
+    console.error('claim_notification_queue error:', claimErr.message)
+    return new Response(JSON.stringify({ error: 'Queue claim failed' }), { status: 500 })
+  }
+
+  const results = { sent: 0, failed: 0, skipped: 0 }
+
+  for (const item of (items ?? []) as QueueItem[]) {
+    try {
+      // Проверяем активное Telegram-подключение
+      const { data: conn } = await supabase
+        .from('telegram_connections')
+        .select('telegram_chat_id, is_enabled')
+        .eq('profile_id', item.profile_id)
+        .is('disconnected_at', null)
+        .maybeSingle()
+
+      if (!conn?.is_enabled || !conn.telegram_chat_id) {
+        await supabase
+          .from('notification_queue')
+          .update({ status: 'cancelled' })
+          .eq('id', item.id)
+        results.skipped++
+        continue
+      }
+
+      // Проверяем настройки уведомлений
+      const { data: prefs } = await supabase
+        .from('notification_prefs')
+        .select('telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments')
+        .eq('user_id', item.profile_id)
+        .maybeSingle()
+
+      const prefEnabled = isTelegramPreferenceEnabled(item.event_type, prefs)
+
+      if (!prefEnabled) {
+        await supabase
+          .from('notification_queue')
+          .update({ status: 'cancelled' })
+          .eq('id', item.id)
+        results.skipped++
+        continue
+      }
+
+      // Отправляем в Telegram
+      const message = buildMessage(item, appUrl)
+      const tgRes = await fetch(`${TG_API}/bot${botToken}/sendMessage`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          chat_id:                  conn.telegram_chat_id,
+          text:                     message.text,
+          parse_mode:               'HTML',
+          disable_web_page_preview: true,
+          reply_markup:             message.replyMarkup ?? undefined,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      })
+
+      if (tgRes.ok) {
+        await supabase
+          .from('notification_queue')
+          .update({
+            status:   'sent',
+            sent_at:  new Date().toISOString(),
+            attempts: item.attempts + 1,
+          })
+          .eq('id', item.id)
+        results.sent++
+        continue
+      }
+
+      // Обрабатываем ошибку Telegram
+      const tgBody    = await tgRes.json().catch(() => ({}))
+      const tgDesc    = (tgBody as { description?: string }).description ?? 'unknown'
+      const errInfo   = classifyTelegramError(tgRes.status, tgDesc)
+      const newAttempts = item.attempts + 1
+
+      if (errInfo.isBotBlocked) {
+        // Отключаем Telegram-подключение пользователя
+        await supabase
+          .from('telegram_connections')
+          .update({
+            is_enabled:        false,
+            disconnected_at:   new Date().toISOString(),
+            disconnect_reason: `Bot blocked: ${tgDesc.substring(0, 200)}`,
+          })
+          .eq('profile_id', item.profile_id)
+          .is('disconnected_at', null)
+
+        await supabase
+          .from('notification_prefs')
+          .update({ telegram: false })
+          .eq('user_id', item.profile_id)
+
+        await supabase
+          .from('notification_queue')
+          .update({
+            status:     'failed',
+            attempts:   newAttempts,
+            last_error: `Bot blocked by user`,
+          })
+          .eq('id', item.id)
+
+        console.warn(`process-notification-queue: bot blocked for profile, connection disabled`)
+        results.failed++
+        continue
+      }
+
+      if (errInfo.isPermanent) {
+        // Постоянная ошибка — не повторяем
+        await supabase
+          .from('notification_queue')
+          .update({
+            status:     'failed',
+            attempts:   newAttempts,
+            last_error: errInfo.safeMessage,
+          })
+          .eq('id', item.id)
+        results.failed++
+        continue
+      }
+
+      // Временная ошибка (429, 5xx, network) — retry если < MAX_RETRY
+      const isFinal = newAttempts >= MAX_RETRY
+      await supabase
+        .from('notification_queue')
+        .update({
+          status:       isFinal ? 'failed' : 'pending',
+          attempts:     newAttempts,
+          last_error:   errInfo.safeMessage,
+          // Для 429 откладываем на retry_after секунд если доступно
+          ...(tgRes.status === 429 && tgBody.parameters?.retry_after
+            ? { scheduled_for: new Date(Date.now() + (tgBody.parameters.retry_after as number) * 1000).toISOString() }
+            : {}),
+        })
+        .eq('id', item.id)
+      results.failed++
+
+    } catch (e) {
+      // Сетевой сбой / timeout — временная ошибка
+      const errMsg      = e instanceof Error ? e.message : 'network error'
+      const newAttempts = item.attempts + 1
+      const isFinal     = newAttempts >= MAX_RETRY
+
+      await supabase
+        .from('notification_queue')
+        .update({
+          status:     isFinal ? 'failed' : 'pending',
+          attempts:   newAttempts,
+          last_error: `Network: ${errMsg.substring(0, 200)}`,
+        })
+        .eq('id', item.id)
+
+      console.error('process-notification-queue: network error:', errMsg)
+      results.failed++
+    }
+  }
+
+  console.log('process-notification-queue results:', JSON.stringify(results))
+  return new Response(JSON.stringify({ ok: true, ...results }), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+})
