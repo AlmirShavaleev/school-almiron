@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 
@@ -33,12 +33,20 @@ export function useHomeworkQueue() {
   const [loading, setLoading] = useState(true)
   const [tick,    setTick]    = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
+  const inFlightRef    = useRef(false)
+  const lastLoadEndRef = useRef(0)
+  const RELOAD_THROTTLE_MS = 30_000
 
   useEffect(() => {
     if (!profile) return
     let cancelled = false
+    inFlightRef.current = true
     setLoading(true)
-    load().finally(() => { if (!cancelled) setLoading(false) })
+    load().finally(() => {
+      inFlightRef.current = false
+      lastLoadEndRef.current = Date.now()
+      if (!cancelled) setLoading(false)
+    })
 
     async function load() {
       const role = profile!.role
@@ -143,8 +151,14 @@ export function useHomeworkQueue() {
       if (!cancelled) setItems(list)
     }
 
-    // live-обновление: при возврате на вкладку (после проверки) — перечитать
-    function onFocus() { setTick(t => t + 1) }
+    // live-обновление: при возврате на вкладку (после проверки) — перечитать.
+    // Guard от повторного рефетча, пока load() в полёте, + троттлинг 30с
+    // между завершёнными загрузками (ручной reload() эти ограничения не знает).
+    function onFocus() {
+      if (inFlightRef.current) return
+      if (Date.now() - lastLoadEndRef.current < RELOAD_THROTTLE_MS) return
+      setTick(t => t + 1)
+    }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
     return () => {
