@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { mapCollectionSubmission } from '@/lib/unifiedSubmissions'
 
 export type QueueBucket = 'urgent' | 'new' | 'revision' | 'backlog'
 
 export interface QueueItem {
+  source:       'legacy' | 'collection'
   submissionId: string
   status:       'submitted' | 'revision'
   submittedAt:  string | null
@@ -73,9 +75,11 @@ export function useHomeworkQueue() {
 
       // ── 2. Ученики групп + карта student → группы ───────────────────────
       const { data: gsRows } = await supabase
-        .from('group_students').select('student_id, group_id')
+        .from('group_students').select('student_id, group_id, students(profiles(full_name))')
         .in('group_id', groups.map((g: any) => g.id))
       const studentIds = [...new Set((gsRows || []).map((r: any) => r.student_id))]
+      const studentNames: Record<string, string> = {}
+      for (const row of gsRows || []) studentNames[(row as any).student_id] = (row as any).students?.profiles?.full_name || 'Без имени'
       if (!studentIds.length) { if (!cancelled) setItems([]); return }
 
       // student → [{groupId, courseId}] (для выбора нужной группы под курс ДЗ)
@@ -93,24 +97,21 @@ export function useHomeworkQueue() {
       for (const m of (mods || []) as any[])
         for (const t of (m.topics || [])) { topicCourse[t.id] = m.course_id; topicTitle[t.id] = t.title }
       const topicIds = Object.keys(topicCourse)
-      if (!topicIds.length) { if (!cancelled) setItems([]); return }
 
-      const { data: hws } = await supabase
-        .from('homeworks').select('id, title, due_date, topic_id')
-        .in('topic_id', topicIds)
-        .eq('is_archived', false)
-      if (!hws?.length) { if (!cancelled) setItems([]); return }
+      const { data: hws } = topicIds.length
+        ? await supabase.from('homeworks').select('id, title, due_date, topic_id')
+            .in('topic_id', topicIds).eq('is_archived', false)
+        : { data: [] as any[] }
       const hwById: Record<string, any> = {}
       for (const h of hws as any[]) hwById[h.id] = h
 
       // ── 4. Атом очереди: сдачи в работе ─────────────────────────────────
-      const { data: subs } = await supabase
-        .from('homework_submissions')
-        .select('id, homework_id, student_id, status, submitted_at, students(profiles(full_name))')
-        .in('homework_id', hws.map((h: any) => h.id))
-        .in('student_id', studentIds)
-        .in('status', ['submitted', 'revision'])
-        .order('submitted_at', { ascending: true })
+      const { data: subs } = hws?.length
+        ? await supabase.from('homework_submissions')
+            .select('id, homework_id, student_id, status, submitted_at, students(profiles(full_name))')
+            .in('homework_id', hws.map((h: any) => h.id)).in('student_id', studentIds)
+            .in('status', ['submitted', 'revision']).order('submitted_at', { ascending: true })
+        : { data: [] as any[] }
 
       // ── 5. Сборка items + бакеты ────────────────────────────────────────
       const now = Date.now()
@@ -131,6 +132,7 @@ export function useHomeworkQueue() {
         else                                               bucket = 'backlog'
 
         list.push({
+          source:       'legacy',
           submissionId: s.id,
           status:       s.status,
           submittedAt:  s.submitted_at,
@@ -141,6 +143,43 @@ export function useHomeworkQueue() {
           group:        { id: g.groupId, name: groupById[g.groupId]?.name || '—' },
           homework:     { id: hw.id, title: hw.title },
           topicTitle:   topicTitle[hw.topic_id] || '',
+        })
+      }
+
+      // Collection queue. Same group/student scope; no cross-system dedupe.
+      const db = supabase as any
+      const { data: assigned } = await db.from('assigned_collections')
+        .select('id, collection_id, group_id, lesson_id, due_date, created_at, lessons(topic_id), task_collections(title, subject)')
+        .in('group_id', groups.map((g: any) => g.id))
+      const assignedById = new Map((assigned || []).map((item: any) => [item.id, item]))
+      const { data: collectionSubs } = assignedById.size
+        ? await db.from('task_submissions').select('*')
+            .in('assigned_id', [...assignedById.keys()]).in('student_id', studentIds)
+            .in('status', ['submitted', 'returned'])
+        : { data: [] }
+      for (const submission of collectionSubs || []) {
+        const assignment: any = assignedById.get(submission.assigned_id)
+        if (!assignment) continue
+        const unified = mapCollectionSubmission(assignment, submission, {
+          studentId: submission.student_id, lessonId: assignment.lesson_id,
+          topicId: assignment.lessons?.topic_id ?? null,
+          title: assignment.task_collections?.title ?? null, subject: assignment.task_collections?.subject ?? null,
+        })
+        const due = unified.dueAt ? new Date(unified.dueAt).getTime() : null
+        const overdue = due != null && due < now
+        const bucket: QueueBucket = unified.status === 'returned' ? 'revision'
+          : due != null && (overdue || due - now < DAY) ? 'urgent'
+          : unified.submittedAt && now - new Date(unified.submittedAt).getTime() < NEW_WINDOW ? 'new' : 'backlog'
+        const targetGroupId = assignment.group_id || studentGroups[submission.student_id]?.[0]?.groupId || ''
+        const group = groupById[targetGroupId]
+        list.push({
+          source: 'collection', submissionId: submission.id,
+          status: unified.status === 'returned' ? 'revision' : 'submitted',
+          submittedAt: unified.submittedAt, dueDate: unified.dueAt, bucket, overdue,
+          student: { id: submission.student_id, name: studentNames[submission.student_id] || 'Без имени' },
+          group: { id: targetGroupId, name: group?.name || '—' },
+          homework: { id: assignment.id, title: unified.title },
+          topicTitle: assignment.lessons?.topic_id ? topicTitle[assignment.lessons.topic_id] || '' : '',
         })
       }
       // приоритет: urgent → revision → new → backlog
