@@ -2,8 +2,48 @@ node_modules/
 dist/
 .env
 .env.local
+.env.import
+.env.import.local
+scripts/.env
+scripts/.env.*
 .supabase/
 .cache/
 AppData/
 .vscode/
 .idea/
+# import reports (generated, not source)
+import-summary.json
+import-errors.jsonl
+import-checkpoint.json
+skipped-assets.jsonl
+
+# E2E / test artifacts (generated PDFs, auth state, playwright report)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# E2E generated binary fixtures (recreated by e2e/fixtures/make-fixtures.mjs)
+e2e/fixtures/*.pdf
+e2e/fixtures/*.png
+e2e/fixtures/*.exe
+
+# Ops / import artifacts
+outputs/
+reports/
+import-resume.log
+physics-oge-full.log
+physics-oge-full.err
+physics-oge-full.pid
+physics-oge-full-import-*.log
+physics-oge-errors-*.json
+math-oge-import-*.json
+math-oge-checkpoint.json
+physics-import-checkpoint.json
+physics-import-summary.json
+broken_oge_images_summary.json
+broken_oge_images.jsonl
+physics-oge-broken-images-summary.json
+physics-oge-broken-images.jsonl
+supabase/.temp/
+shkolkovo-pdfs/
