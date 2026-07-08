@@ -146,4 +146,40 @@ describe('SubmissionReviewer regions', () => {
     expect(screen.queryByText('Выделите область мышкой')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Удалить комментарий' })).not.toBeInTheDocument()
   })
+
+  it('the editor scrolls its own content and keeps the Save/Cancel footer outside the scroll area', async () => {
+    const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
+    await waitFor(() => expect(screen.getByText('Выделите область мышкой')).toBeInTheDocument())
+    await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
+    dragRegion(0.1, 0.1, 0.3, 0.3)
+
+    // Pick a category with phrases so the editor is at its tallest.
+    fireEvent.click(await screen.findByRole('button', { name: /Вычислительная ошибка/ }))
+
+    const saveButton = screen.getByRole('button', { name: 'Сохранить' })
+    const footer = saveButton.parentElement!
+    expect(footer.className).toContain('shrink-0')
+
+    const scrollArea = container.querySelector('.overflow-y-auto.overscroll-contain')
+    expect(scrollArea).not.toBeNull()
+    expect(scrollArea).not.toBe(footer)
+    // Footer must not be a descendant of the scroll area — it has to stay
+    // pinned outside it, not scroll away with the category grid/phrases.
+    expect(scrollArea!.contains(footer)).toBe(false)
+  })
+
+  it('a wheel over the editor does not lose the open draft (scroll stays local, no accidental close/reset)', async () => {
+    const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
+    await waitFor(() => expect(screen.getByText('Выделите область мышкой')).toBeInTheDocument())
+    await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
+    dragRegion(0.1, 0.1, 0.3, 0.3)
+
+    const scrollArea = container.querySelector('.overflow-y-auto.overscroll-contain')!
+    fireEvent.wheel(scrollArea, { deltaY: 400 })
+
+    // Draft editor is still open and untouched — a wheel event never
+    // triggers any cancel/save/state-reset path.
+    expect(screen.getByText('Комментарий к области')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Текст комментария' })).toBeInTheDocument()
+  })
 })

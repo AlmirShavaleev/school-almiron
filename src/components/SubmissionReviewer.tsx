@@ -284,23 +284,29 @@ function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onAc
 function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft | null>>; onSave: () => void; onCancel: () => void }) {
   const category = CATEGORIES[draft.category]
   const canSave = draft.category === 'praise' || draft.text.trim().length > 0
-  return <div className="flex flex-1 flex-col gap-3 p-3" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
-    <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Комментарий к области</div>
-      <div className="grid grid-cols-2 gap-2">
-        {(Object.keys(CATEGORIES) as Category[]).map(value => {
-          const item = CATEGORIES[value]
-          return <button key={value} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
-            <span className="mr-1 font-bold" style={{ color: item.color }}>{item.short}</span>{item.label}
-          </button>
-        })}
+  return <div className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
+    {/* min-h-0 + overflow-y-auto so a tall editor (category grid + phrases +
+        textarea) scrolls within its own panel instead of being clipped by
+        the parent's overflow-hidden or chaining the scroll up into the
+        surrounding modal. overscroll-contain stops that chaining outright. */}
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 flex flex-col gap-3">
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Комментарий к области</div>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(CATEGORIES) as Category[]).map(value => {
+            const item = CATEGORIES[value]
+            return <button key={value} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
+              <span className="mr-1 font-bold" style={{ color: item.color }}>{item.short}</span>{item.label}
+            </button>
+          })}
+        </div>
       </div>
+      {category.phrases.length > 0 && <div className="flex flex-wrap gap-2">
+        {category.phrases.map(phrase => <button key={phrase} type="button" onClick={() => setDraft(current => current && { ...current, text: phrase })} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">{phrase}</button>)}
+      </div>}
+      <textarea autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className="min-h-28 resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500"/>
     </div>
-    {category.phrases.length > 0 && <div className="flex flex-wrap gap-2">
-      {category.phrases.map(phrase => <button key={phrase} type="button" onClick={() => setDraft(current => current && { ...current, text: phrase })} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">{phrase}</button>)}
-    </div>}
-    <textarea autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className="min-h-28 resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500"/>
-    <div className="mt-auto flex justify-end gap-2">
+    <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 p-3">
       <button type="button" onClick={onCancel} className="min-h-10 rounded-lg bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">Отмена</button>
       <button type="button" onClick={onSave} disabled={!canSave} className="min-h-10 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition-[transform,background-color] hover:bg-slate-800 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40">Сохранить</button>
     </div>
