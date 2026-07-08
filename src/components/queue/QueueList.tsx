@@ -4,15 +4,15 @@ import { cn } from '@/utils/cn'
 import { QueueItem } from './QueueItem'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
 
-interface Props { items: QItem[]; groupBy: 'group' | 'flat' }
+interface Props { items: QItem[]; groupBy: 'group' | 'flat'; emptyText?: string }
 
 /** Группировка очереди: по группам или плоско. */
-export function QueueList({ items, groupBy }: Props) {
+export function QueueList({ items, groupBy, emptyText }: Props) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
         <Users size={36} className="opacity-25" />
-        <p className="text-sm">Очередь пуста — всё проверено 🎉</p>
+        <p className="text-sm">{emptyText || 'Очередь пуста — всё проверено 🎉'}</p>
       </div>
     )
   }

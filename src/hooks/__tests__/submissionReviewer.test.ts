@@ -8,6 +8,7 @@ const migration = readFileSync('supabase/migrations/017_annotation_sets.sql', 'u
 const studentReviewPage = readFileSync('src/pages/StudentReviewPage.tsx', 'utf8')
 const queueItem = readFileSync('src/components/queue/QueueItem.tsx', 'utf8')
 const queuePage = readFileSync('src/pages/HomeworkQueuePage.tsx', 'utf8')
+const queueHook = readFileSync('src/hooks/useHomeworkQueue.ts', 'utf8')
 
 describe('submission annotation reviewer', () => {
   it('normalizes legacy URLs, uses signed URLs and retries file loading', () => {
@@ -53,6 +54,17 @@ describe('submission annotation reviewer', () => {
     expect(queuePage).not.toContain('onQuickReview')
   })
 
+  it('adds a checked submissions tab backed by group-scoped legacy and collection review statuses', () => {
+    expect(queuePage).toContain("setMode('checked')")
+    expect(queuePage).toContain('Проверенные')
+    expect(queueHook).toContain("export type QueueMode = 'pending' | 'checked'")
+    expect(queueHook).toContain(".eq('status', 'checked')")
+    expect(queueHook).toContain(".in('status', ['accepted', 'rejected'])")
+    expect(queueHook).toContain(".order('checked_at', { ascending: false }).limit(checkedLimit)")
+    expect(queueHook).toContain(".order('reviewed_at', { ascending: false }).limit(checkedLimit)")
+    expect(queuePage).toContain('Показать ещё')
+  })
+
   it('auto-advances to the next student after a full publish, or returns to the group list when none remain — for both file and no-file submissions', () => {
     expect(studentReviewPage).toContain("nextAdvanceRef.current = next ? next.studentId : 'list'")
     expect(studentReviewPage).toContain("const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`")
@@ -66,7 +78,8 @@ describe('submission annotation reviewer', () => {
 
   it('removes the topic quick-review modal from the queue page', () => {
     expect(queuePage).not.toContain('ReviewTopicSubmissionModal')
-    expect(queuePage).toContain('<QueueList items={filtered} groupBy={groupBy} />')
+    expect(queuePage).toContain('<QueueList')
+    expect(queuePage).toContain("groupBy={mode === 'pending' ? groupBy : 'flat'}")
   })
 
   it('keeps author immutable and annotations inaccessible to anon', () => {
