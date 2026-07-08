@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Users, Calendar, CheckCircle2,
@@ -11,7 +10,6 @@ import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useTeacherDashboard } from '@/hooks/useTeacherDashboard'
-import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
 import { formatDateTime } from '@/utils/format'
 
 function isOverdue(iso: string) { return new Date(iso) < new Date() }
@@ -22,10 +20,8 @@ export function TeacherDashboard() {
 
   const {
     groups, lessons, homeworks, pendingSubs, stats,
-    todayLessons, loading, reload,
+    todayLessons, loading,
   } = useTeacherDashboard(profile?.id)
-
-  const [reviewTarget, setReviewTarget] = useState<{ id: string; title: string; max_score: number } | null>(null)
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -173,7 +169,7 @@ export function TeacherDashboard() {
                   <Button
                     size="sm"
                     className="shrink-0"
-                    onClick={() => setReviewTarget({ id: hw.id, title: hw.title, max_score: hw.max_score })}
+                    onClick={() => navigate(`/homeworks/${hw.id}/review`)}
                   >
                     <ClipboardList size={13} className="mr-1" />
                     ({hw.pending_count})
@@ -262,14 +258,6 @@ export function TeacherDashboard() {
         </Card>
 
       </div>
-
-      {/* ReviewHomeworkModal */}
-      <ReviewHomeworkModal
-        open={reviewTarget != null}
-        onClose={() => setReviewTarget(null)}
-        onReviewed={() => { setReviewTarget(null); reload() }}
-        homework={reviewTarget}
-      />
     </div>
   )
 }

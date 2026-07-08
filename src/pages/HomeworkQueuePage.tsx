@@ -4,7 +4,6 @@ import { cn } from '@/utils/cn'
 import { useHomeworkQueue, type QueueBucket } from '@/hooks/useHomeworkQueue'
 import { QueueFilters } from '@/components/queue/QueueFilters'
 import { QueueList } from '@/components/queue/QueueList'
-import { ReviewTopicSubmissionModal } from '@/components/modals/ReviewTopicSubmissionModal'
 
 const DEFAULT_ON: QueueBucket[] = ['urgent', 'revision', 'new']  // backlog выключен по умолчанию
 
@@ -12,7 +11,6 @@ export function HomeworkQueuePage() {
   const { items, counts, loading, reload } = useHomeworkQueue()
   const [active, setActive] = useState<Set<QueueBucket>>(new Set(DEFAULT_ON))
   const [groupBy, setGroupBy] = useState<'group' | 'flat'>('flat')
-  const [quickReviewId, setQuickReviewId] = useState<string | null>(null)
 
   function toggle(b: QueueBucket) {
     setActive(prev => {
@@ -63,15 +61,8 @@ export function HomeworkQueuePage() {
           <Loader2 size={20} className="animate-spin" />Загрузка очереди…
         </div>
       ) : (
-        <QueueList items={filtered} groupBy={groupBy} onQuickReview={setQuickReviewId} />
+        <QueueList items={filtered} groupBy={groupBy} />
       )}
-
-      <ReviewTopicSubmissionModal
-        open={!!quickReviewId}
-        submissionId={quickReviewId}
-        onClose={() => { setQuickReviewId(null); reload() }}
-        onReviewed={reload}
-      />
     </div>
   )
 }

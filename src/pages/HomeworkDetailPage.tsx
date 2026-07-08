@@ -10,7 +10,6 @@ import { useAuthStore } from '@/store/authStore'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
@@ -62,9 +61,6 @@ export function HomeworkDetailPage() {
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
   const [tab,           setTab]           = useState<TabKey>('all')
-  const [reviewOpen,    setReviewOpen]    = useState(false)
-  const [tick,          setTick]          = useState(0)
-  const reload = () => setTick(t => t + 1)
 
   useEffect(() => {
     if (!id) return
@@ -175,7 +171,7 @@ export function HomeworkDetailPage() {
       setHW(built)
       setSubmissions(rows)
     }
-  }, [id, tick, profile])
+  }, [id, profile])
 
   if (loading) {
     return (
@@ -282,7 +278,7 @@ export function HomeworkDetailPage() {
           {/* Action button */}
           {canReview && submittedCount > 0 && (
             <button
-              onClick={() => setReviewOpen(true)}
+              onClick={() => navigate(`/homeworks/${hw.id}/review`)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-900 rounded-xl font-semibold text-sm hover:bg-gray-100 transition-colors shadow-sm shrink-0"
             >
               <CheckCircle2 size={16} />Проверить ({submittedCount})
@@ -455,13 +451,6 @@ export function HomeworkDetailPage() {
         )}
       </Card>
 
-      {/* Review modal */}
-      <ReviewHomeworkModal
-        open={reviewOpen}
-        onClose={() => setReviewOpen(false)}
-        onReviewed={() => reload()}
-        homework={{ id: hw.id, title: hw.title, max_score: hw.max_score }}
-      />
     </div>
   )
 }

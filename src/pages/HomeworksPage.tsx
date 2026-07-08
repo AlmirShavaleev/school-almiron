@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ClipboardList, Clock, FileText, Download, Send, X } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -7,7 +8,6 @@ import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useHomeworks } from '@/hooks/useHomeworks'
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
-import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
 import { AssignHomeworkModal } from '@/components/modals/AssignHomeworkModal'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { formatDate, isOverdue, HW_STATUS_COLORS, HW_STATUS_LABELS } from '@/utils/format'
@@ -18,6 +18,7 @@ import { cn } from '@/utils/cn'
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 
 export function HomeworksPage() {
+  const navigate = useNavigate()
   const profile   = useAuthStore(s => s.profile)
   const isStudent = profile?.role === 'student'
   const canCreate = profile?.role && ['teacher', 'admin', 'owner'].includes(profile.role)
@@ -39,7 +40,6 @@ export function HomeworksPage() {
     isResubmit?: boolean; previousAnswer?: string | null; previousFileUrl?: string | null; feedback?: string | null
   } | null>(null)
   const [studentReview, setStudentReview] = useState<{ id: string; title: string; file_url: string } | null>(null)
-  const [reviewTarget,  setReviewTarget]  = useState<{ id: string; title: string; max_score: number } | null>(null)
   const [assignTarget, setAssignTarget] = useState<{ id: string; title: string; topic_id?: string | null; max_score?: number | null } | null>(null)
 
   // Enrich with submission status for student view
@@ -185,7 +185,7 @@ export function HomeworksPage() {
                           {submittedCount > 0 && (
                             <Button
                               size="sm"
-                              onClick={() => setReviewTarget({ id: hw.id, title: hw.title, max_score: hw.max_score })}
+                              onClick={() => navigate(`/homeworks/${hw.id}/review`)}
                             >
                               Проверить ({submittedCount})
                             </Button>
@@ -261,12 +261,6 @@ export function HomeworksPage() {
         previousAnswer={submitTarget?.previousAnswer}
         previousFileUrl={submitTarget?.previousFileUrl}
         feedback={submitTarget?.feedback}
-      />
-      <ReviewHomeworkModal
-        open={!!reviewTarget}
-        onClose={() => setReviewTarget(null)}
-        onReviewed={reload}
-        homework={reviewTarget}
       />
       <AssignHomeworkModal
         open={!!assignTarget}

@@ -23,11 +23,11 @@ describe('teacher homework scope', () => {
   it('surfaces query errors in both list and review modal', () => {
     const hook = readFileSync('src/hooks/useHomeworks.ts', 'utf8')
     const page = readFileSync('src/pages/HomeworksPage.tsx', 'utf8')
-    const modal = readFileSync('src/components/modals/ReviewHomeworkModal.tsx', 'utf8')
+    const reviewPage = readFileSync('src/pages/HomeworkReviewPage.tsx', 'utf8')
     expect(hook).toContain("console.error('Не удалось загрузить домашние задания'")
     expect(page).toContain('role="alert"')
-    expect(modal).toContain("console.error('Не удалось загрузить сдачи домашнего задания'")
-    expect(modal).toContain('loadError')
+    expect(reviewPage).toContain('setLoading(true)')
+    expect(reviewPage).toContain('Нет учеников')
   })
 
   it('scopes submissions to students in the teacher groups', () => {

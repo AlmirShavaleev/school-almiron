@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, RotateCcw, AlertTriangle, ChevronRight, ScanEye } from 'lucide-react'
+import { Clock, RotateCcw, AlertTriangle, ChevronRight } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
 
@@ -18,7 +18,7 @@ function fmtDue(iso: string | null, overdue: boolean): string {
   return overdue ? `просрочено · ${s}` : `до ${s}`
 }
 
-export function QueueItem({ item, onQuickReview }: { item: QItem; onQuickReview?: (submissionId: string) => void }) {
+export function QueueItem({ item }: { item: QItem }) {
   const navigate = useNavigate()
   const st = BUCKET_STYLE[item.bucket]
 
@@ -60,18 +60,6 @@ export function QueueItem({ item, onQuickReview }: { item: QItem; onQuickReview?
           )}
         </div>
       </div>
-
-      {item.source !== 'collection' && onQuickReview && (
-        <button
-          type="button"
-          title="Быстрая проверка"
-          aria-label="Быстрая проверка"
-          onClick={e => { e.stopPropagation(); onQuickReview(item.submissionId) }}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-primary-50 hover:text-primary-600 transition-colors shrink-0"
-        >
-          <ScanEye size={16} />
-        </button>
-      )}
 
       <ChevronRight size={16} className="text-gray-300 shrink-0" />
     </div>
