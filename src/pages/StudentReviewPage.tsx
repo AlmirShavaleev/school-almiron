@@ -231,33 +231,43 @@ export function StudentReviewPage() {
   )
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-4">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5">
         <button
           onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
-          className="flex items-center gap-1.5 text-gray-400 hover:text-gray-700 transition-colors text-sm"
+          className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
         >
           <ArrowLeft size={18} />
           <span>Назад к списку</span>
         </button>
-        <div className="flex-1" />
-        {/* Prev / Next */}
-        <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <div className="text-lg font-semibold text-gray-900">{student?.name || 'Проверка работы'}</div>
+          <div className="mt-1 text-sm text-gray-500">
+            {hw?.title}
+            {!groupId && resolvedGroupName && <span className="ml-2">· {resolvedGroupName}</span>}
+            {sub?.submitted_at && (
+              <span className="ml-2">
+                Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1 self-center">
           <button
             disabled={!prevStu}
             onClick={() => prevStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}` : `/homeworks/${hwId}/review/student/${prevStu.studentId}`)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
             title={prevStu?.name}
           >
             <ChevronLeft size={18} />
           </button>
-          <span className="text-xs text-gray-400">{sibIdx + 1} / {siblings.length}</span>
+          <span className="min-w-16 text-center text-xs font-medium text-gray-400">{sibIdx + 1} / {siblings.length}</span>
           <button
             disabled={!nextStu}
             onClick={() => nextStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}` : `/homeworks/${hwId}/review/student/${nextStu.studentId}`)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
             title={nextStu?.name}
           >
             <ChevronRight size={18} />
@@ -265,111 +275,108 @@ export function StudentReviewPage() {
         </div>
       </div>
 
-      {/* Card */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-
-        {/* Student header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              'w-11 h-11 rounded-full flex items-center justify-center text-base font-bold',
-              sub?.status === 'checked'   ? 'bg-green-100 text-green-700' :
-              sub?.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
-              sub?.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
-                                            'bg-gray-100 text-gray-400'
-            )}>
-              {student?.name.charAt(0)}
-            </div>
+      <div className="min-h-0 flex-1">
+        {!sub ? (
+          <div className="flex h-full min-h-80 items-center justify-center rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-400">
             <div>
-              <div className="font-semibold text-gray-900">{student?.name}</div>
-              <div className="text-xs text-gray-400">
-                {hw?.title}
-                {!groupId && resolvedGroupName && <span className="ml-2">Группа: {resolvedGroupName}</span>}
-                {sub?.submitted_at && (
-                  <span className="ml-2">
-                    Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <span className={cn(
-            'text-xs font-medium px-3 py-1.5 rounded-full',
-            sub?.status === 'checked'   ? 'bg-green-100 text-green-700' :
-            sub?.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
-            sub?.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
-                                          'bg-gray-100 text-gray-500'
-          )}>
-            {sub?.status === 'checked'   ? '✓ Проверено' :
-             sub?.status === 'revision'  ? '↩ На доработке' :
-             sub?.status === 'submitted' ? '⏳ Ожидает проверки' :
-                                          'Не сдал'}
-          </span>
-        </div>
-
-        <div className="px-6 py-5 space-y-5">
-
-          {/* No submission */}
-          {!sub && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center text-gray-400">
               <AlertTriangle size={28} className="mx-auto mb-2 opacity-40" />
               <p className="text-sm">Ученик ещё не сдал работу</p>
             </div>
-          )}
-
-          {/* Answer text */}
-          {sub?.answer_text && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ответ ученика</label>
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                {sub.answer_text}
+          </div>
+        ) : sub.file_url && canPreview ? (
+          <Suspense fallback={<ReviewerFallback />}>
+            <SubmissionReviewer
+              submissionId={sub.id}
+              filePath={sub.file_url}
+              className="h-[calc(100vh-24rem)] min-h-[24rem]"
+              onPublish={() => handleSave('checked')}
+              onPublishComplete={finishReview}
+            />
+          </Suspense>
+        ) : (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            {sub.answer_text ? (
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                  {sub.answer_text}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* File */}
-          {sub?.file_url && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Прикреплённый файл</label>
-              {(() => {
-                if (canPreview) {
-                  return (
-                    <Suspense fallback={<ReviewerFallback />}>
-                      <SubmissionReviewer submissionId={sub.id} filePath={sub.file_url!} onPublish={() => handleSave('checked')} onPublishComplete={finishReview} />
-                    </Suspense>
-                  )
-                }
-                return (
-                  <SignedFileLink
-                    bucket="homeworks"
-                    url={sub.file_url!}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
-                  >
-                    <FileText size={16} />
-                    {decodeURIComponent(sub.file_url!.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')}
-                  </SignedFileLink>
-                )
-              })()}
-            </div>
-          )}
-
-          {sub && !sub.answer_text && !sub.file_url && (
-            <div className="text-sm text-gray-400 italic text-center py-4 bg-gray-50 rounded-xl">
-              Ученик не прикрепил ответ
-            </div>
-          )}
-
-          {/* Review form */}
-          {sub && (
-            <div className="border-t border-gray-100 pt-5 space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                <MessageSquare size={15} className="text-primary-500" />
-                Оценка и комментарий
+            ) : sub.file_url ? (
+              <SignedFileLink
+                bucket="homeworks"
+                url={sub.file_url}
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700 transition-colors hover:bg-blue-100"
+              >
+                <FileText size={16} />
+                {decodeURIComponent(sub.file_url.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')}
+              </SignedFileLink>
+            ) : (
+              <div className="rounded-xl bg-gray-50 py-8 text-center text-sm italic text-gray-400">
+                Ученик не прикрепил ответ
               </div>
+            )}
+          </div>
+        )}
+      </div>
 
-              {/* Score */}
+      {sub && (
+        <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)_auto] lg:items-end">
+            <div className="space-y-3">
+              {sub.answer_text && canPreview && (
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
+                  <div className="max-h-28 overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                    {sub.answer_text}
+                  </div>
+                </div>
+              )}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                <label className="mb-2 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {QUICK_PHRASES.map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setFeedback(prev => prev ? `${prev} ${p}` : p)}
+                      className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  rows={3}
+                  value={feedback}
+                  onChange={e => setFeedback(e.target.value)}
+                  placeholder="Что сделано хорошо, что нужно исправить…"
+                  className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                  <MessageSquare size={15} className="text-primary-500" />
+                  Оценка и комментарий
+                </div>
+                <span className={cn(
+                  'rounded-full px-3 py-1.5 text-xs font-medium',
+                  sub.status === 'checked'   ? 'bg-green-100 text-green-700' :
+                  sub.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
+                  sub.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
+                                                'bg-gray-100 text-gray-500'
+                )}>
+                  {sub.status === 'checked'   ? '✓ Проверено' :
+                   sub.status === 'revision'  ? '↩ На доработке' :
+                   sub.status === 'submitted' ? '⏳ Ожидает проверки' :
+                                                'Не сдал'}
+                </span>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">
                   Балл <span className="text-gray-400">(0 – {hw?.max_score})</span>
                 </label>
                 <div className="flex items-center gap-3">
@@ -382,68 +389,41 @@ export function StudentReviewPage() {
                     onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
                     placeholder="—"
                     className={cn(
-                      'w-24 border rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2',
+                      'w-24 rounded-xl border px-3 py-2 text-center text-sm font-bold text-primary-700 focus:outline-none focus:ring-2',
                       scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
                     )}
                   />
                   <span className="text-sm text-gray-400">из {hw?.max_score}</span>
                   {score !== '' && !isNaN(parseInt(score)) && (
-                    <span className={cn('text-sm font-semibold',
+                    <span className={cn(
+                      'text-sm font-semibold',
                       parseInt(score) / (hw?.max_score || 100) >= 0.8 ? 'text-green-600' :
-                      parseInt(score) / (hw?.max_score || 100) >= 0.5 ? 'text-yellow-600' : 'text-red-500'
+                      parseInt(score) / (hw?.max_score || 100) >= 0.5 ? 'text-yellow-600' : 'text-red-500',
                     )}>
                       {Math.round(parseInt(score) / (hw?.max_score || 100) * 100)}%
                     </span>
                   )}
                 </div>
               </div>
-
-              {/* Quick phrases */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-2">Комментарий для ученика</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {QUICK_PHRASES.map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setFeedback(prev => prev ? `${prev} ${p}` : p)}
-                      className="px-2.5 py-1 text-xs rounded-full border border-gray-200 bg-gray-50 text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  rows={3}
-                  value={feedback}
-                  onChange={e => setFeedback(e.target.value)}
-                  placeholder="Что сделано хорошо, что нужно исправить…"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-1">
-                {saved
-                  ? <span className="text-sm text-green-600 font-medium flex items-center gap-1"><CheckCircle size={14} />Сохранено</span>
-                  : <span />
-                }
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
-                    <RotateCcw size={14} className="mr-1" />На доработку
-                  </Button>
-                  {/* Когда есть файл — единственная точка "принять" это кнопка публикации во вьювере (там же аннотации) */}
-                  {!canPreview && (
-                    <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
-                      <CheckCircle size={14} className="mr-1" />Принять
-                    </Button>
-                  )}
-                </div>
-              </div>
             </div>
-          )}
+
+            <div className="flex flex-col items-stretch gap-2 lg:min-w-44">
+              {saved
+                ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
+                : <span className="h-5" />
+              }
+              <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+                <RotateCcw size={14} className="mr-1" />На доработку
+              </Button>
+              {!canPreview && (
+                <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
+                  <CheckCircle size={14} className="mr-1" />Принять
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

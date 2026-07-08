@@ -149,6 +149,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
       submission_id: submissionId, file_path: path, page: number, data: { ...data, version: 2 }, status: 'draft',
     }, { onConflict: 'submission_id,file_path,page' })
     setSaving(false); setSaveState(saveError ? 'error' : 'saved')
+    if (saveError) console.error('Не удалось сохранить аннотации', saveError)
     if (!saveError) {
       setPublished(false)
       setDirty(value => { const next = new Set(value); next.delete(number); return next })
@@ -232,7 +233,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
 
   if (!isPdf && !isImage) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
 
-  return <section className={cn('overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
+  return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
     {!readOnly && <div className="flex flex-wrap items-center gap-2 bg-white p-2 shadow-[0_1px_0_rgba(15,23,42,.08)]">
       <div className="flex min-h-10 items-center gap-2 px-2 text-xs font-medium text-slate-600">
         <MessageSquare size={16}/>
@@ -247,7 +248,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
       <div className="flex items-center"><ToolButton disabled={page <= 1} title="Назад" onClick={() => setPage(p => p - 1)}><ChevronLeft size={17}/></ToolButton><span className="min-w-20 text-center tabular-nums">{page} / {pageCount}</span><ToolButton disabled={page >= pageCount} title="Вперёд" onClick={() => setPage(p => p + 1)}><ChevronRight size={17}/></ToolButton></div>
       <div className="flex items-center"><ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton><span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span><ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton></div>
     </div>
-    <div className="grid max-h-[68vh] grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="overflow-auto p-3 sm:p-5">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
         <div ref={surfaceRef} className="relative mx-auto overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ width: isImage ? `${zoom * 100}%` : 'fit-content', aspectRatio: ratio }}>

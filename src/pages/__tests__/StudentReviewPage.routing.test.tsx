@@ -85,7 +85,7 @@ describe('StudentReviewPage — no-group review mode', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Борис')).toBeInTheDocument())
-    expect(screen.getByText(/Группа: Группа Б/)).toBeInTheDocument()
+    expect(screen.getByText(/Группа Б/)).toBeInTheDocument()
     expect(screen.getByText('2 / 3')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTitle('Вера'))
