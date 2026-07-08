@@ -49,7 +49,7 @@ Element.prototype.setPointerCapture = vi.fn()
 
 async function renderReady(props: Partial<React.ComponentProps<typeof SubmissionReviewer>> = {}) {
   render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" {...props} />)
-  await waitFor(() => expect(screen.getByText(props.readOnly ? 'Комментарии' : 'Выделите область мышкой')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
   await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
 }
 
@@ -149,7 +149,7 @@ describe('SubmissionReviewer regions', () => {
 
   it('the editor scrolls its own content and keeps the Save/Cancel footer outside the scroll area', async () => {
     const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
-    await waitFor(() => expect(screen.getByText('Выделите область мышкой')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
     await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
     dragRegion(0.1, 0.1, 0.3, 0.3)
 
@@ -170,7 +170,7 @@ describe('SubmissionReviewer regions', () => {
 
   it('a wheel over the editor does not lose the open draft (scroll stays local, no accidental close/reset)', async () => {
     const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
-    await waitFor(() => expect(screen.getByText('Выделите область мышкой')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
     await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
     dragRegion(0.1, 0.1, 0.3, 0.3)
 
@@ -181,5 +181,22 @@ describe('SubmissionReviewer regions', () => {
     // triggers any cancel/save/state-reset path.
     expect(screen.getByText('Комментарий к области')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Текст комментария' })).toBeInTheDocument()
+  })
+
+  it('replaces the comment list with the editor while keeping the grading footer outside the scroll zone', async () => {
+    await renderReady({ footer: <div><span>Оценка</span><button type="button">Принять</button></div> })
+
+    const scrollZone = screen.getByTestId('review-rail-scroll-zone')
+    const footer = screen.getByTestId('review-rail-footer')
+    expect(scrollZone).toContainElement(screen.getByText('Комментарии'))
+    expect(footer).toContainElement(screen.getByText('Оценка'))
+    expect(scrollZone).not.toContainElement(screen.getByText('Оценка'))
+
+    dragRegion(0.1, 0.1, 0.3, 0.3)
+
+    expect(await screen.findByText('Комментарий к области')).toBeInTheDocument()
+    expect(screen.queryByText('Комментарии')).not.toBeInTheDocument()
+    expect(scrollZone).toContainElement(screen.getByText('Комментарий к области'))
+    expect(footer).toContainElement(screen.getByText('Оценка'))
   })
 })

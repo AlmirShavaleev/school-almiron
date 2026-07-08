@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Save, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Save, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
@@ -30,7 +30,9 @@ interface Props {
   readOnly?: boolean
   className?: string
   fitWidth?: boolean
+  fitPage?: boolean
   footer?: ReactNode
+  header?: ReactNode
   onPublish?: () => Promise<boolean | void>
   onPublishComplete?: (success: boolean) => void
 }
@@ -59,7 +61,18 @@ const normalizeRect = (start: Point, end: Point): Rect => ({
 })
 const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
 
-export function SubmissionReviewer({ submissionId, filePath, readOnly = false, className, fitWidth = false, footer, onPublish, onPublishComplete }: Props) {
+export function SubmissionReviewer({
+  submissionId,
+  filePath,
+  readOnly = false,
+  className,
+  fitWidth = false,
+  fitPage = false,
+  footer,
+  header,
+  onPublish,
+  onPublishComplete,
+}: Props) {
   const path = useMemo(() => extractStoragePath(filePath, 'homeworks') ?? filePath, [filePath])
   const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
   const isPdf = ext === 'pdf'
@@ -80,7 +93,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
   const [pageCount, setPageCount] = useState(1)
   const [zoom, setZoom] = useState(1)
   const [ratio, setRatio] = useState(1 / 1.414)
-  const [frameWidth, setFrameWidth] = useState(0)
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
   const [pages, setPages] = useState<Record<number, PageData>>({})
   const [dirty, setDirty] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -138,14 +151,17 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
   }, [isPdf, retryUrl, url])
 
   useEffect(() => {
-    if (!fitWidth || !frameRef.current || typeof ResizeObserver === 'undefined') return
+    if ((!fitWidth && !fitPage) || !frameRef.current || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(entries => {
-      const width = entries[0]?.contentRect.width ?? 0
-      setFrameWidth(width)
+      const rect = entries[0]?.contentRect
+      setFrameSize({
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+      })
     })
     observer.observe(frameRef.current)
     return () => observer.disconnect()
-  }, [fitWidth])
+  }, [fitPage, fitWidth])
 
   useEffect(() => {
     if (!isPdf || !pdfRef.current || !canvasRef.current) return
@@ -153,20 +169,31 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
     pdfRef.current.getPage(page).then(pdfPage => {
       if (!active || !canvasRef.current) return
       const baseViewport = pdfPage.getViewport({ scale: 1 })
-      const fittedScale = fitWidth && frameWidth > 0
-        ? Math.max(0.1, (frameWidth - 2) / baseViewport.width)
+      const availableWidth = Math.max(0, frameRef.current?.clientWidth ?? frameSize.width)
+      const availableHeight = Math.max(0, frameRef.current?.clientHeight ?? frameSize.height)
+      const widthScale = (fitWidth || fitPage) && availableWidth > 0
+        ? Math.max(0.1, (availableWidth - 2) / baseViewport.width)
         : 1.35
+      const heightScale = fitPage && availableHeight > 0
+        ? Math.max(0.1, (availableHeight - 2) / baseViewport.height)
+        : widthScale
+      const fittedScale = fitPage ? Math.min(widthScale, heightScale) : widthScale
       const viewport = pdfPage.getViewport({ scale: fittedScale * zoom })
+      const dpr = window.devicePixelRatio || 1
+      const renderViewport = pdfPage.getViewport({ scale: fittedScale * zoom * dpr })
       const canvas = canvasRef.current
-      canvas.width = viewport.width; canvas.height = viewport.height
+      canvas.width = renderViewport.width
+      canvas.height = renderViewport.height
+      canvas.style.width = `${viewport.width}px`
+      canvas.style.height = `${viewport.height}px`
       setRatio(baseViewport.width / baseViewport.height)
       renderRef.current?.cancel()
-      const task = pdfPage.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport })
+      const task = pdfPage.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: renderViewport })
       renderRef.current = task
       task.promise.catch((e: any) => e?.name !== 'RenderingCancelledException' && retryUrl())
     }).catch(retryUrl)
     return () => { active = false; renderRef.current?.cancel() }
-  }, [fitWidth, frameWidth, isPdf, page, retryUrl, url, zoom])
+  }, [fitPage, fitWidth, frameSize.height, frameSize.width, isPdf, page, retryUrl, url, zoom])
 
   const savePage = useCallback(async (number: number, data: PageData) => {
     if (readOnly) return true
@@ -257,27 +284,44 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
     onPublishComplete?.(true)
   }
 
+  useEffect(() => {
+    if (readOnly) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      const isTextTarget = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable
+      if (isTextTarget) return
+      if (event.key === 'PageUp' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        setPage(value => Math.max(1, value - 1))
+      }
+      if (event.key === 'PageDown' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        setPage(value => Math.min(pageCount, value + 1))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pageCount, readOnly])
+
   if (!isPdf && !isImage) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
 
   return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
-    {!readOnly && <div className="flex flex-wrap items-center gap-2 bg-white p-2 shadow-[0_1px_0_rgba(15,23,42,.08)]">
-      <div className="flex min-h-10 items-center gap-2 px-2 text-xs font-medium text-slate-600">
-        <MessageSquare size={16}/>
-        Выделите область мышкой
-      </div>
-      <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-        {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-        <button type="button" onClick={() => void publish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
-      </div>
-    </div>}
-    <div className="flex items-center justify-between bg-slate-50 px-3 py-2 text-xs text-slate-600">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+      {header ? <div className="min-w-0 flex-1">{header}</div> : <div className="flex-1" />}
+      <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
       <div className="flex items-center"><ToolButton disabled={page <= 1} title="Назад" onClick={() => setPage(p => p - 1)}><ChevronLeft size={17}/></ToolButton><span className="min-w-20 text-center tabular-nums">{page} / {pageCount}</span><ToolButton disabled={page >= pageCount} title="Вперёд" onClick={() => setPage(p => p + 1)}><ChevronRight size={17}/></ToolButton></div>
       <div className="flex items-center"><ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton><span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span><ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton></div>
+      {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
+        {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
+        <button type="button" onClick={() => void publish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+      </div>}
+      </div>
     </div>
-    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div ref={frameRef} className="overflow-auto p-3 sm:p-5">
+    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div ref={frameRef} data-testid="review-document-scroll-area" className="overflow-auto p-3 sm:p-4">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
-        <div ref={surfaceRef} className={cn('relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10', fitWidth ? 'mx-0' : 'mx-auto')} style={{ width: isImage ? (fitWidth ? `${zoom * 100}%` : `${zoom * 100}%`) : fitWidth ? '100%' : 'fit-content', maxWidth: fitWidth ? '100%' : undefined, aspectRatio: ratio }}>
+        <div ref={surfaceRef} className={cn('relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10', fitWidth || fitPage ? 'mx-0' : 'mx-auto')} style={{ width: isImage ? `${zoom * 100}%` : fitPage ? 'fit-content' : fitWidth ? '100%' : 'fit-content', maxWidth: fitPage ? 'none' : fitWidth ? '100%' : undefined, aspectRatio: ratio }}>
           {isPdf ? <canvas ref={canvasRef} className="block max-w-none"/> : url ? <img src={url} alt="Работа ученика" draggable={false} className="block h-auto w-full select-none" onLoad={e => { setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight); setLoading(false) }} onError={retryUrl}/> : null}
           {!loading && <svg viewBox="0 0 1 1" preserveAspectRatio="none" className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : draft ? 'cursor-default' : 'cursor-crosshair')} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
             {current.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && setActiveId(mark.id)}/>)}
@@ -287,10 +331,12 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
         </div>}
       </div>
       <aside className="flex min-h-64 flex-col border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
-        {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
+        <div data-testid="review-rail-scroll-zone" className="min-h-0 flex-1 overflow-hidden">
+          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
+        </div>
+        {footer ? <div data-testid="review-rail-footer" className="shrink-0 border-t border-slate-200 bg-white">{footer}</div> : null}
       </aside>
     </div>
-    {footer ? <div className="shrink-0 border-t border-slate-200 bg-white">{footer}</div> : null}
   </section>
 }
 

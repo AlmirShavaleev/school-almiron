@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare,
-  AlertTriangle, Loader2, ChevronLeft, ChevronRight,
+  AlertTriangle, Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -223,12 +223,58 @@ export function StudentReviewPage() {
   const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
   const prevStu  = sibIdx > 0 ? siblings[sibIdx - 1] : null
   const nextStu  = sibIdx >= 0 && sibIdx < siblings.length - 1 ? siblings[sibIdx + 1] : null
-  const reviewFooter = sub ? (
-    <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
+  const reviewHeader = (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <button
+        onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
+        className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
+      >
+        <ArrowLeft size={18} />
+        <span>Назад</span>
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-gray-900">{student?.name || 'Проверка работы'}</div>
+        <div className="truncate text-xs text-gray-500">
+          {hw?.title}
+          {!groupId && resolvedGroupName && <span className="ml-2">· {resolvedGroupName}</span>}
+          {sub?.submitted_at && (
+            <span className="ml-2">
+              Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={!prevStu}
+          onClick={() => prevStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}` : `/homeworks/${hwId}/review/student/${prevStu.studentId}`)}
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
+          title={prevStu?.name}
+          aria-label="Предыдущий ученик"
+        >
+          ‹
+        </button>
+        <div className="min-w-16 text-center text-xs font-medium text-gray-400">{sibIdx + 1} / {siblings.length}</div>
+        <button
+          type="button"
+          disabled={!nextStu}
+          onClick={() => nextStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}` : `/homeworks/${hwId}/review/student/${nextStu.studentId}`)}
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
+          title={nextStu?.name}
+          aria-label="Следующий ученик"
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  )
+  const reviewRail = sub ? (
+    <div data-testid="student-review-rail" className="grid gap-3 p-3">
       <div className="space-y-2">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
-          <div className="mb-2 flex flex-wrap gap-1.5">
+          <div className="mb-2 flex max-h-16 flex-wrap gap-1.5 overflow-auto">
             {QUICK_PHRASES.map(p => (
               <button
                 key={p}
@@ -318,50 +364,7 @@ export function StudentReviewPage() {
   )
 
   return (
-    <div data-testid="student-review-page" className="flex h-full min-h-0 flex-col gap-3 px-3 py-3 sm:px-4 sm:py-4">
-
-      {/* Header */}
-      <div className="flex shrink-0 flex-wrap items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5">
-        <button
-          onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
-          className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
-        >
-          <ArrowLeft size={18} />
-          <span>Назад к списку</span>
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="text-lg font-semibold text-gray-900">{student?.name || 'Проверка работы'}</div>
-          <div className="mt-1 text-sm text-gray-500">
-            {hw?.title}
-            {!groupId && resolvedGroupName && <span className="ml-2">· {resolvedGroupName}</span>}
-            {sub?.submitted_at && (
-              <span className="ml-2">
-                Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="ml-auto flex items-center gap-1 self-center">
-          <button
-            disabled={!prevStu}
-            onClick={() => prevStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}` : `/homeworks/${hwId}/review/student/${prevStu.studentId}`)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
-            title={prevStu?.name}
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <span className="min-w-16 text-center text-xs font-medium text-gray-400">{sibIdx + 1} / {siblings.length}</span>
-          <button
-            disabled={!nextStu}
-            onClick={() => nextStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}` : `/homeworks/${hwId}/review/student/${nextStu.studentId}`)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
-            title={nextStu?.name}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
-      </div>
-
+    <div data-testid="student-review-page" className="flex h-full min-h-0 flex-col px-3 py-3 sm:px-4 sm:py-4">
       <div className="min-h-0 flex-1">
         {!sub ? (
           <div className="flex h-full min-h-80 items-center justify-center rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-400">
@@ -376,14 +379,18 @@ export function StudentReviewPage() {
               submissionId={sub.id}
               filePath={sub.file_url}
               className="h-full min-h-0"
-              fitWidth
-              footer={reviewFooter}
+              fitPage
+              header={reviewHeader}
+              footer={reviewRail}
               onPublish={() => handleSave('checked')}
               onPublishComplete={finishReview}
             />
           </Suspense>
         ) : (
           <div className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-4 shrink-0 border-b border-gray-100 pb-4">
+              {reviewHeader}
+            </div>
             {sub.answer_text ? (
               <div className="min-h-0 flex-1 space-y-2">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
@@ -406,7 +413,7 @@ export function StudentReviewPage() {
               </div>
             )}
             <div className="mt-4 shrink-0 border-t border-gray-100 pt-4">
-              {reviewFooter}
+              {reviewRail}
             </div>
           </div>
         )}
