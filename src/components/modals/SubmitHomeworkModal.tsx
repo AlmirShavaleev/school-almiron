@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react'
-import { X, Upload, Paperclip, FileText, XCircle } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { X, Upload, Paperclip, FileText, XCircle, MessageSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { toast } from '@/store/toastStore'
 
 interface Props {
   open: boolean
@@ -9,14 +11,29 @@ interface Props {
   onSubmitted: () => void
   homework: { id: string; title: string; max_score: number; file_url?: string } | null
   studentId: string | null
+  isResubmit?: boolean
+  previousAnswer?: string | null
+  previousFileUrl?: string | null
+  feedback?: string | null
 }
 
-export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, studentId }: Props) {
+export function SubmitHomeworkModal({
+  open, onClose, onSubmitted, homework, studentId,
+  isResubmit = false, previousAnswer = null, previousFileUrl = null, feedback = null,
+}: Props) {
   const [content, setContent]     = useState('')
   const [file, setFile]           = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError]         = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Prefill with the previous answer when reopening for a resubmission
+  useEffect(() => {
+    if (!open) return
+    setContent(isResubmit ? (previousAnswer || '') : '')
+    setFile(null)
+    setError('')
+  }, [open, isResubmit, previousAnswer])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -42,8 +59,8 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
       .from('homeworks')
       .upload(path, file, { contentType: file.type, upsert: true })
     if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
-    const { data } = supabase.storage.from('homeworks').getPublicUrl(path)
-    return data.publicUrl
+    // Private bucket: store the storage path, not a public URL.
+    return path
   }
 
   async function handleSubmit() {
@@ -55,10 +72,14 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
     setError('')
     setUploading(true)
     try {
-      let fileUrl: string | null = null
-      if (file) fileUrl = await uploadFile()
+      let fileUrl: string | null = file ? await uploadFile() : (isResubmit ? previousFileUrl : null)
 
-      const { error: err } = await supabase
+      // RLS only allows a student to UPDATE their own submission while it's
+      // in not_submitted/revision — if a teacher checked it in the meantime
+      // (race between opening this form and submitting), the row won't
+      // match the policy anymore and .select() comes back empty with no
+      // error. Detect that explicitly instead of silently no-op'ing.
+      const { data, error: err } = await supabase
         .from('homework_submissions')
         .upsert({
           homework_id:  homework.id,
@@ -66,13 +87,21 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
           answer_text:  content.trim() || null,
           file_url:     fileUrl,
           status:       'submitted',
+          score:        null,
+          checked_by:   null,
           submitted_at: new Date().toISOString(),
         }, { onConflict: 'homework_id,student_id' })
+        .select('id')
 
       if (err) throw err
+      if (!data || data.length === 0) {
+        setError('Работа уже проверена, обнови страницу')
+        return
+      }
 
       setContent('')
       setFile(null)
+      toast.success(isResubmit ? 'Работа отправлена на повторную проверку' : 'Работа отправлена на проверку')
       onSubmitted()
       onClose()
     } catch (e: any) {
@@ -96,7 +125,7 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
               <Upload size={20} className="text-green-600" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-900">Сдать задание</h2>
+              <h2 className="text-lg font-bold text-gray-900">{isResubmit ? 'Пересдать задание' : 'Сдать задание'}</h2>
               <p className="text-xs text-gray-500 max-w-[220px] truncate">{homework.title}</p>
             </div>
           </div>
@@ -107,12 +136,37 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
 
         <div className="p-6 space-y-4">
 
+          {/* Teacher feedback on the previous attempt */}
+          {isResubmit && feedback && (
+            <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <MessageSquare size={16} className="text-orange-500 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-semibold text-orange-700 mb-0.5">Комментарий преподавателя</div>
+                <p className="text-sm text-orange-800">{feedback}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Previous attempt's file, for reference */}
+          {isResubmit && previousFileUrl && (
+            <SignedFileLink
+              bucket="homeworks"
+              url={previousFileUrl}
+              className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-colors group"
+            >
+              <FileText size={18} className="text-gray-400 group-hover:text-blue-500 shrink-0" />
+              <span className="text-sm text-gray-600 group-hover:text-blue-600 flex-1">
+                Открыть прошлый файл
+              </span>
+              <span className="text-xs text-gray-400">↗</span>
+            </SignedFileLink>
+          )}
+
           {/* Task file from teacher */}
           {homework.file_url && (
-            <a
-              href={homework.file_url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <SignedFileLink
+              bucket="homeworks"
+              url={homework.file_url}
               className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-colors group"
             >
               <FileText size={18} className="text-gray-400 group-hover:text-blue-500 shrink-0" />
@@ -120,7 +174,7 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
                 Открыть файл задания
               </span>
               <span className="text-xs text-gray-400">↗</span>
-            </a>
+            </SignedFileLink>
           )}
 
           {/* Text answer */}
@@ -140,7 +194,7 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
           {/* File upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Прикрепить файл
+              Прикрепить файл{isResubmit && previousFileUrl ? ' (необязательно — заменит прошлый)' : ''}
             </label>
             {file ? (
               <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
@@ -182,7 +236,7 @@ export function SubmitHomeworkModal({ open, onClose, onSubmitted, homework, stud
               Отмена
             </Button>
             <Button className="flex-1" onClick={handleSubmit} loading={uploading}>
-              {uploading ? 'Загрузка…' : 'Отправить'}
+              {uploading ? 'Загрузка…' : isResubmit ? 'Отправить пересдачу' : 'Отправить'}
             </Button>
           </div>
         </div>

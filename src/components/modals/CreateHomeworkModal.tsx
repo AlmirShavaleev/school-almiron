@@ -7,14 +7,11 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
-import { notifyNewHomework } from '@/utils/notify'
-import { formatDate } from '@/utils/format'
 
 // ДЗ принадлежит ТЕМЕ курса (course-level), не группе.
 const schema = z.object({
   title:       z.string().min(3, 'Минимум 3 символа'),
   description: z.string().optional(),
-  due_date:    z.string().min(1, 'Укажите срок сдачи'),
   max_score:   z.coerce.number().min(1).max(100),
 })
 type FormValues = z.infer<typeof schema>
@@ -130,13 +127,14 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
   }
   function removeFile() { setFile(null); if (fileRef.current) fileRef.current.value = '' }
 
-  async function uploadFile(hwId: string): Promise<string | null> {
+  async function uploadFile(hwId: string): Promise<{ url: string; path: string } | null> {
     if (!file) return null
     const ext  = file.name.split('.').pop()
     const path = `tasks/${hwId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('homeworks').upload(path, file, { contentType: file.type, upsert: true })
     if (error) throw new Error('Ошибка загрузки файла: ' + error.message)
-    return supabase.storage.from('homeworks').getPublicUrl(path).data.publicUrl
+    // Private bucket: store the storage path, not a public URL.
+    return { url: path, path }
   }
 
   async function onSubmit(values: FormValues) {
@@ -160,7 +158,7 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
           title:       values.title,
           description: values.description || null,
           topic_id:    topicId,
-          due_date:    new Date(values.due_date).toISOString(),
+          due_date:    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           max_score:   values.max_score,
           created_by:  tId,
           teacher_id:  tId,
@@ -171,15 +169,18 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
       if (error) throw error
 
       if (file && hw) {
-        const url = await uploadFile(hw.id)
-        if (url) await supabase.from('homeworks').update({ file_url: url }).eq('id', hw.id)
-      }
-
-      // уведомить учеников всех групп курса (ДЗ — общее для курса)
-      if (courseId) {
-        const { data: grps } = await supabase.from('groups').select('id').eq('course_id', courseId)
-        for (const g of (grps || []) as any[]) {
-          await notifyNewHomework(g.id, values.title, formatDate(values.due_date))
+        const uploaded = await uploadFile(hw.id)
+        if (uploaded) {
+          await supabase.from('homeworks').update({
+            file_url: uploaded.url,
+            attachments: [{
+              storage_path: uploaded.path,
+              public_url: uploaded.url,
+              original_filename: file.name,
+              mime_type: file.type,
+              size_bytes: file.size,
+            }],
+          } as any).eq('id', hw.id)
         }
       }
 
@@ -224,7 +225,7 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
                 error={errors.title?.message} {...register('title')} />
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Краткое описание</label>
                 <textarea rows={2} placeholder="Дополнительные инструкции…"
                   className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                   {...register('description')} />
@@ -246,14 +247,13 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
                 disabled={!courseId}
                 options={[{ value: '', label: topics.length ? '— выберите тему —' : 'Нет тем в курсе' }, ...topics.map(t => ({ value: t.id, label: t.label }))]}
               />
-              {!topicId && <p className="text-xs text-gray-400 -mt-2">ДЗ станет доступно всем группам этого курса</p>}
+              {!topicId && <p className="text-xs text-gray-400 -mt-2">ДЗ будет шаблоном темы. Группы и дедлайн задаются при назначении.</p>}
               {defaultLessonId && (
                 <p className="text-xs text-primary-600 -mt-2 flex items-center gap-1">
                   <ClipboardList size={11} />Привязано к текущему уроку
                 </p>
               )}
 
-              <Input label="Срок сдачи *" type="datetime-local" error={errors.due_date?.message} {...register('due_date')} />
               <Input label="Максимальный балл *" type="number" min={1} max={100} error={errors.max_score?.message} {...register('max_score')} />
 
               <div>

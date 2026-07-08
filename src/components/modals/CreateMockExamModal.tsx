@@ -37,6 +37,13 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
     defaultValues: { max_score: 100 },
   })
 
+  // Reset the form only on the open transition (false→true), not on every
+  // re-run of the data-loading effect below — a background token refresh
+  // must never wipe whatever the user has already typed into an open modal.
+  useEffect(() => {
+    if (open) reset({ max_score: 100 })
+  }, [open, reset])
+
   useEffect(() => {
     if (!open || !profile) return
     setLoadingData(true)
@@ -58,8 +65,7 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
       setLoadingData(false)
     }
     load()
-    reset({ max_score: 100 })
-  }, [open, profile])
+  }, [open, profile?.id, profile?.role])
 
   async function onSubmit(values: FormValues) {
     const { data, error } = await supabase

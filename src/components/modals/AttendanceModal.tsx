@@ -93,24 +93,24 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col z-10">
 
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <div>
+        <div className="flex items-start justify-between px-4 sm:px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="min-w-0">
             <h2 className="font-bold text-gray-900">Посещаемость</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{lesson.title} · {lessonDate}</p>
+            <p className="text-xs text-gray-400 mt-0.5 break-words">{lesson.title} · {lessonDate}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 ml-3">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-600 ml-3 shrink-0">
             <X size={20} />
           </button>
         </div>
 
         {/* Quick stats + mark-all */}
-        <div className="px-6 py-3 border-b border-gray-100 shrink-0 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-3 border-b border-gray-100 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="flex items-center gap-4 text-sm">
             <span className="flex items-center gap-1.5 text-green-600 font-medium">
               <Check size={14} />{presentCount}
@@ -133,7 +133,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
                 key={s}
                 onClick={() => markAll(s)}
                 className={cn(
-                  'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                  'min-h-11 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
                   STATUS_CONFIG[s].btn
                 )}
               >
@@ -144,7 +144,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
         </div>
 
         {/* Student list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-2">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
               <Loader2 size={18} className="animate-spin" />Загрузка…
@@ -157,7 +157,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
           ) : (
             local.map(student => (
               <div key={student.student_id} className="rounded-xl border border-gray-100 overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 sm:px-4 py-3">
                   {/* Avatar */}
                   <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm shrink-0">
                     {student.avatar_url
@@ -167,7 +167,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
                   </div>
 
                   {/* Name */}
-                  <span className="flex-1 text-sm font-medium text-gray-800">{student.full_name}</span>
+                  <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 truncate">{student.full_name}</span>
 
                   {/* Status toggles */}
                   <div className="flex items-center gap-1.5">
@@ -177,7 +177,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
                         title={STATUS_CONFIG[s].label}
                         onClick={() => setStatus(student.student_id, s)}
                         className={cn(
-                          'w-8 h-8 rounded-lg border flex items-center justify-center transition-all',
+                          'w-11 h-11 sm:w-8 sm:h-8 rounded-lg border flex items-center justify-center transition-all',
                           student.status === s
                             ? STATUS_CONFIG[s].active
                             : STATUS_CONFIG[s].btn
@@ -192,7 +192,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
                   <button
                     onClick={() => setExpandNote(expandNote === student.student_id ? null : student.student_id)}
                     className={cn(
-                      'p-1.5 rounded-lg border transition-colors text-xs',
+                      'w-11 h-11 sm:w-auto sm:h-auto flex items-center justify-center rounded-lg border transition-colors text-xs',
                       student.note
                         ? 'border-primary-300 text-primary-600 bg-primary-50'
                         : 'border-gray-200 text-gray-300 hover:text-gray-500'
@@ -225,7 +225,7 @@ export function AttendanceModal({ open, onClose, onSaved, lesson }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-t border-gray-100 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="text-xs text-gray-400">
             {presentCount} из {total} присутствуют
             {total > 0 && (

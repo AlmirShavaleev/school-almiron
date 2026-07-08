@@ -271,32 +271,32 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   const isFull = members.length >= maxStudents
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col z-10">
 
         {/* ── Header ── */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <div>
-            <h2 className="font-bold text-gray-900 text-lg">
+        <div className="flex items-start justify-between px-4 sm:px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="min-w-0">
+            <h2 className="font-bold text-gray-900 text-lg break-words">
               {isEdit ? `Редактирование: ${group!.name}` : 'Новая группа'}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
               {isEdit ? 'Изменение настроек и состава группы' : 'Создание учебной группы'}
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 ml-3 shrink-0">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-600 ml-3 shrink-0">
             <X size={20} />
           </button>
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex border-b border-gray-100 px-6 shrink-0">
+        <div className="flex border-b border-gray-100 px-4 sm:px-6 shrink-0 overflow-x-auto">
           <button
             onClick={() => setTab('settings')}
             className={cn(
-              'flex items-center gap-1.5 px-1 py-3 mr-6 text-sm font-semibold border-b-2 -mb-px transition-colors',
+              'min-h-11 shrink-0 flex items-center gap-1.5 px-1 py-3 mr-6 text-sm font-semibold border-b-2 -mb-px transition-colors',
               tab === 'settings' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-800'
             )}
           >
@@ -306,7 +306,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
             onClick={() => setTab('students')}
             disabled={!isEdit}
             className={cn(
-              'flex items-center gap-1.5 px-1 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors',
+              'min-h-11 shrink-0 flex items-center gap-1.5 px-1 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors',
               tab === 'students' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-800',
               !isEdit && 'opacity-40 cursor-not-allowed'
             )}
@@ -320,7 +320,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
 
         {/* ════ TAB: НАСТРОЙКИ ════ */}
         {tab === 'settings' && (
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
 
             {errors.general && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
@@ -444,7 +444,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
                     key={d} type="button"
                     onClick={() => toggleDay(d)}
                     className={cn(
-                      'px-3 py-1.5 rounded-lg text-sm font-medium border transition-all',
+                      'min-h-11 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all',
                       days.includes(d)
                         ? 'bg-primary-600 text-white border-primary-600'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
@@ -472,7 +472,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
           <div className="flex-1 overflow-y-auto flex flex-col">
 
             {/* Search bar */}
-            <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-100 shrink-0">
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -508,7 +508,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
                         <button
                           onClick={() => handleAddStudent(s)}
                           disabled={adding === s.student_id || isFull}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                          className="min-h-11 flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
                         >
                           {adding === s.student_id ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
                           Добавить
@@ -524,7 +524,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
             </div>
 
             {/* Members */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-2">
               {membLoading ? (
                 <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
                   <Loader2 size={18} className="animate-spin" />Загрузка…
@@ -553,13 +553,13 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
                       className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors group">
                       <StudentAvatar s={s} />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-800">{s.full_name}</div>
-                        <div className="text-xs text-gray-400">{s.email}</div>
+                        <div className="text-sm font-medium text-gray-800 truncate">{s.full_name}</div>
+                        <div className="text-xs text-gray-400 truncate">{s.email}</div>
                       </div>
-                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 transition-all">
+                      <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center gap-1.5 transition-all">
                         <button
                           onClick={() => { onClose(); navigate(`/students/${s.student_id}`) }}
-                          className="p-1.5 text-gray-400 border border-gray-200 rounded-lg hover:text-primary-600 hover:border-primary-300 transition-colors"
+                          className="w-11 h-11 flex items-center justify-center text-gray-400 border border-gray-200 rounded-lg hover:text-primary-600 hover:border-primary-300 transition-colors"
                           title="Открыть профиль"
                         >
                           <ExternalLink size={12} />
@@ -567,7 +567,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
                         <button
                           onClick={() => handleRemoveStudent(s.student_id)}
                           disabled={removing === s.student_id}
-                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          className="min-h-11 flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                         >
                           {removing === s.student_id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />}
                           Убрать
@@ -582,8 +582,8 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
         )}
 
         {/* ── Footer ── */}
-        <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between gap-3">
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors px-3 py-2">
+        <div className="px-4 sm:px-6 py-4 border-t border-gray-100 shrink-0 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-between gap-3">
+          <button onClick={onClose} className="min-h-11 text-sm text-gray-500 hover:text-gray-700 transition-colors px-3 py-2">
             Отмена
           </button>
 
@@ -591,14 +591,14 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl disabled:opacity-60 transition-colors"
+              className="min-h-11 flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl disabled:opacity-60 transition-colors"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
               {isEdit ? 'Сохранить изменения' : 'Создать группу'}
             </button>
           )}
           {tab === 'students' && (
-            <button onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors">
+            <button onClick={onClose} className="min-h-11 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors">
               Готово
             </button>
           )}

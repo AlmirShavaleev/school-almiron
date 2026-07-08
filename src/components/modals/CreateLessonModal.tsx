@@ -244,13 +244,13 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate, defau
     <>
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={handleClose} />
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
         <div
           className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
                 <Calendar size={16} className="text-primary-600" />
@@ -262,12 +262,12 @@ export function CreateLessonModal({ open, onClose, onCreated, defaultDate, defau
                 </p>
               </div>
             </div>
-            <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
+            <button onClick={handleClose} className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
               <X size={18} />
             </button>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="px-4 sm:px-6 py-5 space-y-5">
 
             {/* Format toggle */}
             <div>

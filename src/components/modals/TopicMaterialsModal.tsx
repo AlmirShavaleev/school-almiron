@@ -7,6 +7,7 @@ import {
 import { useTopicMaterials, type MaterialType } from '@/hooks/useTopicMaterials'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 
 // ─── Section config ───────────────────────────────────────────────────────────
@@ -111,15 +112,14 @@ function SectionEditor({
 
           {/* File */}
           {section.hasFile && material?.file_url && (
-            <a
-              href={material.file_url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <SignedFileLink
+              bucket="course-materials"
+              url={material.file_url}
               className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
             >
               <FileText size={18} className="text-blue-500 shrink-0" />
               <span className="text-sm text-blue-700 truncate">{fileName || 'Открыть файл'}</span>
-            </a>
+            </SignedFileLink>
           )}
 
           {/* Link (non-video) */}
@@ -192,10 +192,10 @@ function SectionEditor({
               {material?.file_url ? (
                 <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
                   <FileText size={20} className="text-gray-400 shrink-0" />
-                  <a href={material.file_url} target="_blank" rel="noopener noreferrer"
+                  <SignedFileLink bucket="course-materials" url={material.file_url}
                     className="flex-1 text-sm text-primary-600 hover:underline truncate">
                     {fileName || 'Открыть файл'}
-                  </a>
+                  </SignedFileLink>
                   <button onClick={removeFile} className="text-gray-300 hover:text-red-500 transition-colors shrink-0 p-1">
                     <Trash2 size={16} />
                   </button>
@@ -373,10 +373,9 @@ function StudentView({
                     </div>
                   </div>
                 ) : hasFile ? (
-                  <a
-                    href={mat!.file_url!}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <SignedFileLink
+                    bucket="course-materials"
+                    url={mat!.file_url!}
                     className={cn(
                       'flex items-center gap-3 px-4 py-3 rounded-xl border transition-all hover:shadow-sm',
                       'border-gray-200 hover:border-primary-300 bg-white hover:bg-gray-50'
@@ -392,7 +391,7 @@ function StudentView({
                       </div>
                     </div>
                     <FileText size={15} className="text-gray-300 shrink-0" />
-                  </a>
+                  </SignedFileLink>
                 ) : hasContent ? (
                   <ContentButton section={s} content={mat!.content!} />
                 ) : null}
