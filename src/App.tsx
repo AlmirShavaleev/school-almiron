@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { useEffect, Component, type ReactNode } from 'react'
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { useEffect, Component, Suspense, lazy, type ReactNode } from 'react'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
@@ -32,54 +32,28 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
 
-// Layouts
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { RoleGuard } from '@/components/auth/RoleGuard'
-
 // Auth pages
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { RegisterPage } from '@/pages/auth/RegisterPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 
-// Public
-import { LandingPage }       from '@/pages/LandingPage'
-import { PricingPage }       from '@/pages/PricingPage'
-import { PaymentResultPage } from '@/pages/PaymentResultPage'
+// Public — lazy-loaded so framer-motion + landing components stay out of the main chunk
+const LandingPage       = lazy(() => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
+const PricingPage       = lazy(() => import('@/pages/PricingPage').then(m => ({ default: m.PricingPage })))
+const PaymentResultPage = lazy(() => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 
-// Dashboard
-import { DashboardPage } from '@/pages/DashboardPage'
+// Protected app subtree (DashboardLayout + all its child routes) — lazy so its page code stays out of the entry chunk
+const AppRoutes = lazy(() => import('@/AppRoutes'))
 
-// Role dashboards
-import { StudentDashboard } from '@/pages/student/StudentDashboard'
-import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'
-import { CuratorDashboard } from '@/pages/curator/CuratorDashboard'
-import { AdminDashboard } from '@/pages/admin/AdminDashboard'
-import { OwnerDashboard } from '@/pages/owner/OwnerDashboard'
-
-// Shared pages
-import { GroupsPage } from '@/pages/GroupsPage'
-import { GroupControlPanel } from '@/pages/GroupControlPanel'
-import { TeacherDetailPage } from '@/pages/TeacherDetailPage'
-import { LessonDetailPage } from '@/pages/LessonDetailPage'
-import { HomeworkDetailPage } from '@/pages/HomeworkDetailPage'
-import { HomeworkReviewPage } from '@/pages/HomeworkReviewPage'
-import { StudentReviewPage } from '@/pages/StudentReviewPage'
-import { HomeworkQueuePage } from '@/pages/HomeworkQueuePage'
-import { LessonsPage } from '@/pages/LessonsPage'
-import { HomeworksPage } from '@/pages/HomeworksPage'
-import { MockExamsPage } from '@/pages/MockExamsPage'
-import { PaymentsPage } from '@/pages/PaymentsPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { NotificationsPage } from '@/pages/NotificationsPage'
-import { CourseProgramPage } from '@/pages/CourseProgramPage'
-import { AttendancePage } from '@/pages/AttendancePage'
-import { MyCoursesPage } from '@/pages/MyCoursesPage'
-import { StudentCoursePage } from '@/pages/StudentCoursePage'
-import { TopicPage } from '@/pages/TopicPage'
-import { StudentProfilePage } from '@/pages/StudentProfilePage'
-import { SchedulePage } from '@/pages/SchedulePage'
-import { MyProgressPage } from '@/pages/student/MyProgressPage'
+/** Полноэкранный спиннер — общий для loading-состояния и Suspense-фолбэка. */
+function FullScreenSpinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
 
 /** `/` → дашборд если залогинен, иначе лендинг */
 function RootRedirect() {
@@ -91,21 +65,32 @@ function RootRedirect() {
     if (profile) navigate('/dashboard', { replace: true })
   }, [profile, loading, navigate])
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  if (loading) return <FullScreenSpinner />
   if (profile) return null   // сейчас переходим на /dashboard
 
   return <LandingPage />
 }
 
 /**
+ * Field-by-field diff of two profile rows (Object.keys of both sides, not a
+ * hardcoded field list — a new `profiles` column must show up in the diff
+ * automatically, not silently compare as "unchanged").
+ */
+function profilesEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const key of keys) {
+    if (a[key] !== b[key]) return false
+  }
+  return true
+}
+
+/**
  * Single source of truth for auth state.
  * Runs once at app level — no duplicate listeners.
  */
-function AppAuth() {
+export function AppAuth() {
   const { setUser, setSession, setProfile, setLoading, reset } = useAuthStore()
 
   useEffect(() => {
@@ -125,7 +110,14 @@ function AppAuth() {
         const res = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         data = res.data
       }
-      if (!cancelled && data) setProfile(data as any)
+      // Same auth event fires on every token refresh (periodic, unrelated to
+      // profile content). Skip setProfile when the row is byte-for-byte the
+      // same as what's already in the store — a fresh object reference here
+      // ripples into every `useEffect`/`useMemo` that has `profile` (not
+      // `profile?.id`) in its deps array and re-triggers it for nothing.
+      if (!cancelled && data && !profilesEqual(useAuthStore.getState().profile as any, data as any)) {
+        setProfile(data as any)
+      }
       if (!cancelled) setLoading(false)
     }
 
@@ -170,6 +162,7 @@ export default function App() {
     <BrowserRouter>
       <AppAuth />
       <Toaster />
+      <Suspense fallback={<FullScreenSpinner />}>
       <Routes>
         {/* Public */}
         <Route path="/"               element={<RootRedirect />} />
@@ -180,49 +173,10 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password"  element={<ResetPasswordPage />} />
 
-        {/* Protected — dashboard layout */}
-        <Route element={<DashboardLayout />}>
-          {/* Доступно всем авторизованным */}
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/payments" element={<PaymentsPage />} />
-
-          {/* Дашборды по ролям */}
-          <Route path="/student" element={<RoleGuard allow={['student']}><StudentDashboard /></RoleGuard>} />
-          <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
-          <Route path="/curator" element={<RoleGuard allow={['curator','admin','owner']}><CuratorDashboard /></RoleGuard>} />
-          <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
-          <Route path="/owner" element={<RoleGuard allow={['owner']}><OwnerDashboard /></RoleGuard>} />
-
-          {/* Только персонал (teacher/curator/admin/owner) */}
-          <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
-          <Route path="/groups/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupControlPanel /></RoleGuard>} />
-          <Route path="/teachers/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TeacherDetailPage /></RoleGuard>} />
-          <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
-          <Route path="/course-program" element={<RoleGuard allow={['teacher','admin','owner']}><CourseProgramPage /></RoleGuard>} />
-          <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
-          <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
-          <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
-          <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><LessonDetailPage /></RoleGuard>} />
-          <Route path="/homeworks/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkDetailPage /></RoleGuard>} />
-          <Route path="/homeworks/:id/review/:groupId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewPage /></RoleGuard>} />
-          <Route path="/homeworks/:id/review/:groupId/:studentId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentReviewPage /></RoleGuard>} />
-
-          {/* Списки, общие для student (своё) и персонала */}
-          <Route path="/lessons" element={<LessonsPage />} />
-          <Route path="/homeworks" element={<HomeworksPage />} />
-          <Route path="/mock-exams" element={<MockExamsPage />} />
-
-          {/* Только ученик */}
-          <Route path="/my-course" element={<RoleGuard allow={['student']}><MyCoursesPage /></RoleGuard>} />
-          <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']}><StudentCoursePage /></RoleGuard>} />
-          <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']}><TopicPage /></RoleGuard>} />
-          <Route path="/my-progress" element={<RoleGuard allow={['student']}><MyProgressPage /></RoleGuard>} />
-        </Route>
-
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Protected app subtree — lazy chunk, own nested <Routes> (see AppRoutes.tsx) */}
+        <Route path="/*" element={<AppRoutes />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
     </ErrorBoundary>
   )

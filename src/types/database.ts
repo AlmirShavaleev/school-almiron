@@ -760,9 +760,11 @@ export type Database = {
           email: boolean
           homework: boolean
           lesson: boolean
+          lesson_changed: boolean
           overdue: boolean
           payment: boolean
           telegram: boolean
+          telegram_variant_assignments: boolean
           updated_at: string
           user_id: string
         }
@@ -772,9 +774,11 @@ export type Database = {
           email?: boolean
           homework?: boolean
           lesson?: boolean
+          lesson_changed?: boolean
           overdue?: boolean
           payment?: boolean
           telegram?: boolean
+          telegram_variant_assignments?: boolean
           updated_at?: string
           user_id: string
         }
@@ -784,9 +788,11 @@ export type Database = {
           email?: boolean
           homework?: boolean
           lesson?: boolean
+          lesson_changed?: boolean
           overdue?: boolean
           payment?: boolean
           telegram?: boolean
+          telegram_variant_assignments?: boolean
           updated_at?: string
           user_id?: string
         }
@@ -832,6 +838,71 @@ export type Database = {
           {
             foreignKeyName: "notifications_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_queue: {
+        Row: {
+          attempts: number
+          channel: string
+          created_at: string
+          deduplication_key: string
+          entity_id: string | null
+          entity_type: string | null
+          event_type: string
+          id: string
+          last_error: string | null
+          payload: Json
+          processing_at: string | null
+          profile_id: string
+          retry_count: number
+          scheduled_for: string
+          sent_at: string | null
+          status: Database["public"]["Enums"]["notification_queue_status"]
+        }
+        Insert: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          deduplication_key: string
+          entity_id?: string | null
+          entity_type?: string | null
+          event_type: string
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          processing_at?: string | null
+          profile_id: string
+          retry_count?: number
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["notification_queue_status"]
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          deduplication_key?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          processing_at?: string | null
+          profile_id?: string
+          retry_count?: number
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["notification_queue_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_queue_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1321,6 +1392,88 @@ export type Database = {
           },
         ]
       }
+      telegram_connections: {
+        Row: {
+          connected_at: string
+          created_at: string
+          disconnect_reason: string | null
+          disconnected_at: string | null
+          id: string
+          is_enabled: boolean
+          profile_id: string
+          telegram_chat_id: number
+          telegram_username: string | null
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string
+          disconnect_reason?: string | null
+          disconnected_at?: string | null
+          id?: string
+          is_enabled?: boolean
+          profile_id: string
+          telegram_chat_id: number
+          telegram_username?: string | null
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          disconnect_reason?: string | null
+          disconnected_at?: string | null
+          id?: string
+          is_enabled?: boolean
+          profile_id?: string
+          telegram_chat_id?: number
+          telegram_username?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_connections_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_link_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          profile_id: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          profile_id: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          profile_id?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_link_tokens_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_materials: {
         Row: {
           content: string | null
@@ -1537,6 +1690,11 @@ export type Database = {
       }
       auth_is_teacher_of_group: { Args: { grp_id: string }; Returns: boolean }
       auth_is_teacher_of_homework: { Args: { hw_id: string }; Returns: boolean }
+      claim_notification_queue: {
+        Args: { batch_size?: number }
+        Returns: Database["public"]["Tables"]["notification_queue"]["Row"][]
+      }
+      cleanup_telegram_tokens: { Args: never; Returns: undefined }
       fn_check_lesson_deletable: {
         Args: { p_lesson_id: string }
         Returns: { allowed: boolean; reason: string | null }
@@ -1550,6 +1708,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       is_admin_or_owner: { Args: never; Returns: boolean }
+      retry_notification: { Args: { queue_id: string }; Returns: void }
     }
     Enums: {
       attendance_status: "present" | "absent" | "late" | "excused"
@@ -1562,6 +1721,12 @@ export type Database = {
       league_type: "bronze" | "silver" | "gold" | "platinum" | "academic"
       lesson_format: "group" | "individual" | "pair" | "parallel"
       lesson_status: "scheduled" | "completed" | "cancelled"
+      notification_queue_status:
+        | "pending"
+        | "processing"
+        | "sent"
+        | "failed"
+        | "cancelled"
       payment_status: "pending" | "paid" | "overdue" | "refunded"
       subject_type: "physics" | "math"
       transaction_type:

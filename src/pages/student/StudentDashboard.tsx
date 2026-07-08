@@ -75,7 +75,7 @@ export function StudentDashboard() {
 
       {/* Hero */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900 break-words">
           Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}! 👋
         </h1>
         <p className="text-gray-500 mt-1">
@@ -126,7 +126,7 @@ export function StudentDashboard() {
 
       {/* Today lesson alert */}
       {lessonIsToday && (
-        <div className="flex items-center gap-4 p-4 bg-primary-50 border border-primary-200 rounded-2xl">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 p-4 bg-primary-50 border border-primary-200 rounded-2xl">
           <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center shrink-0">
             <Calendar size={20} className="text-primary-600" />
           </div>
@@ -139,7 +139,7 @@ export function StudentDashboard() {
               href={nextLesson.zoom_link}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
+              className="w-full sm:w-auto min-h-11 shrink-0 flex items-center justify-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
             >
               Подключиться →
             </a>

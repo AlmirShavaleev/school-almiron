@@ -86,7 +86,7 @@ export function OwnerDashboard() {
           <CardHeader>
             <CardTitle>Статусы платежей</CardTitle>
           </CardHeader>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
             <PieChart width={120} height={120}>
               <Pie
                 data={[
@@ -116,7 +116,7 @@ export function OwnerDashboard() {
           <Badge variant="info">{teachers.length}</Badge>
         </CardHeader>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="text-xs text-gray-500 uppercase border-b border-gray-100">
                 <th className="text-left pb-3">Преподаватель</th>

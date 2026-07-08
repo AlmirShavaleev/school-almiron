@@ -7,8 +7,6 @@ import { GraduationCap, Mail, Lock } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
-import { useAuthStore } from '@/store/authStore'
-import { demoProfiles } from '@/lib/demo-data'
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -20,15 +18,14 @@ type FormData = z.infer<typeof schema>
 const IS_DEV = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO === 'true'
 
 const DEMO_ACCOUNTS = IS_DEV ? [
-  { label: 'Ученик',  email: 'alex@demo.ru',      password: 'demo123' },
-  { label: 'Учитель', email: 'physics@demo.ru',   password: 'demo123' },
-  { label: 'Куратор', email: 'curator@demo.ru',   password: 'demo123' },
-  { label: 'Админ',   email: 'admin@demo.ru',     password: 'demo123' },
+  { label: 'Ученик',  email: 'alex@demo.ru',    password: 'demo123' },
+  { label: 'Учитель', email: 'physics@demo.ru', password: 'demo123' },
+  { label: 'Куратор', email: 'curator@demo.ru', password: 'demo123' },
+  { label: 'Владелец', email: 'owner@demo.ru',  password: 'demo123' },
 ] : []
 
 export function LoginPage() {
   const { signIn } = useAuth()
-  const { setProfile } = useAuthStore()
   const navigate = useNavigate()
   const [error, setError] = useState('')
 
@@ -40,12 +37,7 @@ export function LoginPage() {
     setError('')
     const { error } = await signIn(data.email, data.password)
     if (error) {
-      // Demo mode: find demo profile by email
-      const demoProfile = demoProfiles.find(p => p.email === data.email)
-      if (demoProfile && data.password === 'demo123') {
-        setProfile(demoProfile)
-        navigate('/dashboard')
-      } else if ((error as any).code === 'email_not_confirmed' || /email not confirmed/i.test(error.message)) {
+      if ((error as any).code === 'email_not_confirmed' || /email not confirmed/i.test(error.message)) {
         setError('Email не подтверждён. Проверьте почту и перейдите по ссылке из письма, затем войдите снова.')
       } else {
         setError('Неверный email или пароль')

@@ -22,11 +22,11 @@ const colorClasses = {
 export function StatCard({ title, value, subtitle, icon, color = 'blue', trend, onClick }: StatCardProps) {
   return (
     <div
-      className={cn('bg-white rounded-xl border border-gray-100 shadow-sm p-6', onClick && 'cursor-pointer hover:border-gray-200 hover:shadow-md transition-all')}
+      className={cn('min-w-0 bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6', onClick && 'cursor-pointer hover:border-gray-200 hover:shadow-md transition-all')}
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-gray-500">{title}</span>
+        <span className="min-w-0 text-sm font-medium text-gray-500 break-words">{title}</span>
         {icon && (
           <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', colorClasses[color])}>
             {icon}

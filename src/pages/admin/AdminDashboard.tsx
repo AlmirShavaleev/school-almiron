@@ -4,7 +4,7 @@ import {
   Users, BookOpen, CreditCard, BarChart3, Search, ArrowRight,
   TrendingUp, CheckCircle, RefreshCw, AlertCircle, Calendar,
   GraduationCap, Star, Plus, Pencil, Lock,
-  Loader2, ShieldAlert, ClipboardList,
+  Loader2, ShieldAlert, ClipboardList, Send,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -124,12 +124,12 @@ export function AdminDashboard() {
     <div className="space-y-6">
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Панель администратора</h1>
           <p className="text-gray-500 mt-0.5">Управление школой · {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
-        <button onClick={reload} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <button onClick={reload} className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           <RefreshCw size={14} />Обновить
         </button>
       </div>
@@ -171,11 +171,11 @@ export function AdminDashboard() {
       </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap">
         {TABS.map(t => (
           <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
             className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'min-h-11 flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-all',
               tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             )}>
             {t.label}
@@ -288,12 +288,13 @@ export function AdminDashboard() {
           </div>
 
           {/* Quick links */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
-              { label: 'Посещаемость',       icon: <CheckCircle size={16} />,    path: '/attendance',  color: 'text-green-600 bg-green-50 border-green-200' },
-              { label: 'Пробники',           icon: <BarChart3 size={16} />,      path: '/mock-exams',  color: 'text-purple-600 bg-purple-50 border-purple-200' },
-              { label: 'Расписание',         icon: <Calendar size={16} />,       path: '/schedule',    color: 'text-blue-600 bg-blue-50 border-blue-200' },
-              { label: 'Домашние задания',   icon: <ClipboardList size={16} />,  path: '/homeworks',   color: 'text-orange-600 bg-orange-50 border-orange-200' },
+              { label: 'Посещаемость',       icon: <CheckCircle size={16} />,    path: '/attendance',       color: 'text-green-600 bg-green-50 border-green-200' },
+              { label: 'Пробники',           icon: <BarChart3 size={16} />,      path: '/mock-exams',       color: 'text-purple-600 bg-purple-50 border-purple-200' },
+              { label: 'Расписание',         icon: <Calendar size={16} />,       path: '/schedule',         color: 'text-blue-600 bg-blue-50 border-blue-200' },
+              { label: 'Домашние задания',   icon: <ClipboardList size={16} />,  path: '/homeworks',        color: 'text-orange-600 bg-orange-50 border-orange-200' },
+              { label: 'Telegram-журнал',    icon: <Send size={16} />,           path: '/admin/telegram',   color: 'text-sky-600 bg-sky-50 border-sky-200' },
             ].map(l => (
               <button key={l.path} onClick={() => navigate(l.path)}
                 className={cn('flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all', l.color)}>
@@ -332,7 +333,7 @@ export function AdminDashboard() {
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
               {['all','student','teacher','curator','admin'].map(r => (
                 <button key={r} onClick={() => setRoleFilter(r)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  className={cn('min-h-11 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                     roleFilter === r ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   )}>
                   {r === 'all' ? 'Все' : (ROLE_LABELS[r] || r)}
@@ -488,7 +489,7 @@ export function AdminDashboard() {
                         </span>
                       </div>
                     ) : <span />}
-                    <span className="text-xs font-medium text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 ml-2">
+                    <span className="text-xs font-medium text-primary-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 ml-2">
                       Подробнее <ArrowRight size={11} />
                     </span>
                   </div>

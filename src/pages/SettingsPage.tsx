@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   User, Bell, Shield, GraduationCap, Camera, Trash2,
-  Check, AlertCircle, Loader2,
+  Check, AlertCircle, Loader2, Send, Link, Link2Off,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select } from '@/components/ui/Input'
@@ -22,11 +22,12 @@ interface NotifPrefs {
   payment:  boolean
   email:    boolean
   telegram: boolean
+  telegram_variant_assignments: boolean
 }
 
 const DEFAULT_PREFS: NotifPrefs = {
   lesson: true, homework: true, checked: true, overdue: true,
-  badge: true, payment: true, email: false, telegram: false,
+  badge: true, payment: true, email: false, telegram: false, telegram_variant_assignments: true,
 }
 
 const NOTIF_ITEMS: { key: keyof NotifPrefs; label: string; sub: string; section: 'inapp' | 'channel' }[] = [
@@ -37,7 +38,6 @@ const NOTIF_ITEMS: { key: keyof NotifPrefs; label: string; sub: string; section:
   { key: 'badge',    label: 'Новые достижения',       sub: 'При получении нового значка',    section: 'inapp' },
   { key: 'payment',  label: 'Платежи и подписка',     sub: 'Списания, продление, ошибки',    section: 'inapp' },
   { key: 'email',    label: 'Email-рассылки',         sub: 'Дублировать уведомления на почту', section: 'channel' },
-  { key: 'telegram', label: 'Telegram-бот',           sub: 'Получать в @almiron_school_bot', section: 'channel' },
 ]
 
 export function SettingsPage() {
@@ -78,7 +78,7 @@ export function SettingsPage() {
       </div>
 
       {tab === 'profile'       && <ProfileTab       profile={profile} setProfile={setProfile} />}
-      {tab === 'notifications' && <NotificationsTab profileId={profile.id} />}
+      {tab === 'notifications' && <NotificationsTab profileId={profile.id} userSession={profile} />}
       {tab === 'security'      && <SecurityTab />}
       {tab === 'role'          && profile.role === 'student' && <StudentRoleTab profileId={profile.id} />}
     </div>
@@ -225,7 +225,7 @@ function ProfileTab({ profile, setProfile }: { profile: any; setProfile: (p: any
 //  TAB: Notifications (DB-backed prefs)
 // ═════════════════════════════════════════════════════════════════════════════
 
-function NotificationsTab({ profileId }: { profileId: string }) {
+function NotificationsTab({ profileId, userSession }: { profileId: string; userSession: any }) {
   const [prefs,   setPrefs]   = useState<NotifPrefs>(DEFAULT_PREFS)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -241,6 +241,7 @@ function NotificationsTab({ profileId }: { profileId: string }) {
             lesson: data.lesson, homework: data.homework, checked: data.checked,
             overdue: data.overdue, badge: data.badge, payment: data.payment,
             email: data.email, telegram: data.telegram,
+            telegram_variant_assignments: data.telegram_variant_assignments ?? true,
           })
         }
         setLoading(false)
@@ -303,6 +304,14 @@ function NotificationsTab({ profileId }: { profileId: string }) {
           ))}
         </div>
       </Card>
+
+      <TelegramConnectionBlock
+        profileId={profileId}
+        telegramEnabled={prefs.telegram}
+        variantTelegramEnabled={prefs.telegram_variant_assignments}
+        onToggleTelegram={() => toggle('telegram')}
+        onToggleVariantTelegram={() => toggle('telegram_variant_assignments')}
+      />
 
       {msg && (
         <div className={cn(
@@ -577,6 +586,268 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
 
         <SaveBar onSave={handleSave} loading={saving} msg={msg} />
       </div>
+    </Card>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Telegram Connection Block
+// ═════════════════════════════════════════════════════════════════════════════
+
+interface TelegramConn {
+  telegram_chat_id: number
+  telegram_username: string | null
+  is_enabled: boolean
+  connected_at: string
+}
+
+function TelegramConnectionBlock({
+  profileId,
+  telegramEnabled,
+  variantTelegramEnabled,
+  onToggleTelegram,
+  onToggleVariantTelegram,
+}: {
+  profileId: string
+  telegramEnabled: boolean
+  variantTelegramEnabled: boolean
+  onToggleTelegram: () => void
+  onToggleVariantTelegram: () => void
+}) {
+  const [conn,         setConn]         = useState<TelegramConn | null>(null)
+  const [loading,      setLoading]      = useState(true)
+  const [genLoading,   setGenLoading]   = useState(false)
+  const [discLoading,  setDiscLoading]  = useState(false)
+  const [testLoading,  setTestLoading]  = useState(false)
+  const [linkUrl,      setLinkUrl]      = useState<string | null>(null)
+  const [msg,          setMsg]          = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  function showMsg(kind: 'ok' | 'err', text: string) {
+    setMsg({ kind, text }); setTimeout(() => setMsg(null), 4000)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('telegram_connections')
+      .select('telegram_chat_id, telegram_username, is_enabled, connected_at')
+      .eq('profile_id', profileId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        setConn(data ?? null)
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [profileId])
+
+  async function handleConnect() {
+    setGenLoading(true)
+    setLinkUrl(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-telegram-link`,
+        {
+          method:  'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type':  'application/json',
+          },
+        }
+      )
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Ошибка генерации ссылки')
+      setLinkUrl(body.link)
+    } catch (e: any) {
+      showMsg('err', e.message ?? 'Ошибка')
+    } finally {
+      setGenLoading(false)
+    }
+  }
+
+  async function handleDisconnect() {
+    setDiscLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/disconnect-telegram`,
+        {
+          method:  'POST',
+          headers: { 'Authorization': `Bearer ${session?.access_token}` },
+        }
+      )
+      if (!res.ok) throw new Error('Ошибка отключения')
+      setConn(null)
+      setLinkUrl(null)
+      showMsg('ok', 'Telegram отключён')
+    } catch (e: any) {
+      showMsg('err', e.message ?? 'Ошибка')
+    } finally {
+      setDiscLoading(false)
+    }
+  }
+
+  async function handleSendTest() {
+    setTestLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-telegram-test`,
+        {
+          method:  'POST',
+          headers: { 'Authorization': `Bearer ${session?.access_token}` },
+        }
+      )
+      if (!res.ok) throw new Error('Не удалось отправить тест')
+      showMsg('ok', 'Тестовое сообщение отправлено в Telegram')
+    } catch (e: any) {
+      showMsg('err', e.message ?? 'Ошибка')
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <div className="flex items-center gap-2 py-3 text-gray-400 text-sm">
+          <Loader2 size={14} className="animate-spin" /> Загрузка…
+        </div>
+      </Card>
+    )
+  }
+
+  const isConnected = conn && conn.is_enabled !== false && !conn.telegram_chat_id === false
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Send size={18} />Telegram-уведомления
+        </CardTitle>
+      </CardHeader>
+
+      {!conn ? (
+        /* ── Не подключён ── */
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">
+            Подключите Telegram-бота, чтобы получать уведомления о занятиях, домашних заданиях и их проверке прямо в мессенджере.
+          </p>
+
+          {linkUrl ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <Link size={15} className="text-blue-500 shrink-0" />
+                <a
+                  href={linkUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-blue-700 underline underline-offset-2 break-all"
+                >
+                  {linkUrl}
+                </a>
+              </div>
+              <p className="text-xs text-gray-400">
+                Ссылка действует 15 минут. Нажмите «Открыть» и отправьте команду боту.
+              </p>
+              <Button size="sm" variant="secondary" onClick={handleConnect} loading={genLoading}>
+                Обновить ссылку
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={handleConnect} loading={genLoading}>
+              <Link size={14} className="mr-1.5" />Подключить Telegram
+            </Button>
+          )}
+        </div>
+      ) : (
+        /* ── Подключён ── */
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+              <Send size={15} className="text-green-600" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-green-800">Telegram подключён</div>
+              {conn.telegram_username && (
+                <div className="text-xs text-green-600">@{conn.telegram_username}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <div className="text-sm font-medium text-gray-900">Уведомления включены</div>
+              <div className="text-xs text-gray-400">Получать сообщения в Telegram</div>
+            </div>
+            <button
+              onClick={onToggleTelegram}
+              className={cn(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0',
+                telegramEnabled ? 'bg-primary-600' : 'bg-gray-200'
+              )}
+              aria-pressed={telegramEnabled}
+            >
+              <span className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                telegramEnabled ? 'translate-x-6' : 'translate-x-1'
+              )} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between py-2 border-t border-gray-100">
+            <div>
+              <div className="text-sm font-medium text-gray-900">Уведомления о новых вариантах и пробниках в Telegram</div>
+              <div className="text-xs text-gray-400">Назначение варианта и изменение дедлайна</div>
+            </div>
+            <button
+              onClick={onToggleVariantTelegram}
+              className={cn(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0',
+                variantTelegramEnabled ? 'bg-primary-600' : 'bg-gray-200'
+              )}
+              aria-pressed={variantTelegramEnabled}
+              disabled={!telegramEnabled}
+            >
+              <span className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                variantTelegramEnabled ? 'translate-x-6' : 'translate-x-1'
+              )} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSendTest}
+              loading={testLoading}
+              disabled={!telegramEnabled}
+            >
+              <Send size={14} className="mr-1.5" />Отправить тест
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDisconnect}
+              loading={discLoading}
+              className="text-red-600 hover:bg-red-50"
+            >
+              <Link2Off size={14} className="mr-1.5" />Отключить
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div className={cn(
+          'mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium',
+          msg.kind === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+        )}>
+          {msg.kind === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}{msg.text}
+        </div>
+      )}
     </Card>
   )
 }

@@ -9,7 +9,7 @@ interface CardProps {
 export function Card({ children, className, onClick }: CardProps) {
   return (
     <div
-      className={cn('bg-white rounded-xl border border-gray-100 shadow-sm p-6', onClick && 'cursor-pointer hover:shadow-md transition-shadow', className)}
+      className={cn('bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6', onClick && 'cursor-pointer hover:shadow-md transition-shadow', className)}
       onClick={onClick}
     >
       {children}
@@ -18,7 +18,7 @@ export function Card({ children, className, onClick }: CardProps) {
 }
 
 export function CardHeader({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('flex items-center justify-between mb-4', className)}>{children}</div>
+  return <div className={cn('flex flex-wrap items-center justify-between gap-2 mb-4', className)}>{children}</div>
 }
 
 export function CardTitle({ children, className }: { children: React.ReactNode; className?: string }) {

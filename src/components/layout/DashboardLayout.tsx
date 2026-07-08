@@ -57,14 +57,14 @@ export function DashboardLayout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main content: no left margin on mobile, 256px on md+ */}
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen">
         <ImpersonationBanner />
         {/* Top bar */}
         <header className="h-14 bg-white border-b border-gray-100 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30">
           {/* Hamburger — visible only on mobile */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0"
+            className="md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0"
             aria-label="Открыть меню"
           >
             <Menu size={20} />
@@ -90,9 +90,9 @@ export function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1">
+        <main className="flex-1 min-w-0">
           {/* Adaptive padding: 16px mobile → 24px sm → 32px md+ */}
-          <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+          <div className="min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
             <Outlet />
           </div>
         </main>

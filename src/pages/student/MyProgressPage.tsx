@@ -14,6 +14,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, LineChart, Line, Cell,
 } from 'recharts'
+import { JournalView } from '@/components/journal/JournalView'
+import type { JournalAssignment } from '@/types/journal'
 
 function Ring({ value, color, size = 88 }: { value: number; color: string; size?: number }) {
   const r = size / 2 - 9
@@ -269,6 +271,21 @@ export function MyProgressPage() {
             ))}
           </div>
         </Card>
+      )}
+
+      {/* Единый журнал (Этап 6) */}
+      {studentId && (
+        <div className="pt-4 border-t border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Журнал занятий и заданий</h2>
+          <JournalView
+            studentId={studentId}
+            viewerRole="student"
+            lessonHref={lessonId => `/lessons/${lessonId}`}
+            assignmentHref={(a: JournalAssignment) => a.source === 'legacy'
+              ? '/homeworks'
+              : `/my-assignments/${a.assigned_id}`}
+          />
+        </div>
       )}
     </div>
   )

@@ -47,7 +47,7 @@ export function NotificationBell() {
       <button
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors',
+          'relative w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-colors',
           open ? 'bg-primary-100 text-primary-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
         )}
       >
@@ -61,7 +61,7 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-11 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+        <div className="fixed left-4 right-4 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
@@ -102,7 +102,10 @@ export function NotificationBell() {
               notifications.map(n => (
                 <button
                   key={n.id}
-                  onClick={() => markRead(n.id)}
+                  onClick={async () => {
+                    await markRead(n.id)
+                    if (n.link) window.location.href = n.link
+                  }}
                   className={cn(
                     'w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 transition-colors hover:bg-gray-50',
                     !n.read && TYPE_BG[n.type]

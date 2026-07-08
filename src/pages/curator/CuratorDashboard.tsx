@@ -81,22 +81,22 @@ export function CuratorDashboard() {
 
       {/* ── Toast ─────────────────────────────────────────────────── */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg animate-fade-in">
+        <div className="fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-auto sm:right-6 z-50 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg animate-fade-in">
           {toast}
         </div>
       )}
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Кабинет куратора</h1>
-          <p className="text-gray-500 mt-0.5">
+          <p className="text-gray-500 mt-0.5 break-words">
             {profile?.full_name} · {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
         <button
           onClick={() => navigate('/attendance')}
-          className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 font-medium"
+          className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
           <CheckSquare size={15} />Посещаемость
         </button>
@@ -229,7 +229,7 @@ export function CuratorDashboard() {
                     onClick={() => handleReminder(s)}
                     disabled={reminderSent.has(s.id)}
                     className={cn(
-                      'shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      'min-h-11 shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                       reminderSent.has(s.id)
                         ? 'bg-green-100 text-green-700 cursor-default'
                         : 'bg-red-600 text-white hover:bg-red-700'
@@ -395,7 +395,7 @@ export function CuratorDashboard() {
                           onClick={() => handleNotifyGroup(hw)}
                           disabled={notifiedHW.has(hw.id)}
                           className={cn(
-                            'flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium ml-auto transition-all',
+                            'min-h-11 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium ml-auto transition-all',
                             notifiedHW.has(hw.id)
                               ? 'bg-green-100 text-green-700 cursor-default'
                               : 'bg-orange-100 text-orange-700 hover:bg-orange-200'

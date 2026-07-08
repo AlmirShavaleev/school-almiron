@@ -56,6 +56,19 @@ body {
 }
 
 /*
+ * Math (ЕГЭ/ОГЭ) only, screen catalog only: real figures (geometry, graphs,
+ * diagrams) in statement/solution shrunk ~30% further (50% -> 35%). Applied
+ * via an explicit wrapper class set only in TaskDisplayCard/CatalogTaskContent
+ * when task.subject/exam_type match — never a bare ".catalog-html img" rule,
+ * so physics, other subjects, and the PDF/print-document render (separate
+ * component, never gets this class) are untouched.
+ */
+.catalog-html.scale-figures-math-exam img.catalog-condition-figure,
+.catalog-html.scale-figures-math-exam img.catalog-solution-image {
+  max-width: 35% !important;
+}
+
+/*
  * Math-display block formulas — keep full width (these are formulas, not diagrams).
  */
 .catalog-html img.math-display,
@@ -178,6 +191,46 @@ body {
 .print-no-content      { font-style: italic; color: #888; font-size: 7pt; margin: 0; }
 .print-source            { font-size: 6.5pt; color: #777; margin: 0.3em 0 0; }
 
+/*
+ * Worksheet mode: task occupies exactly one page (statement + a ruled
+ * grid field filling everything below it, down to the bottom margin).
+ * min-height uses --print-content-height (page height minus top+bottom
+ * margins, kept in sync with the orientation/margins settings by
+ * VariantPrintPanel) so the flex column always spans the full page
+ * regardless of orientation or margin width, both on screen and on paper.
+ */
+.print-task--worksheet {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--print-content-height, 267mm);
+}
+
+/*
+ * The grid itself is a real SVG element (see VariantDocument's WorksheetGrid)
+ * so it survives "Печать → Сохранить PDF" even with "Фоновая графика" off —
+ * CSS background-image/-size is deliberately NOT used here (browsers may
+ * drop it on print; the border below is a real border, which is why only
+ * the frame used to survive while a background-image grid disappeared).
+ */
+.print-worksheet-fill {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 40mm;
+  margin-top: 5mm;
+  border: 1px solid rgba(100, 116, 139, 0.55);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.print-worksheet-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .print-section         { margin-top: 0.8em; padding-top: 0.5em; border-top: 1px dashed #ccc; }
 .print-section-label   { font-weight: 600; font-size: 6.5pt; text-transform: uppercase;
                           letter-spacing: 0.05em; color: #555; margin: 0 0 0.3em; }
@@ -252,6 +305,19 @@ body {
   .print-task--page-break {
     break-before: page;
     page-break-before: always;
+  }
+
+  /*
+   * Worksheet mode: statement + ruled field must stay together as one page —
+   * unlike the general .print-task rule above (break-inside:auto, needed so
+   * long solutions/explanations can flow across pages), a worksheet task has
+   * no such long content and splitting it would leave the grid field cut
+   * across two pages, defeating "клетка до нижнего поля". Higher specificity
+   * (two classes, 0,2,0) wins over .print-task (0,1,0) without !important.
+   */
+  .print-task--worksheet {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   /*

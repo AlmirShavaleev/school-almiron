@@ -8,7 +8,8 @@ import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, CheckSquare, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox,
+  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
+  Send, ClipboardEdit,
 } from 'lucide-react'
 
 interface NavItem {
@@ -28,9 +29,12 @@ const navItems: NavItem[] = [
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
 
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
+  { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
 
+  { label: 'Мои варианты',      path: '/student/variants', icon: <FileText size={18} />,    roles: ['student'],  section: 'Учёба' },
+  { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба' },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
   { label: 'Подписка',          path: '/payments',       icon: <CreditCard size={18} />,    roles: ['student'],  section: 'Аккаунт' },
@@ -43,6 +47,10 @@ const navItems: NavItem[] = [
   { label: 'Панель админа',     path: '/admin',          icon: <Settings size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Школа',             path: '/owner',          icon: <BarChart3 size={18} />,     roles: ['owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'] },
+  { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'] },
+  { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'] },
+  { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'] },
   { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },

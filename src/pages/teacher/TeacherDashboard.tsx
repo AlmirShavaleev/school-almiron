@@ -120,7 +120,7 @@ export function TeacherDashboard() {
                   <a
                     href={l.zoom_link}
                     target="_blank" rel="noreferrer"
-                    className="px-3 sm:px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                    className="min-h-11 px-3 sm:px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
                   >
                     Zoom →
                   </a>
