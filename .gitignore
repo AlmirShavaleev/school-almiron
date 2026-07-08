@@ -11,6 +11,8 @@ scripts/.env.*
 AppData/
 .vscode/
 .idea/
+.claude/launch.json
+.claude/settings.local.json
 # import reports (generated, not source)
 import-summary.json
 import-errors.jsonl
