@@ -7,6 +7,7 @@ import {
   Video, AlertCircle, ChevronRight, XCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { useAuthStore } from '@/store/authStore'
 import { useTopicMaterials } from '@/hooks/useTopicMaterials'
 import { cn } from '@/utils/cn'
@@ -191,8 +192,8 @@ export function TopicPage() {
         const { error: upErr } = await supabase.storage.from('homeworks')
           .upload(path, hwFile, { contentType: hwFile.type, upsert: true })
         if (upErr) throw new Error('Ошибка загрузки: ' + upErr.message)
-        const { data } = supabase.storage.from('homeworks').getPublicUrl(path)
-        fileUrl = data.publicUrl
+        // Private bucket: store the storage path, not a public URL.
+        fileUrl = path
       }
 
       const payload = {
@@ -348,7 +349,7 @@ export function TopicPage() {
             )
 
             if (hasFile) return (
-              <a key={s.type} href={mat!.file_url!} target="_blank" rel="noopener noreferrer"
+              <SignedFileLink key={s.type} bucket="course-materials" url={mat!.file_url!}
                 className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-gray-200 bg-white hover:border-primary-300 hover:shadow-sm transition-all group">
                 <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0', s.color)}>{s.icon}</div>
                 <div className="flex-1 min-w-0">
@@ -356,7 +357,7 @@ export function TopicPage() {
                   <div className="text-xs text-gray-400 truncate mt-0.5">{niceName(mat!.file_url!)}</div>
                 </div>
                 <FileText size={18} className="text-gray-300 group-hover:text-primary-400 shrink-0" />
-              </a>
+              </SignedFileLink>
             )
 
             if (hasText) return <TextSection key={s.type} section={s} content={mat!.content!} />
@@ -416,7 +417,7 @@ export function TopicPage() {
 
           {/* Teacher's task file */}
           {hw.file_url && (
-            <a href={hw.file_url} target="_blank" rel="noopener noreferrer"
+            <SignedFileLink bucket="homeworks" url={hw.file_url}
               className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors group">
               <FileText size={18} className="text-amber-600 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -424,7 +425,7 @@ export function TopicPage() {
                 <div className="text-xs text-amber-500 truncate">{niceName(hw.file_url)}</div>
               </div>
               <ExternalLink size={14} className="text-amber-400 shrink-0" />
-            </a>
+            </SignedFileLink>
           )}
 
           {/* ── ФОРМА СДАЧИ ── */}

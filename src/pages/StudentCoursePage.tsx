@@ -4,10 +4,12 @@ import {
   BookOpen, Check, Clock, Video, Lightbulb, BookMarked, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
   Upload, ArrowLeft, ChevronRight, Play, FileText, MessageSquare,
+  LayoutList, LayoutGrid,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 import { StatCard } from '@/components/ui/StatCard'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS, formatDate, isOverdue } from '@/utils/format'
 import { supabase } from '@/lib/supabase'
@@ -24,15 +26,28 @@ const MAT_CONFIG = [
   { key: 'has_solution', label: 'Решение',  icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
 ] as const
 
+// ─── View preference ─────────────────────────────────────────────────────────
+
+const VIEW_PREF_KEY = 'student-course-view'
+type CourseView = 'list' | 'cards'
+
+function getViewPref(): CourseView {
+  try { return (localStorage.getItem(VIEW_PREF_KEY) as CourseView) || 'list' } catch { return 'list' }
+}
+function saveViewPref(v: CourseView) {
+  try { localStorage.setItem(VIEW_PREF_KEY, v) } catch {}
+}
+
 // ─── HW Badge ─────────────────────────────────────────────────────────────────
 
 function HwBadge({ status, score, max }: { status: string | null; score: number | null; max: number | null }) {
   if (!status) return null
   const cfg = {
-    not_submitted: { label: 'Не сдано',    icon: <AlertCircle size={10} />, cls: 'bg-gray-100 text-gray-500' },
+    not_started:   { label: 'Не сдано',    icon: <AlertCircle size={10} />, cls: 'bg-gray-100 text-gray-500' },
     submitted:     { label: 'На проверке', icon: <Clock size={10} />,       cls: 'bg-blue-100 text-blue-600' },
-    checked:       { label: score != null ? `${score}/${max}` : 'Принято', icon: <CheckCircle size={10} />, cls: 'bg-green-100 text-green-700' },
-    revision:      { label: 'Доработать',  icon: <RotateCcw size={10} />,   cls: 'bg-orange-100 text-orange-600' },
+    accepted:      { label: score != null && max != null ? `${score}/${max}` : 'Принято', icon: <CheckCircle size={10} />, cls: 'bg-green-100 text-green-700' },
+    rejected:      { label: 'Отклонено', icon: <AlertCircle size={10} />, cls: 'bg-red-100 text-red-700' },
+    returned:      { label: 'Доработать',  icon: <RotateCcw size={10} />,   cls: 'bg-orange-100 text-orange-600' },
   }[status] || { label: status, icon: null, cls: 'bg-gray-100 text-gray-400' }
 
   return (
@@ -90,8 +105,8 @@ function ModuleBigCard({
   idx: number
   onClick: () => void
 }) {
-  const checkedCount = mod.topics.filter(t => t.hw_status === 'checked').length
-  const totalTopics  = mod.topics.length
+  const checkedCount = mod.done
+  const totalTopics  = mod.total
   const submittedCnt = mod.topics.filter(t => t.hw_status === 'submitted').length
   const pct          = totalTopics > 0 ? Math.round(checkedCount / totalTopics * 100) : 0
   const gradient     = MODULE_GRADIENTS[idx % MODULE_GRADIENTS.length]
@@ -138,7 +153,7 @@ function ModuleBigCard({
             />
           </div>
           <div className="flex justify-between mt-1.5 text-xs text-white/75">
-            <span>{checkedCount} из {totalTopics} тем</span>
+            <span>{checkedCount} из {totalTopics} заданий</span>
             <span className="flex items-center gap-1">
               Открыть <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
             </span>
@@ -154,7 +169,7 @@ function ModuleBigCard({
 
 // Visual states per hw_status
 const TOPIC_STATE = {
-  checked: {
+  accepted: {
     card:   'border-green-300 bg-green-50 hover:border-green-400 hover:shadow-md',
     header: 'bg-green-50',
     num:    'bg-green-500 text-white',
@@ -170,7 +185,7 @@ const TOPIC_STATE = {
     labelCls: 'bg-blue-100 text-blue-700 border border-blue-200',
     titleCls: 'text-gray-800',
   },
-  revision: {
+  returned: {
     card:   'border-orange-200 bg-orange-50/40 hover:border-orange-300 hover:shadow-md',
     header: 'bg-orange-50/60',
     num:    'bg-orange-400 text-white',
@@ -178,7 +193,7 @@ const TOPIC_STATE = {
     labelCls: 'bg-orange-100 text-orange-700 border border-orange-200',
     titleCls: 'text-gray-800',
   },
-  not_submitted: {
+  not_started: {
     card:   'border-gray-200 hover:border-primary-300 hover:shadow-md',
     header: 'bg-white',
     num:    'bg-primary-100 text-primary-600',
@@ -218,7 +233,7 @@ function TopicCard({
   const isLocked   = !!availStr && availStr > todayStr
   const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
     topic.has_homework || topic.has_solution || topic.has_video
-  const isDone     = topic.hw_status === 'checked'
+  const isDone     = topic.hw_status === 'accepted'
 
   // Pick visual state
   const stateKey = isLocked ? 'none'
@@ -263,7 +278,7 @@ function TopicCard({
             )}>
               {isDone && <CheckCircle size={9} />}
               {topic.hw_status === 'submitted' && <Clock size={9} />}
-              {topic.hw_status === 'revision' && <RotateCcw size={9} />}
+              {topic.hw_status === 'returned' && <RotateCcw size={9} />}
               {st.label}
             </span>
           )}
@@ -307,13 +322,13 @@ function TopicCard({
       {/* Footer */}
       <div className="mt-auto px-4 pb-4 flex items-center justify-between gap-2">
         {/* Сдать ДЗ */}
-        {!isLocked && topic.hw_id && (topic.hw_status === 'not_submitted' || topic.hw_status === 'revision') && (
+        {!isLocked && topic.hw_id && (topic.hw_status === 'not_started' || topic.hw_status === 'returned') && (
           <button
             onClick={e => { e.stopPropagation(); onSubmitHW(topic) }}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+            className="min-h-11 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
           >
             <Upload size={11} />
-            {topic.hw_status === 'revision' ? 'Переслать' : 'Сдать ДЗ'}
+            {topic.hw_status === 'returned' ? 'Переслать' : 'Сдать ДЗ'}
           </button>
         )}
 
@@ -326,6 +341,250 @@ function TopicCard({
           </span>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── List-view state config ───────────────────────────────────────────────────
+
+const LIST_STATE: Record<string, {
+  row: string; numBg: string; titleCls: string
+  statusLabel: string | null; statusCls: string; icon: React.ReactNode
+}> = {
+  locked: {
+    row: 'bg-gray-50 border-gray-100 opacity-60',
+    numBg: 'bg-gray-200 text-gray-400', titleCls: 'text-gray-400',
+    statusLabel: 'Закрыт', statusCls: 'bg-gray-100 text-gray-400',
+    icon: <Lock size={12} className="text-gray-300" />,
+  },
+  accepted: {
+    row: 'bg-green-50 border-green-200 hover:border-green-300',
+    numBg: 'bg-green-500 text-white', titleCls: 'text-gray-800',
+    statusLabel: 'Пройдено', statusCls: 'bg-green-100 text-green-700',
+    icon: <CheckCircle size={12} className="text-green-600" />,
+  },
+  submitted: {
+    row: 'bg-sky-50/80 border-sky-200 hover:border-sky-300',
+    numBg: 'bg-sky-500 text-white', titleCls: 'text-gray-800',
+    statusLabel: 'На проверке', statusCls: 'bg-sky-100 text-sky-700',
+    icon: <Clock size={12} className="text-sky-600" />,
+  },
+  returned: {
+    row: 'bg-orange-50 border-orange-200 hover:border-orange-300',
+    numBg: 'bg-orange-400 text-white', titleCls: 'text-gray-800',
+    statusLabel: 'Доработать', statusCls: 'bg-orange-100 text-orange-700',
+    icon: <RotateCcw size={12} className="text-orange-600" />,
+  },
+  not_started: {
+    row: 'bg-blue-50/40 border-blue-200 hover:border-blue-300',
+    numBg: 'bg-blue-100 text-blue-600', titleCls: 'text-gray-800',
+    statusLabel: 'В работе', statusCls: 'bg-blue-100 text-blue-700',
+    icon: <Play size={12} className="text-blue-500" />,
+  },
+  none: {
+    row: 'bg-white border-gray-200 hover:border-primary-300',
+    numBg: 'bg-gray-100 text-gray-500', titleCls: 'text-gray-800',
+    statusLabel: null, statusCls: '',
+    icon: <BookOpen size={12} className="text-gray-400" />,
+  },
+}
+
+// ─── TopicListRow ─────────────────────────────────────────────────────────────
+
+function TopicListRow({
+  topic, index, onOpen, onSubmitHW,
+}: {
+  topic: TopicProgress
+  index: number
+  onOpen: () => void
+  onSubmitHW: () => void
+}) {
+  const todayStr  = new Date().toLocaleDateString('en-CA')
+  const availStr  = topic.available_from ? topic.available_from.slice(0, 10) : null
+  const availDate = availStr ? new Date(availStr + 'T00:00:00') : null
+  const isLocked  = !!availStr && availStr > todayStr
+
+  const stateKey = isLocked ? 'locked'
+    : topic.hw_status === 'accepted'      ? 'accepted'
+    : topic.hw_status === 'submitted'     ? 'submitted'
+    : topic.hw_status === 'returned'      ? 'returned'
+    : topic.hw_status === 'not_started'   ? 'not_started'
+    : 'none'
+
+  const st = LIST_STATE[stateKey]
+  const isDone = topic.hw_status === 'accepted'
+  const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
+    topic.has_homework || topic.has_solution || topic.has_video
+  const canSubmit = !isLocked && topic.hw_id &&
+    (topic.hw_status === 'not_started' || topic.hw_status === 'returned')
+
+  return (
+    <div
+      role={isLocked ? 'listitem' : 'button'}
+      tabIndex={isLocked ? -1 : 0}
+      aria-disabled={isLocked || undefined}
+      onClick={() => !isLocked && onOpen()}
+      onKeyDown={e => !isLocked && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
+      className={cn(
+        'rounded-xl border px-4 py-3 transition-all duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+        isLocked ? 'cursor-default' : 'cursor-pointer',
+        st.row,
+        'flex flex-col sm:flex-row sm:items-center sm:gap-4 gap-2',
+      )}
+      data-testid="topic-list-row"
+      data-status={stateKey}
+    >
+      {/* ── Mobile top / Desktop left: number + icon ── */}
+      <div className="flex items-center gap-2 sm:flex-col sm:items-center sm:w-10 sm:gap-1 sm:shrink-0">
+        <div className={cn(
+          'w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0',
+          st.numBg
+        )}>
+          {isDone ? <Check size={14} /> : <span>{index + 1}</span>}
+        </div>
+
+        {/* Status icon — desktop */}
+        <div className="hidden sm:flex" aria-hidden>{st.icon}</div>
+
+        {/* Status pill — mobile */}
+        {st.statusLabel && (
+          <span className={cn(
+            'sm:hidden text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5',
+            st.statusCls
+          )} role="status">
+            {st.icon}{st.statusLabel}
+          </span>
+        )}
+
+        {/* Arrow — mobile */}
+        {!isLocked && (
+          <ChevronRight size={14} className="sm:hidden ml-auto text-gray-300" aria-hidden />
+        )}
+      </div>
+
+      {/* ── Center: title + badges ── */}
+      <div className="flex-1 min-w-0">
+        <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : st.titleCls)}>
+          {isLocked && <Lock size={10} className="inline mr-1 mb-0.5 text-gray-300" aria-hidden />}
+          {topic.title}
+        </p>
+
+        {/* Score — mobile */}
+        {isDone && topic.hw_score != null && (
+          <p className="sm:hidden text-xs font-semibold text-green-700 mt-0.5">
+            {topic.hw_score}/{topic.hw_max} б.
+          </p>
+        )}
+
+        {/* Material badges */}
+        {!isLocked && hasMaterials && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {MAT_CONFIG.map(m => topic[m.key] && (
+              <span key={m.key}
+                className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md border', m.color)}
+              >
+                {m.icon}{m.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {isLocked && availDate && (
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            Откроется {availDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+          </p>
+        )}
+      </div>
+
+      {/* ── Right: score + status + buttons ── */}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Score — desktop */}
+        {isDone && topic.hw_score != null && (
+          <span className="hidden sm:block text-xs font-semibold text-green-700 whitespace-nowrap">
+            {topic.hw_score}/{topic.hw_max}&nbsp;б
+          </span>
+        )}
+
+        {/* Status badge — desktop */}
+        {st.statusLabel && (
+          <span className={cn(
+            'hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap',
+            st.statusCls
+          )} role="status">
+            {st.icon}{st.statusLabel}
+          </span>
+        )}
+
+        {/* Submit HW */}
+        {canSubmit && (
+          <button
+            onClick={e => { e.stopPropagation(); onSubmitHW() }}
+            className={cn(
+              'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px]',
+              topic.hw_status === 'returned'
+                ? 'text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100'
+                : 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
+            )}
+            aria-label={topic.hw_status === 'returned' ? 'Переслать домашнее задание' : 'Сдать домашнее задание'}
+          >
+            <Upload size={11} />
+            <span className="hidden sm:inline">
+              {topic.hw_status === 'returned' ? 'Переслать' : 'Сдать ДЗ'}
+            </span>
+          </button>
+        )}
+
+        {/* Open button */}
+        {!isLocked && (
+          <button
+            onClick={e => { e.stopPropagation(); onOpen() }}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px] text-primary-700 bg-primary-50 border border-primary-200 hover:bg-primary-100"
+            aria-label={`Открыть тему ${topic.title}`}
+          >
+            {topic.has_video && <Play size={11} />}
+            Открыть
+          </button>
+        )}
+
+        <ChevronRight size={14} className="hidden sm:block text-gray-300" aria-hidden />
+      </div>
+    </div>
+  )
+}
+
+// ─── ViewToggle ───────────────────────────────────────────────────────────────
+
+function ViewToggle({ view, onChange }: { view: CourseView; onChange: (v: CourseView) => void }) {
+  return (
+    <div
+      className="inline-flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5"
+      role="group"
+      aria-label="Вид отображения"
+      data-testid="view-toggle"
+    >
+      <button
+        onClick={() => onChange('list')}
+        data-testid="view-toggle-list"
+        aria-pressed={view === 'list'}
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+          view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        )}
+      >
+        <LayoutList size={13} />Список
+      </button>
+      <button
+        onClick={() => onChange('cards')}
+        data-testid="view-toggle-cards"
+        aria-pressed={view === 'cards'}
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+          view === 'cards' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        )}
+      >
+        <LayoutGrid size={13} />Карточки
+      </button>
     </div>
   )
 }
@@ -377,7 +636,7 @@ function StaffCard({
       {person && (
         <a
           href={`mailto:${person.email}`}
-          className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+          className="w-11 h-11 sm:w-auto sm:h-auto shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
           title={`Написать ${person.full_name}`}
         >
           <MessageSquare size={12} />
@@ -394,10 +653,11 @@ type FlatHw = TopicProgress & { moduleTitle: string }
 
 function HwStatusBadge({ status, score, max }: { status: string; score: number | null; max: number | null }) {
   const cfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    not_submitted: { label: 'Не сдано',    cls: 'bg-gray-100 text-gray-500',    icon: <AlertCircle size={11} /> },
+    not_started:   { label: 'Не сдано',    cls: 'bg-gray-100 text-gray-500',    icon: <AlertCircle size={11} /> },
     submitted:     { label: 'На проверке', cls: 'bg-blue-100 text-blue-700',    icon: <Clock size={11} /> },
-    checked:       { label: score != null ? `${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
-    revision:      { label: 'Доработать',  cls: 'bg-orange-100 text-orange-700', icon: <RotateCcw size={11} /> },
+    accepted:      { label: score != null && max != null ? `${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
+    rejected:      { label: 'Отклонено', cls: 'bg-red-100 text-red-700', icon: <AlertCircle size={11} /> },
+    returned:      { label: 'Доработать',  cls: 'bg-orange-100 text-orange-700', icon: <RotateCcw size={11} /> },
   }
   const c = cfg[status] || { label: status, cls: 'bg-gray-100 text-gray-400', icon: null }
   return (
@@ -418,13 +678,13 @@ function HomeworkBlock({
     const list: FlatHw[] = []
     for (const mod of modules) {
       for (const t of mod.topics) {
-        if (t.hw_id !== null) list.push({ ...t, moduleTitle: mod.title })
+        if (t.assignment_count > 0) list.push({ ...t, moduleTitle: mod.title })
       }
     }
     // Sort: overdue not_submitted first, then by deadline asc, null deadline last
     return list.sort((a, b) => {
-      const aOverdue = a.hw_deadline && isOverdue(a.hw_deadline) && a.hw_status === 'not_submitted'
-      const bOverdue = b.hw_deadline && isOverdue(b.hw_deadline) && b.hw_status === 'not_submitted'
+      const aOverdue = a.hw_deadline && isOverdue(a.hw_deadline) && a.hw_status === 'not_started'
+      const bOverdue = b.hw_deadline && isOverdue(b.hw_deadline) && b.hw_status === 'not_started'
       if (aOverdue && !bOverdue) return -1
       if (!aOverdue && bOverdue) return 1
       if (!a.hw_deadline && !b.hw_deadline) return 0
@@ -436,9 +696,9 @@ function HomeworkBlock({
 
   if (flatHws.length === 0) return null
 
-  const notSubmitted = flatHws.filter(t => t.hw_status === 'not_submitted').length
+  const notSubmitted = flatHws.filter(t => t.hw_status === 'not_started').length
   const submitted    = flatHws.filter(t => t.hw_status === 'submitted').length
-  const checked      = flatHws.filter(t => t.hw_status === 'checked').length
+  const checked      = flatHws.filter(t => t.hw_status === 'accepted').length
 
   return (
     <div className="space-y-4">
@@ -448,7 +708,7 @@ function HomeworkBlock({
       </h2>
 
       {/* StatCards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard title="Не сдано"    value={notSubmitted} icon={<AlertCircle size={18} />} color="red" />
         <StatCard title="На проверке" value={submitted}    icon={<Clock size={18} />}       color="orange" />
         <StatCard title="Проверено"   value={checked}      icon={<CheckCircle size={18} />} color="green" />
@@ -458,8 +718,8 @@ function HomeworkBlock({
       <div className="space-y-3">
         {flatHws.map(hw => {
           const overdue     = !!hw.hw_deadline && isOverdue(hw.hw_deadline)
-          const overdueFlag = overdue && hw.hw_status === 'not_submitted'
-          const canSubmit   = hw.hw_status === 'not_submitted' || hw.hw_status === 'revision'
+          const overdueFlag = overdue && hw.hw_status === 'not_started'
+          const canSubmit   = !!hw.hw_id && (hw.hw_status === 'not_started' || hw.hw_status === 'returned')
 
           return (
             <div
@@ -497,15 +757,14 @@ function HomeworkBlock({
 
                   {/* Teacher file */}
                   {hw.hw_file_url && (
-                    <a
-                      href={hw.hw_file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <SignedFileLink
+                      bucket="homeworks"
+                      url={hw.hw_file_url}
                       className="inline-flex items-center gap-1.5 mt-2 text-xs text-primary-600 hover:text-primary-800 bg-primary-50 px-2.5 py-1 rounded-lg transition-colors"
                     >
                       <FileText size={12} />
                       Файл задания
-                    </a>
+                    </SignedFileLink>
                   )}
 
                   {/* Feedback */}
@@ -533,14 +792,14 @@ function HomeworkBlock({
                     <button
                       onClick={() => onSubmit(hw)}
                       className={cn(
-                        'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors',
-                        hw.hw_status === 'revision'
+                        'min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors',
+                        hw.hw_status === 'returned'
                           ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
                           : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
                       )}
                     >
                       <Upload size={12} />
-                      {hw.hw_status === 'revision' ? 'Переделать' : 'Сдать ДЗ'}
+                      {hw.hw_status === 'returned' ? 'Переделать' : 'Сдать ДЗ'}
                     </button>
                   )}
                 </div>
@@ -564,6 +823,12 @@ export function StudentCoursePage() {
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
   const [submitTopic,    setSubmitTopic]    = useState<TopicProgress | null>(null)
   const [studentId,      setStudentId]      = useState<string | null>(null)
+  const [view,           setView]           = useState<CourseView>(getViewPref)
+
+  function handleViewChange(v: CourseView) {
+    setView(v)
+    saveViewPref(v)
+  }
 
   useEffect(() => {
     if (!profile) return
@@ -574,8 +839,8 @@ export function StudentCoursePage() {
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
 
-  const totalTopics   = modules.reduce((s, m) => s + m.topics.length, 0)
-  const checkedTopics = modules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'checked').length, 0)
+  const totalTopics   = modules.reduce((sum, module) => sum + module.total, 0)
+  const checkedTopics = modules.reduce((sum, module) => sum + module.done, 0)
   const overallPct    = totalTopics > 0 ? Math.round(checkedTopics / totalTopics * 100) : 0
 
   if (loading) return (
@@ -616,7 +881,7 @@ export function StudentCoursePage() {
 
       {/* ── Course header ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-1 flex-wrap">
             <GraduationCap size={13} />
             {SUBJECT_LABELS[course.subject] || course.subject}
@@ -631,22 +896,22 @@ export function StudentCoursePage() {
               </>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 break-words">
             {activeMod ? activeMod.title : course.title}
           </h1>
         </div>
 
         {/* Overall progress pill */}
-        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 shrink-0">
+        <div className="w-full sm:w-auto flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 sm:shrink-0">
           <Ring pct={activeMod
-            ? (activeMod.topics.length > 0 ? Math.round(activeMod.topics.filter(t => t.hw_status === 'checked').length / activeMod.topics.length * 100) : 0)
+            ? (activeMod.total > 0 ? Math.round(activeMod.done / activeMod.total * 100) : 0)
             : overallPct
           } size={40} stroke={4} />
           <div>
             <div className="text-xs font-semibold text-gray-700">
               {activeMod
-                ? `${activeMod.topics.filter(t => t.hw_status === 'checked').length} / ${activeMod.topics.length} тем`
-                : `${checkedTopics} / ${totalTopics} тем`}
+                ? `${activeMod.done} / ${activeMod.total} заданий`
+                : `${checkedTopics} / ${totalTopics} заданий`}
             </div>
             <div className="text-[10px] text-gray-400">
               {activeMod ? 'в разделе' : 'всего'}
@@ -660,7 +925,7 @@ export function StudentCoursePage() {
               </span>
               <span className="flex items-center gap-1">
                 <RotateCcw size={11} className="text-orange-400" />
-                {modules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'revision').length, 0)}
+                {modules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'returned').length, 0)}
               </span>
             </div>
           )}
@@ -689,20 +954,45 @@ export function StudentCoursePage() {
         </div>
       )}
 
-      {/* ══ LEVEL 2: TOPIC CARDS ══ */}
+      {/* ══ LEVEL 2: TOPIC LIST / CARDS ══ */}
       {activeMod && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activeMod.topics.map((topic, i) => (
-            <TopicCard
-              key={topic.id}
-              topic={topic}
-              index={i}
-              moduleTitle={activeMod.title}
-              groupId={groupId ?? ''}
-              onOpenTopic={t => navigate(`/my-course/${groupId}/topic/${t.id}`)}
-              onSubmitHW={setSubmitTopic}
-            />
-          ))}
+        <div className="space-y-3">
+          {/* View toggle header */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-gray-500">
+              {activeMod.topics.length}&nbsp;
+              {activeMod.topics.length === 1 ? 'тема' : 'тем'} в разделе
+            </p>
+            <ViewToggle view={view} onChange={handleViewChange} />
+          </div>
+
+          {view === 'list' ? (
+            <div className="space-y-2" data-testid="topics-list-view">
+              {activeMod.topics.map((topic, i) => (
+                <TopicListRow
+                  key={topic.id}
+                  topic={topic}
+                  index={i}
+                  onOpen={() => navigate(`/my-course/${groupId}/topic/${topic.id}`)}
+                  onSubmitHW={() => setSubmitTopic(topic)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="topics-cards-view">
+              {activeMod.topics.map((topic, i) => (
+                <TopicCard
+                  key={topic.id}
+                  topic={topic}
+                  index={i}
+                  moduleTitle={activeMod.title}
+                  groupId={groupId ?? ''}
+                  onOpenTopic={t => navigate(`/my-course/${groupId}/topic/${t.id}`)}
+                  onSubmitHW={setSubmitTopic}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

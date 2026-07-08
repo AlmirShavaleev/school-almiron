@@ -121,12 +121,22 @@ export function StudentProfilePage() {
     <div className="space-y-6 max-w-4xl">
 
       {/* Back */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-      >
-        <ArrowLeft size={16} />Назад
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          <ArrowLeft size={16} />Назад
+        </button>
+        {s.student_id && (
+          <button
+            onClick={() => navigate(`/students/${s.student_id}/journal`)}
+            className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          >
+            Журнал ученика →
+          </button>
+        )}
+      </div>
 
       {/* Profile header */}
       <Card>

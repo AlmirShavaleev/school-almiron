@@ -146,7 +146,7 @@ describe('Performance — pagination', () => {
 
 describe('Role access', () => {
   it('catalog RoleGuard includes student, teacher, curator, admin, owner', () => {
-    const src = read('src/App.tsx')
+    const src = read('src/AppRoutes.tsx')
     // Find the Route element with path="/catalog" and extract its RoleGuard allow list
     const match = src.match(/path="\/catalog"[^>]*RoleGuard\s+allow=\{([^}]+)\}/)
     expect(match).not.toBeNull()
@@ -159,7 +159,7 @@ describe('Role access', () => {
   })
 
   it('parent is NOT in the catalog allow list', () => {
-    const src = read('src/App.tsx')
+    const src = read('src/AppRoutes.tsx')
     const match = src.match(/path="\/catalog"[^>]*RoleGuard\s+allow=\{([^}]+)\}/)
     const allowList = match ? match[1] : ''
     expect(allowList).not.toContain("'parent'")
@@ -896,7 +896,7 @@ describe('Answer-template image classification', () => {
 
 describe('Catalog role access', () => {
   const sidebarSrc = read('src/components/layout/Sidebar.tsx')
-  const appSrc     = read('src/App.tsx')
+  const appSrc     = read('src/AppRoutes.tsx')
 
   // Helper: collect all roles granted access to /catalog in navItems.
   // Each navItem line looks like:  roles: ['student', 'teacher', ...]
@@ -1027,7 +1027,7 @@ describe('Search — unassigned tasks', () => {
 
 describe('Direct task URL', () => {
   it('маршрут /catalog/task/:taskId зарегистрирован в App.tsx', () => {
-    const appSrc = read('src/App.tsx')
+    const appSrc = read('src/AppRoutes.tsx')
     expect(appSrc).toContain('path="/catalog/task/:taskId"')
     expect(appSrc).toContain('CatalogTaskPage')
   })

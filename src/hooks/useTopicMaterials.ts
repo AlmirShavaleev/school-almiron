@@ -68,8 +68,8 @@ export function useTopicMaterials(topicId: string | null) {
       .from('course-materials')
       .upload(path, file, { contentType: file.type, upsert: true })
     if (error) throw new Error('Ошибка загрузки: ' + error.message)
-    const { data } = supabase.storage.from('course-materials').getPublicUrl(path)
-    return data.publicUrl
+    // Private bucket: store the storage path, not a public URL.
+    return path
   }
 
   return { materials, loading, saveMaterial, uploadFile, reload }

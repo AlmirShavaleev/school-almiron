@@ -11,11 +11,15 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/store/toastStore'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
+import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
+import { LessonMaterialsCard } from '@/components/lessons/LessonMaterialsCard'
+import { LessonHomeworkCard } from '@/components/lessons/LessonHomeworkCard'
 
 interface LessonFull {
   id:               string
@@ -103,19 +107,19 @@ function ConfirmModal({ open, title, message, confirmLabel, confirmCls, onConfir
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 sm:p-6 space-y-4">
         <h3 className="text-lg font-bold text-gray-900">{title}</h3>
         <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{message}</p>
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-2">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:border-gray-300 hover:text-gray-900 transition-colors cursor-pointer"
+            className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:border-gray-300 hover:text-gray-900 transition-colors cursor-pointer"
           >
             Отмена
           </button>
           <button
             onClick={onConfirm}
-            className={cn('px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors cursor-pointer', confirmCls || 'bg-primary-600 hover:bg-primary-700')}
+            className={cn('w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors cursor-pointer', confirmCls || 'bg-primary-600 hover:bg-primary-700')}
           >
             {confirmLabel}
           </button>
@@ -336,7 +340,8 @@ export function LessonDetailPage() {
     })
     if (!ok) return
     setCompleting(true)
-    const { error } = await supabase.from('lessons').update({ status: 'completed' }).eq('id', lesson.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('lessons') as any).update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', lesson.id)
     setCompleting(false)
     if (error) {
       toast.error('Ошибка: ' + error.message)
@@ -517,7 +522,7 @@ export function LessonDetailPage() {
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-bold leading-tight">{lesson.title}</h1>
+            <h1 className="text-2xl font-bold leading-tight break-words">{lesson.title}</h1>
             {lesson.topic && (
               <div className="text-sm text-white/90 mt-1">
                 {lesson.topic.module_title && <span className="opacity-70">{lesson.topic.module_title} · </span>}
@@ -542,7 +547,7 @@ export function LessonDetailPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-col gap-2 shrink-0">
+          <div className="w-full sm:w-auto flex flex-col gap-2 sm:shrink-0">
             {/* Edit — admin/owner always; teacher only for own lesson */}
             {lesson.status === 'scheduled' && (() => {
               const isAdminOwner = profile?.role && ['admin', 'owner'].includes(profile.role)
@@ -550,7 +555,7 @@ export function LessonDetailPage() {
               return (isAdminOwner || isOwnLesson) ? (
                 <button
                   onClick={() => setEditOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
+                  className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
                 >
                   <Pencil size={15} />Редактировать
                 </button>
@@ -558,13 +563,13 @@ export function LessonDetailPage() {
             })()}
             {lesson.zoom_link && (isLive || isFuture) && (
               <a href={lesson.zoom_link} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-900 rounded-xl font-semibold text-sm hover:bg-gray-100 transition-colors shadow-sm">
+                className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-gray-900 rounded-xl font-semibold text-sm hover:bg-gray-100 transition-colors shadow-sm">
                 <Video size={16} />{isLive ? 'Войти в Zoom' : 'Открыть Zoom'}
               </a>
             )}
             {lesson.recording_url && isPast && (
               <a href={lesson.recording_url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 backdrop-blur text-white rounded-xl font-medium text-sm hover:bg-white/25 transition-colors border border-white/20">
+                className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/15 backdrop-blur text-white rounded-xl font-medium text-sm hover:bg-white/25 transition-colors border border-white/20">
                 <PlayCircle size={16} />Запись урока
               </a>
             )}
@@ -572,7 +577,7 @@ export function LessonDetailPage() {
               <button
                 onClick={markCompleted}
                 disabled={completing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white rounded-xl font-semibold text-sm transition-colors shadow-sm cursor-pointer"
+                className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white rounded-xl font-semibold text-sm transition-colors shadow-sm cursor-pointer"
               >
                 {completing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
                 Завершить
@@ -582,7 +587,7 @@ export function LessonDetailPage() {
               <button
                 onClick={cancelLesson}
                 disabled={cancelling}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 disabled:opacity-60 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
+                className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/15 hover:bg-white/25 disabled:opacity-60 text-white rounded-xl font-medium text-sm transition-colors border border-white/20 cursor-pointer"
               >
                 {cancelling ? <Loader2 size={15} className="animate-spin" /> : <Ban size={15} />}
                 Отменить
@@ -594,7 +599,7 @@ export function LessonDetailPage() {
                 disabled={deleting || deleteCheck?.allowed === false}
                 title={deleteCheck?.allowed === false ? (deleteCheck.reason ?? undefined) : undefined}
                 className={cn(
-                  'inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-medium text-sm transition-colors',
+                  'min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-medium text-sm transition-colors',
                   deleteCheck?.allowed === false
                     ? 'bg-gray-400 cursor-not-allowed opacity-60'
                     : 'bg-red-500/80 hover:bg-red-500 cursor-pointer'
@@ -738,6 +743,19 @@ export function LessonDetailPage() {
         )}
       </Card>
 
+      {/* ── Этап 5: итоги занятия, материалы, ДЗ (assigned_collections) ────── */}
+      <div data-testid="lesson-summary-section">
+        <LessonSummaryCard lessonId={lesson.id} canEdit={!!canEdit} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div data-testid="lesson-materials-section">
+          <LessonMaterialsCard lessonId={lesson.id} canEdit={!!canEdit} />
+        </div>
+        <div data-testid="lesson-homework-section">
+          <LessonHomeworkCard lessonId={lesson.id} canEdit={!!canEdit} isStudent={profile?.role === 'student'} />
+        </div>
+      </div>
+
       {/* ── 2-col: Attendance + Materials/HW ─────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
@@ -859,13 +877,13 @@ export function LessonDetailPage() {
                 <div className="pt-3 mt-2 border-t border-gray-100 flex gap-2 flex-wrap">
                   <button
                     onClick={() => displayStudents.forEach(gs => handleAttChange(gs.student_id, 'present'))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl hover:bg-green-100 transition-colors"
+                    className="min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl hover:bg-green-100 transition-colors"
                   >
                     <UserCheck size={12} />Все присутствовали
                   </button>
                   <button
                     onClick={() => displayStudents.forEach(gs => handleAttChange(gs.student_id, 'absent'))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors"
+                    className="min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors"
                   >
                     <UserX size={12} />Все пропустили
                   </button>
@@ -925,7 +943,7 @@ export function LessonDetailPage() {
               <div className="space-y-2">
                 {materials.map(m => {
                   const meta = MATERIAL_META[m.type] || { label: m.type, icon: <FileText size={14} />, color: 'bg-gray-50 text-gray-700 border-gray-200' }
-                  const href = m.link_url || m.file_url
+                  const hasLink = !!(m.link_url || m.file_url)
                   const body = (
                     <div className={cn('flex items-center gap-3 p-3 rounded-xl border', meta.color)}>
                       <span className="shrink-0">{meta.icon}</span>
@@ -933,12 +951,16 @@ export function LessonDetailPage() {
                         <div className="text-sm font-medium">{meta.label}</div>
                         {m.content && <div className="text-xs opacity-75 truncate">{m.content}</div>}
                       </div>
-                      {href && <ExternalLink size={13} className="opacity-60 shrink-0" />}
+                      {hasLink && <ExternalLink size={13} className="opacity-60 shrink-0" />}
                     </div>
                   )
-                  return href
-                    ? <a key={m.id} href={href} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">{body}</a>
-                    : <div key={m.id}>{body}</div>
+                  // External link_url is plain; file_url lives in the private
+                  // course-materials bucket and must be served via a signed URL.
+                  if (m.link_url)
+                    return <a key={m.id} href={m.link_url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">{body}</a>
+                  if (m.file_url)
+                    return <SignedFileLink key={m.id} bucket="course-materials" url={m.file_url} className="block hover:opacity-80 transition-opacity">{body}</SignedFileLink>
+                  return <div key={m.id}>{body}</div>
                 })}
               </div>
             )}
@@ -996,6 +1018,7 @@ export function LessonDetailPage() {
       {lesson.status === 'scheduled' && (
         <EditLessonModal
           open={editOpen}
+          canChangeTeacher={!!profile?.role && ['admin', 'owner'].includes(profile.role)}
           lesson={{
             id:               lesson.id,
             title:            lesson.title,

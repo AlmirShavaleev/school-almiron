@@ -213,18 +213,18 @@ export function LessonsPage() {
     <div className="space-y-6">
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Занятия</h1>
           <p className="text-gray-500 mt-1">Расписание и история занятий</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between sm:justify-end gap-2">
           {/* View toggle */}
           <div className="flex gap-0.5 bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setView('calendar')}
               className={cn(
-                'p-1.5 rounded-md transition-all duration-150',
+                'w-11 h-11 sm:w-auto sm:h-auto p-1.5 rounded-md flex items-center justify-center transition-all duration-150',
                 view === 'calendar' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400 hover:text-gray-600'
               )}
               title="Календарь"
@@ -234,7 +234,7 @@ export function LessonsPage() {
             <button
               onClick={() => setView('list')}
               className={cn(
-                'p-1.5 rounded-md transition-all duration-150',
+                'w-11 h-11 sm:w-auto sm:h-auto p-1.5 rounded-md flex items-center justify-center transition-all duration-150',
                 view === 'list' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400 hover:text-gray-600'
               )}
               title="Список"
@@ -251,7 +251,7 @@ export function LessonsPage() {
       </div>
 
       {/* ── Stats ── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatCard title="Предстоящих" value={upcoming}  icon={<Calendar size={20} />} color="blue" />
         <StatCard title="Проведено"   value={completed} icon={<CheckCircle size={20} />} color="green" />
         <StatCard title="Всего"       value={lessons.length} icon={<Clock size={20} />} color="purple" />
@@ -267,7 +267,7 @@ export function LessonsPage() {
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <button
                 onClick={prevMonth}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <ChevronLeft size={18} className="text-gray-600" />
               </button>
@@ -276,7 +276,7 @@ export function LessonsPage() {
               </h2>
               <button
                 onClick={nextMonth}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <ChevronRight size={18} className="text-gray-600" />
               </button>
@@ -347,7 +347,7 @@ export function LessonsPage() {
             </div>
 
             {/* Legend */}
-            <div className="flex items-center gap-4 px-5 py-3 border-t border-gray-100">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-5 py-3 border-t border-gray-100">
               {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                 <span key={k} className="flex items-center gap-1.5 text-xs text-gray-500">
                   <span className={cn('w-2 h-2 rounded-full', v.color)} />
@@ -382,7 +382,7 @@ export function LessonsPage() {
                 {canCreate && (
                   <button
                     onClick={() => setModalOpen(true)}
-                    className="mt-3 text-xs text-primary-600 hover:text-primary-700 font-medium cursor-pointer"
+                    className="min-h-11 mt-3 px-3 text-xs text-primary-600 hover:text-primary-700 font-medium cursor-pointer"
                   >
                     + Добавить занятие на этот день
                   </button>
@@ -401,7 +401,7 @@ export function LessonsPage() {
                 {canCreate && (
                   <button
                     onClick={() => setModalOpen(true)}
-                    className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors cursor-pointer"
+                    className="w-full min-h-11 py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors cursor-pointer"
                   >
                     + Добавить занятие
                   </button>
@@ -417,7 +417,7 @@ export function LessonsPage() {
         <div className="space-y-4">
 
           {/* Filter tabs */}
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+          <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit">
             {([
               ['all', 'Все'],
               ['scheduled', 'Предстоящие'],
@@ -427,7 +427,7 @@ export function LessonsPage() {
                 key={key}
                 onClick={() => setFilter(key)}
                 className={cn(
-                  'px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer',
+                  'min-h-11 flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer',
                   filter === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 )}
               >
@@ -478,19 +478,19 @@ export function LessonsPage() {
                         <div
                           key={lesson.id}
                           className={cn(
-                            'flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 hover:shadow-md',
+                            'flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 rounded-xl border transition-all duration-200 hover:shadow-md',
                             cfg.bg
                           )}
                         >
                           {/* Date badge */}
-                          <div className="shrink-0 w-12 text-center">
+                          <div className="shrink-0 w-full sm:w-12 flex sm:block items-baseline gap-1 sm:text-center">
                             <div className="text-lg font-bold text-gray-900 leading-none">{d.getDate()}</div>
                             <div className="text-[10px] text-gray-400 uppercase mt-0.5">
                               {d.toLocaleDateString('ru-RU', { weekday: 'short' })}
                             </div>
                           </div>
 
-                          <div className={cn('w-px self-stretch', cfg.color.replace('bg-', 'bg-'))} />
+                          <div className={cn('hidden sm:block w-px self-stretch', cfg.color.replace('bg-', 'bg-'))} />
 
                           {/* Info */}
                           <div className="flex-1 min-w-0">
@@ -512,7 +512,7 @@ export function LessonsPage() {
                           </div>
 
                           {/* Status + action */}
-                          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                          <div className="flex w-full sm:w-auto items-center gap-2 sm:shrink-0 flex-wrap sm:justify-end">
                             <Badge variant={cfg.badge}>{cfg.label}</Badge>
                             {lesson.zoom_link && lesson.status === 'scheduled' && (
                               <a href={lesson.zoom_link} target="_blank" rel="noreferrer">

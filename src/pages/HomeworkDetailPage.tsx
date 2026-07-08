@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
 
@@ -80,10 +81,9 @@ export function HomeworkDetailPage() {
       const { data: hwData, error: hwErr } = await supabase
         .from('homeworks')
         .select(`
-          id, title, description, due_date, max_score, file_url, created_at, group_id, created_by,
-          groups(id, name, courses(title)),
+          id, title, description, due_date, max_score, file_url, created_at, created_by,
           lessons(id, title, scheduled_at),
-          topics(id, title, modules(title)),
+          topics(id, title, modules(title, course_id, courses(title))),
           teachers(id, profiles(full_name, avatar_url))
         `)
         .eq('id', id!)
@@ -97,26 +97,50 @@ export function HomeworkDetailPage() {
         id: h.id, title: h.title, description: h.description,
         due_date: h.due_date, max_score: h.max_score, file_url: h.file_url,
         created_at: h.created_at,
-        group: h.groups ? { id: h.groups.id, name: h.groups.name, course_title: h.groups.courses?.title || null } : null,
+        group: null,
         lesson: h.lessons ? { id: h.lessons.id, title: h.lessons.title, scheduled_at: h.lessons.scheduled_at } : null,
         topic: h.topics ? { id: h.topics.id, title: h.topics.title, module_title: h.topics.modules?.title || null } : null,
         teacher: h.teachers ? { id: h.teachers.id, full_name: h.teachers.profiles?.full_name || '—', avatar_url: h.teachers.profiles?.avatar_url || null } : null,
       }
 
-      // Round 2: group students + existing submissions
+      // Round 2: groups in the homework course, scoped to the current teacher.
+      const courseId = h.topics?.modules?.course_id as string | undefined
+      let teacherId: string | null = null
+      if (profile?.role === 'teacher') {
+        const { data: teacher, error: teacherError } = await supabase
+          .from('teachers').select('id').eq('profile_id', profile.id).single()
+        if (teacherError) throw teacherError
+        teacherId = teacher?.id || null
+      }
+
+      let groupQuery = courseId
+        ? supabase.from('groups').select('id, name').eq('course_id', courseId).eq('is_active', true)
+        : null
+      if (groupQuery && teacherId) groupQuery = groupQuery.eq('teacher_id', teacherId)
+      const groupsRes = groupQuery ? await groupQuery : { data: [] as any[], error: null }
+      if (groupsRes.error) throw groupsRes.error
+      const groupIds = (groupsRes.data || []).map((group: any) => group.id)
+
       const [gsRes, subRes] = await Promise.all([
-        h.group_id
+        groupIds.length
           ? supabase.from('group_students')
               .select('students(id, profile_id, profiles(full_name, avatar_url))')
-              .eq('group_id', h.group_id)
-          : Promise.resolve({ data: [] as any[] }),
+              .in('group_id', groupIds)
+          : Promise.resolve({ data: [] as any[], error: null }),
         supabase.from('homework_submissions')
           .select('id, student_id, status, score, feedback, submitted_at, file_url, answer_text')
           .eq('homework_id', id!),
       ])
+      if (gsRes.error) throw gsRes.error
+      if (subRes.error) throw subRes.error
       if (cancelled) return
 
-      const rawStudents: any[] = (gsRes.data || []).map((r: any) => r.students).filter(Boolean)
+      const studentsById = new Map<string, any>()
+      for (const row of gsRes.data || []) {
+        const student = (row as any).students
+        if (student) studentsById.set(student.id, student)
+      }
+      const rawStudents = [...studentsById.values()]
       const subMap = new Map<string, any>()
       for (const s of subRes.data || []) subMap.set((s as any).student_id, s)
 
@@ -142,10 +166,16 @@ export function HomeworkDetailPage() {
         return diff !== 0 ? diff : a.full_name.localeCompare(b.full_name)
       })
 
+      const scopedGroups = groupsRes.data || []
+      built.group = scopedGroups.length ? {
+        id: scopedGroups.map((group: any) => group.id).join(','),
+        name: scopedGroups.map((group: any) => group.name).join(', '),
+        course_title: h.topics?.modules?.courses?.title || null,
+      } : null
       setHW(built)
       setSubmissions(rows)
     }
-  }, [id, tick])
+  }, [id, tick, profile])
 
   if (loading) {
     return (
@@ -267,10 +297,10 @@ export function HomeworkDetailPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText size={17} />Условие</CardTitle>
             {hw.file_url && (
-              <a href={hw.file_url} target="_blank" rel="noreferrer"
+              <SignedFileLink bucket="homeworks" url={hw.file_url}
                 className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
                 <Download size={13} />Скачать файл
-              </a>
+              </SignedFileLink>
             )}
           </CardHeader>
           {hw.description ? (
@@ -411,13 +441,12 @@ export function HomeworkDetailPage() {
 
                   {/* File link */}
                   {row.file_url && (
-                    <a href={row.file_url} target="_blank" rel="noreferrer"
+                    <SignedFileLink bucket="homeworks" url={row.file_url}
                       onClick={e => e.stopPropagation()}
                       className="text-gray-400 hover:text-primary-600 shrink-0"
-                      title="Скачать работу"
                     >
                       <Download size={14} />
-                    </a>
+                    </SignedFileLink>
                   )}
                 </div>
               )

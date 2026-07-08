@@ -60,8 +60,8 @@ export function GroupsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Группы</h1>
           <p className="text-gray-500 mt-1">Учебные группы школы · {groups.length} групп</p>
           <div className="flex items-center gap-1.5 mt-3">
@@ -76,7 +76,7 @@ export function GroupsPage() {
                 key={f.key}
                 onClick={() => setFilter(f.key)}
                 className={cn(
-                  'flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
+                  'flex min-h-11 sm:min-h-0 items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
                   filter === f.key
                     ? 'bg-primary-50 border-primary-300 text-primary-700'
                     : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
@@ -90,7 +90,7 @@ export function GroupsPage() {
         {canManage && (
           <button
             onClick={openCreate}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
+            className="flex min-h-11 items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
           >
             <Plus size={16} />Создать группу
           </button>
@@ -145,7 +145,7 @@ export function GroupsPage() {
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <button
                       onClick={() => navigate(`/groups/${group.id}`)}
-                      className="font-bold text-gray-900 text-base leading-tight text-left hover:text-primary-600 hover:underline underline-offset-2 transition-colors"
+                      className="min-w-0 break-words font-bold text-gray-900 text-base leading-tight text-left hover:text-primary-600 hover:underline underline-offset-2 transition-colors"
                     >
                       {group.name}
                     </button>
@@ -159,7 +159,7 @@ export function GroupsPage() {
 
                   {/* Course */}
                   {courseName && (
-                    <div className="flex items-center gap-2 text-sm text-primary-700 font-medium">
+                    <div className="min-w-0 flex items-center gap-2 text-sm text-primary-700 font-medium">
                       <BookOpen size={13} className="shrink-0 opacity-70" />
                       <span className="truncate">{courseName}</span>
                       {subject && <Badge variant="info" className="text-[11px]">{SUBJECT_LABELS[subject] || subject}</Badge>}
@@ -248,7 +248,7 @@ export function GroupsPage() {
                 <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex gap-2">
                   <button
                     onClick={() => navigate(`/groups/${group.id}`)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors"
+                    className="min-h-11 flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors"
                   >
                     Открыть<ArrowRight size={13} />
                   </button>
@@ -256,14 +256,14 @@ export function GroupsPage() {
                     <>
                       <button
                         onClick={() => openEdit(group)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
                         title="Настройки"
                       >
                         <Pencil size={13} />
                       </button>
                       <button
                         onClick={() => openEdit(group, 'students')}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-50 transition-colors"
+                        className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-50 transition-colors"
                         title="Ученики"
                       >
                         <Users size={13} />

@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import {
+  aggregateStatus, mapCollectionSubmission, mapLegacySubmission, progressOf,
+  type UnifiedStatus, type UnifiedSubmission,
+} from '@/lib/unifiedSubmissions'
 
 export interface TopicProgress {
   id:             string
@@ -16,7 +20,7 @@ export interface TopicProgress {
   has_solution: boolean
   has_video:    boolean
   // homework submission
-  hw_status:      string | null   // null = no HW assigned
+  hw_status:      UnifiedStatus | null
   hw_score:       number | null
   hw_max:         number | null
   hw_id:          string | null
@@ -25,6 +29,9 @@ export interface TopicProgress {
   hw_description: string | null
   hw_feedback:    string | null
   lesson_date:    string | null
+  assignments:    UnifiedSubmission[]
+  completed_count: number
+  assignment_count: number
 }
 
 export interface ModuleProgress {
@@ -32,8 +39,8 @@ export interface ModuleProgress {
   title:       string
   order_index: number
   topics:      TopicProgress[]
-  done:        number   // topics with checked HW
-  total:       number
+  done:        number   // accepted assignments
+  total:       number   // all assignments
 }
 
 export interface StaffInfo {
@@ -138,38 +145,70 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       // 5. Homeworks курса (на уровне темы) + сдачи студента
       const { data: hws } = await supabase
         .from('homeworks')
-        .select('id, topic_id, max_score, due_date, file_url, description')
+        .select('id, title, topic_id, lesson_id, max_score, due_date, file_url, description, created_at')
         .in('topic_id', topicIds)
         .eq('is_archived', false)
 
-      const hwByTopic: Record<string, { id: string; max_score: number; due_date: string | null; file_url: string | null; description: string | null }> = {}
+      const hwByTopic: Record<string, any[]> = {}
       for (const hw of hws || []) {
-        if (hw.topic_id) hwByTopic[hw.topic_id] = hw
+        if (hw.topic_id) (hwByTopic[hw.topic_id] ||= []).push(hw)
       }
 
       // Lessons per topic (latest scheduled)
       const { data: lessons } = await supabase
         .from('lessons')
-        .select('topic_id, scheduled_at')
+        .select('id, topic_id, scheduled_at')
         .eq('group_id', group.id)
         .order('scheduled_at', { ascending: false })
 
       const lessonByTopic: Record<string, string> = {}
+      const topicByLesson: Record<string, string> = {}
       for (const l of lessons || []) {
         if (l.topic_id && !lessonByTopic[l.topic_id]) lessonByTopic[l.topic_id] = l.scheduled_at
+        if (l.topic_id) topicByLesson[l.id] = l.topic_id
       }
 
       const hwIds = (hws || []).map((h: any) => h.id)
       const { data: subs } = hwIds.length
         ? await supabase
             .from('homework_submissions')
-            .select('homework_id, status, score, feedback')
+            .select('id, homework_id, status, score, feedback, submitted_at, checked_at')
             .eq('student_id', student.id)
             .in('homework_id', hwIds)
         : { data: [] }
 
-      const subByHw: Record<string, { status: string; score: number | null; feedback: string | null }> = {}
+      const subByHw: Record<string, any> = {}
       for (const s of subs || []) subByHw[s.homework_id] = s
+
+      // Collection assignments enter topic progress only through lesson.topic_id.
+      const db = supabase as any
+      const { data: assigned } = await db.from('assigned_collections')
+        .select('id, collection_id, lesson_id, due_date, created_at, lessons(topic_id), task_collections(title, subject)')
+        .or(`group_id.eq.${group.id},student_id.eq.${student.id}`)
+      const assignedIds = (assigned || []).map((item: any) => item.id)
+      const { data: collectionSubs } = assignedIds.length
+        ? await db.from('task_submissions').select('*').eq('student_id', student.id).in('assigned_id', assignedIds)
+        : { data: [] }
+      const collectionSubByAssignment = new Map((collectionSubs || []).map((s: any) => [s.assigned_id, s]))
+
+      const unifiedByTopic: Record<string, UnifiedSubmission[]> = {}
+      for (const hw of hws || []) {
+        if (!hw.topic_id) continue
+        ;(unifiedByTopic[hw.topic_id] ||= []).push(mapLegacySubmission(hw, subByHw[hw.id] || null, {
+          studentId: student.id, courseId: course.id, subject: course.subject,
+        }))
+      }
+      for (const assignment of assigned || []) {
+        const topicId = assignment.lesson_id
+          ? (assignment.lessons?.topic_id ?? topicByLesson[assignment.lesson_id] ?? null)
+          : null
+        if (!topicId) continue
+        ;(unifiedByTopic[topicId] ||= []).push(mapCollectionSubmission(
+          assignment, collectionSubByAssignment.get(assignment.id) || null,
+          { studentId: student.id, lessonId: assignment.lesson_id, topicId, courseId: course.id,
+            subject: assignment.task_collections?.subject ?? null, title: assignment.task_collections?.title ?? null },
+        ))
+      }
 
       // 6. Assemble
       const result: ModuleProgress[] = (mods || []).map((m: any) => {
@@ -177,8 +216,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           .sort((a: any, b: any) => a.order_index - b.order_index)
           .map((t: any) => {
             const types = matMap[t.id] || new Set()
-            const hw    = hwByTopic[t.id] || null
-            const sub   = hw ? subByHw[hw.id] : null
+            const legacyHws = hwByTopic[t.id] || []
+            const hw = legacyHws[0] || null
+            const sub = hw ? subByHw[hw.id] : null
+            const assignments = unifiedByTopic[t.id] || []
+            const progress = progressOf(assignments)
             return {
               id:             t.id,
               title:          t.title,
@@ -191,7 +233,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               has_homework: types.has('homework'),
               has_solution: types.has('solution'),
               has_video:    types.has('video'),
-              hw_status:      sub?.status    || (hw ? 'not_submitted' : null),
+              hw_status:      aggregateStatus(assignments),
               hw_score:       sub?.score     ?? null,
               hw_max:         hw?.max_score  ?? null,
               hw_id:          hw?.id         ?? null,
@@ -200,11 +242,14 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               hw_description: hw?.description ?? null,
               hw_feedback:    sub?.feedback  ?? null,
               lesson_date:    lessonByTopic[t.id] ?? null,
+              assignments,
+              completed_count: progress.completed,
+              assignment_count: progress.assigned,
             }
           })
 
-        const done  = topics.filter(t => t.hw_status === 'checked').length
-        const total = topics.filter(t => t.hw_id !== null).length
+        const done  = topics.reduce((sum, topic) => sum + topic.completed_count, 0)
+        const total = topics.reduce((sum, topic) => sum + topic.assignment_count, 0)
 
         return { id: m.id, title: m.title, order_index: m.order_index, topics, done, total }
       })
