@@ -269,12 +269,12 @@ export function StudentReviewPage() {
       </div>
     </div>
   )
-  const reviewRail = sub ? (
-    <div data-testid="student-review-rail" className="grid gap-3 p-3">
+  const gradingCard = sub ? (
+    <div data-testid="student-review-grading-card" className="grid gap-4">
       <div className="space-y-2">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
-          <div className="mb-2 flex max-h-16 flex-wrap gap-1.5 overflow-auto">
+          <div className="mb-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
             {QUICK_PHRASES.map(p => (
               <button
                 key={p}
@@ -295,7 +295,7 @@ export function StudentReviewPage() {
           />
         </div>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
             <MessageSquare size={15} className="text-primary-500" />
@@ -340,19 +340,21 @@ export function StudentReviewPage() {
           )}
         </div>
       </div>
-      <div className="flex flex-col items-stretch gap-2 lg:min-w-44">
+      <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-end md:justify-between">
         {saved
           ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
           : <span className="h-5" />
         }
-        <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
-          <RotateCcw size={14} className="mr-1" />На доработку
-        </Button>
-        {!canPreview && (
-          <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
-            <CheckCircle size={14} className="mr-1" />Принять
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+          <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+            <RotateCcw size={14} className="mr-1" />На доработку
           </Button>
-        )}
+          {!canPreview && (
+            <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
+              <CheckCircle size={14} className="mr-1" />Принять
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   ) : null
@@ -379,9 +381,9 @@ export function StudentReviewPage() {
               submissionId={sub.id}
               filePath={sub.file_url}
               className="h-full min-h-0"
-              fitPage
               header={reviewHeader}
-              footer={reviewRail}
+              footer={gradingCard}
+              footerPublishLabel="Опубликовать проверку"
               onPublish={() => handleSave('checked')}
               onPublishComplete={finishReview}
             />
@@ -413,7 +415,7 @@ export function StudentReviewPage() {
               </div>
             )}
             <div className="mt-4 shrink-0 border-t border-gray-100 pt-4">
-              {reviewRail}
+              {gradingCard}
             </div>
           </div>
         )}

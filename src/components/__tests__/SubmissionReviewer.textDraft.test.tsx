@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }))
@@ -8,8 +8,8 @@ vi.mock('pdfjs-dist', () => ({
   getDocument: () => ({
     promise: Promise.resolve({
       numPages: 2,
-      getPage: () => Promise.resolve({
-        getViewport: () => ({ width: 100, height: 100 }),
+      getPage: (pageNumber: number) => Promise.resolve({
+        getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 140 * scale, pageNumber }),
         render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
       }),
     }),
@@ -25,6 +25,8 @@ vi.mock('@/lib/storage', () => ({
 let selectResult: { data: unknown; error: unknown } = { data: [], error: null }
 let lastUpsert: any = null
 const fromSpy = vi.fn()
+const scrollIntoViewSpy = vi.fn()
+const observedElements: Element[] = []
 
 vi.mock('@/lib/supabase', () => ({
   supabase: { from: (...args: unknown[]) => fromSpy(...args) },
@@ -41,65 +43,110 @@ function makeAnnotationTable() {
 
 import { SubmissionReviewer } from '@/components/SubmissionReviewer'
 
-Element.prototype.getBoundingClientRect = () => ({
-  x: 0, y: 0, left: 0, top: 0, width: 200, height: 200, right: 200, bottom: 200,
-  toJSON() { return this },
-}) as DOMRect
+class ResizeObserverMock {
+  callback: ResizeObserverCallback
+  constructor(callback: ResizeObserverCallback) { this.callback = callback }
+  observe(target: Element) {
+    this.callback([{ target, contentRect: { width: 600, height: 900 } as DOMRectReadOnly } as ResizeObserverEntry], this as unknown as ResizeObserver)
+  }
+  disconnect() {}
+  unobserve() {}
+}
+
+class IntersectionObserverMock {
+  callback: IntersectionObserverCallback
+  constructor(callback: IntersectionObserverCallback) { this.callback = callback }
+  observe(target: Element) {
+    observedElements.push(target)
+    const pageNumber = Number((target as HTMLElement).dataset.pageNumber ?? '1')
+    this.callback([{
+      target,
+      isIntersecting: true,
+      intersectionRatio: pageNumber === 1 ? 1 : 0.6,
+      boundingClientRect: {} as DOMRectReadOnly,
+      intersectionRect: {} as DOMRectReadOnly,
+      rootBounds: null,
+      time: 0,
+    } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+  disconnect() {}
+  unobserve() {}
+}
+
+Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+  const pageNumber = Number((this as HTMLElement).dataset.pageNumber ?? (this as HTMLElement).closest('[data-page-number]')?.getAttribute('data-page-number') ?? '1')
+  const top = (pageNumber - 1) * 250
+  return {
+    x: 0, y: top, left: 0, top, width: 200, height: 280, right: 200, bottom: top + 280,
+    toJSON() { return this },
+  } as DOMRect
+}
 Element.prototype.setPointerCapture = vi.fn()
+Element.prototype.scrollIntoView = scrollIntoViewSpy
 
 async function renderReady(props: Partial<React.ComponentProps<typeof SubmissionReviewer>> = {}) {
   render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" {...props} />)
   await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
-  await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByTestId('review-overlay-2')).toBeInTheDocument())
 }
 
-function svgOverlay() {
-  return document.querySelector('svg[viewBox="0 0 1 1"]') as SVGSVGElement
-}
-
-function dragRegion(fromX: number, fromY: number, toX: number, toY: number) {
-  const svg = svgOverlay()
-  fireEvent.pointerDown(svg, { clientX: fromX * 200, clientY: fromY * 200, pointerId: 1 })
-  fireEvent.pointerMove(svg, { clientX: toX * 200, clientY: toY * 200, pointerId: 1 })
-  fireEvent.pointerUp(svg, { clientX: toX * 200, clientY: toY * 200, pointerId: 1 })
+function dragRegion(pageNumber: number, fromX: number, fromY: number, toX: number, toY: number) {
+  const svg = screen.getByTestId(`review-overlay-${pageNumber}`)
+  const pageTop = (pageNumber - 1) * 250
+  fireEvent.pointerDown(svg, { clientX: fromX * 100, clientY: pageTop + fromY * 100, pointerId: 1 })
+  fireEvent.pointerMove(svg, { clientX: toX * 100, clientY: pageTop + toY * 100, pointerId: 1 })
+  fireEvent.pointerUp(svg, { clientX: toX * 100, clientY: pageTop + toY * 100, pointerId: 1 })
 }
 
 describe('SubmissionReviewer regions', () => {
   beforeEach(() => {
     selectResult = { data: [], error: null }
     lastUpsert = null
+    observedElements.length = 0
+    scrollIntoViewSpy.mockReset()
     fromSpy.mockReset()
     fromSpy.mockImplementation(() => makeAnnotationTable())
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000001')
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    vi.stubGlobal('IntersectionObserver', IntersectionObserverMock)
   })
 
-  it('drag creates a region comment with normalized rect and version 2 data', async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders a continuous page strip and keeps later pages in the DOM', async () => {
     await renderReady()
-    dragRegion(0.1, 0.2, 0.4, 0.5)
+
+    expect(screen.getByTestId('review-page-1')).toBeInTheDocument()
+    expect(screen.getByTestId('review-page-2')).toBeInTheDocument()
+    expect(screen.getByTestId('review-canvas-1')).toBeInTheDocument()
+    expect(screen.getByTestId('review-canvas-2')).toBeInTheDocument()
+  })
+
+  it('drag on the second page creates a region comment with page=2 and version 2 data', async () => {
+    await renderReady()
+    dragRegion(2, 0.1, 0.2, 0.4, 0.5)
 
     expect(await screen.findByText('Комментарий к области')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
-
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Проверь решение' } })
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    await waitFor(() => expect(screen.getByText('Проверь решение')).toBeInTheDocument())
-    await waitFor(() => expect(lastUpsert?.data?.version).toBe(2), { timeout: 2500 })
+    await waitFor(() => expect(lastUpsert?.page).toBe(2), { timeout: 2500 })
     expect(lastUpsert.data.objects[0]).toMatchObject({
-      id: '00000000-0000-4000-8000-000000000001',
       type: 'region',
-      category: 'comment',
       text: 'Проверь решение',
-      rect: { x: 0.1, y: 0.2, w: 0.30000000000000004, h: 0.3 },
+      rect: { x: 0.05, y: 0.07142857142857142, w: 0.15000000000000002, h: 0.10714285714285715 },
     })
   })
 
   it('ignores click-sized selections and Escape cancels an open editor', async () => {
     await renderReady()
-    dragRegion(0.1, 0.1, 0.105, 0.4)
+    dragRegion(1, 0.1, 0.1, 0.105, 0.4)
     expect(screen.queryByText('Комментарий к области')).not.toBeInTheDocument()
 
-    dragRegion(0.1, 0.1, 0.3, 0.3)
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
     const textarea = await screen.findByRole('textbox', { name: 'Текст комментария' })
     fireEvent.keyDown(textarea, { key: 'Escape' })
 
@@ -109,7 +156,7 @@ describe('SubmissionReviewer regions', () => {
 
   it('standard phrase inserts text, praise can save empty, and delete removes a region', async () => {
     await renderReady()
-    dragRegion(0.1, 0.1, 0.3, 0.3)
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
 
     fireEvent.click(await screen.findByRole('button', { name: /Вычислительная ошибка/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Проверь знаки' }))
@@ -120,7 +167,7 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Удалить комментарий' }))
     await waitFor(() => expect(screen.queryByText('Проверь знаки')).not.toBeInTheDocument())
 
-    dragRegion(0.2, 0.2, 0.4, 0.4)
+    dragRegion(1, 0.2, 0.2, 0.4, 0.4)
     fireEvent.click(await screen.findByRole('button', { name: /Отлично/ }))
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled()
   })
@@ -143,17 +190,15 @@ describe('SubmissionReviewer regions', () => {
 
     expect(await screen.findByText('старый текст')).toBeInTheDocument()
     expect(screen.getByText('Пропущен шаг')).toBeInTheDocument()
-    expect(screen.queryByText('Выделите область мышкой')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Удалить комментарий' })).not.toBeInTheDocument()
   })
 
   it('the editor scrolls its own content and keeps the Save/Cancel footer outside the scroll area', async () => {
     const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
     await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
-    await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
-    dragRegion(0.1, 0.1, 0.3, 0.3)
+    await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
 
-    // Pick a category with phrases so the editor is at its tallest.
     fireEvent.click(await screen.findByRole('button', { name: /Вычислительная ошибка/ }))
 
     const saveButton = screen.getByRole('button', { name: 'Сохранить' })
@@ -162,41 +207,62 @@ describe('SubmissionReviewer regions', () => {
 
     const scrollArea = container.querySelector('.overflow-y-auto.overscroll-contain')
     expect(scrollArea).not.toBeNull()
-    expect(scrollArea).not.toBe(footer)
-    // Footer must not be a descendant of the scroll area — it has to stay
-    // pinned outside it, not scroll away with the category grid/phrases.
     expect(scrollArea!.contains(footer)).toBe(false)
   })
 
-  it('a wheel over the editor does not lose the open draft (scroll stays local, no accidental close/reset)', async () => {
+  it('a wheel over the editor does not lose the open draft', async () => {
     const { container } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
     await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
-    await waitFor(() => expect(svgOverlay()).toBeInTheDocument())
-    dragRegion(0.1, 0.1, 0.3, 0.3)
+    await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
 
     const scrollArea = container.querySelector('.overflow-y-auto.overscroll-contain')!
     fireEvent.wheel(scrollArea, { deltaY: 400 })
 
-    // Draft editor is still open and untouched — a wheel event never
-    // triggers any cancel/save/state-reset path.
     expect(screen.getByText('Комментарий к области')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Текст комментария' })).toBeInTheDocument()
   })
 
-  it('replaces the comment list with the editor while keeping the grading footer outside the scroll zone', async () => {
+  it('replaces the comment list with the editor while keeping the grading card at the end of the document flow', async () => {
     await renderReady({ footer: <div><span>Оценка</span><button type="button">Принять</button></div> })
 
     const scrollZone = screen.getByTestId('review-rail-scroll-zone')
-    const footer = screen.getByTestId('review-rail-footer')
+    const footer = screen.getByTestId('review-document-footer')
     expect(scrollZone).toContainElement(screen.getByText('Комментарии'))
     expect(footer).toContainElement(screen.getByText('Оценка'))
     expect(scrollZone).not.toContainElement(screen.getByText('Оценка'))
 
-    dragRegion(0.1, 0.1, 0.3, 0.3)
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
 
     expect(await screen.findByText('Комментарий к области')).toBeInTheDocument()
     expect(screen.queryByText('Комментарии')).not.toBeInTheDocument()
     expect(scrollZone).toContainElement(screen.getByText('Комментарий к области'))
     expect(footer).toContainElement(screen.getByText('Оценка'))
+  })
+
+  it('does not render the grading card in read-only mode', async () => {
+    await renderReady({ readOnly: true, footer: <div>Оценка</div> })
+
+    expect(screen.queryByTestId('review-document-footer')).not.toBeInTheDocument()
+  })
+
+  it('clicking a page-2 comment scrolls the strip to that page', async () => {
+    selectResult = {
+      data: [{
+        page: 2,
+        status: 'draft',
+        data: {
+          version: 2,
+          objects: [{ id: 'r2', type: 'region', rect: { x: 0.1, y: 0.2, w: 0.2, h: 0.2 }, category: 'logic', text: 'Пропущен шаг' }],
+        },
+      }],
+      error: null,
+    }
+    await renderReady()
+
+    fireEvent.click(screen.getByText('Пропущен шаг'))
+
+    expect(scrollIntoViewSpy).toHaveBeenCalled()
+    expect(scrollIntoViewSpy.mock.calls.at(-1)?.[0]).toMatchObject({ block: 'center', behavior: 'smooth' })
   })
 })

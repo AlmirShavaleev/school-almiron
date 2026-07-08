@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, Save, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Loader2, Save, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
@@ -23,6 +23,8 @@ type Mark = Region | LegacyMark
 type PageData = { version: 2; objects: Mark[] }
 type Row = { page: number; data: unknown; status: 'draft' | 'published' }
 type RegionItem = Region & { page: number }
+type PageMetrics = { width: number; height: number; ratio: number }
+type DragState = { page: number; rect: Rect } | null
 
 interface Props {
   submissionId: string
@@ -30,8 +32,8 @@ interface Props {
   readOnly?: boolean
   className?: string
   fitWidth?: boolean
-  fitPage?: boolean
   footer?: ReactNode
+  footerPublishLabel?: string
   header?: ReactNode
   onPublish?: () => Promise<boolean | void>
   onPublishComplete?: (success: boolean) => void
@@ -66,9 +68,9 @@ export function SubmissionReviewer({
   filePath,
   readOnly = false,
   className,
-  fitWidth = false,
-  fitPage = false,
+  fitWidth = true,
   footer,
+  footerPublishLabel,
   header,
   onPublish,
   onPublishComplete,
@@ -77,27 +79,21 @@ export function SubmissionReviewer({
   const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
   const isPdf = ext === 'pdf'
   const isImage = ['png', 'jpg', 'jpeg'].includes(ext ?? '')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const surfaceRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
-  const pdfRef = useRef<pdfjs.PDFDocumentProxy | null>(null)
-  const renderRef = useRef<pdfjs.RenderTask | null>(null)
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const dragStart = useRef<Point | null>(null)
+  const dragStartRef = useRef<{ page: number; point: Point } | null>(null)
 
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [retried, setRetried] = useState(false)
-  const [page, setPage] = useState(1)
-  // 0 (not 1!) — must differ from every real numPages so setPageCount(doc.numPages)
-  // is never a same-value no-op for a single-page PDF (the most common case, a
-  // one-page scan). A no-op setState means React skips the re-render, which was
-  // silently defeating this as the render effect's "the PDF is ready now" signal.
-  const [pageCount, setPageCount] = useState(0)
+  const [pageCount, setPageCount] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(1)
-  const [ratio, setRatio] = useState(1 / 1.414)
-  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
+  const [frameWidth, setFrameWidth] = useState(0)
+  const [imageRatio, setImageRatio] = useState(1 / 1.414)
+  const [pageMetrics, setPageMetrics] = useState<Record<number, PageMetrics>>({})
   const [pages, setPages] = useState<Record<number, PageData>>({})
   const [dirty, setDirty] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -105,26 +101,38 @@ export function SubmissionReviewer({
   const [publishing, setPublishing] = useState(false)
   const [published, setPublished] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [dragRect, setDragRect] = useState<Rect | null>(null)
+  const [dragState, setDragState] = useState<DragState>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
-  const current = pages[page] ?? EMPTY
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([1]))
+
+  const pdfRef = useRef<pdfjs.PDFDocumentProxy | null>(null)
+  const visibilityRef = useRef<Record<number, number>>({})
 
   const regions = useMemo(() => Object.entries(pages)
     .flatMap(([number, data]) => data.objects.filter(isRegion).map(region => ({ ...region, page: Number(number) })))
     .sort((a, b) => a.page - b.page), [pages])
 
   const getUrl = useCallback(async () => {
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
     try {
       const next = await getSignedFileUrl('homeworks', path)
       if (!next) throw new Error('Файл не найден')
       setUrl(next)
-    } catch (e: any) { setError(e?.message ?? 'Не удалось открыть файл'); setLoading(false) }
+    } catch (e: any) {
+      setError(e?.message ?? 'Не удалось открыть файл')
+      setLoading(false)
+    }
   }, [path])
 
   const retryUrl = useCallback(() => {
-    if (retried) { setError('Не удалось загрузить файл'); setLoading(false); return }
-    setRetried(true); void getUrl()
+    if (retried) {
+      setError('Не удалось загрузить файл')
+      setLoading(false)
+      return
+    }
+    setRetried(true)
+    void getUrl()
   }, [getUrl, retried])
 
   useEffect(() => { setRetried(false); void getUrl() }, [getUrl])
@@ -138,7 +146,8 @@ export function SubmissionReviewer({
       if (!active) return
       const next: Record<number, PageData> = {}
       for (const row of data ?? []) next[row.page] = cleanData(row.data)
-      setPages(next); setPublished((data ?? []).some(row => row.status === 'published'))
+      setPages(next)
+      setPublished((data ?? []).some(row => row.status === 'published'))
     })
     return () => { active = false }
   }, [path, readOnly, submissionId])
@@ -147,94 +156,102 @@ export function SubmissionReviewer({
     if (!isPdf || !url) return
     let active = true
     const task = pdfjs.getDocument({ url })
-    task.promise.then(doc => {
+    task.promise.then(async doc => {
       if (!active) return
-      pdfRef.current = doc; setPageCount(doc.numPages); setLoading(false)
+      pdfRef.current = doc
+      setPageCount(doc.numPages)
+      const metricsEntries = await Promise.all(
+        Array.from({ length: doc.numPages }, async (_value, index) => {
+          const pageNumber = index + 1
+          const pdfPage = await doc.getPage(pageNumber)
+          const viewport = pdfPage.getViewport({ scale: 1 })
+          return [pageNumber, { width: viewport.width, height: viewport.height, ratio: viewport.width / viewport.height }] as const
+        }),
+      )
+      if (!active) return
+      setPageMetrics(Object.fromEntries(metricsEntries))
+      setVisiblePages(new Set([1, 2].filter(number => number <= doc.numPages)))
+      setLoading(false)
     }).catch(() => active && retryUrl())
-    return () => { active = false; renderRef.current?.cancel(); void task.destroy(); pdfRef.current = null }
+    return () => {
+      active = false
+      void task.destroy()
+      pdfRef.current = null
+    }
   }, [isPdf, retryUrl, url])
 
   useEffect(() => {
-    if ((!fitWidth && !fitPage) || !frameRef.current || typeof ResizeObserver === 'undefined') return
+    if (!fitWidth || !frameRef.current || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(entries => {
       const rect = entries[0]?.contentRect
       const width = rect ? Math.round(rect.width) : 0
-      const height = rect ? Math.round(rect.height) : 0
-      // Bail on a no-op change (rounds away sub-pixel jitter some browsers
-      // report even when nothing visibly moved). Each *distinct* update
-      // retriggers the PDF fit/render effect below, and since getPage() is
-      // async, a fast stream of them could cancel every in-flight render
-      // before it ever finishes — this keeps that stream to real changes only.
-      setFrameSize(prev => (prev.width === width && prev.height === height) ? prev : { width, height })
+      setFrameWidth(prev => (prev === width ? prev : width))
     })
     observer.observe(frameRef.current)
     return () => observer.disconnect()
-  }, [fitPage, fitWidth])
+  }, [fitWidth])
 
   useEffect(() => {
-    if (!isPdf || !pdfRef.current || !canvasRef.current) return
-    pdfRef.current.getPage(page).then(pdfPage => {
-      // Only bail if the canvas is actually gone (real unmount) — NOT on
-      // "a newer run of this same effect started since". Every dependency
-      // change (frameSize settling, page/zoom controls) starts a fresh
-      // getPage().then() chain; if an older one's callback fired after a
-      // newer one had already begun, `active` would go false and this
-      // legitimate result would be silently dropped, sometimes leaving the
-      // canvas permanently blank if runs kept superseding each other before
-      // any single one finished. Effects run in order, so the run that
-      // resolves LAST simply overwrites with its (correct, final) values —
-      // last-write-wins is fine here since nothing is appended/merged.
-      if (!canvasRef.current) return
-      const baseViewport = pdfPage.getViewport({ scale: 1 })
-      // Prefer the ResizeObserver-measured size (stable, post-layout,
-      // padding already excluded via contentRect); if it hasn't reported
-      // yet, fall back to a direct live read rather than skipping the
-      // render entirely — a permanently blank canvas is worse than an
-      // occasionally-imperfect fit, and the observer's own next callback
-      // will correct the size once it does fire.
-      const availableWidth = frameSize.width || frameRef.current?.clientWidth || 0
-      const availableHeight = frameSize.height || frameRef.current?.clientHeight || 0
-      const widthScale = (fitWidth || fitPage) && availableWidth > 0
-        ? Math.max(0.1, (availableWidth - 2) / baseViewport.width)
-        : 1.35
-      const heightScale = fitPage && availableHeight > 0
-        ? Math.max(0.1, (availableHeight - 2) / baseViewport.height)
-        : widthScale
-      const fittedScale = fitPage ? Math.min(widthScale, heightScale) : widthScale
-      const viewport = pdfPage.getViewport({ scale: fittedScale * zoom })
-      const dpr = window.devicePixelRatio || 1
-      const renderViewport = pdfPage.getViewport({ scale: fittedScale * zoom * dpr })
-      const canvas = canvasRef.current
-      canvas.width = renderViewport.width
-      canvas.height = renderViewport.height
-      canvas.style.width = `${viewport.width}px`
-      canvas.style.height = `${viewport.height}px`
-      setRatio(baseViewport.width / baseViewport.height)
-      renderRef.current?.cancel()
-      const task = pdfPage.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: renderViewport })
-      renderRef.current = task
-      task.promise.catch((e: any) => e?.name !== 'RenderingCancelledException' && retryUrl())
-    }).catch(retryUrl)
-    return () => { renderRef.current?.cancel() }
-    // pageCount is the only reactive signal that the PDF document (a ref,
-    // pdfRef.current — mutating it doesn't trigger a re-render) has become
-    // available. Without it: if the ResizeObserver's frameSize update lands
-    // BEFORE the PDF finishes loading, this effect bails on !pdfRef.current
-    // and nothing else in the deps list changes when the PDF *does* finish
-    // loading a moment later — so it would silently never render.
-  }, [fitPage, fitWidth, frameSize.height, frameSize.width, isPdf, page, pageCount, retryUrl, url, zoom])
+    if (!isPdf || !frameRef.current || typeof IntersectionObserver === 'undefined') return
+    const root = frameRef.current
+    const observer = new IntersectionObserver(entries => {
+      const ratios = { ...visibilityRef.current }
+      let changed = false
+      for (const entry of entries) {
+        const number = Number((entry.target as HTMLElement).dataset.pageNumber ?? '0')
+        if (!number) continue
+        ratios[number] = entry.intersectionRatio
+        if (entry.isIntersecting || entry.intersectionRatio > 0) {
+          changed = true
+          setVisiblePages(prev => {
+            const next = new Set(prev)
+            for (const nearby of [number - 1, number, number + 1]) {
+              if (nearby >= 1 && nearby <= pageCount) next.add(nearby)
+            }
+            return next
+          })
+        }
+      }
+      visibilityRef.current = ratios
+      const best = Object.entries(ratios)
+        .map(([number, ratio]) => ({ number: Number(number), ratio }))
+        .filter(item => item.ratio > 0)
+        .sort((a, b) => b.ratio - a.ratio || a.number - b.number)[0]
+      if (best) setCurrentPage(best.number)
+      if (!best && changed) {
+        const firstVisible = entries.find(entry => entry.isIntersecting)
+        if (firstVisible) setCurrentPage(Number((firstVisible.target as HTMLElement).dataset.pageNumber ?? '1'))
+      }
+    }, { root, threshold: [0, 0.2, 0.5, 0.8, 1] })
+
+    for (let number = 1; number <= pageCount; number += 1) {
+      const node = pageRefs.current[number]
+      if (node) observer.observe(node)
+    }
+    return () => observer.disconnect()
+  }, [isPdf, pageCount, pageMetrics])
 
   const savePage = useCallback(async (number: number, data: PageData) => {
     if (readOnly) return true
-    setSaving(true); setSaveState('idle')
+    setSaving(true)
+    setSaveState('idle')
     const { error: saveError } = await (supabase as any).from('annotation_sets').upsert({
-      submission_id: submissionId, file_path: path, page: number, data: { ...data, version: 2 }, status: 'draft',
+      submission_id: submissionId,
+      file_path: path,
+      page: number,
+      data: { ...data, version: 2 },
+      status: 'draft',
     }, { onConflict: 'submission_id,file_path,page' })
-    setSaving(false); setSaveState(saveError ? 'error' : 'saved')
+    setSaving(false)
+    setSaveState(saveError ? 'error' : 'saved')
     if (saveError) console.error('Не удалось сохранить аннотации', saveError)
     if (!saveError) {
       setPublished(false)
-      setDirty(value => { const next = new Set(value); next.delete(number); return next })
+      setDirty(value => {
+        const next = new Set(value)
+        next.delete(number)
+        return next
+      })
     }
     return !saveError
   }, [path, readOnly, submissionId])
@@ -253,32 +270,45 @@ export function SubmissionReviewer({
     setDirty(value => new Set(value).add(number))
     setSaveState('idle')
   }
-  const position = (event: React.PointerEvent): Point => {
-    const rect = surfaceRef.current!.getBoundingClientRect()
-    return {
+
+  function pointerDown(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
+    if (readOnly || draft) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const point = {
       x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     }
+    dragStartRef.current = { page: pageNumber, point }
+    setDragState({ page: pageNumber, rect: { x: point.x, y: point.y, w: 0, h: 0 } })
   }
-  function pointerDown(event: React.PointerEvent) {
-    if (readOnly || draft) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    const point = position(event)
-    dragStart.current = point
-    setDragRect({ x: point.x, y: point.y, w: 0, h: 0 })
+
+  function pointerMove(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
+    if (readOnly || !dragStartRef.current || dragStartRef.current.page !== pageNumber) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const point = {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    }
+    const start = dragStartRef.current.point
+    setDragState({ page: pageNumber, rect: normalizeRect(start, point) })
   }
-  function pointerMove(event: React.PointerEvent) {
-    if (readOnly || !dragStart.current) return
-    setDragRect(normalizeRect(dragStart.current, position(event)))
+
+  function pointerUp(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
+    if (readOnly || !dragStartRef.current || dragStartRef.current.page !== pageNumber) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const point = {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    }
+    const nextRect = normalizeRect(dragStartRef.current.point, point)
+    dragStartRef.current = null
+    setDragState(null)
+    if (nextRect.w < MIN_REGION_SIZE || nextRect.h < MIN_REGION_SIZE) return
+    setCurrentPage(pageNumber)
+    setDraft({ page: pageNumber, rect: nextRect, category: 'comment', text: '' })
   }
-  function pointerUp(event: React.PointerEvent) {
-    if (readOnly || !dragStart.current) return
-    const rect = normalizeRect(dragStart.current, position(event))
-    dragStart.current = null
-    setDragRect(null)
-    if (rect.w < MIN_REGION_SIZE || rect.h < MIN_REGION_SIZE) return
-    setDraft({ page, rect, category: 'comment', text: '' })
-  }
+
   function saveDraft() {
     if (!draft) return
     const text = draft.text.trim()
@@ -289,81 +319,154 @@ export function SubmissionReviewer({
     setActiveId(region.id)
     setDraft(null)
   }
+
   function deleteRegion(item: RegionItem) {
     const pageData = pages[item.page] ?? EMPTY
     commit(item.page, pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id)))
     if (activeId === item.id) setActiveId(null)
   }
+
   function activateRegion(item: RegionItem) {
-    setPage(item.page)
+    setCurrentPage(item.page)
     setActiveId(item.id)
+    pageRefs.current[item.page]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
+
   async function publish() {
     setPublishing(true)
-    if (onPublish && await onPublish() === false) { setPublishing(false); onPublishComplete?.(false); return }
+    if (onPublish && await onPublish() === false) {
+      setPublishing(false)
+      onPublishComplete?.(false)
+      return
+    }
     const numbers = new Set([...dirty, ...Object.keys(pages).map(Number)])
     const ok = await Promise.all([...numbers].map(number => savePage(number, pages[number] ?? EMPTY)))
-    if (!ok.every(Boolean)) { setPublishing(false); onPublishComplete?.(false); return }
+    if (!ok.every(Boolean)) {
+      setPublishing(false)
+      onPublishComplete?.(false)
+      return
+    }
     const { error: publishError } = await (supabase as any).from('annotation_sets').update({ status: 'published' })
       .eq('submission_id', submissionId).eq('file_path', path)
     setSaveState(publishError ? 'error' : 'saved')
     setPublishing(false)
-    if (publishError) { onPublishComplete?.(false); return }
+    if (publishError) {
+      onPublishComplete?.(false)
+      return
+    }
     setPublished(true)
     onPublishComplete?.(true)
   }
 
-  useEffect(() => {
-    if (readOnly) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      const isTextTarget = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable
-      if (isTextTarget) return
-      if (event.key === 'PageUp' || event.key === 'ArrowLeft') {
-        event.preventDefault()
-        setPage(value => Math.max(1, value - 1))
-      }
-      if (event.key === 'PageDown' || event.key === 'ArrowRight') {
-        event.preventDefault()
-        setPage(value => Math.min(pageCount, value + 1))
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [pageCount, readOnly])
-
   if (!isPdf && !isImage) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
+
+  const baseWidth = Math.max(0, frameWidth - 2)
+
+  const documentFooter = !readOnly && footer ? <div
+    data-testid="review-document-footer"
+    className="mx-auto w-full max-w-full rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5"
+  >
+    <div className="space-y-4">
+      {footer}
+      {footerPublishLabel ? <div className="flex justify-end border-t border-slate-200 pt-4">
+        <button
+          type="button"
+          onClick={() => void publish()}
+          disabled={publishing}
+          className="min-h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50"
+        >
+          {publishing ? 'Публикую...' : published ? 'Опубликовать снова' : footerPublishLabel}
+        </button>
+      </div> : null}
+    </div>
+  </div> : null
 
   return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
       {header ? <div className="min-w-0 flex-1">{header}</div> : <div className="flex-1" />}
-      <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
-      <div className="flex items-center"><ToolButton disabled={page <= 1} title="Назад" onClick={() => setPage(p => p - 1)}><ChevronLeft size={17}/></ToolButton><span className="min-w-20 text-center tabular-nums">{page} / {pageCount}</span><ToolButton disabled={page >= pageCount} title="Вперёд" onClick={() => setPage(p => p + 1)}><ChevronRight size={17}/></ToolButton></div>
-      <div className="flex items-center"><ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton><span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span><ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton></div>
-      {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
-        {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-        <button type="button" onClick={() => void publish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
-      </div>}
+      <div className="flex items-center gap-2 text-xs text-slate-600">
+        <span className="min-w-20 text-center tabular-nums">{currentPage} / {pageCount}</span>
+        <div className="flex items-center">
+          <ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton>
+          <span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+          <ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton>
+        </div>
+        {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
+          {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
+          <button type="button" onClick={() => void publish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+        </div>}
       </div>
     </div>
     <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div ref={frameRef} data-testid="review-document-scroll-area" className="overflow-auto p-3 sm:p-4">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
-        <div ref={surfaceRef} className={cn('relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10', fitWidth || fitPage ? 'mx-0' : 'mx-auto')} style={{ width: isImage ? `${zoom * 100}%` : fitPage ? 'fit-content' : fitWidth ? '100%' : 'fit-content', maxWidth: fitPage ? 'none' : fitWidth ? '100%' : undefined, aspectRatio: ratio }}>
-          {isPdf ? <canvas ref={canvasRef} className="block max-w-none"/> : url ? <img src={url} alt="Работа ученика" draggable={false} className="block h-auto w-full select-none" onLoad={e => { setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight); setLoading(false) }} onError={retryUrl}/> : null}
-          {!loading && <svg viewBox="0 0 1 1" preserveAspectRatio="none" className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : draft ? 'cursor-default' : 'cursor-crosshair')} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
-            {current.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && setActiveId(mark.id)}/>)}
-            {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
-          </svg>}
-          {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
-        </div>}
+        isPdf ? <div className="mx-auto flex min-h-full w-full flex-col gap-4">
+          {Array.from({ length: pageCount }, (_value, index) => {
+            const pageNumber = index + 1
+            const metrics = pageMetrics[pageNumber]
+            const pageData = pages[pageNumber] ?? EMPTY
+            const shouldRender = visiblePages.has(pageNumber) || currentPage === pageNumber || draft?.page === pageNumber
+            const dragRect = dragState?.page === pageNumber ? dragState.rect : null
+            return <div
+              key={pageNumber}
+              ref={node => { pageRefs.current[pageNumber] = node }}
+              data-page-number={pageNumber}
+              data-testid={`review-page-${pageNumber}`}
+              className="relative"
+            >
+              <PdfPageSurface
+                pageNumber={pageNumber}
+                metrics={metrics}
+                pdf={pdfRef.current}
+                pageData={pageData}
+                activeId={activeId}
+                dragRect={dragRect}
+                shouldRender={shouldRender}
+                zoom={zoom}
+                frameWidth={baseWidth}
+                readOnly={readOnly}
+                onPointerDown={pointerDown}
+                onPointerMove={pointerMove}
+                onPointerUp={pointerUp}
+                onActivate={setActiveId}
+              />
+            </div>
+          })}
+          {documentFooter}
+        </div> : <div className="mx-auto flex w-full flex-col gap-4">
+            <div
+              ref={node => { pageRefs.current[1] = node }}
+              data-page-number={1}
+              data-testid="review-page-1"
+              className="mx-auto"
+              style={{ width: baseWidth > 0 ? `${baseWidth * zoom}px` : undefined, maxWidth: fitWidth ? '100%' : undefined }}
+            >
+              <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: imageRatio }}>
+                {url ? <img src={url} alt="Работа ученика" draggable={false} className="block h-auto w-full select-none" onLoad={e => { setImageRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight); setLoading(false) }} onError={retryUrl}/> : null}
+                {!loading && <svg
+                  viewBox="0 0 1 1"
+                  preserveAspectRatio="none"
+                  data-testid="review-overlay-1"
+                  className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : draft ? 'cursor-default' : 'cursor-crosshair')}
+                  onPointerDown={event => pointerDown(1, event)}
+                  onPointerMove={event => pointerMove(1, event)}
+                  onPointerUp={event => pointerUp(1, event)}
+                  onPointerCancel={event => pointerUp(1, event)}
+                >
+                  {pageWithVersion((pages[1] ?? EMPTY).objects).objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && setActiveId(mark.id)}/>)}
+                  {dragState?.page === 1 && <rect x={dragState.rect.x} y={dragState.rect.y} width={dragState.rect.w} height={dragState.rect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
+                </svg>}
+                {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
+              </div>
+            </div>
+            {documentFooter}
+          </div>
+        }
       </div>
       <aside className="flex min-h-64 flex-col border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
         <div data-testid="review-rail-scroll-zone" className="min-h-0 flex-1 overflow-hidden">
           {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
         </div>
-        {footer ? <div data-testid="review-rail-footer" className="shrink-0 border-t border-slate-200 bg-white">{footer}</div> : null}
       </aside>
     </div>
   </section>
@@ -374,6 +477,90 @@ export default SubmissionReviewer
 function ToolButton({ disabled, title, onClick, children }: { disabled?: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition-[transform,background-color,color] hover:bg-slate-100 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30">{children}</button>
 }
+
+function PdfPageSurface({
+  pageNumber,
+  metrics,
+  pdf,
+  pageData,
+  activeId,
+  dragRect,
+  shouldRender,
+  zoom,
+  frameWidth,
+  readOnly,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onActivate,
+}: {
+  pageNumber: number
+  metrics?: PageMetrics
+  pdf: pdfjs.PDFDocumentProxy | null
+  pageData: PageData
+  activeId: string | null
+  dragRect: Rect | null
+  shouldRender: boolean
+  zoom: number
+  frameWidth: number
+  readOnly: boolean
+  onPointerDown: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerMove: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerUp: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
+  onActivate: (id: string | null) => void
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
+  const width = frameWidth > 0 ? frameWidth * zoom : undefined
+  const ratio = metrics?.ratio ?? 1 / 1.414
+
+  useEffect(() => {
+    if (!pdf || !canvasRef.current || !metrics || !shouldRender || !frameWidth) return
+    let cancelled = false
+    pdf.getPage(pageNumber).then(pdfPage => {
+      if (cancelled || !canvasRef.current) return
+      const baseScale = Math.max(0.1, (frameWidth - 2) / metrics.width)
+      const viewport = pdfPage.getViewport({ scale: baseScale * zoom })
+      const dpr = window.devicePixelRatio || 1
+      const renderViewport = pdfPage.getViewport({ scale: baseScale * zoom * dpr })
+      const canvas = canvasRef.current
+      canvas.width = renderViewport.width
+      canvas.height = renderViewport.height
+      canvas.style.width = `${viewport.width}px`
+      canvas.style.height = `${viewport.height}px`
+      renderTaskRef.current?.cancel()
+      const task = pdfPage.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: renderViewport })
+      renderTaskRef.current = task
+      task.promise.catch((error: any) => error?.name !== 'RenderingCancelledException' && undefined)
+    }).catch(() => undefined)
+    return () => {
+      cancelled = true
+      renderTaskRef.current?.cancel()
+    }
+  }, [frameWidth, metrics, pageNumber, pdf, shouldRender, zoom])
+
+  return <div className="mx-auto" style={{ width: width ? `${width}px` : undefined, maxWidth: '100%' }}>
+    <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: ratio }}>
+      {shouldRender
+        ? <canvas ref={canvasRef} className="block max-w-none" data-testid={`review-canvas-${pageNumber}`}/>
+        : <div className="h-full w-full bg-white" data-testid={`review-placeholder-${pageNumber}`}/>}
+      <svg
+        viewBox="0 0 1 1"
+        preserveAspectRatio="none"
+        data-testid={`review-overlay-${pageNumber}`}
+        className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : 'cursor-crosshair')}
+        onPointerDown={event => onPointerDown(pageNumber, event)}
+        onPointerMove={event => onPointerMove(pageNumber, event)}
+        onPointerUp={event => onPointerUp(pageNumber, event)}
+        onPointerCancel={event => onPointerUp(pageNumber, event)}
+      >
+        {pageData.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && onActivate(mark.id)}/>)}
+        {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
+      </svg>
+    </div>
+  </div>
+}
+
 function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onActivate: () => void }) {
   if (mark.type === 'region') {
     const category = CATEGORIES[mark.category]
@@ -383,15 +570,12 @@ function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onAc
   if (mark.type === 'stamp') return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} textAnchor="middle" dominantBaseline="middle" fontWeight="700">{mark.value}</text>
   return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} dominantBaseline="hanging">{mark.text}</text>
 }
+
 function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft | null>>; onSave: () => void; onCancel: () => void }) {
   const category = CATEGORIES[draft.category]
   const canSave = draft.category === 'praise' || draft.text.trim().length > 0
   return <div className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
-    {/* min-h-0 + overflow-y-auto so a tall editor (category grid + phrases +
-        textarea) scrolls within its own panel instead of being clipped by
-        the parent's overflow-hidden or chaining the scroll up into the
-        surrounding modal. overscroll-contain stops that chaining outright. */}
-    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
       <div>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Комментарий к области</div>
         <div className="grid grid-cols-2 gap-2">
@@ -414,6 +598,7 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
     </div>
   </div>
 }
+
 function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { regions: RegionItem[]; readOnly: boolean; activeId: string | null; onActivate: (item: RegionItem) => void; onDelete: (item: RegionItem) => void }) {
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-3">

@@ -43,11 +43,11 @@ const { toastError, toastSuccess } = vi.hoisted(() => ({ toastError: vi.fn(), to
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: toastError } }))
 
 vi.mock('@/components/SubmissionReviewer', () => ({
-  default: ({ footer, fitWidth, fitPage, header, className }: { footer?: React.ReactNode; fitWidth?: boolean; fitPage?: boolean; header?: React.ReactNode; className?: string }) => (
-    <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'no'} data-fit-page={fitPage ? 'yes' : 'no'} className={className}>
+  default: ({ footer, fitWidth, header, className }: { footer?: React.ReactNode; fitWidth?: boolean; header?: React.ReactNode; className?: string }) => (
+    <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'default'} className={className}>
       {header ? <div data-testid="fake-reviewer-header">{header}</div> : null}
       <div data-testid="fake-comment-scroll-area">fake reviewer</div>
-      {footer ? <div data-testid="fake-reviewer-footer">{footer}</div> : null}
+      {footer ? <div data-testid="fake-reviewer-document-footer">{footer}</div> : null}
     </div>
   ),
 }))
@@ -156,7 +156,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     expect(screen.getByTestId('fake-comment-scroll-area')).toBeInTheDocument()
   })
 
-  it('uses fit-page review layout with a reviewer header and right-rail actions', async () => {
+  it('uses the full-width continuous-review layout with a grading card at the end of the document flow', async () => {
     const { container } = renderPage()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
@@ -164,15 +164,14 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     expect(root.className).not.toContain('max-w-')
 
     const reviewer = screen.getByTestId('fake-reviewer')
-    expect(reviewer.getAttribute('data-fit-page')).toBe('yes')
     expect(reviewer.className).toContain('h-full')
     expect(screen.getByTestId('fake-reviewer-header')).toContainElement(screen.getByRole('button', { name: /Назад/ }))
 
-    const footer = screen.getByTestId('fake-reviewer-footer')
+    const footer = screen.getByTestId('fake-reviewer-document-footer')
     expect(footer).toContainElement(screen.getByRole('button', { name: /На доработку/ }))
     expect(footer).toContainElement(screen.getByPlaceholderText('—'))
     expect(footer).toContainElement(screen.getByPlaceholderText('Что сделано хорошо, что нужно исправить…'))
-    expect(screen.getByTestId('student-review-rail')).toBeInTheDocument()
-    expect(container.querySelector('[data-testid="fake-reviewer-footer"]')).not.toBeNull()
+    expect(screen.getByTestId('student-review-grading-card')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="fake-reviewer-document-footer"]')).not.toBeNull()
   })
 })
