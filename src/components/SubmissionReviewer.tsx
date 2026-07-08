@@ -90,7 +90,11 @@ export function SubmissionReviewer({
   const [error, setError] = useState('')
   const [retried, setRetried] = useState(false)
   const [page, setPage] = useState(1)
-  const [pageCount, setPageCount] = useState(1)
+  // 0 (not 1!) — must differ from every real numPages so setPageCount(doc.numPages)
+  // is never a same-value no-op for a single-page PDF (the most common case, a
+  // one-page scan). A no-op setState means React skips the re-render, which was
+  // silently defeating this as the render effect's "the PDF is ready now" signal.
+  const [pageCount, setPageCount] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [ratio, setRatio] = useState(1 / 1.414)
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
@@ -154,10 +158,14 @@ export function SubmissionReviewer({
     if ((!fitWidth && !fitPage) || !frameRef.current || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(entries => {
       const rect = entries[0]?.contentRect
-      setFrameSize({
-        width: rect?.width ?? 0,
-        height: rect?.height ?? 0,
-      })
+      const width = rect ? Math.round(rect.width) : 0
+      const height = rect ? Math.round(rect.height) : 0
+      // Bail on a no-op change (rounds away sub-pixel jitter some browsers
+      // report even when nothing visibly moved). Each *distinct* update
+      // retriggers the PDF fit/render effect below, and since getPage() is
+      // async, a fast stream of them could cancel every in-flight render
+      // before it ever finishes — this keeps that stream to real changes only.
+      setFrameSize(prev => (prev.width === width && prev.height === height) ? prev : { width, height })
     })
     observer.observe(frameRef.current)
     return () => observer.disconnect()
@@ -165,12 +173,27 @@ export function SubmissionReviewer({
 
   useEffect(() => {
     if (!isPdf || !pdfRef.current || !canvasRef.current) return
-    let active = true
     pdfRef.current.getPage(page).then(pdfPage => {
-      if (!active || !canvasRef.current) return
+      // Only bail if the canvas is actually gone (real unmount) — NOT on
+      // "a newer run of this same effect started since". Every dependency
+      // change (frameSize settling, page/zoom controls) starts a fresh
+      // getPage().then() chain; if an older one's callback fired after a
+      // newer one had already begun, `active` would go false and this
+      // legitimate result would be silently dropped, sometimes leaving the
+      // canvas permanently blank if runs kept superseding each other before
+      // any single one finished. Effects run in order, so the run that
+      // resolves LAST simply overwrites with its (correct, final) values —
+      // last-write-wins is fine here since nothing is appended/merged.
+      if (!canvasRef.current) return
       const baseViewport = pdfPage.getViewport({ scale: 1 })
-      const availableWidth = Math.max(0, frameRef.current?.clientWidth ?? frameSize.width)
-      const availableHeight = Math.max(0, frameRef.current?.clientHeight ?? frameSize.height)
+      // Prefer the ResizeObserver-measured size (stable, post-layout,
+      // padding already excluded via contentRect); if it hasn't reported
+      // yet, fall back to a direct live read rather than skipping the
+      // render entirely — a permanently blank canvas is worse than an
+      // occasionally-imperfect fit, and the observer's own next callback
+      // will correct the size once it does fire.
+      const availableWidth = frameSize.width || frameRef.current?.clientWidth || 0
+      const availableHeight = frameSize.height || frameRef.current?.clientHeight || 0
       const widthScale = (fitWidth || fitPage) && availableWidth > 0
         ? Math.max(0.1, (availableWidth - 2) / baseViewport.width)
         : 1.35
@@ -192,8 +215,14 @@ export function SubmissionReviewer({
       renderRef.current = task
       task.promise.catch((e: any) => e?.name !== 'RenderingCancelledException' && retryUrl())
     }).catch(retryUrl)
-    return () => { active = false; renderRef.current?.cancel() }
-  }, [fitPage, fitWidth, frameSize.height, frameSize.width, isPdf, page, retryUrl, url, zoom])
+    return () => { renderRef.current?.cancel() }
+    // pageCount is the only reactive signal that the PDF document (a ref,
+    // pdfRef.current — mutating it doesn't trigger a re-render) has become
+    // available. Without it: if the ResizeObserver's frameSize update lands
+    // BEFORE the PDF finishes loading, this effect bails on !pdfRef.current
+    // and nothing else in the deps list changes when the PDF *does* finish
+    // loading a moment later — so it would silently never render.
+  }, [fitPage, fitWidth, frameSize.height, frameSize.width, isPdf, page, pageCount, retryUrl, url, zoom])
 
   const savePage = useCallback(async (number: number, data: PageData) => {
     if (readOnly) return true
