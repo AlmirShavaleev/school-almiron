@@ -114,6 +114,18 @@ function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/homeworks/hw-1/review/group-1/student-1']}>
       <Routes>
+        <Route path="/inbox" element={<div>queue page</div>} />
+        <Route path="/homeworks/:id/review/:groupId/:studentId" element={<StudentReviewPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function renderPageFromQueue() {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: '/homeworks/hw-1/review/group-1/student-1', state: { from: 'queue' } }]}>
+      <Routes>
+        <Route path="/inbox" element={<div>queue page</div>} />
         <Route path="/homeworks/:id/review/:groupId/:studentId" element={<StudentReviewPage />} />
       </Routes>
     </MemoryRouter>,
@@ -228,5 +240,26 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('Введите балл от 0 до 100'))
     expect(scoreInput.className).toContain('border-red-500')
     expect(updateSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns to the queue after publish when opened from the queue', async () => {
+    renderPageFromQueue()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '85' } })
+    fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
+
+    await waitFor(() => expect(screen.getByText('queue page')).toBeInTheDocument())
+  })
+
+  it('keeps the old post-publish behavior without queue state', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '85' } })
+    fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
+
+    await waitFor(() => expect(screen.queryByText('queue page')).not.toBeInTheDocument())
+    expect(publishTriggerSpy).toHaveBeenCalled()
   })
 })

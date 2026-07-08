@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare,
   AlertTriangle, Loader2,
@@ -47,7 +47,9 @@ const QUICK_PHRASES = [
 export function StudentReviewPage() {
   const { id: hwId, groupId, studentId } = useParams<{ id: string; groupId?: string; studentId: string }>()
   const navigate  = useNavigate()
+  const location = useLocation()
   const profile   = useAuthStore(s => s.profile)
+  const fromQueue = location.state && typeof location.state === 'object' && 'from' in location.state && location.state.from === 'queue'
 
   const [hw,        setHw]        = useState<HwInfo | null>(null)
   const [student,   setStudent]   = useState<StudentInfo | null>(null)
@@ -211,6 +213,10 @@ export function StudentReviewPage() {
   function finishReview(success: boolean, message = 'Проверка опубликована') {
     if (!success) return
     toast.success(message)
+    if (fromQueue) {
+      navigate('/inbox')
+      return
+    }
     const next = nextAdvanceRef.current
     const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`
     if (next === 'list') navigate(listPath)
@@ -226,7 +232,7 @@ export function StudentReviewPage() {
   const reviewHeader = (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <button
-        onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
+        onClick={() => navigate(fromQueue ? '/inbox' : groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
         className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
       >
         <ArrowLeft size={18} />

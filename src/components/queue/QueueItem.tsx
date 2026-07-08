@@ -36,9 +36,12 @@ export function QueueItem({ item }: { item: QItem }) {
     <div
       role="button"
       tabIndex={0}
-      onClick={() => navigate(item.source === 'collection'
-        ? `/review-submissions/${item.submissionId}`
-        : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)}
+      onClick={() => navigate(
+        item.source === 'collection'
+          ? `/review-submissions/${item.submissionId}`
+          : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`,
+        { state: { from: 'queue' } },
+      )}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
       className={cn(
         'w-full min-h-11 flex items-center gap-3 text-left bg-white border border-gray-200 border-l-4 rounded-xl px-3 sm:px-4 py-3 hover:shadow-sm hover:border-gray-300 transition-all cursor-pointer',
