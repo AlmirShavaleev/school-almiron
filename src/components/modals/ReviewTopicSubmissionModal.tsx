@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import {
   X, FileText, MessageSquare, CheckCircle, RotateCcw,
   Loader2, BookMarked, Users, GraduationCap,
@@ -6,8 +6,13 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { notifyHomeworkChecked } from '@/utils/notify'
+import { toast } from '@/store/toastStore'
+
+const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
+const PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
 
 interface FullSubmission {
   id:           string
@@ -37,7 +42,10 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
 
   const [sub,      setSub]      = useState<FullSubmission | null>(null)
   const [loading,  setLoading]  = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [score,    setScore]    = useState('')
+  const [scoreInvalid, setScoreInvalid] = useState(false)
+  const scoreInputRef = useRef<HTMLInputElement>(null)
   const [feedback, setFeedback] = useState('')
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
@@ -53,20 +61,37 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
   // Load submission
   useEffect(() => {
     if (!open || !submissionId) return
-    setLoading(true); setSaved(false)
+    setLoading(true); setSaved(false); setLoadError('')
 
     supabase
       .from('homework_submissions')
       .select(`
         id, student_id, status, answer_text, file_url, score, feedback, submitted_at,
-        homeworks(title, topics(title, modules(title)), groups(name)),
+        homeworks(title, topics(title, modules(course_id, title))),
         students(id, profile_id, profiles(full_name))
       `)
       .eq('id', submissionId)
       .single()
-      .then(({ data }) => {
-        if (!data) return
+      .then(async ({ data, error }) => {
+        if (error || !data) {
+          setLoadError(error?.message || 'Не удалось загрузить сдачу')
+          setLoading(false)
+          return
+        }
         const d: any = data
+        const courseId = d.homeworks?.topics?.modules?.course_id || null
+
+        let groupName = '—'
+        const { data: gsRows, error: gsError } = await supabase
+          .from('group_students')
+          .select('group_id, groups(name, course_id)')
+          .eq('student_id', d.student_id)
+        if (!gsError && gsRows?.length) {
+          const courseMatch = gsRows.find((r: any) => r.groups?.course_id === courseId)
+          if (courseMatch) groupName = (courseMatch as any).groups?.name || '—'
+          else if (gsRows.length === 1) groupName = (gsRows[0] as any).groups?.name || '—'
+        }
+
         setSub({
           id:                 d.id,
           student_id:         d.student_id,
@@ -78,23 +103,26 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
           submitted_at:       d.submitted_at,
           topic_title:        d.homeworks?.topics?.title || d.homeworks?.title || '—',
           module_title:       d.homeworks?.topics?.modules?.title || '',
-          group_name:         d.homeworks?.groups?.name || '—',
+          group_name:         groupName,
           student_name:       d.students?.profiles?.full_name || '—',
           student_profile_id: d.students?.profile_id || '',
         })
         setScore(d.score != null ? String(d.score) : '')
         setFeedback(d.feedback || '')
+        setScoreInvalid(false)
         setLoading(false)
       })
   }, [open, submissionId])
 
-  async function handleSave(newStatus: 'checked' | 'revision') {
-    if (!sub) return
+  async function handleSave(newStatus: 'checked' | 'revision'): Promise<boolean> {
+    if (!sub) return false
     const parsedScore = score !== '' ? parseInt(score) : null
 
     if (newStatus === 'checked' && parsedScore !== null && (isNaN(parsedScore) || parsedScore < 0 || parsedScore > 100)) {
-      alert('Балл должен быть от 0 до 100')
-      return
+      toast.error('Балл должен быть от 0 до 100')
+      setScoreInvalid(true)
+      scoreInputRef.current?.focus()
+      return false
     }
 
     setSaving(true)
@@ -110,7 +138,7 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
       .eq('id', sub.id)
 
     setSaving(false)
-    if (error) { alert(error.message); return }
+    if (error) { toast.error(error.message); return false }
 
     setSub(prev => prev ? { ...prev, score: parsedScore, feedback: feedback.trim() || null, status: newStatus } : prev)
     setSaved(true)
@@ -126,6 +154,17 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
         100,
       )
     }
+    return true
+  }
+
+  // Single post-save entry point for BOTH paths: the file viewer's own
+  // publish button (via onPublishComplete, after annotations are done) and
+  // the footer buttons (called directly once handleSave resolves) — this
+  // is a single-submission modal, so a full success always closes it.
+  function finishReview(success: boolean, message = 'Проверка опубликована') {
+    if (!success) return
+    toast.success(message)
+    onClose()
   }
 
   if (!open) return null
@@ -133,6 +172,8 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
   const fileName = sub?.file_url
     ? decodeURIComponent(sub.file_url.split('/').pop() || 'Файл').replace(/\?\S*$/, '')
     : null
+  const fileExt = sub?.file_url?.split('?')[0].split('.').pop()?.toLowerCase()
+  const canPreview = !!fileExt && PREVIEWABLE_EXTS.includes(fileExt)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -159,6 +200,11 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
         {loading ? (
           <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
             <Loader2 size={20} className="animate-spin" />Загрузка…
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-20 px-6">
+            <p role="alert" className="text-sm text-red-600 text-center">{loadError}</p>
+            <Button size="sm" variant="secondary" onClick={onClose}>Закрыть</Button>
           </div>
         ) : !sub ? (
           <div className="flex items-center justify-center py-20 text-gray-400">Запись не найдена</div>
@@ -205,12 +251,18 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
               {sub.file_url && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Прикреплённый файл</label>
-                  <a
-                    href={sub.file_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
-                  >
-                    <FileText size={16} />{fileName || 'Открыть файл'}
-                  </a>
+                  {canPreview ? (
+                    <Suspense fallback={<ReviewerFallback />}>
+                      <SubmissionReviewer submissionId={sub.id} filePath={sub.file_url} onPublish={() => handleSave('checked')} onPublishComplete={finishReview} />
+                    </Suspense>
+                  ) : (
+                    <SignedFileLink
+                      bucket="homeworks" url={sub.file_url}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
+                    >
+                      <FileText size={16} />{fileName || 'Открыть файл'}
+                    </SignedFileLink>
+                  )}
                 </div>
               )}
 
@@ -231,10 +283,14 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
                   </label>
                   <div className="flex items-center gap-3">
                     <input
+                      ref={scoreInputRef}
                       type="number" min={0} max={100} value={score}
-                      onChange={e => setScore(e.target.value)}
+                      onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
                       placeholder="—"
-                      className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className={cn(
+                        'w-24 border rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2',
+                        scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+                      )}
                     />
                     <span className="text-sm text-gray-400">из 100</span>
                     {score !== '' && !isNaN(parseInt(score)) && (
@@ -293,16 +349,23 @@ export function ReviewTopicSubmissionModal({ open, onClose, onReviewed, submissi
                   <CheckCircle size={13} />Сохранено
                 </span>
               )}
-              <Button size="sm" variant="secondary" onClick={() => handleSave('revision')} loading={saving}>
+              <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
                 <RotateCcw size={14} className="mr-1" />На доработку
               </Button>
-              <Button size="sm" onClick={() => handleSave('checked')} loading={saving}>
-                <CheckCircle size={14} className="mr-1" />Принять
-              </Button>
+              {/* Когда есть файл — единственная точка "принять" это кнопка публикации во вьювере (там же аннотации) */}
+              {!canPreview && (
+                <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
+                  <CheckCircle size={14} className="mr-1" />Принять
+                </Button>
+              )}
             </div>
           </>
         )}
       </div>
     </div>
   )
+}
+
+function ReviewerFallback() {
+  return <div className="flex min-h-64 items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" />Загрузка редактора…</div>
 }

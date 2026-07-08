@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ClipboardList, Clock, Plus, FileText, Download } from 'lucide-react'
+import { lazy, Suspense, useState, useEffect } from 'react'
+import { ClipboardList, Clock, FileText, Download, Send, X } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,10 +8,14 @@ import { useAuthStore } from '@/store/authStore'
 import { useHomeworks } from '@/hooks/useHomeworks'
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 import { ReviewHomeworkModal } from '@/components/modals/ReviewHomeworkModal'
+import { AssignHomeworkModal } from '@/components/modals/AssignHomeworkModal'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { formatDate, isOverdue, HW_STATUS_COLORS, HW_STATUS_LABELS } from '@/utils/format'
 import { exportHomeworks } from '@/utils/exportExcel'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
+
+const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 
 export function HomeworksPage() {
   const profile   = useAuthStore(s => s.profile)
@@ -19,7 +23,7 @@ export function HomeworksPage() {
   const canCreate = profile?.role && ['teacher', 'admin', 'owner'].includes(profile.role)
   const canReview = profile?.role && ['teacher', 'admin', 'owner', 'curator'].includes(profile.role)
 
-  const { homeworks, loading, reload } = useHomeworks()
+  const { homeworks, loading, error, reload } = useHomeworks()
 
   // Student ID for submission
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -30,8 +34,13 @@ export function HomeworksPage() {
   }, [profile, isStudent])
 
   // Modals
-  const [submitTarget,  setSubmitTarget]  = useState<{ id: string; title: string; max_score: number; file_url?: string } | null>(null)
+  const [submitTarget,  setSubmitTarget]  = useState<{
+    id: string; title: string; max_score: number; file_url?: string
+    isResubmit?: boolean; previousAnswer?: string | null; previousFileUrl?: string | null; feedback?: string | null
+  } | null>(null)
+  const [studentReview, setStudentReview] = useState<{ id: string; title: string; file_url: string } | null>(null)
   const [reviewTarget,  setReviewTarget]  = useState<{ id: string; title: string; max_score: number } | null>(null)
+  const [assignTarget, setAssignTarget] = useState<{ id: string; title: string; topic_id?: string | null; max_score?: number | null } | null>(null)
 
   // Enrich with submission status for student view
   const withStatus = homeworks.map(hw => {
@@ -47,6 +56,10 @@ export function HomeworksPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-gray-400">Загрузка…</div>
+  }
+
+  if (error) {
+    return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
   }
 
   return (
@@ -109,7 +122,7 @@ export function HomeworksPage() {
         ) : (
           <div className="space-y-4">
             {withStatus.map(hw => {
-              const overdue    = isOverdue(hw.due_date)
+              const overdue    = hw.due_date ? isOverdue(hw.due_date) : false
               const status: string = hw._sub?.status || 'not_submitted'
               const groupName  = hw.topics?.title || '—'
               const subList    = Array.isArray(hw.homework_submissions) ? hw.homework_submissions : []
@@ -137,9 +150,15 @@ export function HomeworksPage() {
                         <p className="text-sm text-gray-500 mb-2">{hw.description}</p>
                       )}
                       <div className="flex items-center gap-4 text-xs text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <Clock size={12} />До {formatDate(hw.due_date)}
-                        </span>
+                        {hw.due_date ? (
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} />До {formatDate(hw.due_date)}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} />Дедлайн задаётся при назначении
+                          </span>
+                        )}
                         <span>Макс: {hw.max_score} б.</span>
                         <span>{groupName}</span>
                       </div>
@@ -149,6 +168,20 @@ export function HomeworksPage() {
                       {canReview ? (
                         <>
                           <Badge variant="info">{subList.length} сдали</Badge>
+                          {canCreate && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setAssignTarget({
+                                id: hw.id,
+                                title: hw.title,
+                                topic_id: hw.topic_id,
+                                max_score: hw.max_score,
+                              })}
+                            >
+                              <Send size={14} className="mr-1.5" />Назначить
+                            </Button>
+                          )}
                           {submittedCount > 0 && (
                             <Button
                               size="sm"
@@ -168,12 +201,23 @@ export function HomeworksPage() {
                               {hw._sub.score}/{hw.max_score}
                             </span>
                           )}
+                          {status === 'checked' && hw._sub?.id && hw._sub?.file_url && (
+                            <Button size="sm" variant="secondary" onClick={() => setStudentReview({ id: hw._sub.id, title: hw.title, file_url: hw._sub.file_url })}>
+                              Посмотреть проверку
+                            </Button>
+                          )}
                           {(status === 'not_submitted' || status === 'revision') && (
                             <Button
                               size="sm"
-                              onClick={() => setSubmitTarget({ id: hw.id, title: hw.title, max_score: hw.max_score, file_url: hw.file_url })}
+                              onClick={() => setSubmitTarget({
+                                id: hw.id, title: hw.title, max_score: hw.max_score, file_url: hw.file_url,
+                                isResubmit:      status === 'revision',
+                                previousAnswer:  hw._sub?.answer_text ?? null,
+                                previousFileUrl: hw._sub?.file_url ?? null,
+                                feedback:        hw._sub?.feedback ?? null,
+                              })}
                             >
-                              Сдать
+                              {status === 'revision' ? 'Пересдать' : 'Сдать'}
                             </Button>
                           )}
                         </>
@@ -183,15 +227,14 @@ export function HomeworksPage() {
 
                   {hw.file_url && (
                     <div className="mt-3">
-                      <a
-                        href={hw.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <SignedFileLink
+                        bucket="homeworks"
+                        url={hw.file_url}
                         className="inline-flex items-center gap-2 text-xs text-primary-600 hover:text-primary-800 bg-primary-50 px-3 py-1.5 rounded-lg transition-colors"
                       >
                         <FileText size={13} />
                         Открыть файл задания
-                      </a>
+                      </SignedFileLink>
                     </div>
                   )}
 
@@ -214,6 +257,10 @@ export function HomeworksPage() {
         onSubmitted={reload}
         homework={submitTarget}
         studentId={studentId}
+        isResubmit={submitTarget?.isResubmit}
+        previousAnswer={submitTarget?.previousAnswer}
+        previousFileUrl={submitTarget?.previousFileUrl}
+        feedback={submitTarget?.feedback}
       />
       <ReviewHomeworkModal
         open={!!reviewTarget}
@@ -221,6 +268,28 @@ export function HomeworksPage() {
         onReviewed={reload}
         homework={reviewTarget}
       />
+      <AssignHomeworkModal
+        open={!!assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onAssigned={reload}
+        homework={assignTarget}
+      />
+      {studentReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setStudentReview(null)} />
+          <div className="relative z-10 flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,.08)]">
+              <div><h2 className="font-semibold text-gray-900">Проверенная работа</h2><p className="text-xs text-gray-500">{studentReview.title}</p></div>
+              <button type="button" aria-label="Закрыть" onClick={() => setStudentReview(null)} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-[transform,background-color] hover:bg-gray-100 active:scale-[0.96]"><X size={19} /></button>
+            </div>
+            <div className="overflow-auto p-2 sm:p-4">
+              <Suspense fallback={<div className="flex min-h-64 items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-500">Загрузка проверенной работы…</div>}>
+                <SubmissionReviewer submissionId={studentReview.id} filePath={studentReview.file_url} readOnly />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

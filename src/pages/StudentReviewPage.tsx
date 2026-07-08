@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare,
@@ -7,8 +7,13 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { notifyHomeworkChecked } from '@/utils/notify'
+import { toast } from '@/store/toastStore'
+
+const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
+const PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
 
 interface HwInfo {
   id: string
@@ -53,9 +58,12 @@ export function StudentReviewPage() {
   const [siblings, setSiblings]   = useState<{ studentId: string; name: string }[]>([])
 
   const [score,    setScore]    = useState('')
+  const [scoreInvalid, setScoreInvalid] = useState(false)
+  const scoreInputRef = useRef<HTMLInputElement>(null)
   const [feedback, setFeedback] = useState('')
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
+  const nextAdvanceRef = useRef<string | 'list' | null>(null)
 
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -113,6 +121,7 @@ export function StudentReviewPage() {
       setScore(s?.score != null ? String(s.score) : '')
       setFeedback(s?.feedback || '')
       setSaved(false)
+      setScoreInvalid(false)
 
       // Build sibling list (all students in group) for prev/next
       const allStudents = ((gsRes.data || []) as any[]).map((g: any) => ({
@@ -125,12 +134,14 @@ export function StudentReviewPage() {
     }
   }
 
-  async function handleSave(newStatus: 'checked' | 'revision') {
-    if (!sub || !hw) return
+  async function handleSave(newStatus: 'checked' | 'revision'): Promise<boolean> {
+    if (!sub || !hw) return false
     const parsedScore = parseInt(score)
     if (newStatus === 'checked' && (isNaN(parsedScore) || parsedScore < 0 || parsedScore > hw.max_score)) {
-      alert(`Введите балл от 0 до ${hw.max_score}`)
-      return
+      toast.error(`Введите балл от 0 до ${hw.max_score}`)
+      setScoreInvalid(true)
+      scoreInputRef.current?.focus()
+      return false
     }
     setSaving(true)
     const { error } = await supabase.from('homework_submissions').update({
@@ -141,7 +152,7 @@ export function StudentReviewPage() {
       checked_by: teacherId,
     }).eq('id', sub.id)
     setSaving(false)
-    if (error) { alert(error.message); return }
+    if (error) { toast.error(error.message); return false }
 
     setSaved(true)
     setSub(prev => prev ? { ...prev, status: newStatus, score: newStatus === 'checked' ? parsedScore : null, feedback: feedback.trim() || null } : prev)
@@ -153,10 +164,25 @@ export function StudentReviewPage() {
     // Auto-advance to next pending student
     const idx = siblings.findIndex(s => s.studentId === studentId)
     const next = siblings.slice(idx + 1).find(s => true) // just go to next
-    if (next) {
-      setTimeout(() => navigate(`/homeworks/${hwId}/review/${groupId}/${next.studentId}`), 600)
-    }
+    nextAdvanceRef.current = next ? next.studentId : 'list'
+    return true
   }
+
+  // Single post-save entry point for BOTH paths: the file viewer's own
+  // publish button (via onPublishComplete, after annotations are done) and
+  // the footer buttons (called directly once handleSave resolves), so a
+  // teacher always gets feedback + advance/close regardless of whether the
+  // submission has a file to annotate.
+  function finishReview(success: boolean, message = 'Проверка опубликована') {
+    if (!success) return
+    toast.success(message)
+    const next = nextAdvanceRef.current
+    if (next === 'list') navigate(`/homeworks/${hwId}/review/${groupId}`)
+    else if (next) navigate(`/homeworks/${hwId}/review/${groupId}/${next}`)
+  }
+
+  const fileExt = sub?.file_url?.split('?')[0].split('.').pop()?.toLowerCase()
+  const canPreview = !!fileExt && PREVIEWABLE_EXTS.includes(fileExt)
 
   const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
   const prevStu  = sibIdx > 0 ? siblings[sibIdx - 1] : null
@@ -268,15 +294,25 @@ export function StudentReviewPage() {
           {sub?.file_url && (
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Прикреплённый файл</label>
-              <a
-                href={sub.file_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
-              >
-                <FileText size={16} />
-                {decodeURIComponent(sub.file_url.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')}
-              </a>
+              {(() => {
+                if (canPreview) {
+                  return (
+                    <Suspense fallback={<ReviewerFallback />}>
+                      <SubmissionReviewer submissionId={sub.id} filePath={sub.file_url!} onPublish={() => handleSave('checked')} onPublishComplete={finishReview} />
+                    </Suspense>
+                  )
+                }
+                return (
+                  <SignedFileLink
+                    bucket="homeworks"
+                    url={sub.file_url!}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
+                  >
+                    <FileText size={16} />
+                    {decodeURIComponent(sub.file_url!.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')}
+                  </SignedFileLink>
+                )
+              })()}
             </div>
           )}
 
@@ -301,13 +337,17 @@ export function StudentReviewPage() {
                 </label>
                 <div className="flex items-center gap-3">
                   <input
+                    ref={scoreInputRef}
                     type="number"
                     min={0}
                     max={hw?.max_score}
                     value={score}
-                    onChange={e => setScore(e.target.value)}
+                    onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
                     placeholder="—"
-                    className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className={cn(
+                      'w-24 border rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2',
+                      scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+                    )}
                   />
                   <span className="text-sm text-gray-400">из {hw?.max_score}</span>
                   {score !== '' && !isNaN(parseInt(score)) && (
@@ -352,12 +392,15 @@ export function StudentReviewPage() {
                   : <span />
                 }
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => handleSave('revision')} loading={saving}>
+                  <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
                     <RotateCcw size={14} className="mr-1" />На доработку
                   </Button>
-                  <Button size="sm" onClick={() => handleSave('checked')} loading={saving}>
-                    <CheckCircle size={14} className="mr-1" />Принять
-                  </Button>
+                  {/* Когда есть файл — единственная точка "принять" это кнопка публикации во вьювере (там же аннотации) */}
+                  {!canPreview && (
+                    <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
+                      <CheckCircle size={14} className="mr-1" />Принять
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -366,4 +409,8 @@ export function StudentReviewPage() {
       </div>
     </div>
   )
+}
+
+function ReviewerFallback() {
+  return <div className="flex min-h-64 items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" />Загрузка редактора…</div>
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import {
-  X, FileText, MessageSquare, CheckCircle, RotateCcw,
+  X, MessageSquare, CheckCircle, RotateCcw,
   ChevronLeft, ChevronRight, Loader2, Clock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -8,6 +8,9 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { notifyHomeworkChecked } from '@/utils/notify'
+import { toast } from '@/store/toastStore'
+
+const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 
 interface Submission {
   id: string
@@ -33,14 +36,18 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
 
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading,     setLoading]     = useState(false)
+  const [loadError,   setLoadError]   = useState('')
   const [index,       setIndex]       = useState(0)
 
   // Per-submission edit state
   const [score,    setScore]    = useState<string>('')
+  const [scoreInvalid, setScoreInvalid] = useState(false)
+  const scoreInputRef = useRef<HTMLInputElement>(null)
   const [feedback, setFeedback] = useState('')
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
   const [teacherId, setTeacherId] = useState<string | null>(null)
+  const nextAdvanceRef = useRef<number | 'close' | null>(null)
 
   // Load teacher id once
   useEffect(() => {
@@ -49,23 +56,72 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
       .then(({ data }) => setTeacherId(data?.id || null))
   }, [profile])
 
-  // Load submissions when modal opens
+  // Load submissions when modal opens.
+  // Scoped to the teacher's own groups × the homework's course — the same
+  // homework row can be shared across multiple teachers' groups (topic
+  // templates), so a plain homework_id filter would leak other teachers'
+  // students into the review list (see useHomeworkQueue for the same
+  // group_students × course intersection pattern). admin/owner see everyone.
   useEffect(() => {
     if (!open || !homework) return
+    let cancelled = false
     setLoading(true)
+    setLoadError('')
     setIndex(0)
 
-    supabase
-      .from('homework_submissions')
-      .select('*, students(profile_id, profiles(full_name))')
-      .eq('homework_id', homework.id)
-      .in('status', ['submitted', 'checked', 'revision'])
-      .order('submitted_at', { ascending: true })
-      .then(({ data }) => {
-        setSubmissions(data || [])
+    async function load() {
+      const { data, error } = await supabase
+        .from('homework_submissions')
+        .select('*, students(profile_id, profiles(full_name))')
+        .eq('homework_id', homework!.id)
+        .in('status', ['submitted', 'checked', 'revision'])
+        .order('submitted_at', { ascending: true })
+
+      if (error) {
+        console.error('Не удалось загрузить сдачи домашнего задания', error)
+        if (!cancelled) { setLoadError(error.message || 'Не удалось загрузить сдачи'); setSubmissions([]); setLoading(false) }
+        return
+      }
+      const rows = (data || []) as Submission[]
+
+      if (!profile || profile.role === 'admin' || profile.role === 'owner') {
+        if (!cancelled) { setSubmissions(rows); setLoading(false) }
+        return
+      }
+      if (profile.role !== 'teacher') {
+        if (!cancelled) { setSubmissions([]); setLoading(false) }
+        return
+      }
+
+      const { data: tc } = await supabase.from('teachers').select('id').eq('profile_id', profile.id).single()
+      if (!tc) { if (!cancelled) { setSubmissions([]); setLoading(false) }; return }
+
+      const { data: groups } = await supabase.from('groups').select('id, course_id').eq('teacher_id', tc.id).eq('is_active', true)
+      const groupIds = (groups || []).map((g: any) => g.id)
+      if (!groupIds.length) { if (!cancelled) { setSubmissions([]); setLoading(false) }; return }
+
+      const { data: gsRows } = await supabase.from('group_students').select('student_id, group_id').in('group_id', groupIds)
+      const courseByGroup: Record<string, string | null> = {}
+      for (const g of (groups || []) as any[]) courseByGroup[g.id] = g.course_id
+
+      const { data: hwRow } = await supabase.from('homeworks').select('topics(modules(course_id))').eq('id', homework!.id).single()
+      const hwCourseId = (hwRow as any)?.topics?.modules?.course_id ?? null
+
+      const myStudentIds = new Set(
+        ((gsRows || []) as any[])
+          .filter(r => courseByGroup[r.group_id] === hwCourseId)
+          .map(r => r.student_id)
+      )
+
+      if (!cancelled) {
+        setSubmissions(rows.filter(r => myStudentIds.has(r.student_id)))
         setLoading(false)
-      })
-  }, [open, homework])
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [open, homework, profile])
 
   // Sync form when switching between submissions
   useEffect(() => {
@@ -74,16 +130,19 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
     setScore(sub.score != null ? String(sub.score) : '')
     setFeedback(sub.feedback || '')
     setSaved(false)
+    setScoreInvalid(false)
   }, [index, submissions])
 
   async function handleSave(newStatus: 'checked' | 'revision') {
     const sub = submissions[index]
-    if (!sub) return
+    if (!sub) return false
 
     const parsedScore = parseInt(score)
     if (newStatus === 'checked' && (isNaN(parsedScore) || parsedScore < 0 || parsedScore > (homework?.max_score || 100))) {
-      alert(`Балл должен быть от 0 до ${homework?.max_score}`)
-      return
+      toast.error(`Балл должен быть от 0 до ${homework?.max_score}`)
+      setScoreInvalid(true)
+      scoreInputRef.current?.focus()
+      return false
     }
 
     setSaving(true)
@@ -99,7 +158,7 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
       .eq('id', sub.id)
 
     setSaving(false)
-    if (error) { alert(error.message); return }
+    if (error) { toast.error(error.message); return false }
 
     // Update local state
     setSubmissions(prev => prev.map((s, i) =>
@@ -124,7 +183,21 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
 
     // Auto-advance to next unchecked
     const nextUnchecked = submissions.findIndex((s, i) => i > index && s.status === 'submitted')
-    if (nextUnchecked !== -1) setTimeout(() => setIndex(nextUnchecked), 600)
+    nextAdvanceRef.current = nextUnchecked !== -1 ? nextUnchecked : 'close'
+    return true
+  }
+
+  // Single post-save entry point for BOTH paths: the file viewer's own
+  // publish button (via onPublishComplete, after annotations are done) and
+  // the footer buttons (called directly once handleSave resolves), so a
+  // teacher always gets feedback + advance/close regardless of whether the
+  // submission has a file to annotate.
+  function finishReview(success: boolean, message = 'Проверка опубликована') {
+    if (!success) return
+    toast.success(message)
+    const next = nextAdvanceRef.current
+    if (next === 'close') onClose()
+    else if (typeof next === 'number') setIndex(next)
   }
 
   if (!open || !homework) return null
@@ -134,15 +207,11 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
   const checkedCount = submissions.filter(s => s.status === 'checked').length
   const pendingCount = submissions.filter(s => s.status === 'submitted').length
 
-  const fileName = sub?.file_url
-    ? decodeURIComponent(sub.file_url.split('/').pop() || 'Файл').replace(/\?\S*$/, '')
-    : null
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col z-10">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] flex flex-col z-10">
 
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
@@ -163,6 +232,8 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
           <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
             <Loader2 size={20} className="animate-spin" />Загрузка…
           </div>
+        ) : loadError ? (
+          <div role="alert" className="m-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</div>
         ) : submissions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
             <CheckCircle size={36} className="opacity-30" />
@@ -237,15 +308,9 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
               {sub?.file_url && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Прикреплённый файл</label>
-                  <a
-                    href={sub.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors"
-                  >
-                    <FileText size={16} />
-                    {fileName || 'Открыть файл'}
-                  </a>
+                  <Suspense fallback={<ReviewerFallback />}>
+                    <SubmissionReviewer submissionId={sub.id} filePath={sub.file_url} onPublish={() => handleSave('checked')} onPublishComplete={finishReview} />
+                  </Suspense>
                 </div>
               )}
 
@@ -267,13 +332,17 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
                   </label>
                   <div className="flex items-center gap-3">
                     <input
+                      ref={scoreInputRef}
                       type="number"
                       min={0}
                       max={homework.max_score}
                       value={score}
-                      onChange={e => setScore(e.target.value)}
+                      onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
                       placeholder="—"
-                      className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className={cn(
+                        'w-24 border rounded-xl px-3 py-2 text-sm text-center font-bold text-primary-700 focus:outline-none focus:ring-2',
+                        scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+                      )}
                     />
                     <span className="text-sm text-gray-400">из {homework.max_score}</span>
                     {score !== '' && !isNaN(parseInt(score)) && (
@@ -358,19 +427,22 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => handleSave('revision')}
+                  onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))}
                   loading={saving}
                   title="Отправить на доработку"
                 >
                   <RotateCcw size={14} className="mr-1" />На доработку
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleSave('checked')}
-                  loading={saving}
-                >
-                  <CheckCircle size={14} className="mr-1" />Принять
-                </Button>
+                {/* Когда есть файл — единственная точка "принять" это кнопка публикации во вьювере (там же аннотации) */}
+                {!sub?.file_url && (
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSave('checked').then(ok => finishReview(ok))}
+                    loading={saving}
+                  >
+                    <CheckCircle size={14} className="mr-1" />Принять
+                  </Button>
+                )}
               </div>
             </div>
           </>
@@ -378,4 +450,8 @@ export function ReviewHomeworkModal({ open, onClose, onReviewed, homework }: Pro
       </div>
     </div>
   )
+}
+
+function ReviewerFallback() {
+  return <div className="flex min-h-64 items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" />Загрузка редактора…</div>
 }
