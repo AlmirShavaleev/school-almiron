@@ -25,7 +25,7 @@ export function QueueFilters({
             key={t.key}
             onClick={() => onToggle(t.key)}
             className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors',
+              'flex min-h-11 items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors',
               on ? t.active : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
             )}
           >

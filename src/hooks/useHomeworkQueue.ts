@@ -205,7 +205,10 @@ export function useHomeworkQueue() {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onFocus)
     }
-  }, [profile, tick])
+  // Defense-in-depth: keyed on profile?.id/role (primitives), not the profile
+  // object itself — same class of storm as useHomeworks, see there for why.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, profile?.role, tick])
 
   const counts: QueueCounts = {
     urgent:   items.filter(i => i.bucket === 'urgent').length,

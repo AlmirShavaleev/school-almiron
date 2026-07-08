@@ -4,6 +4,7 @@ import { cn } from '@/utils/cn'
 import { useHomeworkQueue, type QueueBucket } from '@/hooks/useHomeworkQueue'
 import { QueueFilters } from '@/components/queue/QueueFilters'
 import { QueueList } from '@/components/queue/QueueList'
+import { ReviewTopicSubmissionModal } from '@/components/modals/ReviewTopicSubmissionModal'
 
 const DEFAULT_ON: QueueBucket[] = ['urgent', 'revision', 'new']  // backlog выключен по умолчанию
 
@@ -11,6 +12,7 @@ export function HomeworkQueuePage() {
   const { items, counts, loading, reload } = useHomeworkQueue()
   const [active, setActive] = useState<Set<QueueBucket>>(new Set(DEFAULT_ON))
   const [groupBy, setGroupBy] = useState<'group' | 'flat'>('flat')
+  const [quickReviewId, setQuickReviewId] = useState<string | null>(null)
 
   function toggle(b: QueueBucket) {
     setActive(prev => {
@@ -26,17 +28,17 @@ export function HomeworkQueuePage() {
     <div className="max-w-3xl mx-auto space-y-5">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Inbox size={24} className="text-primary-600" />
             Очередь задач
           </h1>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:shrink-0">
           <button
             onClick={() => setGroupBy(g => g === 'flat' ? 'group' : 'flat')}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
             title="Переключить группировку"
           >
             {groupBy === 'flat' ? <Users size={15} /> : <List size={15} />}
@@ -44,7 +46,7 @@ export function HomeworkQueuePage() {
           </button>
           <button
             onClick={reload}
-            className="p-2 text-gray-400 border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            className="w-11 h-11 flex items-center justify-center text-gray-400 border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-700 transition-colors"
             title="Обновить"
           >
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
@@ -61,8 +63,15 @@ export function HomeworkQueuePage() {
           <Loader2 size={20} className="animate-spin" />Загрузка очереди…
         </div>
       ) : (
-        <QueueList items={filtered} groupBy={groupBy} />
+        <QueueList items={filtered} groupBy={groupBy} onQuickReview={setQuickReviewId} />
       )}
+
+      <ReviewTopicSubmissionModal
+        open={!!quickReviewId}
+        submissionId={quickReviewId}
+        onClose={() => { setQuickReviewId(null); reload() }}
+        onReviewed={reload}
+      />
     </div>
   )
 }

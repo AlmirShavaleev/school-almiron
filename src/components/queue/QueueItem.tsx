@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, RotateCcw, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Clock, RotateCcw, AlertTriangle, ChevronRight, ScanEye } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
 
@@ -18,15 +18,20 @@ function fmtDue(iso: string | null, overdue: boolean): string {
   return overdue ? `просрочено · ${s}` : `до ${s}`
 }
 
-export function QueueItem({ item }: { item: QItem }) {
+export function QueueItem({ item, onQuickReview }: { item: QItem; onQuickReview?: (submissionId: string) => void }) {
   const navigate = useNavigate()
   const st = BUCKET_STYLE[item.bucket]
 
   return (
-    <button
-      onClick={() => navigate(`/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(item.source === 'collection'
+        ? `/review-submissions/${item.submissionId}`
+        : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
       className={cn(
-        'w-full flex items-center gap-3 text-left bg-white border border-gray-200 border-l-4 rounded-xl px-4 py-3 hover:shadow-sm hover:border-gray-300 transition-all',
+        'w-full min-h-11 flex items-center gap-3 text-left bg-white border border-gray-200 border-l-4 rounded-xl px-3 sm:px-4 py-3 hover:shadow-sm hover:border-gray-300 transition-all cursor-pointer',
         st.ring
       )}
     >
@@ -50,13 +55,25 @@ export function QueueItem({ item }: { item: QItem }) {
           {item.dueDate && (
             <>
               <span>·</span>
-              <span className={cn(item.overdue && 'text-red-500 font-medium')}>{fmtDue(item.dueDate, item.overdue)}</span>
+              <span className={cn('truncate', item.overdue && 'text-red-500 font-medium')}>{fmtDue(item.dueDate, item.overdue)}</span>
             </>
           )}
         </div>
       </div>
 
+      {item.source !== 'collection' && onQuickReview && (
+        <button
+          type="button"
+          title="Быстрая проверка"
+          aria-label="Быстрая проверка"
+          onClick={e => { e.stopPropagation(); onQuickReview(item.submissionId) }}
+          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-primary-50 hover:text-primary-600 transition-colors shrink-0"
+        >
+          <ScanEye size={16} />
+        </button>
+      )}
+
       <ChevronRight size={16} className="text-gray-300 shrink-0" />
-    </button>
+    </div>
   )
 }

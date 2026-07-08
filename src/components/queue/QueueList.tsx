@@ -4,8 +4,10 @@ import { cn } from '@/utils/cn'
 import { QueueItem } from './QueueItem'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
 
+interface Props { items: QItem[]; groupBy: 'group' | 'flat'; onQuickReview?: (submissionId: string) => void }
+
 /** Группировка очереди: по группам или плоско. */
-export function QueueList({ items, groupBy }: { items: QItem[]; groupBy: 'group' | 'flat' }) {
+export function QueueList({ items, groupBy, onQuickReview }: Props) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
@@ -18,7 +20,7 @@ export function QueueList({ items, groupBy }: { items: QItem[]; groupBy: 'group'
   if (groupBy === 'flat') {
     return (
       <div className="space-y-2">
-        {items.map(i => <QueueItem key={i.submissionId} item={i} />)}
+        {items.map(i => <QueueItem key={i.submissionId} item={i} onQuickReview={onQuickReview} />)}
       </div>
     )
   }
@@ -33,13 +35,13 @@ export function QueueList({ items, groupBy }: { items: QItem[]; groupBy: 'group'
   return (
     <div className="space-y-4">
       {Object.entries(byGroup).map(([gid, g]) => (
-        <GroupSection key={gid} name={g.name} items={g.items} />
+        <GroupSection key={gid} name={g.name} items={g.items} onQuickReview={onQuickReview} />
       ))}
     </div>
   )
 }
 
-function GroupSection({ name, items }: { name: string; items: QItem[] }) {
+function GroupSection({ name, items, onQuickReview }: { name: string; items: QItem[]; onQuickReview?: (submissionId: string) => void }) {
   const [open, setOpen] = useState(true)
   return (
     <div>
@@ -53,7 +55,7 @@ function GroupSection({ name, items }: { name: string; items: QItem[] }) {
       </button>
       {open && (
         <div className={cn('space-y-2')}>
-          {items.map(i => <QueueItem key={i.submissionId} item={i} />)}
+          {items.map(i => <QueueItem key={i.submissionId} item={i} onQuickReview={onQuickReview} />)}
         </div>
       )}
     </div>
