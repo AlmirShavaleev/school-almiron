@@ -43,7 +43,12 @@ const { toastError, toastSuccess } = vi.hoisted(() => ({ toastError: vi.fn(), to
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: toastError } }))
 
 vi.mock('@/components/SubmissionReviewer', () => ({
-  default: () => <div data-testid="fake-comment-scroll-area">fake reviewer</div>,
+  default: ({ footer, fitWidth, className }: { footer?: React.ReactNode; fitWidth?: boolean; className?: string }) => (
+    <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'no'} className={className}>
+      <div data-testid="fake-comment-scroll-area">fake reviewer</div>
+      {footer ? <div data-testid="fake-reviewer-footer">{footer}</div> : null}
+    </div>
+  ),
 }))
 
 import { StudentReviewPage } from '@/pages/StudentReviewPage'
@@ -148,5 +153,23 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     // event never unmounts/navigates/breaks it.
     expect(screen.getByText('Ученик')).toBeInTheDocument()
     expect(screen.getByTestId('fake-comment-scroll-area')).toBeInTheDocument()
+  })
+
+  it('uses a full-bleed page root and keeps review actions inside the reviewer footer', async () => {
+    const { container } = renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    const root = screen.getByTestId('student-review-page')
+    expect(root.className).not.toContain('max-w-')
+
+    const reviewer = screen.getByTestId('fake-reviewer')
+    expect(reviewer.getAttribute('data-fit-width')).toBe('yes')
+    expect(reviewer.className).toContain('h-full')
+
+    const footer = screen.getByTestId('fake-reviewer-footer')
+    expect(footer).toContainElement(screen.getByRole('button', { name: /На доработку/ }))
+    expect(footer).toContainElement(screen.getByPlaceholderText('—'))
+    expect(footer).toContainElement(screen.getByPlaceholderText('Что сделано хорошо, что нужно исправить…'))
+    expect(container.querySelector('[data-testid="fake-reviewer-footer"]')).not.toBeNull()
   })
 })

@@ -5,6 +5,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
 import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
 import { cn } from '@/utils/cn'
+import type { ReactNode } from 'react'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -23,7 +24,16 @@ type PageData = { version: 2; objects: Mark[] }
 type Row = { page: number; data: unknown; status: 'draft' | 'published' }
 type RegionItem = Region & { page: number }
 
-interface Props { submissionId: string; filePath: string; readOnly?: boolean; className?: string; onPublish?: () => Promise<boolean | void>; onPublishComplete?: (success: boolean) => void }
+interface Props {
+  submissionId: string
+  filePath: string
+  readOnly?: boolean
+  className?: string
+  fitWidth?: boolean
+  footer?: ReactNode
+  onPublish?: () => Promise<boolean | void>
+  onPublishComplete?: (success: boolean) => void
+}
 
 const MIN_REGION_SIZE = 0.015
 const EMPTY: PageData = { version: 2, objects: [] }
@@ -49,13 +59,14 @@ const normalizeRect = (start: Point, end: Point): Rect => ({
 })
 const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
 
-export function SubmissionReviewer({ submissionId, filePath, readOnly = false, className, onPublish, onPublishComplete }: Props) {
+export function SubmissionReviewer({ submissionId, filePath, readOnly = false, className, fitWidth = false, footer, onPublish, onPublishComplete }: Props) {
   const path = useMemo(() => extractStoragePath(filePath, 'homeworks') ?? filePath, [filePath])
   const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
   const isPdf = ext === 'pdf'
   const isImage = ['png', 'jpg', 'jpeg'].includes(ext ?? '')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<pdfjs.PDFDocumentProxy | null>(null)
   const renderRef = useRef<pdfjs.RenderTask | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -69,6 +80,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
   const [pageCount, setPageCount] = useState(1)
   const [zoom, setZoom] = useState(1)
   const [ratio, setRatio] = useState(1 / 1.414)
+  const [frameWidth, setFrameWidth] = useState(0)
   const [pages, setPages] = useState<Record<number, PageData>>({})
   const [dirty, setDirty] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -126,21 +138,35 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
   }, [isPdf, retryUrl, url])
 
   useEffect(() => {
+    if (!fitWidth || !frameRef.current || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width ?? 0
+      setFrameWidth(width)
+    })
+    observer.observe(frameRef.current)
+    return () => observer.disconnect()
+  }, [fitWidth])
+
+  useEffect(() => {
     if (!isPdf || !pdfRef.current || !canvasRef.current) return
     let active = true
     pdfRef.current.getPage(page).then(pdfPage => {
       if (!active || !canvasRef.current) return
-      const viewport = pdfPage.getViewport({ scale: 1.35 * zoom })
+      const baseViewport = pdfPage.getViewport({ scale: 1 })
+      const fittedScale = fitWidth && frameWidth > 0
+        ? Math.max(0.1, (frameWidth - 2) / baseViewport.width)
+        : 1.35
+      const viewport = pdfPage.getViewport({ scale: fittedScale * zoom })
       const canvas = canvasRef.current
       canvas.width = viewport.width; canvas.height = viewport.height
-      setRatio(viewport.width / viewport.height)
+      setRatio(baseViewport.width / baseViewport.height)
       renderRef.current?.cancel()
       const task = pdfPage.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport })
       renderRef.current = task
       task.promise.catch((e: any) => e?.name !== 'RenderingCancelledException' && retryUrl())
     }).catch(retryUrl)
     return () => { active = false; renderRef.current?.cancel() }
-  }, [isPdf, page, retryUrl, url, zoom])
+  }, [fitWidth, frameWidth, isPdf, page, retryUrl, url, zoom])
 
   const savePage = useCallback(async (number: number, data: PageData) => {
     if (readOnly) return true
@@ -249,9 +275,9 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
       <div className="flex items-center"><ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton><span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span><ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton></div>
     </div>
     <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="overflow-auto p-3 sm:p-5">
+      <div ref={frameRef} className="overflow-auto p-3 sm:p-5">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
-        <div ref={surfaceRef} className="relative mx-auto overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ width: isImage ? `${zoom * 100}%` : 'fit-content', aspectRatio: ratio }}>
+        <div ref={surfaceRef} className={cn('relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10', fitWidth ? 'mx-0' : 'mx-auto')} style={{ width: isImage ? (fitWidth ? `${zoom * 100}%` : `${zoom * 100}%`) : fitWidth ? '100%' : 'fit-content', maxWidth: fitWidth ? '100%' : undefined, aspectRatio: ratio }}>
           {isPdf ? <canvas ref={canvasRef} className="block max-w-none"/> : url ? <img src={url} alt="Работа ученика" draggable={false} className="block h-auto w-full select-none" onLoad={e => { setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight); setLoading(false) }} onError={retryUrl}/> : null}
           {!loading && <svg viewBox="0 0 1 1" preserveAspectRatio="none" className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : draft ? 'cursor-default' : 'cursor-crosshair')} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
             {current.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && setActiveId(mark.id)}/>)}
@@ -264,6 +290,7 @@ export function SubmissionReviewer({ submissionId, filePath, readOnly = false, c
         {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
       </aside>
     </div>
+    {footer ? <div className="shrink-0 border-t border-slate-200 bg-white">{footer}</div> : null}
   </section>
 }
 

@@ -223,6 +223,93 @@ export function StudentReviewPage() {
   const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
   const prevStu  = sibIdx > 0 ? siblings[sibIdx - 1] : null
   const nextStu  = sibIdx >= 0 && sibIdx < siblings.length - 1 ? siblings[sibIdx + 1] : null
+  const reviewFooter = sub ? (
+    <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
+      <div className="space-y-2">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {QUICK_PHRASES.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setFeedback(prev => prev ? `${prev} ${p}` : p)}
+                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={2}
+            value={feedback}
+            onChange={e => setFeedback(e.target.value)}
+            placeholder="Что сделано хорошо, что нужно исправить…"
+            className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <MessageSquare size={15} className="text-primary-500" />
+            Оценка
+          </div>
+          <span className={cn(
+            'rounded-full px-3 py-1.5 text-xs font-medium',
+            sub.status === 'checked'   ? 'bg-green-100 text-green-700' :
+            sub.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
+            sub.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
+                                          'bg-gray-100 text-gray-500'
+          )}>
+            {sub.status === 'checked'   ? '✓ Проверено' :
+             sub.status === 'revision'  ? '↩ На доработке' :
+             sub.status === 'submitted' ? '⏳ Ожидает проверки' :
+                                          'Не сдал'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            ref={scoreInputRef}
+            type="number"
+            min={0}
+            max={hw?.max_score}
+            value={score}
+            onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
+            placeholder="—"
+            className={cn(
+              'w-24 rounded-xl border px-3 py-2 text-center text-sm font-bold text-primary-700 focus:outline-none focus:ring-2',
+              scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+            )}
+          />
+          <span className="text-sm text-gray-400">из {hw?.max_score}</span>
+          {score !== '' && !isNaN(parseInt(score)) && (
+            <span className={cn(
+              'text-sm font-semibold',
+              parseInt(score) / (hw?.max_score || 100) >= 0.8 ? 'text-green-600' :
+              parseInt(score) / (hw?.max_score || 100) >= 0.5 ? 'text-yellow-600' : 'text-red-500',
+            )}>
+              {Math.round(parseInt(score) / (hw?.max_score || 100) * 100)}%
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col items-stretch gap-2 lg:min-w-44">
+        {saved
+          ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
+          : <span className="h-5" />
+        }
+        <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+          <RotateCcw size={14} className="mr-1" />На доработку
+        </Button>
+        {!canPreview && (
+          <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
+            <CheckCircle size={14} className="mr-1" />Принять
+          </Button>
+        )}
+      </div>
+    </div>
+  ) : null
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
@@ -231,10 +318,10 @@ export function StudentReviewPage() {
   )
 
   return (
-    <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-4">
+    <div data-testid="student-review-page" className="flex h-full min-h-0 flex-col gap-3 px-3 py-3 sm:px-4 sm:py-4">
 
       {/* Header */}
-      <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5">
+      <div className="flex shrink-0 flex-wrap items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5">
         <button
           onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
           className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
@@ -288,17 +375,19 @@ export function StudentReviewPage() {
             <SubmissionReviewer
               submissionId={sub.id}
               filePath={sub.file_url}
-              className="h-[calc(100vh-24rem)] min-h-[24rem]"
+              className="h-full min-h-0"
+              fitWidth
+              footer={reviewFooter}
               onPublish={() => handleSave('checked')}
               onPublishComplete={finishReview}
             />
           </Suspense>
         ) : (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+          <div className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-200 bg-white p-6">
             {sub.answer_text ? (
-              <div className="space-y-2">
+              <div className="min-h-0 flex-1 space-y-2">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
                   {sub.answer_text}
                 </div>
               </div>
@@ -316,114 +405,12 @@ export function StudentReviewPage() {
                 Ученик не прикрепил ответ
               </div>
             )}
+            <div className="mt-4 shrink-0 border-t border-gray-100 pt-4">
+              {reviewFooter}
+            </div>
           </div>
         )}
       </div>
-
-      {sub && (
-        <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)_auto] lg:items-end">
-            <div className="space-y-3">
-              {sub.answer_text && canPreview && (
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
-                  <div className="max-h-28 overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                    {sub.answer_text}
-                  </div>
-                </div>
-              )}
-              <div>
-                <label className="mb-2 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {QUICK_PHRASES.map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setFeedback(prev => prev ? `${prev} ${p}` : p)}
-                      className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  rows={3}
-                  value={feedback}
-                  onChange={e => setFeedback(e.target.value)}
-                  placeholder="Что сделано хорошо, что нужно исправить…"
-                  className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                  <MessageSquare size={15} className="text-primary-500" />
-                  Оценка и комментарий
-                </div>
-                <span className={cn(
-                  'rounded-full px-3 py-1.5 text-xs font-medium',
-                  sub.status === 'checked'   ? 'bg-green-100 text-green-700' :
-                  sub.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
-                  sub.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
-                                                'bg-gray-100 text-gray-500'
-                )}>
-                  {sub.status === 'checked'   ? '✓ Проверено' :
-                   sub.status === 'revision'  ? '↩ На доработке' :
-                   sub.status === 'submitted' ? '⏳ Ожидает проверки' :
-                                                'Не сдал'}
-                </span>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">
-                  Балл <span className="text-gray-400">(0 – {hw?.max_score})</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    ref={scoreInputRef}
-                    type="number"
-                    min={0}
-                    max={hw?.max_score}
-                    value={score}
-                    onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
-                    placeholder="—"
-                    className={cn(
-                      'w-24 rounded-xl border px-3 py-2 text-center text-sm font-bold text-primary-700 focus:outline-none focus:ring-2',
-                      scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
-                    )}
-                  />
-                  <span className="text-sm text-gray-400">из {hw?.max_score}</span>
-                  {score !== '' && !isNaN(parseInt(score)) && (
-                    <span className={cn(
-                      'text-sm font-semibold',
-                      parseInt(score) / (hw?.max_score || 100) >= 0.8 ? 'text-green-600' :
-                      parseInt(score) / (hw?.max_score || 100) >= 0.5 ? 'text-yellow-600' : 'text-red-500',
-                    )}>
-                      {Math.round(parseInt(score) / (hw?.max_score || 100) * 100)}%
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-stretch gap-2 lg:min-w-44">
-              {saved
-                ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
-                : <span className="h-5" />
-              }
-              <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
-                <RotateCcw size={14} className="mr-1" />На доработку
-              </Button>
-              {!canPreview && (
-                <Button size="sm" onClick={() => void handleSave('checked').then(ok => finishReview(ok))} loading={saving}>
-                  <CheckCircle size={14} className="mr-1" />Принять
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

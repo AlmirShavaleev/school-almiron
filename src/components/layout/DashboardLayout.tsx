@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { NotificationBell } from './NotificationBell'
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
@@ -18,6 +18,7 @@ const ROLE_LABELS: Record<string, string> = {
 export function DashboardLayout() {
   const { profile, loading } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Close sidebar on ESC
@@ -50,6 +51,7 @@ export function DashboardLayout() {
   const initials = profile.full_name
     ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('')
     : '?'
+  const isFullscreenReviewRoute = /^\/homeworks\/[^/]+\/review(?:\/|$)/.test(location.pathname)
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -92,7 +94,9 @@ export function DashboardLayout() {
 
         <main className="flex-1 min-w-0">
           {/* Adaptive padding: 16px mobile → 24px sm → 32px md+ */}
-          <div className="min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+          <div className={isFullscreenReviewRoute
+            ? 'min-w-0 h-[calc(100dvh-3.5rem)] px-0 py-0'
+            : 'min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto'}>
             <Outlet />
           </div>
         </main>
