@@ -359,6 +359,94 @@ export function StudentReviewPage() {
     </div>
   ) : null
 
+  const previewGradingCard = sub ? ({ publishing, published, triggerPublish }: { publishing: boolean; published: boolean; triggerPublish: () => void }) => (
+    <div data-testid="student-review-grading-card" className="grid gap-4">
+      <div className="space-y-2">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
+          <div className="mb-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
+            {QUICK_PHRASES.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setFeedback(prev => prev ? `${prev} ${p}` : p)}
+                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={2}
+            value={feedback}
+            onChange={e => setFeedback(e.target.value)}
+            placeholder="Что сделано хорошо, что нужно исправить…"
+            className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <MessageSquare size={15} className="text-primary-500" />
+            Оценка
+          </div>
+          <span className={cn(
+            'rounded-full px-3 py-1.5 text-xs font-medium',
+            sub.status === 'checked'   ? 'bg-green-100 text-green-700' :
+            sub.status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
+            sub.status === 'submitted' ? 'bg-orange-100 text-orange-700' :
+                                          'bg-gray-100 text-gray-500'
+          )}>
+            {sub.status === 'checked'   ? '✓ Проверено' :
+             sub.status === 'revision'  ? '↩ На доработке' :
+             sub.status === 'submitted' ? '⏳ Ожидает проверки' :
+                                          'Не сдал'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            ref={scoreInputRef}
+            type="number"
+            min={0}
+            max={hw?.max_score}
+            value={score}
+            onChange={e => { setScore(e.target.value); setScoreInvalid(false) }}
+            placeholder="—"
+            className={cn(
+              'w-24 rounded-xl border px-3 py-2 text-center text-sm font-bold text-primary-700 focus:outline-none focus:ring-2',
+              scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+            )}
+          />
+          <span className="text-sm text-gray-400">из {hw?.max_score}</span>
+          {score !== '' && !isNaN(parseInt(score)) && (
+            <span className={cn(
+              'text-sm font-semibold',
+              parseInt(score) / (hw?.max_score || 100) >= 0.8 ? 'text-green-600' :
+              parseInt(score) / (hw?.max_score || 100) >= 0.5 ? 'text-yellow-600' : 'text-red-500',
+            )}>
+              {Math.round(parseInt(score) / (hw?.max_score || 100) * 100)}%
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-end md:justify-between">
+        {saved
+          ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
+          : <span className="h-5" />
+        }
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+          <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+            <RotateCcw size={14} className="mr-1" />На доработку
+          </Button>
+          <Button size="sm" onClick={triggerPublish} loading={publishing}>
+            <CheckCircle size={14} className="mr-1" />{published ? 'Опубликовать снова' : 'Опубликовать проверку'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
       <Loader2 size={20} className="animate-spin" />Загрузка…
@@ -382,8 +470,7 @@ export function StudentReviewPage() {
               filePath={sub.file_url}
               className="h-full min-h-0"
               header={reviewHeader}
-              footer={gradingCard}
-              footerPublishLabel="Опубликовать проверку"
+              footer={previewGradingCard ?? undefined}
               onPublish={() => handleSave('checked')}
               onPublishComplete={finishReview}
             />

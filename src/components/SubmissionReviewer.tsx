@@ -25,6 +25,12 @@ type Row = { page: number; data: unknown; status: 'draft' | 'published' }
 type RegionItem = Region & { page: number }
 type PageMetrics = { width: number; height: number; ratio: number }
 type DragState = { page: number; rect: Rect } | null
+type FooterRenderContext = {
+  publishing: boolean
+  published: boolean
+  triggerPublish: () => void
+}
+type FooterContent = ReactNode | ((context: FooterRenderContext) => ReactNode)
 
 interface Props {
   submissionId: string
@@ -32,7 +38,7 @@ interface Props {
   readOnly?: boolean
   className?: string
   fitWidth?: boolean
-  footer?: ReactNode
+  footer?: FooterContent
   footerPublishLabel?: string
   header?: ReactNode
   onPublish?: () => Promise<boolean | void>
@@ -361,17 +367,21 @@ export function SubmissionReviewer({
   if (!isPdf && !isImage) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
+  const triggerPublish = () => { void publish() }
+  const footerContent = typeof footer === 'function'
+    ? footer({ publishing, published, triggerPublish })
+    : footer
 
-  const documentFooter = !readOnly && footer ? <div
+  const documentFooter = !readOnly && footerContent ? <div
     data-testid="review-document-footer"
     className="mx-auto w-full max-w-full rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5"
   >
     <div className="space-y-4">
-      {footer}
+      {footerContent}
       {footerPublishLabel ? <div className="flex justify-end border-t border-slate-200 pt-4">
         <button
           type="button"
-          onClick={() => void publish()}
+          onClick={triggerPublish}
           disabled={publishing}
           className="min-h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50"
         >
@@ -393,7 +403,7 @@ export function SubmissionReviewer({
         </div>
         {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
           {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-          <button type="button" onClick={() => void publish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+          <button type="button" onClick={triggerPublish} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
         </div>}
       </div>
     </div>

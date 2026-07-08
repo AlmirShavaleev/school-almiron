@@ -13,6 +13,7 @@ type MockResult = { data: unknown; error: { message: string } | null }
 const fromSpy = vi.fn()
 const updateSpy = vi.fn()
 let groupStudentsCalls = 0
+const publishTriggerSpy = vi.fn()
 
 function makeChain(result: MockResult | Promise<MockResult>) {
   const chain: any = new Proxy({}, {
@@ -43,13 +44,38 @@ const { toastError, toastSuccess } = vi.hoisted(() => ({ toastError: vi.fn(), to
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: toastError } }))
 
 vi.mock('@/components/SubmissionReviewer', () => ({
-  default: ({ footer, fitWidth, header, className }: { footer?: React.ReactNode; fitWidth?: boolean; header?: React.ReactNode; className?: string }) => (
-    <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'default'} className={className}>
-      {header ? <div data-testid="fake-reviewer-header">{header}</div> : null}
-      <div data-testid="fake-comment-scroll-area">fake reviewer</div>
-      {footer ? <div data-testid="fake-reviewer-document-footer">{footer}</div> : null}
-    </div>
-  ),
+  default: ({
+    footer,
+    fitWidth,
+    header,
+    className,
+    onPublish,
+    onPublishComplete,
+  }: {
+    footer?: React.ReactNode | ((context: { publishing: boolean; published: boolean; triggerPublish: () => void }) => React.ReactNode)
+    fitWidth?: boolean
+    header?: React.ReactNode
+    className?: string
+    onPublish?: () => Promise<boolean | void>
+    onPublishComplete?: (success: boolean) => void
+  }) => {
+    const triggerPublish = async () => {
+      publishTriggerSpy()
+      const ok = await onPublish?.()
+      onPublishComplete?.(ok !== false)
+    }
+    const footerNode = typeof footer === 'function'
+      ? footer({ publishing: false, published: false, triggerPublish: () => { void triggerPublish() } })
+      : footer
+    return (
+      <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'default'} className={className}>
+        {header ? <div data-testid="fake-reviewer-header">{header}</div> : null}
+        <button type="button" onClick={() => { void triggerPublish() }}>Fake toolbar publish</button>
+        <div data-testid="fake-comment-scroll-area">fake reviewer</div>
+        {footerNode ? <div data-testid="fake-reviewer-document-footer">{footerNode}</div> : null}
+      </div>
+    )
+  },
 }))
 
 import { StudentReviewPage } from '@/pages/StudentReviewPage'
@@ -98,6 +124,7 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
   beforeEach(() => {
     fromSpy.mockReset()
     updateSpy.mockReset()
+    publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
     mockTables(submissionRow())
@@ -138,6 +165,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
   beforeEach(() => {
     fromSpy.mockReset()
     updateSpy.mockReset()
+    publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
     mockTables(submissionRow({ file_url: 'submissions/x/y.pdf' }))
@@ -173,5 +201,32 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     expect(footer).toContainElement(screen.getByPlaceholderText('Что сделано хорошо, что нужно исправить…'))
     expect(screen.getByTestId('student-review-grading-card')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="fake-reviewer-document-footer"]')).not.toBeNull()
+  })
+
+  it('uses the viewer publish path from the grading card instead of direct save', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '85' } })
+    fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
+
+    await waitFor(() => expect(publishTriggerSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1))
+    expect(updateSpy.mock.calls[0][0]).toMatchObject({ score: 85, status: 'checked' })
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Проверка опубликована'))
+  })
+
+  it('blocks the grading-card publish path on an invalid score before any save happens', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    const scoreInput = screen.getByPlaceholderText('—') as HTMLInputElement
+    fireEvent.change(scoreInput, { target: { value: '999' } })
+    fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
+
+    await waitFor(() => expect(publishTriggerSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Введите балл от 0 до 100'))
+    expect(scoreInput.className).toContain('border-red-500')
+    expect(updateSpy).not.toHaveBeenCalled()
   })
 })
