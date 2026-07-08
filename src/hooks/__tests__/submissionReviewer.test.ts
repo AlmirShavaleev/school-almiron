@@ -76,7 +76,8 @@ describe('submission annotation reviewer', () => {
 
   it('auto-advances to the next student after a full publish, or returns to the group list when none remain — for both file and no-file submissions', () => {
     expect(studentReviewPage).toContain("nextAdvanceRef.current = next ? next.studentId : 'list'")
-    expect(studentReviewPage).toContain("if (next === 'list') navigate(`/homeworks/${hwId}/review/${groupId}`)")
+    expect(studentReviewPage).toContain("const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`")
+    expect(studentReviewPage).toContain("if (next === 'list') navigate(listPath)")
     expect(studentReviewPage).toContain("function finishReview(success: boolean, message = 'Проверка опубликована')")
     expect(studentReviewPage).toContain('onPublishComplete={finishReview}')
     expect(studentReviewPage).toContain('{!canPreview && (')

@@ -11,6 +11,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { notifyHomeworkChecked } from '@/utils/notify'
 import { toast } from '@/store/toastStore'
+import { loadHomeworkInfo, loadHomeworkReviewRoster } from '@/pages/reviewScope'
 
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 const PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
@@ -44,7 +45,7 @@ const QUICK_PHRASES = [
 ]
 
 export function StudentReviewPage() {
-  const { id: hwId, groupId, studentId } = useParams<{ id: string; groupId: string; studentId: string }>()
+  const { id: hwId, groupId, studentId } = useParams<{ id: string; groupId?: string; studentId: string }>()
   const navigate  = useNavigate()
   const profile   = useAuthStore(s => s.profile)
 
@@ -64,6 +65,7 @@ export function StudentReviewPage() {
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
   const nextAdvanceRef = useRef<string | 'list' | null>(null)
+  const [resolvedGroupName, setResolvedGroupName] = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -72,15 +74,48 @@ export function StudentReviewPage() {
   }, [profile])
 
   useEffect(() => {
-    if (!hwId || !groupId || !studentId) return
+    if (!hwId || !studentId) return
     loadAll()
-  }, [hwId, groupId, studentId])
+  }, [hwId, groupId, studentId, profile?.id, profile?.role])
 
   async function loadAll() {
-    if (!hwId || !groupId || !studentId) return
+    if (!hwId || !studentId) return
     setLoading(true)
     try {
-      // Load homework
+      if (!groupId) {
+        const [hwData, roster, subRes] = await Promise.all([
+          loadHomeworkInfo(hwId),
+          loadHomeworkReviewRoster(hwId, profile),
+          supabase
+            .from('homework_submissions')
+            .select('id, status, answer_text, file_url, score, feedback, submitted_at')
+            .eq('homework_id', hwId)
+            .eq('student_id', studentId)
+            .maybeSingle(),
+        ])
+        setHw(hwData)
+        if (!hwData) return
+
+        const currentStudent = roster.students.find(item => item.studentId === studentId)
+        setResolvedGroupName(currentStudent?.groupName ?? null)
+        setStudent(currentStudent ? {
+          id: currentStudent.studentId,
+          name: currentStudent.name,
+          profileId: currentStudent.profileId,
+        } : null)
+        setSiblings(roster.students.map(item => ({ studentId: item.studentId, name: item.name })))
+
+        const s = subRes.data as any
+        setSub(s || null)
+        setScore(s?.score != null ? String(s.score) : '')
+        setFeedback(s?.feedback || '')
+        setSaved(false)
+        setScoreInvalid(false)
+        return
+      }
+
+      setResolvedGroupName(null)
+
       const { data: hwData } = await supabase
         .from('homeworks')
         .select('id, title, max_score')
@@ -177,8 +212,9 @@ export function StudentReviewPage() {
     if (!success) return
     toast.success(message)
     const next = nextAdvanceRef.current
-    if (next === 'list') navigate(`/homeworks/${hwId}/review/${groupId}`)
-    else if (next) navigate(`/homeworks/${hwId}/review/${groupId}/${next}`)
+    const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`
+    if (next === 'list') navigate(listPath)
+    else if (next) navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${next}` : `/homeworks/${hwId}/review/student/${next}`)
   }
 
   const fileExt = sub?.file_url?.split('?')[0].split('.').pop()?.toLowerCase()
@@ -200,7 +236,7 @@ export function StudentReviewPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => navigate(`/homeworks/${hwId}/review/${groupId}`)}
+          onClick={() => navigate(groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
           className="flex items-center gap-1.5 text-gray-400 hover:text-gray-700 transition-colors text-sm"
         >
           <ArrowLeft size={18} />
@@ -211,7 +247,7 @@ export function StudentReviewPage() {
         <div className="flex items-center gap-1">
           <button
             disabled={!prevStu}
-            onClick={() => prevStu && navigate(`/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}`)}
+            onClick={() => prevStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}` : `/homeworks/${hwId}/review/student/${prevStu.studentId}`)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
             title={prevStu?.name}
           >
@@ -220,7 +256,7 @@ export function StudentReviewPage() {
           <span className="text-xs text-gray-400">{sibIdx + 1} / {siblings.length}</span>
           <button
             disabled={!nextStu}
-            onClick={() => nextStu && navigate(`/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}`)}
+            onClick={() => nextStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}` : `/homeworks/${hwId}/review/student/${nextStu.studentId}`)}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
             title={nextStu?.name}
           >
@@ -248,6 +284,7 @@ export function StudentReviewPage() {
               <div className="font-semibold text-gray-900">{student?.name}</div>
               <div className="text-xs text-gray-400">
                 {hw?.title}
+                {!groupId && resolvedGroupName && <span className="ml-2">Группа: {resolvedGroupName}</span>}
                 {sub?.submitted_at && (
                   <span className="ml-2">
                     Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}

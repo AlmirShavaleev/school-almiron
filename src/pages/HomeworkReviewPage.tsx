@@ -4,22 +4,9 @@ import {
   ArrowLeft, CheckCircle, Clock, AlertTriangle, Users, Loader2, ChevronRight,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
-
-interface HwInfo {
-  id: string
-  title: string
-  max_score: number
-}
-
-interface StudentRow {
-  studentId: string
-  name: string
-  profileId: string
-  status: 'submitted' | 'revision' | 'not_submitted' | 'checked'
-  score: number | null
-  submittedAt: string | null
-}
+import { loadHomeworkReviewRoster, type ReviewHomeworkInfo, type ReviewRosterStudent } from '@/pages/reviewScope'
 
 const STATUS_ORDER: Record<string, number> = { submitted: 0, revision: 1, not_submitted: 2, checked: 3 }
 
@@ -31,29 +18,36 @@ const STATUS_LABEL: Record<string, { label: string; color: string; dot: string }
 }
 
 export function HomeworkReviewPage() {
-  const { id, groupId } = useParams<{ id: string; groupId: string }>()
+  const { id, groupId } = useParams<{ id: string; groupId?: string }>()
   const navigate = useNavigate()
+  const profile = useAuthStore(s => s.profile)
 
-  const [hw,      setHw]      = useState<HwInfo | null>(null)
-  const [students, setStudents] = useState<StudentRow[]>([])
+  const [hw,      setHw]      = useState<ReviewHomeworkInfo | null>(null)
+  const [students, setStudents] = useState<ReviewRosterStudent[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (id && groupId) loadAll() }, [id, groupId])
+  useEffect(() => { if (id) loadAll() }, [id, groupId, profile?.id, profile?.role])
 
   async function loadAll() {
-    if (!id || !groupId) return
+    if (!id) return
     setLoading(true)
     try {
+      if (!groupId) {
+        const roster = await loadHomeworkReviewRoster(id, profile)
+        setHw(roster.homework)
+        setStudents(roster.students)
+        return
+      }
+
       const { data: hwData } = await supabase
         .from('homeworks')
         .select('id, title, max_score')
         .eq('id', id)
         .single()
-      setHw(hwData)
+      setHw(hwData ? { ...hwData, courseId: null } : null)
       if (!hwData) return
 
-      // Список учеников — из выбранной группы (контекст проверки)
-      const [subsRes, gsRes] = await Promise.all([
+      const [subsRes, gsRes, groupRes] = await Promise.all([
         supabase
           .from('homework_submissions')
           .select('id, student_id, status, score, submitted_at')
@@ -62,19 +56,26 @@ export function HomeworkReviewPage() {
           .from('group_students')
           .select('student_id, students(id, profile_id, profiles(full_name))')
           .eq('group_id', groupId),
+        supabase
+          .from('groups')
+          .select('name')
+          .eq('id', groupId)
+          .single(),
       ])
 
       const subMap: Record<string, any> = {}
       for (const s of (subsRes.data || []) as any[]) subMap[s.student_id] = s
 
-      const list: StudentRow[] = ((gsRes.data || []) as any[]).map((gs: any) => {
+      const list: ReviewRosterStudent[] = ((gsRes.data || []) as any[]).map((gs: any) => {
         const sub = subMap[gs.student_id]
         return {
-          studentId:   gs.student_id,
-          name:        gs.students?.profiles?.full_name || 'Без имени',
-          profileId:   gs.students?.profile_id || '',
-          status:      (sub?.status ?? 'not_submitted') as StudentRow['status'],
-          score:       sub?.score ?? null,
+          studentId: gs.student_id,
+          name: gs.students?.profiles?.full_name || 'Без имени',
+          profileId: gs.students?.profile_id || '',
+          groupId,
+          groupName: (groupRes.data as any)?.name || 'Группа',
+          status: (sub?.status ?? 'not_submitted') as ReviewRosterStudent['status'],
+          score: sub?.score ?? null,
           submittedAt: sub?.submitted_at ?? null,
         }
       })
@@ -123,17 +124,21 @@ export function HomeworkReviewPage() {
         </div>
 
         {students.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">Нет учеников в группе</div>
+          <div className="text-center py-12 text-gray-400 text-sm">{groupId ? 'Нет учеников в группе' : 'Нет учеников для проверки'}</div>
         ) : (
           <div className="divide-y divide-gray-50">
             {students.map(s => {
               const meta = STATUS_LABEL[s.status]
               const canReview = s.status === 'submitted' || s.status === 'revision' || s.status === 'checked'
+              const showGroupName = !groupId
+              const target = groupId
+                ? `/homeworks/${id}/review/${groupId}/${s.studentId}`
+                : `/homeworks/${id}/review/student/${s.studentId}`
               return (
                 <button
-                  key={s.studentId}
+                  key={`${s.groupId}:${s.studentId}`}
                   disabled={!canReview}
-                  onClick={() => navigate(`/homeworks/${id}/review/${groupId}/${s.studentId}`)}
+                  onClick={() => navigate(target)}
                   className={cn(
                     'w-full flex items-center gap-4 px-4 py-3.5 text-left transition-colors',
                     canReview ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default opacity-60'
@@ -156,6 +161,7 @@ export function HomeworkReviewPage() {
                     <div className={cn('text-xs mt-0.5', meta.color)}>
                       {meta.label}
                       {s.status === 'checked' && s.score != null && ` · ${s.score}/${hw?.max_score} б.`}
+                      {showGroupName && <span className="text-gray-400 ml-1.5">{s.groupName}</span>}
                       {s.submittedAt && s.status !== 'not_submitted' && (
                         <span className="text-gray-400 ml-1.5">
                           {new Date(s.submittedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
