@@ -272,6 +272,7 @@ export function HomeworksPage() {
         studentId={studentId}
         isResubmit={submitTarget?.isResubmit}
         previousFileUrl={submitTarget?.previousFileUrl}
+        previousFilePaths={submitTarget?.previousFilePaths}
         feedback={submitTarget?.feedback}
       />
       <AssignHomeworkModal

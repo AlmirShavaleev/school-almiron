@@ -4,23 +4,86 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }))
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: vi.fn() } }))
 
-let upsertResult: { data: unknown; error: { message: string } | null } = { data: [{ id: 'sub-1' }], error: null }
-const upsertSpy = vi.fn()
+const callOrder: string[] = []
+const uploadSpy = vi.fn()
+const deleteSpy = vi.fn()
+const insertFilesSpy = vi.fn()
+const insertSubmissionSpy = vi.fn()
+const updateSubmissionSpy = vi.fn()
+
+let maybeSingleResult: { data: any; error: { message: string } | null } = { data: null, error: null }
+let insertSubmissionResult: { data: any; error: { message: string } | null } = { data: { id: 'sub-new' }, error: null }
+let updateSubmissionResult: { data: any; error: { message: string } | null } = { data: [{ id: 'sub-new' }], error: null }
+let deleteFilesResult: { error: { message: string } | null } = { error: null }
+let insertFilesResult: { error: { message: string } | null } = { error: null }
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (table: string) => {
       if (table === 'homework_submissions') {
         return {
-          upsert: (payload: unknown, opts: unknown) => {
-            upsertSpy(payload, opts)
-            return { select: () => Promise.resolve(upsertResult) }
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () => {
+                  callOrder.push('submission:maybeSingle')
+                  return Promise.resolve(maybeSingleResult)
+                },
+              }),
+            }),
+          }),
+          insert: (payload: unknown) => {
+            insertSubmissionSpy(payload)
+            callOrder.push('submission:insert')
+            return {
+              select: () => ({
+                single: () => Promise.resolve(insertSubmissionResult),
+              }),
+            }
           },
+          update: (payload: unknown) => {
+            updateSubmissionSpy(payload)
+            callOrder.push('submission:update')
+            return {
+              eq: () => ({
+                in: () => ({
+                  select: () => Promise.resolve(updateSubmissionResult),
+                }),
+              }),
+            }
+          },
+        }
+      }
+      if (table === 'homework_submission_files') {
+        return {
+          delete: () => {
+            deleteSpy()
+            callOrder.push('files:delete')
+            return {
+              eq: () => Promise.resolve(deleteFilesResult),
+            }
+          },
+          insert: (payload: unknown) => {
+            insertFilesSpy(payload)
+            callOrder.push('files:insert')
+            return Promise.resolve(insertFilesResult)
+          },
+          select: () => ({
+            in: () => Promise.resolve({ data: [], error: null }),
+          }),
         }
       }
       return {}
     },
-    storage: { from: () => ({ upload: vi.fn().mockResolvedValue({ error: null }) }) },
+    storage: {
+      from: () => ({
+        upload: (...args: unknown[]) => {
+          uploadSpy(...args)
+          callOrder.push('storage:upload')
+          return Promise.resolve({ error: null })
+        },
+      }),
+    },
   },
 }))
 
@@ -28,50 +91,109 @@ import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 
 const homework = { id: 'hw-1', title: 'ДЗ', max_score: 100 }
 const pdfFile = new File(['pdf'], 'solution.pdf', { type: 'application/pdf' })
+const jpgFile = new File(['jpg'], 'page-2.jpg', { type: 'image/jpeg' })
 const heicFile = new File(['heic'], 'photo.heic', { type: 'image/heic' })
+const bigFile = new File([new Uint8Array(11 * 1024 * 1024)], 'big.pdf', { type: 'application/pdf' })
+const nineMbA = new File([new Uint8Array(9 * 1024 * 1024)], 'big-1.pdf', { type: 'application/pdf' })
+const nineMbB = new File([new Uint8Array(9 * 1024 * 1024)], 'big-2.pdf', { type: 'application/pdf' })
+const nineMbC = new File([new Uint8Array(9 * 1024 * 1024)], 'big-3.pdf', { type: 'application/pdf' })
+const nineMbD = new File([new Uint8Array(9 * 1024 * 1024)], 'big-4.pdf', { type: 'application/pdf' })
+const nineMbE = new File([new Uint8Array(9 * 1024 * 1024)], 'big-5.pdf', { type: 'application/pdf' })
 
-describe('SubmitHomeworkModal — resubmission after revision', () => {
+describe('SubmitHomeworkModal — multi-file submit flow', () => {
   beforeEach(() => {
-    upsertSpy.mockReset()
+    callOrder.length = 0
+    uploadSpy.mockReset()
+    deleteSpy.mockReset()
+    insertFilesSpy.mockReset()
+    insertSubmissionSpy.mockReset()
+    updateSubmissionSpy.mockReset()
     toastSuccess.mockReset()
-    upsertResult = { data: [{ id: 'sub-1' }], error: null }
+    maybeSingleResult = { data: null, error: null }
+    insertSubmissionResult = { data: { id: 'sub-new' }, error: null }
+    updateSubmissionResult = { data: [{ id: 'sub-new' }], error: null }
+    deleteFilesResult = { error: null }
+    insertFilesResult = { error: null }
   })
 
-  it('requires a new file on resubmit, shows teacher feedback, and resets score/checked_by on resubmit', async () => {
+  it('creates a draft submission row, inserts file rows, then marks the submission as submitted', async () => {
     const onClose = vi.fn()
-    const onSubmitted = vi.fn()
     render(
       <SubmitHomeworkModal
-        open onClose={onClose} onSubmitted={onSubmitted}
+        open onClose={onClose} onSubmitted={vi.fn()}
         homework={homework} studentId="stud-1"
-        isResubmit previousFileUrl={null}
-        feedback="Нужно переделать формулу"
       />
     )
 
-    expect(screen.getByText('Пересдать задание')).toBeInTheDocument()
-    expect(screen.getByText('Нужно переделать формулу')).toBeInTheDocument()
-    expect(screen.queryByTestId('submit-homework-text')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile, jpgFile] } })
+    fireEvent.click(screen.getByText('Отправить'))
 
-    fireEvent.click(screen.getByText('Отправить пересдачу'))
-    await waitFor(() => expect(screen.getByText('Прикрепите файл')).toBeInTheDocument())
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(insertSubmissionSpy).toHaveBeenCalledWith(expect.objectContaining({
+      homework_id: 'hw-1',
+      student_id: 'stud-1',
+      status: 'not_submitted',
+      file_url: null,
+    }))
+    expect(insertFilesSpy).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ submission_id: 'sub-new', position: 1, mime_type: 'application/pdf' }),
+      expect.objectContaining({ submission_id: 'sub-new', position: 2, mime_type: 'image/jpeg' }),
+    ]))
+    expect(updateSubmissionSpy).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'submitted',
+      answer_text: null,
+      score: null,
+      checked_by: null,
+      file_url: expect.stringContaining('submissions/hw-1/stud-1/'),
+    }))
+    expect(callOrder).toEqual([
+      'submission:maybeSingle',
+      'submission:insert',
+      'storage:upload',
+      'storage:upload',
+      'files:insert',
+      'submission:update',
+    ])
+    expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
+  })
+
+  it('on resubmit deletes old file rows before inserting the new full set', async () => {
+    maybeSingleResult = { data: { id: 'sub-existing', status: 'revision' }, error: null }
+    const onClose = vi.fn()
+    render(
+      <SubmitHomeworkModal
+        open onClose={onClose} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+        isResubmit
+        previousFileUrl="submissions/hw-1/stud-1/old.pdf"
+        previousFilePaths={['submissions/hw-1/stud-1/old.pdf', 'submissions/hw-1/stud-1/old-2.jpg']}
+        feedback="Переделай аккуратнее"
+      />
+    )
+
+    expect(screen.getByText('Переделай аккуратнее')).toBeInTheDocument()
+    expect(screen.getByText('Файл 1')).toBeInTheDocument()
+    expect(screen.getByText('Файл 2')).toBeInTheDocument()
 
     fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
-
     fireEvent.click(screen.getByText('Отправить пересдачу'))
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(onSubmitted).toHaveBeenCalled()
-    expect(upsertSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'submitted', score: null, checked_by: null }),
-      { onConflict: 'homework_id,student_id' },
-    )
-    expect(upsertSpy.mock.calls[0][0]).not.toHaveProperty('feedback')
+    expect(deleteSpy).toHaveBeenCalled()
+    expect(insertSubmissionSpy).not.toHaveBeenCalled()
+    expect(callOrder).toEqual([
+      'submission:maybeSingle',
+      'files:delete',
+      'storage:upload',
+      'files:insert',
+      'submission:update',
+    ])
     expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на повторную проверку')
   })
 
-  it('shows a clear error and does not close when the row was checked in the meantime (RLS silently filtered the row out)', async () => {
-    upsertResult = { data: [], error: null }
+  it('shows a clear error and does not close when the row was checked in the meantime', async () => {
+    maybeSingleResult = { data: { id: 'sub-existing', status: 'revision' }, error: null }
+    updateSubmissionResult = { data: [], error: null }
     const onClose = vi.fn()
     render(
       <SubmitHomeworkModal
@@ -89,22 +211,6 @@ describe('SubmitHomeworkModal — resubmission after revision', () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  it('shows the regular success toast for a first-time (non-resubmit) submission', async () => {
-    const onClose = vi.fn()
-    render(
-      <SubmitHomeworkModal
-        open onClose={onClose} onSubmitted={vi.fn()}
-        homework={homework} studentId="stud-1"
-      />
-    )
-
-    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
-    fireEvent.click(screen.getByText('Отправить'))
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
-  })
-
   it('rejects HEIC files before upload with a friendly message', async () => {
     render(
       <SubmitHomeworkModal
@@ -116,7 +222,21 @@ describe('SubmitHomeworkModal — resubmission after revision', () => {
     fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [heicFile] } })
 
     await waitFor(() => expect(screen.getByText('Сохраните как JPG или PDF')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('Отправить'))
-    expect(upsertSpy).not.toHaveBeenCalled()
+    expect(insertFilesSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects files above 10 MB and total batches above 40 MB', async () => {
+    render(
+      <SubmitHomeworkModal
+        open onClose={vi.fn()} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [bigFile] } })
+    await waitFor(() => expect(screen.getByText('Файл слишком большой. Максимум 10 МБ.')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [nineMbA, nineMbB, nineMbC, nineMbD, nineMbE] } })
+    await waitFor(() => expect(screen.getByText('Суммарный размер файлов не должен превышать 40 МБ.')).toBeInTheDocument())
   })
 })

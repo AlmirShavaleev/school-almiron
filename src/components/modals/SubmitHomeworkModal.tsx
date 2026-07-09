@@ -4,6 +4,11 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { toast } from '@/store/toastStore'
+import { getOrderedSubmissionFiles } from '@/lib/homeworkSubmissionFiles'
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_TOTAL_SIZE = 40 * 1024 * 1024
+const ACCEPTED_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
 
 interface Props {
   open: boolean
@@ -13,93 +18,156 @@ interface Props {
   studentId: string | null
   isResubmit?: boolean
   previousFileUrl?: string | null
+  previousFilePaths?: string[]
   feedback?: string | null
 }
 
 export function SubmitHomeworkModal({
   open, onClose, onSubmitted, homework, studentId,
-  isResubmit = false, previousFileUrl = null, feedback = null,
+  isResubmit = false, previousFileUrl = null, previousFilePaths = [], feedback = null,
 }: Props) {
-  const [file, setFile]           = useState<File | null>(null)
+  const [files, setFiles]         = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError]         = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
-    setFile(null)
+    setFiles([])
     setError('')
   }, [open])
 
+  function validateFiles(nextFiles: File[]): string | null {
+    for (const file of nextFiles) {
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+      const mime = file.type.toLowerCase()
+      if (ext === 'heic' || ext === 'heif' || mime.includes('heic') || mime.includes('heif')) {
+        return 'Сохраните как JPG или PDF'
+      }
+      if (!ACCEPTED_EXTS.includes(ext)) {
+        return 'Поддерживаются только PDF, JPG и PNG'
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        return 'Файл слишком большой. Максимум 10 МБ.'
+      }
+    }
+    const total = nextFiles.reduce((sum, file) => sum + file.size, 0)
+    if (total > MAX_TOTAL_SIZE) return 'Суммарный размер файлов не должен превышать 40 МБ.'
+    return null
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    const ext = f.name.split('.').pop()?.toLowerCase() || ''
-    const mime = f.type.toLowerCase()
-    if (ext === 'heic' || ext === 'heif' || mime.includes('heic') || mime.includes('heif')) {
-      setError('Сохраните как JPG или PDF')
-      if (fileRef.current) fileRef.current.value = ''
+    const selected = Array.from(e.target.files || [])
+    if (!selected.length) return
+    const nextFiles = [...files, ...selected]
+    const validationError = validateFiles(nextFiles)
+    if (fileRef.current) fileRef.current.value = ''
+    if (validationError) {
+      setError(validationError)
       return
     }
-    if (!['pdf', 'png', 'jpg', 'jpeg'].includes(ext)) {
-      setError('Поддерживаются только PDF, JPG и PNG')
-      if (fileRef.current) fileRef.current.value = ''
-      return
-    }
-    if (f.size > 10 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 10 МБ.')
-      if (fileRef.current) fileRef.current.value = ''
-      return
-    }
-    setFile(f)
+    setFiles(nextFiles)
     setError('')
   }
 
-  function removeFile() {
-    setFile(null)
-    if (fileRef.current) fileRef.current.value = ''
+  function removeFile(index: number) {
+    setFiles(prev => prev.filter((_file, fileIndex) => fileIndex !== index))
   }
 
-  async function uploadFile(): Promise<string | null> {
-    if (!file || !studentId || !homework) return null
-    const ext  = file.name.split('.').pop()
-    const path = `submissions/${homework.id}/${studentId}/${Date.now()}.${ext}`
-    const { error: err } = await supabase.storage
-      .from('homeworks')
-      .upload(path, file, { contentType: file.type, upsert: true })
-    if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
-    // Private bucket: store the storage path, not a public URL.
-    return path
+  async function ensureSubmissionRow() {
+    if (!studentId || !homework) return null
+    const { data: existing, error: existingError } = await supabase
+      .from('homework_submissions')
+      .select('id, status')
+      .eq('homework_id', homework.id)
+      .eq('student_id', studentId)
+      .maybeSingle()
+
+    if (existingError) throw existingError
+    if (existing?.status && !['not_submitted', 'revision'].includes(existing.status)) {
+      throw new Error('Работа уже проверена, обнови страницу')
+    }
+    if (existing?.id) return existing.id
+
+    const { data: created, error: createError } = await supabase
+      .from('homework_submissions')
+      .insert({
+        homework_id: homework.id,
+        student_id: studentId,
+        answer_text: null,
+        file_url: null,
+        status: 'not_submitted',
+        score: null,
+        checked_by: null,
+        submitted_at: null,
+      })
+      .select('id')
+      .single()
+
+    if (createError) throw createError
+    return created?.id || null
+  }
+
+  async function uploadFiles() {
+    if (!files.length || !studentId || !homework) return []
+    const stamp = Date.now()
+    const uploaded: { storage_path: string; mime_type: string; position: number }[] = []
+    for (const [index, file] of files.entries()) {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
+      const path = `submissions/${homework.id}/${studentId}/${stamp}-${index}-${crypto.randomUUID()}.${ext}`
+      const { error: err } = await supabase.storage
+        .from('homeworks')
+        .upload(path, file, { contentType: file.type, upsert: true })
+      if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
+      uploaded.push({ storage_path: path, mime_type: file.type, position: index + 1 })
+    }
+    return uploaded
   }
 
   async function handleSubmit() {
     if (!homework || !studentId) return
-    if (!file) {
-      setError('Прикрепите файл')
+    if (!files.length) {
+      setError('Прикрепите хотя бы один файл')
       return
     }
     setError('')
     setUploading(true)
     try {
-      const fileUrl = await uploadFile()
+      const submissionId = await ensureSubmissionRow()
+      if (!submissionId) throw new Error('Не удалось создать сдачу')
 
-      // RLS only allows a student to UPDATE their own submission while it's
-      // in not_submitted/revision — if a teacher checked it in the meantime
-      // (race between opening this form and submitting), the row won't
-      // match the policy anymore and .select() comes back empty with no
-      // error. Detect that explicitly instead of silently no-op'ing.
+      if (isResubmit) {
+        const { error: deleteError } = await (supabase as any)
+          .from('homework_submission_files')
+          .delete()
+          .eq('submission_id', submissionId)
+        if (deleteError) throw deleteError
+      }
+
+      const uploadedFiles = await uploadFiles()
+      const { error: filesError } = await (supabase as any)
+        .from('homework_submission_files')
+        .insert(uploadedFiles.map(file => ({
+          submission_id: submissionId,
+          storage_path: file.storage_path,
+          mime_type: file.mime_type,
+          position: file.position,
+        })))
+      if (filesError) throw filesError
+
+      const primaryFile = getOrderedSubmissionFiles(uploadedFiles)[0]?.storage_path ?? null
       const { data, error: err } = await supabase
         .from('homework_submissions')
-        .upsert({
-          homework_id:  homework.id,
-          student_id:   studentId,
-          answer_text:  null,
-          file_url:     fileUrl,
-          status:       'submitted',
-          score:        null,
-          checked_by:   null,
+        .update({
+          answer_text: null,
+          file_url: primaryFile,
+          status: 'submitted',
+          score: null,
+          checked_by: null,
           submitted_at: new Date().toISOString(),
-        }, { onConflict: 'homework_id,student_id' })
+        })
+        .eq('id', submissionId)
+        .in('status', ['not_submitted', 'revision'])
         .select('id')
 
       if (err) throw err
@@ -108,7 +176,7 @@ export function SubmitHomeworkModal({
         return
       }
 
-      setFile(null)
+      setFiles([])
       toast.success(isResubmit ? 'Работа отправлена на повторную проверку' : 'Работа отправлена на проверку')
       onSubmitted()
       onClose()
@@ -155,19 +223,25 @@ export function SubmitHomeworkModal({
             </div>
           )}
 
-          {/* Previous attempt's file, for reference */}
-          {isResubmit && previousFileUrl && (
-            <SignedFileLink
-              bucket="homeworks"
-              url={previousFileUrl}
-              className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-colors group"
-            >
-              <FileText size={18} className="text-gray-400 group-hover:text-blue-500 shrink-0" />
-              <span className="text-sm text-gray-600 group-hover:text-blue-600 flex-1">
-                Открыть прошлый файл
-              </span>
-              <span className="text-xs text-gray-400">↗</span>
-            </SignedFileLink>
+          {/* Previous attempt's files, for reference */}
+          {isResubmit && (previousFilePaths.length > 0 || previousFileUrl) && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-gray-500">Прошлая сдача</div>
+              {(previousFilePaths.length > 0 ? previousFilePaths : previousFileUrl ? [previousFileUrl] : []).map((path, index) => (
+                <SignedFileLink
+                  key={`${path}-${index}`}
+                  bucket="homeworks"
+                  url={path}
+                  className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-colors group"
+                >
+                  <FileText size={18} className="text-gray-400 group-hover:text-blue-500 shrink-0" />
+                  <span className="text-sm text-gray-600 group-hover:text-blue-600 flex-1 truncate">
+                    {(previousFilePaths.length > 0 ? `Файл ${index + 1}` : 'Открыть прошлый файл')}
+                  </span>
+                  <span className="text-xs text-gray-400">↗</span>
+                </SignedFileLink>
+              ))}
+            </div>
           )}
 
           {/* Task file from teacher */}
@@ -190,36 +264,38 @@ export function SubmitHomeworkModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Прикрепить файл
             </label>
-            {file ? (
-              <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
-                <FileText size={20} className="text-green-600 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-green-800 truncate">{file.name}</div>
-                  <div className="text-xs text-green-500">{(file.size / 1024).toFixed(0)} КБ</div>
+            <div className="space-y-2">
+              {files.map((file, index) => (
+                <div key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                  <FileText size={20} className="text-green-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-green-800 truncate">{file.name}</div>
+                    <div className="text-xs text-green-500">{(file.size / 1024).toFixed(0)} КБ</div>
+                  </div>
+                  <button type="button" aria-label={`Удалить файл ${index + 1}`} onClick={() => removeFile(index)} className="text-green-400 hover:text-red-500 transition-colors">
+                    <XCircle size={18} />
+                  </button>
                 </div>
-                <button type="button" onClick={removeFile} className="text-green-400 hover:text-red-500 transition-colors">
-                  <XCircle size={18} />
-                </button>
-              </div>
-            ) : (
+              ))}
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-green-300 hover:text-green-500 transition-colors"
               >
                 <Paperclip size={16} />
-                Прикрепить PDF / изображение
+                {files.length > 0 ? 'Добавить ещё файлы' : 'Прикрепить PDF / изображение'}
               </button>
-            )}
+            </div>
             <input
               data-testid="submit-homework-file-input"
               ref={fileRef}
               type="file"
               accept=".pdf,.png,.jpg,.jpeg"
+              multiple
               className="hidden"
               onChange={handleFileChange}
             />
-            <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG — до 10 МБ. HEIC/HEIF не поддерживаются.</p>
+            <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG — до 10 МБ на файл и до 40 МБ суммарно. HEIC/HEIF не поддерживаются.</p>
           </div>
 
           {error && (
