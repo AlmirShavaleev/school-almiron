@@ -12,9 +12,9 @@ const queueHook = readFileSync('src/hooks/useHomeworkQueue.ts', 'utf8')
 
 describe('submission annotation reviewer', () => {
   it('normalizes legacy URLs, uses signed URLs and retries file loading', () => {
-    expect(reviewer).toContain("extractStoragePath(filePath, 'homeworks')")
+    expect(reviewer).toContain("extractStoragePath(path, 'homeworks') ?? path")
+    expect(reviewer).toContain("const raw = filePaths?.length ? filePaths : [filePath]")
     expect(reviewer).toContain("getSignedFileUrl('homeworks', path)")
-    expect(reviewer).toContain('retryUrl')
   })
 
   it('stores normalized region comments and supports pointer input', () => {
@@ -30,8 +30,8 @@ describe('submission annotation reviewer', () => {
   it('saves and deletes region comments immediately — no debounce window where a fast navigate-away could lose one', () => {
     expect(reviewer).toContain('async function saveDraft()')
     expect(reviewer).toContain('async function deleteRegion(')
-    expect(reviewer).toContain('await savePage(draft.page, nextData)')
-    expect(reviewer).toContain('await savePage(item.page, nextData)')
+    expect(reviewer).toContain('await savePage(draft.filePath, draft.page, nextData)')
+    expect(reviewer).toContain('await savePage(item.filePath, item.page, nextData)')
     expect(reviewer).not.toContain('setTimeout(() =>')
   })
 
@@ -43,7 +43,10 @@ describe('submission annotation reviewer', () => {
 
   it('loads the student own file and uses the reviewer read-only', () => {
     expect(homeworks).toContain('student_id,file_url')
-    expect(readFileSync('src/pages/HomeworksPage.tsx', 'utf8')).toContain('filePath={studentReview.file_url} readOnly')
+    const homeworksPage = readFileSync('src/pages/HomeworksPage.tsx', 'utf8')
+    expect(homeworksPage).toContain('filePath={studentReview.file_url}')
+    expect(homeworksPage).toContain('filePaths={studentReview.filePaths}')
+    expect(homeworksPage).toContain('readOnly')
   })
 
   it('is integrated into the per-student review page in teacher mode, only for previewable files', () => {

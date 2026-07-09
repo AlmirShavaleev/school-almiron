@@ -359,8 +359,10 @@ export function StudentReviewPage() {
 
   const submissionFilePaths = getSubmissionFilePaths(sub)
   const primaryFilePath = getPrimarySubmissionFilePath(sub)
-  const fileExt = primaryFilePath?.split('?')[0].split('.').pop()?.toLowerCase()
-  const canPreview = !!fileExt && PREVIEWABLE_EXTS.includes(fileExt)
+  const canPreview = submissionFilePaths.length > 0 && submissionFilePaths.every(path => {
+    const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
+    return !!ext && PREVIEWABLE_EXTS.includes(ext)
+  })
 
   const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
   const prevStu  = sibIdx > 0 ? siblings[sibIdx - 1] : null
@@ -470,6 +472,7 @@ export function StudentReviewPage() {
             <SubmissionReviewer
               submissionId={sub.id}
               filePath={primaryFilePath}
+              filePaths={submissionFilePaths}
               className="h-full min-h-0"
               header={reviewHeader}
               footer={previewGradingCard ?? undefined}

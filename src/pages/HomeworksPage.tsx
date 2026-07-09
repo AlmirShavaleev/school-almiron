@@ -291,7 +291,7 @@ export function HomeworksPage() {
             </div>
             <div className="overflow-auto p-2 sm:p-4">
               <Suspense fallback={<div className="flex min-h-64 items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-500">Загрузка проверенной работы…</div>}>
-                <SubmissionReviewer submissionId={studentReview.id} filePath={studentReview.file_url} readOnly />
+                <SubmissionReviewer submissionId={studentReview.id} filePath={studentReview.file_url} filePaths={studentReview.filePaths} readOnly />
               </Suspense>
             </div>
           </div>

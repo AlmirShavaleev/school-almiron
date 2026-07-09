@@ -14,7 +14,7 @@ type Category = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; w: number; h: number }
 type Region = { id: string; type: 'region'; rect: Rect; category: Category; text: string }
-type Draft = { page: number; rect: Rect; category: Category; text: string }
+type Draft = { filePath: string; page: number; globalPage: number; fileIndex: number; rect: Rect; category: Category; text: string }
 type LegacyMark =
   | { id: string; type: 'stroke'; points: Point[]; color: string; width: number }
   | { id: string; type: 'highlight'; points: Point[]; color: string; width: number }
@@ -22,10 +22,22 @@ type LegacyMark =
   | { id: string; type: 'text'; text: string; x: number; y: number; color: string; size: number }
 type Mark = Region | LegacyMark
 type PageData = { version: 2; objects: Mark[] }
-type Row = { page: number; data: unknown; status: 'draft' | 'published' }
-type RegionItem = Region & { page: number }
+type Row = { page: number; file_path: string; data: unknown; status: 'draft' | 'published' }
+type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string }
 type PageMetrics = { width: number; height: number; ratio: number }
-type DragState = { page: number; rect: Rect } | null
+type DragState = { surfaceKey: string; rect: Rect } | null
+type SourceFile = { filePath: string; url: string; ext: string; kind: 'pdf' | 'image' }
+type DocumentSurface = {
+  surfaceKey: string
+  filePath: string
+  fileIndex: number
+  fileLabel: string
+  kind: 'pdf' | 'image'
+  page: number
+  globalPage: number
+  url: string
+  metrics?: PageMetrics
+}
 type FooterRenderContext = {
   publishing: boolean
   published: boolean
@@ -36,6 +48,7 @@ type FooterContent = ReactNode | ((context: FooterRenderContext) => ReactNode)
 interface Props {
   submissionId: string
   filePath: string
+  filePaths?: string[]
   readOnly?: boolean
   className?: string
   fitWidth?: boolean
@@ -59,6 +72,11 @@ const CATEGORIES: Record<Category, { label: string; short: string; color: string
 const id = () => crypto.randomUUID()
 const isRegion = (mark: Mark): mark is Region => mark.type === 'region'
 const inflightPageSaves = new Map<string, Promise<boolean>>()
+const pageKey = (filePath: string, page: number) => `${filePath}::${page}`
+const parsePageKey = (key: string) => {
+  const [filePath, page] = key.split('::')
+  return { filePath, page: Number(page) }
+}
 const cleanData = (data: unknown): PageData => {
   const value = data as { objects?: unknown[] } | null
   return { version: 2, objects: Array.isArray(value?.objects) ? value.objects as Mark[] : [] }
@@ -74,6 +92,7 @@ const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
 export function SubmissionReviewer({
   submissionId,
   filePath,
+  filePaths,
   readOnly = false,
   className,
   fitWidth = true,
@@ -83,26 +102,25 @@ export function SubmissionReviewer({
   onPublish,
   onPublishComplete,
 }: Props) {
-  const path = useMemo(() => extractStoragePath(filePath, 'homeworks') ?? filePath, [filePath])
-  const persistenceKey = useMemo(() => `${submissionId}:${path}`, [path, submissionId])
-  const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
-  const isPdf = ext === 'pdf'
-  const isImage = ['png', 'jpg', 'jpeg'].includes(ext ?? '')
+  const normalizedPaths = useMemo(() => {
+    const raw = filePaths?.length ? filePaths : [filePath]
+    return raw.map(path => extractStoragePath(path, 'homeworks') ?? path)
+  }, [filePath, filePaths])
+  const persistenceKey = useMemo(() => `${submissionId}:${normalizedPaths.join('|')}`, [normalizedPaths, submissionId])
   const frameRef = useRef<HTMLDivElement>(null)
-  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const dragStartRef = useRef<{ page: number; point: Point } | null>(null)
+  const pageRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const dragStartRef = useRef<{ surfaceKey: string; filePath: string; fileIndex: number; page: number; globalPage: number; point: Point } | null>(null)
 
-  const [url, setUrl] = useState<string | null>(null)
+  const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [retried, setRetried] = useState(false)
   const [pageCount, setPageCount] = useState(1)
   const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(1)
   const [frameWidth, setFrameWidth] = useState(0)
-  const [imageRatio, setImageRatio] = useState(1 / 1.414)
-  const [pageMetrics, setPageMetrics] = useState<Record<number, PageMetrics>>({})
-  const [pages, setPages] = useState<Record<number, PageData>>({})
+  const [imageRatios, setImageRatios] = useState<Record<string, number>>({})
+  const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({})
+  const [pages, setPages] = useState<Record<string, PageData>>({})
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle')
   const [publishing, setPublishing] = useState(false)
@@ -110,39 +128,88 @@ export function SubmissionReviewer({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([1]))
+  const [visiblePages, setVisiblePages] = useState<Set<string>>(new Set())
 
-  const pdfRef = useRef<pdfjs.PDFDocumentProxy | null>(null)
-  const visibilityRef = useRef<Record<number, number>>({})
+  const pdfRefs = useRef<Record<string, pdfjs.PDFDocumentProxy | null>>({})
+  const visibilityRef = useRef<Record<string, number>>({})
 
-  const regions = useMemo(() => Object.entries(pages)
-    .flatMap(([number, data]) => data.objects.filter(isRegion).map(region => ({ ...region, page: Number(number) })))
-    .sort((a, b) => a.page - b.page), [pages])
+  const surfaces = useMemo(() => {
+    let globalPage = 1
+    return sourceFiles.flatMap((source, fileIndex) => {
+      if (source.kind === 'image') {
+        const surfaceKey = `${fileIndex + 1}:1`
+        const surface: DocumentSurface = {
+          surfaceKey,
+          filePath: source.filePath,
+          fileIndex,
+          fileLabel: `файл ${fileIndex + 1}`,
+          kind: 'image',
+          page: 1,
+          globalPage,
+          url: source.url,
+          metrics: pageMetrics[pageKey(source.filePath, 1)],
+        }
+        globalPage += 1
+        return [surface]
+      }
 
-  const getUrl = useCallback(async () => {
+      const doc = pdfRefs.current[source.filePath]
+      const docPages = doc?.numPages ?? 0
+      return Array.from({ length: docPages }, (_value, index) => {
+        const page = index + 1
+        const surfaceKey = `${fileIndex + 1}:${page}`
+        const surface: DocumentSurface = {
+          surfaceKey,
+          filePath: source.filePath,
+          fileIndex,
+          fileLabel: `файл ${fileIndex + 1}`,
+          kind: 'pdf',
+          page,
+          globalPage,
+          url: source.url,
+          metrics: pageMetrics[pageKey(source.filePath, page)],
+        }
+        globalPage += 1
+        return surface
+      })
+    })
+  }, [pageMetrics, sourceFiles])
+
+  const surfaceByKey = useMemo(() => Object.fromEntries(surfaces.map(surface => [surface.surfaceKey, surface])), [surfaces])
+
+  const regions = useMemo(() => surfaces
+    .flatMap(surface => (pages[pageKey(surface.filePath, surface.page)] ?? EMPTY).objects
+      .filter(isRegion)
+      .map(region => ({ ...region, filePath: surface.filePath, page: surface.page, globalPage: surface.globalPage, fileIndex: surface.fileIndex, fileLabel: surface.fileLabel, surfaceKey: surface.surfaceKey })))
+    .sort((a, b) => a.globalPage - b.globalPage), [pages, surfaces])
+
+  useEffect(() => {
+    if (!surfaces.length) return
+    setPageCount(surfaces.length)
+    setVisiblePages(new Set(surfaces.slice(0, 2).map(surface => surface.surfaceKey)))
+    setCurrentPage(1)
+  }, [surfaces])
+
+  const getUrls = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const next = await getSignedFileUrl('homeworks', path)
-      if (!next) throw new Error('Файл не найден')
-      setUrl(next)
+      const next = await Promise.all(normalizedPaths.map(async path => {
+        const url = await getSignedFileUrl('homeworks', path)
+        if (!url) throw new Error('Файл не найден')
+        const ext = path.split('?')[0].split('.').pop()?.toLowerCase() || ''
+        if (ext === 'pdf') return { filePath: path, url, ext, kind: 'pdf' as const }
+        if (['png', 'jpg', 'jpeg'].includes(ext)) return { filePath: path, url, ext, kind: 'image' as const }
+        throw new Error('Предпросмотр доступен только для PDF, PNG и JPG.')
+      }))
+      setSourceFiles(next)
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось открыть файл')
       setLoading(false)
     }
-  }, [path])
+  }, [normalizedPaths])
 
-  const retryUrl = useCallback(() => {
-    if (retried) {
-      setError('Не удалось загрузить файл')
-      setLoading(false)
-      return
-    }
-    setRetried(true)
-    void getUrl()
-  }, [getUrl, retried])
-
-  useEffect(() => { setRetried(false); void getUrl() }, [getUrl])
+  useEffect(() => { void getUrls() }, [getUrls])
 
   useEffect(() => {
     let active = true
@@ -157,46 +224,64 @@ export function SubmissionReviewer({
       }
       if (!active) return
 
-      const query = (supabase as any).from('annotation_sets').select('page,data,status')
-        .eq('submission_id', submissionId).eq('file_path', path)
+      const query = (supabase as any).from('annotation_sets').select('page,data,status,file_path')
+        .eq('submission_id', submissionId)
+      if (normalizedPaths.length === 1) query.eq('file_path', normalizedPaths[0])
+      else query.in('file_path', normalizedPaths)
       if (readOnly) query.eq('status', 'published')
       const { data } = await query as { data: Row[] | null }
       if (!active) return
-      const next: Record<number, PageData> = {}
-      for (const row of data ?? []) next[row.page] = cleanData(row.data)
+      const next: Record<string, PageData> = {}
+      for (const row of data ?? []) next[pageKey(row.file_path || normalizedPaths[0], row.page)] = cleanData(row.data)
       setPages(next)
       setPublished((data ?? []).some(row => row.status === 'published'))
     })()
     return () => { active = false }
-  }, [path, persistenceKey, readOnly, submissionId])
+  }, [normalizedPaths, persistenceKey, readOnly, submissionId])
 
   useEffect(() => {
-    if (!isPdf || !url) return
+    if (!sourceFiles.length) return
     let active = true
-    const task = pdfjs.getDocument({ url })
-    task.promise.then(async doc => {
-      if (!active) return
-      pdfRef.current = doc
-      setPageCount(doc.numPages)
+    const tasks = sourceFiles
+      .filter(source => source.kind === 'pdf')
+      .map(source => ({ source, task: pdfjs.getDocument({ url: source.url }) }))
+
+    Promise.all(tasks.map(async ({ source, task }) => {
+      const doc = await task.promise
+      pdfRefs.current[source.filePath] = doc
       const metricsEntries = await Promise.all(
         Array.from({ length: doc.numPages }, async (_value, index) => {
           const pageNumber = index + 1
           const pdfPage = await doc.getPage(pageNumber)
           const viewport = pdfPage.getViewport({ scale: 1 })
-          return [pageNumber, { width: viewport.width, height: viewport.height, ratio: viewport.width / viewport.height }] as const
+          return [pageKey(source.filePath, pageNumber), { width: viewport.width, height: viewport.height, ratio: viewport.width / viewport.height }] as const
         }),
       )
+      return { filePath: source.filePath, doc, metricsEntries }
+    })).then(results => {
       if (!active) return
-      setPageMetrics(Object.fromEntries(metricsEntries))
-      setVisiblePages(new Set([1, 2].filter(number => number <= doc.numPages)))
+      const nextMetrics: Record<string, PageMetrics> = {}
+      for (const source of sourceFiles) {
+        if (source.kind === 'image') {
+          nextMetrics[pageKey(source.filePath, 1)] = { width: 1000, height: 1414, ratio: imageRatios[source.filePath] || 1 / 1.414 }
+          continue
+        }
+        const result = results.find(item => item.filePath === source.filePath)
+        Object.assign(nextMetrics, Object.fromEntries(result?.metricsEntries || []))
+      }
+      setPageMetrics(prev => ({ ...prev, ...nextMetrics }))
       setLoading(false)
-    }).catch(() => active && retryUrl())
+    }).catch((e: any) => {
+      if (!active) return
+      setError(e?.message ?? 'Не удалось открыть файл')
+      setLoading(false)
+    })
     return () => {
       active = false
-      void task.destroy()
-      pdfRef.current = null
+      for (const { task } of tasks) void task.destroy()
+      pdfRefs.current = {}
     }
-  }, [isPdf, retryUrl, url])
+  }, [imageRatios, sourceFiles])
 
   useEffect(() => {
     if (!fitWidth || !frameRef.current || typeof ResizeObserver === 'undefined') return
@@ -210,21 +295,20 @@ export function SubmissionReviewer({
   }, [fitWidth])
 
   useEffect(() => {
-    if (!isPdf || !frameRef.current || typeof IntersectionObserver === 'undefined') return
+    if (!surfaces.length || !frameRef.current || typeof IntersectionObserver === 'undefined') return
     const root = frameRef.current
     const observer = new IntersectionObserver(entries => {
       const ratios = { ...visibilityRef.current }
-      let changed = false
       for (const entry of entries) {
-        const number = Number((entry.target as HTMLElement).dataset.pageNumber ?? '0')
-        if (!number) continue
-        ratios[number] = entry.intersectionRatio
+        const key = (entry.target as HTMLElement).dataset.surfaceKey
+        if (!key) continue
+        ratios[key] = entry.intersectionRatio
         if (entry.isIntersecting || entry.intersectionRatio > 0) {
-          changed = true
           setVisiblePages(prev => {
             const next = new Set(prev)
-            for (const nearby of [number - 1, number, number + 1]) {
-              if (nearby >= 1 && nearby <= pageCount) next.add(nearby)
+            const index = surfaces.findIndex(surface => surface.surfaceKey === key)
+            for (const nearby of [index - 1, index, index + 1]) {
+              if (nearby >= 0 && nearby < surfaces.length) next.add(surfaces[nearby].surfaceKey)
             }
             return next
           })
@@ -232,22 +316,18 @@ export function SubmissionReviewer({
       }
       visibilityRef.current = ratios
       const best = Object.entries(ratios)
-        .map(([number, ratio]) => ({ number: Number(number), ratio }))
+        .map(([key, ratio]) => ({ key, ratio }))
         .filter(item => item.ratio > 0)
-        .sort((a, b) => b.ratio - a.ratio || a.number - b.number)[0]
-      if (best) setCurrentPage(best.number)
-      if (!best && changed) {
-        const firstVisible = entries.find(entry => entry.isIntersecting)
-        if (firstVisible) setCurrentPage(Number((firstVisible.target as HTMLElement).dataset.pageNumber ?? '1'))
-      }
+        .sort((a, b) => b.ratio - a.ratio || a.key.localeCompare(b.key))[0]
+      if (best) setCurrentPage(surfaceByKey[best.key]?.globalPage ?? 1)
     }, { root, threshold: [0, 0.2, 0.5, 0.8, 1] })
 
-    for (let number = 1; number <= pageCount; number += 1) {
-      const node = pageRefs.current[number]
+    for (const surface of surfaces) {
+      const node = pageRefs.current[surface.surfaceKey]
       if (node) observer.observe(node)
     }
     return () => observer.disconnect()
-  }, [isPdf, pageCount, pageMetrics])
+  }, [surfaces, surfaceByKey])
 
   // Every mutation (saveDraft, deleteRegion) is an explicit user action and
   // persists immediately through this — no debounce, no "dirty" queue.
@@ -256,7 +336,7 @@ export function SubmissionReviewer({
   // sitting unsent when the teacher navigated away right after. Debouncing
   // makes sense for high-frequency background sync, not for the one moment
   // the user directly told us to save.
-  const savePage = useCallback(async (number: number, data: PageData) => {
+  const savePage = useCallback(async (filePath: string, number: number, data: PageData) => {
     if (readOnly) return true
     const previous = inflightPageSaves.get(persistenceKey)
     const persist = (async () => {
@@ -271,7 +351,7 @@ export function SubmissionReviewer({
       setSaveState('idle')
       const { error: saveError } = await (supabase as any).from('annotation_sets').upsert({
         submission_id: submissionId,
-        file_path: path,
+        file_path: filePath,
         page: number,
         data: { ...data, version: 2 },
         status: 'draft',
@@ -294,9 +374,9 @@ export function SubmissionReviewer({
         inflightPageSaves.delete(persistenceKey)
       }
     }
-  }, [path, persistenceKey, readOnly, submissionId])
+  }, [persistenceKey, readOnly, submissionId])
 
-  function pointerDown(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
+  function pointerDown(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
     if (readOnly || draft) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const rect = event.currentTarget.getBoundingClientRect()
@@ -304,23 +384,23 @@ export function SubmissionReviewer({
       x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     }
-    dragStartRef.current = { page: pageNumber, point }
-    setDragState({ page: pageNumber, rect: { x: point.x, y: point.y, w: 0, h: 0 } })
+    dragStartRef.current = { surfaceKey: surface.surfaceKey, filePath: surface.filePath, fileIndex: surface.fileIndex, page: surface.page, globalPage: surface.globalPage, point }
+    setDragState({ surfaceKey: surface.surfaceKey, rect: { x: point.x, y: point.y, w: 0, h: 0 } })
   }
 
-  function pointerMove(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
-    if (readOnly || !dragStartRef.current || dragStartRef.current.page !== pageNumber) return
+  function pointerMove(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
+    if (readOnly || !dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
     const rect = event.currentTarget.getBoundingClientRect()
     const point = {
       x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     }
     const start = dragStartRef.current.point
-    setDragState({ page: pageNumber, rect: normalizeRect(start, point) })
+    setDragState({ surfaceKey: surface.surfaceKey, rect: normalizeRect(start, point) })
   }
 
-  function pointerUp(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
-    if (readOnly || !dragStartRef.current || dragStartRef.current.page !== pageNumber) return
+  function pointerUp(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
+    if (readOnly || !dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
     const rect = event.currentTarget.getBoundingClientRect()
     const point = {
       x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
@@ -330,8 +410,8 @@ export function SubmissionReviewer({
     dragStartRef.current = null
     setDragState(null)
     if (nextRect.w < MIN_REGION_SIZE || nextRect.h < MIN_REGION_SIZE) return
-    setCurrentPage(pageNumber)
-    setDraft({ page: pageNumber, rect: nextRect, category: 'comment', text: '' })
+    setCurrentPage(surface.globalPage)
+    setDraft({ filePath: surface.filePath, page: surface.page, globalPage: surface.globalPage, fileIndex: surface.fileIndex, rect: nextRect, category: 'comment', text: '' })
   }
 
   // Explicit user actions (Сохранить / delete) persist immediately, awaited
@@ -347,28 +427,30 @@ export function SubmissionReviewer({
     const text = draft.text.trim()
     if (!text && draft.category !== 'praise') return
     const region: Region = { id: id(), type: 'region', rect: draft.rect, category: draft.category, text }
-    const pageData = pages[draft.page] ?? EMPTY
+    const key = pageKey(draft.filePath, draft.page)
+    const pageData = pages[key] ?? EMPTY
     const nextData = pageWithVersion([...pageData.objects, region])
-    const ok = await savePage(draft.page, nextData)
+    const ok = await savePage(draft.filePath, draft.page, nextData)
     if (!ok) return
-    setPages(value => ({ ...value, [draft.page]: nextData }))
+    setPages(value => ({ ...value, [key]: nextData }))
     setActiveId(region.id)
     setDraft(null)
   }
 
   async function deleteRegion(item: RegionItem) {
-    const pageData = pages[item.page] ?? EMPTY
+    const key = pageKey(item.filePath, item.page)
+    const pageData = pages[key] ?? EMPTY
     const nextData = pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id))
-    const ok = await savePage(item.page, nextData)
+    const ok = await savePage(item.filePath, item.page, nextData)
     if (!ok) return
-    setPages(value => ({ ...value, [item.page]: nextData }))
+    setPages(value => ({ ...value, [key]: nextData }))
     if (activeId === item.id) setActiveId(null)
   }
 
   function activateRegion(item: RegionItem) {
-    setCurrentPage(item.page)
+    setCurrentPage(item.globalPage)
     setActiveId(item.id)
-    pageRefs.current[item.page]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    pageRefs.current[item.surfaceKey]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
   async function publish() {
@@ -381,14 +463,21 @@ export function SubmissionReviewer({
     // Every edit is already persisted by the time it's made (saveDraft/
     // deleteRegion await savePage immediately) — this re-save is just a
     // belt-and-suspenders confirmation pass, not catching up on a backlog.
-    const ok = await Promise.all(Object.keys(pages).map(number => savePage(Number(number), pages[Number(number)] ?? EMPTY)))
+    const ok = await Promise.all(Object.entries(pages).map(([key, data]) => {
+      const parsed = parsePageKey(key)
+      return savePage(parsed.filePath, parsed.page, data ?? EMPTY)
+    }))
     if (!ok.every(Boolean)) {
       setPublishing(false)
       onPublishComplete?.(false)
       return
     }
-    const { error: publishError } = await (supabase as any).from('annotation_sets').update({ status: 'published' })
-      .eq('submission_id', submissionId).eq('file_path', path)
+    const publishQuery = (supabase as any).from('annotation_sets').update({ status: 'published' })
+      .eq('submission_id', submissionId)
+    const publishResult = normalizedPaths.length === 1
+      ? await publishQuery.eq('file_path', normalizedPaths[0])
+      : await publishQuery.in('file_path', normalizedPaths)
+    const publishError = publishResult?.error ?? null
     setSaveState(publishError ? 'error' : 'saved')
     setPublishing(false)
     if (publishError) {
@@ -399,7 +488,7 @@ export function SubmissionReviewer({
     onPublishComplete?.(true)
   }
 
-  if (!isPdf && !isImage) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
+  if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
   const triggerPublish = () => { void publish() }
@@ -445,68 +534,61 @@ export function SubmissionReviewer({
     <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div ref={frameRef} data-testid="review-document-scroll-area" className="overflow-auto p-3 sm:p-4">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
-        isPdf ? <div className="mx-auto flex min-h-full w-full flex-col gap-4">
-          {Array.from({ length: pageCount }, (_value, index) => {
-            const pageNumber = index + 1
-            const metrics = pageMetrics[pageNumber]
-            const pageData = pages[pageNumber] ?? EMPTY
-            const shouldRender = visiblePages.has(pageNumber) || currentPage === pageNumber || draft?.page === pageNumber
-            const dragRect = dragState?.page === pageNumber ? dragState.rect : null
+        <div className="mx-auto flex min-h-full w-full flex-col gap-4">
+          {surfaces.map(surface => {
+            const key = pageKey(surface.filePath, surface.page)
+            const pageData = pages[key] ?? EMPTY
+            const shouldRender = visiblePages.has(surface.surfaceKey) || currentPage === surface.globalPage || draft?.filePath === surface.filePath && draft.page === surface.page
+            const dragRect = dragState?.surfaceKey === surface.surfaceKey ? dragState.rect : null
             return <div
-              key={pageNumber}
-              ref={node => { pageRefs.current[pageNumber] = node }}
-              data-page-number={pageNumber}
-              data-testid={`review-page-${pageNumber}`}
+              key={surface.surfaceKey}
+              ref={node => { pageRefs.current[surface.surfaceKey] = node }}
+              data-page-number={surface.globalPage}
+              data-surface-key={surface.surfaceKey}
+              data-testid={`review-page-${surface.globalPage}`}
               className="relative"
             >
-              <PdfPageSurface
-                pageNumber={pageNumber}
-                metrics={metrics}
-                pdf={pdfRef.current}
-                pageData={pageData}
-                activeId={activeId}
-                dragRect={dragRect}
-                shouldRender={shouldRender}
-                zoom={zoom}
-                frameWidth={baseWidth}
-                readOnly={readOnly}
-                onPointerDown={pointerDown}
-                onPointerMove={pointerMove}
-                onPointerUp={pointerUp}
-                onActivate={setActiveId}
-              />
+              {surface.kind === 'pdf'
+                ? <PdfPageSurface
+                    surface={surface}
+                    pdf={pdfRefs.current[surface.filePath] ?? null}
+                    pageData={pageData}
+                    activeId={activeId}
+                    dragRect={dragRect}
+                    shouldRender={shouldRender}
+                    zoom={zoom}
+                    frameWidth={baseWidth}
+                    readOnly={readOnly}
+                    onPointerDown={pointerDown}
+                    onPointerMove={pointerMove}
+                    onPointerUp={pointerUp}
+                    onActivate={setActiveId}
+                  />
+                : <ImagePageSurface
+                    surface={surface}
+                    pageData={pageData}
+                    activeId={activeId}
+                    dragRect={dragRect}
+                    zoom={zoom}
+                    frameWidth={baseWidth}
+                    readOnly={readOnly}
+                    loading={loading}
+                    onLoaded={ratio => {
+                      setImageRatios(current => ({ ...current, [surface.filePath]: ratio }))
+                      setPageMetrics(current => ({ ...current, [pageKey(surface.filePath, 1)]: { width: ratio * 1000, height: 1000, ratio } }))
+                      setLoading(false)
+                    }}
+                    onError={() => { setError('Не удалось открыть файл'); setLoading(false) }}
+                    onPointerDown={pointerDown}
+                    onPointerMove={pointerMove}
+                    onPointerUp={pointerUp}
+                    onActivate={setActiveId}
+                  />
+              }
             </div>
           })}
           {documentFooter}
-        </div> : <div className="mx-auto flex w-full flex-col gap-4">
-            <div
-              ref={node => { pageRefs.current[1] = node }}
-              data-page-number={1}
-              data-testid="review-page-1"
-              className="mx-auto"
-              style={{ width: baseWidth > 0 ? `${baseWidth * zoom}px` : undefined, maxWidth: fitWidth ? '100%' : undefined }}
-            >
-              <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: imageRatio }}>
-                {url ? <img src={url} alt="Работа ученика" draggable={false} className="block h-auto w-full select-none" onLoad={e => { setImageRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight); setLoading(false) }} onError={retryUrl}/> : null}
-                {!loading && <svg
-                  viewBox="0 0 1 1"
-                  preserveAspectRatio="none"
-                  data-testid="review-overlay-1"
-                  className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : draft ? 'cursor-default' : 'cursor-crosshair')}
-                  onPointerDown={event => pointerDown(1, event)}
-                  onPointerMove={event => pointerMove(1, event)}
-                  onPointerUp={event => pointerUp(1, event)}
-                  onPointerCancel={event => pointerUp(1, event)}
-                >
-                  {pageWithVersion((pages[1] ?? EMPTY).objects).objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && setActiveId(mark.id)}/>)}
-                  {dragState?.page === 1 && <rect x={dragState.rect.x} y={dragState.rect.y} width={dragState.rect.w} height={dragState.rect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
-                </svg>}
-                {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
-              </div>
-            </div>
-            {documentFooter}
-          </div>
-        }
+        </div>}
       </div>
       <aside className="flex min-h-64 flex-col border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
         <div data-testid="review-rail-scroll-zone" className="min-h-0 flex-1 overflow-hidden">
@@ -524,8 +606,7 @@ function ToolButton({ disabled, title, onClick, children }: { disabled?: boolean
 }
 
 function PdfPageSurface({
-  pageNumber,
-  metrics,
+  surface,
   pdf,
   pageData,
   activeId,
@@ -539,8 +620,7 @@ function PdfPageSurface({
   onPointerUp,
   onActivate,
 }: {
-  pageNumber: number
-  metrics?: PageMetrics
+  surface: DocumentSurface
   pdf: pdfjs.PDFDocumentProxy | null
   pageData: PageData
   activeId: string | null
@@ -549,20 +629,21 @@ function PdfPageSurface({
   zoom: number
   frameWidth: number
   readOnly: boolean
-  onPointerDown: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
-  onPointerMove: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
-  onPointerUp: (pageNumber: number, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerDown: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerMove: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerUp: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
   onActivate: (id: string | null) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
   const width = frameWidth > 0 ? frameWidth * zoom : undefined
-  const ratio = metrics?.ratio ?? 1 / 1.414
+  const ratio = surface.metrics?.ratio ?? 1 / 1.414
 
   useEffect(() => {
-    if (!pdf || !canvasRef.current || !metrics || !shouldRender || !frameWidth) return
+    if (!pdf || !canvasRef.current || !surface.metrics || !shouldRender || !frameWidth) return
     let cancelled = false
-    pdf.getPage(pageNumber).then(pdfPage => {
+    const metrics = surface.metrics
+    pdf.getPage(surface.page).then(pdfPage => {
       if (cancelled || !canvasRef.current) return
       const baseScale = Math.max(0.1, (frameWidth - 2) / metrics.width)
       const viewport = pdfPage.getViewport({ scale: baseScale * zoom })
@@ -582,28 +663,89 @@ function PdfPageSurface({
       cancelled = true
       renderTaskRef.current?.cancel()
     }
-  }, [frameWidth, metrics, pageNumber, pdf, shouldRender, zoom])
+  }, [frameWidth, pdf, shouldRender, surface.metrics, surface.page, zoom])
 
   return <div className="mx-auto" style={{ width: width ? `${width}px` : undefined, maxWidth: '100%' }}>
     <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: ratio }}>
       {shouldRender
-        ? <canvas ref={canvasRef} className="block max-w-none" data-testid={`review-canvas-${pageNumber}`}/>
-        : <div className="h-full w-full bg-white" data-testid={`review-placeholder-${pageNumber}`}/>}
+        ? <canvas ref={canvasRef} className="block max-w-none" data-testid={`review-canvas-${surface.globalPage}`}/>
+        : <div className="h-full w-full bg-white" data-testid={`review-placeholder-${surface.globalPage}`}/>}
       <svg
         viewBox="0 0 1 1"
         preserveAspectRatio="none"
-        data-testid={`review-overlay-${pageNumber}`}
+        data-testid={`review-overlay-${surface.globalPage}`}
         className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : 'cursor-crosshair')}
-        onPointerDown={event => onPointerDown(pageNumber, event)}
-        onPointerMove={event => onPointerMove(pageNumber, event)}
-        onPointerUp={event => onPointerUp(pageNumber, event)}
-        onPointerCancel={event => onPointerUp(pageNumber, event)}
+        onPointerDown={event => onPointerDown(surface, event)}
+        onPointerMove={event => onPointerMove(surface, event)}
+        onPointerUp={event => onPointerUp(surface, event)}
+        onPointerCancel={event => onPointerUp(surface, event)}
       >
         {pageData.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && onActivate(mark.id)}/>)}
         {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
       </svg>
     </div>
   </div>
+}
+
+function ImagePageSurface({
+  surface,
+  pageData,
+  activeId,
+  dragRect,
+  zoom,
+  frameWidth,
+  readOnly,
+  loading,
+  onLoaded,
+  onError,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onActivate,
+}: {
+  surface: DocumentSurface
+  pageData: PageData
+  activeId: string | null
+  dragRect: Rect | null
+  zoom: number
+  frameWidth: number
+  readOnly: boolean
+  loading: boolean
+  onLoaded: (ratio: number) => void
+  onError: () => void
+  onPointerDown: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerMove: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
+  onPointerUp: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
+  onActivate: (id: string | null) => void
+}) {
+  return (
+    <div className="mx-auto" style={{ width: frameWidth > 0 ? `${frameWidth * zoom}px` : undefined, maxWidth: '100%' }}>
+      <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: surface.metrics?.ratio ?? 1 / 1.414 }}>
+        <img
+          src={surface.url}
+          alt="Работа ученика"
+          draggable={false}
+          className="block h-auto w-full select-none"
+          onLoad={event => onLoaded(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)}
+          onError={onError}
+        />
+        <svg
+          viewBox="0 0 1 1"
+          preserveAspectRatio="none"
+          data-testid={`review-overlay-${surface.globalPage}`}
+          className={cn('absolute inset-0 h-full w-full touch-none', readOnly ? 'cursor-default' : 'cursor-crosshair')}
+          onPointerDown={event => onPointerDown(surface, event)}
+          onPointerMove={event => onPointerMove(surface, event)}
+          onPointerUp={event => onPointerUp(surface, event)}
+          onPointerCancel={event => onPointerUp(surface, event)}
+        >
+          {pageData.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && onActivate(mark.id)} />)}
+          {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008" />}
+        </svg>
+        {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
+      </div>
+    </div>
+  )
 }
 
 function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onActivate: () => void }) {
@@ -645,6 +787,7 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
 }
 
 function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { regions: RegionItem[]; readOnly: boolean; activeId: string | null; onActivate: (item: RegionItem) => void; onDelete: (item: RegionItem) => void }) {
+  const multiFile = new Set(regions.map(item => item.filePath)).size > 1
   return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
     <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-3">
       <div className="text-sm font-semibold text-slate-800">Комментарии</div>
@@ -658,8 +801,9 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { re
             <div className="mb-1 flex items-center gap-2 text-xs">
               <span className="rounded-md px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: category.color }}>{category.short}</span>
               <span className="font-medium text-slate-700">{category.label}</span>
-              <span className="ml-auto tabular-nums text-slate-400">стр. {item.page}</span>
+              <span className="ml-auto tabular-nums text-slate-400">стр. {item.globalPage}</span>
             </div>
+            {multiFile && <div className="mb-1 text-[11px] text-slate-400">{item.fileLabel}, стр. {item.page}</div>}
             <div className="text-sm text-slate-800">{item.text || '✓'}</div>
           </button>
           {!readOnly && <button type="button" aria-label="Удалить комментарий" title="Удалить комментарий" onClick={() => onDelete(item)} className="mt-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 opacity-100 transition-[transform,background-color,color] hover:bg-red-50 hover:text-red-600 active:scale-[0.96] sm:opacity-0 sm:group-hover:opacity-100"><Trash2 size={15}/></button>}
