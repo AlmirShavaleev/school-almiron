@@ -25,8 +25,14 @@ describe('submission annotation reviewer', () => {
     expect(reviewer).toContain("type Category = 'comment' | 'calc' | 'logic' | 'format' | 'praise'")
     expect(reviewer).toContain('MIN_REGION_SIZE = 0.015')
     expect(reviewer).toContain('version: 2')
-    expect(reviewer).toContain('setTimeout(() =>')
-    expect(reviewer).toContain('}, 2000)')
+  })
+
+  it('saves and deletes region comments immediately — no debounce window where a fast navigate-away could lose one', () => {
+    expect(reviewer).toContain('async function saveDraft()')
+    expect(reviewer).toContain('async function deleteRegion(')
+    expect(reviewer).toContain('await savePage(draft.page, nextData)')
+    expect(reviewer).toContain('await savePage(item.page, nextData)')
+    expect(reviewer).not.toContain('setTimeout(() =>')
   })
 
   it('is integrated into the homework review pages', () => {
