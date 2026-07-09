@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, Upload, Paperclip, FileText, XCircle, MessageSquare } from 'lucide-react'
+import { X, Upload, Paperclip, FileText, XCircle, MessageSquare, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -9,6 +9,8 @@ import { getOrderedSubmissionFiles } from '@/lib/homeworkSubmissionFiles'
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_TOTAL_SIZE = 40 * 1024 * 1024
 const ACCEPTED_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
+const isImageFile = (file: File) => file.type.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes(file.name.split('.').pop()?.toLowerCase() || '')
+const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`
 
 interface Props {
   open: boolean
@@ -29,13 +31,41 @@ export function SubmitHomeworkModal({
   const [files, setFiles]         = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError]         = useState('')
+  const [thumbUrls, setThumbUrls] = useState<Map<File, string>>(new Map())
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+  const [fileErrors, setFileErrors] = useState<Record<number, string>>({})
   const fileRef = useRef<HTMLInputElement>(null)
+  const thumbUrlsRef = useRef(thumbUrls)
 
   useEffect(() => {
     if (!open) return
     setFiles([])
     setError('')
+    setFileErrors({})
+    setUploadProgress(null)
   }, [open])
+
+  // Image previews are the whole point (see what you're actually sending),
+  // but object URLs leak memory if never revoked — keep exactly one alive
+  // per currently-selected image file, revoking the rest as files change
+  // and everything left on unmount.
+  useEffect(() => {
+    setThumbUrls(prev => {
+      const next = new Map<File, string>()
+      for (const file of files) {
+        if (isImageFile(file)) next.set(file, prev.get(file) ?? URL.createObjectURL(file))
+      }
+      for (const [file, url] of prev) {
+        if (!next.has(file)) URL.revokeObjectURL(url)
+      }
+      return next
+    })
+  }, [files])
+
+  useEffect(() => { thumbUrlsRef.current = thumbUrls }, [thumbUrls])
+  useEffect(() => () => {
+    for (const url of thumbUrlsRef.current.values()) URL.revokeObjectURL(url)
+  }, [])
 
   function validateFiles(nextFiles: File[]): string | null {
     for (const file of nextFiles) {
@@ -113,12 +143,16 @@ export function SubmitHomeworkModal({
     const stamp = Date.now()
     const uploaded: { storage_path: string; mime_type: string; position: number }[] = []
     for (const [index, file] of files.entries()) {
+      setUploadProgress({ current: index + 1, total: files.length })
       const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
       const path = `submissions/${homework.id}/${studentId}/${stamp}-${index}-${crypto.randomUUID()}.${ext}`
       const { error: err } = await supabase.storage
         .from('homeworks')
         .upload(path, file, { contentType: file.type, upsert: true })
-      if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
+      if (err) {
+        setFileErrors(prev => ({ ...prev, [index]: err.message }))
+        throw new Error(`Не удалось загрузить файл «${file.name}»: ${err.message}`)
+      }
       uploaded.push({ storage_path: path, mime_type: file.type, position: index + 1 })
     }
     return uploaded
@@ -131,6 +165,8 @@ export function SubmitHomeworkModal({
       return
     }
     setError('')
+    setFileErrors({})
+    setUploadProgress(null)
     setUploading(true)
     try {
       const submissionId = await ensureSubmissionRow()
@@ -184,6 +220,7 @@ export function SubmitHomeworkModal({
       setError(e.message || 'Ошибка при отправке')
     } finally {
       setUploading(false)
+      setUploadProgress(null)
     }
   }
 
@@ -266,26 +303,50 @@ export function SubmitHomeworkModal({
             </label>
             <div className="space-y-2">
               {files.map((file, index) => (
-                <div key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
-                  <FileText size={20} className="text-green-600 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-green-800 truncate">{file.name}</div>
-                    <div className="text-xs text-green-500">{(file.size / 1024).toFixed(0)} КБ</div>
+                <div key={`${file.name}-${file.size}-${index}`}>
+                  <div data-testid="submit-homework-file-item" className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                    <span data-testid={`submit-homework-file-order-${index}`} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-600 text-[11px] font-bold text-white">
+                      {index + 1}
+                    </span>
+                    {isImageFile(file) ? (
+                      <img
+                        src={thumbUrls.get(file)}
+                        alt=""
+                        data-testid={`submit-homework-file-thumb-${index}`}
+                        className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <FileText size={20} className="text-green-600 shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-green-800 truncate">{file.name}</div>
+                      <div className="text-xs text-green-500">{formatSize(file.size)}</div>
+                    </div>
+                    <button type="button" aria-label={`Удалить файл ${index + 1}`} onClick={() => removeFile(index)} disabled={uploading} className="text-green-400 hover:text-red-500 transition-colors disabled:opacity-40 disabled:pointer-events-none">
+                      <XCircle size={18} />
+                    </button>
                   </div>
-                  <button type="button" aria-label={`Удалить файл ${index + 1}`} onClick={() => removeFile(index)} className="text-green-400 hover:text-red-500 transition-colors">
-                    <XCircle size={18} />
-                  </button>
+                  {fileErrors[index] && (
+                    <p data-testid={`submit-homework-file-error-${index}`} className="mt-1 pl-8 text-xs text-red-500">{fileErrors[index]}</p>
+                  )}
                 </div>
               ))}
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-green-300 hover:text-green-500 transition-colors"
+                disabled={uploading}
+                className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-green-300 hover:text-green-500 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <Paperclip size={16} />
                 {files.length > 0 ? 'Добавить ещё файлы' : 'Прикрепить PDF / изображение'}
               </button>
             </div>
+            {uploading && uploadProgress && (
+              <p data-testid="submit-homework-progress" className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                <Loader2 size={13} className="animate-spin" />
+                Загрузка {uploadProgress.current} из {uploadProgress.total}…
+              </p>
+            )}
             <input
               data-testid="submit-homework-file-input"
               ref={fileRef}

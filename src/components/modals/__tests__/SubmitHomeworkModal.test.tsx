@@ -4,12 +4,20 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }))
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: vi.fn() } }))
 
+const createObjectURLSpy = vi.fn((file: File) => `blob:${file.name}`)
+const revokeObjectURLSpy = vi.fn()
+vi.stubGlobal('URL', { ...URL, createObjectURL: createObjectURLSpy, revokeObjectURL: revokeObjectURLSpy })
+
 const callOrder: string[] = []
 const uploadSpy = vi.fn()
 const deleteSpy = vi.fn()
 const insertFilesSpy = vi.fn()
 const insertSubmissionSpy = vi.fn()
 const updateSubmissionSpy = vi.fn()
+
+let uploadResult: { error: { message: string } | null } = { error: null }
+let uploadShouldDefer = false
+let uploadDeferred: ((value: { error: { message: string } | null }) => void) | null = null
 
 let maybeSingleResult: { data: any; error: { message: string } | null } = { data: null, error: null }
 let insertSubmissionResult: { data: any; error: { message: string } | null } = { data: { id: 'sub-new' }, error: null }
@@ -80,7 +88,10 @@ vi.mock('@/lib/supabase', () => ({
         upload: (...args: unknown[]) => {
           uploadSpy(...args)
           callOrder.push('storage:upload')
-          return Promise.resolve({ error: null })
+          if (uploadShouldDefer) {
+            return new Promise(resolve => { uploadDeferred = resolve })
+          }
+          return Promise.resolve(uploadResult)
         },
       }),
     },
@@ -109,11 +120,16 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     insertSubmissionSpy.mockReset()
     updateSubmissionSpy.mockReset()
     toastSuccess.mockReset()
+    createObjectURLSpy.mockClear()
+    revokeObjectURLSpy.mockClear()
     maybeSingleResult = { data: null, error: null }
     insertSubmissionResult = { data: { id: 'sub-new' }, error: null }
     updateSubmissionResult = { data: [{ id: 'sub-new' }], error: null }
     deleteFilesResult = { error: null }
     insertFilesResult = { error: null }
+    uploadResult = { error: null }
+    uploadShouldDefer = false
+    uploadDeferred = null
   })
 
   it('creates a draft submission row, inserts file rows, then marks the submission as submitted', async () => {
@@ -238,5 +254,73 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
 
     fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [nineMbA, nineMbB, nineMbC, nineMbD, nineMbE] } })
     await waitFor(() => expect(screen.getByText('Суммарный размер файлов не должен превышать 40 МБ.')).toBeInTheDocument())
+  })
+
+  it('numbers files in feed order and shows a thumbnail for images but not PDFs, revoking object URLs on removal and unmount', async () => {
+    const { unmount } = render(
+      <SubmitHomeworkModal
+        open onClose={vi.fn()} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile, jpgFile] } })
+
+    expect(screen.getByTestId('submit-homework-file-order-0')).toHaveTextContent('1')
+    expect(screen.getByTestId('submit-homework-file-order-1')).toHaveTextContent('2')
+    expect(screen.queryByTestId('submit-homework-file-thumb-0')).not.toBeInTheDocument()
+    expect(screen.getByTestId('submit-homework-file-thumb-1')).toHaveAttribute('src', 'blob:page-2.jpg')
+    expect(createObjectURLSpy).toHaveBeenCalledWith(jpgFile)
+
+    fireEvent.click(screen.getByLabelText('Удалить файл 2'))
+    await waitFor(() => expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:page-2.jpg'))
+    expect(screen.queryByTestId('submit-homework-file-thumb-1')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [jpgFile] } })
+    await waitFor(() => expect(screen.getByTestId('submit-homework-file-thumb-1')).toBeInTheDocument())
+
+    revokeObjectURLSpy.mockClear()
+    unmount()
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:page-2.jpg')
+  })
+
+  it('shows per-file upload progress and disables the form while multiple files upload', async () => {
+    uploadShouldDefer = true
+    render(
+      <SubmitHomeworkModal
+        open onClose={vi.fn()} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile, jpgFile] } })
+    fireEvent.click(screen.getByText('Отправить'))
+
+    await waitFor(() => expect(screen.getByTestId('submit-homework-progress')).toHaveTextContent('Загрузка 1 из 2'))
+    expect(screen.getByTestId('submit-homework-submit')).toBeDisabled()
+    expect(screen.getByLabelText('Удалить файл 1')).toBeDisabled()
+    uploadDeferred?.({ error: null })
+
+    await waitFor(() => expect(screen.getByTestId('submit-homework-progress')).toHaveTextContent('Загрузка 2 из 2'))
+    uploadDeferred?.({ error: null })
+
+    await waitFor(() => expect(screen.queryByTestId('submit-homework-progress')).not.toBeInTheDocument())
+    expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
+  })
+
+  it('reports which specific file failed to upload', async () => {
+    uploadResult = { error: { message: 'сеть недоступна' } }
+    render(
+      <SubmitHomeworkModal
+        open onClose={vi.fn()} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
+    fireEvent.click(screen.getByText('Отправить'))
+
+    await waitFor(() => expect(screen.getByTestId('submit-homework-file-error-0')).toHaveTextContent('сеть недоступна'))
+    expect(screen.getByText(/Не удалось загрузить файл.*solution\.pdf/)).toBeInTheDocument()
   })
 })
