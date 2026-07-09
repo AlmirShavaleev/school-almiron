@@ -5,6 +5,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
 import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
 import { cn } from '@/utils/cn'
+import { toast } from '@/store/toastStore'
 import type { ReactNode } from 'react'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
@@ -250,7 +251,10 @@ export function SubmissionReviewer({
     }, { onConflict: 'submission_id,file_path,page' })
     setSaving(false)
     setSaveState(saveError ? 'error' : 'saved')
-    if (saveError) console.error('Не удалось сохранить аннотации', saveError)
+    if (saveError) {
+      console.error('Не удалось сохранить аннотации', saveError)
+      toast.error('Не удалось сохранить проверку')
+    }
     if (!saveError) {
       setPublished(false)
       setDirty(value => {
@@ -270,6 +274,39 @@ export function SubmissionReviewer({
     }, 2000)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
   }, [dirty, pages, readOnly, savePage])
+
+  // The debounce above only fires 2s after the last edit. If the reviewer
+  // unmounts before then (teacher clicks "Назад"/prev/next within that
+  // window — an easy, fast, completely normal thing to do right after
+  // saving a comment), the pending setTimeout gets cleared by the effect
+  // cleanup above and that edit is silently lost — never sent, never
+  // retried, no error either. Flush whatever's still dirty straight to
+  // Supabase on unmount so leaving fast never drops data. Refs (not state)
+  // because this must read the LATEST pages/dirty at the moment of
+  // unmount, not whatever they were when this effect last ran.
+  const pagesRef = useRef(pages)
+  const dirtyRef = useRef(dirty)
+  useEffect(() => { pagesRef.current = pages }, [pages])
+  useEffect(() => { dirtyRef.current = dirty }, [dirty])
+  useEffect(() => {
+    return () => {
+      if (readOnly || !dirtyRef.current.size) return
+      for (const number of dirtyRef.current) {
+        void (supabase as any).from('annotation_sets').upsert({
+          submission_id: submissionId,
+          file_path: path,
+          page: number,
+          data: { ...(pagesRef.current[number] ?? EMPTY), version: 2 },
+          status: 'draft',
+        }, { onConflict: 'submission_id,file_path,page' }).then(({ error }: { error: unknown }) => {
+          if (error) {
+            console.error('Не удалось сохранить аннотации при закрытии', error)
+            toast.error('Не удалось сохранить проверку')
+          }
+        })
+      }
+    }
+  }, [path, readOnly, submissionId])
 
   function commit(number: number, next: PageData) {
     setPages(value => ({ ...value, [number]: { ...next, version: 2 } }))

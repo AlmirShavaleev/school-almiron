@@ -32,11 +32,16 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { from: (...args: unknown[]) => fromSpy(...args) },
 }))
 
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('@/store/toastStore', () => ({ toast: { success: vi.fn(), error: toastError } }))
+
+let upsertError: { message: string } | null = null
+
 function makeAnnotationTable() {
   const readChain: any = { eq: () => readChain, then: (res: any) => Promise.resolve(selectResult).then(res) }
   return {
     select: () => readChain,
-    upsert: (payload: any) => { lastUpsert = payload; return Promise.resolve({ error: null }) },
+    upsert: (payload: any) => { lastUpsert = payload; return Promise.resolve({ error: upsertError }) },
     update: () => ({ eq: () => Promise.resolve({ error: null }) }),
   }
 }
@@ -103,8 +108,10 @@ describe('SubmissionReviewer regions', () => {
   beforeEach(() => {
     selectResult = { data: [], error: null }
     lastUpsert = null
+    upsertError = null
     observedElements.length = 0
     scrollIntoViewSpy.mockReset()
+    toastError.mockReset()
     fromSpy.mockReset()
     fromSpy.mockImplementation(() => makeAnnotationTable())
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000001')
@@ -264,5 +271,33 @@ describe('SubmissionReviewer regions', () => {
 
     expect(scrollIntoViewSpy).toHaveBeenCalled()
     expect(scrollIntoViewSpy.mock.calls.at(-1)?.[0]).toMatchObject({ block: 'center', behavior: 'smooth' })
+  })
+
+  it('flushes a pending unsaved comment on unmount instead of losing it to the cancelled 2s debounce', async () => {
+    const { unmount } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
+    await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
+
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Ушёл быстро' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    // Well under the 2000ms debounce — the timer has not fired yet.
+    expect(lastUpsert).toBeNull()
+
+    unmount()
+
+    await waitFor(() => expect(lastUpsert?.data?.objects?.[0]?.text).toBe('Ушёл быстро'))
+    expect(lastUpsert.page).toBe(1)
+  })
+
+  it('shows a toast when autosave fails, not just a silent toolbar label', async () => {
+    upsertError = { message: 'network down' }
+    await renderReady()
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Проверь ещё раз' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку'), { timeout: 2500 })
   })
 })
