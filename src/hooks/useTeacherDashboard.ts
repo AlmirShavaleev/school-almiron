@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import {
+  fetchHomeworkSubmissionFilesMap,
+  getPrimarySubmissionFilePath,
+  type HomeworkSubmissionFileRow,
+} from '@/lib/homeworkSubmissionFiles'
 
 export interface TeacherGroup {
   id:            string
@@ -43,6 +48,7 @@ export interface PendingSubmission {
   profile_id:     string
   submitted_at:   string | null
   file_url:       string | null
+  homework_submission_files?: HomeworkSubmissionFileRow[] | null
 }
 
 
@@ -135,11 +141,22 @@ export function useTeacherDashboard(profileId: string | undefined) {
     ])
 
     const allSubs = subsRes.data || []
+    const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, (allSubs as any[]).map((s: any) => s.id).filter(Boolean))
 
     // Index submissions by homework_id
-    type SubRecord = { id: string; homework_id: string; student_id: string; status: string; submitted_at: string | null; file_url: string | null; students: any }
+    type SubRecord = {
+      id: string
+      homework_id: string
+      student_id: string
+      status: string
+      submitted_at: string | null
+      file_url: string | null
+      homework_submission_files?: HomeworkSubmissionFileRow[] | null
+      students: any
+    }
     const subsByHW: Record<string, SubRecord[]> = {}
     for (const s of allSubs as SubRecord[]) {
+      s.homework_submission_files = filesBySubmission[s.id] || []
       if (!subsByHW[s.homework_id]) subsByHW[s.homework_id] = []
       subsByHW[s.homework_id].push(s)
     }
@@ -200,7 +217,8 @@ export function useTeacherDashboard(profileId: string | undefined) {
           student_id:     (s.students as any)?.id || '',
           profile_id:     (s.students as any)?.profile_id || '',
           submitted_at:   s.submitted_at,
-          file_url:       s.file_url,
+          file_url:       getPrimarySubmissionFilePath(s),
+          homework_submission_files: s.homework_submission_files ?? null,
         }
       })
 

@@ -12,6 +12,12 @@ import { cn } from '@/utils/cn'
 import { notifyHomeworkChecked } from '@/utils/notify'
 import { toast } from '@/store/toastStore'
 import { loadHomeworkInfo, loadHomeworkReviewRoster } from '@/pages/reviewScope'
+import {
+  fetchHomeworkSubmissionFilesMap,
+  getPrimarySubmissionFilePath,
+  getSubmissionFilePaths,
+  type HomeworkSubmissionFileRow,
+} from '@/lib/homeworkSubmissionFiles'
 
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 const PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
@@ -27,6 +33,7 @@ interface Submission {
   status: string
   answer_text: string | null
   file_url: string | null
+  homework_submission_files?: HomeworkSubmissionFileRow[] | null
   score: number | null
   feedback: string | null
   submitted_at: string | null
@@ -231,6 +238,8 @@ export function StudentReviewPage() {
         setSiblings(roster.students.map(item => ({ studentId: item.studentId, name: item.name })))
 
         const s = subRes.data as any
+        const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, s?.id ? [s.id] : [])
+        if (s) s.homework_submission_files = filesBySubmission[s.id] || []
         setSub(s || null)
         setScore(s?.score != null ? String(s.score) : '')
         setFeedback(s?.feedback || '')
@@ -277,6 +286,8 @@ export function StudentReviewPage() {
       })
 
       const s = subRes.data as any
+      const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, s?.id ? [s.id] : [])
+      if (s) s.homework_submission_files = filesBySubmission[s.id] || []
       setSub(s || null)
       setScore(s?.score != null ? String(s.score) : '')
       setFeedback(s?.feedback || '')
@@ -346,7 +357,9 @@ export function StudentReviewPage() {
     else if (next) navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${next}` : `/homeworks/${hwId}/review/student/${next}`)
   }
 
-  const fileExt = sub?.file_url?.split('?')[0].split('.').pop()?.toLowerCase()
+  const submissionFilePaths = getSubmissionFilePaths(sub)
+  const primaryFilePath = getPrimarySubmissionFilePath(sub)
+  const fileExt = primaryFilePath?.split('?')[0].split('.').pop()?.toLowerCase()
   const canPreview = !!fileExt && PREVIEWABLE_EXTS.includes(fileExt)
 
   const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
@@ -452,11 +465,11 @@ export function StudentReviewPage() {
               <p className="text-sm">Ученик ещё не сдал работу</p>
             </div>
           </div>
-        ) : sub.file_url && canPreview ? (
+        ) : primaryFilePath && canPreview ? (
           <Suspense fallback={<ReviewerFallback />}>
             <SubmissionReviewer
               submissionId={sub.id}
-              filePath={sub.file_url}
+              filePath={primaryFilePath}
               className="h-full min-h-0"
               header={reviewHeader}
               footer={previewGradingCard ?? undefined}
@@ -476,14 +489,17 @@ export function StudentReviewPage() {
                   {sub.answer_text}
                 </div>
               </div>
-            ) : sub.file_url ? (
+            ) : primaryFilePath ? (
               <SignedFileLink
                 bucket="homeworks"
-                url={sub.file_url}
+                url={primaryFilePath}
                 className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700 transition-colors hover:bg-blue-100"
               >
                 <FileText size={16} />
-                {decodeURIComponent(sub.file_url.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')}
+                {submissionFilePaths.length > 1
+                  ? `Открыть файлы (${submissionFilePaths.length})`
+                  : decodeURIComponent(primaryFilePath.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')
+                }
               </SignedFileLink>
             ) : (
               <div className="rounded-xl bg-gray-50 py-8 text-center text-sm italic text-gray-400">

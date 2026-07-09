@@ -13,6 +13,11 @@ import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
+import {
+  fetchHomeworkSubmissionFilesMap,
+  getPrimarySubmissionFilePath,
+  type HomeworkSubmissionFileRow,
+} from '@/lib/homeworkSubmissionFiles'
 
 interface HomeworkFull {
   id:          string
@@ -36,6 +41,7 @@ interface SubmissionRow {
   feedback:     string | null
   submitted_at: string | null
   file_url:     string | null
+  homework_submission_files?: HomeworkSubmissionFileRow[] | null
   answer_text:  string | null
   full_name:    string
   avatar_url:   string | null
@@ -138,7 +144,12 @@ export function HomeworkDetailPage() {
       }
       const rawStudents = [...studentsById.values()]
       const subMap = new Map<string, any>()
-      for (const s of subRes.data || []) subMap.set((s as any).student_id, s)
+      const rawSubmissions = (subRes.data || []) as any[]
+      const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, rawSubmissions.map(s => s.id).filter(Boolean))
+      for (const s of rawSubmissions) {
+        s.homework_submission_files = filesBySubmission[s.id] || []
+        subMap.set(s.student_id, s)
+      }
 
       // Build full list (one row per student — submitted or not)
       const rows: SubmissionRow[] = rawStudents.map(st => {
@@ -436,8 +447,8 @@ export function HomeworkDetailPage() {
                   </span>
 
                   {/* File link */}
-                  {row.file_url && (
-                    <SignedFileLink bucket="homeworks" url={row.file_url}
+                  {getPrimarySubmissionFilePath(row) && (
+                    <SignedFileLink bucket="homeworks" url={getPrimarySubmissionFilePath(row)!}
                       onClick={e => e.stopPropagation()}
                       className="text-gray-400 hover:text-primary-600 shrink-0"
                     >

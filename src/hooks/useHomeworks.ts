@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { fetchHomeworkSubmissionFilesMap } from '@/lib/homeworkSubmissionFiles'
 
 export function mergeTeacherScopedHomeworks(owned: any[], groupCourse: any[]) {
   const byId = new Map<string, any>()
@@ -66,10 +67,14 @@ export function useHomeworks() {
             .in('topic_id', topicIds)
             .eq('is_archived', false)
             .order('due_date', { ascending: true })
+          const submissionIds = (data || []).flatMap((hw: any) => (hw.homework_submissions || []).map((s: any) => s.id).filter(Boolean))
+          const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, submissionIds)
           // оставить только сдачи этого ученика
           setHomeworks((data || []).map((hw: any) => ({
             ...hw,
-            homework_submissions: (hw.homework_submissions || []).filter((s: any) => s.student_id === st.id),
+            homework_submissions: (hw.homework_submissions || [])
+              .filter((s: any) => s.student_id === st.id)
+              .map((s: any) => ({ ...s, homework_submission_files: filesBySubmission[s.id] || [] })),
           })))
 
         } else if (role === 'teacher') {

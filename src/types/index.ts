@@ -141,6 +141,13 @@ export interface HomeworkSubmission {
   status: HomeworkStatus
   answer_text?: string
   file_url?: string
+  homework_submission_files?: {
+    id?: string
+    storage_path: string
+    mime_type?: string | null
+    position: number
+    created_at?: string | null
+  }[]
   score?: number
   feedback?: string
   submitted_at?: string

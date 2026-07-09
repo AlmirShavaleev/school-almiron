@@ -14,6 +14,7 @@ import { formatDate, isOverdue, HW_STATUS_COLORS, HW_STATUS_LABELS } from '@/uti
 import { exportHomeworks } from '@/utils/exportExcel'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
+import { getPrimarySubmissionFilePath, getSubmissionFilePaths } from '@/lib/homeworkSubmissionFiles'
 
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 
@@ -37,9 +38,9 @@ export function HomeworksPage() {
   // Modals
   const [submitTarget,  setSubmitTarget]  = useState<{
     id: string; title: string; max_score: number; file_url?: string
-    isResubmit?: boolean; previousFileUrl?: string | null; feedback?: string | null
+    isResubmit?: boolean; previousFileUrl?: string | null; previousFilePaths?: string[]; feedback?: string | null
   } | null>(null)
-  const [studentReview, setStudentReview] = useState<{ id: string; title: string; file_url: string } | null>(null)
+  const [studentReview, setStudentReview] = useState<{ id: string; title: string; file_url: string; filePaths: string[] } | null>(null)
   const [assignTarget, setAssignTarget] = useState<{ id: string; title: string; topic_id?: string | null; max_score?: number | null } | null>(null)
 
   // Enrich with submission status for student view
@@ -203,12 +204,16 @@ export function HomeworksPage() {
                               {hw._sub.score}/{hw.max_score}
                             </span>
                           )}
-                          {status === 'checked' && hw._sub?.id && hw._sub?.file_url && (
+                          {status === 'checked' && hw._sub?.id && getPrimarySubmissionFilePath(hw._sub) && (
                             <Button
                               size="sm"
                               variant="secondary"
                               data-testid="view-review-button"
-                              onClick={() => setStudentReview({ id: hw._sub.id, title: hw.title, file_url: hw._sub.file_url })}
+                              onClick={() => {
+                                const filePath = getPrimarySubmissionFilePath(hw._sub)
+                                if (!filePath) return
+                                setStudentReview({ id: hw._sub.id, title: hw.title, file_url: filePath, filePaths: getSubmissionFilePaths(hw._sub) })
+                              }}
                             >
                               Посмотреть проверку
                             </Button>
@@ -220,7 +225,8 @@ export function HomeworksPage() {
                               onClick={() => setSubmitTarget({
                                 id: hw.id, title: hw.title, max_score: hw.max_score, file_url: hw.file_url,
                                 isResubmit:      status === 'revision',
-                                previousFileUrl: hw._sub?.file_url ?? null,
+                                previousFileUrl: getPrimarySubmissionFilePath(hw._sub),
+                                previousFilePaths: getSubmissionFilePaths(hw._sub),
                                 feedback:        hw._sub?.feedback ?? null,
                               })}
                             >
