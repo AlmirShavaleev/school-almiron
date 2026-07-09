@@ -249,18 +249,55 @@ async function stableBoundingBox(locator: Locator, attempts = 15, intervalMs = 2
   throw new Error('Bounding box оверлея не стабилизировался — вёрстка продолжает сдвигаться')
 }
 
-async function drawRegion(overlay: Locator) {
-  const box = await stableBoundingBox(overlay)
-
-  const startX = box.x + box.width * 0.2
-  const startY = box.y + box.height * 0.2
-  const endX = box.x + box.width * 0.55
-  const endY = box.y + box.height * 0.34
-
+// Deterministic readiness check ahead of stableBoundingBox's polling
+// safety net: for an image surface, wait for the actual <img> to report
+// complete+naturalWidth (the thing whose onLoad triggers the reflow),
+// then let one full layout/paint cycle land before reading coordinates.
+// Pdf surfaces know their aspect ratio from metrics fetched before render,
+// so there's no equivalent load event to wait on there.
+async function waitForSurfaceReady(overlay: Locator) {
   const page = overlay.page()
-  await page.mouse.move(startX, startY)
-  await page.mouse.down()
-  await page.mouse.move(endX, endY, { steps: 12 })
-  await page.mouse.up()
-  await expect(page.getByTestId('comment-editor')).toBeVisible({ timeout: 10_000 })
+  const img = overlay.locator('xpath=..').locator('img')
+  if (await img.count()) {
+    const handle = await img.elementHandle()
+    if (handle) {
+      await page.waitForFunction(
+        (el: HTMLImageElement) => el.complete && el.naturalWidth > 0,
+        handle,
+        { timeout: 15_000 },
+      )
+    }
+  }
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+}
+
+async function drawRegion(overlay: Locator) {
+  const page = overlay.page()
+  const attempts = 2
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await waitForSurfaceReady(overlay)
+    const box = await stableBoundingBox(overlay)
+
+    const startX = box.x + box.width * 0.2
+    const startY = box.y + box.height * 0.2
+    const endX = box.x + box.width * 0.55
+    const endY = box.y + box.height * 0.34
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(endX, endY, { steps: 12 })
+    await page.mouse.up()
+
+    try {
+      await expect(page.getByTestId('comment-editor')).toBeVisible({ timeout: 3_000 })
+      return
+    } catch (error) {
+      lastError = error
+      await page.mouse.up().catch(() => undefined) // in case the drag left a stray pointer down
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('drawRegion: comment-editor не появился после повторных попыток')
 }
