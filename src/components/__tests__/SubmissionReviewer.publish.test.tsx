@@ -119,4 +119,22 @@ describe('SubmissionReviewer.publish() — onPublishComplete on every exit path'
     await waitFor(() => expect(onPublishComplete).toHaveBeenCalledWith(true))
     await waitFor(() => expect(screen.getByText('Опубликовать снова')).toBeInTheDocument())
   })
+
+  it('forwards the grading-card revision trigger into the publish path target status', async () => {
+    const onPublish = vi.fn().mockResolvedValue(true)
+    const onPublishComplete = vi.fn()
+    await renderAndWaitReady({
+      onPublish,
+      onPublishComplete,
+      footer: ({ triggerPublish }) => (
+        <button type="button" onClick={() => triggerPublish('revision')}>
+          Отправить на доработку
+        </button>
+      ),
+    })
+
+    fireEvent.click(screen.getByText('Отправить на доработку'))
+    await waitFor(() => expect(onPublish).toHaveBeenCalledWith('revision'))
+    await waitFor(() => expect(onPublishComplete).toHaveBeenCalledWith(true))
+  })
 })

@@ -491,7 +491,7 @@ export function SubmissionReviewer({
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
-  const triggerPublish = () => { void publish() }
+  const triggerPublish = (targetStatus?: 'checked' | 'revision') => { void publish(targetStatus) }
   const footerContent = typeof footer === 'function'
     ? footer({ publishing, published, triggerPublish })
     : footer
@@ -505,7 +505,7 @@ export function SubmissionReviewer({
       {footerPublishLabel ? <div className="flex justify-end border-t border-slate-200 pt-4">
         <button
           type="button"
-          onClick={triggerPublish}
+          onClick={() => triggerPublish()}
           disabled={publishing}
           className="min-h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50"
         >
@@ -527,7 +527,7 @@ export function SubmissionReviewer({
         </div>
         {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
           {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-          <button type="button" data-testid="review-toolbar-publish-button" onClick={triggerPublish} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
         </div>}
       </div>
     </div>
