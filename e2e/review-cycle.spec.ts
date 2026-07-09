@@ -78,19 +78,23 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await expect(studentPage.getByTestId('comment-editor')).toHaveCount(0)
   await expect(studentPage.getByLabel('Удалить комментарий')).toHaveCount(0)
 
-  const resubmitButton = studentCard.getByTestId('submit-homework-button')
-  if (await resubmitButton.count()) {
-    await resubmitButton.click()
-    await expect(studentPage.getByTestId('submit-homework-modal')).toBeVisible()
-    await studentPage.getByTestId('submit-homework-text').fill(`Пересдача ${COMMENT_SUFFIX}`)
-    await studentPage.getByTestId('submit-homework-file-input').setInputFiles(REVIEW_FIXTURE)
-    await studentPage.getByTestId('submit-homework-submit').click()
-    await expect(studentPage.locator('text=Работа отправлена')).toBeVisible({ timeout: 15_000 })
+  // Teardown: send this submission back to "revision" through the teacher
+  // UI so the demo student has a "Пересдать" card again afterwards. The
+  // same submit-homework-button testid renders for both not_submitted and
+  // revision cards (see HomeworksPage.tsx), so the next smoke run's
+  // createStudentSubmission finds it through the exact same selector —
+  // closing the idempotency loop without touching the database directly.
+  await teacherPage.getByTestId('queue-tab-checked').click()
+  await queueItemByTarget(teacherPage, target).click()
+  await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
+  await scrollToGradingCard(teacherPage)
+  await teacherPage.getByTestId('student-review-revision-button').click()
+  await expect(teacherPage.locator('text=Отправлено на доработку')).toBeVisible({ timeout: 15_000 })
+  await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
 
-    await teacherPage.goto('/inbox')
-    await teacherPage.getByTestId('queue-tab-pending').click()
-    await expect(queueItemByTarget(teacherPage, target)).toBeVisible({ timeout: 15_000 })
-  }
+  await studentPage.goto('/homeworks')
+  await studentPage.waitForSelector('[data-testid="homework-card"]', { timeout: 20_000 })
+  await expect(studentCard.getByTestId('submit-homework-button')).toHaveText('Пересдать', { timeout: 15_000 })
 })
 
 async function loginAsStudent(page: Page) {
@@ -145,7 +149,19 @@ async function createStudentSubmission(page: Page): Promise<ReviewTarget> {
   const candidateCard = page.locator('[data-testid="homework-card"]').filter({
     has: page.locator('[data-testid="submit-homework-button"]'),
   }).first()
-  await expect(candidateCard).toBeVisible({ timeout: 15_000 })
+  // Fail fast with an actionable message instead of burning the full
+  // expect timeout when the demo student has genuinely run out of
+  // submittable/resubmittable homeworks (a prior smoke run consumed them
+  // all). The end-of-test teardown below is what's supposed to prevent
+  // this — if it fires anyway, that's the real signal to look at.
+  const found = await candidateCard.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false)
+  if (!found) {
+    throw new Error(
+      'Нет доступных ДЗ для smoke: у демо-ученика (alex@demo.ru) не осталось ни одного ДЗ ' +
+      'со статусом "не сдано" или "на доработке" (submit-homework-button не найден ни на одной ' +
+      'карточке). Переведите любую проверенную работу демо-ученика в "На доработку" через UI и перезапустите.',
+    )
+  }
 
   const homeworkTitle = (await candidateCard.locator('h3').textContent())?.trim()
   if (!homeworkTitle) throw new Error('Не удалось определить заголовок ДЗ для e2e smoke')

@@ -354,7 +354,7 @@ export function StudentReviewPage() {
           : <span className="h-5" />
         }
         <div className="flex flex-col items-stretch gap-2 sm:flex-row">
-          <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+          <Button data-testid="student-review-revision-button" size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
             <RotateCcw size={14} className="mr-1" />На доработку
           </Button>
           {!canPreview && (
@@ -445,7 +445,7 @@ export function StudentReviewPage() {
           : <span className="h-5" />
         }
         <div className="flex flex-col items-stretch gap-2 sm:flex-row">
-          <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
+          <Button data-testid="student-review-revision-button" size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
             <RotateCcw size={14} className="mr-1" />На доработку
           </Button>
           <Button data-testid="student-review-publish-button" size="sm" onClick={triggerPublish} loading={publishing}>
