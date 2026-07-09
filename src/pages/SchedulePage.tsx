@@ -41,9 +41,9 @@ function blockHeight(minutes: number) {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-primary-100 border-primary-400 text-primary-900',
-  completed: 'bg-green-100  border-green-400  text-green-900',
-  cancelled: 'bg-gray-100   border-gray-300   text-gray-500',
+  scheduled: 'bg-primary-50 border-primary-500 text-primary-900 shadow-sm',
+  completed: 'bg-emerald-50  border-emerald-500  text-emerald-900 shadow-sm',
+  cancelled: 'bg-slate-100   border-slate-300   text-slate-500',
 }
 
 function LessonBlock({ lesson, onClick }: { lesson: Lesson; onClick: () => void }) {
@@ -57,8 +57,8 @@ function LessonBlock({ lesson, onClick }: { lesson: Lesson; onClick: () => void 
       onClick={onClick}
       style={{ top, height }}
       className={cn(
-        'absolute left-0.5 right-0.5 rounded-lg border-l-4 px-2 py-1 text-left overflow-hidden',
-        'hover:brightness-95 transition-all cursor-pointer z-10',
+        'absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 text-left overflow-hidden',
+        'hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer z-10',
         STATUS_COLORS[lesson.status] || STATUS_COLORS.scheduled,
       )}
     >
@@ -173,33 +173,37 @@ export function SchedulePage() {
   const isCurrentWeek = sameDay(weekStart, getMonday(new Date()))
 
   return (
-    <div className="flex flex-col h-[calc(100vh-88px)] min-h-0">
+    <div className="flex flex-col h-[calc(100vh-96px)] min-h-[680px]">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
+      <div className="platform-surface rounded-lg p-5 sm:p-6 flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Расписание</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{weekLabel}</p>
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+            <Calendar size={13} />
+            Week planner
+          </div>
+          <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950">Расписание</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{weekLabel}</p>
         </div>
         <div className="flex items-center gap-2">
           {!isCurrentWeek && (
             <button
               onClick={goToday}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              className="px-3 py-2 text-sm font-medium border border-slate-200 bg-white/80 rounded-lg text-slate-600 hover:bg-white hover:border-primary-200 transition-colors"
             >
               Сегодня
             </button>
           )}
-          <button onClick={prevWeek} className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <ChevronLeft size={18} className="text-gray-600" />
+          <button onClick={prevWeek} className="p-2 border border-slate-200 bg-white/80 rounded-lg hover:bg-white hover:border-primary-200 transition-colors">
+            <ChevronLeft size={18} className="text-slate-600" />
           </button>
-          <button onClick={nextWeek} className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <ChevronRight size={18} className="text-gray-600" />
+          <button onClick={nextWeek} className="p-2 border border-slate-200 bg-white/80 rounded-lg hover:bg-white hover:border-primary-200 transition-colors">
+            <ChevronRight size={18} className="text-slate-600" />
           </button>
           {canCreate && (
             <button
               onClick={() => { setCreateDate(null); setCreateOpen(true) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary-950 text-white text-sm font-semibold rounded-lg hover:bg-primary-900 transition-colors shadow-sm shadow-primary-950/15"
             >
               <Plus size={15} />Занятие
             </button>
@@ -208,17 +212,17 @@ export function SchedulePage() {
       </div>
 
       {/* ── Grid ── */}
-      <div className="flex-1 min-h-0 overflow-auto border border-gray-200 rounded-2xl bg-white">
+      <div className="flex-1 min-h-0 overflow-auto border border-slate-200 rounded-lg bg-white/90 shadow-sm shadow-slate-950/[0.03]">
         <div className="flex min-w-[640px]">
 
           {/* Time axis */}
-          <div className="w-14 shrink-0 border-r border-gray-100">
+          <div className="w-14 shrink-0 border-r border-slate-100 bg-slate-50/70">
             {/* Header spacer */}
-            <div className="h-14 border-b border-gray-100" />
+            <div className="h-14 border-b border-slate-100" />
             <div className="relative">
               {HOURS.map(h => (
-                <div key={h} style={{ height: SLOT_H }} className="border-b border-gray-100 flex items-start justify-end pr-2 pt-1">
-                  <span className="text-[10px] text-gray-400">{String(h).padStart(2,'0')}:00</span>
+                <div key={h} style={{ height: SLOT_H }} className="border-b border-slate-100 flex items-start justify-end pr-2 pt-1">
+                  <span className="text-[10px] font-medium text-slate-400">{String(h).padStart(2,'0')}:00</span>
                 </div>
               ))}
             </div>
@@ -231,11 +235,11 @@ export function SchedulePage() {
             const isWeekend = di >= 5
 
             return (
-              <div key={di} className={cn('flex-1 min-w-0 border-r border-gray-100 last:border-r-0', isWeekend && 'bg-gray-50/40')}>
+              <div key={di} className={cn('flex-1 min-w-0 border-r border-slate-100 last:border-r-0', isWeekend && 'bg-slate-50/50')}>
                 {/* Day header */}
                 <div
                   className={cn(
-                    'h-14 border-b border-gray-100 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-gray-50 transition-colors',
+                    'h-14 border-b border-slate-100 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:bg-primary-50/40 transition-colors',
                     isToday && 'bg-primary-50'
                   )}
                   onClick={() => canCreate && (setCreateDate(day), setCreateOpen(true))}
@@ -245,7 +249,7 @@ export function SchedulePage() {
                   </span>
                   <span className={cn(
                     'w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold',
-                    isToday ? 'bg-primary-600 text-white' : 'text-gray-800'
+                    isToday ? 'bg-primary-950 text-white' : 'text-graphite-900'
                   )}>
                     {day.getDate()}
                   </span>
@@ -255,7 +259,7 @@ export function SchedulePage() {
                 <div className="relative" style={{ height: SLOT_H * HOURS.length }}>
                   {/* Hour lines */}
                   {HOURS.map(h => (
-                    <div key={h} style={{ top: (h - 8) * SLOT_H }} className="absolute inset-x-0 border-b border-gray-100" />
+                    <div key={h} style={{ top: (h - 8) * SLOT_H }} className="absolute inset-x-0 border-b border-slate-100" />
                   ))}
 
                   {/* Now line */}

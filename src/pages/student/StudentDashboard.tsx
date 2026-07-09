@@ -74,13 +74,35 @@ export function StudentDashboard() {
     <div className="space-y-7">
 
       {/* Hero */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 break-words">
-          Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}! 👋
-        </h1>
-        <p className="text-gray-500 mt-1">
-          {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
+      <div className="platform-surface rounded-lg p-5 sm:p-6">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+              <Target size={13} />
+              Личный маршрут
+            </div>
+            <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 break-words">
+              Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}
+            </h1>
+            <p className="text-slate-500 mt-1">
+              {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={() => navigate('/my-course')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Курс</div>
+              <div className="text-sm font-semibold text-graphite-950">Открыть</div>
+            </button>
+            <button onClick={() => navigate('/my-assignments')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">ДЗ</div>
+              <div className="text-sm font-semibold text-graphite-950">{pendingHW.length}</div>
+            </button>
+            <button onClick={() => navigate('/my-progress')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Прогресс</div>
+              <div className="text-sm font-semibold text-graphite-950">Смотреть</div>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Course selector */}
@@ -99,7 +121,7 @@ export function StudentDashboard() {
           value={pendingHW.length}
           icon={<BookOpen size={20} />}
           color={pendingHW.length > 0 ? 'orange' : 'green'}
-          subtitle={pendingHW.length === 0 ? 'Всё сдано 🎉' : 'Ожидают выполнения'}
+          subtitle={pendingHW.length === 0 ? 'Всё сдано' : 'Ожидают выполнения'}
         />
         <StatCard
           title="Посещаемость"
@@ -126,8 +148,8 @@ export function StudentDashboard() {
 
       {/* Today lesson alert */}
       {lessonIsToday && (
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 p-4 bg-primary-50 border border-primary-200 rounded-2xl">
-          <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center shrink-0">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 p-4 bg-primary-50/80 border border-primary-200 rounded-lg">
+          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-sm">
             <Calendar size={20} className="text-primary-600" />
           </div>
           <div className="flex-1 min-w-0">
@@ -141,7 +163,7 @@ export function StudentDashboard() {
               rel="noreferrer"
               className="w-full sm:w-auto min-h-11 shrink-0 flex items-center justify-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
             >
-              Подключиться →
+              Подключиться
             </a>
           )}
         </div>
@@ -168,7 +190,7 @@ export function StudentDashboard() {
               {nextLesson.zoom_link && !lessonIsToday && (
                 <a href={nextLesson.zoom_link} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium mt-1">
-                  🎥 Ссылка на занятие
+                  Ссылка на занятие
                 </a>
               )}
             </div>
@@ -204,7 +226,7 @@ export function StudentDashboard() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-gray-900 truncate">{hw.title}</div>
                       <div className={cn('text-xs mt-0.5', over ? 'text-red-500 font-medium' : 'text-gray-400')}>
-                        {over ? '🔴 Просрочено · ' : 'до '}
+                        {over ? 'Просрочено · ' : 'до '}
                         {formatDate(hw.due_date)}
                       </div>
                     </div>
@@ -289,7 +311,7 @@ export function StudentDashboard() {
         ) : (
           <Card className="flex flex-col items-center justify-center py-10 text-center">
             <TrendingUp size={32} className="text-gray-200 mb-3" />
-            <div className="text-sm font-medium text-gray-500">Хорошая работа!</div>
+              <div className="text-sm font-medium text-gray-500">Хорошая работа</div>
             <div className="text-xs text-gray-400 mt-1">Рекомендации преподавателя появятся здесь</div>
             <button
               onClick={() => navigate('/my-progress')}
@@ -306,7 +328,7 @@ export function StudentDashboard() {
         subscription ? (
           <div
             onClick={() => navigate('/payments')}
-            className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-2xl cursor-pointer hover:shadow-md transition-all"
+            className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary-50 to-gold-50/70 border border-primary-200 rounded-lg cursor-pointer hover:shadow-md transition-all"
           >
             <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
               <CreditCard size={18} className="text-primary-600" />
@@ -325,7 +347,7 @@ export function StudentDashboard() {
                    subscription.status === 'past_due' ? 'Просрочена' : subscription.status}
                 </span>
                 {subscription.cancel_at_period_end && (
-                  <span className="text-xs text-orange-500 font-medium">— отменяется</span>
+                <span className="text-xs text-orange-500 font-medium">отменяется</span>
                 )}
               </div>
               {subscription.current_period_end && (
@@ -341,14 +363,14 @@ export function StudentDashboard() {
         ) : (
           <div
             onClick={() => navigate('/pricing')}
-            className="flex items-center gap-4 p-4 bg-gray-50 border border-dashed border-gray-300 rounded-2xl cursor-pointer hover:border-primary-300 hover:bg-primary-50 transition-all group"
+            className="flex items-center gap-4 p-4 platform-empty rounded-lg cursor-pointer hover:border-primary-300 hover:bg-primary-50 transition-all group"
           >
             <div className="w-10 h-10 rounded-xl bg-gray-100 group-hover:bg-primary-100 flex items-center justify-center shrink-0 transition-colors">
               <CreditCard size={18} className="text-gray-400 group-hover:text-primary-600 transition-colors" />
             </div>
             <div className="flex-1">
               <div className="font-medium text-gray-700 group-hover:text-primary-900 transition-colors">Нет активной подписки</div>
-              <div className="text-xs text-gray-400 group-hover:text-primary-600 transition-colors">Выбрать тариф и начать учиться →</div>
+              <div className="text-xs text-gray-400 group-hover:text-primary-600 transition-colors">Выбрать тариф и начать учиться</div>
             </div>
             <ArrowRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 transition-colors" />
           </div>

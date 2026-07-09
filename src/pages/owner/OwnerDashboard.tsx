@@ -9,7 +9,7 @@ import {
   PieChart, Pie, Cell
 } from 'recharts'
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ef4444']
+const COLORS = ['#185bb9', '#059669', '#c8841a', '#4f46e5', '#dc2626']
 
 export function OwnerDashboard() {
   const { studentCount, groupCount, totalRevenue, overdueAmount, payments, groups, teachers, courses, loading } = useOwnerDashboard()
@@ -42,9 +42,13 @@ export function OwnerDashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Кабинет владельца</h1>
-        <p className="text-gray-500 mt-1">Школа Almiron • Аналитика и управление</p>
+      <div className="platform-surface rounded-lg p-5 sm:p-6">
+        <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+          <BarChart3 size={13} />
+          Analytics
+        </div>
+        <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950">Кабинет владельца</h1>
+        <p className="text-slate-500 mt-1">Школа Almiron · аналитика и управление</p>
       </div>
 
       {/* KPI Stats */}
@@ -71,11 +75,11 @@ export function OwnerDashboard() {
             </CardHeader>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={revenueByGroup}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => `${v / 1000}к`} tick={{ fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={(v) => `${v / 1000}к`} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => [formatCurrency(Number(v)), 'Выручка']} />
-                <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="#185bb9" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -116,9 +120,9 @@ export function OwnerDashboard() {
           <Badge variant="info">{teachers.length}</Badge>
         </CardHeader>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="platform-table w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="text-xs text-gray-500 uppercase border-b border-gray-100">
+              <tr>
                 <th className="text-left pb-3">Преподаватель</th>
                 <th className="text-left pb-3">Предметы</th>
                 <th className="text-left pb-3">Рейтинг</th>
@@ -127,10 +131,10 @@ export function OwnerDashboard() {
             </thead>
             <tbody>
               {teachers.map((t: any, i: number) => (
-                <tr key={t.id} className="border-b border-gray-50">
+                <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-sm font-bold">
+                      <div className="w-8 h-8 bg-primary-950 rounded-lg flex items-center justify-center text-white text-sm font-bold">
                         {t.profiles?.full_name?.charAt(0)}
                       </div>
                       <span className="font-medium">{t.profiles?.full_name}</span>
@@ -157,12 +161,12 @@ export function OwnerDashboard() {
         </CardHeader>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {groups.map((g: any) => (
-            <div key={g.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <div className="font-semibold text-gray-900">{g.name}</div>
-              <div className="text-sm text-gray-500 mt-1">{g.student_count} / {g.max_students} учеников</div>
-              <div className="text-xs text-gray-400 mt-0.5">{g.schedule_days?.join(', ')} {g.schedule_time}</div>
-              <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                <div className="h-1.5 bg-primary-500 rounded-full" style={{ width: `${Math.min(((g.student_count || 0) / g.max_students) * 100, 100)}%` }} />
+            <div key={g.id} className="p-4 bg-white/80 rounded-lg border border-slate-200">
+              <div className="font-semibold text-graphite-950">{g.name}</div>
+              <div className="text-sm text-slate-500 mt-1">{g.student_count} / {g.max_students} учеников</div>
+              <div className="text-xs text-slate-400 mt-0.5">{g.schedule_days?.join(', ')} {g.schedule_time}</div>
+              <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className="h-1.5 bg-primary-600 rounded-full" style={{ width: `${Math.min(((g.student_count || 0) / g.max_students) * 100, 100)}%` }} />
               </div>
             </div>
           ))}

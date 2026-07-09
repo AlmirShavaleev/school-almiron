@@ -3,9 +3,9 @@ import type { QueueBucket, QueueCounts } from '@/hooks/useHomeworkQueue'
 
 const TABS: { key: QueueBucket; label: string; dot: string; active: string }[] = [
   { key: 'urgent',   label: 'Срочные',     dot: 'bg-red-500',    active: 'border-red-300 bg-red-50 text-red-700' },
-  { key: 'revision', label: 'На доработке', dot: 'bg-yellow-500', active: 'border-yellow-300 bg-yellow-50 text-yellow-700' },
-  { key: 'new',      label: 'Новые',       dot: 'bg-blue-500',   active: 'border-blue-300 bg-blue-50 text-blue-700' },
-  { key: 'backlog',  label: 'Бэклог',      dot: 'bg-gray-400',   active: 'border-gray-300 bg-gray-100 text-gray-600' },
+  { key: 'revision', label: 'На доработке', dot: 'bg-gold-500', active: 'border-gold-300 bg-gold-50 text-gold-800' },
+  { key: 'new',      label: 'Новые',       dot: 'bg-primary-500',   active: 'border-primary-300 bg-primary-50 text-primary-700' },
+  { key: 'backlog',  label: 'Бэклог',      dot: 'bg-slate-400',   active: 'border-slate-300 bg-slate-100 text-slate-600' },
 ]
 
 export function QueueFilters({
@@ -25,8 +25,8 @@ export function QueueFilters({
             key={t.key}
             onClick={() => onToggle(t.key)}
             className={cn(
-              'flex min-h-11 items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors',
-              on ? t.active : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+              'flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors',
+              on ? t.active : 'bg-white/80 border-slate-200 text-slate-400 hover:border-primary-200'
             )}
           >
             <span className={cn('w-2 h-2 rounded-full', t.dot, !on && 'opacity-40')} />

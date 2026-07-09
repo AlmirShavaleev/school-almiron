@@ -13,10 +13,70 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: #172033;
+  background:
+    radial-gradient(circle at 18% -12%, rgba(37, 117, 220, 0.10), transparent 30rem),
+    linear-gradient(180deg, #f8fafc 0%, #f3f6fb 45%, #eef3f8 100%);
 }
 
 #root {
   min-height: 100vh;
+}
+
+::selection {
+  color: #0b1830;
+  background: rgba(239, 189, 76, 0.38);
+}
+
+@layer base {
+  button, a, input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(200, 132, 26, 0.75);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .platform-surface {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82)),
+      #ffffff;
+    border: 1px solid rgba(203, 213, 225, 0.72);
+    box-shadow:
+      0 1px 1px rgba(15, 23, 42, 0.03),
+      0 14px 34px rgba(15, 23, 42, 0.06);
+  }
+
+  .platform-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .platform-table thead tr {
+    color: #64748b;
+    background: #f8fafc;
+  }
+
+  .platform-table th {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .platform-table td {
+    border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+  }
+
+  .platform-empty {
+    border: 1px dashed rgba(148, 163, 184, 0.55);
+    background: rgba(255, 255, 255, 0.68);
+  }
 }
 
 /* ── Catalog task HTML content ─────────────────────────── */

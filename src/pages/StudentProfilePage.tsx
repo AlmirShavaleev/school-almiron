@@ -118,7 +118,7 @@ export function StudentProfilePage() {
   }))
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-5xl">
 
       {/* Back */}
       <div className="flex items-center justify-between">
@@ -133,16 +133,17 @@ export function StudentProfilePage() {
             onClick={() => navigate(`/students/${s.student_id}/journal`)}
             className="text-sm text-primary-600 hover:text-primary-700 font-medium"
           >
-            Журнал ученика →
+            Журнал ученика
           </button>
         )}
       </div>
 
       {/* Profile header */}
-      <Card>
-        <div className="flex items-start gap-5">
+      <Card className="overflow-hidden relative">
+        <div className="absolute inset-y-0 right-0 w-64 bg-gradient-to-l from-primary-50/80 to-transparent pointer-events-none" />
+        <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
           {/* Avatar */}
-          <div className="w-16 h-16 rounded-2xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-2xl shrink-0 overflow-hidden">
+          <div className="w-20 h-20 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-2xl shrink-0 overflow-hidden shadow-lg shadow-primary-950/15">
             {s.avatar_url
               ? <img src={s.avatar_url} className="w-full h-full object-cover" />
               : s.full_name.charAt(0)
@@ -152,15 +153,15 @@ export function StudentProfilePage() {
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900">{s.full_name}</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-graphite-950">{s.full_name}</h1>
               {s.target_score && (
-                <span className="flex items-center gap-1 text-xs text-gray-400">
+                <span className="flex items-center gap-1 rounded-full bg-gold-50 px-2.5 py-1 text-xs font-semibold text-gold-800 ring-1 ring-gold-100">
                   <Star size={12} />Цель: {s.target_score}
                 </span>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500">
+            <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><Mail size={13} />{s.email}</span>
               {s.phone && <span className="flex items-center gap-1.5"><Phone size={13} />{s.phone}</span>}
             </div>
@@ -172,6 +173,20 @@ export function StudentProfilePage() {
                   <span className="text-primary-400">· {g.course_title}</span>
                 </span>
               ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 lg:w-72">
+            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+              <div className="text-xs text-slate-500">Посещаемость</div>
+              <div className="font-semibold text-graphite-950">{s.attendance_percent}%</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+              <div className="text-xs text-slate-500">ДЗ</div>
+              <div className="font-semibold text-graphite-950">{s.hw_checked}/{s.hw_total}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+              <div className="text-xs text-slate-500">Пробники</div>
+              <div className="font-semibold text-graphite-950">{s.mock_count}</div>
             </div>
           </div>
         </div>
@@ -189,9 +204,9 @@ export function StudentProfilePage() {
           </div>
           <div className="text-xs text-center text-gray-500 font-medium">Посещаемость</div>
           <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span className="text-green-500">{s.attendance_present}✓</span>
-            <span className="text-orange-400">{s.attendance_late}⏱</span>
-            <span className="text-red-400">{s.attendance_absent}✗</span>
+            <span className="text-green-500">присутствовал: {s.attendance_present}</span>
+            <span className="text-orange-400">опоздал: {s.attendance_late}</span>
+            <span className="text-red-400">нет: {s.attendance_absent}</span>
           </div>
         </Card>
 
@@ -253,7 +268,7 @@ export function StudentProfilePage() {
                     {hw.group_name} · до {new Date(hw.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
                   </div>
                   {hw.feedback && (
-                    <div className="text-xs text-blue-600 mt-1 italic">💬 {hw.feedback}</div>
+                    <div className="text-xs text-primary-600 mt-1 italic">{hw.feedback}</div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -400,7 +415,7 @@ export function StudentProfilePage() {
                 Автопродление
               </span>
               {subscription.cancel_at_period_end && (
-                <span className="text-xs text-orange-500 font-medium ml-1">— отключено</span>
+                <span className="text-xs text-orange-500 font-medium ml-1">отключено</span>
               )}
             </div>
 
@@ -488,7 +503,7 @@ function EnrolledCoursesSection({ studentId, currentRole }: { studentId: string;
           <p className="text-sm text-gray-400">Ученик не записан ни на один курс</p>
           {canManage && (
             <button onClick={() => setModalOpen(true)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
-              Записать на курс →
+              Записать на курс
             </button>
           )}
         </div>

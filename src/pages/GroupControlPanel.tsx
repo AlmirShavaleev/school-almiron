@@ -61,24 +61,25 @@ export function GroupControlPanel() {
   return (
     <div className="space-y-5">
       {/* back */}
-      <button onClick={() => navigate('/groups')} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+      <button onClick={() => navigate('/groups')} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-graphite-950 transition-colors">
         <ArrowLeft size={15} />К группам
       </button>
 
       {/* Operational header */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="platform-surface rounded-lg p-5 sm:p-6 overflow-hidden relative">
+        <div className="absolute right-0 top-0 h-full w-72 bg-gradient-to-l from-primary-50/80 to-transparent pointer-events-none" />
+        <div className="relative flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold text-gray-900 truncate">{group.name}</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 truncate">{group.name}</h1>
               <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full',
-                group.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                group.is_active ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200')}>
                 {group.is_active ? 'Активна' : 'Архив'}
               </span>
             </div>
-            <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-500 flex-wrap">
+            <div className="flex items-center gap-3 mt-2 text-sm text-slate-500 flex-wrap">
               {group.course && (
-                <Link to="/course-program" className="inline-flex items-center gap-1 hover:text-primary-600">
+                <Link to="/course-program" className="inline-flex items-center gap-1 hover:text-primary-700">
                   <BookOpen size={13} />{group.course.title}
                 </Link>
               )}
@@ -88,7 +89,7 @@ export function GroupControlPanel() {
                   {group.schedule_time && <><Clock size={12} className="ml-1" />{group.schedule_time}</>}
                 </span>
               )}
-              <span className="text-gray-400">учитель: {group.teacher_name || '—'} · куратор: {group.curator_name || '—'}</span>
+              <span className="text-slate-400">учитель: {group.teacher_name || '—'} · куратор: {group.curator_name || '—'}</span>
             </div>
           </div>
           <GroupHeaderActions
@@ -103,14 +104,14 @@ export function GroupControlPanel() {
 
       {/* Inactive staff warning */}
       {(!group.teacher_active || !group.curator_active) && (
-        <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+        <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
           <UserX size={16} className="shrink-0 text-amber-600" />
           <span>
             {[
               !group.teacher_active && group.teacher_name && `Преподаватель «${group.teacher_name}» деактивирован`,
               !group.curator_active && group.curator_name && `Куратор «${group.curator_name}» деактивирован`,
             ].filter(Boolean).join(' · ')}
-            {' '}— замените в настройках группы.
+            {' '}Замените в настройках группы.
           </span>
         </div>
       )}
@@ -120,7 +121,7 @@ export function GroupControlPanel() {
 
       {/* Homework pipeline — ядро */}
       <div>
-        <h2 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-1.5"><Layers size={15} />Поток домашних заданий</h2>
+        <h2 className="text-sm font-bold text-graphite-800 mb-2 flex items-center gap-1.5"><Layers size={15} />Поток домашних заданий</h2>
         <HomeworkPipeline pipeline={pipeline} groupId={group.id} />
       </div>
 

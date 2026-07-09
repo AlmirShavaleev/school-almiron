@@ -5,18 +5,18 @@ import { cn } from '@/utils/cn'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
 
 const BUCKET_STYLE: Record<string, { ring: string; chip: string; label: string; icon: ReactNode }> = {
-  urgent:   { ring: 'border-l-red-500',    chip: 'bg-red-100 text-red-700',       label: 'Срочно',      icon: <AlertTriangle size={11} /> },
-  revision: { ring: 'border-l-yellow-500', chip: 'bg-yellow-100 text-yellow-700', label: 'Доработка',   icon: <RotateCcw size={11} /> },
-  new:      { ring: 'border-l-blue-500',   chip: 'bg-blue-100 text-blue-700',     label: 'Новое',       icon: <Clock size={11} /> },
-  backlog:  { ring: 'border-l-gray-300',   chip: 'bg-gray-100 text-gray-500',     label: 'Бэклог',      icon: <Clock size={11} /> },
+  urgent:   { ring: 'border-l-red-500',    chip: 'bg-red-50 text-red-700 ring-red-200',       label: 'Срочно',      icon: <AlertTriangle size={11} /> },
+  revision: { ring: 'border-l-gold-500', chip: 'bg-gold-50 text-gold-800 ring-gold-200', label: 'Доработка',   icon: <RotateCcw size={11} /> },
+  new:      { ring: 'border-l-primary-500',   chip: 'bg-primary-50 text-primary-700 ring-primary-200',     label: 'Новое',       icon: <Clock size={11} /> },
+  backlog:  { ring: 'border-l-slate-300',   chip: 'bg-slate-100 text-slate-500 ring-slate-200',     label: 'Бэклог',      icon: <Clock size={11} /> },
 }
 
 const REVIEW_STATUS_STYLE: Record<QItem['status'], { chip: string; label: string; icon?: ReactNode }> = {
-  submitted: { chip: 'bg-blue-100 text-blue-700', label: 'На проверке' },
-  revision: { chip: 'bg-yellow-100 text-yellow-700', label: 'На доработке', icon: <RotateCcw size={11} /> },
-  checked: { chip: 'bg-green-100 text-green-700', label: 'Проверено', icon: <CheckCircle2 size={11} /> },
-  accepted: { chip: 'bg-green-100 text-green-700', label: 'Принято', icon: <CheckCircle2 size={11} /> },
-  rejected: { chip: 'bg-red-100 text-red-700', label: 'Отклонено', icon: <XCircle size={11} /> },
+  submitted: { chip: 'bg-primary-50 text-primary-700 ring-primary-200', label: 'На проверке' },
+  revision: { chip: 'bg-gold-50 text-gold-800 ring-gold-200', label: 'На доработке', icon: <RotateCcw size={11} /> },
+  checked: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Проверено', icon: <CheckCircle2 size={11} /> },
+  accepted: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Принято', icon: <CheckCircle2 size={11} /> },
+  rejected: { chip: 'bg-red-50 text-red-700 ring-red-200', label: 'Отклонено', icon: <XCircle size={11} /> },
 }
 
 function fmtDue(iso: string | null, overdue: boolean): string {
@@ -34,12 +34,12 @@ export function QueueItem({ item }: { item: QItem }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       data-testid="queue-item"
       data-source={item.source}
       data-status={item.status}
       data-submission-id={item.submissionId}
-      role="button"
-      tabIndex={0}
       onClick={() => navigate(
         item.source === 'collection'
           ? `/review-submissions/${item.submissionId}`
@@ -48,12 +48,12 @@ export function QueueItem({ item }: { item: QItem }) {
       )}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
       className={cn(
-        'w-full min-h-11 flex items-center gap-3 text-left bg-white border border-gray-200 border-l-4 rounded-xl px-3 sm:px-4 py-3 hover:shadow-sm hover:border-gray-300 transition-all cursor-pointer',
-        isCheckedView ? 'border-l-green-500' : st?.ring
+        'w-full min-h-11 flex items-center gap-3 text-left platform-surface border-l-4 rounded-lg px-3 sm:px-4 py-3 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-lg transition-all duration-200 cursor-pointer',
+        isCheckedView ? 'border-l-emerald-500' : st?.ring
       )}
     >
       {/* avatar */}
-      <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-bold shrink-0">
+      <div className="w-9 h-9 rounded-lg bg-primary-950 text-white flex items-center justify-center text-sm font-bold shrink-0">
         {item.student.name.charAt(0)}
       </div>
 
@@ -61,7 +61,7 @@ export function QueueItem({ item }: { item: QItem }) {
         <div className="flex items-center gap-2">
           <span data-testid="queue-item-student" className="text-sm font-semibold text-gray-900 truncate">{item.student.name}</span>
           <span className={cn(
-            'inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0',
+            'inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ring-1 ring-inset shrink-0',
             isCheckedView ? reviewStatus.chip : st?.chip,
           )}>
             {isCheckedView ? reviewStatus.icon : st?.icon}{isCheckedView ? reviewStatus.label : st?.label}

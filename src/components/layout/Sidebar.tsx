@@ -62,6 +62,13 @@ const navItems: NavItem[] = [
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
 ]
 
+const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/curator', '/admin', '/owner', '/inbox'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/lessons', '/schedule', '/attendance', '/course-program'] },
+  { title: 'Задания', paths: ['/catalog', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
+  { title: 'Операции', paths: ['/payments', '/notifications', '/settings'] },
+]
+
 interface SidebarProps {
   open:    boolean
   onClose: () => void
@@ -118,26 +125,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* Sidebar panel */}
       <aside className={cn(
-        'fixed left-0 top-0 h-full w-72 md:w-64 bg-slate-900 flex flex-col z-50',
+        'fixed left-0 top-0 h-full w-72 md:w-64 bg-primary-950 text-white flex flex-col z-50',
+        'border-r border-white/10 shadow-2xl shadow-primary-950/30',
         'transition-transform duration-300 ease-in-out',
         'md:translate-x-0',
         open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}>
 
         {/* Logo + mobile close */}
-        <div className="p-5 border-b border-slate-700 flex items-center justify-between">
+        <div className="p-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-              <GraduationCap size={20} className="text-white" />
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-black/10">
+              <GraduationCap size={21} className="text-primary-950" />
             </div>
             <div>
-              <div className="text-white font-bold text-sm leading-tight">Школа Almiron</div>
-              <div className="text-slate-400 text-xs">ЕГЭ/ОГЭ подготовка</div>
+              <div className="text-white font-bold text-sm leading-tight tracking-tight">Школа Almiron</div>
+              <div className="text-primary-200 text-xs">School OS</div>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-primary-200 hover:bg-white/10 hover:text-white transition-colors"
             aria-label="Закрыть меню"
           >
             <X size={18} />
@@ -145,9 +153,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         {/* User info */}
-        <div className="px-4 py-3 border-b border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-primary-500 flex items-center justify-center text-white text-sm font-bold shrink-0 overflow-hidden">
+        <div className="px-4 py-4 border-b border-white/10">
+          <div className="rounded-lg bg-white/[0.06] border border-white/10 p-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-white text-primary-950 flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
               {(profile as any).avatar_url
                 ? <img src={(profile as any).avatar_url} className="w-full h-full object-cover" alt="" />
                 : profile.full_name.charAt(0)
@@ -155,13 +163,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-white text-sm font-semibold truncate leading-tight">{profile.full_name}</div>
-              <div className="text-slate-400 text-xs mt-0.5">{getRoleLabel(profile.role)}</div>
+              <div className="text-primary-200 text-xs mt-0.5">{getRoleLabel(profile.role)}</div>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-2 overflow-y-auto">
+        <nav className="flex-1 py-3 overflow-y-auto">
           {isStudent ? (
             <div className="px-2 space-y-1">
               {studentSections.map(sec => (
@@ -183,21 +191,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               ))}
             </div>
           ) : (
-            <ul className="space-y-0.5 px-2">
-              {visibleItems.map(item => (
-                <li key={item.label + item.path}>
-                  <SidebarNavItem item={item} unreadCount={unreadCount} onClose={onClose} />
-                </li>
-              ))}
-            </ul>
+            <StaffNavigation items={visibleItems} unreadCount={unreadCount} onClose={onClose} />
           )}
         </nav>
 
         {/* Sign out */}
-        <div className="p-4 border-t border-slate-700">
+        <div className="p-4 border-t border-white/10">
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-primary-100 hover:bg-white/10 hover:text-white transition-colors"
           >
             <LogOut size={18} />
             Выйти
@@ -208,22 +210,54 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   )
 }
 
+function StaffNavigation({ items, unreadCount, onClose }: { items: NavItem[]; unreadCount: number; onClose: () => void }) {
+  const used = new Set<string>()
+  const sections = STAFF_SECTION_LABELS.map(section => ({
+    title: section.title,
+    items: items.filter(item => section.paths.includes(item.path) && !used.has(item.path)),
+  })).filter(section => {
+    section.items.forEach(item => used.add(item.path))
+    return section.items.length > 0
+  })
+  const rest = items.filter(item => !used.has(item.path))
+  if (rest.length > 0) sections.push({ title: 'Другое', items: rest })
+
+  return (
+    <div className="px-2 space-y-3">
+      {sections.map(section => (
+        <div key={section.title}>
+          <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-primary-300/80 select-none">
+            {section.title}
+          </div>
+          <ul className="space-y-0.5">
+            {section.items.map(item => (
+              <li key={item.label + item.path}>
+                <SidebarNavItem item={item} unreadCount={unreadCount} onClose={onClose} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function SidebarNavItem({ item, unreadCount, onClose }: { item: NavItem; unreadCount: number; onClose: () => void }) {
   return (
     <NavLink
       to={item.path}
       onClick={onClose}
       className={({ isActive }) => cn(
-        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors group',
+        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group',
         isActive
-          ? 'bg-primary-600 text-white'
-          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+          ? 'bg-white text-primary-950 shadow-sm'
+          : 'text-primary-100/90 hover:bg-white/10 hover:text-white'
       )}
     >
       {item.icon}
       <span className="flex-1">{item.label}</span>
       {item.path === '/notifications' && unreadCount > 0 && (
-        <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none">
+        <span className="bg-gold-300 text-primary-950 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none">
           {unreadCount > 99 ? '99+' : unreadCount}
         </span>
       )}

@@ -28,21 +28,46 @@ export function HomeworkQueuePage() {
     : items, [items, active, mode])
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="max-w-5xl mx-auto space-y-5">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4">
+      <div className="platform-surface rounded-lg p-5 sm:p-6 flex flex-col lg:flex-row items-stretch lg:items-end justify-between gap-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Inbox size={24} className="text-primary-600" />
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+            <Inbox size={13} />
+            Homework Queue
+          </div>
+          <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 flex items-center gap-2">
             Очередь задач
           </h1>
+          <p className="mt-1 text-sm text-slate-500">Проверка, доработка и история сданных работ</p>
         </div>
+        <div className="grid grid-cols-4 gap-2">
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+            <div className="text-xs text-red-600">Срочно</div>
+            <div className="font-semibold text-red-700">{counts.urgent}</div>
+          </div>
+          <div className="rounded-lg border border-gold-100 bg-gold-50 px-3 py-2">
+            <div className="text-xs text-gold-700">Доработка</div>
+            <div className="font-semibold text-gold-800">{counts.revision}</div>
+          </div>
+          <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
+            <div className="text-xs text-primary-600">Новые</div>
+            <div className="font-semibold text-primary-700">{counts.new}</div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+            <div className="text-xs text-slate-500">Всего</div>
+            <div className="font-semibold text-graphite-950">{counts.total}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 sm:shrink-0">
           {mode === 'pending' && (
             <button
               onClick={() => setGroupBy(g => g === 'flat' ? 'group' : 'flat')}
-              className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg bg-white/80 hover:bg-white hover:border-primary-200 transition-colors"
               title="Переключить группировку"
             >
               {groupBy === 'flat' ? <Users size={15} /> : <List size={15} />}
@@ -51,7 +76,7 @@ export function HomeworkQueuePage() {
           )}
           <button
             onClick={reload}
-            className="w-11 h-11 flex items-center justify-center text-gray-400 border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            className="w-11 h-11 flex items-center justify-center text-slate-400 border border-slate-200 rounded-lg bg-white/80 hover:bg-white hover:text-graphite-900 transition-colors"
             title="Обновить"
           >
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
@@ -65,8 +90,8 @@ export function HomeworkQueuePage() {
           onClick={() => setMode('pending')}
           data-testid="queue-tab-pending"
           className={cn(
-            'min-h-11 rounded-xl border px-4 py-2 text-sm font-medium transition-colors',
-            mode === 'pending' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+            'min-h-11 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors',
+            mode === 'pending' ? 'border-primary-950 bg-primary-950 text-white' : 'border-slate-200 bg-white/80 text-slate-500 hover:border-primary-200',
           )}
         >
           На проверке {mode === 'pending' && <span className="ml-1.5 text-xs opacity-70">{counts.total}</span>}
@@ -76,8 +101,8 @@ export function HomeworkQueuePage() {
           onClick={() => { setMode('checked'); setCheckedLimit(CHECKED_PAGE_SIZE) }}
           data-testid="queue-tab-checked"
           className={cn(
-            'min-h-11 rounded-xl border px-4 py-2 text-sm font-medium transition-colors',
-            mode === 'checked' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+            'min-h-11 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors',
+            mode === 'checked' ? 'border-primary-950 bg-primary-950 text-white' : 'border-slate-200 bg-white/80 text-slate-500 hover:border-primary-200',
           )}
         >
           Проверенные
@@ -96,14 +121,14 @@ export function HomeworkQueuePage() {
           <QueueList
             items={filtered}
             groupBy={mode === 'pending' ? groupBy : 'flat'}
-            emptyText={mode === 'pending' ? 'Очередь пуста — всё проверено 🎉' : 'Проверенных работ пока нет'}
+            emptyText={mode === 'pending' ? 'Очередь пуста, всё проверено' : 'Проверенных работ пока нет'}
           />
           {mode === 'checked' && hasMore && (
             <div className="flex justify-center">
               <button
                 type="button"
                 onClick={() => setCheckedLimit(limit => limit + CHECKED_PAGE_SIZE)}
-                className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                className="min-h-11 rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-primary-200 hover:bg-white"
               >
                 Показать ещё
               </button>

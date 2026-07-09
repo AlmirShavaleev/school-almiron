@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import {
-  Users, Calendar, CheckCircle2,
+  Users, Calendar, CheckCircle2, Clock,
   ArrowRight, ClipboardList, ClipboardCheck,
-  GraduationCap,
+  GraduationCap, Activity,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -50,14 +50,39 @@ export function TeacherDashboard() {
     <div className="space-y-6">
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            Привет, {firstName}! 👋
-          </h1>
-          <p className="text-gray-500 mt-1 text-sm">
+      <div className="platform-surface rounded-lg p-5 sm:p-6 overflow-hidden relative">
+        <div className="absolute right-0 top-0 h-full w-56 bg-gradient-to-l from-primary-50/90 to-transparent pointer-events-none" />
+        <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+              <Activity size={13} />
+              Command Center
+            </div>
+            <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950">
+              Привет, {firstName}
+            </h1>
+            <p className="text-slate-500 mt-1 text-sm">
             {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <button onClick={() => navigate('/inbox')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Очередь</div>
+              <div className="font-semibold text-graphite-950">{stats?.pending_reviews ?? 0}</div>
+            </button>
+            <button onClick={() => navigate('/schedule')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Сегодня</div>
+              <div className="font-semibold text-graphite-950">{stats?.today_lessons ?? 0}</div>
+            </button>
+            <button onClick={() => navigate('/groups')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Группы</div>
+              <div className="font-semibold text-graphite-950">{stats?.total_groups ?? 0}</div>
+            </button>
+            <button onClick={() => navigate('/assign-homework')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Быстро</div>
+              <div className="font-semibold text-graphite-950">Выдать ДЗ</div>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -80,14 +105,14 @@ export function TeacherDashboard() {
           value={stats?.pending_reviews ?? 0}
           icon={<ClipboardList size={20} />}
           color={(stats?.pending_reviews ?? 0) > 0 ? 'orange' : 'green'}
-          subtitle={(stats?.pending_reviews ?? 0) === 0 ? 'Всё проверено 🎉' : 'ждут оценки'}
+          subtitle={(stats?.pending_reviews ?? 0) === 0 ? 'Всё проверено' : 'ждут оценки'}
         />
         <StatCard
           title="Сегодня занятий"
           value={stats?.today_lessons ?? 0}
           icon={<Calendar size={20} />}
           color="blue"
-          subtitle={(stats?.today_lessons ?? 0) === 0 ? 'Выходной 🎉' : undefined}
+          subtitle={(stats?.today_lessons ?? 0) === 0 ? 'Нет занятий' : undefined}
         />
       </div>
 
@@ -95,8 +120,8 @@ export function TeacherDashboard() {
       {todayLessons.length > 0 && (
         <div className="space-y-2">
           {todayLessons.map(l => (
-            <div key={l.id} className="flex items-center gap-3 sm:gap-4 p-4 bg-primary-50 border border-primary-200 rounded-2xl">
-              <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center shrink-0">
+            <div key={l.id} className="flex items-center gap-3 sm:gap-4 p-4 bg-primary-50/80 border border-primary-200 rounded-lg">
+              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-sm">
                 <Calendar size={20} className="text-primary-600" />
               </div>
               <div className="flex-1 min-w-0">
@@ -118,7 +143,7 @@ export function TeacherDashboard() {
                     target="_blank" rel="noreferrer"
                     className="min-h-11 px-3 sm:px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
                   >
-                    Zoom →
+                    Zoom
                   </a>
                 )}
               </div>
@@ -148,7 +173,7 @@ export function TeacherDashboard() {
           {hwWithPending.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-gray-400 gap-2">
               <CheckCircle2 size={28} className="opacity-30" />
-              <p className="text-sm">Все работы проверены 🎉</p>
+              <p className="text-sm">Все работы проверены</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -197,8 +222,10 @@ export function TeacherDashboard() {
           ) : (
             <div className="space-y-0">
               {upcomingLessons.map(l => (
-                <div key={l.id} className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-                  <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                <div key={l.id} className="flex items-center gap-3 py-3 border-b border-slate-100 last:border-0">
+                  <div className="w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
+                    <Clock size={14} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 truncate">{l.title}</div>
                     <div className="text-xs text-gray-400">{formatDateTime(l.scheduled_at)} · {l.group_name}</div>
