@@ -414,6 +414,7 @@ export function StudentReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <input
+            data-testid="student-review-score-input"
             ref={scoreInputRef}
             type="number"
             min={0}
