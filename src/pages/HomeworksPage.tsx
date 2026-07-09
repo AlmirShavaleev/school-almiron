@@ -204,7 +204,7 @@ export function HomeworksPage() {
                               {hw._sub.score}/{hw.max_score}
                             </span>
                           )}
-                          {status === 'checked' && hw._sub?.id && getPrimarySubmissionFilePath(hw._sub) && (
+                          {(status === 'checked' || status === 'revision') && hw._sub?.id && getPrimarySubmissionFilePath(hw._sub) && (
                             <Button
                               size="sm"
                               variant="secondary"
@@ -215,7 +215,7 @@ export function HomeworksPage() {
                                 setStudentReview({ id: hw._sub.id, title: hw.title, file_url: filePath, filePaths: getSubmissionFilePaths(hw._sub) })
                               }}
                             >
-                              Посмотреть проверку
+                              {status === 'revision' ? 'Посмотреть комментарии учителя' : 'Посмотреть проверку'}
                             </Button>
                           )}
                           {(status === 'not_submitted' || status === 'revision') && (

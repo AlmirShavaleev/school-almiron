@@ -197,6 +197,7 @@ export function StudentReviewPage() {
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
   const nextAdvanceRef = useRef<string | 'list' | null>(null)
+  const publishStatusRef = useRef<'checked' | 'revision'>('checked')
   const [resolvedGroupName, setResolvedGroupName] = useState<string | null>(null)
 
   useEffect(() => {
@@ -339,6 +340,11 @@ export function StudentReviewPage() {
     return true
   }
 
+  function publishReview(targetStatus: 'checked' | 'revision' = 'checked') {
+    publishStatusRef.current = targetStatus
+    return handleSave(targetStatus)
+  }
+
   // Single post-save entry point for BOTH paths: the file viewer's own
   // publish button (via onPublishComplete, after annotations are done) and
   // the footer buttons (called directly once handleSave resolves), so a
@@ -432,7 +438,7 @@ export function StudentReviewPage() {
     />
   ) : null
 
-  const previewGradingCard = sub && hw ? ({ publishing, published, triggerPublish }: { publishing: boolean; published: boolean; triggerPublish: () => void }) => (
+  const previewGradingCard = sub && hw ? ({ publishing, published, triggerPublish }: { publishing: boolean; published: boolean; triggerPublish: (targetStatus?: 'checked' | 'revision') => void }) => (
     <GradingCard
       maxScore={hw.max_score}
       score={score}
@@ -446,8 +452,8 @@ export function StudentReviewPage() {
       acceptLoading={publishing}
       onScoreChange={value => { setScore(value); setScoreInvalid(false) }}
       onFeedbackChange={setFeedback}
-      onRevision={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))}
-      onAccept={triggerPublish}
+      onRevision={() => triggerPublish('revision')}
+      onAccept={() => triggerPublish()}
     />
   ) : null
 
@@ -476,8 +482,8 @@ export function StudentReviewPage() {
               className="h-full min-h-0"
               header={reviewHeader}
               footer={previewGradingCard ?? undefined}
-              onPublish={() => handleSave('checked')}
-              onPublishComplete={finishReview}
+              onPublish={publishReview}
+              onPublishComplete={success => finishReview(success, publishStatusRef.current === 'revision' ? 'Отправлено на доработку' : 'Проверка опубликована')}
             />
           </Suspense>
         ) : (

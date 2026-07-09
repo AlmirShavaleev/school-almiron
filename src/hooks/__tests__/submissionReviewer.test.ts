@@ -38,7 +38,7 @@ describe('submission annotation reviewer', () => {
   it('is integrated into the homework review pages', () => {
     expect(reviewListPage).toContain('/review/student/')
     expect(studentReviewPage).toContain('<SubmissionReviewer')
-    expect(studentReviewPage).toContain("onPublish={() => handleSave('checked')}")
+    expect(studentReviewPage).toContain('onPublish={publishReview}')
   })
 
   it('loads the student own file and uses the reviewer read-only', () => {
@@ -52,7 +52,7 @@ describe('submission annotation reviewer', () => {
   it('is integrated into the per-student review page in teacher mode, only for previewable files', () => {
     expect(studentReviewPage).toContain("const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))")
     expect(studentReviewPage).toContain("PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']")
-    expect(studentReviewPage).toContain("onPublish={() => handleSave('checked')}")
+    expect(studentReviewPage).toContain("function publishReview(targetStatus: 'checked' | 'revision' = 'checked')")
     expect(studentReviewPage).not.toMatch(/<SubmissionReviewer[^>]*readOnly/)
     expect(studentReviewPage).toContain('<SignedFileLink')
   })
@@ -79,7 +79,7 @@ describe('submission annotation reviewer', () => {
     expect(studentReviewPage).toContain("const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`")
     expect(studentReviewPage).toContain("if (next === 'list') navigate(listPath)")
     expect(studentReviewPage).toContain("function finishReview(success: boolean, message = 'Проверка опубликована')")
-    expect(studentReviewPage).toContain('onPublishComplete={finishReview}')
+    expect(studentReviewPage).toContain("onPublishComplete={success => finishReview(success, publishStatusRef.current === 'revision' ? 'Отправлено на доработку' : 'Проверка опубликована')}")
     expect(studentReviewPage).toContain('const gradingCard = sub && hw ? (')
     expect(studentReviewPage).toContain('acceptLabel="Принять"')
     expect(studentReviewPage).toContain("handleSave('checked').then(ok => finishReview(ok))")

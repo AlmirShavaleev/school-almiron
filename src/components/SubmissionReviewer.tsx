@@ -41,7 +41,7 @@ type DocumentSurface = {
 type FooterRenderContext = {
   publishing: boolean
   published: boolean
-  triggerPublish: () => void
+  triggerPublish: (targetStatus?: 'checked' | 'revision') => void
 }
 type FooterContent = ReactNode | ((context: FooterRenderContext) => ReactNode)
 
@@ -55,7 +55,7 @@ interface Props {
   footer?: FooterContent
   footerPublishLabel?: string
   header?: ReactNode
-  onPublish?: () => Promise<boolean | void>
+  onPublish?: (targetStatus?: 'checked' | 'revision') => Promise<boolean | void>
   onPublishComplete?: (success: boolean) => void
 }
 
@@ -453,9 +453,9 @@ export function SubmissionReviewer({
     pageRefs.current[item.surfaceKey]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
-  async function publish() {
+  async function publish(targetStatus: 'checked' | 'revision' = 'checked') {
     setPublishing(true)
-    if (onPublish && await onPublish() === false) {
+    if (onPublish && await onPublish(targetStatus) === false) {
       setPublishing(false)
       onPublishComplete?.(false)
       return
