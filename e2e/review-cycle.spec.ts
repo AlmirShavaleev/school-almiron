@@ -9,7 +9,8 @@ const STUDENT_PASSWORD = 'demo123'
 const STUDENT_NAME = 'Алексей Петров'
 const COMMENT_SUFFIX = `(e2e ${Date.now().toString(36)})`
 const COMMENT_TEXT = `Проверь знаки ${COMMENT_SUFFIX}`
-const REVIEW_FIXTURE = path.resolve('doc_web/data/uploads/02847eb2.pdf')
+const REVIEW_FIXTURE_PDF = path.resolve('doc_web/data/uploads/02847eb2.pdf')
+const REVIEW_FIXTURE_JPG = path.resolve('doc_web/data/uploads/043c2965.jpg')
 
 let teacherCtx: BrowserContext
 let studentCtx: BrowserContext
@@ -37,16 +38,22 @@ test.afterAll(async () => {
   await studentCtx.close()
 })
 
-test('teacher review cycle persists draft, publishes, returns to queue, and is visible to student', async () => {
+test('teacher review cycle persists draft, publishes, returns to queue, and is visible to student — across a two-file submission', async () => {
   test.slow()
 
-  const target = await ensureLegacyPdfSubmission(teacherPage, studentPage)
+  const target = await createStudentSubmission(teacherPage, studentPage)
 
   await openQueueReview(teacherPage, target)
   await expect(teacherPage.getByTestId('student-review-page')).toBeVisible()
   await expect(teacherPage.getByTestId('review-overlay-1')).toBeVisible()
 
-  await drawRegion(teacherPage.getByTestId('review-overlay-1'))
+  // Comment on the SECOND file, not the first — this is the whole point of
+  // the multi-file smoke: prove the continuous strip actually keeps each
+  // file's regions keyed to that file, not just to a page number that
+  // happens to be 1 in the single-file case.
+  const secondFileOverlay = secondFileOverlayLocator(teacherPage)
+  await secondFileOverlay.scrollIntoViewIfNeeded()
+  await drawRegion(secondFileOverlay)
   await teacherPage.getByTestId('comment-category-calc').click()
   await teacherPage.getByRole('button', { name: 'Проверь знаки' }).click()
   await teacherPage.getByTestId('comment-editor-text').fill(COMMENT_TEXT)
@@ -78,6 +85,12 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await expect(studentPage.getByTestId('comment-editor')).toHaveCount(0)
   await expect(studentPage.getByLabel('Удалить комментарий')).toHaveCount(0)
 
+  // The published region actually rendered on the second file, not just
+  // listed in the sidebar as text.
+  const studentSecondOverlay = secondFileOverlayLocator(studentPage)
+  await studentSecondOverlay.scrollIntoViewIfNeeded()
+  await expect(studentSecondOverlay.locator('rect')).toHaveCount(1)
+
   // Teardown: send this submission back to "revision" through the teacher
   // UI so the demo student has a "Пересдать" card again afterwards. The
   // same submit-homework-button testid renders for both not_submitted and
@@ -106,60 +119,37 @@ async function loginAsStudent(page: Page) {
   await page.waitForURL(url => !url.pathname.includes('/login'), { timeout: 30_000 })
 }
 
-async function ensureLegacyPdfSubmission(teacherPage: Page, studentPage: Page): Promise<ReviewTarget> {
-  const existing = await findLegacyPdfQueueItem(teacherPage)
-  if (existing) return existing
+async function createStudentSubmission(teacherPage: Page, studentPage: Page): Promise<ReviewTarget> {
+  await studentPage.goto('/homeworks')
+  await studentPage.waitForSelector('[data-testid="homework-card"]', { timeout: 20_000 })
 
-  const created = await createStudentSubmission(studentPage)
-  await teacherPage.goto('/inbox')
-  await teacherPage.getByTestId('queue-tab-pending').click()
-  await expect(queueItemByTarget(teacherPage, created)).toBeVisible({ timeout: 20_000 })
-  return created
-}
+  const candidateCard = studentPage.locator('[data-testid="homework-card"]').filter({
+    has: studentPage.locator('[data-testid="submit-homework-button"]'),
+  }).first()
+  let found = await candidateCard.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false)
 
-async function findLegacyPdfQueueItem(page: Page): Promise<ReviewTarget | null> {
-  await page.goto('/inbox')
-  await page.getByTestId('queue-tab-pending').click()
-  await page.waitForLoadState('networkidle')
-
-  const legacyItems = page.locator('[data-testid="queue-item"][data-source="legacy"]')
-  const count = await legacyItems.count()
-  for (let index = 0; index < count; index += 1) {
-    const item = legacyItems.nth(index)
-    const target = await targetFromQueueItem(item)
-    await item.click()
-    await page.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
-    await expect(page.getByTestId('student-review-page')).toBeVisible({ timeout: 15_000 })
-    if (await page.getByTestId('review-overlay-1').isVisible().catch(() => false)) {
-      await page.getByTestId('student-review-back-button').click()
-      await page.waitForURL(/\/inbox/, { timeout: 15_000 })
-      return target
+  if (!found) {
+    // A prior run may have died mid-test, after uploading but before its
+    // own teardown ran — leaving the submission stuck in "submitted" with
+    // no UI path back to "not_submitted"/"revision" for the student. alex@demo.ru
+    // is a dedicated e2e account (never touched by real students or manual
+    // QA in parallel), so ANY item sitting in the teacher's pending queue
+    // for this exact student is, by construction, that orphan — nothing
+    // else can put one there between runs. Self-heal it the same way the
+    // successful-run teardown would have.
+    const healed = await healStuckSubmission(teacherPage)
+    if (healed) {
+      await studentPage.reload()
+      found = await candidateCard.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)
     }
-    await page.getByTestId('student-review-back-button').click()
-    await page.waitForURL(/\/inbox/, { timeout: 15_000 })
   }
 
-  return null
-}
-
-async function createStudentSubmission(page: Page): Promise<ReviewTarget> {
-  await page.goto('/homeworks')
-  await page.waitForSelector('[data-testid="homework-card"]', { timeout: 20_000 })
-
-  const candidateCard = page.locator('[data-testid="homework-card"]').filter({
-    has: page.locator('[data-testid="submit-homework-button"]'),
-  }).first()
-  // Fail fast with an actionable message instead of burning the full
-  // expect timeout when the demo student has genuinely run out of
-  // submittable/resubmittable homeworks (a prior smoke run consumed them
-  // all). The end-of-test teardown below is what's supposed to prevent
-  // this — if it fires anyway, that's the real signal to look at.
-  const found = await candidateCard.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false)
   if (!found) {
     throw new Error(
       'Нет доступных ДЗ для smoke: у демо-ученика (alex@demo.ru) не осталось ни одного ДЗ ' +
-      'со статусом "не сдано" или "на доработке" (submit-homework-button не найден ни на одной ' +
-      'карточке). Переведите любую проверенную работу демо-ученика в "На доработку" через UI и перезапустите.',
+      'со статусом "не сдано" или "на доработке", и в очереди учителя нет висящей "submitted" ' +
+      'сдачи от этого ученика для авто-восстановления. Починка данных вручную не нужна — ' +
+      'разберись, почему self-heal не сработал.',
     )
   }
 
@@ -167,15 +157,42 @@ async function createStudentSubmission(page: Page): Promise<ReviewTarget> {
   if (!homeworkTitle) throw new Error('Не удалось определить заголовок ДЗ для e2e smoke')
 
   await candidateCard.getByTestId('submit-homework-button').click()
-  await expect(page.getByTestId('submit-homework-modal')).toBeVisible({ timeout: 10_000 })
-  await page.getByTestId('submit-homework-file-input').setInputFiles(REVIEW_FIXTURE)
-  await page.getByTestId('submit-homework-submit').click()
-  await expect(page.locator('text=Работа отправлена')).toBeVisible({ timeout: 15_000 })
+  await expect(studentPage.getByTestId('submit-homework-modal')).toBeVisible({ timeout: 10_000 })
+  // Two files (PDF + JPG) — the whole point of this smoke is to prove the
+  // continuous multi-file strip, not the single-file path.
+  await studentPage.getByTestId('submit-homework-file-input').setInputFiles([REVIEW_FIXTURE_PDF, REVIEW_FIXTURE_JPG])
+  await studentPage.getByTestId('submit-homework-submit').click()
+  await expect(studentPage.locator('text=Работа отправлена')).toBeVisible({ timeout: 15_000 })
 
-  return {
-    studentName: STUDENT_NAME,
-    homeworkTitle,
-  }
+  const target: ReviewTarget = { studentName: STUDENT_NAME, homeworkTitle }
+  await teacherPage.goto('/inbox')
+  await teacherPage.getByTestId('queue-tab-pending').click()
+  await expect(queueItemByTarget(teacherPage, target)).toBeVisible({ timeout: 20_000 })
+  return target
+}
+
+async function healStuckSubmission(teacherPage: Page): Promise<boolean> {
+  await teacherPage.goto('/inbox')
+  await teacherPage.getByTestId('queue-tab-pending').click()
+  await teacherPage.waitForLoadState('networkidle')
+
+  const stuck = teacherPage.getByTestId('queue-item').filter({
+    has: teacherPage.getByTestId('queue-item-student').filter({ hasText: STUDENT_NAME }),
+  }).first()
+  const found = await stuck.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false)
+  if (!found) return false
+
+  await stuck.click()
+  await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
+  await scrollToGradingCard(teacherPage)
+  await teacherPage.getByTestId('student-review-revision-button').click()
+  await expect(teacherPage.locator('text=Отправлено на доработку')).toBeVisible({ timeout: 15_000 })
+  await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
+  return true
+}
+
+function secondFileOverlayLocator(page: Page): Locator {
+  return page.locator('[data-surface-key="2:1"]').locator('svg[data-testid^="review-overlay-"]')
 }
 
 async function openQueueReview(page: Page, target: ReviewTarget) {
@@ -185,13 +202,6 @@ async function openQueueReview(page: Page, target: ReviewTarget) {
   await expect(item).toBeVisible({ timeout: 20_000 })
   await item.click()
   await page.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
-}
-
-async function targetFromQueueItem(item: Locator): Promise<ReviewTarget> {
-  const studentName = ((await item.getByTestId('queue-item-student').textContent()) || '').trim()
-  const homeworkTitle = ((await item.getByTestId('queue-item-homework').textContent()) || '').trim()
-  if (!studentName || !homeworkTitle) throw new Error('Не удалось считать данные queue item для e2e smoke')
-  return { studentName, homeworkTitle }
 }
 
 function queueItemByTarget(page: Page, target: ReviewTarget) {
@@ -222,9 +232,25 @@ async function scrollToGradingCard(page: Page) {
   await expect(card).toBeVisible({ timeout: 15_000 })
 }
 
+// Image surfaces don't know their aspect ratio until the <img> decodes
+// (onLoad sets it), so the placeholder box reflows out from under a drag
+// that started against the pre-load estimate. Poll until two consecutive
+// reads agree before trusting the box for mouse coordinates.
+async function stableBoundingBox(locator: Locator, attempts = 15, intervalMs = 200) {
+  let previous: { x: number; y: number; width: number; height: number } | null = null
+  for (let i = 0; i < attempts; i += 1) {
+    const box = await locator.boundingBox()
+    if (box && previous && box.x === previous.x && box.y === previous.y && box.width === previous.width && box.height === previous.height) {
+      return box
+    }
+    previous = box
+    await locator.page().waitForTimeout(intervalMs)
+  }
+  throw new Error('Bounding box оверлея не стабилизировался — вёрстка продолжает сдвигаться')
+}
+
 async function drawRegion(overlay: Locator) {
-  const box = await overlay.boundingBox()
-  if (!box) throw new Error('Не удалось получить размеры overlay для region drag')
+  const box = await stableBoundingBox(overlay)
 
   const startX = box.x + box.width * 0.2
   const startY = box.y + box.height * 0.2
