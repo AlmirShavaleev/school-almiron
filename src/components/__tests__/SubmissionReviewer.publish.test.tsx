@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('@/store/toastStore', () => ({ toast: { error: toastError } }))
 
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }))
 
@@ -49,6 +51,7 @@ describe('SubmissionReviewer.publish() — onPublishComplete on every exit path'
     upsertResult = { error: null }
     updateResult = { error: null }
     fromSpy.mockReset()
+    toastError.mockReset()
     fromSpy.mockImplementation((table: string) => table === 'annotation_sets' ? makeAnnotationTable() : makeAnnotationTable())
   })
 
@@ -82,6 +85,38 @@ describe('SubmissionReviewer.publish() — onPublishComplete on every exit path'
 
     fireEvent.click(screen.getByText('Опубликовать проверку'))
     await waitFor(() => expect(onPublishComplete).toHaveBeenCalledWith(false))
+  })
+
+  it('shows a permission-specific toast on annotation save RLS denial', async () => {
+    selectResult = {
+      data: [{
+        page: 1,
+        data: { version: 2, objects: [{ id: 'r1', type: 'region', rect: { x: 0.1, y: 0.2, w: 0.3, h: 0.2 }, category: 'calc', text: 'Ошибка в вычислениях' }] },
+        status: 'draft',
+      }],
+      error: null,
+    }
+    upsertResult = { error: { code: '42501', message: 'new row violates row-level security policy for table "annotation_sets"' } }
+    await renderAndWaitReady()
+
+    fireEvent.click(screen.getByText('Опубликовать проверку'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Нет прав на сохранение проверки'))
+  })
+
+  it('shows a retry/network toast on non-permission annotation save failure', async () => {
+    selectResult = {
+      data: [{
+        page: 1,
+        data: { version: 2, objects: [{ id: 'r1', type: 'region', rect: { x: 0.1, y: 0.2, w: 0.3, h: 0.2 }, category: 'logic', text: 'Пропущен шаг' }] },
+        status: 'draft',
+      }],
+      error: null,
+    }
+    upsertResult = { error: { message: 'fetch failed' } }
+    await renderAndWaitReady()
+
+    fireEvent.click(screen.getByText('Опубликовать проверку'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку. Проверьте соединение и попробуйте ещё раз'))
   })
 
   it('calls onPublishComplete(false) when final status update fails', async () => {

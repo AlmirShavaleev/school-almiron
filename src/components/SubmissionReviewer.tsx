@@ -88,6 +88,20 @@ const normalizeRect = (start: Point, end: Point): Rect => ({
   h: Math.abs(end.y - start.y),
 })
 const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
+const isPermissionError = (error: unknown) => {
+  const candidate = error as { code?: string; status?: number; message?: string; details?: string; hint?: string } | null
+  const text = `${candidate?.message || ''} ${candidate?.details || ''} ${candidate?.hint || ''}`.toLowerCase()
+  return candidate?.status === 403
+    || candidate?.code === '42501'
+    || text.includes('row-level security')
+    || text.includes('permission denied')
+    || text.includes('insufficient_privilege')
+}
+const getSaveErrorMessage = (error: unknown) => (
+  isPermissionError(error)
+    ? 'Нет прав на сохранение проверки'
+    : 'Не удалось сохранить проверку. Проверьте соединение и попробуйте ещё раз'
+)
 
 export function SubmissionReviewer({
   submissionId,
@@ -360,7 +374,7 @@ export function SubmissionReviewer({
       setSaveState(saveError ? 'error' : 'saved')
       if (saveError) {
         console.error('Не удалось сохранить аннотации', saveError)
-        toast.error('Не удалось сохранить проверку')
+        toast.error(getSaveErrorMessage(saveError))
         return false
       }
       setPublished(false)

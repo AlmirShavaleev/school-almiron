@@ -364,6 +364,6 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Проверь ещё раз' } })
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку. Проверьте соединение и попробуйте ещё раз'))
   })
 })
