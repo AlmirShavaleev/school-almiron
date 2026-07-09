@@ -63,6 +63,7 @@ export function HomeworkQueuePage() {
         <button
           type="button"
           onClick={() => setMode('pending')}
+          data-testid="queue-tab-pending"
           className={cn(
             'min-h-11 rounded-xl border px-4 py-2 text-sm font-medium transition-colors',
             mode === 'pending' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
@@ -73,6 +74,7 @@ export function HomeworkQueuePage() {
         <button
           type="button"
           onClick={() => { setMode('checked'); setCheckedLimit(CHECKED_PAGE_SIZE) }}
+          data-testid="queue-tab-checked"
           className={cn(
             'min-h-11 rounded-xl border px-4 py-2 text-sm font-medium transition-colors',
             mode === 'checked' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',

@@ -114,7 +114,7 @@ export function SubmitHomeworkModal({
   if (!open || !homework) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div data-testid="submit-homework-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md z-10">
 
@@ -183,6 +183,7 @@ export function SubmitHomeworkModal({
               Текстовый ответ
             </label>
             <textarea
+              data-testid="submit-homework-text"
               rows={4}
               value={content}
               onChange={e => { setContent(e.target.value); setError('') }}
@@ -218,6 +219,7 @@ export function SubmitHomeworkModal({
               </button>
             )}
             <input
+              data-testid="submit-homework-file-input"
               ref={fileRef}
               type="file"
               accept=".pdf,.png,.jpg,.jpeg"
@@ -235,7 +237,7 @@ export function SubmitHomeworkModal({
             <Button type="button" variant="secondary" className="flex-1" onClick={onClose} disabled={uploading}>
               Отмена
             </Button>
-            <Button className="flex-1" onClick={handleSubmit} loading={uploading}>
+            <Button data-testid="submit-homework-submit" className="flex-1" onClick={handleSubmit} loading={uploading}>
               {uploading ? 'Загрузка…' : isResubmit ? 'Отправить пересдачу' : 'Отправить'}
             </Button>
           </div>

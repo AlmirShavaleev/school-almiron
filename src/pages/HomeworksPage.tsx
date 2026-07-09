@@ -131,6 +131,8 @@ export function HomeworksPage() {
               return (
                 <div
                   key={hw.id}
+                  data-testid="homework-card"
+                  data-homework-id={hw.id}
                   className={cn(
                     'p-5 rounded-xl border transition-all hover:shadow-sm',
                     overdue && status === 'not_submitted'
@@ -202,13 +204,19 @@ export function HomeworksPage() {
                             </span>
                           )}
                           {status === 'checked' && hw._sub?.id && hw._sub?.file_url && (
-                            <Button size="sm" variant="secondary" onClick={() => setStudentReview({ id: hw._sub.id, title: hw.title, file_url: hw._sub.file_url })}>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              data-testid="view-review-button"
+                              onClick={() => setStudentReview({ id: hw._sub.id, title: hw.title, file_url: hw._sub.file_url })}
+                            >
                               Посмотреть проверку
                             </Button>
                           )}
                           {(status === 'not_submitted' || status === 'revision') && (
                             <Button
                               size="sm"
+                              data-testid="submit-homework-button"
                               onClick={() => setSubmitTarget({
                                 id: hw.id, title: hw.title, max_score: hw.max_score, file_url: hw.file_url,
                                 isResubmit:      status === 'revision',

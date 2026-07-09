@@ -440,7 +440,7 @@ export function SubmissionReviewer({
         </div>
         {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
           {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-          <button type="button" onClick={triggerPublish} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+          <button type="button" data-testid="review-toolbar-publish-button" onClick={triggerPublish} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
         </div>}
       </div>
     </div>
@@ -621,33 +621,33 @@ function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onAc
 function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft | null>>; onSave: () => void; onCancel: () => void }) {
   const category = CATEGORIES[draft.category]
   const canSave = draft.category === 'praise' || draft.text.trim().length > 0
-  return <div className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
+  return <div data-testid="comment-editor" className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
       <div>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Комментарий к области</div>
         <div className="grid grid-cols-2 gap-2">
           {(Object.keys(CATEGORIES) as Category[]).map(value => {
             const item = CATEGORIES[value]
-            return <button key={value} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
+            return <button key={value} data-testid={`comment-category-${value}`} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
               <span className="mr-1 font-bold" style={{ color: item.color }}>{item.short}</span>{item.label}
             </button>
           })}
         </div>
       </div>
       {category.phrases.length > 0 && <div className="flex flex-wrap gap-2">
-        {category.phrases.map(phrase => <button key={phrase} type="button" onClick={() => setDraft(current => current && { ...current, text: phrase })} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">{phrase}</button>)}
+        {category.phrases.map(phrase => <button key={phrase} data-testid="comment-phrase-button" type="button" onClick={() => setDraft(current => current && { ...current, text: phrase })} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">{phrase}</button>)}
       </div>}
-      <textarea autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className="min-h-28 resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500"/>
+      <textarea data-testid="comment-editor-text" autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className="min-h-28 resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500"/>
     </div>
     <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 p-3">
-      <button type="button" onClick={onCancel} className="min-h-10 rounded-lg bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">Отмена</button>
-      <button type="button" onClick={onSave} disabled={!canSave} className="min-h-10 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition-[transform,background-color] hover:bg-slate-800 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40">Сохранить</button>
+      <button data-testid="comment-editor-cancel" type="button" onClick={onCancel} className="min-h-10 rounded-lg bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">Отмена</button>
+      <button data-testid="comment-editor-save" type="button" onClick={onSave} disabled={!canSave} className="min-h-10 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition-[transform,background-color] hover:bg-slate-800 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40">Сохранить</button>
     </div>
   </div>
 }
 
 function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { regions: RegionItem[]; readOnly: boolean; activeId: string | null; onActivate: (item: RegionItem) => void; onDelete: (item: RegionItem) => void }) {
-  return <div className="flex min-h-0 flex-1 flex-col">
+  return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
     <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-3">
       <div className="text-sm font-semibold text-slate-800">Комментарии</div>
       <div className="rounded-full bg-slate-100 px-2 py-1 text-xs tabular-nums text-slate-500">{regions.length}</div>
@@ -655,7 +655,7 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { re
     {regions.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
       {regions.map(item => {
         const category = CATEGORIES[item.category]
-        return <div key={item.id} onMouseEnter={() => onActivate(item)} className={cn('group mb-2 rounded-lg p-2 ring-1 transition-[background-color,box-shadow]', activeId === item.id ? `${category.bg} ${category.ring} ring-2` : 'bg-white ring-slate-200 hover:bg-slate-50')}>
+        return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onActivate(item)} className={cn('group mb-2 rounded-lg p-2 ring-1 transition-[background-color,box-shadow]', activeId === item.id ? `${category.bg} ${category.ring} ring-2` : 'bg-white ring-slate-200 hover:bg-slate-50')}>
           <button type="button" onClick={() => onActivate(item)} className="block w-full text-left">
             <div className="mb-1 flex items-center gap-2 text-xs">
               <span className="rounded-md px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: category.color }}>{category.short}</span>

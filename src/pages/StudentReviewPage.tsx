@@ -232,6 +232,7 @@ export function StudentReviewPage() {
   const reviewHeader = (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <button
+        data-testid="student-review-back-button"
         onClick={() => navigate(fromQueue ? '/inbox' : groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
         className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
       >
@@ -322,6 +323,7 @@ export function StudentReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <input
+            data-testid="student-review-score-input"
             ref={scoreInputRef}
             type="number"
             min={0}
@@ -445,7 +447,7 @@ export function StudentReviewPage() {
           <Button size="sm" variant="secondary" onClick={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))} loading={saving}>
             <RotateCcw size={14} className="mr-1" />На доработку
           </Button>
-          <Button size="sm" onClick={triggerPublish} loading={publishing}>
+          <Button data-testid="student-review-publish-button" size="sm" onClick={triggerPublish} loading={publishing}>
             <CheckCircle size={14} className="mr-1" />{published ? 'Опубликовать снова' : 'Опубликовать проверку'}
           </Button>
         </div>

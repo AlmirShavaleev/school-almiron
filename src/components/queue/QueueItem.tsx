@@ -34,6 +34,10 @@ export function QueueItem({ item }: { item: QItem }) {
 
   return (
     <div
+      data-testid="queue-item"
+      data-source={item.source}
+      data-status={item.status}
+      data-submission-id={item.submissionId}
       role="button"
       tabIndex={0}
       onClick={() => navigate(
@@ -55,7 +59,7 @@ export function QueueItem({ item }: { item: QItem }) {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-900 truncate">{item.student.name}</span>
+          <span data-testid="queue-item-student" className="text-sm font-semibold text-gray-900 truncate">{item.student.name}</span>
           <span className={cn(
             'inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0',
             isCheckedView ? reviewStatus.chip : st?.chip,
@@ -63,7 +67,7 @@ export function QueueItem({ item }: { item: QItem }) {
             {isCheckedView ? reviewStatus.icon : st?.icon}{isCheckedView ? reviewStatus.label : st?.label}
           </span>
         </div>
-        <div className="text-xs text-gray-500 truncate mt-0.5">
+        <div data-testid="queue-item-homework" className="text-xs text-gray-500 truncate mt-0.5">
           {item.homework.title}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
