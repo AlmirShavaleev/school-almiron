@@ -59,6 +59,7 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await openQueueReview(teacherPage, target)
   await expect(teacherPage.getByTestId('comment-list-item').filter({ hasText: COMMENT_TEXT })).toBeVisible()
 
+  await scrollToGradingCard(teacherPage)
   await teacherPage.getByTestId('student-review-score-input').fill('85')
   await teacherPage.getByTestId('student-review-publish-button').click()
   await expect(teacherPage.locator('text=Проверка опубликована')).toBeVisible({ timeout: 15_000 })
@@ -184,6 +185,26 @@ function queueItemByTarget(page: Page, target: ReviewTarget) {
   }).filter({
     has: page.getByTestId('queue-item-homework').filter({ hasText: target.homeworkTitle }),
   }).first()
+}
+
+async function scrollToGradingCard(page: Page) {
+  const scrollArea = page.getByTestId('review-document-scroll-area')
+  const card = page.getByTestId('student-review-score-input')
+  await expect(scrollArea).toBeVisible()
+  // The document strip only renders each PDF page's canvas as it scrolls
+  // into view (IntersectionObserver-driven), and the grading card sits
+  // past the last page. Step the scroll container down until the card
+  // shows up, or until it stops moving (fully scrolled) — either way we
+  // then wait on the card itself so a slow last-page render can't race us.
+  for (let i = 0; i < 20; i += 1) {
+    if (await card.isVisible().catch(() => false)) break
+    const before = await scrollArea.evaluate(el => el.scrollTop)
+    await scrollArea.evaluate(el => { el.scrollTop = el.scrollHeight })
+    await page.waitForTimeout(150)
+    const after = await scrollArea.evaluate(el => el.scrollTop)
+    if (after === before && i > 0) break
+  }
+  await expect(card).toBeVisible({ timeout: 15_000 })
 }
 
 async function drawRegion(overlay: Locator) {
