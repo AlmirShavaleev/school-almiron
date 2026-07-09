@@ -24,6 +24,7 @@ vi.mock('@/lib/storage', () => ({
 
 let selectResult: { data: unknown; error: unknown } = { data: [], error: null }
 let lastUpsert: any = null
+let upsertDeferred: { promise: Promise<{ error: unknown }>; resolve: (value: { error: unknown }) => void } | null = null
 const fromSpy = vi.fn()
 const scrollIntoViewSpy = vi.fn()
 const observedElements: Element[] = []
@@ -41,7 +42,11 @@ function makeAnnotationTable() {
   const readChain: any = { eq: () => readChain, then: (res: any) => Promise.resolve(selectResult).then(res) }
   return {
     select: () => readChain,
-    upsert: (payload: any) => { lastUpsert = payload; return Promise.resolve({ error: upsertError }) },
+    upsert: (payload: any) => {
+      lastUpsert = payload
+      if (upsertDeferred) return upsertDeferred.promise
+      return Promise.resolve({ error: upsertError })
+    },
     update: () => ({ eq: () => Promise.resolve({ error: null }) }),
   }
 }
@@ -108,6 +113,7 @@ describe('SubmissionReviewer regions', () => {
   beforeEach(() => {
     selectResult = { data: [], error: null }
     lastUpsert = null
+    upsertDeferred = null
     upsertError = null
     observedElements.length = 0
     scrollIntoViewSpy.mockReset()
@@ -132,7 +138,7 @@ describe('SubmissionReviewer regions', () => {
     expect(screen.getByTestId('review-canvas-2')).toBeInTheDocument()
   })
 
-  it('drag on the second page creates a region comment with page=2 and version 2 data', async () => {
+  it('drag on the second page creates a region comment with page=2 and version 2 data, persisted immediately (no debounce wait)', async () => {
     await renderReady()
     dragRegion(2, 0.1, 0.2, 0.4, 0.5)
 
@@ -140,7 +146,8 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Проверь решение' } })
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    await waitFor(() => expect(lastUpsert?.page).toBe(2), { timeout: 2500 })
+    // No 2s debounce anymore — an explicit "Сохранить" persists right away.
+    await waitFor(() => expect(lastUpsert?.page).toBe(2))
     expect(lastUpsert.data.objects[0]).toMatchObject({
       type: 'region',
       text: 'Проверь решение',
@@ -273,7 +280,7 @@ describe('SubmissionReviewer regions', () => {
     expect(scrollIntoViewSpy.mock.calls.at(-1)?.[0]).toMatchObject({ block: 'center', behavior: 'smooth' })
   })
 
-  it('flushes a pending unsaved comment on unmount instead of losing it to the cancelled 2s debounce', async () => {
+  it('"Сохранить" persists before the draft even finishes closing — no window where navigating away loses it', async () => {
     const { unmount } = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
     await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
@@ -282,12 +289,71 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Ушёл быстро' } })
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    // Well under the 2000ms debounce — the timer has not fired yet.
-    expect(lastUpsert).toBeNull()
-
-    unmount()
-
+    // No debounce to wait out — the upsert is already in flight.
     await waitFor(() => expect(lastUpsert?.data?.objects?.[0]?.text).toBe('Ушёл быстро'))
+    expect(lastUpsert.page).toBe(1)
+
+    // Unmounting right after (e.g. teacher clicks "Назад") doesn't matter —
+    // the save already happened, there's nothing left to lose.
+    unmount()
+  })
+
+  it('awaits explicit Save before closing the editor, and a remount waits for that in-flight save before loading', async () => {
+    let resolveUpsert!: (value: { error: unknown }) => void
+    upsertDeferred = {
+      promise: new Promise<{ error: unknown }>(resolve => { resolveUpsert = resolve }),
+      resolve: resolveUpsert,
+    }
+
+    const first = render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
+    await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())
+
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Жду реальный upsert' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => expect(lastUpsert?.data?.objects?.[0]?.text).toBe('Жду реальный upsert'))
+    expect(screen.getByText('Комментарий к области')).toBeInTheDocument()
+    expect(screen.getByTestId('comment-editor-text')).toHaveValue('Жду реальный upsert')
+
+    first.unmount()
+
+    selectResult = {
+      data: [{
+        page: 1,
+        status: 'draft',
+        data: {
+          version: 2,
+          objects: [{ id: 'saved-region', type: 'region', rect: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 }, category: 'comment', text: 'Жду реальный upsert' }],
+        },
+      }],
+      error: null,
+    }
+
+    render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" />)
+    await Promise.resolve()
+    expect(screen.queryByText('Жду реальный upsert')).not.toBeInTheDocument()
+
+    resolveUpsert({ error: null })
+
+    await waitFor(() => expect(screen.getByText('Жду реальный upsert')).toBeInTheDocument())
+    upsertDeferred = null
+  })
+
+  it('deleting a comment persists immediately too', async () => {
+    selectResult = {
+      data: [{
+        page: 1, status: 'draft',
+        data: { version: 2, objects: [{ id: 'r1', type: 'region', rect: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 }, category: 'comment', text: 'убрать меня' }] },
+      }],
+      error: null,
+    }
+    await renderReady()
+    expect(await screen.findByText('убрать меня')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить комментарий' }))
+
+    await waitFor(() => expect(lastUpsert?.data?.objects).toEqual([]))
     expect(lastUpsert.page).toBe(1)
   })
 
@@ -298,6 +364,6 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Проверь ещё раз' } })
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку'), { timeout: 2500 })
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Не удалось сохранить проверку'))
   })
 })

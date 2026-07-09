@@ -58,6 +58,7 @@ const CATEGORIES: Record<Category, { label: string; short: string; color: string
 
 const id = () => crypto.randomUUID()
 const isRegion = (mark: Mark): mark is Region => mark.type === 'region'
+const inflightPageSaves = new Map<string, Promise<boolean>>()
 const cleanData = (data: unknown): PageData => {
   const value = data as { objects?: unknown[] } | null
   return { version: 2, objects: Array.isArray(value?.objects) ? value.objects as Mark[] : [] }
@@ -83,12 +84,12 @@ export function SubmissionReviewer({
   onPublishComplete,
 }: Props) {
   const path = useMemo(() => extractStoragePath(filePath, 'homeworks') ?? filePath, [filePath])
+  const persistenceKey = useMemo(() => `${submissionId}:${path}`, [path, submissionId])
   const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
   const isPdf = ext === 'pdf'
   const isImage = ['png', 'jpg', 'jpeg'].includes(ext ?? '')
   const frameRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragStartRef = useRef<{ page: number; point: Point } | null>(null)
 
   const [url, setUrl] = useState<string | null>(null)
@@ -102,7 +103,6 @@ export function SubmissionReviewer({
   const [imageRatio, setImageRatio] = useState(1 / 1.414)
   const [pageMetrics, setPageMetrics] = useState<Record<number, PageMetrics>>({})
   const [pages, setPages] = useState<Record<number, PageData>>({})
-  const [dirty, setDirty] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle')
   const [publishing, setPublishing] = useState(false)
@@ -146,18 +146,29 @@ export function SubmissionReviewer({
 
   useEffect(() => {
     let active = true
-    const query = (supabase as any).from('annotation_sets').select('page,data,status')
-      .eq('submission_id', submissionId).eq('file_path', path)
-    if (readOnly) query.eq('status', 'published')
-    query.then(({ data }: { data: Row[] | null }) => {
+    ;(async () => {
+      const pending = inflightPageSaves.get(persistenceKey)
+      if (pending) {
+        try {
+          await pending
+        } catch {
+          // savePage already reports persistence failures
+        }
+      }
+      if (!active) return
+
+      const query = (supabase as any).from('annotation_sets').select('page,data,status')
+        .eq('submission_id', submissionId).eq('file_path', path)
+      if (readOnly) query.eq('status', 'published')
+      const { data } = await query as { data: Row[] | null }
       if (!active) return
       const next: Record<number, PageData> = {}
       for (const row of data ?? []) next[row.page] = cleanData(row.data)
       setPages(next)
       setPublished((data ?? []).some(row => row.status === 'published'))
-    })
+    })()
     return () => { active = false }
-  }, [path, readOnly, submissionId])
+  }, [path, persistenceKey, readOnly, submissionId])
 
   useEffect(() => {
     if (!isPdf || !url) return
@@ -238,81 +249,52 @@ export function SubmissionReviewer({
     return () => observer.disconnect()
   }, [isPdf, pageCount, pageMetrics])
 
+  // Every mutation (saveDraft, deleteRegion) is an explicit user action and
+  // persists immediately through this — no debounce, no "dirty" queue.
+  // There used to be one: edits were batched and flushed 2s after the last
+  // change, which meant an explicit "Сохранить" click could still be
+  // sitting unsent when the teacher navigated away right after. Debouncing
+  // makes sense for high-frequency background sync, not for the one moment
+  // the user directly told us to save.
   const savePage = useCallback(async (number: number, data: PageData) => {
     if (readOnly) return true
-    setSaving(true)
-    setSaveState('idle')
-    const { error: saveError } = await (supabase as any).from('annotation_sets').upsert({
-      submission_id: submissionId,
-      file_path: path,
-      page: number,
-      data: { ...data, version: 2 },
-      status: 'draft',
-    }, { onConflict: 'submission_id,file_path,page' })
-    setSaving(false)
-    setSaveState(saveError ? 'error' : 'saved')
-    if (saveError) {
-      console.error('Не удалось сохранить аннотации', saveError)
-      toast.error('Не удалось сохранить проверку')
-    }
-    if (!saveError) {
+    const previous = inflightPageSaves.get(persistenceKey)
+    const persist = (async () => {
+      if (previous) {
+        try {
+          await previous
+        } catch {
+          // let the newer explicit save still run
+        }
+      }
+      setSaving(true)
+      setSaveState('idle')
+      const { error: saveError } = await (supabase as any).from('annotation_sets').upsert({
+        submission_id: submissionId,
+        file_path: path,
+        page: number,
+        data: { ...data, version: 2 },
+        status: 'draft',
+      }, { onConflict: 'submission_id,file_path,page' })
+      setSaving(false)
+      setSaveState(saveError ? 'error' : 'saved')
+      if (saveError) {
+        console.error('Не удалось сохранить аннотации', saveError)
+        toast.error('Не удалось сохранить проверку')
+        return false
+      }
       setPublished(false)
-      setDirty(value => {
-        const next = new Set(value)
-        next.delete(number)
-        return next
-      })
-    }
-    return !saveError
-  }, [path, readOnly, submissionId])
-
-  useEffect(() => {
-    if (readOnly || !dirty.size) return
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      void Promise.all([...dirty].map(number => savePage(number, pages[number] ?? EMPTY)))
-    }, 2000)
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
-  }, [dirty, pages, readOnly, savePage])
-
-  // The debounce above only fires 2s after the last edit. If the reviewer
-  // unmounts before then (teacher clicks "Назад"/prev/next within that
-  // window — an easy, fast, completely normal thing to do right after
-  // saving a comment), the pending setTimeout gets cleared by the effect
-  // cleanup above and that edit is silently lost — never sent, never
-  // retried, no error either. Flush whatever's still dirty straight to
-  // Supabase on unmount so leaving fast never drops data. Refs (not state)
-  // because this must read the LATEST pages/dirty at the moment of
-  // unmount, not whatever they were when this effect last ran.
-  const pagesRef = useRef(pages)
-  const dirtyRef = useRef(dirty)
-  useEffect(() => { pagesRef.current = pages }, [pages])
-  useEffect(() => { dirtyRef.current = dirty }, [dirty])
-  useEffect(() => {
-    return () => {
-      if (readOnly || !dirtyRef.current.size) return
-      for (const number of dirtyRef.current) {
-        void (supabase as any).from('annotation_sets').upsert({
-          submission_id: submissionId,
-          file_path: path,
-          page: number,
-          data: { ...(pagesRef.current[number] ?? EMPTY), version: 2 },
-          status: 'draft',
-        }, { onConflict: 'submission_id,file_path,page' }).then(({ error }: { error: unknown }) => {
-          if (error) {
-            console.error('Не удалось сохранить аннотации при закрытии', error)
-            toast.error('Не удалось сохранить проверку')
-          }
-        })
+      return true
+    })()
+    inflightPageSaves.set(persistenceKey, persist)
+    try {
+      return await persist
+    } finally {
+      if (inflightPageSaves.get(persistenceKey) === persist) {
+        inflightPageSaves.delete(persistenceKey)
       }
     }
-  }, [path, readOnly, submissionId])
-
-  function commit(number: number, next: PageData) {
-    setPages(value => ({ ...value, [number]: { ...next, version: 2 } }))
-    setDirty(value => new Set(value).add(number))
-    setSaveState('idle')
-  }
+  }, [path, persistenceKey, readOnly, submissionId])
 
   function pointerDown(pageNumber: number, event: React.PointerEvent<SVGSVGElement>) {
     if (readOnly || draft) return
@@ -352,20 +334,34 @@ export function SubmissionReviewer({
     setDraft({ page: pageNumber, rect: nextRect, category: 'comment', text: '' })
   }
 
-  function saveDraft() {
+  // Explicit user actions (Сохранить / delete) persist immediately, awaited
+  // — never queued behind the 2s debounce. The debounce exists to coalesce
+  // rapid-fire edits into fewer writes; it was never meant to be the ONLY
+  // path for something the user just told us, in words, to save right now.
+  // Waiting on a timer for an explicit "Сохранить" click left a window
+  // where a fast "Сохранить → Назад" lost the comment outright (the
+  // in-flight fetch itself isn't cancelled by an SPA route change, so this
+  // closes the window almost entirely — see commit message for the residual).
+  async function saveDraft() {
     if (!draft) return
     const text = draft.text.trim()
     if (!text && draft.category !== 'praise') return
     const region: Region = { id: id(), type: 'region', rect: draft.rect, category: draft.category, text }
     const pageData = pages[draft.page] ?? EMPTY
-    commit(draft.page, pageWithVersion([...pageData.objects, region]))
+    const nextData = pageWithVersion([...pageData.objects, region])
+    const ok = await savePage(draft.page, nextData)
+    if (!ok) return
+    setPages(value => ({ ...value, [draft.page]: nextData }))
     setActiveId(region.id)
     setDraft(null)
   }
 
-  function deleteRegion(item: RegionItem) {
+  async function deleteRegion(item: RegionItem) {
     const pageData = pages[item.page] ?? EMPTY
-    commit(item.page, pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id)))
+    const nextData = pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id))
+    const ok = await savePage(item.page, nextData)
+    if (!ok) return
+    setPages(value => ({ ...value, [item.page]: nextData }))
     if (activeId === item.id) setActiveId(null)
   }
 
@@ -382,8 +378,10 @@ export function SubmissionReviewer({
       onPublishComplete?.(false)
       return
     }
-    const numbers = new Set([...dirty, ...Object.keys(pages).map(Number)])
-    const ok = await Promise.all([...numbers].map(number => savePage(number, pages[number] ?? EMPTY)))
+    // Every edit is already persisted by the time it's made (saveDraft/
+    // deleteRegion await savePage immediately) — this re-save is just a
+    // belt-and-suspenders confirmation pass, not catching up on a backlog.
+    const ok = await Promise.all(Object.keys(pages).map(number => savePage(Number(number), pages[Number(number)] ?? EMPTY)))
     if (!ok.every(Boolean)) {
       setPublishing(false)
       onPublishComplete?.(false)
