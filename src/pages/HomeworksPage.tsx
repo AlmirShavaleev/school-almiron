@@ -37,7 +37,7 @@ export function HomeworksPage() {
   // Modals
   const [submitTarget,  setSubmitTarget]  = useState<{
     id: string; title: string; max_score: number; file_url?: string
-    isResubmit?: boolean; previousAnswer?: string | null; previousFileUrl?: string | null; feedback?: string | null
+    isResubmit?: boolean; previousFileUrl?: string | null; feedback?: string | null
   } | null>(null)
   const [studentReview, setStudentReview] = useState<{ id: string; title: string; file_url: string } | null>(null)
   const [assignTarget, setAssignTarget] = useState<{ id: string; title: string; topic_id?: string | null; max_score?: number | null } | null>(null)
@@ -220,7 +220,6 @@ export function HomeworksPage() {
                               onClick={() => setSubmitTarget({
                                 id: hw.id, title: hw.title, max_score: hw.max_score, file_url: hw.file_url,
                                 isResubmit:      status === 'revision',
-                                previousAnswer:  hw._sub?.answer_text ?? null,
                                 previousFileUrl: hw._sub?.file_url ?? null,
                                 feedback:        hw._sub?.feedback ?? null,
                               })}
@@ -266,7 +265,6 @@ export function HomeworksPage() {
         homework={submitTarget}
         studentId={studentId}
         isResubmit={submitTarget?.isResubmit}
-        previousAnswer={submitTarget?.previousAnswer}
         previousFileUrl={submitTarget?.previousFileUrl}
         feedback={submitTarget?.feedback}
       />

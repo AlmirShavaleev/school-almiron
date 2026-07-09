@@ -12,34 +12,43 @@ interface Props {
   homework: { id: string; title: string; max_score: number; file_url?: string } | null
   studentId: string | null
   isResubmit?: boolean
-  previousAnswer?: string | null
   previousFileUrl?: string | null
   feedback?: string | null
 }
 
 export function SubmitHomeworkModal({
   open, onClose, onSubmitted, homework, studentId,
-  isResubmit = false, previousAnswer = null, previousFileUrl = null, feedback = null,
+  isResubmit = false, previousFileUrl = null, feedback = null,
 }: Props) {
-  const [content, setContent]     = useState('')
   const [file, setFile]           = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError]         = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Prefill with the previous answer when reopening for a resubmission
   useEffect(() => {
     if (!open) return
-    setContent(isResubmit ? (previousAnswer || '') : '')
     setFile(null)
     setError('')
-  }, [open, isResubmit, previousAnswer])
+  }, [open])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
+    const ext = f.name.split('.').pop()?.toLowerCase() || ''
+    const mime = f.type.toLowerCase()
+    if (ext === 'heic' || ext === 'heif' || mime.includes('heic') || mime.includes('heif')) {
+      setError('Сохраните как JPG или PDF')
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
+    if (!['pdf', 'png', 'jpg', 'jpeg'].includes(ext)) {
+      setError('Поддерживаются только PDF, JPG и PNG')
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
     if (f.size > 10 * 1024 * 1024) {
       setError('Файл слишком большой. Максимум 10 МБ.')
+      if (fileRef.current) fileRef.current.value = ''
       return
     }
     setFile(f)
@@ -65,14 +74,14 @@ export function SubmitHomeworkModal({
 
   async function handleSubmit() {
     if (!homework || !studentId) return
-    if (!content.trim() && !file) {
-      setError('Введите ответ или прикрепите файл')
+    if (!file) {
+      setError('Прикрепите файл')
       return
     }
     setError('')
     setUploading(true)
     try {
-      let fileUrl: string | null = file ? await uploadFile() : (isResubmit ? previousFileUrl : null)
+      const fileUrl = await uploadFile()
 
       // RLS only allows a student to UPDATE their own submission while it's
       // in not_submitted/revision — if a teacher checked it in the meantime
@@ -84,7 +93,7 @@ export function SubmitHomeworkModal({
         .upsert({
           homework_id:  homework.id,
           student_id:   studentId,
-          answer_text:  content.trim() || null,
+          answer_text:  null,
           file_url:     fileUrl,
           status:       'submitted',
           score:        null,
@@ -99,7 +108,6 @@ export function SubmitHomeworkModal({
         return
       }
 
-      setContent('')
       setFile(null)
       toast.success(isResubmit ? 'Работа отправлена на повторную проверку' : 'Работа отправлена на проверку')
       onSubmitted()
@@ -177,25 +185,10 @@ export function SubmitHomeworkModal({
             </SignedFileLink>
           )}
 
-          {/* Text answer */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Текстовый ответ
-            </label>
-            <textarea
-              data-testid="submit-homework-text"
-              rows={4}
-              value={content}
-              onChange={e => { setContent(e.target.value); setError('') }}
-              placeholder="Введите ответ, решение или ссылку на Google Docs…"
-              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-            />
-          </div>
-
           {/* File upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Прикрепить файл{isResubmit && previousFileUrl ? ' (необязательно — заменит прошлый)' : ''}
+              Прикрепить файл
             </label>
             {file ? (
               <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
@@ -226,7 +219,7 @@ export function SubmitHomeworkModal({
               className="hidden"
               onChange={handleFileChange}
             />
-            <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG — до 10 МБ</p>
+            <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG — до 10 МБ. HEIC/HEIF не поддерживаются.</p>
           </div>
 
           {error && (

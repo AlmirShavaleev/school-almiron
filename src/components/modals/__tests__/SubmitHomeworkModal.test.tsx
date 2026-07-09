@@ -27,6 +27,8 @@ vi.mock('@/lib/supabase', () => ({
 import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 
 const homework = { id: 'hw-1', title: 'ДЗ', max_score: 100 }
+const pdfFile = new File(['pdf'], 'solution.pdf', { type: 'application/pdf' })
+const heicFile = new File(['heic'], 'photo.heic', { type: 'image/heic' })
 
 describe('SubmitHomeworkModal — resubmission after revision', () => {
   beforeEach(() => {
@@ -35,21 +37,26 @@ describe('SubmitHomeworkModal — resubmission after revision', () => {
     upsertResult = { data: [{ id: 'sub-1' }], error: null }
   })
 
-  it('prefills the previous answer, shows teacher feedback, and resets score/checked_by on resubmit', async () => {
+  it('requires a new file on resubmit, shows teacher feedback, and resets score/checked_by on resubmit', async () => {
     const onClose = vi.fn()
     const onSubmitted = vi.fn()
     render(
       <SubmitHomeworkModal
         open onClose={onClose} onSubmitted={onSubmitted}
         homework={homework} studentId="stud-1"
-        isResubmit previousAnswer="старый ответ" previousFileUrl={null}
+        isResubmit previousFileUrl={null}
         feedback="Нужно переделать формулу"
       />
     )
 
     expect(screen.getByText('Пересдать задание')).toBeInTheDocument()
     expect(screen.getByText('Нужно переделать формулу')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('старый ответ')).toBeInTheDocument()
+    expect(screen.queryByTestId('submit-homework-text')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Отправить пересдачу'))
+    await waitFor(() => expect(screen.getByText('Прикрепите файл')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
 
     fireEvent.click(screen.getByText('Отправить пересдачу'))
 
@@ -70,10 +77,11 @@ describe('SubmitHomeworkModal — resubmission after revision', () => {
       <SubmitHomeworkModal
         open onClose={onClose} onSubmitted={vi.fn()}
         homework={homework} studentId="stud-1"
-        isResubmit previousAnswer="старый ответ" previousFileUrl={null} feedback={null}
+        isResubmit previousFileUrl={null} feedback={null}
       />
     )
 
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
     fireEvent.click(screen.getByText('Отправить пересдачу'))
 
     await waitFor(() => expect(screen.getByText('Работа уже проверена, обнови страницу')).toBeInTheDocument())
@@ -90,10 +98,25 @@ describe('SubmitHomeworkModal — resubmission after revision', () => {
       />
     )
 
-    fireEvent.change(screen.getByPlaceholderText(/Введите ответ/), { target: { value: 'мой ответ' } })
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile] } })
     fireEvent.click(screen.getByText('Отправить'))
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
+  })
+
+  it('rejects HEIC files before upload with a friendly message', async () => {
+    render(
+      <SubmitHomeworkModal
+        open onClose={vi.fn()} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [heicFile] } })
+
+    await waitFor(() => expect(screen.getByText('Сохраните как JPG или PDF')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Отправить'))
+    expect(upsertSpy).not.toHaveBeenCalled()
   })
 })

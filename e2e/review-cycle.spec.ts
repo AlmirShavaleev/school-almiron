@@ -168,7 +168,6 @@ async function createStudentSubmission(page: Page): Promise<ReviewTarget> {
 
   await candidateCard.getByTestId('submit-homework-button').click()
   await expect(page.getByTestId('submit-homework-modal')).toBeVisible({ timeout: 10_000 })
-  await page.getByTestId('submit-homework-text').fill(`Smoke review cycle ${COMMENT_SUFFIX}`)
   await page.getByTestId('submit-homework-file-input').setInputFiles(REVIEW_FIXTURE)
   await page.getByTestId('submit-homework-submit').click()
   await expect(page.locator('text=Работа отправлена')).toBeVisible({ timeout: 15_000 })
