@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense, type RefObject } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare, History, ArrowRight,
@@ -58,6 +59,8 @@ interface GradingCardProps {
   scoreInputRef: RefObject<HTMLInputElement | null>
   acceptLabel: string
   acceptLoading?: boolean
+  onScoreDraftChange: (value: string) => void
+  onFeedbackDraftChange: (value: string) => void
   onScoreChange: (value: string) => void
   onFeedbackChange: (value: string) => void
   onRevision: () => void
@@ -81,12 +84,33 @@ function GradingCard({
   scoreInputRef,
   acceptLabel,
   acceptLoading = false,
+  onScoreDraftChange,
+  onFeedbackDraftChange,
   onScoreChange,
   onFeedbackChange,
   onRevision,
   onAccept,
 }: GradingCardProps) {
-  const normalizedScore = score === '' || isNaN(parseInt(score)) ? null : parseInt(score)
+  const [draftScore, setDraftScore] = useState(score)
+  const [draftFeedback, setDraftFeedback] = useState(feedback)
+
+  useEffect(() => {
+    setDraftScore(score)
+  }, [score])
+
+  useEffect(() => {
+    setDraftFeedback(feedback)
+  }, [feedback])
+
+  const commitDraft = () => {
+    flushSync(() => {
+      onScoreChange(draftScore)
+      onFeedbackChange(draftFeedback)
+    })
+  }
+
+  const normalizedScore = draftScore === '' || isNaN(parseInt(draftScore)) ? null : parseInt(draftScore)
+  const showScoreInvalid = scoreInvalid && draftScore === score
   const statusTone = status === 'checked'
     ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
     : status === 'revision'
@@ -143,7 +167,11 @@ function GradingCard({
               <button
                 key={p}
                 type="button"
-                onClick={() => onFeedbackChange(feedback ? `${feedback} ${p}` : p)}
+                onClick={() => {
+                  const next = draftFeedback ? `${draftFeedback} ${p}` : p
+                  setDraftFeedback(next)
+                  onFeedbackDraftChange(next)
+                }}
                 className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
               >
                 {p}
@@ -152,8 +180,12 @@ function GradingCard({
           </div>
           <textarea
             rows={2}
-            value={feedback}
-            onChange={e => onFeedbackChange(e.target.value)}
+            value={draftFeedback}
+            onChange={e => {
+              setDraftFeedback(e.target.value)
+              onFeedbackDraftChange(e.target.value)
+            }}
+            onBlur={commitDraft}
             placeholder="Что сделано хорошо, что нужно исправить…"
             className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
@@ -166,12 +198,16 @@ function GradingCard({
             type="number"
             min={0}
             max={maxScore}
-            value={score}
-            onChange={e => onScoreChange(e.target.value)}
+            value={draftScore}
+            onChange={e => {
+              setDraftScore(e.target.value)
+              onScoreDraftChange(e.target.value)
+            }}
+            onBlur={commitDraft}
             placeholder="—"
             className={cn(
               'w-full rounded-xl border px-3 py-2 text-center text-base font-semibold text-primary-700 focus:outline-none focus:ring-2 lg:w-28',
-              scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-200 focus:ring-primary-500',
+              showScoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-200 focus:ring-primary-500',
             )}
           />
           <div className="mt-1 text-center text-xs text-slate-400">из {maxScore}</div>
@@ -184,10 +220,10 @@ function GradingCard({
           : <span className="h-5" />
         }
         <div className="flex flex-col items-stretch gap-2 sm:flex-row">
-          <Button data-testid="student-review-revision-button" size="sm" variant="secondary" onClick={onRevision} loading={saving}>
+          <Button data-testid="student-review-revision-button" size="sm" variant="secondary" onClick={() => { commitDraft(); onRevision() }} loading={saving}>
             <RotateCcw size={14} className="mr-1" />На доработку
           </Button>
-          <Button data-testid="student-review-publish-button" size="sm" onClick={onAccept} loading={acceptLoading}>
+          <Button data-testid="student-review-publish-button" size="sm" onClick={() => { commitDraft(); onAccept() }} loading={acceptLoading}>
             <CheckCircle size={14} className="mr-1" />{acceptLabel}
           </Button>
         </div>
@@ -219,10 +255,20 @@ export function StudentReviewPage() {
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
   const publishStatusRef = useRef<'checked' | 'revision'>('checked')
+  const scoreDraftRef = useRef('')
+  const feedbackDraftRef = useRef('')
   const [resolvedGroupName, setResolvedGroupName] = useState<string | null>(null)
   const [selectedAttemptNumber, setSelectedAttemptNumber] = useState<number | null>(null)
   const [pendingQueueItems, setPendingQueueItems] = useState<QueueItem[]>([])
   const [queueLoading, setQueueLoading] = useState(false)
+
+  useEffect(() => {
+    scoreDraftRef.current = score
+  }, [score])
+
+  useEffect(() => {
+    feedbackDraftRef.current = feedback
+  }, [feedback])
 
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -346,7 +392,9 @@ export function StudentReviewPage() {
 
   async function handleSave(newStatus: 'checked' | 'revision'): Promise<boolean> {
     if (!sub || !hw) return false
-    const parsedScore = parseInt(score)
+    const draftScore = scoreDraftRef.current
+    const draftFeedback = feedbackDraftRef.current
+    const parsedScore = parseInt(draftScore)
     if (newStatus === 'checked' && (isNaN(parsedScore) || parsedScore < 0 || parsedScore > hw.max_score)) {
       toast.error(`Введите балл от 0 до ${hw.max_score}`)
       setScoreInvalid(true)
@@ -356,7 +404,7 @@ export function StudentReviewPage() {
     setSaving(true)
     const { error } = await supabase.from('homework_submissions').update({
       score:      newStatus === 'checked' ? parsedScore : null,
-      feedback:   feedback.trim() || null,
+      feedback:   draftFeedback.trim() || null,
       status:     newStatus,
       checked_at: new Date().toISOString(),
       checked_by: teacherId,
@@ -365,7 +413,7 @@ export function StudentReviewPage() {
     if (error) { toast.error(error.message); return false }
 
     setSaved(true)
-    setSub(prev => prev ? { ...prev, status: newStatus, score: newStatus === 'checked' ? parsedScore : null, feedback: feedback.trim() || null } : prev)
+    setSub(prev => prev ? { ...prev, status: newStatus, score: newStatus === 'checked' ? parsedScore : null, feedback: draftFeedback.trim() || null } : prev)
 
     if (student?.profileId) {
       notifyHomeworkChecked(student.profileId, hw.title, newStatus, newStatus === 'checked' ? parsedScore : null, hw.max_score)
@@ -517,6 +565,13 @@ export function StudentReviewPage() {
       saving={saving}
       scoreInputRef={scoreInputRef}
       acceptLabel="Принять"
+      onScoreDraftChange={value => {
+        scoreDraftRef.current = value
+        if (scoreInvalid) setScoreInvalid(false)
+      }}
+      onFeedbackDraftChange={value => {
+        feedbackDraftRef.current = value
+      }}
       onScoreChange={value => { setScore(value); setScoreInvalid(false) }}
       onFeedbackChange={setFeedback}
       onRevision={() => void handleSave('revision').then(ok => finishReview(ok, 'Отправлено на доработку'))}
@@ -536,6 +591,13 @@ export function StudentReviewPage() {
       scoreInputRef={scoreInputRef}
       acceptLabel={published ? 'Опубликовать снова' : 'Опубликовать проверку'}
       acceptLoading={publishing}
+      onScoreDraftChange={value => {
+        scoreDraftRef.current = value
+        if (scoreInvalid) setScoreInvalid(false)
+      }}
+      onFeedbackDraftChange={value => {
+        feedbackDraftRef.current = value
+      }}
       onScoreChange={value => { setScore(value); setScoreInvalid(false) }}
       onFeedbackChange={setFeedback}
       onRevision={() => triggerPublish('revision')}

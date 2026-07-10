@@ -14,6 +14,7 @@ const fromSpy = vi.fn()
 const updateSpy = vi.fn()
 let groupStudentsCalls = 0
 const publishTriggerSpy = vi.fn()
+const reviewerRenderSpy = vi.fn()
 let submissionFilesRows: any[] = []
 let pendingQueueItemsMock: any[] = []
 const pendingQueueLoaderSpy = vi.fn()
@@ -83,6 +84,7 @@ vi.mock('@/components/SubmissionReviewer', () => ({
     onPublish?: () => Promise<boolean | void>
     onPublishComplete?: (success: boolean) => void
   }) => {
+    reviewerRenderSpy()
     const triggerPublish = async () => {
       publishTriggerSpy()
       const ok = await onPublish?.()
@@ -163,6 +165,7 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
     fromSpy.mockReset()
     updateSpy.mockReset()
     publishTriggerSpy.mockReset()
+    reviewerRenderSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
     pendingQueueLoaderSpy.mockReset()
@@ -209,6 +212,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     fromSpy.mockReset()
     updateSpy.mockReset()
     publishTriggerSpy.mockReset()
+    reviewerRenderSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
     pendingQueueLoaderSpy.mockReset()
@@ -263,6 +267,18 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1))
     expect(updateSpy.mock.calls[0][0]).toMatchObject({ score: 85, status: 'checked' })
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Всё проверено'))
+  })
+
+  it('keeps the reviewer stable while typing a score into the grading card', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    const rendersAfterLoad = reviewerRenderSpy.mock.calls.length
+
+    fireEvent.change(screen.getByTestId('student-review-score-input'), { target: { value: '8' } })
+    fireEvent.change(screen.getByTestId('student-review-score-input'), { target: { value: '85' } })
+
+    expect(reviewerRenderSpy.mock.calls).toHaveLength(rendersAfterLoad)
   })
 
   it('blocks the grading-card publish path on an invalid score before any save happens', async () => {
