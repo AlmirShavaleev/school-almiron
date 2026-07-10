@@ -135,7 +135,10 @@ describe('SubmissionReviewer regions', () => {
     expect(screen.getByTestId('review-page-1')).toBeInTheDocument()
     expect(screen.getByTestId('review-page-2')).toBeInTheDocument()
     expect(screen.getByTestId('review-canvas-1')).toBeInTheDocument()
-    expect(screen.getByTestId('review-canvas-2')).toBeInTheDocument()
+    expect(screen.getByTestId('review-overlay-2')).toBeInTheDocument()
+    expect(
+      screen.queryByTestId('review-canvas-2') ?? screen.queryByTestId('review-placeholder-2'),
+    ).toBeInTheDocument()
   })
 
   it('drag on the second page creates a region comment with page=2 and version 2 data, persisted immediately (no debounce wait)', async () => {

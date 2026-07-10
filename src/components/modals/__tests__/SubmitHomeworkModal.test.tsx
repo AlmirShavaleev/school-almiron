@@ -10,7 +10,6 @@ vi.stubGlobal('URL', { ...URL, createObjectURL: createObjectURLSpy, revokeObject
 
 const callOrder: string[] = []
 const uploadSpy = vi.fn()
-const deleteSpy = vi.fn()
 const insertFilesSpy = vi.fn()
 const insertSubmissionSpy = vi.fn()
 const updateSubmissionSpy = vi.fn()
@@ -22,8 +21,8 @@ let uploadDeferred: ((value: { error: { message: string } | null }) => void) | n
 let maybeSingleResult: { data: any; error: { message: string } | null } = { data: null, error: null }
 let insertSubmissionResult: { data: any; error: { message: string } | null } = { data: { id: 'sub-new' }, error: null }
 let updateSubmissionResult: { data: any; error: { message: string } | null } = { data: [{ id: 'sub-new' }], error: null }
-let deleteFilesResult: { error: { message: string } | null } = { error: null }
 let insertFilesResult: { error: { message: string } | null } = { error: null }
+let fileRowsResult: { data: any[]; error: { message: string } | null } = { data: [], error: null }
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -64,19 +63,16 @@ vi.mock('@/lib/supabase', () => ({
       }
       if (table === 'homework_submission_files') {
         return {
-          delete: () => {
-            deleteSpy()
-            callOrder.push('files:delete')
-            return {
-              eq: () => Promise.resolve(deleteFilesResult),
-            }
-          },
           insert: (payload: unknown) => {
             insertFilesSpy(payload)
             callOrder.push('files:insert')
             return Promise.resolve(insertFilesResult)
           },
           select: () => ({
+            eq: () => {
+              callOrder.push('files:select')
+              return Promise.resolve(fileRowsResult)
+            },
             in: () => Promise.resolve({ data: [], error: null }),
           }),
         }
@@ -115,7 +111,6 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
   beforeEach(() => {
     callOrder.length = 0
     uploadSpy.mockReset()
-    deleteSpy.mockReset()
     insertFilesSpy.mockReset()
     insertSubmissionSpy.mockReset()
     updateSubmissionSpy.mockReset()
@@ -125,8 +120,8 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     maybeSingleResult = { data: null, error: null }
     insertSubmissionResult = { data: { id: 'sub-new' }, error: null }
     updateSubmissionResult = { data: [{ id: 'sub-new' }], error: null }
-    deleteFilesResult = { error: null }
     insertFilesResult = { error: null }
+    fileRowsResult = { data: [], error: null }
     uploadResult = { error: null }
     uploadShouldDefer = false
     uploadDeferred = null
@@ -173,8 +168,9 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
   })
 
-  it('on resubmit deletes old file rows before inserting the new full set', async () => {
+  it('on resubmit keeps old file rows and inserts the new full set as the next attempt', async () => {
     maybeSingleResult = { data: { id: 'sub-existing', status: 'revision' }, error: null }
+    fileRowsResult = { data: [{ attempt_number: 1 }, { attempt_number: 1 }, { attempt_number: 2 }], error: null }
     const onClose = vi.fn()
     render(
       <SubmitHomeworkModal
@@ -195,11 +191,13 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     fireEvent.click(screen.getByText('Отправить пересдачу'))
 
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(deleteSpy).toHaveBeenCalled()
     expect(insertSubmissionSpy).not.toHaveBeenCalled()
+    expect(insertFilesSpy).toHaveBeenCalledWith([
+      expect.objectContaining({ submission_id: 'sub-existing', position: 1, attempt_number: 3 }),
+    ])
     expect(callOrder).toEqual([
       'submission:maybeSingle',
-      'files:delete',
+      'files:select',
       'storage:upload',
       'files:insert',
       'submission:update',

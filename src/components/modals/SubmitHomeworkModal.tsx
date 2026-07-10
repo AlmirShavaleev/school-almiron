@@ -158,6 +158,17 @@ export function SubmitHomeworkModal({
     return uploaded
   }
 
+  async function getNextAttemptNumber(submissionId: string) {
+    const { data, error } = await (supabase as any)
+      .from('homework_submission_files')
+      .select('attempt_number')
+      .eq('submission_id', submissionId)
+
+    if (error) throw error
+    const maxAttempt = Math.max(0, ...((data || []) as Array<{ attempt_number?: number | null }>).map(row => row.attempt_number ?? 1))
+    return maxAttempt + 1
+  }
+
   async function handleSubmit() {
     if (!homework || !studentId) return
     if (!files.length) {
@@ -171,14 +182,7 @@ export function SubmitHomeworkModal({
     try {
       const submissionId = await ensureSubmissionRow()
       if (!submissionId) throw new Error('Не удалось создать сдачу')
-
-      if (isResubmit) {
-        const { error: deleteError } = await (supabase as any)
-          .from('homework_submission_files')
-          .delete()
-          .eq('submission_id', submissionId)
-        if (deleteError) throw deleteError
-      }
+      const attemptNumber = isResubmit ? await getNextAttemptNumber(submissionId) : 1
 
       const uploadedFiles = await uploadFiles()
       const { error: filesError } = await (supabase as any)
@@ -188,6 +192,7 @@ export function SubmitHomeworkModal({
           storage_path: file.storage_path,
           mime_type: file.mime_type,
           position: file.position,
+          attempt_number: attemptNumber,
         })))
       if (filesError) throw filesError
 

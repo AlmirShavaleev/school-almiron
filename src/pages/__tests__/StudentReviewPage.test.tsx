@@ -14,6 +14,7 @@ const fromSpy = vi.fn()
 const updateSpy = vi.fn()
 let groupStudentsCalls = 0
 const publishTriggerSpy = vi.fn()
+let submissionFilesRows: any[] = []
 
 function makeChain(result: MockResult | Promise<MockResult>) {
   const chain: any = new Proxy({}, {
@@ -49,6 +50,9 @@ vi.mock('@/components/SubmissionReviewer', () => ({
     fitWidth,
     header,
     className,
+    readOnly,
+    annotationVisibility,
+    filePaths,
     onPublish,
     onPublishComplete,
   }: {
@@ -56,6 +60,9 @@ vi.mock('@/components/SubmissionReviewer', () => ({
     fitWidth?: boolean
     header?: React.ReactNode
     className?: string
+    readOnly?: boolean
+    annotationVisibility?: 'all' | 'published'
+    filePaths?: string[]
     onPublish?: () => Promise<boolean | void>
     onPublishComplete?: (success: boolean) => void
   }) => {
@@ -69,6 +76,7 @@ vi.mock('@/components/SubmissionReviewer', () => ({
       : footer
     return (
       <div data-testid="fake-reviewer" data-fit-width={fitWidth ? 'yes' : 'default'} className={className}>
+        <div data-testid="fake-reviewer-flags" data-read-only={readOnly ? 'yes' : 'no'} data-annotation-visibility={annotationVisibility ?? 'default'} data-file-count={String(filePaths?.length ?? 0)} />
         {header ? <div data-testid="fake-reviewer-header">{header}</div> : null}
         <button type="button" onClick={() => { void triggerPublish() }}>Fake toolbar publish</button>
         <div data-testid="fake-comment-scroll-area">fake reviewer</div>
@@ -99,6 +107,7 @@ function mockTables(sub: ReturnType<typeof submissionRow>) {
     if (table === 'teachers') return makeChain({ data: { id: 'teacher-1' }, error: null })
     if (table === 'homeworks') return makeChain({ data: hwRow, error: null })
     if (table === 'homework_submissions') return makeChain({ data: sub, error: null })
+    if (table === 'homework_submission_files') return makeChain({ data: submissionFilesRows, error: null })
     if (table === 'group_students') {
       groupStudentsCalls++
       // 1st call: single row (student lookup for this group). 2nd call: sibling list.
@@ -139,6 +148,7 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
     publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
+    submissionFilesRows = []
     mockTables(submissionRow())
   })
 
@@ -180,6 +190,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
+    submissionFilesRows = []
     mockTables(submissionRow({ file_url: 'submissions/x/y.pdf' }))
   })
 
@@ -261,5 +272,27 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
 
     await waitFor(() => expect(screen.queryByText('queue page')).not.toBeInTheDocument())
     expect(publishTriggerSpy).toHaveBeenCalled()
+  })
+
+  it('shows an attempt switcher only when there is history and opens older attempts as teacher read-only without grading controls', async () => {
+    submissionFilesRows = [
+      { submission_id: 'sub-1', storage_path: 'submissions/x/attempt-1.pdf', mime_type: 'application/pdf', position: 1, attempt_number: 1 },
+      { submission_id: 'sub-1', storage_path: 'submissions/x/attempt-2.pdf', mime_type: 'application/pdf', position: 1, attempt_number: 2 },
+    ]
+    mockTables(submissionRow({ file_url: 'submissions/x/current.pdf' }))
+    renderPage()
+
+    const select = await screen.findByTestId('student-review-attempt-select')
+    expect(select).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Текущая' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Попытка 1' })).toBeInTheDocument()
+
+    fireEvent.change(select, { target: { value: '1' } })
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-read-only', 'yes'))
+    expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-annotation-visibility', 'all')
+    expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-file-count', '1')
+    expect(screen.queryByTestId('student-review-grading-card')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Опубликовать проверку/ })).not.toBeInTheDocument()
   })
 })

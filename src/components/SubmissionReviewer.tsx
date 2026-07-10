@@ -50,6 +50,7 @@ interface Props {
   filePath: string
   filePaths?: string[]
   readOnly?: boolean
+  annotationVisibility?: 'all' | 'published'
   className?: string
   fitWidth?: boolean
   footer?: FooterContent
@@ -108,6 +109,7 @@ export function SubmissionReviewer({
   filePath,
   filePaths,
   readOnly = false,
+  annotationVisibility,
   className,
   fitWidth = true,
   footer,
@@ -120,6 +122,7 @@ export function SubmissionReviewer({
     const raw = filePaths?.length ? filePaths : [filePath]
     return raw.map(path => extractStoragePath(path, 'homeworks') ?? path)
   }, [filePath, filePaths])
+  const effectiveAnnotationVisibility = annotationVisibility ?? (readOnly ? 'published' : 'all')
   const persistenceKey = useMemo(() => `${submissionId}:${normalizedPaths.join('|')}`, [normalizedPaths, submissionId])
   const frameRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -242,7 +245,7 @@ export function SubmissionReviewer({
         .eq('submission_id', submissionId)
       if (normalizedPaths.length === 1) query.eq('file_path', normalizedPaths[0])
       else query.in('file_path', normalizedPaths)
-      if (readOnly) query.eq('status', 'published')
+      if (effectiveAnnotationVisibility === 'published') query.eq('status', 'published')
       const { data } = await query as { data: Row[] | null }
       if (!active) return
       const next: Record<string, PageData> = {}
@@ -251,7 +254,7 @@ export function SubmissionReviewer({
       setPublished((data ?? []).some(row => row.status === 'published'))
     })()
     return () => { active = false }
-  }, [normalizedPaths, persistenceKey, readOnly, submissionId])
+  }, [effectiveAnnotationVisibility, normalizedPaths, persistenceKey, submissionId])
 
   useEffect(() => {
     if (!sourceFiles.length) return

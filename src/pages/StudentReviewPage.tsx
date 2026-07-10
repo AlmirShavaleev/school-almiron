@@ -14,6 +14,7 @@ import { toast } from '@/store/toastStore'
 import { loadHomeworkInfo, loadHomeworkReviewRoster } from '@/pages/reviewScope'
 import {
   fetchHomeworkSubmissionFilesMap,
+  getSubmissionFileAttempts,
   getPrimarySubmissionFilePath,
   getSubmissionFilePaths,
   type HomeworkSubmissionFileRow,
@@ -199,6 +200,7 @@ export function StudentReviewPage() {
   const nextAdvanceRef = useRef<string | 'list' | null>(null)
   const publishStatusRef = useRef<'checked' | 'revision'>('checked')
   const [resolvedGroupName, setResolvedGroupName] = useState<string | null>(null)
+  const [selectedAttemptNumber, setSelectedAttemptNumber] = useState<number | null>(null)
 
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -242,6 +244,8 @@ export function StudentReviewPage() {
         const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, s?.id ? [s.id] : [])
         if (s) s.homework_submission_files = filesBySubmission[s.id] || []
         setSub(s || null)
+        const attempts = getSubmissionFileAttempts(s)
+        setSelectedAttemptNumber(attempts.currentAttempt?.number ?? null)
         setScore(s?.score != null ? String(s.score) : '')
         setFeedback(s?.feedback || '')
         setSaved(false)
@@ -290,6 +294,8 @@ export function StudentReviewPage() {
       const filesBySubmission = await fetchHomeworkSubmissionFilesMap(supabase as any, s?.id ? [s.id] : [])
       if (s) s.homework_submission_files = filesBySubmission[s.id] || []
       setSub(s || null)
+      const attempts = getSubmissionFileAttempts(s)
+      setSelectedAttemptNumber(attempts.currentAttempt?.number ?? null)
       setScore(s?.score != null ? String(s.score) : '')
       setFeedback(s?.feedback || '')
       setSaved(false)
@@ -364,8 +370,12 @@ export function StudentReviewPage() {
   }
 
   const submissionFilePaths = getSubmissionFilePaths(sub)
-  const primaryFilePath = getPrimarySubmissionFilePath(sub)
-  const canPreview = submissionFilePaths.length > 0 && submissionFilePaths.every(path => {
+  const submissionAttempts = getSubmissionFileAttempts(sub)
+  const selectedAttempt = submissionAttempts.attempts.find(attempt => attempt.number === selectedAttemptNumber) ?? submissionAttempts.currentAttempt
+  const selectedAttemptPaths = selectedAttempt?.paths ?? submissionFilePaths
+  const primaryFilePath = selectedAttemptPaths[0] ?? getPrimarySubmissionFilePath(sub)
+  const isHistoricalAttempt = !!selectedAttempt && !!submissionAttempts.currentAttempt && selectedAttempt.number !== submissionAttempts.currentAttempt.number
+  const canPreview = selectedAttemptPaths.length > 0 && selectedAttemptPaths.every(path => {
     const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
     return !!ext && PREVIEWABLE_EXTS.includes(ext)
   })
@@ -395,6 +405,24 @@ export function StudentReviewPage() {
           )}
         </div>
       </div>
+      {submissionAttempts.attempts.length > 1 && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="student-review-attempt-select" className="text-xs font-medium text-gray-500">Попытка</label>
+          <select
+            id="student-review-attempt-select"
+            data-testid="student-review-attempt-select"
+            value={selectedAttempt?.number ?? ''}
+            onChange={e => setSelectedAttemptNumber(Number(e.target.value))}
+            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            {submissionAttempts.attempts.map(attempt => (
+              <option key={attempt.number} value={attempt.number}>
+                {attempt.number === submissionAttempts.currentAttempt?.number ? 'Текущая' : `Попытка ${attempt.number}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -478,12 +506,14 @@ export function StudentReviewPage() {
             <SubmissionReviewer
               submissionId={sub.id}
               filePath={primaryFilePath}
-              filePaths={submissionFilePaths}
+              filePaths={selectedAttemptPaths}
+              readOnly={isHistoricalAttempt}
+              annotationVisibility={isHistoricalAttempt ? 'all' : undefined}
               className="h-full min-h-0"
               header={reviewHeader}
-              footer={previewGradingCard ?? undefined}
-              onPublish={publishReview}
-              onPublishComplete={success => finishReview(success, publishStatusRef.current === 'revision' ? 'Отправлено на доработку' : 'Проверка опубликована')}
+              footer={isHistoricalAttempt ? undefined : previewGradingCard ?? undefined}
+              onPublish={isHistoricalAttempt ? undefined : publishReview}
+              onPublishComplete={isHistoricalAttempt ? undefined : (success => finishReview(success, publishStatusRef.current === 'revision' ? 'Отправлено на доработку' : 'Проверка опубликована'))}
             />
           </Suspense>
         ) : (
@@ -491,7 +521,7 @@ export function StudentReviewPage() {
             <div className="mb-4 shrink-0 border-b border-gray-100 pb-4">
               {reviewHeader}
             </div>
-            {sub.answer_text ? (
+            {sub.answer_text && !isHistoricalAttempt ? (
               <div className="min-h-0 flex-1 space-y-2">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ответ ученика</label>
                 <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
@@ -505,19 +535,19 @@ export function StudentReviewPage() {
                 className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700 transition-colors hover:bg-blue-100"
               >
                 <FileText size={16} />
-                {submissionFilePaths.length > 1
-                  ? `Открыть файлы (${submissionFilePaths.length})`
+                {selectedAttemptPaths.length > 1
+                  ? `Открыть файлы (${selectedAttemptPaths.length})`
                   : decodeURIComponent(primaryFilePath.split('/').pop() || 'Открыть файл').replace(/\?\S*$/, '')
                 }
               </SignedFileLink>
             ) : (
               <div className="rounded-xl bg-gray-50 py-8 text-center text-sm italic text-gray-400">
-                Ученик не прикрепил ответ
+                {isHistoricalAttempt ? 'Для этой попытки нет превью' : 'Ученик не прикрепил ответ'}
               </div>
             )}
-            <div className="mt-4 shrink-0 border-t border-gray-100 pt-4">
+            {!isHistoricalAttempt && <div className="mt-4 shrink-0 border-t border-gray-100 pt-4">
               {gradingCard}
-            </div>
+            </div>}
           </div>
         )}
       </div>
