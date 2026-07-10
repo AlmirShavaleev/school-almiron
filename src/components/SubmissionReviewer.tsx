@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Save, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertCircle } from 'lucide-react'
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
@@ -103,6 +103,28 @@ const getSaveErrorMessage = (error: unknown) => (
     ? 'Нет прав на сохранение проверки'
     : 'Не удалось сохранить проверку. Проверьте соединение и попробуйте ещё раз'
 )
+
+function SaveStatePill({ saving, saveState }: { saving: boolean; saveState: 'idle' | 'saved' | 'error' }) {
+  if (saving) return (
+    <div data-testid="review-save-state" className="flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+      <Loader2 size={12} className="animate-spin" />
+      <span>Сохраняю</span>
+    </div>
+  )
+  if (saveState === 'saved') return (
+    <div data-testid="review-save-state" className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+      <Save size={12} />
+      <span>Сохранено</span>
+    </div>
+  )
+  if (saveState === 'error') return (
+    <div data-testid="review-save-state" className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+      <AlertCircle size={12} />
+      <span>Ошибка сохранения</span>
+    </div>
+  )
+  return null
+}
 
 export function SubmissionReviewer({
   submissionId,
@@ -533,18 +555,21 @@ export function SubmissionReviewer({
   </div> : null
 
   return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
       {header ? <div className="min-w-0 flex-1">{header}</div> : <div className="flex-1" />}
-      <div className="flex items-center gap-2 text-xs text-slate-600">
-        <span className="min-w-20 text-center tabular-nums">{currentPage} / {pageCount}</span>
-        <div className="flex items-center">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+          <FileText size={13} className="text-slate-400" />
+          <span className="min-w-14 text-center tabular-nums">{currentPage} / {pageCount}</span>
+        </div>
+        <div className="flex items-center rounded-full border border-slate-200 bg-slate-50 px-1">
           <ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton>
-          <span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+          <span className="w-12 text-center text-xs font-semibold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
           <ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton>
         </div>
-        {!readOnly && <div className="flex items-center gap-2 text-xs text-slate-500">
-          {saving ? <><Loader2 size={13} className="animate-spin"/>Сохраняю...</> : saveState === 'saved' ? <><Save size={13}/>Сохранено</> : saveState === 'error' ? <span className="text-red-600">Ошибка сохранения</span> : null}
-          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-lg bg-emerald-600 px-3 font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+        {!readOnly && <div className="flex items-center gap-2">
+          <SaveStatePill saving={saving} saveState={saveState} />
+          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
         </div>}
       </div>
     </div>
@@ -619,7 +644,7 @@ export function SubmissionReviewer({
 export default SubmissionReviewer
 
 function ToolButton({ disabled, title, onClick, children }: { disabled?: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition-[transform,background-color,color] hover:bg-slate-100 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30">{children}</button>
+  return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-[transform,background-color,color] hover:bg-white active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30">{children}</button>
 }
 
 function PdfPageSurface({
@@ -781,7 +806,11 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
   return <div data-testid="comment-editor" className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
       <div>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Комментарий к области</div>
+        <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <MessageSquare size={13} className="text-slate-400" />
+          Комментарий к области
+        </div>
+        <div className="mb-3 text-xs text-slate-400">Выберите категорию, затем при необходимости допишите комментарий.</div>
         <div className="grid grid-cols-2 gap-2">
           {(Object.keys(CATEGORIES) as Category[]).map(value => {
             const item = CATEGORIES[value]
@@ -806,26 +835,38 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
 function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { regions: RegionItem[]; readOnly: boolean; activeId: string | null; onActivate: (item: RegionItem) => void; onDelete: (item: RegionItem) => void }) {
   const multiFile = new Set(regions.map(item => item.filePath)).size > 1
   return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
-    <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-3">
-      <div className="text-sm font-semibold text-slate-800">Комментарии</div>
-      <div className="rounded-full bg-slate-100 px-2 py-1 text-xs tabular-nums text-slate-500">{regions.length}</div>
+    <div className="flex min-h-14 items-center justify-between border-b border-slate-200 px-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <MessageSquare size={15} className="text-slate-400" />
+          Комментарии
+        </div>
+        <div className="mt-0.5 text-xs text-slate-400">{readOnly ? 'Только просмотр' : 'Клик по комментарию откроет нужное место в работе'}</div>
+      </div>
+      <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{regions.length}</div>
     </div>
     {regions.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
       {regions.map(item => {
         const category = CATEGORIES[item.category]
-        return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onActivate(item)} className={cn('group mb-2 rounded-lg p-2 ring-1 transition-[background-color,box-shadow]', activeId === item.id ? `${category.bg} ${category.ring} ring-2` : 'bg-white ring-slate-200 hover:bg-slate-50')}>
+        return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onActivate(item)} className={cn('group mb-2 rounded-xl p-2.5 ring-1 transition-[background-color,box-shadow,transform]', activeId === item.id ? `${category.bg} ${category.ring} ring-2 shadow-sm` : 'bg-white ring-slate-200 hover:bg-slate-50 hover:shadow-sm')}>
           <button type="button" onClick={() => onActivate(item)} className="block w-full text-left">
             <div className="mb-1 flex items-center gap-2 text-xs">
-              <span className="rounded-md px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: category.color }}>{category.short}</span>
+              <span className="rounded-full px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: category.color }}>{category.short}</span>
               <span className="font-medium text-slate-700">{category.label}</span>
-              <span className="ml-auto tabular-nums text-slate-400">стр. {item.globalPage}</span>
+              <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 tabular-nums text-slate-500">стр. {item.globalPage}</span>
             </div>
             {multiFile && <div className="mb-1 text-[11px] text-slate-400">{item.fileLabel}, стр. {item.page}</div>}
-            <div className="text-sm text-slate-800">{item.text || '✓'}</div>
+            <div className="text-sm leading-5 text-slate-800">{item.text || '✓'}</div>
           </button>
           {!readOnly && <button type="button" aria-label="Удалить комментарий" title="Удалить комментарий" onClick={() => onDelete(item)} className="mt-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 opacity-100 transition-[transform,background-color,color] hover:bg-red-50 hover:text-red-600 active:scale-[0.96] sm:opacity-0 sm:group-hover:opacity-100"><Trash2 size={15}/></button>}
         </div>
       })}
-    </div> : <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-slate-500">{readOnly ? 'Комментариев нет' : 'Выделите область на работе, чтобы добавить комментарий'}</div>}
+    </div> : <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+        <MessageSquare size={18} />
+      </div>
+      <div className="text-sm font-medium text-slate-600">{readOnly ? 'Комментариев пока нет' : 'Здесь появятся комментарии к работе'}</div>
+      <div className="max-w-56 text-xs leading-5 text-slate-400">{readOnly ? 'Для этой попытки опубликованных комментариев не найдено.' : 'Выделите область на документе, чтобы привязать к ней комментарий.'}</div>
+    </div>}
   </div>
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense, type RefObject } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
-  ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare,
+  ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare, History,
   AlertTriangle, Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -85,18 +85,65 @@ function GradingCard({
   onRevision,
   onAccept,
 }: GradingCardProps) {
+  const normalizedScore = score === '' || isNaN(parseInt(score)) ? null : parseInt(score)
+  const statusTone = status === 'checked'
+    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+    : status === 'revision'
+      ? 'bg-amber-50 text-amber-700 ring-amber-200'
+      : status === 'submitted'
+        ? 'bg-sky-50 text-sky-700 ring-sky-200'
+        : 'bg-slate-100 text-slate-600 ring-slate-200'
+  const statusLabel = status === 'checked'
+    ? 'Проверено'
+    : status === 'revision'
+      ? 'На доработке'
+      : status === 'submitted'
+        ? 'Ожидает проверки'
+        : 'Не сдано'
+
   return (
-    <div data-testid="student-review-grading-card" className="grid gap-4">
-      <div className="space-y-2">
+    <div data-testid="student-review-grading-card" className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Итог проверки</div>
+          <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <MessageSquare size={15} className="text-primary-500" />
+            Оценка и комментарий
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cn('rounded-full px-3 py-1.5 text-xs font-medium ring-1', statusTone)}>
+            {statusLabel}
+          </span>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Балл</div>
+            <div className="flex items-baseline gap-1 text-sm font-semibold text-slate-900">
+              <span>{normalizedScore ?? '—'}</span>
+              <span className="text-slate-400">/ {maxScore}</span>
+              {normalizedScore != null && (
+                <span className={cn(
+                  'ml-1 text-xs font-semibold',
+                  normalizedScore / maxScore >= 0.8 ? 'text-emerald-600' :
+                  normalizedScore / maxScore >= 0.5 ? 'text-amber-600' : 'text-rose-500',
+                )}>
+                  {Math.round(normalizedScore / maxScore * 100)}%
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_10rem] lg:items-start">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-gray-500">Комментарий для ученика</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">Комментарий для ученика</label>
           <div className="mb-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
             {QUICK_PHRASES.map(p => (
               <button
                 key={p}
                 type="button"
                 onClick={() => onFeedbackChange(feedback ? `${feedback} ${p}` : p)}
-                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
               >
                 {p}
               </button>
@@ -107,30 +154,11 @@ function GradingCard({
             value={feedback}
             onChange={e => onFeedbackChange(e.target.value)}
             placeholder="Что сделано хорошо, что нужно исправить…"
-            className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
-      </div>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <MessageSquare size={15} className="text-primary-500" />
-            Оценка
-          </div>
-          <span className={cn(
-            'rounded-full px-3 py-1.5 text-xs font-medium',
-            status === 'checked'   ? 'bg-green-100 text-green-700' :
-            status === 'revision'  ? 'bg-yellow-100 text-yellow-700' :
-            status === 'submitted' ? 'bg-orange-100 text-orange-700' :
-                                     'bg-gray-100 text-gray-500',
-          )}>
-            {status === 'checked'   ? '✓ Проверено' :
-             status === 'revision'  ? '↩ На доработке' :
-             status === 'submitted' ? '⏳ Ожидает проверки' :
-                                      'Не сдал'}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">Балл</label>
           <input
             data-testid="student-review-score-input"
             ref={scoreInputRef}
@@ -141,25 +169,17 @@ function GradingCard({
             onChange={e => onScoreChange(e.target.value)}
             placeholder="—"
             className={cn(
-              'w-24 rounded-xl border px-3 py-2 text-center text-sm font-bold text-primary-700 focus:outline-none focus:ring-2',
-              scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-primary-500',
+              'w-full rounded-xl border px-3 py-2 text-center text-base font-semibold text-primary-700 focus:outline-none focus:ring-2 lg:w-28',
+              scoreInvalid ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-200 focus:ring-primary-500',
             )}
           />
-          <span className="text-sm text-gray-400">из {maxScore}</span>
-          {score !== '' && !isNaN(parseInt(score)) && (
-            <span className={cn(
-              'text-sm font-semibold',
-              parseInt(score) / maxScore >= 0.8 ? 'text-green-600' :
-              parseInt(score) / maxScore >= 0.5 ? 'text-yellow-600' : 'text-red-500',
-            )}>
-              {Math.round(parseInt(score) / maxScore * 100)}%
-            </span>
-          )}
+          <div className="mt-1 text-center text-xs text-slate-400">из {maxScore}</div>
         </div>
       </div>
-      <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-end md:justify-between">
+
+      <div className="flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
         {saved
-          ? <span className="flex items-center gap-1 text-sm font-medium text-green-600"><CheckCircle size={14} />Сохранено</span>
+          ? <span className="flex items-center gap-1 text-sm font-medium text-emerald-600"><CheckCircle size={14} />Сохранено</span>
           : <span className="h-5" />
         }
         <div className="flex flex-col items-stretch gap-2 sm:flex-row">
@@ -380,72 +400,77 @@ export function StudentReviewPage() {
     return !!ext && PREVIEWABLE_EXTS.includes(ext)
   })
 
-  const sibIdx   = siblings.findIndex(s => s.studentId === studentId)
-  const prevStu  = sibIdx > 0 ? siblings[sibIdx - 1] : null
-  const nextStu  = sibIdx >= 0 && sibIdx < siblings.length - 1 ? siblings[sibIdx + 1] : null
   const reviewHeader = (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <button
-        data-testid="student-review-back-button"
-        onClick={() => navigate(fromQueue ? '/inbox' : groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
-        className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
-      >
-        <ArrowLeft size={18} />
-        <span>Назад</span>
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-gray-900">{student?.name || 'Проверка работы'}</div>
-        <div className="truncate text-xs text-gray-500">
-          {hw?.title}
-          {!groupId && resolvedGroupName && <span className="ml-2">· {resolvedGroupName}</span>}
-          {sub?.submitted_at && (
-            <span className="ml-2">
-              Сдано: {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <button
+          data-testid="student-review-back-button"
+          onClick={() => navigate(fromQueue ? '/inbox' : groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`)}
+          className="flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
+        >
+          <ArrowLeft size={18} />
+          <span>Назад</span>
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="truncate text-sm font-semibold text-gray-900">{student?.name || 'Проверка работы'}</div>
+            {sub?.status && (
+              <span
+                data-testid="student-review-status-pill"
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1',
+                  sub.status === 'checked' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
+                  sub.status === 'revision' ? 'bg-amber-50 text-amber-700 ring-amber-200' :
+                  sub.status === 'submitted' ? 'bg-sky-50 text-sky-700 ring-sky-200' :
+                  'bg-slate-100 text-slate-600 ring-slate-200',
+                )}
+              >
+                {sub.status === 'checked' ? 'Проверено' :
+                 sub.status === 'revision' ? 'На доработке' :
+                 sub.status === 'submitted' ? 'На проверке' : 'Не сдано'}
+              </span>
+            )}
+            {submissionAttempts.attempts.length > 1 && (
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-slate-400" />
+                <label htmlFor="student-review-attempt-select" className="text-xs font-medium text-gray-500">Попытка</label>
+                <select
+                  id="student-review-attempt-select"
+                  data-testid="student-review-attempt-select"
+                  value={selectedAttempt?.number ?? ''}
+                  onChange={e => setSelectedAttemptNumber(Number(e.target.value))}
+                  className="min-h-9 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {submissionAttempts.attempts.map(attempt => (
+                    <option key={attempt.number} value={attempt.number}>
+                      {attempt.number === submissionAttempts.currentAttempt?.number ? 'Текущая' : `Попытка ${attempt.number}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <span className="truncate font-medium text-slate-600">{hw?.title}</span>
+            {!groupId && resolvedGroupName && <span>{resolvedGroupName}</span>}
+            {sub?.submitted_at && (
+              <span>
+                Сдано {new Date(sub.submitted_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
         </div>
       </div>
-      {submissionAttempts.attempts.length > 1 && (
-        <div className="flex items-center gap-2">
-          <label htmlFor="student-review-attempt-select" className="text-xs font-medium text-gray-500">Попытка</label>
-          <select
-            id="student-review-attempt-select"
-            data-testid="student-review-attempt-select"
-            value={selectedAttempt?.number ?? ''}
-            onChange={e => setSelectedAttemptNumber(Number(e.target.value))}
-            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            {submissionAttempts.attempts.map(attempt => (
-              <option key={attempt.number} value={attempt.number}>
-                {attempt.number === submissionAttempts.currentAttempt?.number ? 'Текущая' : `Попытка ${attempt.number}`}
-              </option>
-            ))}
-          </select>
+      {isHistoricalAttempt && (
+        <div
+          data-testid="student-review-historical-banner"
+          className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          <History size={15} className="shrink-0" />
+          <span className="font-medium">Историческая попытка</span>
+          <span className="text-amber-700/80">Можно просматривать файлы и комментарии, но не менять проверку.</span>
         </div>
       )}
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          disabled={!prevStu}
-          onClick={() => prevStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${prevStu.studentId}` : `/homeworks/${hwId}/review/student/${prevStu.studentId}`)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
-          title={prevStu?.name}
-          aria-label="Предыдущий ученик"
-        >
-          ‹
-        </button>
-        <div className="min-w-16 text-center text-xs font-medium text-gray-400">{sibIdx + 1} / {siblings.length}</div>
-        <button
-          type="button"
-          disabled={!nextStu}
-          onClick={() => nextStu && navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${nextStu.studentId}` : `/homeworks/${hwId}/review/student/${nextStu.studentId}`)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
-          title={nextStu?.name}
-          aria-label="Следующий ученик"
-        >
-          ›
-        </button>
-      </div>
     </div>
   )
   const gradingCard = sub && hw ? (

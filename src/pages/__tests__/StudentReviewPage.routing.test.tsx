@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 const fromSpy = vi.fn()
@@ -49,7 +49,6 @@ function renderPage(initialEntry = '/homeworks/hw-1/review/student/stud-2') {
       <Routes>
         <Route path="/homeworks/:id/review" element={<div>review list</div>} />
         <Route path="/homeworks/:id/review/student/:studentId" element={<StudentReviewPage />} />
-        <Route path="/homeworks/:id/review/student/:studentId/next" element={<div>next</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -81,15 +80,13 @@ describe('StudentReviewPage — no-group review mode', () => {
     })
   })
 
-  it('resolves the student group automatically and navigates across grouped siblings', async () => {
+  it('resolves the student group automatically without rendering sibling navigation controls', async () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Борис')).toBeInTheDocument())
     expect(screen.getByText(/Группа Б/)).toBeInTheDocument()
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTitle('Вера'))
-
-    await waitFor(() => expect(screen.getByText('Вера')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Предыдущий ученик')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Следующий ученик')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 / 3')).not.toBeInTheDocument()
   })
 })

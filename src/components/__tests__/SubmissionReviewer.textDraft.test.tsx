@@ -168,7 +168,7 @@ describe('SubmissionReviewer regions', () => {
     fireEvent.keyDown(textarea, { key: 'Escape' })
 
     expect(screen.queryByText('Комментарий к области')).not.toBeInTheDocument()
-    expect(screen.getByText('Выделите область на работе, чтобы добавить комментарий')).toBeInTheDocument()
+    expect(screen.getByText('Здесь появятся комментарии к работе')).toBeInTheDocument()
   })
 
   it('standard phrase inserts text, praise can save empty, and delete removes a region', async () => {
@@ -208,6 +208,16 @@ describe('SubmissionReviewer regions', () => {
     expect(await screen.findByText('старый текст')).toBeInTheDocument()
     expect(screen.getByText('Пропущен шаг')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Удалить комментарий' })).not.toBeInTheDocument()
+  })
+
+  it('shows a compact toolbar save-state pill after an explicit save', async () => {
+    await renderReady()
+    dragRegion(1, 0.1, 0.1, 0.3, 0.3)
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Текст комментария' }), { target: { value: 'Сохранилось' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => expect(screen.getByTestId('review-save-state')).toHaveTextContent('Сохранено'))
   })
 
   it('the editor scrolls its own content and keeps the Save/Cancel footer outside the scroll area', async () => {

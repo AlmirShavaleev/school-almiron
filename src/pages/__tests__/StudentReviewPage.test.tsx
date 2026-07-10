@@ -217,6 +217,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     const reviewer = screen.getByTestId('fake-reviewer')
     expect(reviewer.className).toContain('h-full')
     expect(screen.getByTestId('fake-reviewer-header')).toContainElement(screen.getByRole('button', { name: /Назад/ }))
+    expect(screen.getByTestId('student-review-status-pill')).toHaveTextContent('На проверке')
 
     const footer = screen.getByTestId('fake-reviewer-document-footer')
     expect(footer).toContainElement(screen.getByRole('button', { name: /На доработку/ }))
@@ -292,6 +293,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     await waitFor(() => expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-read-only', 'yes'))
     expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-annotation-visibility', 'all')
     expect(screen.getByTestId('fake-reviewer-flags')).toHaveAttribute('data-file-count', '1')
+    expect(screen.getByTestId('student-review-historical-banner')).toHaveTextContent('Историческая попытка')
     expect(screen.queryByTestId('student-review-grading-card')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Опубликовать проверку/ })).not.toBeInTheDocument()
   })
