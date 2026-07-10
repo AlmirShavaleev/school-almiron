@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense, type RefObject } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
-  ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare, History,
+  ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare, History, ArrowRight,
   AlertTriangle, Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -19,6 +19,7 @@ import {
   getSubmissionFilePaths,
   type HomeworkSubmissionFileRow,
 } from '@/lib/homeworkSubmissionFiles'
+import { getQueueItemReviewPath, loadPendingQueueItems, resolveNextQueueItem, type QueueItem } from '@/lib/pendingQueue'
 
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
 const PREVIEWABLE_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
@@ -217,10 +218,11 @@ export function StudentReviewPage() {
   const [feedback, setFeedback] = useState('')
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
-  const nextAdvanceRef = useRef<string | 'list' | null>(null)
   const publishStatusRef = useRef<'checked' | 'revision'>('checked')
   const [resolvedGroupName, setResolvedGroupName] = useState<string | null>(null)
   const [selectedAttemptNumber, setSelectedAttemptNumber] = useState<number | null>(null)
+  const [pendingQueueItems, setPendingQueueItems] = useState<QueueItem[]>([])
+  const [queueLoading, setQueueLoading] = useState(false)
 
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -232,6 +234,16 @@ export function StudentReviewPage() {
     if (!hwId || !studentId) return
     loadAll()
   }, [hwId, groupId, studentId, profile?.id, profile?.role])
+
+  useEffect(() => {
+    if (!profile) return
+    let active = true
+    setQueueLoading(true)
+    loadPendingQueueItems(supabase as any, profile)
+      .then(items => { if (active) setPendingQueueItems(items) })
+      .finally(() => { if (active) setQueueLoading(false) })
+    return () => { active = false }
+  }, [profile?.id, profile?.role, sub?.id, sub?.status])
 
   async function loadAll() {
     if (!hwId || !studentId) return
@@ -359,10 +371,6 @@ export function StudentReviewPage() {
       notifyHomeworkChecked(student.profileId, hw.title, newStatus, newStatus === 'checked' ? parsedScore : null, hw.max_score)
     }
 
-    // Auto-advance to next pending student
-    const idx = siblings.findIndex(s => s.studentId === studentId)
-    const next = siblings.slice(idx + 1).find(s => true) // just go to next
-    nextAdvanceRef.current = next ? next.studentId : 'list'
     return true
   }
 
@@ -378,15 +386,19 @@ export function StudentReviewPage() {
   // submission has a file to annotate.
   function finishReview(success: boolean, message = 'Проверка опубликована') {
     if (!success) return
-    toast.success(message)
-    if (fromQueue) {
+    if (!isPendingReview) {
+      toast.success(message)
+      return
+    }
+
+    const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' })
+    if (!next) {
+      toast.success('Всё проверено')
       navigate('/inbox')
       return
     }
-    const next = nextAdvanceRef.current
-    const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`
-    if (next === 'list') navigate(listPath)
-    else if (next) navigate(groupId ? `/homeworks/${hwId}/review/${groupId}/${next}` : `/homeworks/${hwId}/review/student/${next}`)
+    toast.success(message)
+    navigate(getQueueItemReviewPath(next), { state: { from: 'queue' } })
   }
 
   const submissionFilePaths = getSubmissionFilePaths(sub)
@@ -395,6 +407,8 @@ export function StudentReviewPage() {
   const selectedAttemptPaths = selectedAttempt?.paths ?? submissionFilePaths
   const primaryFilePath = selectedAttemptPaths[0] ?? getPrimarySubmissionFilePath(sub)
   const isHistoricalAttempt = !!selectedAttempt && !!submissionAttempts.currentAttempt && selectedAttempt.number !== submissionAttempts.currentAttempt.number
+  const isPendingReview = sub?.status === 'submitted' || sub?.status === 'revision'
+  const nextQueueItem = isPendingReview ? resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' }) : null
   const canPreview = selectedAttemptPaths.length > 0 && selectedAttemptPaths.every(path => {
     const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
     return !!ext && PREVIEWABLE_EXTS.includes(ext)
@@ -460,6 +474,25 @@ export function StudentReviewPage() {
             )}
           </div>
         </div>
+        {isPendingReview && (
+          <button
+            type="button"
+            data-testid="student-review-next-work-button"
+            disabled={queueLoading}
+            onClick={() => {
+              if (!nextQueueItem) {
+                toast.success('Всё проверено')
+                navigate('/inbox')
+                return
+              }
+              navigate(getQueueItemReviewPath(nextQueueItem), { state: { from: 'queue' } })
+            }}
+            className="flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+          >
+            <span>{queueLoading ? 'Ищу следующую…' : 'Следующая работа'}</span>
+            <ArrowRight size={16} />
+          </button>
+        )}
       </div>
       {isHistoricalAttempt && (
         <div

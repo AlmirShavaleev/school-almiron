@@ -15,6 +15,9 @@ const updateSpy = vi.fn()
 let groupStudentsCalls = 0
 const publishTriggerSpy = vi.fn()
 let submissionFilesRows: any[] = []
+let pendingQueueItemsMock: any[] = []
+const pendingQueueLoaderSpy = vi.fn()
+const queuePathSpy = vi.fn((item: any) => item.source === 'collection' ? `/review-submissions/${item.submissionId}` : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)
 
 function makeChain(result: MockResult | Promise<MockResult>) {
   const chain: any = new Proxy({}, {
@@ -43,6 +46,20 @@ vi.mock('@/utils/notify', () => ({ notifyHomeworkChecked: vi.fn() }))
 
 const { toastError, toastSuccess } = vi.hoisted(() => ({ toastError: vi.fn(), toastSuccess: vi.fn() }))
 vi.mock('@/store/toastStore', () => ({ toast: { success: toastSuccess, error: toastError } }))
+vi.mock('@/lib/pendingQueue', () => ({
+  loadPendingQueueItems: (...args: unknown[]) => {
+    pendingQueueLoaderSpy(...args)
+    return Promise.resolve(pendingQueueItemsMock)
+  },
+  resolveNextQueueItem: (items: any[], current: { submissionId: string; source: string } | null) => {
+    if (!items.length) return null
+    if (!current) return items[0]
+    const index = items.findIndex(item => item.submissionId === current.submissionId && item.source === current.source)
+    if (index === -1) return items[0]
+    return items[index + 1] ?? null
+  },
+  getQueueItemReviewPath: (item: any) => queuePathSpy(item),
+}))
 
 vi.mock('@/components/SubmissionReviewer', () => ({
   default: ({
@@ -148,7 +165,10 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
     publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
+    pendingQueueLoaderSpy.mockReset()
+    queuePathSpy.mockClear()
     submissionFilesRows = []
+    pendingQueueItemsMock = []
     mockTables(submissionRow())
   })
 
@@ -169,6 +189,7 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
   })
 
   it('a valid score on "Принять" saves and shows a success toast', async () => {
+    pendingQueueItemsMock = []
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Ученик')).toBeInTheDocument())
@@ -179,7 +200,7 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalled())
     expect(updateSpy.mock.calls[0][0]).toMatchObject({ score: 85, status: 'checked' })
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Проверка опубликована'))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Всё проверено'))
   })
 })
 
@@ -190,7 +211,10 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     publishTriggerSpy.mockReset()
     toastError.mockReset()
     toastSuccess.mockReset()
+    pendingQueueLoaderSpy.mockReset()
+    queuePathSpy.mockClear()
     submissionFilesRows = []
+    pendingQueueItemsMock = []
     mockTables(submissionRow({ file_url: 'submissions/x/y.pdf' }))
   })
 
@@ -228,6 +252,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
   })
 
   it('uses the viewer publish path from the grading card instead of direct save', async () => {
+    pendingQueueItemsMock = []
     renderPage()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
@@ -237,7 +262,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     await waitFor(() => expect(publishTriggerSpy).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1))
     expect(updateSpy.mock.calls[0][0]).toMatchObject({ score: 85, status: 'checked' })
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Проверка опубликована'))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Всё проверено'))
   })
 
   it('blocks the grading-card publish path on an invalid score before any save happens', async () => {
@@ -255,6 +280,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
   })
 
   it('returns to the queue after publish when opened from the queue', async () => {
+    pendingQueueItemsMock = []
     renderPageFromQueue()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
@@ -264,15 +290,18 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     await waitFor(() => expect(screen.getByText('queue page')).toBeInTheDocument())
   })
 
-  it('keeps the old post-publish behavior without queue state', async () => {
+  it('navigates to the next pending queue item after publish even without queue state', async () => {
+    pendingQueueItemsMock = [
+      { source: 'legacy', submissionId: 'sub-1', group: { id: 'group-1' }, homework: { id: 'hw-1' } },
+      { source: 'collection', submissionId: 'task-sub-2', group: { id: 'group-2' }, homework: { id: 'assignment-2' } },
+    ]
     renderPage()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
     fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '85' } })
     fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
 
-    await waitFor(() => expect(screen.queryByText('queue page')).not.toBeInTheDocument())
-    expect(publishTriggerSpy).toHaveBeenCalled()
+    await waitFor(() => expect(queuePathSpy).toHaveBeenCalledWith(expect.objectContaining({ submissionId: 'task-sub-2', source: 'collection' })))
   })
 
   it('shows an attempt switcher only when there is history and opens older attempts as teacher read-only without grading controls', async () => {
@@ -296,5 +325,37 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     expect(screen.getByTestId('student-review-historical-banner')).toHaveTextContent('Историческая попытка')
     expect(screen.queryByTestId('student-review-grading-card')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Опубликовать проверку/ })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the first pending queue item when the current work is already missing from the queue', async () => {
+    pendingQueueItemsMock = [
+      { source: 'collection', submissionId: 'task-sub-9', group: { id: 'group-2' }, homework: { id: 'assignment-9' } },
+    ]
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('student-review-next-work-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('student-review-next-work-button'))
+
+    await waitFor(() => expect(queuePathSpy).toHaveBeenCalledWith(expect.objectContaining({ submissionId: 'task-sub-9' })))
+  })
+
+  it('returns to inbox with a success toast when there are no pending works left', async () => {
+    pendingQueueItemsMock = []
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('student-review-next-work-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('student-review-next-work-button'))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Всё проверено'))
+    await waitFor(() => expect(screen.getByText('queue page')).toBeInTheDocument())
+  })
+
+  it('hides the next-work button on already checked submissions', async () => {
+    mockTables(submissionRow({ file_url: 'submissions/x/y.pdf', status: 'checked', score: 85 }))
+    pendingQueueItemsMock = [{ source: 'legacy', submissionId: 'other-sub', group: { id: 'group-2' }, homework: { id: 'hw-2' } }]
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    expect(screen.queryByTestId('student-review-next-work-button')).not.toBeInTheDocument()
   })
 })

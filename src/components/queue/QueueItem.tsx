@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Clock, RotateCcw, AlertTriangle, ChevronRight, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { QueueItem as QItem } from '@/hooks/useHomeworkQueue'
+import { getQueueItemReviewPath } from '@/lib/pendingQueue'
 
 const BUCKET_STYLE: Record<string, { ring: string; chip: string; label: string; icon: ReactNode }> = {
   urgent:   { ring: 'border-l-red-500',    chip: 'bg-red-50 text-red-700 ring-red-200',       label: 'Срочно',      icon: <AlertTriangle size={11} /> },
@@ -40,12 +41,7 @@ export function QueueItem({ item }: { item: QItem }) {
       data-source={item.source}
       data-status={item.status}
       data-submission-id={item.submissionId}
-      onClick={() => navigate(
-        item.source === 'collection'
-          ? `/review-submissions/${item.submissionId}`
-          : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`,
-        { state: { from: 'queue' } },
-      )}
+      onClick={() => navigate(getQueueItemReviewPath(item), { state: { from: 'queue' } })}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
       className={cn(
         'w-full min-h-11 flex items-center gap-3 text-left platform-surface border-l-4 rounded-lg px-3 sm:px-4 py-3 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-lg transition-all duration-200 cursor-pointer',

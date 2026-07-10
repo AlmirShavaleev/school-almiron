@@ -58,8 +58,7 @@ describe('submission annotation reviewer', () => {
   })
 
   it('navigates queue items straight into the full review pages', () => {
-    expect(queueItem).toContain("item.source === 'collection'")
-    expect(queueItem).toContain("`/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`")
+    expect(queueItem).toContain('getQueueItemReviewPath(item)')
     expect(queuePage).not.toContain('onQuickReview')
   })
 
@@ -74,10 +73,11 @@ describe('submission annotation reviewer', () => {
     expect(queuePage).toContain('Показать ещё')
   })
 
-  it('auto-advances to the next student after a full publish, or returns to the group list when none remain — for both file and no-file submissions', () => {
-    expect(studentReviewPage).toContain("nextAdvanceRef.current = next ? next.studentId : 'list'")
-    expect(studentReviewPage).toContain("const listPath = groupId ? `/homeworks/${hwId}/review/${groupId}` : `/homeworks/${hwId}/review`")
-    expect(studentReviewPage).toContain("if (next === 'list') navigate(listPath)")
+  it('auto-advances by the pending review queue after a full publish and falls back to inbox when the queue is empty', () => {
+    expect(studentReviewPage).toContain("const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' })")
+    expect(studentReviewPage).toContain("toast.success('Всё проверено')")
+    expect(studentReviewPage).toContain("navigate('/inbox')")
+    expect(studentReviewPage).toContain("navigate(getQueueItemReviewPath(next), { state: { from: 'queue' } })")
     expect(studentReviewPage).toContain("function finishReview(success: boolean, message = 'Проверка опубликована')")
     expect(studentReviewPage).toContain("onPublishComplete={isHistoricalAttempt ? undefined : (success => finishReview(success, publishStatusRef.current === 'revision' ? 'Отправлено на доработку' : 'Проверка опубликована'))}")
     expect(studentReviewPage).toContain('const gradingCard = sub && hw ? (')
