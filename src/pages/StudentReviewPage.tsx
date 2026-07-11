@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, lazy, Suspense, type RefObject } from 'react'
-import { flushSync } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle, RotateCcw, FileText, MessageSquare, History, ArrowRight,
@@ -103,10 +102,8 @@ function GradingCard({
   }, [feedback])
 
   const commitDraft = () => {
-    flushSync(() => {
-      onScoreChange(draftScore)
-      onFeedbackChange(draftFeedback)
-    })
+    onScoreChange(draftScore)
+    onFeedbackChange(draftFeedback)
   }
 
   const normalizedScore = draftScore === '' || isNaN(parseInt(draftScore)) ? null : parseInt(draftScore)
