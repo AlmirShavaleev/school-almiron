@@ -169,6 +169,11 @@ export function SubmitHomeworkModal({
     return maxAttempt + 1
   }
 
+  async function resolveAttemptNumber(submissionId: string) {
+    const nextAttempt = await getNextAttemptNumber(submissionId)
+    return nextAttempt > 1 ? nextAttempt : 1
+  }
+
   async function handleSubmit() {
     if (!homework || !studentId) return
     if (!files.length) {
@@ -182,7 +187,7 @@ export function SubmitHomeworkModal({
     try {
       const submissionId = await ensureSubmissionRow()
       if (!submissionId) throw new Error('Не удалось создать сдачу')
-      const attemptNumber = isResubmit ? await getNextAttemptNumber(submissionId) : 1
+      const attemptNumber = await resolveAttemptNumber(submissionId)
 
       const uploadedFiles = await uploadFiles()
       const { error: filesError } = await (supabase as any)

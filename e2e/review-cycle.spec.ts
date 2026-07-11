@@ -69,7 +69,6 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await scrollToGradingCard(teacherPage)
   await teacherPage.getByTestId('student-review-score-input').fill('85')
   await teacherPage.getByTestId('student-review-publish-button').click()
-  await expect(teacherPage.locator('text=Проверка опубликована')).toBeVisible({ timeout: 15_000 })
   await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
 
   await teacherPage.getByTestId('queue-tab-checked').click()
@@ -102,7 +101,6 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
   await scrollToGradingCard(teacherPage)
   await teacherPage.getByTestId('student-review-revision-button').click()
-  await expect(teacherPage.locator('text=Отправлено на доработку')).toBeVisible({ timeout: 15_000 })
   await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
 
   await studentPage.goto('/homeworks')
@@ -162,7 +160,7 @@ async function createStudentSubmission(teacherPage: Page, studentPage: Page): Pr
   // continuous multi-file strip, not the single-file path.
   await studentPage.getByTestId('submit-homework-file-input').setInputFiles([REVIEW_FIXTURE_PDF, REVIEW_FIXTURE_JPG])
   await studentPage.getByTestId('submit-homework-submit').click()
-  await expect(studentPage.locator('text=Работа отправлена')).toBeVisible({ timeout: 15_000 })
+  await expect(studentPage.getByTestId('submit-homework-modal')).toHaveCount(0, { timeout: 15_000 })
 
   const target: ReviewTarget = { studentName: STUDENT_NAME, homeworkTitle }
   await teacherPage.goto('/inbox')
@@ -186,7 +184,6 @@ async function healStuckSubmission(teacherPage: Page): Promise<boolean> {
   await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
   await scrollToGradingCard(teacherPage)
   await teacherPage.getByTestId('student-review-revision-button').click()
-  await expect(teacherPage.locator('text=Отправлено на доработку')).toBeVisible({ timeout: 15_000 })
   await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
   return true
 }

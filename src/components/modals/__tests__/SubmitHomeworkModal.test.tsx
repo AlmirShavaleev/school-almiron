@@ -160,6 +160,38 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     expect(callOrder).toEqual([
       'submission:maybeSingle',
       'submission:insert',
+      'files:select',
+      'storage:upload',
+      'storage:upload',
+      'files:insert',
+      'submission:update',
+    ])
+    expect(toastSuccess).toHaveBeenCalledWith('Работа отправлена на проверку')
+  })
+
+  it('when a reset not_submitted row already has old attempts, inserts the new files as the next attempt instead of reusing attempt 1', async () => {
+    maybeSingleResult = { data: { id: 'sub-existing', status: 'not_submitted' }, error: null }
+    fileRowsResult = { data: [{ attempt_number: 1 }, { attempt_number: 2 }], error: null }
+    const onClose = vi.fn()
+    render(
+      <SubmitHomeworkModal
+        open onClose={onClose} onSubmitted={vi.fn()}
+        homework={homework} studentId="stud-1"
+      />
+    )
+
+    fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [pdfFile, jpgFile] } })
+    fireEvent.click(screen.getByText('Отправить'))
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(insertSubmissionSpy).not.toHaveBeenCalled()
+    expect(insertFilesSpy).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ submission_id: 'sub-existing', position: 1, attempt_number: 3 }),
+      expect.objectContaining({ submission_id: 'sub-existing', position: 2, attempt_number: 3 }),
+    ]))
+    expect(callOrder).toEqual([
+      'submission:maybeSingle',
+      'files:select',
       'storage:upload',
       'storage:upload',
       'files:insert',
