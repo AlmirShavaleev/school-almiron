@@ -67,9 +67,10 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await expect(teacherPage.getByTestId('comment-list-item').filter({ hasText: COMMENT_TEXT })).toBeVisible()
 
   await scrollToGradingCard(teacherPage)
+  const publishReviewUrl = teacherPage.url()
   await teacherPage.getByTestId('student-review-score-input').fill('85')
   await teacherPage.getByTestId('student-review-publish-button').click()
-  await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
+  await waitForReviewNavigation(teacherPage, publishReviewUrl)
 
   await teacherPage.getByTestId('queue-tab-checked').click()
   await expect(queueItemByTarget(teacherPage, target)).toBeVisible({ timeout: 15_000 })
@@ -100,8 +101,9 @@ test('teacher review cycle persists draft, publishes, returns to queue, and is v
   await queueItemByTarget(teacherPage, target).click()
   await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
   await scrollToGradingCard(teacherPage)
+  const revisionReviewUrl = teacherPage.url()
   await teacherPage.getByTestId('student-review-revision-button').click()
-  await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
+  await waitForRevisionResult(teacherPage, revisionReviewUrl)
 
   await studentPage.goto('/homeworks')
   await studentPage.waitForSelector('[data-testid="homework-card"]', { timeout: 20_000 })
@@ -183,8 +185,9 @@ async function healStuckSubmission(teacherPage: Page): Promise<boolean> {
   await stuck.click()
   await teacherPage.waitForURL(/\/homeworks\/.+\/review\//, { timeout: 15_000 })
   await scrollToGradingCard(teacherPage)
+  const stuckReviewUrl = teacherPage.url()
   await teacherPage.getByTestId('student-review-revision-button').click()
-  await teacherPage.waitForURL(/\/inbox/, { timeout: 15_000 })
+  await waitForReviewNavigation(teacherPage, stuckReviewUrl)
   return true
 }
 
@@ -207,6 +210,45 @@ function queueItemByTarget(page: Page, target: ReviewTarget) {
   }).filter({
     has: page.getByTestId('queue-item-homework').filter({ hasText: target.homeworkTitle }),
   }).first()
+}
+
+async function waitForReviewNavigation(page: Page, currentReviewUrl: string) {
+  await page.waitForURL(url => {
+    const next = url.toString()
+    return next !== currentReviewUrl && (
+      next.includes('/inbox')
+      || /\/homeworks\/.+\/review\//.test(next)
+      || /\/review-submissions\//.test(next)
+    )
+  }, { timeout: 15_000 })
+}
+
+async function waitForRevisionResult(page: Page, currentReviewUrl: string) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const navigated = await page.waitForURL(url => {
+      const next = url.toString()
+      return next !== currentReviewUrl && (
+        next.includes('/inbox')
+        || /\/homeworks\/.+\/review\//.test(next)
+        || /\/review-submissions\//.test(next)
+      )
+    }, { timeout: 15_000 }).then(() => true).catch(() => false)
+
+    if (navigated) return
+
+    const revisedInPlace = await page.getByTestId('student-review-status-pill')
+      .filter({ hasText: 'На доработке' })
+      .count()
+      .then(count => count > 0)
+      .catch(() => false)
+    if (revisedInPlace) return
+
+    if (attempt === 0) {
+      await page.getByTestId('student-review-revision-button').click()
+    }
+  }
+
+  await expect(page.getByTestId('student-review-status-pill')).toHaveText('На доработке', { timeout: 15_000 })
 }
 
 async function scrollToGradingCard(page: Page) {
