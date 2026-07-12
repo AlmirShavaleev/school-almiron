@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom'
 
 const mockCanvasContext = {
-  canvas: null as HTMLCanvasElement | null,
+  canvas: undefined as HTMLCanvasElement | undefined,
   clearRect: () => {},
   save: () => {},
   restore: () => {},
@@ -38,11 +38,11 @@ const mockCanvasContext = {
   measureText: () => ({ width: 0 }),
   setLineDash: () => {},
   getLineDash: () => [],
-} satisfies Partial<CanvasRenderingContext2D>
+}
 
 Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   configurable: true,
   value: function getContext() {
-    return { ...mockCanvasContext, canvas: this }
+    return { ...mockCanvasContext, canvas: this } as unknown as CanvasRenderingContext2D
   },
 })

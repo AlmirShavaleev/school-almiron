@@ -26,6 +26,11 @@ vi.mock('@/hooks/useCatalog', () => ({
     loading: false,
     error: null,
   }),
+  useCatalogTopics: () => ({
+    topics: [],
+    loading: false,
+    error: null,
+  }),
 }))
 
 vi.mock('@/hooks/useVariants', () => ({
@@ -129,7 +134,9 @@ describe('StudentVariantGeneratePage', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByTestId('student-generator-submit'))
+    fireEvent.click(screen.getByTestId('variant-section-plus-sec-1'))
+    fireEvent.click(screen.getByTestId('variant-section-plus-sec-2'))
+    fireEvent.click(screen.getByTestId('variant-constructor-generate'))
 
     await waitFor(() => expect(generateTasksSpy).toHaveBeenCalledTimes(1))
     expect(generateTasksSpy).toHaveBeenCalledWith([
@@ -154,7 +161,7 @@ describe('StudentVariantGeneratePage', () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1))
     expect(createSpy).toHaveBeenCalledWith({
-      title: 'Вариант Математика ЕГЭ',
+      title: expect.stringContaining('Мой вариант от'),
       subject: 'math',
       examType: 'ege',
       items: [
