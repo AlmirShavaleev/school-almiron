@@ -50,3 +50,4 @@ physics-oge-broken-images.jsonl
 supabase/.temp/
 shkolkovo-pdfs/
 scripts/.checkpoints/
+.codex-vite*.log

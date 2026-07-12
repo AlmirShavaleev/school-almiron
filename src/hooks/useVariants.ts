@@ -428,6 +428,37 @@ export function useCreateSelfBuiltVariant() {
   return { create, saving, error }
 }
 
+export function usePickReplacementTask() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const pick = useCallback(async (params: {
+    sectionId: string
+    topicId?: string | null
+    excludeIds: string[]
+  }): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: rpcErr } = await db.rpc('pick_replacement_task', {
+        p_section_id: params.sectionId,
+        p_topic_id: params.topicId ?? null,
+        p_exclude: params.excludeIds,
+      })
+      if (rpcErr) throw new Error(rpcErr.message)
+      if (!data) return null
+      return await loadSingleTask(data as string)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось заменить задачу')
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { pick, loading, error }
+}
+
 async function loadSingleTask(taskId: string): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db2 = supabase as any
