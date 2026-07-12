@@ -291,7 +291,8 @@ describe('Empty states', () => {
   it('network error shows ErrorState with message', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
     expect(src).toContain('ErrorState')
-    expect(src).toContain('Ошибка загрузки')
+    expect(src).toContain('Не удалось загрузить каталог')
+    expect(src).toContain('Повторить')
   })
 })
 

@@ -58,7 +58,19 @@ export function CatalogPage() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function DirectionPicker() {
-  const { counts } = useCatalogDirectionCounts()
+  const [retryKey, setRetryKey] = useState(0)
+  const { counts, error } = useCatalogDirectionCounts(retryKey)
+
+  if (error) {
+    return (
+      <div className="max-w-[1100px] mx-auto px-4 py-16">
+        <ErrorState
+          message={error}
+          onRetry={() => setRetryKey(key => key + 1)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-8">
@@ -329,7 +341,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry?: () => voi
   return (
     <div className="py-16 text-center">
       <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
-      <p className="text-red-600 font-medium">Ошибка загрузки</p>
+      <p className="text-red-600 font-medium">Не удалось загрузить каталог</p>
       <p className="text-gray-500 text-sm mt-1 mb-4">{message}</p>
       {onRetry && (
         <button

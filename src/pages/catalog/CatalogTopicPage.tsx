@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, CheckCircle2, BookOpen } from 'lucide-react'
+import { ChevronLeft, CheckCircle2, BookOpen, AlertCircle, RefreshCw } from 'lucide-react'
 
 const PAGE_SIZE = 25
 import { useCatalogTasks, useCatalogTopics, useCatalogSections, SUBJECT_SLUGS, type CatalogTask } from '@/hooks/useCatalog'
@@ -14,10 +14,11 @@ export function CatalogTopicPage() {
   const { sectionId, topicId } = useParams<{ sectionId: string; topicId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = (searchParams.get('filter') as Filter) ?? 'all'
+  const [retryKey, setRetryKey] = useState(0)
 
-  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId)
-  const { topics } = useCatalogTopics(sectionId)
-  const { sections } = useCatalogSections()
+  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId, retryKey)
+  const { topics } = useCatalogTopics(sectionId, retryKey)
+  const { sections } = useCatalogSections(undefined, undefined, retryKey)
 
   const topic   = topics.find(t => t.id === topicId)
   const section = sections.find(s => s.id === sectionId)
@@ -50,7 +51,7 @@ export function CatalogTopicPage() {
   const pct = totalCount ? Math.round(doneCount / totalCount * 100) : 0
 
   if (loading) return <TopicSkeleton />
-  if (error)   return <ErrorState message={error} />
+  if (error)   return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
@@ -182,11 +183,21 @@ function TopicSkeleton() {
   )
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-      <p className="text-red-600 font-medium">Ошибка загрузки</p>
-      <p className="text-gray-500 text-sm mt-1">{message}</p>
+      <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
+      <p className="text-red-600 font-medium">Не удалось загрузить каталог</p>
+      <p className="text-gray-500 text-sm mt-1 mb-4">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-400 hover:text-primary-700 transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Повторить
+        </button>
+      )}
     </div>
   )
 }

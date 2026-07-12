@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
@@ -11,20 +11,21 @@ export function CatalogSectionPage() {
   const [searchParams] = useSearchParams()
   const subjectSlug = searchParams.get('subject') ?? 'math'
   const examSlug    = searchParams.get('exam')    ?? 'ege'
-  const { topics, loading, error } = useCatalogTopics(sectionId)
-  const { sections } = useCatalogSections()
+  const [retryKey, setRetryKey] = useState(0)
+  const { topics, loading, error } = useCatalogTopics(sectionId, retryKey)
+  const { sections } = useCatalogSections(undefined, undefined, retryKey)
   const { profile } = useAuthStore()
   const section = sections.find(s => s.id === sectionId)
   const backSlug = section ? (SUBJECT_SLUGS[section.subject] ?? subjectSlug) : subjectSlug
 
   const [query, setQuery] = useState('')
-  const { results: searchResults, loading: searchLoading } = useCatalogSearch(query, sectionId)
+  const { results: searchResults, loading: searchLoading, error: searchError } = useCatalogSearch(query, sectionId)
   const isSearching = query.trim().length >= 2
 
   const isStaff = profile && STAFF_ROLES.has(profile.role)
 
   if (loading) return <SectionSkeleton />
-  if (error) return <ErrorState message={error} />
+  if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   // Build topic tree (root topics + their children)
   const roots = topics.filter(t => t.parent_id === null || !topics.find(p => p.id === t.parent_id))
@@ -76,7 +77,10 @@ export function CatalogSectionPage() {
           {!searchLoading && searchResults.length === 0 && (
             <div className="text-sm text-gray-500 text-center py-4">Ничего не найдено</div>
           )}
-          {!searchLoading && searchResults.map(r => (
+          {!searchLoading && searchError && (
+            <ErrorState message={searchError} compact onRetry={() => setRetryKey(key => key + 1)} />
+          )}
+          {!searchLoading && !searchError && searchResults.map(r => (
             <Link
               key={r.id}
               to={`/catalog/task/${r.id}?subject=${backSlug}&exam=${examSlug}`}
@@ -199,11 +203,21 @@ function SectionSkeleton() {
   )
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message, onRetry, compact = false }: { message: string; onRetry?: () => void; compact?: boolean }) {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-      <p className="text-red-600 font-medium">Ошибка загрузки</p>
-      <p className="text-gray-500 text-sm mt-1">{message}</p>
+    <div className={`max-w-3xl mx-auto px-4 text-center ${compact ? 'py-6' : 'py-16'}`}>
+      <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
+      <p className="text-red-600 font-medium">Не удалось загрузить каталог</p>
+      <p className="text-gray-500 text-sm mt-1 mb-4">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-400 hover:text-primary-700 transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Повторить
+        </button>
+      )}
     </div>
   )
 }

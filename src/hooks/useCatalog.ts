@@ -145,46 +145,62 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
     async function load() {
       setLoading(true)
       setError(null)
+      try {
+        let q = db.from('catalog_sections').select('*').eq('is_published', true)
+        if (subject)   q = q.eq('subject',   subject)
+        if (examType)  q = q.eq('exam_type', examType)
+        const { data: sectionsData, error: e1 } = await q.order('position')
 
-      let q = db.from('catalog_sections').select('*').eq('is_published', true)
-      if (subject)   q = q.eq('subject',   subject)
-      if (examType)  q = q.eq('exam_type', examType)
-      const { data: sectionsData, error: e1 } = await q.order('position')
+        if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? ''); setLoading(false); return }
+        // Task counts per section via SQL function (avoids 1000-row default limit)
+        const { data: sectionCounts, error: countsError } = await db.rpc('get_catalog_section_counts', {
+          p_subject:   subject   ?? null,
+          p_exam_type: examType  ?? null,
+        })
+        if (countsError || cancelled) {
+          if (!cancelled) setError(countsError?.message ?? 'Не удалось загрузить каталог')
+          setLoading(false)
+          return
+        }
 
-      // Task counts per section via SQL function (avoids 1000-row default limit)
-      const { data: sectionCounts } = await db.rpc('get_catalog_section_counts', {
-        p_subject:   subject   ?? null,
-        p_exam_type: examType  ?? null,
-      })
+        // User progress counts
+        const { data: progressData, error: progressError } = await db
+          .from('catalog_task_progress')
+          .select('task_id, catalog_tasks!inner(section_id)')
+          .eq('is_completed', true)
+        if (progressError || cancelled) {
+          if (!cancelled) setError(progressError?.message ?? 'Не удалось загрузить каталог')
+          setLoading(false)
+          return
+        }
 
-      // User progress counts
-      const { data: progressData } = await db
-        .from('catalog_task_progress')
-        .select('task_id, catalog_tasks!inner(section_id)')
-        .eq('is_completed', true)
+        const countBySec: Record<string, number> = {}
+        for (const row of (sectionCounts ?? []) as { section_id: string; task_count: number }[]) {
+          countBySec[row.section_id] = row.task_count
+        }
 
-      const countBySec: Record<string, number> = {}
-      for (const row of (sectionCounts ?? []) as { section_id: string; task_count: number }[]) {
-        countBySec[row.section_id] = row.task_count
-      }
+        const doneBySec: Record<string, number> = {}
+        for (const p of progressData ?? []) {
+          const secId = (p as { catalog_tasks?: { section_id?: string } }).catalog_tasks?.section_id
+          if (secId) doneBySec[secId] = (doneBySec[secId] ?? 0) + 1
+        }
 
-      const doneBySec: Record<string, number> = {}
-      for (const p of progressData ?? []) {
-        const secId = (p as { catalog_tasks?: { section_id?: string } }).catalog_tasks?.section_id
-        if (secId) doneBySec[secId] = (doneBySec[secId] ?? 0) + 1
-      }
-
-      if (!cancelled) {
-        setSections(
-          (sectionsData ?? []).map((s: CatalogSection) => ({
-            ...s,
-            task_count:      countBySec[s.id] ?? 0,
-            completed_count: doneBySec[s.id]  ?? 0,
-          }))
-        )
-        setLoading(false)
+        if (!cancelled) {
+          setSections(
+            (sectionsData ?? []).map((s: CatalogSection) => ({
+              ...s,
+              task_count:      countBySec[s.id] ?? 0,
+              completed_count: doneBySec[s.id]  ?? 0,
+            }))
+          )
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
+        }
       }
     }
 
@@ -197,7 +213,7 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
 
 // ── Topics for a section ──────────────────────────────────────────────────────
 
-export function useCatalogTopics(sectionId: string | undefined) {
+export function useCatalogTopics(sectionId: string | undefined, _retryKey?: number) {
   const { profile } = useAuthStore()
   const [topics, setTopics] = useState<CatalogTopic[]>([])
   const [loading, setLoading] = useState(true)
@@ -210,66 +226,82 @@ export function useCatalogTopics(sectionId: string | undefined) {
     async function load() {
       setLoading(true)
       setError(null)
+      try {
+        // Get all topics that have tasks in this section
+        // Use RPC to avoid 1000-row default limit
+        const { data: topicIdRows, error: e1 } = await db
+          .rpc('get_catalog_topic_ids', { p_section_id: sectionId })
+        if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      // Get all topics that have tasks in this section
-      // Use RPC to avoid 1000-row default limit
-      const { data: topicIdRows, error: e1 } = await db
-        .rpc('get_catalog_topic_ids', { p_section_id: sectionId })
-      if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? ''); setLoading(false); return }
+        const topicIds = (topicIdRows ?? []).map((r: { topic_id: string }) => r.topic_id)
+        if (!topicIds.length) { if (!cancelled) { setTopics([]); setLoading(false) } return }
 
-      const topicIds = (topicIdRows ?? []).map((r: { topic_id: string }) => r.topic_id)
-      if (!topicIds.length) { if (!cancelled) { setTopics([]); setLoading(false) } return }
+        const { data: topicsData, error: e2 } = await db
+          .from('catalog_topics')
+          .select('*')
+          .in('id', topicIds)
+          .eq('is_published', true)
+          .order('position')
 
-      const { data: topicsData, error: e2 } = await db
-        .from('catalog_topics')
-        .select('*')
-        .in('id', topicIds)
-        .eq('is_published', true)
-        .order('position')
+        if (e2 || cancelled) { if (!cancelled) setError(e2?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      if (e2 || cancelled) { if (!cancelled) setError(e2?.message ?? ''); setLoading(false); return }
+        // Task counts per topic via RPC
+        const { data: topicCountRows, error: topicCountsError } = await db
+          .rpc('get_catalog_topic_counts', { p_section_id: sectionId })
+        if (topicCountsError || cancelled) {
+          if (!cancelled) setError(topicCountsError?.message ?? 'Не удалось загрузить каталог')
+          setLoading(false)
+          return
+        }
 
-      // Task counts per topic via RPC
-      const { data: topicCountRows } = await db
-        .rpc('get_catalog_topic_counts', { p_section_id: sectionId })
+        const taskCountByTopic: Record<string, number> = {}
+        for (const row of (topicCountRows ?? []) as { topic_id: string; task_count: number }[]) {
+          taskCountByTopic[row.topic_id] = row.task_count
+        }
 
-      const taskCountByTopic: Record<string, number> = {}
-      for (const row of (topicCountRows ?? []) as { topic_id: string; task_count: number }[]) {
-        taskCountByTopic[row.topic_id] = row.task_count
-      }
+        // User completed per topic
+        const { data: progressData, error: progressError } = await db
+          .from('catalog_task_progress')
+          .select('task_id, catalog_tasks!inner(section_id, catalog_task_topics(topic_id))')
+          .eq('catalog_tasks.section_id', sectionId)
+          .eq('is_completed', true)
+        if (progressError || cancelled) {
+          if (!cancelled) setError(progressError?.message ?? 'Не удалось загрузить каталог')
+          setLoading(false)
+          return
+        }
 
-      // User completed per topic
-      const { data: progressData } = await db
-        .from('catalog_task_progress')
-        .select('task_id, catalog_tasks!inner(section_id, catalog_task_topics(topic_id))')
-        .eq('catalog_tasks.section_id', sectionId)
-        .eq('is_completed', true)
-
-      const doneByTopic: Record<string, number> = {}
-      for (const p of progressData ?? []) {
-        const taskRel = (p as { catalog_tasks?: { catalog_task_topics?: { topic_id: string }[] } }).catalog_tasks
-        for (const tt of taskRel?.catalog_task_topics ?? []) {
-          if (topicIds.includes(tt.topic_id)) {
-            doneByTopic[tt.topic_id] = (doneByTopic[tt.topic_id] ?? 0) + 1
+        const doneByTopic: Record<string, number> = {}
+        for (const p of progressData ?? []) {
+          const taskRel = (p as { catalog_tasks?: { catalog_task_topics?: { topic_id: string }[] } }).catalog_tasks
+          for (const tt of taskRel?.catalog_task_topics ?? []) {
+            if (topicIds.includes(tt.topic_id)) {
+              doneByTopic[tt.topic_id] = (doneByTopic[tt.topic_id] ?? 0) + 1
+            }
           }
         }
-      }
 
-      if (!cancelled) {
-        setTopics(
-          (topicsData ?? []).map((t: CatalogTopic) => ({
-            ...t,
-            task_count:      taskCountByTopic[t.id] ?? 0,
-            completed_count: doneByTopic[t.id]      ?? 0,
-          }))
-        )
-        setLoading(false)
+        if (!cancelled) {
+          setTopics(
+            (topicsData ?? []).map((t: CatalogTopic) => ({
+              ...t,
+              task_count:      taskCountByTopic[t.id] ?? 0,
+              completed_count: doneByTopic[t.id]      ?? 0,
+            }))
+          )
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
+        }
       }
     }
 
     load()
     return () => { cancelled = true }
-  }, [profile, sectionId])
+  }, [profile, sectionId, _retryKey])
 
   return { topics, loading, error }
 }
@@ -297,33 +329,43 @@ interface DirectionCountRow {
   physics_oge: number
 }
 
-export function useCatalogDirectionCounts() {
+export function useCatalogDirectionCounts(_retryKey?: number) {
   const { profile } = useAuthStore()
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile) return
     let cancelled = false
 
     async function load() {
-      // Single aggregating RPC — one table scan, RLS enforced (SECURITY INVOKER)
-      const { data, error } = await db.rpc('get_catalog_direction_counts')
-      if (cancelled) return
-      if (error || !data || !(data as unknown[]).length) return // cards stay without count
-      const row = (data as DirectionCountRow[])[0]
-      setCounts({
-        'math-ege':    row.math_ege    ?? 0,
-        'math-oge':    row.math_oge    ?? 0,
-        'physics-ege': row.physics_ege ?? 0,
-        'physics-oge': row.physics_oge ?? 0,
-      })
+      setError(null)
+      try {
+        // Single aggregating RPC — one table scan, RLS enforced (SECURITY INVOKER)
+        const { data, error } = await db.rpc('get_catalog_direction_counts')
+        if (cancelled) return
+        if (error) {
+          setError(error.message || 'Не удалось загрузить каталог')
+          return
+        }
+        if (!data || !(data as unknown[]).length) return
+        const row = (data as DirectionCountRow[])[0]
+        setCounts({
+          'math-ege':    row.math_ege    ?? 0,
+          'math-oge':    row.math_oge    ?? 0,
+          'physics-ege': row.physics_ege ?? 0,
+          'physics-oge': row.physics_oge ?? 0,
+        })
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+      }
     }
 
     load()
     return () => { cancelled = true }
-  }, [profile])
+  }, [profile, _retryKey])
 
-  return { counts }
+  return { counts, error }
 }
 
 // ── Single task by id ────────────────────────────────────────────────────────
@@ -341,41 +383,50 @@ export function useCatalogTask(taskId: string | undefined) {
     async function load() {
       setLoading(true)
       setError(null)
+      try {
+        const { data: t, error: e1 } = await db
+          .from('catalog_tasks')
+          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, is_published, exam_part')
+          .eq('id', taskId)
+          .single()
+        if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Задача не найдена'); setLoading(false); return }
 
-      const { data: t, error: e1 } = await db
-        .from('catalog_tasks')
-        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, is_published, exam_part')
-        .eq('id', taskId)
-        .single()
-      if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Задача не найдена'); setLoading(false); return }
+        // Section
+        const { data: sec, error: sectionError } = await db.from('catalog_sections').select('*').eq('id', t.section_id).single()
+        if (sectionError || cancelled) { if (!cancelled) setError(sectionError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      // Section
-      const { data: sec } = await db.from('catalog_sections').select('*').eq('id', t.section_id).single()
+        // Assets
+        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
+        for (let from = 0; ; from += 1000) {
+          const { data: page, error: assetsError } = await db
+            .from('catalog_task_assets')
+            .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+            .eq('task_id', taskId)
+            .order('position')
+            .range(from, from + 999)
+          if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+          if (!page || page.length === 0) break
+          allAssets.push(...page)
+          if (page.length < 1000) break
+        }
 
-      // Assets
-      const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-      for (let from = 0; ; from += 1000) {
-        const { data: page } = await db
-          .from('catalog_task_assets')
-          .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+        // Does this task have a topic?
+        const { data: topicLink, error: topicLinkError } = await db
+          .from('catalog_task_topics')
+          .select('topic_id')
           .eq('task_id', taskId)
-          .order('position')
-          .range(from, from + 999)
-        if (!page || page.length === 0) break
-        allAssets.push(...page)
-        if (page.length < 1000) break
-      }
+          .limit(1)
+        if (topicLinkError || cancelled) { if (!cancelled) setError(topicLinkError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      // Does this task have a topic?
-      const { data: topicLink } = await db
-        .from('catalog_task_topics')
-        .select('topic_id')
-        .eq('task_id', taskId)
-        .limit(1)
-
-      if (!cancelled) {
-        setTask({ ...t, section: sec ?? undefined, assets: allAssets, hasTopicAssigned: (topicLink ?? []).length > 0 })
-        setLoading(false)
+        if (!cancelled) {
+          setTask({ ...t, section: sec ?? undefined, assets: allAssets, hasTopicAssigned: (topicLink ?? []).length > 0 })
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
+        }
       }
     }
 
@@ -404,72 +455,81 @@ export function useCatalogTasksBatch(taskIds: string[]) {
     setError(null)
 
     async function load() {
-      // Chunk .in() to ≤50 UUIDs to avoid URL truncation
-      const CHUNK = 50
-      const allTasks: CatalogTask[] = []
-      for (let i = 0; i < taskIds.length; i += CHUNK) {
-        const { data, error: e } = await db
-          .from('catalog_tasks')
-          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, exam_part')
-          .in('id', taskIds.slice(i, i + CHUNK))
-          .eq('is_published', true)
-        if (e || cancelled) { if (!cancelled) setError(e?.message ?? ''); setLoading(false); return }
-        allTasks.push(...(data ?? []))
-      }
+      try {
+        // Chunk .in() to ≤50 UUIDs to avoid URL truncation
+        const CHUNK = 50
+        const allTasks: CatalogTask[] = []
+        for (let i = 0; i < taskIds.length; i += CHUNK) {
+          const { data, error: e } = await db
+            .from('catalog_tasks')
+            .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, exam_part')
+            .in('id', taskIds.slice(i, i + CHUNK))
+            .eq('is_published', true)
+          if (e || cancelled) { if (!cancelled) setError(e?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+          allTasks.push(...(data ?? []))
+        }
 
-      // Batch-load all assets
-      const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-      const PAGE = 1000
-      for (let i = 0; i < taskIds.length; i += CHUNK) {
-        for (let from = 0; ; from += PAGE) {
-          const { data: page } = await db
-            .from('catalog_task_assets')
-            .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-            .in('task_id', taskIds.slice(i, i + CHUNK))
-            .order('position')
-            .range(from, from + PAGE - 1)
-          if (!page || page.length === 0) break
-          allAssets.push(...(page as (CatalogTaskAsset & { task_id: string })[]))
-          if (page.length < PAGE) break
+        // Batch-load all assets
+        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
+        const PAGE = 1000
+        for (let i = 0; i < taskIds.length; i += CHUNK) {
+          for (let from = 0; ; from += PAGE) {
+            const { data: page, error: assetsError } = await db
+              .from('catalog_task_assets')
+              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+              .in('task_id', taskIds.slice(i, i + CHUNK))
+              .order('position')
+              .range(from, from + PAGE - 1)
+            if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+            if (!page || page.length === 0) break
+            allAssets.push(...(page as (CatalogTaskAsset & { task_id: string })[]))
+            if (page.length < PAGE) break
+          }
+        }
+
+        if (cancelled) return
+
+        const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
+        for (const a of allAssets) {
+          const tid = (a as CatalogTaskAsset & { task_id: string }).task_id
+          if (!assetsByTask[tid]) assetsByTask[tid] = []
+          assetsByTask[tid].push(a)
+        }
+
+        // Batch-load sections referenced by these tasks (for codifier section titles)
+        const sectionIds = [...new Set(allTasks.map(t => t.section_id).filter(Boolean))]
+        const sectionsById: Record<string, CatalogSection> = {}
+        for (let i = 0; i < sectionIds.length; i += CHUNK) {
+          const { data: secs, error: sectionsError } = await db
+            .from('catalog_sections')
+            .select('id, external_id, subject, exam_type, exam_number, title, position')
+            .in('id', sectionIds.slice(i, i + CHUNK))
+          if (sectionsError || cancelled) { if (!cancelled) setError(sectionsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+          for (const s of secs ?? []) sectionsById[s.id] = s
+        }
+
+        if (cancelled) return
+
+        // Preserve the original taskIds order
+        const taskMap = new Map(allTasks.map(t => [t.id, t]))
+        setTasks(
+          taskIds
+            .map(id => taskMap.get(id))
+            .filter((t): t is CatalogTask => !!t)
+            .map(t => ({
+              ...t,
+              assets: assetsByTask[t.id] ?? [],
+              section: sectionsById[t.section_id],
+              sectionTitle: sectionsById[t.section_id]?.title ?? null,
+            }))
+        )
+        setLoading(false)
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
         }
       }
-
-      if (cancelled) return
-
-      const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
-      for (const a of allAssets) {
-        const tid = (a as CatalogTaskAsset & { task_id: string }).task_id
-        if (!assetsByTask[tid]) assetsByTask[tid] = []
-        assetsByTask[tid].push(a)
-      }
-
-      // Batch-load sections referenced by these tasks (for codifier section titles)
-      const sectionIds = [...new Set(allTasks.map(t => t.section_id).filter(Boolean))]
-      const sectionsById: Record<string, CatalogSection> = {}
-      for (let i = 0; i < sectionIds.length; i += CHUNK) {
-        const { data: secs } = await db
-          .from('catalog_sections')
-          .select('id, external_id, subject, exam_type, exam_number, title, position')
-          .in('id', sectionIds.slice(i, i + CHUNK))
-        for (const s of secs ?? []) sectionsById[s.id] = s
-      }
-
-      if (cancelled) return
-
-      // Preserve the original taskIds order
-      const taskMap = new Map(allTasks.map(t => [t.id, t]))
-      setTasks(
-        taskIds
-          .map(id => taskMap.get(id))
-          .filter((t): t is CatalogTask => !!t)
-          .map(t => ({
-            ...t,
-            assets: assetsByTask[t.id] ?? [],
-            section: sectionsById[t.section_id],
-            sectionTitle: sectionsById[t.section_id]?.title ?? null,
-          }))
-      )
-      setLoading(false)
     }
 
     load()
@@ -506,54 +566,61 @@ export function useCatalogSearch(query: string, sectionId: string | undefined) {
     async function search() {
       setLoading(true)
       setError(null)
+      try {
+        // Numeric query → search by external_id first
+        const isNum = /^\d+$/.test(q)
+        let data: CatalogSearchResult[] | null = null
+        let err = null
 
-      // Numeric query → search by external_id first
-      const isNum = /^\d+$/.test(q)
-      let data: CatalogSearchResult[] | null = null
-      let err = null
+        if (isNum) {
+          const res = await db
+            .from('catalog_tasks')
+            .select('id, external_id, section_id, statement_html, has_answer, has_solution')
+            .eq('section_id', sectionId)
+            .eq('external_id', parseInt(q, 10))
+            .eq('is_published', true)
+            .limit(20)
+          data = res.data; err = res.error
+        }
 
-      if (isNum) {
-        const res = await db
-          .from('catalog_tasks')
-          .select('id, external_id, section_id, statement_html, has_answer, has_solution')
-          .eq('section_id', sectionId)
-          .eq('external_id', parseInt(q, 10))
-          .eq('is_published', true)
-          .limit(20)
-        data = res.data; err = res.error
-      }
+        // Text search (ilike on plain-text rendering not possible without RPC — use HTML)
+        if (!isNum || !data?.length) {
+          const res = await db
+            .from('catalog_tasks')
+            .select('id, external_id, section_id, statement_html, has_answer, has_solution')
+            .eq('section_id', sectionId)
+            .eq('is_published', true)
+            .ilike('statement_html', `%${q}%`)
+            .order('position')
+            .limit(50)
+          if (!err) { data = res.data; err = res.error }
+        }
 
-      // Text search (ilike on plain-text rendering not possible without RPC — use HTML)
-      if (!isNum || !data?.length) {
-        const res = await db
-          .from('catalog_tasks')
-          .select('id, external_id, section_id, statement_html, has_answer, has_solution')
-          .eq('section_id', sectionId)
-          .eq('is_published', true)
-          .ilike('statement_html', `%${q}%`)
-          .order('position')
-          .limit(50)
-        if (!err) { data = res.data; err = res.error }
-      }
+        if (err || cancelled) { if (!cancelled) setError(err?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-      if (err || cancelled) { if (!cancelled) setError(err?.message ?? ''); setLoading(false); return }
+        const rows = data ?? []
 
-      const rows = data ?? []
+        // Check which tasks have a topic (for admin marker)
+        const ids = rows.map(r => r.id)
+        const linkedSet = new Set<string>()
+        for (let i = 0; i < ids.length; i += 50) {
+          const { data: links, error: linksError } = await db
+            .from('catalog_task_topics')
+            .select('task_id')
+            .in('task_id', ids.slice(i, i + 50))
+          if (linksError || cancelled) { if (!cancelled) setError(linksError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+          for (const l of links ?? []) linkedSet.add(l.task_id)
+        }
 
-      // Check which tasks have a topic (for admin marker)
-      const ids = rows.map(r => r.id)
-      const linkedSet = new Set<string>()
-      for (let i = 0; i < ids.length; i += 50) {
-        const { data: links } = await db
-          .from('catalog_task_topics')
-          .select('task_id')
-          .in('task_id', ids.slice(i, i + 50))
-        for (const l of links ?? []) linkedSet.add(l.task_id)
-      }
-
-      if (!cancelled) {
-        setResults(rows.map(r => ({ ...r, hasTopicAssigned: linkedSet.has(r.id) })))
-        setLoading(false)
+        if (!cancelled) {
+          setResults(rows.map(r => ({ ...r, hasTopicAssigned: linkedSet.has(r.id) })))
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
+        }
       }
     }
 
@@ -566,7 +633,7 @@ export function useCatalogSearch(query: string, sectionId: string | undefined) {
 
 // ── Tasks for a topic ─────────────────────────────────────────────────────────
 
-export function useCatalogTasks(topicId: string | undefined) {
+export function useCatalogTasks(topicId: string | undefined, _retryKey?: number) {
   const { profile } = useAuthStore()
   const [tasks, setTasks] = useState<CatalogTask[]>([])
   const [loading, setLoading] = useState(true)
@@ -580,83 +647,91 @@ export function useCatalogTasks(topicId: string | undefined) {
     async function load() {
       setLoading(true)
       setError(null)
+      try {
+        // Paginated fetch — guard against topics that could exceed 1000 tasks
+        const linkRows: { task_id: string }[] = []
+        const LINK_PAGE = 1000
+        for (let from = 0; ; from += LINK_PAGE) {
+          const { data: page, error: e1 } = await db
+            .from('catalog_task_topics')
+            .select('task_id')
+            .eq('topic_id', topicId)
+            .range(from, from + LINK_PAGE - 1)
+          if (e1 || cancelled) { if (!cancelled) { setError(e1?.message ?? 'Не удалось загрузить каталог'); setLoading(false) } return }
+          linkRows.push(...(page ?? []))
+          if ((page?.length ?? 0) < LINK_PAGE) break
+        }
 
-      // Paginated fetch — guard against topics that could exceed 1000 tasks
-      const linkRows: { task_id: string }[] = []
-      const LINK_PAGE = 1000
-      for (let from = 0; ; from += LINK_PAGE) {
-        const { data: page, error: e1 } = await db
-          .from('catalog_task_topics')
-          .select('task_id')
-          .eq('topic_id', topicId)
-          .range(from, from + LINK_PAGE - 1)
-        if (e1 || cancelled) { if (!cancelled) { setError(e1?.message ?? ''); setLoading(false) } return }
-        linkRows.push(...(page ?? []))
-        if ((page?.length ?? 0) < LINK_PAGE) break
-      }
+        const taskIds = linkRows.map((l: { task_id: string }) => l.task_id)
+        if (!taskIds.length) { if (!cancelled) { setTasks([]); setLoading(false) } return }
 
-      const taskIds = linkRows.map((l: { task_id: string }) => l.task_id)
-      if (!taskIds.length) { if (!cancelled) { setTasks([]); setLoading(false) } return }
+        const { data: tasksData, error: e2 } = await db
+          .from('catalog_tasks')
+          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, exam_part')
+          .in('id', taskIds)
+          .eq('is_published', true)
+          .order('position')
 
-      const { data: tasksData, error: e2 } = await db
-        .from('catalog_tasks')
-        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, exam_part')
-        .in('id', taskIds)
-        .eq('is_published', true)
-        .order('position')
+        if (e2 || cancelled) { if (!cancelled) { setError(e2?.message ?? 'Не удалось загрузить каталог'); setLoading(false) } return }
 
-      if (e2 || cancelled) { if (!cancelled) { setError(e2?.message ?? ''); setLoading(false) } return }
+        // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
+        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
+        const ASSET_PAGE  = 1000
+        const ASSET_CHUNK = 50
+        for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
+          const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
+          for (let from = 0; ; from += ASSET_PAGE) {
+            const { data: assetPage, error: assetsError } = await db
+              .from('catalog_task_assets')
+              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+              .in('task_id', chunk)
+              .order('position')
+              .range(from, from + ASSET_PAGE - 1)
+            if (assetsError || cancelled) { if (!cancelled) { setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false) } return }
+            if (!assetPage || assetPage.length === 0) break
+            allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
+            if (assetPage.length < ASSET_PAGE) break
+          }
+        }
+        const assetsData = allAssets
 
-      // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
-      const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-      const ASSET_PAGE  = 1000
-      const ASSET_CHUNK = 50
-      for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
-        const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
-        for (let from = 0; ; from += ASSET_PAGE) {
-          const { data: assetPage } = await db
-            .from('catalog_task_assets')
-            .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-            .in('task_id', chunk)
-            .order('position')
-            .range(from, from + ASSET_PAGE - 1)
-          if (!assetPage || assetPage.length === 0) break
-          allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
-          if (assetPage.length < ASSET_PAGE) break
+        const { data: progressData, error: progressError } = await db
+          .from('catalog_task_progress')
+          .select('task_id, is_completed')
+          .in('task_id', taskIds)
+          .eq('is_completed', true)
+        if (progressError || cancelled) { if (!cancelled) { setError(progressError?.message ?? 'Не удалось загрузить каталог'); setLoading(false) } return }
+
+        if (cancelled) return
+
+        const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
+        for (const a of assetsData ?? []) {
+          const aid = (a as CatalogTaskAsset & { task_id: string }).task_id
+          if (!assetsByTask[aid]) assetsByTask[aid] = []
+          assetsByTask[aid].push(a as CatalogTaskAsset)
+        }
+
+        const done = new Set<string>((progressData ?? []).map((p: { task_id: string }) => p.task_id))
+        setCompletedIds(done)
+        setTasks(
+          (tasksData ?? []).map((t: CatalogTask) => ({
+            ...t,
+            assets:       assetsByTask[t.id] ?? [],
+            is_completed: done.has(t.id),
+          }))
+        )
+        setLoading(false)
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
         }
       }
-      const assetsData = allAssets
-
-      const { data: progressData } = await db
-        .from('catalog_task_progress')
-        .select('task_id, is_completed')
-        .in('task_id', taskIds)
-        .eq('is_completed', true)
-
-      if (cancelled) return
-
-      const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
-      for (const a of assetsData ?? []) {
-        const aid = (a as CatalogTaskAsset & { task_id: string }).task_id
-        if (!assetsByTask[aid]) assetsByTask[aid] = []
-        assetsByTask[aid].push(a as CatalogTaskAsset)
-      }
-
-      const done = new Set<string>((progressData ?? []).map((p: { task_id: string }) => p.task_id))
-      setCompletedIds(done)
-      setTasks(
-        (tasksData ?? []).map((t: CatalogTask) => ({
-          ...t,
-          assets:       assetsByTask[t.id] ?? [],
-          is_completed: done.has(t.id),
-        }))
-      )
-      setLoading(false)
     }
 
     load()
     return () => { cancelled = true }
-  }, [profile, topicId])
+  }, [profile, topicId, _retryKey])
 
   // Toggle completion
   const toggleComplete = useCallback(async (taskId: string, currentlyDone: boolean) => {
