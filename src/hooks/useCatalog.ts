@@ -52,6 +52,7 @@ export interface CatalogTask {
   has_answer: boolean
   has_solution: boolean
   position: number
+  exam_part?: number | null
   assets?: CatalogTaskAsset[]
   is_completed?: boolean
   section?: CatalogSection
@@ -343,7 +344,7 @@ export function useCatalogTask(taskId: string | undefined) {
 
       const { data: t, error: e1 } = await db
         .from('catalog_tasks')
-        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, is_published')
+        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, is_published, exam_part')
         .eq('id', taskId)
         .single()
       if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Задача не найдена'); setLoading(false); return }
@@ -409,7 +410,7 @@ export function useCatalogTasksBatch(taskIds: string[]) {
       for (let i = 0; i < taskIds.length; i += CHUNK) {
         const { data, error: e } = await db
           .from('catalog_tasks')
-          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position')
+          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, exam_part')
           .in('id', taskIds.slice(i, i + CHUNK))
           .eq('is_published', true)
         if (e || cancelled) { if (!cancelled) setError(e?.message ?? ''); setLoading(false); return }
@@ -599,7 +600,7 @@ export function useCatalogTasks(topicId: string | undefined) {
 
       const { data: tasksData, error: e2 } = await db
         .from('catalog_tasks')
-        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position')
+        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, exam_part')
         .in('id', taskIds)
         .eq('is_published', true)
         .order('position')

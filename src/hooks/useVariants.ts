@@ -380,6 +380,54 @@ export function useVariantBuilder() {
   return { generateTasks, saveVariant, replaceTask, findReplacementTask, generating, saving, genError, setGenError }
 }
 
+// ── Student self-built variants ──────────────────────────────────────────────
+
+export interface SelfBuiltVariantTaskInput {
+  task_id: string
+  section_id: string | null
+  topic_id: string | null
+}
+
+/** Student builds their own variant from a cart of catalog tasks. Returns the
+ * new student_assignment_id (self-assignment) on success. */
+export function useCreateSelfBuiltVariant() {
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+
+  const create = useCallback(async (params: {
+    title: string
+    subject: string
+    examType: string
+    items: SelfBuiltVariantTaskInput[]
+  }): Promise<string | null> => {
+    setSaving(true)
+    setError(null)
+    try {
+      const { data, error: err } = await db.rpc('create_self_built_variant', {
+        p_title:     params.title,
+        p_subject:   params.subject,
+        p_exam_type: params.examType,
+        p_items:     params.items.map((t, idx) => ({
+          task_id:    t.task_id,
+          pos:        idx + 1,
+          section_id: t.section_id,
+          topic_id:   t.topic_id,
+          points:     1,
+        })),
+      })
+      if (err) throw new Error(err.message)
+      return data as string
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка создания варианта')
+      return null
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  return { create, saving, error }
+}
+
 async function loadSingleTask(taskId: string): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db2 = supabase as any

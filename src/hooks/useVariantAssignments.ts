@@ -71,6 +71,7 @@ export interface StudentVariantAssignment {
     exam_type: string
     tasks_count: number
     status: string
+    source_type: string
   }
   assignment?: {
     id?: string
@@ -117,6 +118,7 @@ interface StudentVariantAssignmentRpcRow {
   answered_count: number | null
   correct_count: number | null
   manual_review_count: number | null
+  variant_source_type: string
 }
 
 function mapStudentAssignment(row: StudentVariantAssignmentRpcRow): StudentVariantAssignment {
@@ -153,6 +155,7 @@ function mapStudentAssignment(row: StudentVariantAssignmentRpcRow): StudentVaria
       exam_type: row.variant_exam_type,
       tasks_count: row.variant_tasks_count,
       status: row.variant_status,
+      source_type: row.variant_source_type,
     },
     assignment: {
       id: row.assignment_id,

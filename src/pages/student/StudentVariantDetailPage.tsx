@@ -11,6 +11,7 @@ import { useStudentVariantAssignmentDetail } from '@/hooks/useVariantAssignments
 import { useVariantAttempt } from '@/hooks/useVariantAttempt'
 import { VariantAnswerInput } from '@/components/variant/VariantAnswerInput'
 import { ManualAnswerInput } from '@/components/variant/ManualAnswerInput'
+import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
 
 function SignedImage({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -100,6 +101,7 @@ export function StudentVariantDetailPage() {
     useStudentVariantAssignmentDetail(assignmentId)
 
   const [showConfirm, setShowConfirm] = useState(false)
+  const { scores: selfCheckScores, setScore: setSelfCheckScore } = useSelfCheckScores(assignmentId ?? '')
 
   const {
     items,
@@ -325,6 +327,7 @@ export function StudentVariantDetailPage() {
     const manualRevCount  = attempt?.manual_review_count ?? null
     const needsReview     = gradingStatus === 'needs_review'
     const isGraded        = gradingStatus === 'graded'
+    const isSelfBuilt      = assignment.variant?.source_type === 'student_self_built'
 
     return (
       <div className="max-w-4xl mx-auto px-4 py-6">
@@ -420,6 +423,18 @@ export function StudentVariantDetailPage() {
                     Ваш ответ: <span className="font-medium">{answers[item.item_id]}</span>
                   </div>
                 )}
+                {/* Self-built variant, part 2 (or unmarked part): client-only
+                    self-assessment. Never touches the server — grading_type
+                    stays 'auto' and points were zeroed at variant-build time,
+                    so this can never leak into score/stats. */}
+                {isSelfBuilt && item.exam_part !== 1 && (
+                  <SelfCheckItem
+                    item={item}
+                    studentAnswer=""
+                    score={selfCheckScores[item.item_id] ?? null}
+                    onScoreChange={value => setSelfCheckScore(item.item_id, value)}
+                  />
+                )}
                 {/* Graded result per manual item */}
                 {isGraded && gradedAnswers[item.item_id] && (
                   <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
@@ -452,6 +467,8 @@ export function StudentVariantDetailPage() {
             ))}
           </div>
         )}
+
+        {isSelfBuilt && <SelfCheckSummary items={items} scores={selfCheckScores} />}
 
         {/* Разбор работы — summary after grading */}
         {isGraded && Object.keys(gradedAnswers).length > 0 && (

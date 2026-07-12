@@ -124,6 +124,15 @@ export function CatalogTaskContent({
             #{variantNumber}
           </span>
         )}
+        {showControls && task.exam_part == null && (
+          <span
+            data-testid="task-exam-part-unset-badge"
+            title="У задачи не указана часть экзамена (exam_part) — влияет на самопроверку в самостоятельно собранных вариантах"
+            className="flex-shrink-0 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 mt-0.5"
+          >
+            часть не размечена
+          </span>
+        )}
         <div
           className={`flex-1 min-w-0 prose prose-sm max-w-none text-gray-800 catalog-html${figureScaleClass}`}
           dangerouslySetInnerHTML={{ __html: resolve(task.statement_html) }}

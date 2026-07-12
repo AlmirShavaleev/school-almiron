@@ -20,6 +20,13 @@ export interface VariantItem {
   statement_html: string
   has_answer:     boolean
   has_solution:   boolean
+  exam_part:            number | null
+  source_type:          string
+  /** Populated by the server only once the assignment is submitted/completed. */
+  solution_html:        string | null
+  solution_plan_html:   string | null
+  grade_criteria_html:  string | null
+  answer_html:          string | null
 }
 
 export interface VariantAttemptState {
