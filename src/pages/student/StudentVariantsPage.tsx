@@ -1,6 +1,7 @@
-import { useStudentVariantAssignments, type StudentVariantAssignment } from '@/hooks/useVariantAssignments'
+import { deleteMyVariant, useStudentVariantAssignments, type StudentVariantAssignment } from '@/hooks/useVariantAssignments'
 import { Link } from 'react-router-dom'
-import { BookOpen, Clock, Calendar, CheckCircle2, Loader2, AlertCircle, Lock, ArrowRight, Hammer, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { BookOpen, Clock, Calendar, CheckCircle2, Loader2, AlertCircle, Lock, ArrowRight, Hammer, Sparkles, Trash2 } from 'lucide-react'
 import { format, isPast, isFuture } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
@@ -28,7 +29,27 @@ function resolveDisplayStatus(a: StudentVariantAssignment): StudentVariantAssign
 }
 
 export function StudentVariantsPage() {
-  const { assignments, loading, error } = useStudentVariantAssignments()
+  const { assignments, loading, error, reload } = useStudentVariantAssignments()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  async function handleDelete(assignment: StudentVariantAssignment) {
+    const confirmed = window.confirm(
+      `Удалить вариант "${assignment.variant?.title ?? 'Без названия'}" без возможности восстановления?`,
+    )
+    if (!confirmed) return
+
+    setDeletingId(assignment.id)
+    setDeleteError(null)
+    try {
+      await deleteMyVariant(assignment.id)
+      await reload()
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : 'Не удалось удалить вариант')
+    } finally {
+      setDeletingId(current => current === assignment.id ? null : current)
+    }
+  }
 
   if (loading) {
     return (
@@ -42,7 +63,7 @@ export function StudentVariantsPage() {
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Мои варианты</h1>
+          <h1 className="text-xl font-bold text-gray-900">Тренировочные варианты</h1>
           <p className="text-sm text-gray-500 mt-0.5">Варианты, назначенные учителем</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -65,6 +86,9 @@ export function StudentVariantsPage() {
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+      )}
+      {deleteError && (
+        <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{deleteError}</div>
       )}
 
       {assignments.length === 0 && !loading ? (
@@ -140,7 +164,7 @@ export function StudentVariantsPage() {
                     </div>
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end">
                     {displayStatus === 'completed' || displayStatus === 'submitted' ? (
                       <CheckCircle2 size={20} className="text-green-500 mt-0.5" />
                     ) : isLocked ? (
@@ -171,6 +195,15 @@ export function StudentVariantsPage() {
                         <ArrowRight size={13} />
                       </Link>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(a)}
+                      disabled={deletingId === a.id}
+                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingId === a.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Удалить
+                    </button>
                   </div>
                 </div>
               </div>

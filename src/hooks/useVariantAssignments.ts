@@ -281,29 +281,28 @@ export function useStudentVariantAssignments() {
   const [assignments, setAssignments] = useState<StudentVariantAssignment[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!profile || profile.role !== 'student') return
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const { data, error: e } = await db.rpc('get_my_variant_assignments')
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: e } = await db.rpc('get_my_variant_assignments')
 
-        if (e) throw e
-        setAssignments(((data || []) as StudentVariantAssignmentRpcRow[]).map(mapStudentAssignment))
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Ошибка загрузки вариантов')
-      } finally {
-        setLoading(false)
-      }
+      if (e) throw e
+      setAssignments(((data || []) as StudentVariantAssignmentRpcRow[]).map(mapStudentAssignment))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Ошибка загрузки вариантов')
+    } finally {
+      setLoading(false)
     }
-
-    load()
   }, [profile])
 
-  return { assignments, loading, error }
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return { assignments, loading, error, reload: load }
 }
 
 export function useStudentVariantAssignmentDetail(assignmentId: string | undefined) {
@@ -455,6 +454,14 @@ export async function cancelAssignment(assignmentId: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any).rpc('cancel_variant_assignment', {
     p_assignment_id: assignmentId,
+  })
+  if (error) throw error
+}
+
+export async function deleteMyVariant(studentAssignmentId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc('delete_my_variant', {
+    p_student_assignment_id: studentAssignmentId,
   })
   if (error) throw error
 }

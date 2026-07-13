@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
 
-  { label: 'Мои варианты',      path: '/student/variants', icon: <FileText size={18} />,    roles: ['student'],  section: 'Учёба' },
+  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба' },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
