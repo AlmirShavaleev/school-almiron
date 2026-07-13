@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { VariantItem } from '@/hooks/useVariantAttempt'
-import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import { resolveTaskHtml } from '@/components/catalog/CatalogTaskContent'
+import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 
 /** Local-only (never persisted server-side) self-assessment score per item,
  * keyed by variant_item_id. Kept in sessionStorage so a page refresh doesn't
@@ -88,19 +89,19 @@ export function SelfCheckItem({ item, studentAnswer, score, onScoreChange }: Sel
           {item.solution_html && (
             <div>
               <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">Решение</div>
-              <div className="prose prose-sm max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.solution_html) }} />
+              <TaskContentRenderer html={resolveTaskHtml(item.solution_html, item.assets ?? [])} />
             </div>
           )}
           {item.solution_plan_html && (
             <div>
               <div className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">План решения</div>
-              <div className="prose prose-sm max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.solution_plan_html) }} />
+              <TaskContentRenderer html={resolveTaskHtml(item.solution_plan_html, item.assets ?? [])} />
             </div>
           )}
           {item.grade_criteria_html && (
             <div>
               <div className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-1">Критерии оценки</div>
-              <div className="prose prose-sm max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.grade_criteria_html) }} />
+              <TaskContentRenderer html={resolveTaskHtml(item.grade_criteria_html, item.assets ?? [])} />
             </div>
           )}
         </div>

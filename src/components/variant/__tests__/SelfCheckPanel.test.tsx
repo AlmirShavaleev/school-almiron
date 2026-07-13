@@ -1,7 +1,17 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
 import type { VariantItem } from '@/hooks/useVariantAttempt'
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    storage: {
+      from: () => ({
+        getPublicUrl: (path: string) => ({ data: { publicUrl: `https://cdn.test/${path}` } }),
+      }),
+    },
+  },
+}))
 
 function makeItem(overrides: Partial<VariantItem> = {}): VariantItem {
   return {
@@ -24,6 +34,7 @@ function makeItem(overrides: Partial<VariantItem> = {}): VariantItem {
     solution_plan_html: null,
     grade_criteria_html: '<p>2 балла за верный ответ</p>',
     answer_html: null,
+    assets: [],
     ...overrides,
   }
 }
@@ -61,6 +72,26 @@ describe('SelfCheckPanel — local-only self-assessment', () => {
 
     const stored = JSON.parse(sessionStorage.getItem('self-check:assignment-1') ?? '{}')
     expect(stored).toEqual({ 'item-1': 2 })
+  })
+
+  it('resolves solution images via catalog assets', () => {
+    const item = makeItem({
+      solution_html: '<p><img src="DI_703.png" alt="PIC"></p>',
+      assets: [{
+        id: 'asset-1',
+        tex_session_id: null,
+        kind: 'solution',
+        storage_path: 'math-ege/1861/DI_703.png',
+        alt: 'PIC',
+        position: 1,
+      }],
+    })
+
+    render(<TestHarness item={item} />)
+    fireEvent.click(screen.getByText('Показать решение и критерии'))
+
+    const img = screen.getByRole('img') as HTMLImageElement
+    expect(img.src).toContain('https://cdn.test/math-ege/1861/DI_703.png')
   })
 
   it('clears the stored score when the input is emptied', () => {

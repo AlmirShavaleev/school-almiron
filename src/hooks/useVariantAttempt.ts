@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeAnswer } from '@/utils/variantAnswerNormalize'
 import type { AttachmentRecord } from '@/components/variant/ManualAnswerInput'
+import type { CatalogTaskAsset } from '@/hooks/useCatalog'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -27,6 +28,7 @@ export interface VariantItem {
   solution_plan_html:   string | null
   grade_criteria_html:  string | null
   answer_html:          string | null
+  assets?:              CatalogTaskAsset[]
 }
 
 export interface VariantAttemptState {
@@ -177,7 +179,20 @@ export function useVariantAttempt(
       if (itemsRes.error) {
         setError(itemsRes.error.message)
       } else {
-        setItems((itemsRes.data as VariantItem[]) ?? [])
+        const itemRows = (itemsRes.data as VariantItem[]) ?? []
+        const taskIds = [...new Set(itemRows.map(item => item.task_id).filter(Boolean))]
+
+        if (!taskIds.length) {
+          setItems(itemRows)
+        } else {
+          void loadAssetsForTaskIds(taskIds).then(assetsByTask => {
+            if (cancelled) return
+            setItems(itemRows.map(item => ({
+              ...item,
+              assets: assetsByTask[item.task_id] ?? [],
+            })))
+          })
+        }
       }
       if (!answersRes.error && answersRes.data) {
         const map: Record<string, string> = {}
@@ -237,7 +252,13 @@ export function useVariantAttempt(
       { p_student_assignment_id: studentAssignmentId },
     )
     if (!itemErr) {
-      setItems((itemData as VariantItem[]) ?? [])
+      const rows = (itemData as VariantItem[]) ?? []
+      const taskIds = [...new Set(rows.map(item => item.task_id).filter(Boolean))]
+      const assetsByTask = await loadAssetsForTaskIds(taskIds)
+      setItems(rows.map(item => ({
+        ...item,
+        assets: assetsByTask[item.task_id] ?? [],
+      })))
     }
   }, [studentAssignmentId])
 
@@ -344,4 +365,33 @@ export function useVariantAttempt(
     submitError,
     gradedAnswers,
   }
+}
+
+async function loadAssetsForTaskIds(taskIds: string[]): Promise<Record<string, CatalogTaskAsset[]>> {
+  if (!taskIds.length) return {}
+  const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
+  const PAGE = 1000
+  const CHUNK = 50
+
+  for (let ci = 0; ci < taskIds.length; ci += CHUNK) {
+    const chunk = taskIds.slice(ci, ci + CHUNK)
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await db
+        .from('catalog_task_assets')
+        .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+        .in('task_id', chunk)
+        .order('position')
+        .range(from, from + PAGE - 1)
+      if (!data || data.length === 0) break
+      allAssets.push(...data)
+      if (data.length < PAGE) break
+    }
+  }
+
+  const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
+  for (const asset of allAssets) {
+    if (!assetsByTask[asset.task_id]) assetsByTask[asset.task_id] = []
+    assetsByTask[asset.task_id].push(asset)
+  }
+  return assetsByTask
 }

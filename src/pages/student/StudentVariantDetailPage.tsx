@@ -12,6 +12,8 @@ import { useVariantAttempt } from '@/hooks/useVariantAttempt'
 import { VariantAnswerInput } from '@/components/variant/VariantAnswerInput'
 import { ManualAnswerInput } from '@/components/variant/ManualAnswerInput'
 import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
+import { resolveTaskHtml } from '@/components/catalog/CatalogTaskContent'
+import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 
 function SignedImage({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -414,10 +416,7 @@ export function StudentVariantDetailPage() {
                   </span>
                   <span className="text-xs text-gray-400">{item.points} б.</span>
                 </div>
-                <div
-                  className="prose prose-sm max-w-none text-gray-800"
-                  dangerouslySetInnerHTML={{ __html: item.statement_html }}
-                />
+                <TaskContentRenderer html={resolveTaskHtml(item.statement_html, item.assets ?? [])} />
                 {answers[item.item_id] && (
                   <div className="mt-3 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
                     Ваш ответ: <span className="font-medium">{answers[item.item_id]}</span>
@@ -563,10 +562,7 @@ export function StudentVariantDetailPage() {
                   </div>
                   <span className="text-xs text-gray-400">{item.points} б.</span>
                 </div>
-                <div
-                  className="prose prose-sm max-w-none text-gray-800"
-                  dangerouslySetInnerHTML={{ __html: item.statement_html }}
-                />
+                <TaskContentRenderer html={resolveTaskHtml(item.statement_html, item.assets ?? [])} />
                 {item.grading_type === 'manual' ? (
                   <ManualAnswerInput
                     itemId={item.item_id}
