@@ -43,6 +43,22 @@ function SignedImage({ path, name }: { path: string; name: string }) {
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS:    Record<string, string>  = { ege: 'ЕГЭ', oge: 'ОГЭ' }
 
+function deriveStudentAttemptStatus(params: {
+  assignmentStatus: string
+  attemptStatus: string | null
+  startedAt: string | null
+  submittedAt: string | null
+  completedAt: string | null
+}) {
+  if (params.completedAt) return 'completed'
+  if (params.submittedAt) return 'submitted'
+  if (params.attemptStatus) return params.attemptStatus
+  if ((params.assignmentStatus === 'not_started' || params.assignmentStatus === 'available') && params.startedAt) {
+    return 'in_progress'
+  }
+  return params.assignmentStatus
+}
+
 // ── Submit-confirm modal ────────────────────────────────────────────────────
 
 interface ConfirmDialogProps {
@@ -160,11 +176,18 @@ export function StudentVariantDetailPage() {
   }
 
   const groupName   = assignment.group_name ?? assignment.assignment?.group?.name
-  const teacherName = assignment.teacher_name ?? assignment.assignment?.assigned_by_profile?.full_name
+  const isSelfBuilt = assignment.variant?.source_type === 'student_self_built'
+  const teacherName = isSelfBuilt ? null : (assignment.teacher_name ?? assignment.assignment?.assigned_by_profile?.full_name)
   const lockedUntil = assignment.available_from && isFuture(new Date(assignment.available_from))
-  const status      = attempt?.status ?? assignment.status
+  const status = deriveStudentAttemptStatus({
+    assignmentStatus: assignment.status,
+    attemptStatus: attempt?.status ?? null,
+    startedAt: attempt?.started_at ?? assignment.started_at ?? null,
+    submittedAt: attempt?.submitted_at ?? assignment.submitted_at ?? null,
+    completedAt: attempt?.completed_at ?? assignment.completed_at ?? null,
+  })
   const isSubmitted = status === 'submitted' || status === 'completed'
-  const isStarted   = !!assignment.started_at || status === 'in_progress'
+  const isStarted = status === 'in_progress' || status === 'submitted' || status === 'completed' || !!(attempt?.started_at ?? assignment.started_at)
 
   // Count answered: text answers + items with attachments
   const answeredCount = items.filter(item =>
@@ -174,7 +197,6 @@ export function StudentVariantDetailPage() {
 
   async function handleConfirmSubmit() {
     await submitVariant()
-    if (!submitError) setShowConfirm(false)
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -429,7 +451,7 @@ export function StudentVariantDetailPage() {
                 {isSelfBuilt && item.exam_part !== 1 && (
                   <SelfCheckItem
                     item={item}
-                    studentAnswer=""
+                    studentAnswer={answers[item.item_id] ?? ''}
                     score={selfCheckScores[item.item_id] ?? null}
                     onScoreChange={value => setSelfCheckScore(item.item_id, value)}
                   />

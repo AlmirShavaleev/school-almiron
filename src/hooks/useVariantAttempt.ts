@@ -76,6 +76,27 @@ interface UseVariantAttemptReturn {
 
 const DEBOUNCE_MS = 800
 
+function deriveAttemptStatus(params: {
+  status: string
+  startedAt: string | null
+  submittedAt: string | null
+  completedAt: string | null
+  availableFrom: string | null
+}): VariantAttemptState['status'] {
+  if (params.completedAt) return 'completed'
+  if (params.submittedAt) return 'submitted'
+
+  const now = new Date()
+  const rawStatus = params.status
+  if (rawStatus === 'not_started' && params.availableFrom && new Date(params.availableFrom) > now) {
+    return 'locked'
+  }
+  if ((rawStatus === 'not_started' || rawStatus === 'available') && params.startedAt) {
+    return 'in_progress'
+  }
+  return rawStatus as VariantAttemptState['status']
+}
+
 export function useVariantAttempt(
   studentAssignmentId: string | undefined,
   initialStatus: string,
@@ -101,6 +122,7 @@ export function useVariantAttempt(
   const [error, setError]               = useState<string | null>(null)
   const [submitting, setSubmitting]     = useState(false)
   const [submitError, setSubmitError]   = useState<string | null>(null)
+  const latestAnswersRef                = useRef<Record<string, string>>({})
 
   // Debounce timers per item
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -111,15 +133,14 @@ export function useVariantAttempt(
   useEffect(() => {
     if (!studentAssignmentId) return
 
-    const now = new Date()
-    let status = initialStatus as VariantAttemptState['status']
-
-    if (status === 'not_started' && availableFrom && new Date(availableFrom) > now) {
-      status = 'locked'
-    }
-
     setAttempt({
-      status,
+      status: deriveAttemptStatus({
+        status: initialStatus,
+        startedAt: initialStartedAt,
+        submittedAt: initialSubmittedAt,
+        completedAt: initialCompletedAt,
+        availableFrom,
+      }),
       started_at:          initialStartedAt,
       submitted_at:        initialSubmittedAt,
       completed_at:        initialCompletedAt,
@@ -132,6 +153,10 @@ export function useVariantAttempt(
       manual_review_count: null,
     })
   }, [studentAssignmentId, initialStatus, initialStartedAt, initialSubmittedAt, initialCompletedAt, availableFrom])
+
+  useEffect(() => {
+    latestAnswersRef.current = answers
+  }, [answers])
 
   // Populate score/grading fields from props once they arrive (submitted/completed state)
   useEffect(() => {
@@ -277,7 +302,11 @@ export function useVariantAttempt(
   }, [])
 
   const setAnswer = useCallback((itemId: string, raw: string) => {
-    setAnswers(prev => ({ ...prev, [itemId]: raw }))
+    setAnswers(prev => {
+      const next = { ...prev, [itemId]: raw }
+      latestAnswersRef.current = next
+      return next
+    })
     setSaveStates(prev => ({ ...prev, [itemId]: 'saving' }))
 
     // Debounce the actual RPC call
@@ -304,10 +333,42 @@ export function useVariantAttempt(
     }, DEBOUNCE_MS)
   }, [studentAssignmentId])
 
+  const flushPendingAnswerSaves = useCallback(async () => {
+    if (!studentAssignmentId) return
+    const pendingIds = Object.keys(debounceTimers.current).filter(itemId => !!debounceTimers.current[itemId])
+    if (!pendingIds.length) return
+
+    await Promise.all(pendingIds.map(async itemId => {
+      clearTimeout(debounceTimers.current[itemId])
+      delete debounceTimers.current[itemId]
+      const answerRaw = latestAnswersRef.current[itemId] ?? ''
+      const { error: saveErr } = await db.rpc('save_variant_answer', {
+        p_student_assignment_id: studentAssignmentId,
+        p_variant_item_id: itemId,
+        p_answer_raw: answerRaw,
+      })
+      setSaveStates(prev => ({
+        ...prev,
+        [itemId]: saveErr ? 'error' : 'saved',
+      }))
+      if (saveErr) {
+        throw new Error(saveErr.message)
+      }
+    }))
+  }, [studentAssignmentId])
+
   const submitVariant = useCallback(async () => {
     if (!studentAssignmentId) return
     setSubmitting(true)
     setSubmitError(null)
+
+    try {
+      await flushPendingAnswerSaves()
+    } catch (e) {
+      setSubmitting(false)
+      setSubmitError(e instanceof Error ? e.message : 'Не удалось сохранить ответы перед отправкой')
+      return
+    }
 
     const { data, error: rpcErr } = await db.rpc('submit_variant', {
       p_student_assignment_id: studentAssignmentId,
@@ -346,7 +407,7 @@ export function useVariantAttempt(
       grading_status:      result.grading_status as VariantAttemptState['grading_status'],
       manual_review_count: result.manual_review_count,
     } : null)
-  }, [studentAssignmentId])
+  }, [flushPendingAnswerSaves, studentAssignmentId])
 
   return {
     items,
