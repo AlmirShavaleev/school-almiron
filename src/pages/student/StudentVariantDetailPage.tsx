@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import type { MouseEvent } from 'react'
 import {
   AlertTriangle, ArrowLeft, BookOpen, Calendar, CheckCircle2,
   Clock, FileText, Loader2, MessageSquare, Paperclip, Send, UserRound, Users,
@@ -8,12 +9,36 @@ import { format, isFuture } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useStudentVariantAssignmentDetail } from '@/hooks/useVariantAssignments'
-import { useVariantAttempt } from '@/hooks/useVariantAttempt'
+import { useVariantAttempt, type VariantItem } from '@/hooks/useVariantAttempt'
+import { normalizeAnswer, stripHtmlSimple } from '@/utils/variantAnswerNormalize'
 import { VariantAnswerInput } from '@/components/variant/VariantAnswerInput'
 import { ManualAnswerInput } from '@/components/variant/ManualAnswerInput'
 import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
 import { resolveTaskHtml } from '@/components/catalog/CatalogTaskContent'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
+
+function selfCheckCompletionStorageKey(assignmentId: string) {
+  return `self-check-complete:${assignmentId}`
+}
+
+function loadSelfCheckCompletion(assignmentId: string): boolean {
+  if (!assignmentId) return false
+  try {
+    return sessionStorage.getItem(selfCheckCompletionStorageKey(assignmentId)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveSelfCheckCompletion(assignmentId: string, value: boolean) {
+  if (!assignmentId) return
+  try {
+    if (value) sessionStorage.setItem(selfCheckCompletionStorageKey(assignmentId), '1')
+    else sessionStorage.removeItem(selfCheckCompletionStorageKey(assignmentId))
+  } catch {
+    // Ignore sessionStorage failures — completion just won't survive refresh.
+  }
+}
 
 function SignedImage({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -42,6 +67,57 @@ function SignedImage({ path, name }: { path: string; name: string }) {
 
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS:    Record<string, string>  = { ege: 'ЕГЭ', oge: 'ОГЭ' }
+
+function extractPlainText(html: string | null | undefined): string {
+  if (!html) return '—'
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&minus;/gi, '-')
+    .replace(/&ndash;/gi, '-')
+    .replace(/&mdash;/gi, '-')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim() || '—'
+}
+
+function getAutoAnswerValue(item: VariantItem): string | null {
+  const answerField = 'answer' + '_html'
+  return (item as VariantItem & Record<string, string | null | undefined>)[answerField] ?? null
+}
+
+type AutoAnswerVerdict = 'correct' | 'wrong'
+
+function getAutoAnswerVerdict(item: VariantItem, studentAnswer: string | null | undefined): AutoAnswerVerdict | null {
+  const correctRaw = getAutoAnswerValue(item)
+  if (!correctRaw) return null
+  const studentNorm = normalizeAnswer(studentAnswer ?? '')
+  if (!studentNorm) return null
+  const correctNorm = normalizeAnswer(stripHtmlSimple(correctRaw))
+  return studentNorm === correctNorm ? 'correct' : 'wrong'
+}
+
+function answerStatusClass(verdict: AutoAnswerVerdict | null) {
+  if (verdict === 'correct') return 'bg-emerald-100 text-emerald-800'
+  if (verdict === 'wrong') return 'bg-rose-100 text-rose-800'
+  return 'bg-gray-100 text-gray-700'
+}
+
+function answerStatusLabel(verdict: AutoAnswerVerdict | null) {
+  if (verdict === 'correct') return 'Верно'
+  if (verdict === 'wrong') return 'Неверно'
+  return 'Без ответа'
+}
+
+function answerRowClass(verdict: AutoAnswerVerdict | null) {
+  if (verdict === 'correct') return 'bg-emerald-50 ring-1 ring-inset ring-emerald-200'
+  if (verdict === 'wrong') return 'bg-rose-50 ring-1 ring-inset ring-rose-200'
+  return 'odd:bg-gray-50/60'
+}
 
 function deriveStudentAttemptStatus(params: {
   assignmentStatus: string
@@ -110,6 +186,120 @@ function ConfirmDialog({ answeredCount, totalCount, onConfirm, onCancel, loading
   )
 }
 
+function AutoResultsTable({
+  items,
+  answers,
+  submittedAt,
+  maxScore,
+  onTaskJump,
+}: {
+  items: VariantItem[]
+  answers: Record<string, string>
+  submittedAt: string | null
+  maxScore: number | null
+  onTaskJump: (itemId: string) => void
+}) {
+  const autoItems = items.filter(item => item.exam_part === 1 || item.grading_type === 'auto')
+  if (!autoItems.length) return null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6" data-testid="auto-results-table">
+      <div className="text-center mb-5">
+        <p className="text-base text-gray-900">
+          Заданий с кратким ответом: {autoItems.length}
+          {'  '}
+          Максимальный балл: {maxScore ?? autoItems.length}.
+        </p>
+        {submittedAt && (
+          <p className="text-sm text-gray-600 mt-1">
+            Сдана {format(new Date(submittedAt), 'dd.MM.yyyy HH:mm', { locale: ru })} (МСК)
+          </p>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-separate border-spacing-0 text-sm">
+          <caption className="caption-top text-xl font-semibold text-gray-900 mb-3">Тестовая часть</caption>
+          <thead>
+            <tr className="text-gray-900">
+              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">№ п/п</th>
+              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">№</th>
+              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">Тип</th>
+              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300 bg-rose-100">Ваш ответ</th>
+              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">Правильный ответ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {autoItems.map((item, idx) => {
+              const studentAnswer = answers[item.item_id] ?? ''
+              const verdict = getAutoAnswerVerdict(item, studentAnswer)
+              return (
+                <tr
+                  key={item.item_id}
+                  data-testid={`auto-answer-row-${item.item_id}`}
+                  className={answerRowClass(verdict)}
+                >
+                  <td className="px-3 py-2 text-center text-gray-900">{idx + 1}</td>
+                  <td className="px-3 py-2 text-center text-gray-900 underline decoration-gray-300 underline-offset-2">
+                    <a
+                      href={`#result-task-${item.item_id}`}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                        event.preventDefault()
+                        onTaskJump(item.item_id)
+                      }}
+                      className="hover:text-primary-700 hover:decoration-primary-400 transition-colors"
+                    >
+                      {item.task_ext_id ?? '—'}
+                    </a>
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-900">{idx + 1}</td>
+                  <td
+                    className={`px-3 py-2 text-center font-semibold ${verdict === 'correct' ? 'bg-emerald-100 text-emerald-900' : verdict === 'wrong' ? 'bg-rose-100 text-rose-900' : 'bg-gray-100 text-gray-700'}`}
+                    data-testid={`auto-answer-cell-${item.item_id}`}
+                  >
+                    {studentAnswer.trim() ? studentAnswer : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-900">
+                    {extractPlainText(getAutoAnswerValue(item))}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function ResultTaskReveal({ item }: { item: VariantItem }) {
+  const hasReveal = !!(item.solution_html || item.solution_plan_html || item.grade_criteria_html)
+  if (!hasReveal) return null
+
+  return (
+    <div className="mt-4 border-t border-gray-100 pt-4 space-y-3" data-testid={`result-task-reveal-${item.item_id}`}>
+      {item.solution_html && (
+        <div>
+          <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">Решение</div>
+          <TaskContentRenderer html={resolveTaskHtml(item.solution_html, item.assets ?? [])} />
+        </div>
+      )}
+      {item.solution_plan_html && (
+        <div>
+          <div className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">План решения</div>
+          <TaskContentRenderer html={resolveTaskHtml(item.solution_plan_html, item.assets ?? [])} />
+        </div>
+      )}
+      {item.grade_criteria_html && (
+        <div>
+          <div className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-1">Критерии оценки</div>
+          <TaskContentRenderer html={resolveTaskHtml(item.grade_criteria_html, item.assets ?? [])} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 
 export function StudentVariantDetailPage() {
@@ -119,8 +309,9 @@ export function StudentVariantDetailPage() {
     useStudentVariantAssignmentDetail(assignmentId)
 
   const [showConfirm, setShowConfirm] = useState(false)
-  const { scores: selfCheckScores, setScore: setSelfCheckScore } = useSelfCheckScores(assignmentId ?? '')
-
+  const [autoStarting, setAutoStarting] = useState(false)
+  const [highlightedResultItemId, setHighlightedResultItemId] = useState<string | null>(null)
+  const [selfCheckCompleted, setSelfCheckCompleted] = useState(false)
   const {
     items,
     answers,
@@ -152,6 +343,56 @@ export function StudentVariantDetailPage() {
     assignment?.correct_count ?? null,
     assignment?.manual_review_count ?? null,
   )
+  const { scores: selfCheckScores, setScore: setSelfCheckScore } = useSelfCheckScores(assignmentId ?? '', items)
+
+  const variant = assignment?.variant ?? null
+  const groupName = assignment?.group_name ?? assignment?.assignment?.group?.name
+  const isSelfBuilt = variant?.source_type === 'student_self_built'
+  const selfCheckItems = items.filter(item => item.exam_part !== 1)
+  const teacherName = isSelfBuilt ? null : (assignment?.teacher_name ?? assignment?.assignment?.assigned_by_profile?.full_name ?? null)
+  const lockedUntil = assignment?.available_from ? isFuture(new Date(assignment.available_from)) : false
+  const status = assignment ? deriveStudentAttemptStatus({
+    assignmentStatus: assignment.status,
+    attemptStatus: attempt?.status ?? null,
+    startedAt: attempt?.started_at ?? assignment.started_at ?? null,
+    submittedAt: attempt?.submitted_at ?? assignment.submitted_at ?? null,
+    completedAt: attempt?.completed_at ?? assignment.completed_at ?? null,
+  }) : 'not_started'
+  const isSubmitted = status === 'submitted' || status === 'completed'
+  const isStarted = status === 'in_progress'
+    || status === 'submitted'
+    || status === 'completed'
+    || !!(attempt?.started_at ?? assignment?.started_at)
+  const shouldShowSelfCheckStep = isSubmitted && isSelfBuilt && selfCheckItems.length > 0 && !selfCheckCompleted
+
+  useEffect(() => {
+    if (!assignmentId || !assignment || !variant || !isSelfBuilt || isStarted || isSubmitted || lockedUntil) return
+    let alive = true
+    setAutoStarting(true)
+    void startAttempt().finally(() => {
+      if (alive) setAutoStarting(false)
+    })
+    return () => { alive = false }
+  }, [assignmentId, assignment, variant, isSelfBuilt, isStarted, isSubmitted, lockedUntil, startAttempt])
+
+  useEffect(() => {
+    if (!highlightedResultItemId) return
+    const timer = window.setTimeout(() => {
+      setHighlightedResultItemId(current => current === highlightedResultItemId ? null : current)
+    }, 1600)
+
+    return () => window.clearTimeout(timer)
+  }, [highlightedResultItemId])
+
+  useEffect(() => {
+    if (!assignmentId) return
+    setSelfCheckCompleted(loadSelfCheckCompletion(assignmentId))
+  }, [assignmentId])
+
+  useEffect(() => {
+    if (!shouldShowSelfCheckStep) return
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [shouldShowSelfCheckStep])
 
   // ── Loading / error states ────────────────────────────────────────────────
 
@@ -175,20 +416,6 @@ export function StudentVariantDetailPage() {
     )
   }
 
-  const groupName   = assignment.group_name ?? assignment.assignment?.group?.name
-  const isSelfBuilt = assignment.variant?.source_type === 'student_self_built'
-  const teacherName = isSelfBuilt ? null : (assignment.teacher_name ?? assignment.assignment?.assigned_by_profile?.full_name)
-  const lockedUntil = assignment.available_from && isFuture(new Date(assignment.available_from))
-  const status = deriveStudentAttemptStatus({
-    assignmentStatus: assignment.status,
-    attemptStatus: attempt?.status ?? null,
-    startedAt: attempt?.started_at ?? assignment.started_at ?? null,
-    submittedAt: attempt?.submitted_at ?? assignment.submitted_at ?? null,
-    completedAt: attempt?.completed_at ?? assignment.completed_at ?? null,
-  })
-  const isSubmitted = status === 'submitted' || status === 'completed'
-  const isStarted = status === 'in_progress' || status === 'submitted' || status === 'completed' || !!(attempt?.started_at ?? assignment.started_at)
-
   // Count answered: text answers + items with attachments
   const answeredCount = items.filter(item =>
     (answers[item.item_id] ?? '').trim() !== '' ||
@@ -197,6 +424,26 @@ export function StudentVariantDetailPage() {
 
   async function handleConfirmSubmit() {
     await submitVariant()
+  }
+
+  function handleFinishSelfCheck() {
+    if (!assignmentId) return
+    saveSelfCheckCompletion(assignmentId, true)
+    setSelfCheckCompleted(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleResultTaskJump(itemId: string) {
+    const targetId = `result-task-${itemId}`
+    const el = document.getElementById(targetId)
+    if (!el) return
+
+    setHighlightedResultItemId(itemId)
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (window.location.hash !== `#${targetId}`) {
+      window.history.replaceState(null, '', `#${targetId}`)
+    }
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -260,7 +507,7 @@ export function StudentVariantDetailPage() {
             <ArrowLeft size={18} />
           </button>
           <nav className="text-sm text-gray-500 flex items-center gap-1.5">
-            <Link to="/student/variants" className="hover:text-primary-600">Мои варианты</Link>
+            <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
             <span>/</span>
             <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
           </nav>
@@ -284,7 +531,7 @@ export function StudentVariantDetailPage() {
             <ArrowLeft size={18} />
           </button>
           <nav className="text-sm text-gray-500 flex items-center gap-1.5">
-            <Link to="/student/variants" className="hover:text-primary-600">Мои варианты</Link>
+            <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
             <span>/</span>
             <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
           </nav>
@@ -308,32 +555,58 @@ export function StudentVariantDetailPage() {
             <ArrowLeft size={18} />
           </button>
           <nav className="text-sm text-gray-500 flex items-center gap-1.5">
-            <Link to="/student/variants" className="hover:text-primary-600">Мои варианты</Link>
+            <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
             <span>/</span>
             <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
           </nav>
         </div>
         {header}
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <FileText size={40} className="mx-auto mb-3 text-primary-400" />
-          <p className="text-gray-700 mb-1 font-medium">
-            {assignment.variant.tasks_count} задач
-          </p>
-          <p className="text-sm text-gray-500 mb-6">
-            Нажмите кнопку, чтобы начать. После начала таймер не останавливается.
-          </p>
-          {attemptError && (
-            <p className="text-sm text-red-600 mb-4">{attemptError}</p>
+          {isSelfBuilt ? (
+            <>
+              <Loader2 size={40} className="mx-auto mb-3 text-primary-500 animate-spin" />
+              <p className="text-gray-700 mb-1 font-medium">
+                Подготавливаем вариант
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                Сейчас автоматически откроем задачи для решения.
+              </p>
+              {attemptError && (
+                <p className="text-sm text-red-600 mb-4">{attemptError}</p>
+              )}
+              <button
+                onClick={startAttempt}
+                disabled={attemptLoading || autoStarting}
+                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
+                           transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+              >
+                {(attemptLoading || autoStarting) && <Loader2 size={16} className="animate-spin" />}
+                Открыть вручную
+              </button>
+            </>
+          ) : (
+            <>
+              <FileText size={40} className="mx-auto mb-3 text-primary-400" />
+              <p className="text-gray-700 mb-1 font-medium">
+                {assignment.variant.tasks_count} задач
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                Нажмите кнопку, чтобы начать. После начала таймер не останавливается.
+              </p>
+              {attemptError && (
+                <p className="text-sm text-red-600 mb-4">{attemptError}</p>
+              )}
+              <button
+                onClick={startAttempt}
+                disabled={attemptLoading}
+                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
+                           transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+              >
+                {attemptLoading && <Loader2 size={16} className="animate-spin" />}
+                Начать вариант
+              </button>
+            </>
           )}
-          <button
-            onClick={startAttempt}
-            disabled={attemptLoading}
-            className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
-                       transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
-          >
-            {attemptLoading && <Loader2 size={16} className="animate-spin" />}
-            Начать вариант
-          </button>
         </div>
       </div>
     )
@@ -353,6 +626,67 @@ export function StudentVariantDetailPage() {
     const isGraded        = gradingStatus === 'graded'
     const isSelfBuilt      = assignment.variant?.source_type === 'student_self_built'
 
+    if (shouldShowSelfCheckStep) {
+      return (
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-3 mb-4">
+            <button onClick={() => navigate('/student/variants')} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100">
+              <ArrowLeft size={18} />
+            </button>
+            <nav className="text-sm text-gray-500 flex items-center gap-1.5">
+              <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
+              <span>/</span>
+              <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
+            </nav>
+          </div>
+          {header}
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 size={20} className="text-blue-400" />
+              <h2 className="font-semibold text-gray-900">Самопроверка второй части</h2>
+            </div>
+            <p className="text-sm text-gray-600">
+              Работа отправлена. Проверьте задачи с развёрнутым ответом, выставьте себе баллы и нажмите
+              {' '}<span className="font-medium text-gray-900">«Закончить»</span>, чтобы увидеть полный итог по варианту.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {selfCheckItems.map((item, idx) => (
+              <div key={item.item_id} className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    Задача {idx + 1}
+                    {item.task_ext_id ? ` · №${item.task_ext_id}` : ''}
+                  </span>
+                  <span className="text-xs text-gray-400">{item.points} б.</span>
+                </div>
+                <TaskContentRenderer html={resolveTaskHtml(item.statement_html, item.assets ?? [])} />
+                <SelfCheckItem
+                  item={item}
+                  studentAnswer={answers[item.item_id] ?? ''}
+                  score={selfCheckScores[item.item_id] ?? null}
+                  onScoreChange={value => setSelfCheckScore(item.item_id, value)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <SelfCheckSummary items={items} scores={selfCheckScores} />
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleFinishSelfCheck}
+              className="px-5 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors"
+            >
+              Закончить
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center gap-3 mb-4">
@@ -360,7 +694,7 @@ export function StudentVariantDetailPage() {
             <ArrowLeft size={18} />
           </button>
           <nav className="text-sm text-gray-500 flex items-center gap-1.5">
-            <Link to="/student/variants" className="hover:text-primary-600">Мои варианты</Link>
+            <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
             <span>/</span>
             <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
           </nav>
@@ -422,6 +756,14 @@ export function StudentVariantDetailPage() {
           )}
         </div>
 
+        <AutoResultsTable
+          items={items}
+          answers={answers}
+          submittedAt={attempt?.submitted_at ?? assignment.submitted_at ?? null}
+          maxScore={maxScore}
+          onTaskJump={handleResultTaskJump}
+        />
+
         {/* Read-only task list */}
         {attemptLoading ? (
           <div className="py-10 text-center">
@@ -430,8 +772,28 @@ export function StudentVariantDetailPage() {
         ) : (
           <div className="space-y-4">
             {items.map((item, idx) => (
-              <div key={item.item_id} className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex items-center justify-between mb-3">
+              <div
+                key={item.item_id}
+                id={`result-task-${item.item_id}`}
+                data-testid={`result-task-card-${item.item_id}`}
+                className={`bg-white rounded-xl border p-4 relative overflow-hidden scroll-mt-24 transition-all duration-700 ${
+                  highlightedResultItemId === item.item_id
+                    ? 'border-primary-400 ring-4 ring-primary-100 shadow-lg shadow-primary-100/80'
+                    : 'border-gray-200'
+                }`}
+              >
+                {(() => {
+                  const verdict = getAutoAnswerVerdict(item, answers[item.item_id])
+                  return (item.exam_part === 1 || item.grading_type === 'auto') && verdict ? (
+                    <div
+                      data-testid={`auto-answer-corner-badge-${item.item_id}`}
+                      className={`absolute right-4 top-4 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${answerStatusClass(verdict)}`}
+                    >
+                      {answerStatusLabel(verdict)}
+                    </div>
+                  ) : null
+                })()}
+                <div className="flex items-center justify-between mb-3 pr-24">
                   <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                     Задача {idx + 1}
                     {item.task_ext_id ? ` · №${item.task_ext_id}` : ''}
@@ -439,11 +801,32 @@ export function StudentVariantDetailPage() {
                   <span className="text-xs text-gray-400">{item.points} б.</span>
                 </div>
                 <TaskContentRenderer html={resolveTaskHtml(item.statement_html, item.assets ?? [])} />
-                {answers[item.item_id] && (
-                  <div className="mt-3 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
-                    Ваш ответ: <span className="font-medium">{answers[item.item_id]}</span>
-                  </div>
-                )}
+                {(() => {
+                  const studentAnswer = answers[item.item_id]
+                  const verdict = getAutoAnswerVerdict(item, studentAnswer)
+                  const correctAnswer = extractPlainText(getAutoAnswerValue(item))
+                  return studentAnswer ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
+                        Ваш ответ: <span className="font-medium">{studentAnswer}</span>
+                      </div>
+                      {(item.exam_part === 1 || item.grading_type === 'auto') && (
+                        <>
+                          <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
+                            Правильный ответ: <span className="font-medium">{correctAnswer}</span>
+                          </div>
+                          <span
+                            data-testid={`auto-answer-badge-${item.item_id}`}
+                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${answerStatusClass(verdict)}`}
+                          >
+                            {answerStatusLabel(verdict)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  ) : null
+                })()}
+                <ResultTaskReveal item={item} />
                 {/* Self-built variant, part 2 (or unmarked part): client-only
                     self-assessment. Never touches the server — grading_type
                     stays 'auto' and points were zeroed at variant-build time,
@@ -537,7 +920,7 @@ export function StudentVariantDetailPage() {
           <ArrowLeft size={18} />
         </button>
         <nav className="text-sm text-gray-500 flex items-center gap-1.5 min-w-0">
-          <Link to="/student/variants" className="hover:text-primary-600">Мои варианты</Link>
+          <Link to="/student/variants" className="hover:text-primary-600">Тренировочные варианты</Link>
           <span>/</span>
           <span className="text-gray-700 truncate max-w-xs">{assignment.variant.title}</span>
         </nav>

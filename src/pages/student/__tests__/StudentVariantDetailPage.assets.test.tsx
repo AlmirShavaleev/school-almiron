@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mockAssignmentDetail = vi.hoisted(() => ({
@@ -39,7 +39,7 @@ const mockAttemptState = vi.hoisted(() => ({
     task_id: 'task-1',
     item_position: 1,
     points: 2,
-    grading_type: 'manual',
+    grading_type: 'auto',
     task_ext_id: 7,
     section_id: 'sec-1',
     subject: 'Математика',
@@ -52,7 +52,7 @@ const mockAttemptState = vi.hoisted(() => ({
     solution_html: '<p><img src="sol.png" alt="PIC"></p>',
     solution_plan_html: null,
     grade_criteria_html: null,
-    answer_html: null,
+    answer_html: '<p>6</p>',
     assets: [
       { id: 'a1', tex_session_id: null, kind: 'condition', storage_path: 'math-ege/1861/DI_703.png', alt: 'PIC', position: 1 },
       { id: 'a2', tex_session_id: null, kind: 'solution', storage_path: 'math-ege/1861/sol.png', alt: 'PIC', position: 2 },
@@ -124,6 +124,8 @@ function renderPage() {
 
 describe('StudentVariantDetailPage asset rendering', () => {
   beforeEach(() => {
+    window.location.hash = ''
+    sessionStorage.clear()
     mockAssignmentDetail.assignment = {
       ...mockAssignmentDetail.assignment,
       status: 'completed',
@@ -145,14 +147,45 @@ describe('StudentVariantDetailPage asset rendering', () => {
     }
   })
 
-  it('renders statement and self-check solution images via resolved asset URLs', () => {
+  it('shows self-check step first and then opens full results with assets', () => {
+    const scrollIntoViewMock = vi.fn()
+    const scrollToMock = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    })
+    Object.defineProperty(window, 'scrollTo', {
+      configurable: true,
+      value: scrollToMock,
+    })
+
     renderPage()
 
     const imgsBefore = screen.getAllByRole('img') as HTMLImageElement[]
     expect(imgsBefore[0].src).toContain('https://cdn.test/math-ege/1861/DI_703.png')
-    expect(screen.getAllByText('Ваш ответ:')).toHaveLength(2)
+    expect(screen.getByText('Самопроверка второй части')).toBeInTheDocument()
+    expect(screen.queryByTestId('auto-results-table')).not.toBeInTheDocument()
+    expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
 
-    fireEvent.click(screen.getByText('Показать решение и критерии'))
+    fireEvent.click(screen.getByText('Закончить'))
+
+    expect(screen.getByTestId('auto-results-table')).toBeInTheDocument()
+    expect(scrollToMock).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' })
+    expect(screen.getByText('Тестовая часть')).toBeInTheDocument()
+    expect(screen.getByText('Правильный ответ')).toBeInTheDocument()
+    expect(screen.getAllByText('42').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Правильный ответ:/)).toBeInTheDocument()
+    expect(screen.getByTestId('auto-answer-badge-item-1')).toHaveTextContent('Неверно')
+    expect(screen.getByTestId('auto-answer-cell-item-1').className).toContain('bg-rose-100')
+    expect(screen.getByTestId('auto-answer-row-item-1').className).toContain('bg-rose-50')
+    expect(screen.getByTestId('auto-answer-corner-badge-item-1')).toHaveTextContent('Неверно')
+    expect(screen.getByRole('link', { name: '7' })).toHaveAttribute('href', '#result-task-item-1')
+    expect(screen.getByTestId('result-task-reveal-item-1')).toBeInTheDocument()
+    expect(screen.getAllByText('Решение').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('link', { name: '7' }))
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    expect(window.location.hash).toBe('#result-task-item-1')
+    expect(screen.getByTestId('result-task-card-item-1').className).toContain('border-primary-400')
 
     const imgsAfter = screen.getAllByRole('img') as HTMLImageElement[]
     expect(imgsAfter[1].src).toContain('https://cdn.test/math-ege/1861/sol.png')
@@ -177,7 +210,7 @@ describe('StudentVariantDetailPage asset rendering', () => {
 
     renderPage()
 
-    expect(screen.getByText('Вариант завершён')).toBeInTheDocument()
+    expect(screen.getByText('Самопроверка второй части')).toBeInTheDocument()
     expect(screen.queryByText('Нажмите кнопку, чтобы начать. После начала таймер не останавливается.')).not.toBeInTheDocument()
     expect(screen.queryByText('Начать вариант')).not.toBeInTheDocument()
   })
@@ -185,5 +218,53 @@ describe('StudentVariantDetailPage asset rendering', () => {
   it('hides teacher line for self-built variants', () => {
     renderPage()
     expect(screen.queryByText(/Преподаватель:/)).not.toBeInTheDocument()
+  })
+
+  it('shows green status when the short answer is correct', () => {
+    mockAttemptState.answers = { 'item-1': '6' }
+
+    renderPage()
+    fireEvent.click(screen.getByText('Закончить'))
+
+    expect(screen.getByTestId('auto-answer-badge-item-1')).toHaveTextContent('Верно')
+    expect(screen.getByTestId('auto-answer-cell-item-1').className).toContain('bg-emerald-100')
+    expect(screen.getByTestId('auto-answer-row-item-1').className).toContain('bg-emerald-50')
+    expect(screen.getByTestId('auto-answer-corner-badge-item-1')).toHaveTextContent('Верно')
+  })
+
+  it('skips self-check step on re-entry after local completion', () => {
+    sessionStorage.setItem('self-check-complete:assign-1', '1')
+
+    renderPage()
+
+    expect(screen.getByText('Вариант завершён')).toBeInTheDocument()
+    expect(screen.getByTestId('auto-results-table')).toBeInTheDocument()
+    expect(screen.queryByText('Самопроверка второй части')).not.toBeInTheDocument()
+  })
+
+  it('auto-starts self-built variants instead of showing the manual start screen', async () => {
+    mockAssignmentDetail.assignment = {
+      ...mockAssignmentDetail.assignment,
+      status: 'not_started',
+      started_at: null,
+      submitted_at: null,
+      completed_at: null,
+    } as unknown as typeof mockAssignmentDetail.assignment
+    mockAttemptState.attempt = {
+      ...mockAttemptState.attempt,
+      status: 'not_started',
+      started_at: null,
+      submitted_at: null,
+      completed_at: null,
+    } as unknown as typeof mockAttemptState.attempt
+    const startAttemptSpy = vi.fn(async () => {})
+    mockAttemptState.startAttempt = startAttemptSpy
+
+    renderPage()
+
+    await waitFor(() => expect(startAttemptSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByText('Подготавливаем вариант')).toBeInTheDocument())
+    expect(screen.queryByText('Нажмите кнопку, чтобы начать. После начала таймер не останавливается.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Начать вариант')).not.toBeInTheDocument()
   })
 })

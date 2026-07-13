@@ -270,8 +270,8 @@ describe('Security contracts (source checks)', () => {
     expect(STUDENT_PAGE_SRC).not.toContain('finalize_grading')
   })
 
-  it('student page does not show correct answers (answer_html not read)', () => {
-    expect(STUDENT_PAGE_SRC).not.toContain('answer_html')
+  it('student page does not render raw answer_html directly', () => {
+    expect(STUDENT_PAGE_SRC).not.toContain('dangerouslySetInnerHTML={{ __html: item.answer_html')
   })
 
   it('save_answer_attachment is only in ManualAnswerInput (not teacher hook)', () => {

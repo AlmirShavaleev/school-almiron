@@ -55,8 +55,8 @@ export interface GeneratedTask {
 
 type TaskFieldVisibility = 'full' | 'student_safe'
 
-const FULL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)'
-const STUDENT_SAFE_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, source_url, has_answer, has_solution, position, exam_part, catalog_sections(title)'
+const FULL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, max_points, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)'
+const STUDENT_SAFE_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, max_points, statement_html, source_url, has_answer, has_solution, position, exam_part, catalog_sections(title)'
 
 function getTaskSelect(visibility: TaskFieldVisibility) {
   return visibility === 'student_safe' ? STUDENT_SAFE_TASK_SELECT : FULL_TASK_SELECT
