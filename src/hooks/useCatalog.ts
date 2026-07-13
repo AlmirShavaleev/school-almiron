@@ -13,8 +13,9 @@ export interface CatalogSection {
   title: string
   position: number
   task_count?: number
+  part1_count?: number
+  part2_count?: number
   completed_count?: number
-  exam_part_majority?: 1 | 2 | null
 }
 
 export interface CatalogTopic {
@@ -177,36 +178,17 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
         }
 
         const countBySec: Record<string, number> = {}
-        for (const row of (sectionCounts ?? []) as { section_id: string; task_count: number }[]) {
+        const part1BySec: Record<string, number> = {}
+        const part2BySec: Record<string, number> = {}
+        for (const row of (sectionCounts ?? []) as {
+          section_id: string
+          task_count: number
+          part1_count?: number | null
+          part2_count?: number | null
+        }[]) {
           countBySec[row.section_id] = row.task_count
-        }
-
-        const sectionPartVotes: Record<string, { part1: number; part2: number }> = {}
-        const PAGE = 1000
-        for (let from = 0; ; from += PAGE) {
-          let taskPartQuery = db
-            .from('catalog_tasks')
-            .select('section_id, exam_part')
-            .eq('is_published', true)
-            .order('id')
-            .range(from, from + PAGE - 1)
-          if (subject) taskPartQuery = taskPartQuery.eq('subject', subject)
-          if (examType) taskPartQuery = taskPartQuery.eq('exam_type', examType)
-          const { data: taskPartRows, error: taskPartError } = await taskPartQuery
-
-          if (taskPartError || cancelled) {
-            if (!cancelled) setError(taskPartError?.message ?? 'Не удалось загрузить каталог')
-            setLoading(false)
-            return
-          }
-
-          if (!taskPartRows || taskPartRows.length === 0) break
-          for (const row of taskPartRows as { section_id: string; exam_part: number | null }[]) {
-            if (!sectionPartVotes[row.section_id]) sectionPartVotes[row.section_id] = { part1: 0, part2: 0 }
-            if (row.exam_part === 1) sectionPartVotes[row.section_id].part1 += 1
-            if (row.exam_part === 2) sectionPartVotes[row.section_id].part2 += 1
-          }
-          if (taskPartRows.length < PAGE) break
+          part1BySec[row.section_id] = row.part1_count ?? 0
+          part2BySec[row.section_id] = row.part2_count ?? 0
         }
 
         const doneBySec: Record<string, number> = {}
@@ -220,13 +202,9 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
             (sectionsData ?? []).map((s: CatalogSection) => ({
               ...s,
               task_count:      countBySec[s.id] ?? 0,
+              part1_count:     part1BySec[s.id] ?? 0,
+              part2_count:     part2BySec[s.id] ?? 0,
               completed_count: doneBySec[s.id]  ?? 0,
-              exam_part_majority:
-                (sectionPartVotes[s.id]?.part1 ?? 0) > (sectionPartVotes[s.id]?.part2 ?? 0)
-                  ? 1
-                  : (sectionPartVotes[s.id]?.part2 ?? 0) > (sectionPartVotes[s.id]?.part1 ?? 0)
-                    ? 2
-                    : null,
             }))
           )
           setLoading(false)

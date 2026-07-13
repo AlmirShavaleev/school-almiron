@@ -13,7 +13,8 @@ const SECTION_FIXTURES = [
     exam_number: 1,
     position: 1,
     task_count: 10,
-    exam_part_majority: 1,
+    part1_count: 7,
+    part2_count: 3,
   },
   {
     id: 'sec-2',
@@ -24,7 +25,8 @@ const SECTION_FIXTURES = [
     exam_number: 2,
     position: 2,
     task_count: 8,
-    exam_part_majority: 2,
+    part1_count: 2,
+    part2_count: 6,
   },
   {
     id: 'sec-3',
@@ -35,7 +37,8 @@ const SECTION_FIXTURES = [
     exam_number: 3,
     position: 3,
     task_count: 6,
-    exam_part_majority: 1,
+    part1_count: 3,
+    part2_count: 3,
   },
 ]
 

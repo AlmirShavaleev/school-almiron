@@ -28,6 +28,10 @@ type PresetKind = 'standard' | 'part1' | 'part2'
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS: Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
 
+function getSectionExamPart(section: CatalogSection): 1 | 2 {
+  return (section.part1_count ?? 0) >= (section.part2_count ?? 0) ? 1 : 2
+}
+
 export interface VariantConstructorInitialData {
   subject: string
   examType: string
@@ -203,8 +207,8 @@ export function VariantConstructor({
           preset === 'standard'
             ? true
             : preset === 'part1'
-              ? section.exam_part_majority === 1
-              : section.exam_part_majority === 2
+              ? getSectionExamPart(section) === 1
+              : getSectionExamPart(section) === 2
         next[section.id] = {
           ...current,
           enabled: matches,
