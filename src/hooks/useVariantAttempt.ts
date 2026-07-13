@@ -13,6 +13,7 @@ export interface VariantItem {
   task_id:        string
   item_position:  number
   points:         number
+  max_points:     number | null
   grading_type:   'auto' | 'manual'
   task_ext_id:    number | null
   section_id:     string | null
@@ -123,6 +124,7 @@ export function useVariantAttempt(
   const [submitting, setSubmitting]     = useState(false)
   const [submitError, setSubmitError]   = useState<string | null>(null)
   const latestAnswersRef                = useRef<Record<string, string>>({})
+  const submittedMetaLoadedRef          = useRef<string | null>(null)
 
   // Debounce timers per item
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -157,6 +159,10 @@ export function useVariantAttempt(
   useEffect(() => {
     latestAnswersRef.current = answers
   }, [answers])
+
+  useEffect(() => {
+    submittedMetaLoadedRef.current = null
+  }, [studentAssignmentId])
 
   // Populate score/grading fields from props once they arrive (submitted/completed state)
   useEffect(() => {
@@ -210,10 +216,14 @@ export function useVariantAttempt(
         if (!taskIds.length) {
           setItems(itemRows)
         } else {
-          void loadAssetsForTaskIds(taskIds).then(assetsByTask => {
+          void Promise.all([
+            loadAssetsForTaskIds(taskIds),
+            loadTaskMetaForTaskIds(taskIds),
+          ]).then(([assetsByTask, taskMetaByTask]) => {
             if (cancelled) return
             setItems(itemRows.map(item => ({
               ...item,
+              max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
               assets: assetsByTask[item.task_id] ?? [],
             })))
           })
@@ -251,6 +261,34 @@ export function useVariantAttempt(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentAssignmentId, initialStatus])
 
+  useEffect(() => {
+    if (attempt?.status !== 'submitted' && attempt?.status !== 'completed') return
+    if (!items.length) return
+    if (submittedMetaLoadedRef.current === `${studentAssignmentId}:${attempt.status}`) return
+    const isSelfBuilt = items.some(item => item.source_type === 'student_self_built')
+
+    let cancelled = false
+    const taskIds = [...new Set(items.map(item => item.task_id).filter(Boolean))]
+
+    void loadTaskMetaForTaskIds(taskIds, {
+      includeAnswerHtml: true,
+      includeSelfCheckFields: isSelfBuilt,
+    }).then(taskMetaByTask => {
+      if (cancelled) return
+      submittedMetaLoadedRef.current = `${studentAssignmentId}:${attempt.status}`
+      setItems(prevItems => prevItems.map(item => ({
+        ...item,
+        max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
+        answer_html: taskMetaByTask[item.task_id]?.answer_html ?? item.answer_html ?? null,
+        solution_html: taskMetaByTask[item.task_id]?.solution_html ?? item.solution_html ?? null,
+        solution_plan_html: taskMetaByTask[item.task_id]?.solution_plan_html ?? item.solution_plan_html ?? null,
+        grade_criteria_html: taskMetaByTask[item.task_id]?.grade_criteria_html ?? item.grade_criteria_html ?? null,
+      })))
+    })
+
+    return () => { cancelled = true }
+  }, [attempt?.status, items, studentAssignmentId])
+
   const startAttempt = useCallback(async () => {
     if (!studentAssignmentId) return
     setError(null)
@@ -279,9 +317,13 @@ export function useVariantAttempt(
     if (!itemErr) {
       const rows = (itemData as VariantItem[]) ?? []
       const taskIds = [...new Set(rows.map(item => item.task_id).filter(Boolean))]
-      const assetsByTask = await loadAssetsForTaskIds(taskIds)
+      const [assetsByTask, taskMetaByTask] = await Promise.all([
+        loadAssetsForTaskIds(taskIds),
+        loadTaskMetaForTaskIds(taskIds),
+      ])
       setItems(rows.map(item => ({
         ...item,
+        max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
         assets: assetsByTask[item.task_id] ?? [],
       })))
     }
@@ -455,4 +497,52 @@ async function loadAssetsForTaskIds(taskIds: string[]): Promise<Record<string, C
     assetsByTask[asset.task_id].push(asset)
   }
   return assetsByTask
+}
+
+async function loadTaskMetaForTaskIds(
+  taskIds: string[],
+  options?: { includeAnswerHtml?: boolean; includeSelfCheckFields?: boolean },
+): Promise<Record<string, {
+  max_points: number | null
+  answer_html?: string | null
+  solution_html?: string | null
+  solution_plan_html?: string | null
+  grade_criteria_html?: string | null
+}>> {
+  if (!taskIds.length) return {}
+
+  const taskMetaByTask: Record<string, {
+    max_points: number | null
+    answer_html?: string | null
+    solution_html?: string | null
+    solution_plan_html?: string | null
+    grade_criteria_html?: string | null
+  }> = {}
+  const CHUNK = 200
+  const fields = ['id', 'max_points']
+  if (options?.includeAnswerHtml) fields.push('answer_html')
+  if (options?.includeSelfCheckFields) fields.push('solution_html', 'solution_plan_html', 'grade_criteria_html')
+  const select = fields.join(', ')
+
+  for (let i = 0; i < taskIds.length; i += CHUNK) {
+    const chunk = taskIds.slice(i, i + CHUNK)
+    const { data } = await db
+      .from('catalog_tasks')
+      .select(select)
+      .in('id', chunk)
+
+    for (const row of data ?? []) {
+      taskMetaByTask[row.id] = {
+        max_points: row.max_points ?? null,
+        ...(options?.includeAnswerHtml ? { answer_html: row.answer_html ?? null } : {}),
+        ...(options?.includeSelfCheckFields ? {
+          solution_html: row.solution_html ?? null,
+          solution_plan_html: row.solution_plan_html ?? null,
+          grade_criteria_html: row.grade_criteria_html ?? null,
+        } : {}),
+      }
+    }
+  }
+
+  return taskMetaByTask
 }
