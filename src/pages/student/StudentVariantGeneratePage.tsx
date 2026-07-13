@@ -38,6 +38,7 @@ export function StudentVariantGeneratePage() {
       backLabel="К вариантам"
       initialData={initialData}
       saving={saving}
+      previewMode="student"
       showDescription={false}
       showDraftAction={false}
       completeActionLabel="Начать вариант"
@@ -49,6 +50,7 @@ export function StudentVariantGeneratePage() {
           sectionId: task.section_id,
           topicId: task.topic_id || null,
           excludeIds,
+          visibility: 'student_safe',
         })
       }}
     />

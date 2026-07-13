@@ -53,6 +53,7 @@ vi.mock('@/hooks/useVariants', () => ({
 }))
 
 import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
+import { VariantConstructor } from '@/components/variant/VariantConstructor'
 
 describe('StudentVariantGeneratePage', () => {
   beforeEach(() => {
@@ -139,12 +140,19 @@ describe('StudentVariantGeneratePage', () => {
     fireEvent.click(screen.getByTestId('variant-constructor-generate'))
 
     await waitFor(() => expect(generateTasksSpy).toHaveBeenCalledTimes(1))
-    expect(generateTasksSpy).toHaveBeenCalledWith([
-      { section_id: 'sec-1', cnt: 1, topic_ids: [] },
-      { section_id: 'sec-2', cnt: 1, topic_ids: [] },
-    ])
+    expect(generateTasksSpy).toHaveBeenCalledWith(
+      [
+        { section_id: 'sec-1', cnt: 1, topic_ids: [] },
+        { section_id: 'sec-2', cnt: 1, topic_ids: [] },
+      ],
+      'student_safe',
+    )
 
     await waitFor(() => expect(screen.getAllByTestId('student-generated-item')).toHaveLength(2))
+    expect(screen.queryByText('Показать ответ')).not.toBeInTheDocument()
+    expect(screen.queryByText('Показать решение')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ответ')).not.toBeInTheDocument()
+    expect(screen.queryByText('Решение')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('student-generated-replace-0'))
 
@@ -153,6 +161,7 @@ describe('StudentVariantGeneratePage', () => {
       sectionId: 'sec-1',
       topicId: null,
       excludeIds: ['task-1', 'task-2'],
+      visibility: 'student_safe',
     })
 
     await waitFor(() => expect(screen.getByText(/Новое условие/)).toBeInTheDocument())
@@ -170,6 +179,52 @@ describe('StudentVariantGeneratePage', () => {
       ],
     })
     expect(navigateSpy).toHaveBeenCalledWith('/student/variants/student-assignment-1')
+  })
+
+  it('teacher preview still contains reveal controls', async () => {
+    render(
+      <MemoryRouter>
+        <VariantConstructor
+          headerTitle="Конструктор варианта"
+          previewMode="teacher"
+          initialData={{
+            subject: 'math',
+            examType: 'ege',
+            title: 'Учительский вариант',
+            tasks: [{
+              task_id: 'task-teacher-1',
+              section_id: 'sec-1',
+              topic_id: '',
+              position: 1,
+              task: {
+                id: 'task-teacher-1',
+                external_id: 201,
+                section_id: 'sec-1',
+                subject: 'Математика',
+                exam_type: 'ЕГЭ',
+                statement_html: '<p>Условие teacher</p>',
+                answer_html: '<p>Ответ teacher</p>',
+                solution_html: '<p>Решение teacher</p>',
+                solution_plan_html: null,
+                grade_criteria_html: null,
+                has_answer: true,
+                has_solution: true,
+                position: 1,
+                assets: [],
+                sectionTitle: 'Линейные уравнения',
+              },
+            }],
+          }}
+          completeActionLabel="Сохранить"
+          onBack={() => {}}
+          onComplete={vi.fn(async () => {})}
+          onReplaceTask={vi.fn(async () => null)}
+        />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Показать ответ')).toBeInTheDocument())
+    expect(screen.getByText('Показать решение')).toBeInTheDocument()
   })
 
   it('student route is protected by student RoleGuard', () => {

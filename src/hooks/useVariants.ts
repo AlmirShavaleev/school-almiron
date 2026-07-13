@@ -53,6 +53,15 @@ export interface GeneratedTask {
   task?: CatalogTask & { assets?: CatalogTaskAsset[]; sectionTitle?: string | null }
 }
 
+type TaskFieldVisibility = 'full' | 'student_safe'
+
+const FULL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)'
+const STUDENT_SAFE_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, source_url, has_answer, has_solution, position, exam_part, catalog_sections(title)'
+
+function getTaskSelect(visibility: TaskFieldVisibility) {
+  return visibility === 'student_safe' ? STUDENT_SAFE_TASK_SELECT : FULL_TASK_SELECT
+}
+
 // ── useVariants (список) ─────────────────────────────────────────────────────
 
 export function useVariants(filters?: {
@@ -194,7 +203,8 @@ export function useVariantBuilder() {
    * Генерирует задачи через RPC, загружает их данные и возвращает список.
    */
   const generateTasks = useCallback(async (
-    sections: VariantSectionConfig[]
+    sections: VariantSectionConfig[],
+    visibility: TaskFieldVisibility = 'full',
   ): Promise<GeneratedTask[]> => {
     if (!profile) throw new Error('Not authenticated')
     setGenerating(true)
@@ -227,7 +237,7 @@ export function useVariantBuilder() {
       // Загружаем данные задач
       const { data: tasksData } = await db
         .from('catalog_tasks')
-        .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)')
+        .select(getTaskSelect(visibility))
         .in('id', taskIds)
 
       // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
@@ -436,6 +446,7 @@ export function usePickReplacementTask() {
     sectionId: string
     topicId?: string | null
     excludeIds: string[]
+    visibility?: TaskFieldVisibility
   }): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> => {
     setLoading(true)
     setError(null)
@@ -447,7 +458,7 @@ export function usePickReplacementTask() {
       })
       if (rpcErr) throw new Error(rpcErr.message)
       if (!data) return null
-      return await loadSingleTask(data as string)
+      return await loadSingleTaskWithVisibility(data as string, params.visibility ?? 'full')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось заменить задачу')
       return null
@@ -460,11 +471,15 @@ export function usePickReplacementTask() {
 }
 
 async function loadSingleTask(taskId: string): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
+  return loadSingleTaskWithVisibility(taskId, 'full')
+}
+
+async function loadSingleTaskWithVisibility(taskId: string, visibility: TaskFieldVisibility): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db2 = supabase as any
   const { data: t } = await db2
     .from('catalog_tasks')
-    .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position')
+    .select(getTaskSelect(visibility))
     .eq('id', taskId)
     .maybeSingle()
   if (!t) return null
