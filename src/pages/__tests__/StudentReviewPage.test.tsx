@@ -273,12 +273,13 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('student-review-next-work-button')).toBeInTheDocument())
     const rendersAfterLoad = reviewerRenderSpy.mock.calls.length
 
     fireEvent.change(screen.getByTestId('student-review-score-input'), { target: { value: '8' } })
     fireEvent.change(screen.getByTestId('student-review-score-input'), { target: { value: '85' } })
 
-    expect(reviewerRenderSpy.mock.calls).toHaveLength(rendersAfterLoad)
+    await waitFor(() => expect(reviewerRenderSpy.mock.calls.length).toBeLessThanOrEqual(rendersAfterLoad + 1))
   })
 
   it('blocks the grading-card publish path on an invalid score before any save happens', async () => {

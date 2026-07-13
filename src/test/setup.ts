@@ -1,4 +1,6 @@
 import '@testing-library/jest-dom'
+import { cleanup } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
 
 const mockCanvasContext = {
   canvas: undefined as HTMLCanvasElement | undefined,
@@ -45,4 +47,13 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   value: function getContext() {
     return { ...mockCanvasContext, canvas: this } as unknown as CanvasRenderingContext2D
   },
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  sessionStorage.clear()
+  localStorage.clear()
 })

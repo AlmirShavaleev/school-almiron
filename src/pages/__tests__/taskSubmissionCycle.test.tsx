@@ -171,8 +171,10 @@ describe('task submission revision cycle — student side (AssignmentDetailPage)
     resetSubmission({ status: 'returned', teacher_comment: 'Проверь второй пример', score: null })
     renderAssignmentDetail()
 
+    await screen.findByText('Проверь второй пример')
     const textarea = await screen.findByPlaceholderText('Введите ответ…')
     fireEvent.change(textarea, { target: { value: '4' } })
+    await waitFor(() => expect((textarea as HTMLTextAreaElement).value).toBe('4'))
     fireEvent.click(screen.getByText('Отправить заново'))
 
     await waitFor(() => expect(rpcSpy).toHaveBeenCalledWith('submit_task_solution', {
