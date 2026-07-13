@@ -6,7 +6,6 @@ import { join } from 'path'
 
 const navigateSpy = vi.fn()
 const generateTasksSpy = vi.fn()
-const pickSpy = vi.fn()
 const createSpy = vi.fn()
 const SECTION_FIXTURES = [
   { id: 'sec-1', title: 'Линейные уравнения', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1, task_count: 20 },
@@ -40,11 +39,6 @@ vi.mock('@/hooks/useVariants', () => ({
     genError: null,
     setGenError: vi.fn(),
   }),
-  usePickReplacementTask: () => ({
-    pick: pickSpy,
-    loading: false,
-    error: null,
-  }),
   useCreateSelfBuiltVariant: () => ({
     create: createSpy,
     saving: false,
@@ -53,7 +47,6 @@ vi.mock('@/hooks/useVariants', () => ({
 }))
 
 import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
-import { VariantConstructor } from '@/components/variant/VariantConstructor'
 
 describe('StudentVariantGeneratePage', () => {
   beforeEach(() => {
@@ -107,26 +100,10 @@ describe('StudentVariantGeneratePage', () => {
         },
       },
     ])
-    pickSpy.mockResolvedValue({
-      id: 'task-3',
-      external_id: 103,
-      section_id: 'sec-1',
-      subject: 'Математика',
-      exam_type: 'ЕГЭ',
-      statement_html: '<p>Новое условие</p>',
-      answer_html: '3',
-      solution_html: null,
-      solution_plan_html: null,
-      grade_criteria_html: null,
-      has_answer: true,
-      has_solution: false,
-      position: 3,
-      assets: [],
-    })
     createSpy.mockResolvedValue('student-assignment-1')
   })
 
-  it('generates preview, replaces a position with exclude ids, and creates a variant', async () => {
+  it('generates and immediately creates a student variant', async () => {
     render(
       <MemoryRouter initialEntries={['/student/variants/generate']}>
         <Routes>
@@ -145,28 +122,8 @@ describe('StudentVariantGeneratePage', () => {
         { section_id: 'sec-1', cnt: 1, topic_ids: [] },
         { section_id: 'sec-2', cnt: 1, topic_ids: [] },
       ],
-      'student_safe',
+      { hydrateTasks: false },
     )
-
-    await waitFor(() => expect(screen.getAllByTestId('student-generated-item')).toHaveLength(2))
-    expect(screen.queryByText('Показать ответ')).not.toBeInTheDocument()
-    expect(screen.queryByText('Показать решение')).not.toBeInTheDocument()
-    expect(screen.queryByText('Ответ')).not.toBeInTheDocument()
-    expect(screen.queryByText('Решение')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('student-generated-replace-0'))
-
-    await waitFor(() => expect(pickSpy).toHaveBeenCalledTimes(1))
-    expect(pickSpy).toHaveBeenCalledWith({
-      sectionId: 'sec-1',
-      topicId: null,
-      excludeIds: ['task-1', 'task-2'],
-      visibility: 'student_safe',
-    })
-
-    await waitFor(() => expect(screen.getByText(/Новое условие/)).toBeInTheDocument())
-
-    fireEvent.click(screen.getByTestId('student-generator-create'))
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1))
     expect(createSpy).toHaveBeenCalledWith({
@@ -174,57 +131,12 @@ describe('StudentVariantGeneratePage', () => {
       subject: 'math',
       examType: 'ege',
       items: [
-        { task_id: 'task-3', section_id: 'sec-1', topic_id: null },
+        { task_id: 'task-1', section_id: 'sec-1', topic_id: null },
         { task_id: 'task-2', section_id: 'sec-2', topic_id: null },
       ],
     })
     expect(navigateSpy).toHaveBeenCalledWith('/student/variants/student-assignment-1')
-  })
-
-  it('teacher preview still contains reveal controls', async () => {
-    render(
-      <MemoryRouter>
-        <VariantConstructor
-          headerTitle="Конструктор варианта"
-          previewMode="teacher"
-          initialData={{
-            subject: 'math',
-            examType: 'ege',
-            title: 'Учительский вариант',
-            tasks: [{
-              task_id: 'task-teacher-1',
-              section_id: 'sec-1',
-              topic_id: '',
-              position: 1,
-              task: {
-                id: 'task-teacher-1',
-                external_id: 201,
-                section_id: 'sec-1',
-                subject: 'Математика',
-                exam_type: 'ЕГЭ',
-                statement_html: '<p>Условие teacher</p>',
-                answer_html: '<p>Ответ teacher</p>',
-                solution_html: '<p>Решение teacher</p>',
-                solution_plan_html: null,
-                grade_criteria_html: null,
-                has_answer: true,
-                has_solution: true,
-                position: 1,
-                assets: [],
-                sectionTitle: 'Линейные уравнения',
-              },
-            }],
-          }}
-          completeActionLabel="Сохранить"
-          onBack={() => {}}
-          onComplete={vi.fn(async () => {})}
-          onReplaceTask={vi.fn(async () => null)}
-        />
-      </MemoryRouter>,
-    )
-
-    await waitFor(() => expect(screen.getByText('Показать ответ')).toBeInTheDocument())
-    expect(screen.getByText('Показать решение')).toBeInTheDocument()
+    expect(screen.queryByText('Предпросмотр')).not.toBeInTheDocument()
   })
 
   it('student route is protected by student RoleGuard', () => {

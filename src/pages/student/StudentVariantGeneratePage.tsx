@@ -3,12 +3,11 @@ import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useNavigate } from 'react-router-dom'
 import { VariantConstructor, type VariantConstructorInitialData, type VariantConstructorSubmitPayload } from '@/components/variant/VariantConstructor'
-import { useCreateSelfBuiltVariant, usePickReplacementTask } from '@/hooks/useVariants'
+import { useCreateSelfBuiltVariant } from '@/hooks/useVariants'
 
 export function StudentVariantGeneratePage() {
   const navigate = useNavigate()
   const { create, saving } = useCreateSelfBuiltVariant()
-  const { pick } = usePickReplacementTask()
 
   const initialData = useMemo<VariantConstructorInitialData>(() => ({
     subject: 'math',
@@ -38,21 +37,15 @@ export function StudentVariantGeneratePage() {
       backLabel="К вариантам"
       initialData={initialData}
       saving={saving}
-      previewMode="student"
       showDescription={false}
       showDraftAction={false}
+      completeOnGenerate={true}
+      showPreviewStep={false}
       completeActionLabel="Начать вариант"
       completeStepLabel="Начало"
       onBack={() => navigate('/student/variants')}
       onComplete={handleCreate}
-      onReplaceTask={async (task, excludeIds) => {
-        return await pick({
-          sectionId: task.section_id,
-          topicId: task.topic_id || null,
-          excludeIds,
-          visibility: 'student_safe',
-        })
-      }}
+      onReplaceTask={async () => null}
     />
   )
 }

@@ -50,7 +50,6 @@ export function VariantBuilderPage() {
       loading={isEdit && loadingExisting}
       initialData={initialData}
       saving={saving}
-      previewMode="teacher"
       showDescription={true}
       showDraftAction={true}
       completeActionLabel="Сохранить (готов)"

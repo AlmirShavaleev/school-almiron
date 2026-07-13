@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useCatalogSections, useCatalogTopics, SUBJECT_FROM_SLUG, EXAM_FROM_SLUG, type CatalogSection } from '@/hooks/useCatalog'
 import { useVariantBuilder, type GeneratedTask, type VariantSectionConfig, type VariantSettings } from '@/hooks/useVariants'
-import { CatalogTaskContent, resolveTaskHtml } from '@/components/catalog/CatalogTaskContent'
+import { CatalogTaskContent } from '@/components/catalog/CatalogTaskContent'
 import { VariantPrintPanel } from '@/components/pdf/VariantPrintPanel'
 import type { PrintableItem } from '@/utils/variantPrintUtils'
 import { Button } from '@/components/ui/Button'
@@ -50,9 +50,10 @@ export interface VariantConstructorProps {
   loading?: boolean
   initialData?: VariantConstructorInitialData | null
   saving?: boolean
-  previewMode?: 'teacher' | 'student'
   showDescription?: boolean
   showDraftAction?: boolean
+  completeOnGenerate?: boolean
+  showPreviewStep?: boolean
   completeActionLabel: string
   completeStepLabel?: string
   onBack: () => void
@@ -70,9 +71,10 @@ export function VariantConstructor({
   loading = false,
   initialData,
   saving = false,
-  previewMode = 'teacher',
   showDescription = true,
   showDraftAction = true,
+  completeOnGenerate = false,
+  showPreviewStep = true,
   completeActionLabel,
   completeStepLabel = 'Сохранение',
   onBack,
@@ -211,7 +213,22 @@ export function VariantConstructor({
       topic_ids: [...sectionStates[s.id].topicIds],
     }))
     try {
-      const tasks = await generateTasks(configs, previewMode === 'student' ? 'student_safe' : 'full')
+      const tasks = await generateTasks(configs, { hydrateTasks: !completeOnGenerate })
+      if (completeOnGenerate) {
+        await onComplete({
+          title: title.trim(),
+          description: description.trim(),
+          subject,
+          examType,
+          settings: {
+            sections: configs,
+            generation_mode: 'random',
+          },
+          tasks,
+        })
+        setIsDirty(false)
+        return
+      }
       setGeneratedTasks(tasks)
       setStep('preview')
       setIsDirty(true)
@@ -323,7 +340,7 @@ export function VariantConstructor({
       </div>
 
       <div className="flex items-center gap-2 mb-6">
-        {(['build', 'preview'] as const).map((s, i) => (
+        {(['build', ...(showPreviewStep ? ['preview'] as const : [])] as const).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             {i > 0 && <div className="w-8 h-px bg-gray-300" />}
             <button
@@ -391,7 +408,6 @@ export function VariantConstructor({
         <PreviewStep
           tasks={generatedTasks}
           saving={saving}
-          previewMode={previewMode}
           dragIdx={dragIdx}
           subject={subject}
           examType={examType}
@@ -731,40 +747,14 @@ function useSectionTopics(sectionId: string | undefined) {
   return { topics }
 }
 
-function StudentPreviewTaskCard({ task, index }: { task: GeneratedTask; index: number }) {
-  const statement = resolveTaskHtml(task.task?.statement_html ?? null, task.task?.assets ?? [])
-  const sectionLabel = task.task?.sectionTitle || 'Раздел'
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div className="flex items-start gap-3 p-4">
-        <span className="text-xs font-mono text-gray-400 mt-0.5 w-6 flex-shrink-0">
-          #{index + 1}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="mb-2 flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Позиция {index + 1}</span>
-            <span className="text-xs text-gray-500">{sectionLabel}</span>
-          </div>
-          <div
-            className="prose prose-sm max-w-none text-gray-800 catalog-html"
-            dangerouslySetInnerHTML={{ __html: statement }}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function PreviewStep({
-  tasks, saving, previewMode, dragIdx, subject, examType, title,
+  tasks, saving, dragIdx, subject, examType, title,
   completeActionLabel, showDraftAction,
   onSetDragIdx, onMove, onDelete, onReplace,
   onBack, onSaveDraft, onComplete, onRegenerate,
 }: {
   tasks: GeneratedTask[]
   saving: boolean
-  previewMode: 'teacher' | 'student'
   dragIdx: number | null
   subject: string
   examType: string
@@ -821,11 +811,7 @@ function PreviewStep({
                       <Trash2 size={12} /> Удалить
                     </button>
                   </div>
-                  {previewMode === 'student' ? (
-                    <StudentPreviewTaskCard task={t} index={idx} />
-                  ) : (
-                    <CatalogTaskContent task={t.task} variantNumber={idx + 1} showControls={true} />
-                  )}
+                  <CatalogTaskContent task={t.task} variantNumber={idx + 1} showControls={true} />
                 </div>
               ) : (
                 <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm text-gray-400 flex items-center gap-2">

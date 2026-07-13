@@ -204,11 +204,15 @@ export function useVariantBuilder() {
    */
   const generateTasks = useCallback(async (
     sections: VariantSectionConfig[],
-    visibility: TaskFieldVisibility = 'full',
+    options?: TaskFieldVisibility | { visibility?: TaskFieldVisibility; hydrateTasks?: boolean },
   ): Promise<GeneratedTask[]> => {
     if (!profile) throw new Error('Not authenticated')
     setGenerating(true)
     setGenError(null)
+    const visibility =
+      typeof options === 'string' ? options : options?.visibility ?? 'full'
+    const hydrateTasks =
+      typeof options === 'string' ? true : options?.hydrateTasks ?? true
 
     try {
       const { data, error } = await db.rpc('generate_variant_tasks', {
@@ -231,6 +235,14 @@ export function useVariantBuilder() {
 
       const rows: { out_task_id: string; out_section_id: string; out_topic_id: string; out_position: number }[] = data ?? []
       if (!rows.length) return []
+      if (!hydrateTasks) {
+        return rows.map(r => ({
+          task_id: r.out_task_id,
+          section_id: r.out_section_id,
+          topic_id: r.out_topic_id,
+          position: r.out_position,
+        }))
+      }
 
       const taskIds = rows.map(r => r.out_task_id)
 
@@ -436,38 +448,6 @@ export function useCreateSelfBuiltVariant() {
   }, [])
 
   return { create, saving, error }
-}
-
-export function usePickReplacementTask() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const pick = useCallback(async (params: {
-    sectionId: string
-    topicId?: string | null
-    excludeIds: string[]
-    visibility?: TaskFieldVisibility
-  }): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data, error: rpcErr } = await db.rpc('pick_replacement_task', {
-        p_section_id: params.sectionId,
-        p_topic_id: params.topicId ?? null,
-        p_exclude: params.excludeIds,
-      })
-      if (rpcErr) throw new Error(rpcErr.message)
-      if (!data) return null
-      return await loadSingleTaskWithVisibility(data as string, params.visibility ?? 'full')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось заменить задачу')
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  return { pick, loading, error }
 }
 
 async function loadSingleTask(taskId: string): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
