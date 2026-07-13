@@ -14,6 +14,7 @@ export interface CatalogSection {
   position: number
   task_count?: number
   completed_count?: number
+  exam_part_majority?: 1 | 2 | null
 }
 
 export interface CatalogTopic {
@@ -180,6 +181,34 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
           countBySec[row.section_id] = row.task_count
         }
 
+        const sectionPartVotes: Record<string, { part1: number; part2: number }> = {}
+        const PAGE = 1000
+        for (let from = 0; ; from += PAGE) {
+          let taskPartQuery = db
+            .from('catalog_tasks')
+            .select('section_id, exam_part')
+            .eq('is_published', true)
+            .order('id')
+            .range(from, from + PAGE - 1)
+          if (subject) taskPartQuery = taskPartQuery.eq('subject', subject)
+          if (examType) taskPartQuery = taskPartQuery.eq('exam_type', examType)
+          const { data: taskPartRows, error: taskPartError } = await taskPartQuery
+
+          if (taskPartError || cancelled) {
+            if (!cancelled) setError(taskPartError?.message ?? 'Не удалось загрузить каталог')
+            setLoading(false)
+            return
+          }
+
+          if (!taskPartRows || taskPartRows.length === 0) break
+          for (const row of taskPartRows as { section_id: string; exam_part: number | null }[]) {
+            if (!sectionPartVotes[row.section_id]) sectionPartVotes[row.section_id] = { part1: 0, part2: 0 }
+            if (row.exam_part === 1) sectionPartVotes[row.section_id].part1 += 1
+            if (row.exam_part === 2) sectionPartVotes[row.section_id].part2 += 1
+          }
+          if (taskPartRows.length < PAGE) break
+        }
+
         const doneBySec: Record<string, number> = {}
         for (const p of progressData ?? []) {
           const secId = (p as { catalog_tasks?: { section_id?: string } }).catalog_tasks?.section_id
@@ -192,6 +221,12 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
               ...s,
               task_count:      countBySec[s.id] ?? 0,
               completed_count: doneBySec[s.id]  ?? 0,
+              exam_part_majority:
+                (sectionPartVotes[s.id]?.part1 ?? 0) > (sectionPartVotes[s.id]?.part2 ?? 0)
+                  ? 1
+                  : (sectionPartVotes[s.id]?.part2 ?? 0) > (sectionPartVotes[s.id]?.part1 ?? 0)
+                    ? 2
+                    : null,
             }))
           )
           setLoading(false)

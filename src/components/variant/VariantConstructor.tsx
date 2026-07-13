@@ -23,6 +23,8 @@ interface SectionState {
   topicIds: Set<string>
 }
 
+type PresetKind = 'standard' | 'part1' | 'part2'
+
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS: Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
 
@@ -191,6 +193,31 @@ export function VariantConstructor({
   })
   const totalTasks = enabledSections.reduce((sum, s) => sum + (sectionStates[s.id]?.cnt ?? 0), 0)
   const totalTopics = enabledSections.reduce((sum, s) => sum + (sectionStates[s.id]?.topicIds.size ?? 0), 0)
+
+  const applyPreset = (preset: PresetKind) => {
+    setSectionStates(prev => {
+      const next: Record<string, SectionState> = {}
+      for (const section of sections) {
+        const current = prev[section.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set<string>() }
+        const matches =
+          preset === 'standard'
+            ? true
+            : preset === 'part1'
+              ? section.exam_part_majority === 1
+              : section.exam_part_majority === 2
+        next[section.id] = {
+          ...current,
+          enabled: matches,
+          cnt: matches ? 1 : 0,
+          topicIds: new Set(),
+        }
+      }
+      return next
+    })
+    setGeneratedTasks([])
+    setStep('build')
+    setIsDirty(true)
+  }
 
   const buildSettings = useCallback((): VariantSettings => ({
     sections: enabledSections.map(s => ({
@@ -396,6 +423,7 @@ export function VariantConstructor({
           onToggleExpand={toggleExpand}
           onSetCnt={setCnt}
           onToggleTopic={toggleTopic}
+          onApplyPreset={applyPreset}
           onGenerate={handleGenerate}
           onReset={() => {
             if (!confirm('Сбросить все настройки?')) return
@@ -440,6 +468,7 @@ function BuildStep({
   onSwitchSubject, onSwitchExam,
   onTitleChange, onDescChange,
   onToggleSection, onToggleExpand, onSetCnt, onToggleTopic,
+  onApplyPreset,
   onGenerate, onReset,
 }: {
   subject: string
@@ -463,6 +492,7 @@ function BuildStep({
   onToggleExpand: (id: string) => void
   onSetCnt: (id: string, v: number) => void
   onToggleTopic: (sectionId: string, topicId: string) => void
+  onApplyPreset: (preset: PresetKind) => void
   onGenerate: () => void
   onReset: () => void
 }) {
@@ -535,6 +565,39 @@ function BuildStep({
               />
             </div>
           )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">Пресеты</h3>
+            <p className="text-xs text-gray-500 mt-1">Быстро проставляют количество задач по разделам. После этого можно править вручную.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="variant-preset-standard"
+              onClick={() => onApplyPreset('standard')}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+            >
+              Стандартный вариант
+            </button>
+            <button
+              type="button"
+              data-testid="variant-preset-part1"
+              onClick={() => onApplyPreset('part1')}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+            >
+              Только 1 часть
+            </button>
+            <button
+              type="button"
+              data-testid="variant-preset-part2"
+              onClick={() => onApplyPreset('part2')}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+            >
+              Только 2 часть
+            </button>
+          </div>
         </div>
 
         <h2 className="font-semibold text-gray-800 px-1">Выберите разделы и темы</h2>
