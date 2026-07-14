@@ -15,7 +15,7 @@ export function GroupHeaderActions({
   const btn = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-colors'
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {canManage && (
+      {canTeach && (
         <button onClick={onEdit} className={`${btn} bg-white border-gray-200 text-gray-700 hover:bg-gray-50`}>
           <Pencil size={14} />Редактировать
         </button>

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { useAuthStore } from '@/store/authStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,8 +41,10 @@ const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settings' }: Props) {
   const navigate   = useNavigate()
+  const profile = useAuthStore(s => s.profile)
   const isEdit     = !!group?.id
   const [tab, setTab] = useState<'settings' | 'students'>('settings')
+  const canManageStaff = profile?.role === 'admin' || profile?.role === 'owner'
 
   // ── Form fields ──────────────────────────────────────────────────────────
   const [name,         setName]         = useState('')
@@ -98,8 +101,12 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
     // Load select options
     Promise.all([
       supabase.from('courses').select('id, title, subject, exam_type').order('title'),
-      supabase.from('teachers').select('id, profiles(full_name, email)').eq('is_active', true).order('id'),
-      supabase.from('curators').select('id, profiles(full_name, email)').eq('is_active', true).order('id'),
+      canManageStaff
+        ? supabase.from('teachers').select('id, profiles(full_name, email)').eq('is_active', true).order('id')
+        : Promise.resolve({ data: [] as any[] }),
+      canManageStaff
+        ? supabase.from('curators').select('id, profiles(full_name, email)').eq('is_active', true).order('id')
+        : Promise.resolve({ data: [] as any[] }),
     ]).then(([cRes, tRes, curRes]) => {
       setCourses((cRes.data || []).map((c: any) => ({
         id:    c.id,
@@ -118,7 +125,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
       })))
       setOptsLoading(false)
     })
-  }, [open, group?.id])
+  }, [open, group?.id, canManageStaff])
 
   // ── Load members when students tab opens ─────────────────────────────────
 
@@ -365,42 +372,44 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
             </div>
 
             {/* Teacher + Curator row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  <GraduationCap size={13} className="inline mr-1.5 -mt-0.5" />Преподаватель
-                </label>
-                {optsLoading ? (
-                  <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
-                    <Loader2 size={14} className="animate-spin" />
-                  </div>
-                ) : (
-                  <SelectField
-                    value={teacherId}
-                    onChange={setTeacherId}
-                    options={teachers}
-                    placeholder="Не назначен"
-                  />
-                )}
+            {canManageStaff && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <GraduationCap size={13} className="inline mr-1.5 -mt-0.5" />Преподаватель
+                  </label>
+                  {optsLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                      <Loader2 size={14} className="animate-spin" />
+                    </div>
+                  ) : (
+                    <SelectField
+                      value={teacherId}
+                      onChange={setTeacherId}
+                      options={teachers}
+                      placeholder="Не назначен"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <Shield size={13} className="inline mr-1.5 -mt-0.5" />Куратор
+                  </label>
+                  {optsLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                      <Loader2 size={14} className="animate-spin" />
+                    </div>
+                  ) : (
+                    <SelectField
+                      value={curatorId}
+                      onChange={setCuratorId}
+                      options={curators}
+                      placeholder="Не назначен"
+                    />
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  <Shield size={13} className="inline mr-1.5 -mt-0.5" />Куратор
-                </label>
-                {optsLoading ? (
-                  <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
-                    <Loader2 size={14} className="animate-spin" />
-                  </div>
-                ) : (
-                  <SelectField
-                    value={curatorId}
-                    onChange={setCuratorId}
-                    options={curators}
-                    placeholder="Не назначен"
-                  />
-                )}
-              </div>
-            </div>
+            )}
 
             {/* Max students + active row */}
             <div className="grid grid-cols-2 gap-4">
