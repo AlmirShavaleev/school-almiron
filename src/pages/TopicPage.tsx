@@ -11,6 +11,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { useAuthStore } from '@/store/authStore'
 import { useTopicMaterials } from '@/hooks/useTopicMaterials'
 import { cn } from '@/utils/cn'
+import { getMaterialFileIcon } from '@/lib/materialIcons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ const SECTIONS = [
   { type: 'tasks'    as const, label: 'Список задач', icon: <ClipboardList size={18} />, color: 'bg-orange-500' },
   { type: 'homework' as const, label: 'ДЗ',           icon: <Lightbulb size={18} />,     color: 'bg-yellow-500' },
   { type: 'solution' as const, label: 'Решение',      icon: <Check size={18} />,         color: 'bg-green-500'  },
+  { type: 'link'     as const, label: 'Ссылка',       icon: <ExternalLink size={18} />,  color: 'bg-cyan-500'   },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -333,8 +335,9 @@ export function TopicPage() {
             const hasFile  = !!mat?.file_url
             const hasText  = !!mat?.content
             const hasLink  = !!mat?.link_url
+            const hasLinkMeta = !!mat?.link_meta
             const locked   = s.type === 'solution' && solutionLocked
-            if (!hasFile && !hasText && !hasLink && !locked) return null
+            if (!hasFile && !hasText && !hasLink && !hasLinkMeta && !locked) return null
 
             if (locked) return (
               <div key={s.type} className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 opacity-60">
@@ -348,6 +351,18 @@ export function TopicPage() {
               </div>
             )
 
+            if (s.type === 'link' && mat?.link_meta) return (
+              <a key={s.type} href={mat.link_meta.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-cyan-200 bg-white hover:border-cyan-300 hover:shadow-sm transition-all group">
+                <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0', s.color)}>{s.icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-800 text-sm group-hover:text-primary-700">{mat.link_meta.title}</div>
+                  <div className="text-xs text-gray-400 truncate mt-0.5">{mat.link_meta.url}</div>
+                </div>
+                <ExternalLink size={18} className="text-cyan-400 group-hover:text-cyan-500 shrink-0" />
+              </a>
+            )
+
             if (hasFile) return (
               <SignedFileLink key={s.type} bucket="course-materials" url={mat!.file_url!}
                 className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-gray-200 bg-white hover:border-primary-300 hover:shadow-sm transition-all group">
@@ -356,7 +371,7 @@ export function TopicPage() {
                   <div className="font-semibold text-gray-800 text-sm group-hover:text-primary-700">{s.label}</div>
                   <div className="text-xs text-gray-400 truncate mt-0.5">{niceName(mat!.file_url!)}</div>
                 </div>
-                <FileText size={18} className="text-gray-300 group-hover:text-primary-400 shrink-0" />
+                {getMaterialFileIcon(mat!.file_url!)}
               </SignedFileLink>
             )
 

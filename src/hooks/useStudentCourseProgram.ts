@@ -19,6 +19,7 @@ export interface TopicProgress {
   has_homework: boolean
   has_solution: boolean
   has_video:    boolean
+  has_link:     boolean
   // homework submission
   hw_status:      UnifiedStatus | null
   hw_score:       number | null
@@ -233,6 +234,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               has_homework: types.has('homework'),
               has_solution: types.has('solution'),
               has_video:    types.has('video'),
+              has_link:     types.has('link'),
               hw_status:      aggregateStatus(assignments),
               hw_score:       sub?.score     ?? null,
               hw_max:         hw?.max_score  ?? null,

@@ -1708,6 +1708,15 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       is_admin_or_owner: { Args: never; Returns: boolean }
+      prepare_topic_link_material: {
+        Args: { p_title: string; p_topic_id: string; p_url: string }
+        Returns: {
+          metadata: Json
+          normalized_title: string
+          normalized_url: string
+          object_path: string
+        }[]
+      }
       retry_notification: { Args: { queue_id: string }; Returns: void }
     }
     Enums: {

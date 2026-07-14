@@ -646,6 +646,7 @@ const MAT_COLS = [
   { type: 'homework', label: 'ДЗ',        icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
   { type: 'solution', label: 'Решение',   icon: <Check size={13} />,         color: 'text-green-500' },
   { type: 'video',    label: 'Видео',     icon: <Video size={13} />,         color: 'text-red-500' },
+  { type: 'link',     label: 'Ссылка',    icon: <FileText size={13} />,      color: 'text-cyan-600' },
 ]
 
 function MaterialsMatrix({

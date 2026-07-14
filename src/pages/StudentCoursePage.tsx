@@ -24,6 +24,7 @@ const MAT_CONFIG = [
   { key: 'has_tasks',    label: 'Задачи',   icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
   { key: 'has_homework', label: 'ДЗ',       icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
   { key: 'has_solution', label: 'Решение',  icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
+  { key: 'has_link',     label: 'Ссылка',   icon: <BookOpen size={10} />,      color: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
 ] as const
 
 // ─── View preference ─────────────────────────────────────────────────────────
@@ -232,7 +233,7 @@ function TopicCard({
   const availDate  = availStr ? new Date(availStr + 'T00:00:00') : null
   const isLocked   = !!availStr && availStr > todayStr
   const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
-    topic.has_homework || topic.has_solution || topic.has_video
+    topic.has_homework || topic.has_solution || topic.has_video || topic.has_link
   const isDone     = topic.hw_status === 'accepted'
 
   // Pick visual state
@@ -414,7 +415,7 @@ function TopicListRow({
   const st = LIST_STATE[stateKey]
   const isDone = topic.hw_status === 'accepted'
   const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
-    topic.has_homework || topic.has_solution || topic.has_video
+    topic.has_homework || topic.has_solution || topic.has_video || topic.has_link
   const canSubmit = !isLocked && topic.hw_id &&
     (topic.hw_status === 'not_started' || topic.hw_status === 'returned')
 
