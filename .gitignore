@@ -13,6 +13,8 @@ AppData/
 .idea/
 .claude/launch.json
 .claude/settings.local.json
+.claude/commands/*.md
+.claude/*.lock
 # import reports (generated, not source)
 import-summary.json
 import-errors.jsonl
@@ -50,4 +52,5 @@ physics-oge-broken-images.jsonl
 supabase/.temp/
 shkolkovo-pdfs/
 scripts/.checkpoints/
+scripts/analyze_variant_bank.py
 .codex-vite*.log

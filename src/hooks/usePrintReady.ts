@@ -55,9 +55,11 @@ export function usePrintReady(
       }
     })
 
-    // Timeout: do NOT auto-set ready; instead flag timedOut for user decision
+    // Timeout: only show the timeout state while something is still pending.
+    // Without this guard, a late timer can flip the UI into the warning state
+    // even after every image has already finished loading.
     const timer = setTimeout(
-      () => setState(s => ({ ...s, timedOut: true })),
+      () => setState(s => (s.ready ? s : { ...s, timedOut: true })),
       TIMEOUT_MS,
     )
     return () => clearTimeout(timer)
