@@ -148,6 +148,11 @@ function renderSubmissionDetail() {
   )
 }
 
+function expectLastGradeCall(payload: Record<string, unknown>) {
+  const calls = rpcSpy.mock.calls.filter(([name]) => name === 'grade_task_submission')
+  expect(calls.at(-1)).toEqual(['grade_task_submission', payload])
+}
+
 describe('task submission revision cycle — student side (AssignmentDetailPage)', () => {
   beforeEach(() => {
     profile = { id: 'stud-1', role: 'student' }
@@ -223,19 +228,23 @@ describe('task submission revision cycle — teacher side (SubmissionDetailPage)
     renderSubmissionDetail()
     fireEvent.click(await screen.findByText('Принять'))
 
-    await waitFor(() => expect(rpcSpy).toHaveBeenCalledWith('grade_task_submission', {
+    await waitFor(() => expect(screen.getByText('Статус обновлён')).toBeInTheDocument())
+    expectLastGradeCall({
       p_submission_id: 'sub-1', p_status: 'accepted', p_score: null, p_comment: null,
-    }))
+    })
   })
 
   it('"Вернуть на доработку" grades returned with the typed comment', async () => {
     renderSubmissionDetail()
-    fireEvent.change(await screen.findByPlaceholderText('Комментарий для ученика…'), { target: { value: 'Есть ошибка во втором примере' } })
+    const commentBox = await screen.findByPlaceholderText('Комментарий для ученика…')
+    fireEvent.change(commentBox, { target: { value: 'Есть ошибка во втором примере' } })
+    await waitFor(() => expect((commentBox as HTMLTextAreaElement).value).toBe('Есть ошибка во втором примере'))
     fireEvent.click(screen.getByText('Вернуть на доработку'))
 
-    await waitFor(() => expect(rpcSpy).toHaveBeenCalledWith('grade_task_submission', {
+    await waitFor(() => expect(screen.getByText('Статус обновлён')).toBeInTheDocument())
+    expectLastGradeCall({
       p_submission_id: 'sub-1', p_status: 'returned', p_score: null, p_comment: 'Есть ошибка во втором примере',
-    }))
+    })
   })
 
   it('"Отклонить" grades rejected with a score and comment', async () => {
@@ -243,11 +252,15 @@ describe('task submission revision cycle — teacher side (SubmissionDetailPage)
     await screen.findByText('Проверка')
     const scoreInput = container.querySelector('input[type="number"]') as HTMLInputElement
     fireEvent.change(scoreInput, { target: { value: '2' } })
-    fireEvent.change(screen.getByPlaceholderText('Комментарий для ученика…'), { target: { value: 'Не по критериям' } })
+    const commentBox = screen.getByPlaceholderText('Комментарий для ученика…')
+    fireEvent.change(commentBox, { target: { value: 'Не по критериям' } })
+    await waitFor(() => expect(scoreInput.value).toBe('2'))
+    await waitFor(() => expect((commentBox as HTMLTextAreaElement).value).toBe('Не по критериям'))
     fireEvent.click(screen.getByText('Отклонить'))
 
-    await waitFor(() => expect(rpcSpy).toHaveBeenCalledWith('grade_task_submission', {
+    await waitFor(() => expect(screen.getByText('Статус обновлён')).toBeInTheDocument())
+    expectLastGradeCall({
       p_submission_id: 'sub-1', p_status: 'rejected', p_score: 2, p_comment: 'Не по критериям',
-    }))
+    })
   })
 })
