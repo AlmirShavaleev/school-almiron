@@ -149,6 +149,7 @@ export function useCatalogSections(subject?: string, examType?: string, _retryKe
     async function load() {
       setLoading(true)
       setError(null)
+      setSections([])
       try {
         let q = db.from('catalog_sections').select('*').eq('is_published', true)
         if (subject)   q = q.eq('subject',   subject)

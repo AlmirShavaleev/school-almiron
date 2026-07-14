@@ -102,6 +102,9 @@ export function VariantConstructor({
   const examTypeDb = EXAM_FROM_SLUG[examType] ?? examType
   const { sections, loading: loadingSections } = useCatalogSections(subjectDb, examTypeDb)
   const { generateTasks, generating, genError, setGenError } = useVariantBuilder()
+  const filteredSections = sections.filter(section =>
+    section.subject === subjectDb && section.exam_type === examTypeDb,
+  )
 
   useEffect(() => {
     if (!initialData) return
@@ -134,12 +137,12 @@ export function VariantConstructor({
   useEffect(() => {
     setSectionStates(prev => {
       const next: Record<string, SectionState> = {}
-      for (const s of sections) {
+      for (const s of filteredSections) {
         next[s.id] = prev[s.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set() }
       }
       return next
     })
-  }, [sections])
+  }, [filteredSections])
 
   const switchSubject = (val: string) => {
     if (isDirty && !confirm('Сменить предмет? Несохранённые настройки разделов будут сброшены.')) return
@@ -191,7 +194,7 @@ export function VariantConstructor({
     updateSection(sectionId, { topicIds: next })
   }
 
-  const enabledSections = sections.filter(s => {
+  const enabledSections = filteredSections.filter(s => {
     const st = sectionStates[s.id]
     return st?.enabled && st.cnt > 0
   })
@@ -201,7 +204,7 @@ export function VariantConstructor({
   const applyPreset = (preset: PresetKind) => {
     setSectionStates(prev => {
       const next: Record<string, SectionState> = {}
-      for (const section of sections) {
+      for (const section of filteredSections) {
         const current = prev[section.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set<string>() }
         const matches =
           preset === 'standard'
@@ -268,7 +271,7 @@ export function VariantConstructor({
       if (msg.startsWith('NOT_ENOUGH:')) {
         const m = msg.match(/section=([^:]+):topic=([^:]+):needed=(\d+):available=(\d+)/)
         if (m) {
-          const sec = sections.find(s => s.id === m[1])
+          const sec = filteredSections.find(s => s.id === m[1])
           setGenError(`Недостаточно задач в разделе «${sec?.title ?? m[1]}»: запрошено ${m[3]}, доступно ${m[4]}.`)
           return
         }
@@ -411,7 +414,7 @@ export function VariantConstructor({
           title={title}
           description={description}
           showDescription={showDescription}
-          sections={sections}
+          sections={filteredSections}
           sectionStates={sectionStates}
           loadingSections={loadingSections}
           enabledSections={enabledSections}

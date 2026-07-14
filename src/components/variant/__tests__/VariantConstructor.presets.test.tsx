@@ -40,6 +40,30 @@ const SECTION_FIXTURES = [
     part1_count: 3,
     part2_count: 3,
   },
+  {
+    id: 'sec-oge-1',
+    title: 'ОГЭ Механика',
+    subject: 'Физика',
+    exam_type: 'ОГЭ',
+    external_id: 101,
+    exam_number: 1,
+    position: 1,
+    task_count: 9,
+    part1_count: 9,
+    part2_count: 0,
+  },
+  {
+    id: 'sec-ege-1',
+    title: 'ЕГЭ Механика',
+    subject: 'Физика',
+    exam_type: 'ЕГЭ',
+    external_id: 201,
+    exam_number: 1,
+    position: 1,
+    task_count: 11,
+    part1_count: 11,
+    part2_count: 0,
+  },
 ]
 
 vi.mock('@/hooks/useCatalog', () => ({
@@ -131,6 +155,38 @@ describe('VariantConstructor presets', () => {
     await waitFor(() => expect(generateTasksSpy).toHaveBeenCalledTimes(1))
     expect(generateTasksSpy).toHaveBeenCalledWith([
       { section_id: 'sec-2', cnt: 1, topic_ids: [] },
+    ], { hydrateTasks: true })
+  })
+
+  it('uses only sections of the selected exam type even when the hook returns mixed exams', async () => {
+    render(
+      <MemoryRouter>
+        <VariantConstructor
+          headerTitle="Конструктор варианта"
+          initialData={{ subject: 'physics', examType: 'ege', title: 'Физика' }}
+          completeActionLabel="Сохранить"
+          onBack={() => {}}
+          onComplete={vi.fn(async () => {})}
+          onSaveDraft={vi.fn(async () => {})}
+          onReplaceTask={vi.fn(async () => null)}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('ЕГЭ Механика')).toBeInTheDocument()
+    expect(screen.queryByText('ОГЭ Механика')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('ОГЭ'))
+
+    expect(screen.getByText('ОГЭ Механика')).toBeInTheDocument()
+    expect(screen.queryByText('ЕГЭ Механика')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('variant-section-plus-sec-oge-1'))
+    fireEvent.click(screen.getByTestId('variant-constructor-generate'))
+
+    await waitFor(() => expect(generateTasksSpy).toHaveBeenCalledTimes(1))
+    expect(generateTasksSpy).toHaveBeenCalledWith([
+      { section_id: 'sec-oge-1', cnt: 1, topic_ids: [] },
     ], { hydrateTasks: true })
   })
 })
