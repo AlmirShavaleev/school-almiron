@@ -8,6 +8,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
+import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
+import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
 import {
@@ -56,6 +58,11 @@ export function MyProgressPage() {
   }, [profile?.id])
 
   const { data: s, loading } = useStudentProfile(studentId)
+  const numberStats = useStudentNumberStats(
+    s?.student_id ?? null,
+    s?.target_subject ?? null,
+    s?.target_exam ?? null,
+  )
 
   if (resolving || loading) {
     return (
@@ -271,6 +278,15 @@ export function MyProgressPage() {
             ))}
           </div>
         </Card>
+      )}
+
+      {s.student_id && s.target_subject && s.target_exam && (
+        <StudentNumberStatsSection
+          rows={numberStats.rows}
+          loading={numberStats.loading}
+          error={numberStats.error}
+          title="Статистика по номерам ФИПИ"
+        />
       )}
 
       {/* Единый журнал (Этап 6) */}

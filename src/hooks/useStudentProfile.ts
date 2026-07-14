@@ -10,6 +10,8 @@ export interface StudentProfileData {
   email:       string
   phone:       string | null
   // Academic
+  target_subject: string | null
+  target_exam: string | null
   target_score: number | null
   groups:      { id: string; name: string; course_title: string }[]
   // Stats
@@ -212,6 +214,8 @@ export function useStudentProfile(studentId: string | null) {
         avatar_url:  profile?.avatar_url || null,
         email:       profile?.email || '',
         phone:       profile?.phone || null,
+        target_subject: st.target_subject || null,
+        target_exam: st.target_exam || null,
         target_score: st.target_score || null,
         groups,
         attendance_percent:  attPercent,

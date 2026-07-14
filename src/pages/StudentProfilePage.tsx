@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
+import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
+import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StatCard } from '@/components/ui/StatCard'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -78,6 +80,11 @@ export function StudentProfilePage() {
   const navigate = useNavigate()
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
+  const numberStats = useStudentNumberStats(
+    s?.student_id ?? null,
+    s?.target_subject ?? null,
+    s?.target_exam ?? null,
+  )
 
   // Subscription for this student (fetched directly, since we're viewing as teacher/admin)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
@@ -344,6 +351,14 @@ export function StudentProfilePage() {
       {/* Enrolled courses */}
       {s.student_id && (
         <EnrolledCoursesSection studentId={s.student_id} currentRole={currentUserRole} />
+      )}
+
+      {s.student_id && s.target_subject && s.target_exam && (
+        <StudentNumberStatsSection
+          rows={numberStats.rows}
+          loading={numberStats.loading}
+          error={numberStats.error}
+        />
       )}
 
       {/* Subscription */}
