@@ -77,6 +77,33 @@ body {
     border: 1px dashed rgba(148, 163, 184, 0.55);
     background: rgba(255, 255, 255, 0.68);
   }
+
+  .topic-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+  }
+
+  .topic-sidebar-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .topic-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .topic-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.95), rgba(100, 116, 139, 0.95));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .topic-sidebar-scroll:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
 }
 
 /* ── Catalog task HTML content ─────────────────────────── */

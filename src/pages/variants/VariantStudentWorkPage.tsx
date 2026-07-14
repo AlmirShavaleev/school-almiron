@@ -8,6 +8,8 @@ import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useVariantStudentWork, type WorkItem } from '@/hooks/useVariantStudentWork'
+import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
+import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 
 const GRADING_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   not_submitted: { label: 'Не сдано',         cls: 'bg-gray-100 text-gray-500' },
@@ -67,10 +69,9 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
       </div>
 
       {/* Statement */}
-      <div
-        className="prose prose-sm max-w-none text-gray-800 border-b border-gray-100 pb-4"
-        dangerouslySetInnerHTML={{ __html: item.statement_html }}
-      />
+      <div className="border-b border-gray-100 pb-4">
+        <TaskContentRenderer html={resolveTaskHtml(item.statement_html, [])} />
+      </div>
 
       {/* Student answer */}
       <div>
@@ -102,8 +103,9 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
       {item.grading_type === 'auto' && item.answer_html && (
         <div>
           <p className="text-xs font-medium text-gray-500 mb-1.5">Правильный ответ</p>
-          <div className="text-sm font-medium text-green-700 bg-green-50 rounded-lg px-3 py-2 inline-block"
-            dangerouslySetInnerHTML={{ __html: item.answer_html }} />
+          <div className="text-sm font-medium text-green-700 bg-green-50 rounded-lg px-3 py-2 inline-block">
+            <TaskContentRenderer html={resolveTaskHtml(item.answer_html, [])} className="text-green-700" />
+          </div>
           {ans.is_correct !== null && (
             <span className={`ml-2 text-xs font-medium ${ans.is_correct ? 'text-green-600' : 'text-red-500'}`}>
               {ans.is_correct ? '✓ Верно' : '✗ Неверно'}
@@ -118,9 +120,9 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
           <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700">
             Критерии оценки
           </summary>
-          <div
-            className="prose prose-sm max-w-none text-gray-700 mt-2"
-            dangerouslySetInnerHTML={{ __html: item.grade_criteria_html }}
+          <TaskContentRenderer
+            html={resolveTaskHtml(item.grade_criteria_html, [])}
+            className="mt-2 text-gray-700"
           />
         </details>
       )}

@@ -17,6 +17,12 @@ interface Props {
   className?:    string
   /** Seeds the document title field when there is no saved title yet (e.g. the variant's own title). */
   initialTitle?: string
+  /** Optional one-time overrides applied on top of stored settings for this panel instance. */
+  initialSettingsOverride?: Partial<VariantPrintSettings>
+  /** Hard overrides applied at render time; useful for student-safe PDF mode. */
+  lockedSettings?: Partial<VariantPrintSettings>
+  /** Hide the left settings column entirely (e.g. student direct-download flow). */
+  hideSettingsPanel?: boolean
 }
 
 const DEBOUNCE_MS = 300
@@ -28,14 +34,33 @@ const DEBOUNCE_MS = 300
  * proportions, and drives window.print() via the same VariantDocument used
  * for the on-screen preview.
  */
-export function VariantPrintPanel({ items, subject, examType, className, initialTitle }: Props) {
+export function VariantPrintPanel({
+  items,
+  subject,
+  examType,
+  className,
+  initialTitle,
+  initialSettingsOverride,
+  lockedSettings,
+  hideSettingsPanel = false,
+}: Props) {
   const [settings, setSettings] = useState<VariantPrintSettings>(() => {
     const loaded = loadVariantPrintSettings()
-    return loaded.title ? loaded : { ...loaded, title: initialTitle ?? loaded.title }
+    const withTitle = loaded.title ? loaded : { ...loaded, title: initialTitle ?? loaded.title }
+    return {
+      ...withTitle,
+      ...initialSettingsOverride,
+      title: initialTitle ?? initialSettingsOverride?.title ?? withTitle.title,
+    }
   })
   const [debouncedSettings, setDebouncedSettings] = useState(settings)
   const [printing, setPrinting] = useState(false)
   const [confirmedBroken, setConfirmedBroken] = useState(false)
+
+  const effectiveSettings = useMemo(
+    () => ({ ...debouncedSettings, ...lockedSettings }),
+    [debouncedSettings, lockedSettings]
+  )
 
   const printRef = useRef<HTMLDivElement>(null)
   const previewWrapRef = useRef<HTMLDivElement>(null)
@@ -54,7 +79,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
 
   const { ready, total, loaded, broken, timedOut, recheck } = usePrintReady(
     printRef,
-    [debouncedSettings, items.length],
+    [effectiveSettings, items.length],
   )
 
   // Scale A4 sheet to container width
@@ -62,7 +87,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
     function updateScale() {
       const el = previewWrapRef.current
       if (!el) return
-      const A4_WIDTH = debouncedSettings.orientation === 'landscape' ? 1123 : 794
+      const A4_WIDTH = effectiveSettings.orientation === 'landscape' ? 1123 : 794
       const available = el.clientWidth - 32
       setScale(Math.min(1, Math.max(0.3, available / A4_WIDTH)))
     }
@@ -70,7 +95,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
     const ro = new ResizeObserver(updateScale)
     if (previewWrapRef.current) ro.observe(previewWrapRef.current)
     return () => ro.disconnect()
-  }, [debouncedSettings.orientation])
+  }, [effectiveSettings.orientation])
 
   useEffect(() => {
     function onAfterPrint() { setPrinting(false) }
@@ -85,34 +110,34 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
   // cascade) fell back to the :root defaults regardless of the actual
   // margins/font-size setting — the real, root cause of preview/PDF drift.
   useEffect(() => {
-    document.documentElement.style.setProperty('--print-margins', marginsToCss(debouncedSettings.margins))
-    document.documentElement.style.setProperty('--print-font-size', fontSizeToCss(debouncedSettings.fontSize))
+    document.documentElement.style.setProperty('--print-margins', marginsToCss(effectiveSettings.margins))
+    document.documentElement.style.setProperty('--print-font-size', fontSizeToCss(effectiveSettings.fontSize))
     // Worksheet mode's ruled-grid field needs to know exactly how tall the
     // printable page area is (page height minus top+bottom margins) so it
     // can stretch to the bottom margin instead of a guessed fixed height.
     document.documentElement.style.setProperty(
       '--print-content-height',
-      `${printContentHeightMm(debouncedSettings.orientation, debouncedSettings.margins)}mm`,
+      `${printContentHeightMm(effectiveSettings.orientation, effectiveSettings.margins)}mm`,
     )
-  }, [debouncedSettings.margins, debouncedSettings.fontSize, debouncedSettings.orientation])
+  }, [effectiveSettings.margins, effectiveSettings.fontSize, effectiveSettings.orientation])
 
   const canPrint = ready || confirmedBroken
   const isLoading = !ready && !timedOut && !confirmedBroken && total > 0
   const hasBroken = broken.length > 0
 
   const fileName = useMemo(
-    () => buildVariantFileName(subject, examType, debouncedSettings.variantNumber),
-    [subject, examType, debouncedSettings.variantNumber],
+    () => buildVariantFileName(subject, examType, effectiveSettings.variantNumber),
+    [subject, examType, effectiveSettings.variantNumber],
   )
 
-  const isWorksheet = debouncedSettings.mode === 'worksheet'
+  const isWorksheet = effectiveSettings.mode === 'worksheet'
 
   // Key table rows are computed once from the full item set regardless of
   // how the preview splits into sheets below. Worksheet mode never shows a
   // key, regardless of the stored showKey toggle (see VariantDocument).
   const previewKeyRows = useMemo(
-    () => (!isWorksheet && debouncedSettings.showKey ? buildKeyTable(items) : []),
-    [isWorksheet, debouncedSettings.showKey, items],
+    () => (!isWorksheet && effectiveSettings.showKey ? buildKeyTable(items) : []),
+    [isWorksheet, effectiveSettings.showKey, items],
   )
 
   // "Каждое задание с новой страницы" only affects window.print() pagination
@@ -122,7 +147,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
   // part of the preset, not tied to the onePerPage toggle). When neither
   // applies, behavior is unchanged: one continuous sheet.
   const previewPages = useMemo(() => {
-    if (!isWorksheet && !debouncedSettings.onePerPage) {
+    if (!isWorksheet && !effectiveSettings.onePerPage) {
       return [{ items, startIndex: 0, showTitleBlock: true, showKeyTable: true, hideEmptyMessage: false }]
     }
 
@@ -146,7 +171,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
       pages.push({ items: [], startIndex: items.length, showTitleBlock: false, showKeyTable: true, hideEmptyMessage: true })
     }
     return pages
-  }, [items, isWorksheet, debouncedSettings.onePerPage, previewKeyRows])
+  }, [items, isWorksheet, effectiveSettings.onePerPage, previewKeyRows])
 
   function patch<K extends keyof VariantPrintSettings>(key: K, val: VariantPrintSettings[K]) {
     setSettings(s => ({ ...s, [key]: val }))
@@ -164,7 +189,7 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
     // printing instead.
     const ORIENTATION_STYLE_ID = 'print-orientation-override'
     document.getElementById(ORIENTATION_STYLE_ID)?.remove()
-    if (debouncedSettings.orientation === 'landscape') {
+    if (effectiveSettings.orientation === 'landscape') {
       const style = document.createElement('style')
       style.id = ORIENTATION_STYLE_ID
       style.media = 'print'
@@ -191,16 +216,18 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
           own display value, so the print target must live in document.body. */}
       {createPortal(
         <div className="print-portal-wrapper" aria-hidden="true">
-          <VariantDocument ref={printRef} items={items} settings={debouncedSettings} />
+          <VariantDocument ref={printRef} items={items} settings={effectiveSettings} />
         </div>,
         document.body,
       )}
 
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* Settings */}
-        <div className="lg:w-80 flex-shrink-0 space-y-5">
-          <SettingsPanel settings={settings} patch={patch} />
-        </div>
+        {!hideSettingsPanel && (
+          <div className="space-y-5 lg:w-80 flex-shrink-0">
+            <SettingsPanel settings={settings} patch={patch} />
+          </div>
+        )}
 
         {/* Live preview */}
         <div className="flex-1 min-w-0">
@@ -244,29 +271,29 @@ export function VariantPrintPanel({ items, subject, examType, className, initial
                 <div
                   key={i}
                   style={{
-                    width: (debouncedSettings.orientation === 'landscape' ? 1123 : 794) * scale,
-                    height: (debouncedSettings.orientation === 'landscape' ? 794 : 1123) * scale,
+                    width: (effectiveSettings.orientation === 'landscape' ? 1123 : 794) * scale,
+                    height: (effectiveSettings.orientation === 'landscape' ? 794 : 1123) * scale,
                     flexShrink: 0,
                   }}
                 >
                   <div
                     className="print-preview-page"
                     style={{
-                      width: debouncedSettings.orientation === 'landscape' ? 1123 : 794,
-                      minHeight: debouncedSettings.orientation === 'landscape' ? 794 : 1123,
+                      width: effectiveSettings.orientation === 'landscape' ? 1123 : 794,
+                      minHeight: effectiveSettings.orientation === 'landscape' ? 794 : 1123,
                       transform: `scale(${scale})`,
                       transformOrigin: 'top left',
-                      fontSize: fontSizeToCss(debouncedSettings.fontSize),
+                      fontSize: fontSizeToCss(effectiveSettings.fontSize),
                       // Same helper the real @page margin uses — previously
                       // this was a hardcoded "56px 48px" regardless of the
                       // margins setting, so "Увеличенные" changed the actual
                       // PDF but not what the preview showed.
-                      padding: marginsToCss(debouncedSettings.margins),
+                      padding: marginsToCss(effectiveSettings.margins),
                     }}
                   >
                     <VariantDocument
                       items={page.items}
-                      settings={debouncedSettings}
+                      settings={effectiveSettings}
                       startIndex={page.startIndex}
                       showTitleBlock={page.showTitleBlock}
                       showKeyTable={page.showKeyTable}

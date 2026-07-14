@@ -9,9 +9,10 @@ interface Props {
 }
 
 export function AddToCartButton({ taskId, className = '', compact = false }: Props) {
-  const { addItem, removeItem, hasItem } = useCartStore()
+  const addItem = useCartStore(s => s.addItem)
+  const removeItem = useCartStore(s => s.removeItem)
+  const inCart = useCartStore(s => s.items.some(item => item.catalog_task_id === taskId))
   const [justAdded, setJustAdded] = useState(false)
-  const inCart = hasItem(taskId)
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -32,13 +33,24 @@ export function AddToCartButton({ taskId, className = '', compact = false }: Pro
       <button
         onClick={handleRemove}
         title="Убрать из подборки"
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-          bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700 transition-colors group ${className}`}
+        className={`inline-flex min-h-10 items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
+          bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80
+          hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200
+          transition-[background-color,color,box-shadow,transform] duration-200
+          active:scale-[0.96] group ${className}`}
       >
-        <Check size={15} className="group-hover:hidden" />
-        <X     size={15} className="hidden group-hover:block" />
+        <span className="relative h-4 w-4 shrink-0">
+          <Check
+            size={15}
+            className="absolute inset-0 scale-100 opacity-100 blur-0 transition-[transform,opacity,filter] duration-200 ease-out group-hover:scale-[0.25] group-hover:opacity-0 group-hover:blur-sm"
+          />
+          <X
+            size={15}
+            className="absolute inset-0 scale-[0.25] opacity-0 blur-sm transition-[transform,opacity,filter] duration-200 ease-out group-hover:scale-100 group-hover:opacity-100 group-hover:blur-0"
+          />
+        </span>
         {!compact && (
-          <span>
+          <span className="tabular-nums">
             <span className="group-hover:hidden">В подборке</span>
             <span className="hidden group-hover:inline">Убрать</span>
           </span>
@@ -51,13 +63,14 @@ export function AddToCartButton({ taskId, className = '', compact = false }: Pro
     <button
       onClick={handleAdd}
       title="Добавить в подборку"
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-        bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors ${
-          justAdded ? 'scale-95' : ''
+      className={`inline-flex min-h-10 items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
+        bg-blue-50 text-blue-700 ring-1 ring-blue-200/80 hover:bg-blue-100
+        transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.96] ${
+          justAdded ? 'scale-[0.96]' : ''
         } ${className}`}
     >
       <ShoppingCart size={15} />
-      {!compact && <span>В подборку</span>}
+      {!compact && <span className="tabular-nums">В подборку</span>}
     </button>
   )
 }

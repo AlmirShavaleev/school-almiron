@@ -1,7 +1,7 @@
 import { deleteMyVariant, useStudentVariantAssignments, type StudentVariantAssignment } from '@/hooks/useVariantAssignments'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { BookOpen, Clock, Calendar, CheckCircle2, Loader2, AlertCircle, Lock, ArrowRight, Hammer, Sparkles, Trash2 } from 'lucide-react'
+import { BookOpen, Clock, Calendar, CheckCircle2, Loader2, AlertCircle, Lock, ArrowRight, Sparkles, Trash2 } from 'lucide-react'
 import { format, isPast, isFuture } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
@@ -64,7 +64,7 @@ export function StudentVariantsPage() {
       <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Тренировочные варианты</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Варианты, назначенные учителем</p>
+          <p className="text-sm text-gray-500 mt-0.5">Варианты, назначенные учителем. Подборки из каталога теперь сохраняются отдельно для PDF.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -73,13 +73,6 @@ export function StudentVariantsPage() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors"
           >
             <Sparkles size={15} /> Сгенерировать вариант
-          </Link>
-          <Link
-            to="/student/variants/build"
-            data-testid="build-own-variant-link"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
-          >
-            <Hammer size={15} /> Собрать вручную
           </Link>
         </div>
       </div>

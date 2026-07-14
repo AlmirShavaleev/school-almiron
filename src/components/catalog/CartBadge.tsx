@@ -5,9 +5,9 @@ import { useAuthStore } from '@/store/authStore'
 
 const STAFF = new Set(['teacher', 'admin', 'owner'])
 
-/** Floating cart indicator — shown in catalog pages. Staff check out into a
- * collection at /cart; students check out into a self-built variant at
- * /student/variants/build. Same underlying cart store either way. */
+/** Floating cart indicator — shown in catalog pages. Both staff and students
+ * use the same collection/cart flow so selected tasks can be saved and
+ * exported as PDF instead of starting a self-built variant attempt. */
 export function CartBadge() {
   const profile = useAuthStore(s => s.profile)
   const items   = useCartStore(s => s.items)
@@ -15,9 +15,8 @@ export function CartBadge() {
   if (!profile || (!STAFF.has(profile.role) && profile.role !== 'student')) return null
   if (items.length === 0) return null
 
-  const isStudent = profile.role === 'student'
-  const destination = isStudent ? '/student/variants/build' : '/cart'
-  const label = isStudent ? 'Мой вариант' : 'Подборка'
+  const destination = '/cart'
+  const label = 'Подборка'
 
   return (
     <Link

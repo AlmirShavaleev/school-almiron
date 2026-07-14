@@ -52,7 +52,6 @@ import { VariantAssignmentsPage } from '@/pages/variants/VariantAssignmentsPage'
 import { VariantStudentWorkPage } from '@/pages/variants/VariantStudentWorkPage'
 import { StudentVariantsPage } from '@/pages/student/StudentVariantsPage'
 import { StudentVariantDetailPage } from '@/pages/student/StudentVariantDetailPage'
-import { StudentVariantBuildPage } from '@/pages/student/StudentVariantBuildPage'
 import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
 import { AssignHomeworkPage } from '@/pages/AssignHomeworkPage'
 import { ReviewSubmissionsPage } from '@/pages/ReviewSubmissionsPage'
@@ -106,7 +105,7 @@ export default function AppRoutes() {
         <Route path="/catalog/:sectionId/topic/:topicId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTopicPage /></RoleGuard>} />
         <Route path="/catalog/task/:taskId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTaskPage /></RoleGuard>} />
 
-        <Route path="/cart" element={<RoleGuard allow={['teacher','admin','owner']}><CartPage /></RoleGuard>} />
+        <Route path="/cart" element={<RoleGuard allow={['student','teacher','admin','owner']}><CartPage /></RoleGuard>} />
         <Route path="/collections/:id" element={<RoleGuard allow={['teacher','admin','owner']}><CollectionDetailPage /></RoleGuard>} />
 
         <Route path="/variant-builder" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />
@@ -118,7 +117,7 @@ export default function AppRoutes() {
         <Route path="/variants/:variantId/work/:studentAssignmentId" element={<RoleGuard allow={['teacher','admin','owner']}><VariantStudentWorkPage /></RoleGuard>} />
         <Route path="/student/variants" element={<RoleGuard allow={['student']}><StudentVariantsPage /></RoleGuard>} />
         <Route path="/student/variants/generate" element={<RoleGuard allow={['student']}><StudentVariantGeneratePage /></RoleGuard>} />
-        <Route path="/student/variants/build" element={<RoleGuard allow={['student']}><StudentVariantBuildPage /></RoleGuard>} />
+        <Route path="/student/variants/build" element={<RoleGuard allow={['student']}><Navigate to="/cart" replace /></RoleGuard>} />
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Этап 4: выдача и проверка ДЗ */}
