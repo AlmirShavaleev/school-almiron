@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Trash2, Save, BookOpen, ArrowLeft, FileDown } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
@@ -8,8 +8,6 @@ import { getLessonHomeworkDraftContext, clearLessonHomeworkDraftContext } from '
 import type { WorkType } from '@/types/collections'
 import { WORK_TYPE_LABELS } from '@/types/collections'
 import { useAuthStore } from '@/store/authStore'
-import { VariantPrintPanel } from '@/components/pdf/VariantPrintPanel'
-import type { PrintableItem } from '@/utils/variantPrintUtils'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
 
 export function CartPage() {
@@ -21,34 +19,11 @@ export function CartPage() {
   const [title,    setTitle]    = useState('')
   const [subject,  setSubject]  = useState<'Математика' | 'Физика'>('Математика')
   const [workType, setWorkType] = useState<WorkType>('custom')
-  const [showStudentPrintPanel, setShowStudentPrintPanel] = useState(false)
 
   const isStudent = profile?.role === 'student'
-  const taskIds = useMemo(() => items.map(item => item.catalog_task_id), [items])
+  const taskIds = items.map(item => item.catalog_task_id)
   const { tasks: batchTasks, loading: batchLoading } = useCatalogTasksBatch(taskIds)
-
-  const taskMap = useMemo(
-    () => new Map(batchTasks.map(task => [task.id, task])),
-    [batchTasks],
-  )
-
-  const printItems: PrintableItem[] = useMemo(
-    () => items.map((item, index) => ({
-      id: `${item.catalog_task_id}-${index}`,
-      task: taskMap.get(item.catalog_task_id),
-      customNumber: null,
-    })),
-    [items, taskMap],
-  )
-
-  const printableTasks = useMemo(
-    () => printItems.filter((item): item is PrintableItem & { task: NonNullable<PrintableItem['task']> } => !!item.task),
-    [printItems],
-  )
-
-  const printSubject = printableTasks[0]?.task.subject ?? subject
-  const printExamType = printableTasks[0]?.task.exam_type ?? ''
-  const canShowStudentPrintPanel = !batchLoading && printableTasks.length > 0 && printableTasks.length === items.length
+  const taskMap = new Map(batchTasks.map(task => [task.id, task]))
 
   if (items.length === 0) {
     return (
@@ -137,44 +112,22 @@ export function CartPage() {
               <div>
                 <h2 className="text-base font-semibold text-gray-900">PDF из корзины</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Та же панель печати, что у учителя: превью, рабочий лист, ответы и все настройки доступны прямо из корзины.
+                  Откройте отдельную страницу с превью и настройками печати, чтобы спокойно собрать PDF без тесного окна внутри корзины.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowStudentPrintPanel(v => !v)}
-                disabled={!canShowStudentPrintPanel}
-                aria-expanded={showStudentPrintPanel}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  showStudentPrintPanel
-                    ? 'border-blue-300 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              <Link
+                to="/student/variants/build"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
               >
                 <FileDown size={16} />
-                PDF
-              </button>
+                Открыть PDF-превью
+              </Link>
             </div>
 
             {batchLoading && (
               <p className="text-sm text-gray-500">Подготавливаем задачи для PDF…</p>
             )}
-            {!batchLoading && printableTasks.length !== items.length && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                Не все задачи из корзины удалось загрузить для печати. Проверьте состав корзины и попробуйте ещё раз.
-              </p>
-            )}
           </div>
-
-          {showStudentPrintPanel && canShowStudentPrintPanel && (
-            <VariantPrintPanel
-              className="bg-white rounded-2xl border border-gray-200 p-4"
-              items={printableTasks}
-              subject={printSubject}
-              examType={printExamType}
-              initialTitle="Подборка из каталога"
-            />
-          )}
         </>
       ) : (
         <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">

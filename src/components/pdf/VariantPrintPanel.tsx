@@ -140,24 +140,21 @@ export function VariantPrintPanel({
     [isWorksheet, effectiveSettings.showKey, items],
   )
 
-  // "Каждое задание с новой страницы" only affects window.print() pagination
-  // via CSS (break-before: page), which has no visual effect on screen — so
-  // the live preview must be split into separate stacked A4 sheets here to
-  // actually show it. Worksheet mode always renders one task per page (it's
-  // part of the preset, not tied to the onePerPage toggle). When neither
-  // applies, behavior is unchanged: one continuous sheet.
+  // Worksheet mode is the only mode that guarantees "one task = exactly one
+  // page". Standard onePerPage merely inserts a page break *before* each
+  // task, but the task itself (especially with long explanations/answers)
+  // may still span multiple pages. Splitting the live preview into one fixed
+  // A4 box per task in that mode caused long explanation blocks to overflow,
+  // overlap and appear cropped on screen. Keep the preview as one continuous
+  // document there; the actual print CSS still applies the correct breaks.
   const previewPages = useMemo(() => {
-    if (!isWorksheet && !effectiveSettings.onePerPage) {
+    if (!isWorksheet) {
       return [{ items, startIndex: 0, showTitleBlock: true, showKeyTable: true, hideEmptyMessage: false }]
     }
 
-    // One-per-page split (both worksheet and plain "Каждое задание с новой
-    // страницы"): task 0's sheet also carries the header/title block — same
-    // shape VariantDocument expects, since it renders that block as task 0's
-    // own first flex child in worksheet mode (so the ruled grid's flex:1
-    // fill correctly shrinks to make room for it, instead of the header
-    // living on its own separate sheet that VariantDocument never produces
-    // in the real single-render print/PDF path).
+    // Worksheet mode: task 0's sheet also carries the header/title block —
+    // same shape VariantDocument expects, since it renders that block as
+    // task 0's own first flex child in worksheet mode.
     const pages = items.map((item, idx) => ({
       items:            [item],
       startIndex:       idx,
@@ -171,7 +168,7 @@ export function VariantPrintPanel({
       pages.push({ items: [], startIndex: items.length, showTitleBlock: false, showKeyTable: true, hideEmptyMessage: true })
     }
     return pages
-  }, [items, isWorksheet, effectiveSettings.onePerPage, previewKeyRows])
+  }, [items, isWorksheet, previewKeyRows])
 
   function patch<K extends keyof VariantPrintSettings>(key: K, val: VariantPrintSettings[K]) {
     setSettings(s => ({ ...s, [key]: val }))
