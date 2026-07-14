@@ -26,7 +26,7 @@ with physics_partial_map as (
       ('Физика'::text, 'ОГЭ'::text, 13::int, 'matching'::text, 2::int),
       ('Физика'::text, 'ОГЭ'::text, 14::int, 'multi_choice'::text, 2::int),
       ('Физика'::text, 'ОГЭ'::text, 16::int, 'multi_choice'::text, 2::int)
-  ) as m(subject, exam_type, section_external_id, partial_type, max_points)
+  ) as m(subject, exam_type, section_exam_number, partial_type, max_points)
 )
 update public.catalog_tasks t
 set
@@ -36,7 +36,7 @@ from public.catalog_sections s
 join physics_partial_map m
   on m.subject = s.subject
  and m.exam_type = s.exam_type
- and m.section_external_id = s.external_id
+ and m.section_exam_number = s.exam_number
 where t.section_id = s.id;
 
 update public.catalog_tasks t
@@ -62,10 +62,10 @@ where t.section_id = s.id
         ('Физика'::text, 'ОГЭ'::text, 13::int),
         ('Физика'::text, 'ОГЭ'::text, 14::int),
         ('Физика'::text, 'ОГЭ'::text, 16::int)
-    ) keep(subject, exam_type, section_external_id)
+    ) keep(subject, exam_type, section_exam_number)
     where keep.subject = s.subject
       and keep.exam_type = s.exam_type
-      and keep.section_external_id = s.external_id
+      and keep.section_exam_number = s.exam_number
   );
 
 create or replace function public.normalize_answer_digits(p_value text)
@@ -194,15 +194,19 @@ end;
 $$;
 
 -- NOTE:
--- The current body of public.submit_variant(...) is not versioned in this repo.
--- Apply the new scoring inside that function in the live DB using:
+-- Live DB sync from Claude Code report on 2026-07-14:
+-- submit_variant(...) already branches on ct.partial_type before the legacy
+-- binary auto-check path. The confirmed fragment in production is:
 --
---   public.score_auto_answer(
---     tva.answer_raw,
---     ct.answer_html,
---     ct.partial_type
---   )
+--   IF v_item.partial_type IS NOT NULL AND v_correct_norm IS NOT NULL THEN
+--     v_partial_score := public.score_auto_answer(v_student_norm, v_correct_norm, v_item.partial_type);
+--     v_is_correct    := (v_partial_score = 2);
+--     v_points_earned := ROUND((v_partial_score::numeric / 2) * v_item.points, 2);
+--   ELSIF v_auto_check THEN
+--     ...  -- legacy binary branch, unchanged
+--   END IF;
 --
--- and source max points from ct.max_points for auto-graded tasks.
+-- The backfill in this migration must match catalog_sections.exam_number
+-- rather than catalog_sections.external_id.
 
 commit;

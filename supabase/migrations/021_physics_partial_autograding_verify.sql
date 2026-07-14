@@ -21,91 +21,91 @@ begin
   select count(*) into v_ege_5_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 5
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 5
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   select count(*) into v_ege_6_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 6
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 6
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_ege_9_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 9
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 9
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   select count(*) into v_ege_10_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 10
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 10
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_ege_14_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 14
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 14
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   select count(*) into v_ege_15_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 15
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 15
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_ege_17_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 17
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 17
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_ege_18_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.external_id = 18
+  where s.subject = 'Физика' and s.exam_type = 'ЕГЭ' and s.exam_number = 18
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   select count(*) into v_oge_1_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 1
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 1
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_oge_2_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 2
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 2
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_oge_4_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 4
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 4
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_oge_12_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 12
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 12
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_oge_13_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 13
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 13
     and t.partial_type = 'matching' and t.max_points = 2;
 
   select count(*) into v_oge_14_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 14
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 14
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   select count(*) into v_oge_16_count
   from public.catalog_tasks t
   join public.catalog_sections s on s.id = t.section_id
-  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.external_id = 16
+  where s.subject = 'Физика' and s.exam_type = 'ОГЭ' and s.exam_number = 16
     and t.partial_type = 'multi_choice' and t.max_points = 2;
 
   if v_ege_5_count = 0 or v_ege_6_count = 0 or v_ege_9_count = 0 or v_ege_10_count = 0
