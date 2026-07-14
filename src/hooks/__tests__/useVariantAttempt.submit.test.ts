@@ -148,6 +148,7 @@ describe('useVariantAttempt submit flow', () => {
             section_id: null,
             subject: 'Математика',
             exam_type: 'ЕГЭ',
+            partial_type: null,
             statement_html: '<p>...</p>',
             has_answer: false,
             has_solution: true,
@@ -175,7 +176,7 @@ describe('useVariantAttempt submit flow', () => {
 
     await act(async () => {})
 
-    expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points')
+    expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points, partial_type')
   })
 
   it('loads self-check fields from catalog_tasks only after submit for self-built variants', async () => {
@@ -195,6 +196,7 @@ describe('useVariantAttempt submit flow', () => {
             section_id: null,
             subject: 'Математика',
             exam_type: 'ЕГЭ',
+            partial_type: null,
             statement_html: '<p>...</p>',
             has_answer: false,
             has_solution: true,
@@ -231,6 +233,7 @@ describe('useVariantAttempt submit flow', () => {
       data: [{
         id: 'task-1',
         max_points: 2,
+        partial_type: null,
         answer_html: '<p>6</p>',
         solution_html: '<p>Решение</p>',
         solution_plan_html: '<p>План</p>',
@@ -249,7 +252,7 @@ describe('useVariantAttempt submit flow', () => {
     ))
 
     await waitFor(() => {
-      expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points, answer_html, solution_html, solution_plan_html, grade_criteria_html')
+      expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points, partial_type, answer_html, solution_html, solution_plan_html, grade_criteria_html')
     })
     await waitFor(() => expect(result.current.items[0]?.solution_html).toBe('<p>Решение</p>'))
     expect(result.current.items[0]?.grade_criteria_html).toBe('<p>Критерии</p>')

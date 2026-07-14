@@ -19,6 +19,7 @@ export interface VariantItem {
   section_id:     string | null
   subject:        string
   exam_type:      string
+  partial_type:   'multi_choice' | 'matching' | null
   statement_html: string
   has_answer:     boolean
   has_solution:   boolean
@@ -224,6 +225,7 @@ export function useVariantAttempt(
             setItems(itemRows.map(item => ({
               ...item,
               max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
+              partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
               assets: assetsByTask[item.task_id] ?? [],
             })))
           })
@@ -279,6 +281,7 @@ export function useVariantAttempt(
       setItems(prevItems => prevItems.map(item => ({
         ...item,
         max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
+        partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
         answer_html: taskMetaByTask[item.task_id]?.answer_html ?? item.answer_html ?? null,
         solution_html: taskMetaByTask[item.task_id]?.solution_html ?? item.solution_html ?? null,
         solution_plan_html: taskMetaByTask[item.task_id]?.solution_plan_html ?? item.solution_plan_html ?? null,
@@ -324,6 +327,7 @@ export function useVariantAttempt(
       setItems(rows.map(item => ({
         ...item,
         max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
+        partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
         assets: assetsByTask[item.task_id] ?? [],
       })))
     }
@@ -504,6 +508,7 @@ async function loadTaskMetaForTaskIds(
   options?: { includeAnswerHtml?: boolean; includeSelfCheckFields?: boolean },
 ): Promise<Record<string, {
   max_points: number | null
+  partial_type?: 'multi_choice' | 'matching' | null
   answer_html?: string | null
   solution_html?: string | null
   solution_plan_html?: string | null
@@ -513,13 +518,14 @@ async function loadTaskMetaForTaskIds(
 
   const taskMetaByTask: Record<string, {
     max_points: number | null
+    partial_type?: 'multi_choice' | 'matching' | null
     answer_html?: string | null
     solution_html?: string | null
     solution_plan_html?: string | null
     grade_criteria_html?: string | null
   }> = {}
   const CHUNK = 200
-  const fields = ['id', 'max_points']
+  const fields = ['id', 'max_points', 'partial_type']
   if (options?.includeAnswerHtml) fields.push('answer_html')
   if (options?.includeSelfCheckFields) fields.push('solution_html', 'solution_plan_html', 'grade_criteria_html')
   const select = fields.join(', ')
@@ -534,6 +540,7 @@ async function loadTaskMetaForTaskIds(
     for (const row of data ?? []) {
       taskMetaByTask[row.id] = {
         max_points: row.max_points ?? null,
+        partial_type: row.partial_type ?? null,
         ...(options?.includeAnswerHtml ? { answer_html: row.answer_html ?? null } : {}),
         ...(options?.includeSelfCheckFields ? {
           solution_html: row.solution_html ?? null,

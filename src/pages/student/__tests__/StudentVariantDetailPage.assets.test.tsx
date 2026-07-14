@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mockAssignmentDetail = vi.hoisted(() => ({
-  assignment: {
+    assignment: {
     id: 'assign-1',
     status: 'completed',
     started_at: '2026-07-13T09:00:00Z',
@@ -12,7 +12,7 @@ const mockAssignmentDetail = vi.hoisted(() => ({
     available_from: null,
     due_at: null,
     score: 0,
-    max_score: 2,
+    max_score: 1,
     percentage: 0,
     grading_status: 'graded',
     answered_count: 1,
@@ -38,12 +38,14 @@ const mockAttemptState = vi.hoisted(() => ({
     variant_id: 'variant-1',
     task_id: 'task-1',
     item_position: 1,
-    points: 2,
+    points: 1,
+    max_points: 1,
     grading_type: 'auto',
     task_ext_id: 7,
     section_id: 'sec-1',
     subject: 'Математика',
     exam_type: 'ЕГЭ',
+    partial_type: null,
     statement_html: '<p><img src="DI_703.png" alt="PIC"></p>',
     has_answer: false,
     has_solution: true,
@@ -69,7 +71,7 @@ const mockAttemptState = vi.hoisted(() => ({
     answered_count: 1,
     correct_count: 0,
     score: 0,
-    max_score: 2,
+    max_score: 1,
     percentage: 0,
     grading_status: 'graded',
     manual_review_count: 0,
@@ -145,6 +147,34 @@ describe('StudentVariantDetailPage asset rendering', () => {
       completed_at: '2026-07-13T10:00:00Z',
       started_at: '2026-07-13T09:00:00Z',
     }
+    mockAttemptState.items = [{
+      item_id: 'item-1',
+      variant_id: 'variant-1',
+      task_id: 'task-1',
+      item_position: 1,
+      points: 1,
+      max_points: 1,
+      grading_type: 'auto',
+      task_ext_id: 7,
+      section_id: 'sec-1',
+      subject: 'Математика',
+      exam_type: 'ЕГЭ',
+      partial_type: null,
+      statement_html: '<p><img src="DI_703.png" alt="PIC"></p>',
+      has_answer: false,
+      has_solution: true,
+      exam_part: 2,
+      source_type: 'student_self_built',
+      solution_html: '<p><img src="sol.png" alt="PIC"></p>',
+      solution_plan_html: null,
+      grade_criteria_html: null,
+      answer_html: '<p>6</p>',
+      assets: [
+        { id: 'a1', tex_session_id: null, kind: 'condition', storage_path: 'math-ege/1861/DI_703.png', alt: 'PIC', position: 1 },
+        { id: 'a2', tex_session_id: null, kind: 'solution', storage_path: 'math-ege/1861/sol.png', alt: 'PIC', position: 2 },
+      ],
+    }] as any
+    mockAttemptState.answers = { 'item-1': '42' }
   })
 
   it('shows self-check step first and then opens full results with assets', () => {
@@ -222,6 +252,7 @@ describe('StudentVariantDetailPage asset rendering', () => {
 
   it('shows green status when the short answer is correct', () => {
     mockAttemptState.answers = { 'item-1': '6' }
+    mockAttemptState.items[0].partial_type = null
 
     renderPage()
     fireEvent.click(screen.getByText('Закончить'))
@@ -230,6 +261,26 @@ describe('StudentVariantDetailPage asset rendering', () => {
     expect(screen.getByTestId('auto-answer-cell-item-1').className).toContain('bg-emerald-100')
     expect(screen.getByTestId('auto-answer-row-item-1').className).toContain('bg-emerald-50')
     expect(screen.getByTestId('auto-answer-corner-badge-item-1')).toHaveTextContent('Верно')
+  })
+
+  it('shows yellow status for a partially correct physics answer', () => {
+    mockAttemptState.items[0] = {
+      ...mockAttemptState.items[0],
+      points: 2,
+      max_points: 2,
+      partial_type: 'matching',
+      answer_html: '<p>123</p>',
+    } as any
+    mockAttemptState.answers = { 'item-1': '12' }
+
+    renderPage()
+    fireEvent.click(screen.getByText('Закончить'))
+
+    expect(screen.getByTestId('auto-answer-badge-item-1')).toHaveTextContent('Частично верно')
+    expect(screen.getByTestId('auto-answer-badge-item-1')).toHaveTextContent('1/2')
+    expect(screen.getByTestId('auto-answer-cell-item-1').className).toContain('bg-amber-100')
+    expect(screen.getByTestId('auto-answer-row-item-1').className).toContain('bg-amber-50')
+    expect(screen.getByTestId('auto-answer-corner-badge-item-1')).toHaveTextContent('Частично верно')
   })
 
   it('skips self-check step on re-entry after local completion', () => {

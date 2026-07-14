@@ -10,7 +10,7 @@ import { ru } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useStudentVariantAssignmentDetail } from '@/hooks/useVariantAssignments'
 import { useVariantAttempt, type VariantItem } from '@/hooks/useVariantAttempt'
-import { normalizeAnswer, stripHtmlSimple } from '@/utils/variantAnswerNormalize'
+import { scoreAutoAnswer } from '@/utils/variantAnswerNormalize'
 import { VariantAnswerInput } from '@/components/variant/VariantAnswerInput'
 import { ManualAnswerInput } from '@/components/variant/ManualAnswerInput'
 import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
@@ -90,31 +90,41 @@ function getAutoAnswerValue(item: VariantItem): string | null {
   return (item as VariantItem & Record<string, string | null | undefined>)[answerField] ?? null
 }
 
-type AutoAnswerVerdict = 'correct' | 'wrong'
+type AutoAnswerVerdict = 'correct' | 'partial' | 'wrong'
+
+function getAutoAnswerScore(item: VariantItem, studentAnswer: string | null | undefined): number | null {
+  const correctRaw = getAutoAnswerValue(item)
+  const studentRaw = studentAnswer ?? ''
+  if (!correctRaw || !studentRaw.trim()) return null
+  return scoreAutoAnswer(studentRaw, correctRaw, item.partial_type ?? null)
+}
 
 function getAutoAnswerVerdict(item: VariantItem, studentAnswer: string | null | undefined): AutoAnswerVerdict | null {
-  const correctRaw = getAutoAnswerValue(item)
-  if (!correctRaw) return null
-  const studentNorm = normalizeAnswer(studentAnswer ?? '')
-  if (!studentNorm) return null
-  const correctNorm = normalizeAnswer(stripHtmlSimple(correctRaw))
-  return studentNorm === correctNorm ? 'correct' : 'wrong'
+  const score = getAutoAnswerScore(item, studentAnswer)
+  if (score === null) return null
+  const maxPoints = item.max_points ?? item.points ?? 1
+  if (score >= maxPoints) return 'correct'
+  if (score > 0) return 'partial'
+  return 'wrong'
 }
 
 function answerStatusClass(verdict: AutoAnswerVerdict | null) {
   if (verdict === 'correct') return 'bg-emerald-100 text-emerald-800'
+  if (verdict === 'partial') return 'bg-amber-100 text-amber-800'
   if (verdict === 'wrong') return 'bg-rose-100 text-rose-800'
   return 'bg-gray-100 text-gray-700'
 }
 
 function answerStatusLabel(verdict: AutoAnswerVerdict | null) {
   if (verdict === 'correct') return 'Верно'
+  if (verdict === 'partial') return 'Частично верно'
   if (verdict === 'wrong') return 'Неверно'
   return 'Без ответа'
 }
 
 function answerRowClass(verdict: AutoAnswerVerdict | null) {
   if (verdict === 'correct') return 'bg-emerald-50 ring-1 ring-inset ring-emerald-200'
+  if (verdict === 'partial') return 'bg-amber-50 ring-1 ring-inset ring-amber-200'
   if (verdict === 'wrong') return 'bg-rose-50 ring-1 ring-inset ring-rose-200'
   return 'odd:bg-gray-50/60'
 }
@@ -233,6 +243,8 @@ function AutoResultsTable({
             {autoItems.map((item, idx) => {
               const studentAnswer = answers[item.item_id] ?? ''
               const verdict = getAutoAnswerVerdict(item, studentAnswer)
+              const score = getAutoAnswerScore(item, studentAnswer)
+              const maxPoints = item.max_points ?? item.points ?? 1
               return (
                 <tr
                   key={item.item_id}
@@ -254,10 +266,23 @@ function AutoResultsTable({
                   </td>
                   <td className="px-3 py-2 text-center text-gray-900">{idx + 1}</td>
                   <td
-                    className={`px-3 py-2 text-center font-semibold ${verdict === 'correct' ? 'bg-emerald-100 text-emerald-900' : verdict === 'wrong' ? 'bg-rose-100 text-rose-900' : 'bg-gray-100 text-gray-700'}`}
+                    className={`px-3 py-2 text-center font-semibold ${
+                      verdict === 'correct'
+                        ? 'bg-emerald-100 text-emerald-900'
+                        : verdict === 'partial'
+                          ? 'bg-amber-100 text-amber-900'
+                          : verdict === 'wrong'
+                            ? 'bg-rose-100 text-rose-900'
+                            : 'bg-gray-100 text-gray-700'
+                    }`}
                     data-testid={`auto-answer-cell-${item.item_id}`}
                   >
-                    {studentAnswer.trim() ? studentAnswer : '—'}
+                    <div>{studentAnswer.trim() ? studentAnswer : '—'}</div>
+                    {score !== null && (
+                      <div className="mt-1 text-[11px] font-medium opacity-80">
+                        {score} / {maxPoints} б.
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center text-gray-900">
                     {extractPlainText(getAutoAnswerValue(item))}
@@ -804,6 +829,8 @@ export function StudentVariantDetailPage() {
                 {(() => {
                   const studentAnswer = answers[item.item_id]
                   const verdict = getAutoAnswerVerdict(item, studentAnswer)
+                  const score = getAutoAnswerScore(item, studentAnswer)
+                  const maxPoints = item.max_points ?? item.points ?? 1
                   const correctAnswer = extractPlainText(getAutoAnswerValue(item))
                   return studentAnswer ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -820,6 +847,7 @@ export function StudentVariantDetailPage() {
                             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${answerStatusClass(verdict)}`}
                           >
                             {answerStatusLabel(verdict)}
+                            {score !== null && <span className="ml-1 opacity-80">{score}/{maxPoints}</span>}
                           </span>
                         </>
                       )}

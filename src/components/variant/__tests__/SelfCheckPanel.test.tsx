@@ -27,6 +27,7 @@ function makeItem(overrides: Partial<VariantItem> = {}): VariantItem {
     section_id: null,
     subject: 'Математика',
     exam_type: 'ЕГЭ',
+    partial_type: null,
     statement_html: '<p>Решите уравнение</p>',
     has_answer: false,
     has_solution: true,

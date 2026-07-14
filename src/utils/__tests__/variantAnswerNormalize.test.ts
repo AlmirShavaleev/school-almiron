@@ -4,6 +4,10 @@ import {
   normalizeAnswer,
   isNumeric,
   isAutoCheckable,
+  normalizeAnswerDigits,
+  scorePartialMultiChoice,
+  scorePartialMatching,
+  scoreAutoAnswer,
 } from '../variantAnswerNormalize'
 
 // ── stripHtmlSimple ──────────────────────────────────────────────────────────
@@ -134,6 +138,68 @@ describe('isAutoCheckable', () => {
   })
 })
 
+// ── partial scoring ──────────────────────────────────────────────────────────
+
+describe('normalizeAnswerDigits', () => {
+  it('keeps only digits', () => {
+    expect(normalizeAnswerDigits('1, 2; 3а')).toBe('123')
+  })
+})
+
+describe('scorePartialMultiChoice', () => {
+  it('gives full score when the set matches in different order', () => {
+    expect(scorePartialMultiChoice('321', '123')).toBe(2)
+  })
+
+  it('gives partial score for one extra digit', () => {
+    expect(scorePartialMultiChoice('1234', '123')).toBe(1)
+  })
+
+  it('treats duplicate digits as extra mistakes', () => {
+    expect(scorePartialMultiChoice('113', '13')).toBe(1)
+  })
+
+  it('gives zero for two or more mistakes', () => {
+    expect(scorePartialMultiChoice('145', '123')).toBe(0)
+  })
+})
+
+describe('scorePartialMatching', () => {
+  it('gives full score only for exact positional match', () => {
+    expect(scorePartialMatching('123', '123')).toBe(2)
+  })
+
+  it('gives partial score for one missing trailing position', () => {
+    expect(scorePartialMatching('12', '123')).toBe(1)
+  })
+
+  it('gives zero when the answer is longer than the key', () => {
+    expect(scorePartialMatching('1234', '123')).toBe(0)
+  })
+
+  it('treats permutation as positional mistakes', () => {
+    expect(scorePartialMatching('132', '123')).toBe(0)
+  })
+
+  it('gives zero for two missing positions', () => {
+    expect(scorePartialMatching('1', '123')).toBe(0)
+  })
+})
+
+describe('scoreAutoAnswer', () => {
+  it('uses partial matching mode when requested', () => {
+    expect(scoreAutoAnswer('12', '<p>123</p>', 'matching')).toBe(1)
+  })
+
+  it('uses partial multi-choice mode when requested', () => {
+    expect(scoreAutoAnswer('113', '<p>13</p>', 'multi_choice')).toBe(1)
+  })
+
+  it('keeps legacy exact behaviour for non-partial tasks', () => {
+    expect(scoreAutoAnswer('19,5', '<p>19,5</p>', null)).toBe(1)
+  })
+})
+
 // ── Source checks ─────────────────────────────────────────────────────────────
 
 import { readFileSync } from 'fs'
@@ -159,6 +225,12 @@ describe('variantAnswerNormalize source', () => {
 
   it('exports isAutoCheckable', () => {
     expect(UTIL_SRC).toContain('export function isAutoCheckable')
+  })
+
+  it('exports partial scoring helpers', () => {
+    expect(UTIL_SRC).toContain('export function scorePartialMultiChoice')
+    expect(UTIL_SRC).toContain('export function scorePartialMatching')
+    expect(UTIL_SRC).toContain('export function scoreAutoAnswer')
   })
 
   it('numeric regex is strict full-string match', () => {

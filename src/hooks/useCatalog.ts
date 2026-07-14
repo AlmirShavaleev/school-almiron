@@ -45,6 +45,7 @@ export interface CatalogTask {
   section_id: string
   subject: string
   exam_type: string
+  partial_type?: 'multi_choice' | 'matching' | null
   max_points?: number | null
   statement_html: string
   answer_html: string | null

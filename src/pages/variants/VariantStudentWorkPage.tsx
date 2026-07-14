@@ -18,6 +18,14 @@ const GRADING_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   graded:        { label: 'Проверено',        cls: 'bg-green-100 text-green-700' },
 }
 
+function getAutoAnswerStatus(pointsEarned: number | null, pointsMax: number | null) {
+  if (pointsEarned === null) return null
+  const max = pointsMax ?? 1
+  if (pointsEarned >= max) return { label: '✓ Верно', cls: 'text-green-600' }
+  if (pointsEarned > 0) return { label: '◐ Частично верно', cls: 'text-amber-600' }
+  return { label: '✗ Неверно', cls: 'text-red-500' }
+}
+
 function SignedImage({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
@@ -47,6 +55,9 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
 }) {
   const ans     = item.answer
   const gsLabel = GRADING_STATUS_LABEL[ans.grading_status] ?? GRADING_STATUS_LABEL.not_submitted
+  const autoStatus = item.grading_type === 'auto'
+    ? getAutoAnswerStatus(ans.points_earned, ans.points_max ?? item.points)
+    : null
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
@@ -106,9 +117,12 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
           <div className="text-sm font-medium text-green-700 bg-green-50 rounded-lg px-3 py-2 inline-block">
             <TaskContentRenderer html={resolveTaskHtml(item.answer_html, [])} className="text-green-700" />
           </div>
-          {ans.is_correct !== null && (
-            <span className={`ml-2 text-xs font-medium ${ans.is_correct ? 'text-green-600' : 'text-red-500'}`}>
-              {ans.is_correct ? '✓ Верно' : '✗ Неверно'}
+          {autoStatus && (
+            <span className={`ml-2 text-xs font-medium ${autoStatus.cls}`}>
+              {autoStatus.label}
+              {ans.points_max !== null && (
+                <span className="ml-1 opacity-80">{ans.points_earned ?? 0}/{ans.points_max}</span>
+              )}
             </span>
           )}
         </div>
