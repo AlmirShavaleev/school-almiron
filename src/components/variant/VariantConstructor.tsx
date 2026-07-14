@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useBeforeUnload } from 'react-router-dom'
 import {
   FilePlus2, ChevronDown, ChevronUp, CheckSquare, Square,
@@ -30,6 +30,18 @@ const EXAM_LABELS: Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
 
 function getSectionExamPart(section: CatalogSection): 1 | 2 {
   return (section.part1_count ?? 0) >= (section.part2_count ?? 0) ? 1 : 2
+}
+
+function humanizeGenerateError(message: string, sections: CatalogSection[]): string {
+  if (message.startsWith('NOT_ENOUGH:')) {
+    const match = message.match(/section=([^:]+):topic=([^:]+):needed=(\d+):available=(\d+)/)
+    if (match) {
+      const section = sections.find(s => s.id === match[1])
+      return `Недостаточно задач в разделе «${section?.title ?? match[1]}»: запрошено ${match[3]}, доступно ${match[4]}. Уменьшите количество или снимите часть тем.`
+    }
+    return 'Недостаточно задач в выбранных темах, уменьшите количество.'
+  }
+  return message
 }
 
 export interface VariantConstructorInitialData {
@@ -102,8 +114,9 @@ export function VariantConstructor({
   const examTypeDb = EXAM_FROM_SLUG[examType] ?? examType
   const { sections, loading: loadingSections } = useCatalogSections(subjectDb, examTypeDb)
   const { generateTasks, generating, genError, setGenError } = useVariantBuilder()
-  const filteredSections = sections.filter(section =>
-    section.subject === subjectDb && section.exam_type === examTypeDb,
+  const filteredSections = useMemo(
+    () => sections.filter(section => section.subject === subjectDb && section.exam_type === examTypeDb),
+    [sections, subjectDb, examTypeDb],
   )
 
   useEffect(() => {
@@ -139,6 +152,19 @@ export function VariantConstructor({
       const next: Record<string, SectionState> = {}
       for (const s of filteredSections) {
         next[s.id] = prev[s.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set() }
+      }
+      const prevKeys = Object.keys(prev)
+      const nextKeys = Object.keys(next)
+      const sameKeys = prevKeys.length === nextKeys.length && prevKeys.every(key => nextKeys.includes(key))
+      if (sameKeys) {
+        let changed = false
+        for (const key of nextKeys) {
+          if (prev[key] !== next[key]) {
+            changed = true
+            break
+          }
+        }
+        if (!changed) return prev
       }
       return next
     })
@@ -246,8 +272,18 @@ export function VariantConstructor({
       cnt: sectionStates[s.id].cnt,
       topic_ids: [...sectionStates[s.id].topicIds],
     }))
+    if (configs.length === 0) {
+      toast.error('Укажите количество задач хотя бы в одном разделе')
+      return
+    }
     try {
       const tasks = await generateTasks(configs, { hydrateTasks: !completeOnGenerate })
+      if (tasks.length === 0) {
+        const emptyMsg = 'Не удалось подобрать задачи. Попробуйте уменьшить количество или выбрать другие темы.'
+        setGenError(emptyMsg)
+        toast.error(emptyMsg)
+        return
+      }
       if (completeOnGenerate) {
         await onComplete({
           title: title.trim(),
@@ -268,15 +304,9 @@ export function VariantConstructor({
       setIsDirty(true)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Ошибка генерации'
-      if (msg.startsWith('NOT_ENOUGH:')) {
-        const m = msg.match(/section=([^:]+):topic=([^:]+):needed=(\d+):available=(\d+)/)
-        if (m) {
-          const sec = filteredSections.find(s => s.id === m[1])
-          setGenError(`Недостаточно задач в разделе «${sec?.title ?? m[1]}»: запрошено ${m[3]}, доступно ${m[4]}.`)
-          return
-        }
-      }
-      setGenError(msg)
+      const humanMessage = humanizeGenerateError(msg, filteredSections)
+      setGenError(humanMessage)
+      toast.error(humanMessage)
     }
   }
 

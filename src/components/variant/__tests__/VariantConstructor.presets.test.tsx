@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const generateTasksSpy = vi.fn()
+const toastErrorSpy = vi.hoisted(() => vi.fn())
 const SECTION_FIXTURES = [
   {
     id: 'sec-1',
@@ -91,12 +92,22 @@ vi.mock('@/hooks/useVariants', () => ({
   }),
 }))
 
+vi.mock('@/store/toastStore', () => ({
+  toast: {
+    error: toastErrorSpy,
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+  },
+}))
+
 import { VariantConstructor } from '@/components/variant/VariantConstructor'
 
 describe('VariantConstructor presets', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     generateTasksSpy.mockResolvedValue([])
+    toastErrorSpy.mockReset()
   })
 
   function renderConstructor() {
@@ -188,5 +199,30 @@ describe('VariantConstructor presets', () => {
     expect(generateTasksSpy).toHaveBeenCalledWith([
       { section_id: 'sec-oge-1', cnt: 1, topic_ids: [] },
     ], { hydrateTasks: true })
+  })
+
+  it('shows a visible error instead of silently stalling when generation fails', async () => {
+    generateTasksSpy.mockRejectedValueOnce(new Error('NOT_ENOUGH:section=sec-oge-1:topic=:needed=5:available=3'))
+
+    render(
+      <MemoryRouter>
+        <VariantConstructor
+          headerTitle="Конструктор варианта"
+          initialData={{ subject: 'physics', examType: 'oge', title: 'Физика ОГЭ' }}
+          completeActionLabel="Начать вариант"
+          completeOnGenerate={true}
+          showPreviewStep={false}
+          showDraftAction={false}
+          onBack={() => {}}
+          onComplete={vi.fn(async () => {})}
+          onReplaceTask={vi.fn(async () => null)}
+        />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('variant-section-plus-sec-oge-1'))
+    fireEvent.click(screen.getByTestId('variant-constructor-generate'))
+
+    await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Недостаточно задач')))
   })
 })

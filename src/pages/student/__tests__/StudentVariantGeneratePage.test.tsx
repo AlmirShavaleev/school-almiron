@@ -4,9 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-const navigateSpy = vi.fn()
-const generateTasksSpy = vi.fn()
-const createSpy = vi.fn()
+const navigateSpy = vi.hoisted(() => vi.fn())
+const generateTasksSpy = vi.hoisted(() => vi.fn())
+const createSpy = vi.hoisted(() => vi.fn())
 const SECTION_FIXTURES = [
   { id: 'sec-1', title: 'Линейные уравнения', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1, task_count: 20 },
   { id: 'sec-2', title: 'Геометрия', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 2, exam_number: 2, position: 2, task_count: 20 },
