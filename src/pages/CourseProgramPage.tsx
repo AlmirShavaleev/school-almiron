@@ -231,7 +231,7 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, onSave, onDelete, onOpenMaterials, onCreateHw, onDeleteHw, onRestoreHw, hwId, archivedHwId, moduleTitle,
+  topic, onSave, onDelete, onOpenMaterials, onDeleteHw, onRestoreHw, hwId, archivedHwId, moduleTitle,
 }: {
   topic: Topic
   moduleTitle: string
@@ -242,7 +242,6 @@ function TopicRowEdit({
   onDeleteHw?: (hwId: string) => Promise<void>
   onRestoreHw?: (hwId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
-  onCreateHw: (topic: Topic) => void
 }) {
   const [deleting, setDeleting] = useState(false)
   const [dateVal,  setDateVal]  = useState(topic.available_from || '')
@@ -254,86 +253,122 @@ function TopicRowEdit({
     try { await onSave(topic.id, { available_from: dateVal || null }) } finally { setSavingDate(false) }
   }
 
+  const hwState = hwId
+    ? {
+        label: 'ДЗ добавлено',
+        tone: 'bg-amber-100 text-amber-800 border-amber-200',
+      }
+    : archivedHwId
+      ? {
+          label: 'ДЗ в архиве',
+          tone: 'bg-slate-100 text-slate-700 border-slate-200',
+        }
+      : {
+          label: 'ДЗ не добавлено',
+          tone: 'bg-white/80 text-white border-white/20',
+        }
+
   return (
-    <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 group">
-      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <InlineEdit value={topic.title} onSave={v => onSave(topic.id, { title: v })} className="w-full text-sm" />
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 h-2.5 w-2.5 rounded-full bg-primary-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Тема</div>
+              <InlineEdit value={topic.title} onSave={v => onSave(topic.id, { title: v })} className="w-full text-base font-semibold text-gray-900" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-gray-50 p-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Баллы за тему</div>
+              <div className="flex min-h-11 items-center gap-2 text-sm text-gray-600">
+                <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-gray-500 shadow-sm">Макс.</span>
+                <input
+                  type="number"
+                  defaultValue={topic.max_score}
+                  min={1}
+                  max={100}
+                  onBlur={e => onSave(topic.id, { max_score: parseInt(e.target.value) || 100 })}
+                  className="h-11 w-24 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+                <span className="text-sm font-medium text-gray-500">баллов</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-gray-50 p-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Доступ ученикам</div>
+              <div className="relative flex min-h-11 items-center gap-2">
+                <Calendar size={15} className="text-primary-400 shrink-0" />
+                <input
+                  type="date"
+                  value={dateVal}
+                  onChange={e => setDateVal(e.target.value)}
+                  onBlur={handleDateBlur}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+                {savingDate && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
+              </div>
+              <p className="mt-2 text-xs text-gray-400">Оставьте пустым, если тема должна быть доступна сразу.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full lg:w-[320px] shrink-0 space-y-3">
+          <div className="overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.24),_transparent_35%),linear-gradient(135deg,#1d4ed8_0%,#2563eb_32%,#0f172a_100%)] p-[1px] shadow-[0_20px_50px_rgba(37,99,235,0.22)]">
+            <div className="rounded-[27px] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.06))] p-4 text-white backdrop-blur-sm">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-100/90">Редактор темы</div>
+              <p className="mb-4 text-sm leading-relaxed text-blue-50/90">
+                Откройте единый редактор, чтобы управлять материалами, ссылками, видео и домашним заданием без лишних кнопок.
+              </p>
+
+              <div className="mb-4 flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">
+                  Материалы
+                </span>
+                <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold', hwState.tone)}>
+                  {hwState.label}
+                </span>
+                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">
+                  Видео и ссылки
+                </span>
+              </div>
+
+            <button
+              onClick={() => onOpenMaterials(topic, moduleTitle)}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-[0_12px_30px_rgba(255,255,255,0.22)] transition-transform transition-colors hover:bg-blue-50 active:scale-[0.96]"
+            >
+              <FileText size={16} />
+              Редактировать тему
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-3">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Что внутри</div>
+            <div className="text-sm leading-relaxed text-gray-600">
+              Один вход вместо нескольких кнопок. Внутри уже доступны материалы темы и действия по домашнему заданию.
+            </div>
+          </div>
+
+          <button
+            onClick={async () => { setDeleting(true); try { await onDelete(topic.id) } finally { setDeleting(false) } }}
+            disabled={deleting}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition-transform transition-colors hover:bg-red-100 active:scale-[0.96] disabled:opacity-60"
+          >
+            {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+            Удалить тему
+          </button>
+        </div>
       </div>
-
-      <div className="flex min-h-11 items-center gap-1 text-xs text-gray-400 shrink-0">
-        <span className="hidden sm:inline">Макс:</span>
-        <input
-          type="number"
-          defaultValue={topic.max_score}
-          min={1} max={100}
-          onBlur={e => onSave(topic.id, { max_score: parseInt(e.target.value) || 100 })}
-          className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
-        />
-        <span>б.</span>
-      </div>
-
-      <div className="flex min-h-11 items-center gap-1 shrink-0 relative" title="Дата, с которой тема открывается ученикам. Пусто — доступна сразу">
-        <Calendar size={12} className="text-gray-300" />
-        <span className="text-xs text-gray-400 hidden sm:inline">Открыть с:</span>
-        <input
-          type="date"
-          value={dateVal}
-          onChange={e => setDateVal(e.target.value)}
-          onBlur={handleDateBlur}
-          className="text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary-400 w-32"
-        />
-        {savingDate && <Loader2 size={10} className="absolute right-1 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
-      </div>
-
-      {hwId ? (
-        <button
-          onClick={() => onDeleteHw?.(hwId)}
-          className="w-11 h-11 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-orange-400 hover:text-orange-600 transition-all shrink-0"
-          title="Удалить / архивировать ДЗ"
-        >
-          <ClipboardList size={14} />
-        </button>
-      ) : archivedHwId ? (
-        <button
-          onClick={() => onRestoreHw?.(archivedHwId)}
-          className="w-11 h-11 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-green-600 transition-all shrink-0"
-          title="Восстановить архивное ДЗ"
-        >
-          <RotateCcw size={14} />
-        </button>
-      ) : (
-        <button
-          onClick={() => onCreateHw(topic)}
-          className="w-11 h-11 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-primary-600 transition-all shrink-0"
-          title="Создать ДЗ для темы"
-        >
-          <ClipboardList size={14} />
-        </button>
-      )}
-
-      <button
-        onClick={() => onOpenMaterials(topic, moduleTitle)}
-        className="w-11 h-11 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-primary-500 transition-all shrink-0"
-        title="Материалы темы"
-      >
-        <FileText size={14} />
-      </button>
-
-      <button
-        onClick={async () => { setDeleting(true); try { await onDelete(topic.id) } finally { setDeleting(false) } }}
-        disabled={deleting}
-        className="w-11 h-11 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all shrink-0"
-      >
-        {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-      </button>
     </div>
   )
 }
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCreateHw, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic,
+  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic,
 }: {
   module: Module
   canEdit: boolean
@@ -347,7 +382,6 @@ function ModuleCard({
   onDeleteTopic: (id: string) => Promise<void>
   onAddTopic: (moduleId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
-  onCreateHw: (topic: Topic) => void
   onDeleteHw: (hwId: string) => Promise<void>
   onRestoreHw: (hwId: string) => Promise<void>
 }) {
@@ -367,10 +401,10 @@ function ModuleCard({
   }
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       {/* Module header */}
       <div className={cn(
-        'flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100',
+        'flex items-center gap-3 px-4 py-4 bg-gray-50 border-b border-gray-100',
         canEdit && 'cursor-default'
       )}>
         <button onClick={() => setOpen(o => !o)} className="text-gray-400 hover:text-gray-600 shrink-0">
@@ -389,7 +423,7 @@ function ModuleCard({
           )}
         </div>
 
-        <Badge variant="default" className="text-xs">{module.topics.length} тем</Badge>
+        <Badge variant="default" className="text-xs tabular-nums">{module.topics.length} тем</Badge>
 
         {canEdit && (
           <button
@@ -404,9 +438,9 @@ function ModuleCard({
 
       {/* Topics */}
       {open && (
-        <div className="divide-y divide-gray-50 bg-white">
+        <div className="space-y-3 bg-white p-3">
           {module.topics.length === 0 && (
-            <div className="text-sm text-gray-400 px-4 py-3 italic">Нет тем</div>
+            <div className="rounded-xl bg-gray-50 px-4 py-6 text-sm italic text-gray-400">Нет тем</div>
           )}
           {module.topics.map(t => (
             <TopicRowEdit
@@ -420,7 +454,6 @@ function ModuleCard({
               onDeleteHw={onDeleteHw}
               onRestoreHw={onRestoreHw}
               onOpenMaterials={onOpenMaterials}
-              onCreateHw={onCreateHw}
             />
           ))}
 
@@ -441,6 +474,7 @@ function ModuleCard({
     </div>
   )
 }
+
 
 // ─── Course settings form ─────────────────────────────────────────────────────
 function CourseSettings({ course, onSave }: { course: Course; onSave: (v: Partial<Course>) => Promise<void> }) {
@@ -1287,7 +1321,6 @@ export function CourseProgramPage() {
                           onDeleteTopic={handleDeleteTopic}
                           onAddTopic={handleAddTopic}
                           onOpenMaterials={openMaterials}
-                          onCreateHw={t => setHwTopic(t)}
                           onDeleteHw={handleDeleteHw}
                           onRestoreHw={handleRestoreHw}
                         />

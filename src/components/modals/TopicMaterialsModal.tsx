@@ -474,17 +474,45 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
         {canEdit && (
           <>
-            <div className="flex border-b border-gray-100 overflow-x-auto shrink-0 px-2">
-              {SECTIONS.map(s => {
+            <div className="border-b border-gray-100 bg-gray-50/70 px-5 py-4 shrink-0">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Материалы темы</div>
+                  <div className="text-xs text-gray-500">Выберите блок ниже и добавьте файл, ссылку, видео или текст.</div>
+                </div>
+                <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm">
+                  {Object.values(materials).filter(m => m?.content || m?.file_url || m?.link_url || m?.link_meta).length} / {SECTIONS.length} заполнено
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+                {SECTIONS.map(s => {
                 const mat = materials[s.type]
                 const hasContent = !!(mat?.content || mat?.file_url || mat?.link_url || mat?.link_meta)
                 return (
-                  <button key={s.type} onClick={() => setActiveTab(s.type)} className={cn('flex items-center gap-1.5 px-3 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-colors', activeTab === s.type ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700')}>
-                    {s.icon}{s.label}
-                    {hasContent && <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />}
+                  <button
+                    key={s.type}
+                    onClick={() => setActiveTab(s.type)}
+                    className={cn(
+                      'min-h-11 rounded-2xl border px-3 py-3 text-left transition-all active:scale-[0.96]',
+                      activeTab === s.type
+                        ? 'border-primary-300 bg-white shadow-sm ring-2 ring-primary-100'
+                        : 'border-transparent bg-white/70 hover:bg-white hover:border-gray-200'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl shrink-0', s.color)}>
+                        {s.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <div className={cn('text-sm font-semibold', activeTab === s.type ? 'text-primary-700' : 'text-gray-800')}>{s.label}</div>
+                        <div className="text-[11px] text-gray-400">{hasContent ? 'Заполнено' : 'Пока пусто'}</div>
+                      </div>
+                    </div>
                   </button>
                 )
-              })}
+                })}
+              </div>
             </div>
 
             {(lessonDate || hwDeadline) && (
@@ -498,28 +526,35 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               {loading ? (
                 <div className="flex items-center justify-center py-16 text-gray-400 gap-2"><Loader2 size={20} className="animate-spin" />Загрузка материалов…</div>
               ) : (
-                <SectionEditor
-                  key={activeTab}
-                  section={activeSection}
-                  canEdit={canEdit}
-                  material={materials[activeTab]}
-                  onSave={saveMaterial}
-                  onUpload={uploadFile}
-                  onDelete={deleteMaterial}
-                  onCreateLink={createLinkMaterial}
-                />
-              )}
-            </div>
+                <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <div className="mb-5 flex items-start gap-3">
+                    <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl shrink-0', activeSection.color)}>
+                      {activeSection.icon}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{activeSection.label}</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {activeSection.type === 'link'
+                          ? 'Добавьте внешнюю ссылку, которую ученик сможет открыть в новой вкладке.'
+                          : activeSection.type === 'video'
+                            ? 'Укажите ссылку на видеоурок и проверьте предпросмотр.'
+                            : 'Загрузите файл или обновите содержимое выбранного блока.'}
+                      </p>
+                    </div>
+                  </div>
 
-            <div className="px-6 py-3 border-t border-gray-100 shrink-0 flex items-center justify-between">
-              <div className="flex gap-1">
-                {SECTIONS.map(s => {
-                  const mat = materials[s.type]
-                  const has = !!(mat?.content || mat?.file_url || mat?.link_url || mat?.link_meta)
-                  return <div key={s.type} title={s.label} className={cn('w-2 h-2 rounded-full transition-colors', has ? 'bg-green-400' : 'bg-gray-200')} />
-                })}
-              </div>
-              <span className="text-xs text-gray-400">{Object.values(materials).filter(m => m?.content || m?.file_url || m?.link_url || m?.link_meta).length} / {SECTIONS.length} заполнено</span>
+                  <SectionEditor
+                    key={activeTab}
+                    section={activeSection}
+                    canEdit={canEdit}
+                    material={materials[activeTab]}
+                    onSave={saveMaterial}
+                    onUpload={uploadFile}
+                    onDelete={deleteMaterial}
+                    onCreateLink={createLinkMaterial}
+                  />
+                </div>
+              )}
             </div>
           </>
         )}
