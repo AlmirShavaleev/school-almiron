@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { MouseEvent } from 'react'
 import {
@@ -389,6 +389,7 @@ export function StudentVariantDetailPage() {
     || status === 'completed'
     || !!(attempt?.started_at ?? assignment?.started_at)
   const shouldShowSelfCheckStep = isSubmitted && isSelfBuilt && selfCheckItems.length > 0 && !selfCheckCompleted
+  const wasSubmittedRef = useRef(isSubmitted)
 
   useEffect(() => {
     if (!assignmentId || !assignment || !variant || !isSelfBuilt || isStarted || isSubmitted || lockedUntil) return
@@ -413,6 +414,13 @@ export function StudentVariantDetailPage() {
     if (!assignmentId) return
     setSelfCheckCompleted(loadSelfCheckCompletion(assignmentId))
   }, [assignmentId])
+
+  useEffect(() => {
+    if (!wasSubmittedRef.current && isSubmitted) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    wasSubmittedRef.current = isSubmitted
+  }, [isSubmitted])
 
   useEffect(() => {
     if (!shouldShowSelfCheckStep) return

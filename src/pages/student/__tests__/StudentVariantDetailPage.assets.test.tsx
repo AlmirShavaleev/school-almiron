@@ -318,4 +318,59 @@ describe('StudentVariantDetailPage asset rendering', () => {
     expect(screen.queryByText('Нажмите кнопку, чтобы начать. После начала таймер не останавливается.')).not.toBeInTheDocument()
     expect(screen.queryByText('Начать вариант')).not.toBeInTheDocument()
   })
+
+  it('scrolls to the top when the attempt transitions into the results screen', async () => {
+    const scrollToMock = vi.fn()
+    Object.defineProperty(window, 'scrollTo', {
+      configurable: true,
+      value: scrollToMock,
+    })
+
+    mockAssignmentDetail.assignment = {
+      ...mockAssignmentDetail.assignment,
+      status: 'in_progress',
+      started_at: '2026-07-13T09:00:00Z',
+      submitted_at: null,
+      completed_at: null,
+    } as unknown as typeof mockAssignmentDetail.assignment
+    mockAttemptState.attempt = {
+      ...mockAttemptState.attempt,
+      status: 'in_progress',
+      started_at: '2026-07-13T09:00:00Z',
+      submitted_at: null,
+      completed_at: null,
+      grading_status: null,
+    } as unknown as typeof mockAttemptState.attempt
+    mockAttemptState.items[0].exam_part = 1
+
+    const view = renderPage()
+
+    expect(screen.getByText('Завершить вариант')).toBeInTheDocument()
+    expect(scrollToMock).not.toHaveBeenCalled()
+
+    mockAssignmentDetail.assignment = {
+      ...mockAssignmentDetail.assignment,
+      status: 'completed',
+      submitted_at: '2026-07-13T10:00:00Z',
+      completed_at: '2026-07-13T10:00:00Z',
+    } as unknown as typeof mockAssignmentDetail.assignment
+    mockAttemptState.attempt = {
+      ...mockAttemptState.attempt,
+      status: 'completed',
+      submitted_at: '2026-07-13T10:00:00Z',
+      completed_at: '2026-07-13T10:00:00Z',
+      grading_status: 'graded',
+    } as unknown as typeof mockAttemptState.attempt
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/student/variants/assign-1']}>
+        <Routes>
+          <Route path="/student/variants/:assignmentId" element={<StudentVariantDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('auto-results-table')).toBeInTheDocument())
+    expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+  })
 })
