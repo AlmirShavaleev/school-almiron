@@ -10,6 +10,7 @@ import {
   GraduationCap, BarChart3, Calendar, CheckSquare, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
   Send, ClipboardEdit,
+  LibraryBig,
 } from 'lucide-react'
 
 interface NavItem {
@@ -47,6 +48,7 @@ const navItems: NavItem[] = [
   { label: 'Панель админа',     path: '/admin',          icon: <Settings size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Школа',             path: '/owner',          icon: <BarChart3 size={18} />,     roles: ['owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'] },
+  { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'] },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'] },
   { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'] },
@@ -64,7 +66,7 @@ const navItems: NavItem[] = [
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/curator', '/admin', '/owner', '/inbox'] },
-  { title: 'Учебный процесс', paths: ['/groups', '/lessons', '/schedule', '/attendance', '/course-program'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/lessons', '/schedule', '/attendance', '/course-program', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/payments', '/notifications', '/settings'] },
 ]

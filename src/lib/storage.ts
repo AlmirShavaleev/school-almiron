@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase'
  * storage path so getSignedFileUrl() can re-sign them on demand.
  */
 
-export type PrivateBucket = 'homeworks' | 'course-materials'
+export type PrivateBucket = 'homeworks' | 'course-materials' | 'lesson-library'
 
 /**
  * Extract the storage object path from a value that may be either:

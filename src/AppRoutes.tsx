@@ -33,6 +33,7 @@ import { PaymentsPage } from '@/pages/PaymentsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { CourseProgramPage } from '@/pages/CourseProgramPage'
+import { LessonLibraryPage } from '@/pages/LessonLibraryPage'
 import { AttendancePage } from '@/pages/AttendancePage'
 import { MyCoursesPage } from '@/pages/MyCoursesPage'
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
@@ -87,6 +88,7 @@ export default function AppRoutes() {
         <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />
         <Route path="/course-program" element={<RoleGuard allow={['teacher','admin','owner']}><CourseProgramPage /></RoleGuard>} />
+        <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
         <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
         <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
