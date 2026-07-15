@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
 import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
+import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -835,6 +836,7 @@ export function CourseProgramPage() {
   const [editMode,      setEditMode]      = useState(false)
   const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [showCopyTemplate, setShowCopyTemplate] = useState(false)
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
@@ -1261,7 +1263,11 @@ export function CourseProgramPage() {
 
                 {/* ── Edit toggle ── */}
                 {canEdit && !loadingMods && modules.length > 0 && (
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setShowCopyTemplate(true)}>
+                      <Plus size={15} className="mr-1.5" />
+                      Добавить из библиотеки
+                    </Button>
                     <button
                       onClick={() => setEditMode(e => !e)}
                       className={cn(
@@ -1382,6 +1388,20 @@ export function CourseProgramPage() {
         toastTimer.current = setTimeout(() => setToastMsg(null), 3000)
       }}
       defaultTopicId={hwTopic?.id}
+    />
+
+    <AddLessonTemplateToCourseModal
+      open={showCopyTemplate}
+      courseId={selectedCourse?.id ?? ''}
+      groupId={selectedGroupId}
+      groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+      modules={modules}
+      defaultModuleId={modules[0]?.id ?? null}
+      onClose={() => setShowCopyTemplate(false)}
+      onCopied={() => {
+        setShowCopyTemplate(false)
+        refreshModules()
+      }}
     />
 
     {toastMsg && (
