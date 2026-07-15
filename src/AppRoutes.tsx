@@ -54,6 +54,7 @@ import { StudentVariantsPage } from '@/pages/student/StudentVariantsPage'
 import { StudentVariantDetailPage } from '@/pages/student/StudentVariantDetailPage'
 import { StudentVariantBuildPage } from '@/pages/student/StudentVariantBuildPage'
 import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
+import { StudentNumberStatsPage } from '@/pages/student/StudentNumberStatsPage'
 import { AssignHomeworkPage } from '@/pages/AssignHomeworkPage'
 import { ReviewSubmissionsPage } from '@/pages/ReviewSubmissionsPage'
 import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage'
@@ -119,6 +120,7 @@ export default function AppRoutes() {
         <Route path="/student/variants" element={<RoleGuard allow={['student']}><StudentVariantsPage /></RoleGuard>} />
         <Route path="/student/variants/generate" element={<RoleGuard allow={['student']}><StudentVariantGeneratePage /></RoleGuard>} />
         <Route path="/student/variants/build" element={<RoleGuard allow={['student']}><StudentVariantBuildPage /></RoleGuard>} />
+        <Route path="/student/variants/stats" element={<RoleGuard allow={['student']}><StudentNumberStatsPage /></RoleGuard>} />
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Этап 4: выдача и проверка ДЗ */}

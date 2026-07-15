@@ -19,6 +19,7 @@ export function useStudentNumberStats(
   studentId: string | null,
   subject: string | null | undefined,
   examType: string | null | undefined,
+  examPart = 1,
 ) {
   const [rows, setRows] = useState<StudentNumberStatRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -43,6 +44,7 @@ export function useStudentNumberStats(
       p_student_id: studentId,
       p_subject: rpcSubject,
       p_exam_type: rpcExamType,
+      p_exam_part: examPart,
     }).then(({ data, error: rpcError }: { data: StudentNumberStatRow[] | null; error: { message: string } | null }) => {
       if (cancelled) return
       if (rpcError) {
@@ -61,7 +63,7 @@ export function useStudentNumberStats(
     })
 
     return () => { cancelled = true }
-  }, [studentId, subject, examType])
+  }, [studentId, subject, examType, examPart])
 
   return { rows, loading, error }
 }

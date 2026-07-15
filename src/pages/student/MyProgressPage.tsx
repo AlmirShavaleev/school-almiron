@@ -3,13 +3,11 @@ import { Link } from 'react-router-dom'
 import {
   TrendingUp, CheckCircle, Clock, X as XIcon,
   Target, Loader2, Users, BookOpen, ChevronRight,
-  UserCheck, ClipboardList,
+  UserCheck, ClipboardList, BarChart3,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
-import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
-import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
 import {
@@ -58,12 +56,6 @@ export function MyProgressPage() {
   }, [profile?.id])
 
   const { data: s, loading } = useStudentProfile(studentId)
-  const numberStats = useStudentNumberStats(
-    s?.student_id ?? null,
-    s?.target_subject ?? null,
-    s?.target_exam ?? null,
-  )
-
   if (resolving || loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -280,14 +272,29 @@ export function MyProgressPage() {
         </Card>
       )}
 
-      {s.student_id && s.target_subject && s.target_exam && (
-        <StudentNumberStatsSection
-          rows={numberStats.rows}
-          loading={numberStats.loading}
-          error={numberStats.error}
-          title="Статистика по номерам ФИПИ"
-        />
-      )}
+      <Card className="overflow-hidden">
+        <div className="rounded-[24px] bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(99,102,241,0.08))] px-5 py-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="max-w-xl">
+              <div className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 ring-1 ring-sky-100">
+                <BarChart3 size={13} />
+                Первая часть
+              </div>
+              <h2 className="mt-3 text-xl font-bold text-slate-950">Аналитика по номерам ФИПИ</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Отдельный экран с точностью по каждому номеру первой части и рекомендациями, что повторить следующим.
+              </p>
+            </div>
+            <Link
+              to="/student/variants/stats"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-medium text-white transition-transform transition-colors hover:scale-[0.98] hover:bg-slate-900"
+            >
+              Открыть аналитику
+              <ChevronRight size={15} />
+            </Link>
+          </div>
+        </div>
+      </Card>
 
       {/* Единый журнал (Этап 6) */}
       {studentId && (
