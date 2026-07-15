@@ -48,9 +48,11 @@ export function useLessonTemplates() {
   }, [profile, tick])
 
   const createTemplate = useCallback(async (input: Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'description'>) => {
+    if (!profile) throw new Error('Профиль не загружен')
     const { data, error } = await db
       .from('lesson_templates')
       .insert({
+        owner_id: profile.id,
         title: input.title,
         subject: input.subject,
         exam_type: input.exam_type,
@@ -62,7 +64,7 @@ export function useLessonTemplates() {
     if (error) throw new Error(error.message)
     setTemplates(prev => [data, ...prev])
     return data as LessonTemplate
-  }, [])
+  }, [profile])
 
   const updateTemplate = useCallback(async (templateId: string, patch: Partial<Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'description'>>) => {
     const { data, error } = await db
