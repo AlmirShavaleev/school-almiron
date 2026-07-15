@@ -199,12 +199,16 @@ export function useLessonTemplate(templateId: string | null) {
     setData(prev => prev ? { ...prev, materials: [...prev.materials, inserted as LessonTemplateMaterial] } : prev)
   }, [data?.materials.length, materialsByType, templateId])
 
-  const uploadMaterialFile = useCallback(async (type: LessonTemplateMaterialType, file: File) => {
+  const uploadMaterialFile = useCallback(async (
+    type: LessonTemplateMaterialType,
+    file: File,
+    onProgress?: (percent: number) => void,
+  ) => {
     if (!templateId) throw new Error('Шаблон не выбран')
+    if (!profile?.id) throw new Error('Профиль не загружен')
     const ext = file.name.split('.').pop()
-    const path = `owner/${profile?.id}/templates/${templateId}/${type}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('lesson-library').upload(path, file, { contentType: file.type, upsert: true, cacheControl: '0' })
-    if (error) throw new Error(error.message || 'Не удалось загрузить файл')
+    const path = `owner/${profile.id}/templates/${templateId}/${type}/${Date.now()}.${ext}`
+    await uploadFileWithProgress('lesson-library', path, file, onProgress)
     return path
   }, [profile?.id, templateId])
 
@@ -248,6 +252,19 @@ export function useLessonTemplate(templateId: string | null) {
 
     if (type === 'link') {
       if (existing.file_path) await removeLessonTemplateLinkMarker(existing.file_path)
+      const { error } = await db.from('lesson_template_materials').delete().eq('id', existing.id)
+      if (error) throw new Error(error.message)
+      setData(prev => prev ? { ...prev, materials: prev.materials.filter(item => item.id !== existing.id) } : prev)
+      return
+    }
+
+    if (existing.file_path) {
+      const { error: storageError } = await supabase.storage.from('lesson-library').remove([existing.file_path])
+      if (storageError) throw new Error(storageError.message || 'Не удалось удалить файл')
+    }
+
+    const hasOtherPayload = !!existing.content || !!existing.link_url
+    if (!hasOtherPayload) {
       const { error } = await db.from('lesson_template_materials').delete().eq('id', existing.id)
       if (error) throw new Error(error.message)
       setData(prev => prev ? { ...prev, materials: prev.materials.filter(item => item.id !== existing.id) } : prev)
@@ -307,4 +324,50 @@ export function useLessonTemplate(templateId: string | null) {
     deleteMaterial,
     replaceTasks,
   }
+}
+
+async function uploadFileWithProgress(
+  bucket: 'lesson-library',
+  path: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+) {
+  const { data: sessionData } = await supabase.auth.getSession()
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Сессия истекла. Войдите снова.')
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  if (!supabaseUrl) throw new Error('Не задан VITE_SUPABASE_URL')
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${supabaseUrl}/storage/v1/object/${bucket}/${path}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
+    xhr.setRequestHeader('x-upsert', 'true')
+    xhr.setRequestHeader('cache-control', '0')
+    if (file.type) xhr.setRequestHeader('content-type', file.type)
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+      onProgress?.(Math.min(100, Math.max(0, Math.round((event.loaded / event.total) * 100))))
+    }
+
+    xhr.onerror = () => reject(new Error('Не удалось загрузить файл'))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100)
+        resolve()
+        return
+      }
+
+      try {
+        const payload = JSON.parse(xhr.responseText) as { message?: string; error?: string }
+        reject(new Error(payload.message || payload.error || 'Не удалось загрузить файл'))
+      } catch {
+        reject(new Error('Не удалось загрузить файл'))
+      }
+    }
+
+    xhr.send(file)
+  })
 }

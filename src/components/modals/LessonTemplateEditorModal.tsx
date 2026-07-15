@@ -72,6 +72,7 @@ export function LessonTemplateEditorModal({
       })
       onSaved()
       toast.success('Шаблон урока сохранён')
+      onClose()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Не удалось сохранить шаблон')
     } finally {
@@ -247,25 +248,26 @@ function TemplateMaterialEditor({
 }: {
   templateId: string
   type: LessonTemplateMaterialType
-  material?: { content: string | null; file_path: string | null; link_meta?: { title: string; url: string } | null }
+  material?: { content: string | null; file_path: string | null; link_url?: string | null; link_meta?: { title: string; url: string } | null }
   onSave: (type: LessonTemplateMaterialType, patch: Record<string, unknown>) => Promise<void>
-  onUpload: (type: LessonTemplateMaterialType, file: File) => Promise<string>
+  onUpload: (type: LessonTemplateMaterialType, file: File, onProgress?: (percent: number) => void) => Promise<string>
   onDelete: (type: LessonTemplateMaterialType) => Promise<void>
   onCreateLink: (title: string, url: string) => Promise<void>
 }) {
   const section = SECTIONS.find(item => item.type === type)!
   const [text, setText] = useState(material?.content ?? '')
-  const [url, setUrl] = useState(material?.link_meta?.url ?? '')
+  const [url, setUrl] = useState(material?.link_url ?? material?.link_meta?.url ?? '')
   const [title, setTitle] = useState(material?.link_meta?.title ?? '')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setText(material?.content ?? '')
-    setUrl(material?.link_meta?.url ?? '')
+    setUrl(material?.link_url ?? material?.link_meta?.url ?? '')
     setTitle(material?.link_meta?.title ?? '')
-  }, [material?.content, material?.link_meta?.title, material?.link_meta?.url, type])
+  }, [material?.content, material?.link_meta?.title, material?.link_meta?.url, material?.link_url, type])
 
   const fileName = material?.file_path ? decodeURIComponent(material.file_path.split('/').pop() || 'Файл') : null
 
@@ -299,14 +301,16 @@ function TemplateMaterialEditor({
 
   async function handleUpload(file: File) {
     setUploading(true)
+    setUploadPercent(0)
     try {
-      const path = await onUpload(type, file)
+      const path = await onUpload(type, file, setUploadPercent)
       await onSave(type, { file_path: path })
       toast.success('Файл загружен')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Не удалось загрузить файл')
     } finally {
       setUploading(false)
+      setUploadPercent(0)
       if (fileRef.current) fileRef.current.value = ''
     }
   }
@@ -341,12 +345,25 @@ function TemplateMaterialEditor({
         )}
 
         {section.isSpecial === 'video' && (
-          <input
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            placeholder="https://youtu.be/..."
-            className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-          />
+          <div className="space-y-3">
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://youtu.be/..."
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+            />
+            {material?.link_url && (
+              <a
+                href={material.link_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100"
+              >
+                <Video size={15} />
+                Открыть сохранённое видео
+              </a>
+            )}
+          </div>
         )}
 
         {section.isSpecial === 'link' && (
@@ -384,10 +401,23 @@ function TemplateMaterialEditor({
               </button>
             </div>
           ) : (
-            <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-200 px-4 py-10 text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-500">
-              {uploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
-              <span className="text-sm font-medium">{uploading ? 'Загрузка…' : 'Прикрепить файл'}</span>
-            </button>
+              <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-200 px-4 py-10 text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-500">
+                {uploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
+                <span className="text-sm font-medium">{uploading ? 'Загрузка…' : 'Прикрепить файл'}</span>
+                {uploading && (
+                  <div className="mt-2 w-full max-w-xs">
+                    <div className="h-2 overflow-hidden rounded-full bg-primary-100">
+                      <div
+                        className="h-full rounded-full bg-primary-500 transition-[width] duration-150"
+                        style={{ width: `${uploadPercent}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-center text-xs text-primary-500">
+                      Загружаем PDF в библиотеку уроков… {uploadPercent}%
+                    </div>
+                  </div>
+                )}
+              </button>
           )
         )}
 
@@ -406,7 +436,7 @@ function TemplateMaterialEditor({
           <Button onClick={section.isSpecial === 'link' ? saveLink : saveText} loading={saving}>
             Сохранить
           </Button>
-          {(material?.content || material?.file_path || material?.link_meta) && (
+          {(material?.content || material?.file_path || material?.link_meta || material?.link_url) && (
             <Button
               variant="secondary"
               onClick={() => onDelete(type).then(() => toast.success('Материал очищен')).catch(e => toast.error(e instanceof Error ? e.message : 'Не удалось очистить материал'))}
