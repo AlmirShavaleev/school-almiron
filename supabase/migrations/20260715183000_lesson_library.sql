@@ -113,6 +113,14 @@ create index if not exists idx_lesson_copy_jobs_requested_by_created
 create index if not exists idx_lesson_copy_jobs_topic
   on public.lesson_copy_jobs(topic_id);
 
+-- ------------------------------------------------------------
+-- 3a. Library storage bucket
+-- ------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('lesson-library', 'lesson-library', false)
+on conflict (id) do nothing;
+
 drop trigger if exists lesson_templates_updated_at on public.lesson_templates;
 create trigger lesson_templates_updated_at
   before update on public.lesson_templates
@@ -137,6 +145,55 @@ alter table public.lesson_template_materials enable row level security;
 alter table public.lesson_template_tasks enable row level security;
 alter table public.lesson_template_copies enable row level security;
 alter table public.lesson_copy_jobs enable row level security;
+
+-- ------------------------------------------------------------
+-- 4a. Storage RLS for lesson-library
+-- ------------------------------------------------------------
+
+drop policy if exists lesson_library_select_own_objects on storage.objects;
+create policy "lesson_library_select_own_objects" on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'lesson-library'
+    and split_part(name, '/', 1) = 'owner'
+    and split_part(name, '/', 2) = auth.uid()::text
+  );
+
+drop policy if exists lesson_library_insert_own_objects on storage.objects;
+create policy "lesson_library_insert_own_objects" on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'lesson-library'
+    and split_part(name, '/', 1) = 'owner'
+    and split_part(name, '/', 2) = auth.uid()::text
+  );
+
+drop policy if exists lesson_library_update_own_objects on storage.objects;
+create policy "lesson_library_update_own_objects" on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'lesson-library'
+    and split_part(name, '/', 1) = 'owner'
+    and split_part(name, '/', 2) = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'lesson-library'
+    and split_part(name, '/', 1) = 'owner'
+    and split_part(name, '/', 2) = auth.uid()::text
+  );
+
+drop policy if exists lesson_library_delete_own_objects on storage.objects;
+create policy "lesson_library_delete_own_objects" on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'lesson-library'
+    and split_part(name, '/', 1) = 'owner'
+    and split_part(name, '/', 2) = auth.uid()::text
+  );
 
 -- ------------------------------------------------------------
 -- 5. Auth helper functions
@@ -532,6 +589,7 @@ declare
   v_material jsonb;
   v_hw_id uuid;
   v_template_task jsonb;
+  v_group_teacher_id uuid;
 begin
   if v_profile_id is null then
     raise exception 'NOT_AUTHENTICATED';
@@ -555,6 +613,15 @@ begin
 
   if v_topic_id is null then
     raise exception 'COPY_JOB_TOPIC_MISSING';
+  end if;
+
+  select g.teacher_id
+    into v_group_teacher_id
+  from public.groups g
+  where g.id = v_job.target_group_id;
+
+  if v_group_teacher_id is null then
+    raise exception 'TARGET_GROUP_TEACHER_REQUIRED';
   end if;
 
   for v_material in
@@ -598,18 +665,8 @@ begin
       null,
       null,
       100,
-      (
-        select t.id
-        from public.teachers t
-        where t.profile_id = v_profile_id
-        limit 1
-      ),
-      (
-        select t.id
-        from public.teachers t
-        where t.profile_id = v_profile_id
-        limit 1
-      ),
+      v_group_teacher_id,
+      v_group_teacher_id,
       false,
       v_job.template_id
     )
@@ -763,5 +820,13 @@ begin
     where proname = 'rollback_lesson_copy'
   ) then
     raise exception 'verify failed: rollback_lesson_copy missing';
+  end if;
+
+  if not exists (
+    select 1
+    from storage.buckets
+    where id = 'lesson-library'
+  ) then
+    raise exception 'verify failed: lesson-library bucket missing';
   end if;
 end $$;
