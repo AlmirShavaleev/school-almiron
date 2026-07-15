@@ -56,6 +56,7 @@ export function useLessonTemplates() {
         title: input.title,
         subject: input.subject,
         exam_type: input.exam_type,
+        catalog_topic_id: null,
         description: input.description,
       })
       .select('*')
@@ -66,7 +67,7 @@ export function useLessonTemplates() {
     return data as LessonTemplate
   }, [profile])
 
-  const updateTemplate = useCallback(async (templateId: string, patch: Partial<Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'description'>>) => {
+  const updateTemplate = useCallback(async (templateId: string, patch: Partial<Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'catalog_topic_id' | 'description'>>) => {
     const { data, error } = await db
       .from('lesson_templates')
       .update(patch)
@@ -107,15 +108,17 @@ export function useLessonTemplate(templateId: string | null) {
 
     async function load() {
       try {
-        const [{ data: template, error: templateError }, { data: materials, error: materialsError }, { data: tasks, error: tasksError }] = await Promise.all([
+        const [{ data: template, error: templateError }, { data: materials, error: materialsError }, { data: tasks, error: tasksError }, { data: linkedTopic, error: linkedTopicError }] = await Promise.all([
           db.from('lesson_templates').select('*').eq('id', templateId).single(),
           db.from('lesson_template_materials').select('*').eq('template_id', templateId).order('sort_order').order('created_at'),
           db.from('lesson_template_tasks').select('*').eq('template_id', templateId).order('sort_order').order('created_at'),
+          db.from('lesson_templates').select('catalog_topics(id, title)').eq('id', templateId).maybeSingle(),
         ])
 
         if (templateError) throw new Error(templateError.message)
         if (materialsError) throw new Error(materialsError.message)
         if (tasksError) throw new Error(tasksError.message)
+        if (linkedTopicError) throw new Error(linkedTopicError.message)
 
         const linkMap = await loadLessonTemplateLinkMetadata(
           ((materials ?? []) as LessonTemplateMaterial[])
@@ -131,6 +134,7 @@ export function useLessonTemplate(templateId: string | null) {
         if (!cancelled) {
           setData({
             ...(template as LessonTemplate),
+            catalog_topic: (linkedTopic as { catalog_topics?: { id: string; title: string } | null } | null)?.catalog_topics ?? null,
             materials: normalizedMaterials,
             tasks: (tasks ?? []) as LessonTemplateTask[],
           })
@@ -152,7 +156,7 @@ export function useLessonTemplate(templateId: string | null) {
     return map
   }, [data?.materials])
 
-  const saveTemplate = useCallback(async (patch: Partial<Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'description'>>) => {
+  const saveTemplate = useCallback(async (patch: Partial<Pick<LessonTemplate, 'title' | 'subject' | 'exam_type' | 'catalog_topic_id' | 'description'>>) => {
     if (!templateId) return
     const { data: updated, error } = await db
       .from('lesson_templates')

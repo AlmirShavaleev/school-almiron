@@ -3,7 +3,7 @@ import { BookOpen, Check, ClipboardList, Link as LinkIcon, Loader2, Trash2, Uplo
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
-import { useCatalogSections, useCatalogTopics, useCatalogTasks, useCatalogTasksBatch, EXAM_FROM_SLUG, SUBJECT_FROM_SLUG } from '@/hooks/useCatalog'
+import { useCatalogSections, useCatalogTopics, useCatalogTasks, useCatalogTasksBatch, EXAM_FROM_SLUG, SUBJECT_FROM_SLUG, type CatalogTopic } from '@/hooks/useCatalog'
 import { useLessonTemplate } from '@/hooks/useLessonLibrary'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/store/toastStore'
@@ -47,17 +47,42 @@ export function LessonTemplateEditorModal({
   const [subject, setSubject] = useState<'physics' | 'math'>('physics')
   const [examType, setExamType] = useState<'ege' | 'oge' | ''>('ege')
   const [description, setDescription] = useState('')
+  const [linkedTopicId, setLinkedTopicId] = useState<string>('')
+  const [linkedSectionId, setLinkedSectionId] = useState<string>('')
   const [savingMeta, setSavingMeta] = useState(false)
   const [activeSection, setActiveSection] = useState<LessonTemplateMaterialType>('notes')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const subjectLabel = SUBJECT_FROM_SLUG[subject] ?? 'Физика'
+  const examLabel = examType ? (EXAM_FROM_SLUG[examType] ?? 'ЕГЭ') : undefined
+  const { sections: topicSections, loading: sectionsLoading } = useCatalogSections(subjectLabel, examLabel)
+  const { topics: sectionTopics, loading: topicsLoading } = useCatalogTopics(linkedSectionId || undefined)
 
   useEffect(() => {
     setTitle(data?.title ?? '')
     setSubject((data?.subject ?? 'physics') as 'physics' | 'math')
     setExamType((data?.exam_type ?? 'ege') as 'ege' | 'oge')
+    setLinkedTopicId(data?.catalog_topic_id ?? '')
     setDescription(data?.description ?? '')
-  }, [data?.description, data?.exam_type, data?.subject, data?.title])
+  }, [data?.catalog_topic_id, data?.description, data?.exam_type, data?.subject, data?.title])
+
+  useEffect(() => {
+    if (!topicSections.length) {
+      setLinkedSectionId('')
+      return
+    }
+    if (!linkedSectionId) {
+      setLinkedSectionId(topicSections[0].id)
+    }
+  }, [linkedSectionId, topicSections])
+
+  useEffect(() => {
+    if (!linkedTopicId) return
+    const existsInSection = sectionTopics.some(topic => topic.id === linkedTopicId)
+    if (!existsInSection && sectionTopics.length && !data?.catalog_topic) {
+      setLinkedTopicId(sectionTopics[0].id)
+    }
+  }, [data?.catalog_topic, linkedTopicId, sectionTopics])
 
   if (!open || !template) return null
 
@@ -68,6 +93,7 @@ export function LessonTemplateEditorModal({
         title: title.trim(),
         subject,
         exam_type: examType || null,
+        catalog_topic_id: linkedTopicId || null,
         description: description.trim() || null,
       })
       onSaved()
@@ -142,22 +168,51 @@ export function LessonTemplateEditorModal({
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Описание</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
               </div>
-              <Button onClick={handleSaveMeta} loading={savingMeta} className="w-full">Сохранить урок</Button>
-            </div>
-
-            <div className="mt-5 space-y-2 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">Задачи шаблона</div>
-                  <div className="text-xs text-gray-500">После копии создастся `task_collection` без назначения.</div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Тема каталога</div>
+                {data?.catalog_topic && (
+                  <div className="mb-3 rounded-xl bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
+                    Сейчас привязано: <span className="font-semibold text-gray-900">{data.catalog_topic.title}</span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <select
+                    value={linkedSectionId}
+                    onChange={e => {
+                      setLinkedSectionId(e.target.value)
+                      setLinkedTopicId('')
+                    }}
+                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    disabled={sectionsLoading || topicSections.length === 0}
+                  >
+                    <option value="">{sectionsLoading ? 'Загрузка разделов…' : 'Выберите раздел'}</option>
+                    {topicSections.map(section => (
+                      <option key={section.id} value={section.id}>{section.title}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={linkedTopicId}
+                    onChange={e => setLinkedTopicId(e.target.value)}
+                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    disabled={topicsLoading || !linkedSectionId}
+                  >
+                    <option value="">{topicsLoading ? 'Загрузка тем…' : 'Без привязки к теме'}</option>
+                    {sectionTopics.map((topic: CatalogTopic) => (
+                      <option key={topic.id} value={topic.id}>{topic.title}</option>
+                    ))}
+                  </select>
+                  {linkedTopicId && (
+                    <button
+                      type="button"
+                      onClick={() => setLinkedTopicId('')}
+                      className="text-xs font-medium text-gray-500 hover:text-red-600"
+                    >
+                      Убрать привязку
+                    </button>
+                  )}
                 </div>
-                <Button size="sm" variant="secondary" onClick={() => setPickerOpen(true)}>Изменить</Button>
               </div>
-              {(data?.tasks.length ?? 0) === 0 ? (
-                <p className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-400">Задачи пока не прикреплены</p>
-              ) : (
-                <SelectedTasksList taskIds={(data?.tasks ?? []).map(item => item.catalog_task_id).filter(Boolean) as string[]} />
-              )}
+              <Button onClick={handleSaveMeta} loading={savingMeta} className="w-full">Сохранить урок</Button>
             </div>
 
             <div className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-4">

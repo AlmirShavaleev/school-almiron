@@ -8,6 +8,7 @@ export interface LessonTemplate {
   title: string
   subject: LessonTemplateSubject
   exam_type: LessonTemplateExam
+  catalog_topic_id: string | null
   description: string | null
   is_shared: boolean
   created_at: string
@@ -41,6 +42,10 @@ export interface LessonTemplateTask {
 }
 
 export interface LessonTemplateWithDetails extends LessonTemplate {
+  catalog_topic?: {
+    id: string
+    title: string
+  } | null
   materials: LessonTemplateMaterial[]
   tasks: LessonTemplateTask[]
 }
