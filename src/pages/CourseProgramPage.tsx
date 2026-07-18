@@ -510,91 +510,58 @@ function TopicRowEdit({
   const [deleting, setDeleting] = useState(false)
   const deleteBlockedMessage = homeworkCount && homeworkCount > 0 ? formatHomeworkCountMessage(homeworkCount) : null
 
-  const statusItems = [
-    {
-      label: 'Материалы',
-      active: true,
-      tone: 'bg-blue-50 text-blue-700 border-blue-200',
-    },
-    {
-      label: 'ДЗ',
-      active: !!hwId || !!archivedHwId,
-      tone: hwId
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : archivedHwId
-          ? 'bg-slate-100 text-slate-700 border-slate-200'
-          : 'bg-gray-50 text-gray-500 border-gray-200',
-    },
-    {
-      label: 'Видео',
-      active: true,
-      tone: 'bg-violet-50 text-violet-700 border-violet-200',
-    },
-  ]
-
   return (
     <div className={cn(
       'rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]',
       isDragging && 'opacity-70 ring-2 ring-primary-200'
     )}>
-      <div className="space-y-2">
-        <div className="flex items-start gap-3 overflow-visible">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 overflow-visible">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-visible">
           {dragHandle && (
             <button
               type="button"
               {...dragHandle.attributes}
               {...dragHandle.listeners}
               disabled={dragHandle.disabled}
-              className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
               title="Перетащить тему"
             >
               <GripVertical size={15} />
             </button>
           )}
-          <div className="h-2.5 w-2.5 rounded-full bg-primary-400 shrink-0" />
-          <div className="flex min-w-0 flex-1 items-start gap-2 overflow-visible">
-            <span className="pt-1 text-sm font-medium tabular-nums text-gray-400 shrink-0">{topicNumber}</span>
-            <div className="min-w-0 flex-1 overflow-visible">
-            <InlineEdit
-              value={topic.title}
-              onSave={v => onSave(topic.id, { title: v })}
-              className="w-full text-base font-semibold text-gray-900"
-              startEditing={startEditing}
-              onCancelCreate={onCancelCreate}
-            />
+          <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary-400" />
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+              <span className="shrink-0 text-sm font-medium tabular-nums text-gray-400">{topicNumber}</span>
+              <div className="min-w-0 flex-1 overflow-visible">
+                <InlineEdit
+                  value={topic.title}
+                  onSave={v => onSave(topic.id, { title: v })}
+                  className="block w-full truncate text-base font-semibold text-gray-900"
+                  startEditing={startEditing}
+                  onCancelCreate={onCancelCreate}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            {statusItems.map(item => (
-              <span
-                key={item.label}
-                className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap', item.tone)}
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full', item.active ? 'bg-current opacity-80' : 'bg-current opacity-40')} />
-                {item.label} {item.active ? '✓' : '—'}
-              </span>
-            ))}
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <div className="flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Баллы</span>
+            <span className="rounded-lg bg-white px-2 py-1 text-[11px] font-medium text-gray-500 shadow-sm">Макс.</span>
+            <input
+              type="number"
+              defaultValue={topic.max_score}
+              min={1}
+              max={100}
+              onBlur={e => onSave(topic.id, { max_score: parseInt(e.target.value) || 100 })}
+              className="h-9 w-20 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
+            />
+            <span className="text-[11px] font-medium text-gray-500">б.</span>
           </div>
 
-          <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center xl:justify-end">
-            <div className="flex min-h-10 items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Баллы</span>
-              <span className="rounded-lg bg-white px-2 py-1 text-[11px] font-medium text-gray-500 shadow-sm">Макс.</span>
-                <input
-                  type="number"
-                  defaultValue={topic.max_score}
-                  min={1}
-                  max={100}
-                  onBlur={e => onSave(topic.id, { max_score: parseInt(e.target.value) || 100 })}
-                  className="h-9 w-20 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
-                <span className="text-[11px] font-medium text-gray-500">б.</span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" onClick={() => onOpenMaterials(topic, moduleTitle)} className="min-h-9 px-3 text-sm">
               <FileText size={15} />
               Редактировать тему
@@ -607,7 +574,6 @@ function TopicRowEdit({
             >
               {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
             </button>
-            </div>
           </div>
         </div>
       </div>
