@@ -54,3 +54,4 @@ shkolkovo-pdfs/
 scripts/.checkpoints/
 scripts/analyze_variant_bank.py
 .codex-vite*.log
+vite-*.log
