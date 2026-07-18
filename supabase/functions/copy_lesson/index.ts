@@ -7,7 +7,7 @@ type StageResponse = {
     job: {
       topic_id: string;
       template_id: string;
-      target_group_id: string;
+      target_group_id: string | null;
       target_course_id: string;
       target_module_id: string;
       available_from: string | null;
