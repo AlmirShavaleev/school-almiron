@@ -83,6 +83,7 @@ export function TopicPage() {
   const { groupId, topicId } = useParams<{ groupId: string; topicId: string }>()
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
+  const canBypassAvailability = !!profile?.role && ['teacher', 'curator', 'admin', 'owner'].includes(profile.role)
 
   const [topic,      setTopic]      = useState<TopicInfo | null>(null)
   const [hw,           setHw]           = useState<HwInfo>({ id: null, max_score: 100, due_date: null, file_url: null, status: 'not_submitted', score: null })
@@ -236,7 +237,7 @@ export function TopicPage() {
   const embedUrl   = ytEmbed || vimeoEmbed
   // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
   const isLocked   = topic?.available_from
-    ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA')
+    ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
     : false
   const solutionLocked = hw.status !== 'checked'
   const canSubmit  = hw.status === 'not_submitted' || hw.status === 'revision'

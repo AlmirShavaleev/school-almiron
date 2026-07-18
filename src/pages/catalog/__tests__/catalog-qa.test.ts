@@ -324,8 +324,9 @@ describe('Technical — PostgREST 1000-row protection', () => {
 
   it('topic IDs and counts use RPCs', () => {
     const src = read('src/hooks/useCatalog.ts')
-    expect(src).toContain("rpc('get_catalog_topic_ids'")
-    expect(src).toContain("rpc('get_catalog_topic_counts'")
+    expect(src).toContain(".from('catalog_tasks')")
+    expect(src).toContain(".from('catalog_task_topics')")
+    expect(src).toContain('taskCountByTopic')
   })
 
   it('DOMPurify sanitizes HTML before render', () => {
@@ -977,12 +978,11 @@ describe('Catalog role access', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('Empty topic filtering', () => {
-  it('get_catalog_topic_ids RPC фильтрует темы без задач — пустые темы не попадают в useCatalogTopics', () => {
-    // useCatalogTopics fetches only topic IDs returned by get_catalog_topic_ids RPC,
-    // which joins catalog_task_topics — topics with 0 task links are never returned.
+  it('exam-mode сохраняет старое поведение и не фильтрует legacy-связи по source', () => {
     const hookSrc = read('src/hooks/useCatalog.ts')
-    expect(hookSrc).toContain('get_catalog_topic_ids')
-    // The hook then fetches topics only .in('id', topicIds)
+    expect(hookSrc).not.toContain("view === 'physics-topics'\n            ? query.eq('source', AI_PHYSICS_SOURCE)\n            : query.is('source', null)")
+    expect(hookSrc).not.toContain(".select('topic_id, task_id')\n              .is('source', null)")
+    expect(hookSrc).toContain('topicIdsSet')
     expect(hookSrc).toContain(".in('id', topicIds)")
   })
 
@@ -992,10 +992,127 @@ describe('Empty topic filtering', () => {
     expect(sectionSrc).toContain('!topics.find(p => p.id === t.parent_id)')
   })
 
-  it('непустая тема отображается — get_catalog_topic_counts возвращает task_count > 0', () => {
+  it('непустая тема отображается — task_count считается по catalog_task_topics', () => {
     const hookSrc = read('src/hooks/useCatalog.ts')
-    expect(hookSrc).toContain('get_catalog_topic_counts')
+    expect(hookSrc).toContain('taskCountByTopic[row.topic_id] = (taskCountByTopic[row.topic_id] ?? 0) + 1')
     expect(hookSrc).toContain('taskCountByTopic[t.id] ?? 0')
+  })
+})
+
+describe('Physics topics mode', () => {
+  it('CatalogTopicPage forwards view to hooks and keeps it in links', () => {
+    const src = read('src/pages/catalog/CatalogTopicPage.tsx')
+    expect(src).toContain("const view = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'")
+    expect(src).toContain('useCatalogTasks(topicId, retryKey, view)')
+    expect(src).toContain("useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)")
+    expect(src).toContain('useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)')
+    expect(src).toContain("view === 'physics-topics' ? '&view=physics-topics' : ''")
+  })
+
+  it('useCatalogTasks filters physics-topics by source', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain("view === 'physics-topics'")
+    expect(src).toContain("fetchAllTopicTaskIds(topicId!, view === 'physics-topics' ? AI_PHYSICS_SOURCE : undefined)")
+    expect(src).toContain('difficulty, statement_html')
+  })
+
+  it('old exam mode keeps pre-change task counts by loading all topic links', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain(".eq('topic_id', topicId)")
+    expect(src).not.toContain(": query.is('source', null)")
+  })
+
+  it('CatalogSectionPage hides search in physics-topics mode', () => {
+    const src = read('src/pages/catalog/CatalogSectionPage.tsx')
+    expect(src).toContain("const searchEnabled = view === 'exam'")
+    expect(src).toContain("{view === 'exam' && <div className=\"relative\">")
+  })
+
+  it('physics-topics mode uses AI root and source-specific counters', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('AI_PHYSICS_ROOT_EXTERNAL_ID = 900000')
+    expect(src).toContain("db.rpc('get_catalog_section_task_counts_by_source'")
+    expect(src).toContain('const sectionCount = sectionCounts.bySectionId[section.id] ?? { task_count: 0, completed_count: 0 }')
+    expect(src).toContain("queryKey: ['catalog-physics-section-topics'")
+  })
+
+  it('physics-topics section screen uses section RPC total instead of summing child topics', () => {
+    const hookSrc = read('src/hooks/useCatalog.ts')
+    const pageSrc = read('src/pages/catalog/CatalogPage.tsx')
+    expect(hookSrc).toContain('totalTaskCount: sectionCounts.totalTaskCount')
+    expect(hookSrc).toContain('totalCompletedCount: sectionCounts.totalCompletedCount')
+    expect(pageSrc).toContain("const totalTasks = activeView === 'physics-topics'")
+    expect(pageSrc).toContain('? aiTotalTaskCount')
+  })
+
+  it('CatalogTopicPage exposes difficulty filter for tasks', () => {
+    const src = read('src/pages/catalog/CatalogTopicPage.tsx')
+    expect(src).toContain('Сложность')
+    expect(src).toContain('difficultyFilter')
+    expect(src).toContain('Задачи выбранной сложности не найдены.')
+  })
+
+  it('physics-topics task/section loaders do not filter by is_primary', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    const topicSectionsBlock = src.slice(src.indexOf('async function loadPhysicsTopicSections'), src.indexOf('async function loadPhysicsSectionTopics'))
+    const sectionTopicsBlock = src.slice(src.indexOf('async function loadPhysicsSectionTopics'), src.indexOf('async function loadPhysicsTopicTasks'))
+    const topicTasksBlock = src.slice(src.indexOf('async function loadPhysicsTopicTasks'), src.indexOf('/**'))
+
+    expect(topicSectionsBlock).not.toContain("eq('is_primary', true)")
+    expect(sectionTopicsBlock).not.toContain("eq('is_primary', true)")
+    expect(topicTasksBlock).not.toContain("eq('is_primary', true)")
+  })
+
+  it('physics-topics topic task loader dedupes task ids before fetching tasks', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('return [...new Set(rows.map(row => row.task_id))]')
+  })
+
+  it('large physics-topics loaders page through task links and progress rows', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('const SELECT_PAGE_SIZE = 1000')
+    expect(src).toContain('fetchAllPagedRows')
+    expect(src).toContain(".eq('source', AI_PHYSICS_SOURCE)")
+    expect(src).toContain('.range(from, to)')
+  })
+
+  it('CatalogTopicPage wires admin topic editor only for physics-topics mode', () => {
+    const src = read('src/pages/catalog/CatalogTopicPage.tsx')
+    expect(src).toContain("const canEditPhysicsTopics = isPhysicsTopicsView && !!profile?.role && ['admin', 'owner'].includes(profile.role)")
+    expect(src).toContain('PhysicsTopicEditorButton')
+  })
+})
+
+describe('Task difficulty badge', () => {
+  it('TaskDisplayCard shows a difficulty badge only when difficulty is present', () => {
+    const src = read('src/components/catalog/TaskDisplayCard.tsx')
+    expect(src).toContain('task-difficulty-badge')
+    expect(src).toContain("difficulty === 'лёгкая'")
+    expect(src).toContain("difficulty === 'средняя'")
+    expect(src).toContain("difficulty === 'сложная'")
+  })
+})
+
+describe('Physics topic editor', () => {
+  it('editor button exists with the expected label', () => {
+    const src = read('src/components/catalog/PhysicsTopicEditorButton.tsx')
+    expect(src).toContain('Изменить темы')
+    expect(src).toContain("source='ai_physics_v1'")
+  })
+
+  it('editor enforces max 3 topics and shows insufficient-rights style failures', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('Можно назначить не более 3 тем')
+    expect(src).toContain('ensureAffectedRowsCount')
+    expect(src).toContain('Не удалось (недостаточно прав)')
+  })
+
+  it('editor invalidates physics-topics queries after mutations', () => {
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain("invalidateQueries({ queryKey: ['catalog-physics-task-topic-links'")
+    expect(src).toContain("invalidateQueries({ queryKey: ['catalog-physics-topic-sections'")
+    expect(src).toContain("invalidateQueries({ queryKey: ['catalog-physics-section-topics'")
+    expect(src).toContain("invalidateQueries({ queryKey: ['catalog-physics-topic-tasks'")
   })
 })
 

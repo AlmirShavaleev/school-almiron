@@ -1,30 +1,46 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, CheckCircle2, BookOpen, AlertCircle, RefreshCw, Sparkles, ChevronDown } from 'lucide-react'
+import { useAuthStore } from '@/store/authStore'
 
 const PAGE_SIZE = 25
-import { useCatalogTasks, useCatalogTopics, useCatalogSections, SUBJECT_SLUGS, type CatalogTask } from '@/hooks/useCatalog'
+import { useCatalogTasks, useCatalogTopics, useCatalogSections, useCatalogPhysicsTopicSections, SUBJECT_SLUGS, type CatalogTask, type CatalogViewMode } from '@/hooks/useCatalog'
 import { AddToCartButton } from '@/components/catalog/AddToCartButton'
 import { CartBadge } from '@/components/catalog/CartBadge'
+import { PhysicsTopicEditorButton } from '@/components/catalog/PhysicsTopicEditorButton'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
+import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
 
 type Filter = 'all' | 'done' | 'todo'
+type DifficultyFilter = PhysicsDifficulty
 
 export function CatalogTopicPage() {
   const { sectionId, topicId } = useParams<{ sectionId: string; topicId: string }>()
+  const profile = useAuthStore(state => state.profile)
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = (searchParams.get('filter') as Filter) ?? 'all'
+  const view = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'
   const [retryKey, setRetryKey] = useState(0)
+  const [difficultyFilter, setDifficultyFilter] = useState<Set<DifficultyFilter>>(new Set())
+  const subjectSlugParam = searchParams.get('subject') ?? 'math'
+  const examSlug = searchParams.get('exam') ?? 'ege'
+  const subjectLabel = subjectSlugParam === 'physics' ? 'Физика' : 'Математика'
+  const examLabel = examSlug === 'ege' ? 'ЕГЭ' : 'ОГЭ'
+  const isPhysicsTopicsView = subjectSlugParam === 'physics' && examSlug === 'ege' && view === 'physics-topics'
+  const canEditPhysicsTopics = isPhysicsTopicsView && !!profile?.role && ['admin', 'owner'].includes(profile.role)
 
-  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId, retryKey)
-  const { topics } = useCatalogTopics(sectionId, retryKey)
-  const { sections } = useCatalogSections(undefined, undefined, retryKey)
+  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId, retryKey, view)
+  const { sections: aiSections } = useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)
+  const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
+  const examSection = sections.find(s => s.id === sectionId)
+  const aiSection = aiSections.find(s => s.id === sectionId)
+  const { topics } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
 
   const topic   = topics.find(t => t.id === topicId)
-  const section = sections.find(s => s.id === sectionId)
+  const sectionTitle = aiSection?.title ?? examSection?.title ?? 'Раздел'
   const subjectSlug = searchParams.get('subject')
-    ?? (section ? (SUBJECT_SLUGS[section.subject] ?? 'math') : 'math')
-  const examSlug = searchParams.get('exam') ?? 'ege'
+    ?? (examSection ? (SUBJECT_SLUGS[examSection.subject] ?? 'math') : 'math')
+  const viewSuffix = view === 'physics-topics' ? '&view=physics-topics' : ''
 
   const setFilter = (f: Filter) => setSearchParams(prev => {
     const next = new URLSearchParams(prev)
@@ -33,15 +49,20 @@ export function CatalogTopicPage() {
   })
 
   const filtered = useMemo(() => {
-    if (filter === 'done') return tasks.filter(t => t.is_completed)
-    if (filter === 'todo') return tasks.filter(t => !t.is_completed)
-    return tasks
-  }, [tasks, filter])
+    const byCompletion =
+      filter === 'done' ? tasks.filter(t => t.is_completed)
+      : filter === 'todo' ? tasks.filter(t => !t.is_completed)
+      : tasks
+
+    if (difficultyFilter.size === 0) return byCompletion
+    return byCompletion.filter(task => task.difficulty && difficultyFilter.has(task.difficulty))
+  }, [tasks, filter, difficultyFilter])
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   // Reset pagination when topic or filter changes
   useEffect(() => { setVisibleCount(PAGE_SIZE) }, [topicId, filter])
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [difficultyFilter])
 
   const visibleTasks = filtered.slice(0, visibleCount)
   const hasMore = visibleCount < filtered.length
@@ -57,9 +78,9 @@ export function CatalogTopicPage() {
     <div className="mx-auto max-w-7xl px-4 py-8">
       {/* Breadcrumb */}
       <nav className="mb-4 flex items-center gap-2 text-sm text-gray-500 flex-wrap">
-        <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}`} className="hover:text-primary-600">Каталог</Link>
+        <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">Каталог</Link>
         <ChevronLeft className="w-3 h-3 rotate-180" />
-        <Link to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}`} className="hover:text-primary-600">{section?.title ?? 'Раздел'}</Link>
+        <Link to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">{sectionTitle}</Link>
       </nav>
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -79,6 +100,7 @@ export function CatalogTopicPage() {
                   sectionId={sectionId}
                   subjectSlug={subjectSlug}
                   examSlug={examSlug}
+                  view={view}
                 />
               </div>
             )}
@@ -89,7 +111,7 @@ export function CatalogTopicPage() {
           <div className="rounded-[28px] bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80 backdrop-blur xl:flex-shrink-0">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 text-wrap-balance">{topic?.title ?? 'Тема'}</h1>
-              <p className="mt-1 text-sm text-slate-500">Раздел: {section?.title ?? 'Каталог'}</p>
+              <p className="mt-1 text-sm text-slate-500">Раздел: {sectionTitle}</p>
             </div>
 
             {totalCount > 0 && (
@@ -130,6 +152,38 @@ export function CatalogTopicPage() {
                 ))}
               </div>
             </div>
+
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Сложность
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: 'лёгкая', label: 'Лёгкая', active: 'bg-emerald-600 text-white shadow-[0_10px_20px_rgba(5,150,105,0.24)]', idle: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' },
+                  { value: 'средняя', label: 'Средняя', active: 'bg-amber-500 text-white shadow-[0_10px_20px_rgba(245,158,11,0.24)]', idle: 'bg-amber-50 text-amber-700 hover:bg-amber-100' },
+                  { value: 'сложная', label: 'Сложная', active: 'bg-rose-600 text-white shadow-[0_10px_20px_rgba(225,29,72,0.24)]', idle: 'bg-rose-50 text-rose-700 hover:bg-rose-100' },
+                ] as const).map(option => {
+                  const active = difficultyFilter.has(option.value)
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setDifficultyFilter(prev => {
+                          const next = new Set(prev)
+                          if (next.has(option.value)) next.delete(option.value)
+                          else next.add(option.value)
+                          return next
+                        })
+                      }}
+                      className={`min-h-10 rounded-2xl px-4 py-2 text-sm font-medium transition-[background-color,color,transform,box-shadow] duration-200 active:scale-[0.96] ${active ? option.active : option.idle}`}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {topics.length > 1 && sectionId && (
@@ -140,13 +194,14 @@ export function CatalogTopicPage() {
                 sectionId={sectionId}
                 subjectSlug={subjectSlug}
                 examSlug={examSlug}
+                view={view}
               />
             </div>
           )}
 
           <div>
             {filtered.length === 0 ? (
-              <EmptyState filter={filter} />
+              <EmptyState filter={filter} hasDifficultyFilter={difficultyFilter.size > 0} />
             ) : (
               <div className="space-y-4">
                 {visibleTasks.map((task, idx) => (
@@ -155,6 +210,10 @@ export function CatalogTopicPage() {
                     task={task}
                     number={idx + 1}
                     onToggle={() => toggleComplete(task.id, !!task.is_completed)}
+                    canEditPhysicsTopics={canEditPhysicsTopics}
+                    topicId={topicId}
+                    sectionId={sectionId}
+                    retryKey={retryKey}
                   />
                 ))}
                 {hasMore && (
@@ -185,12 +244,14 @@ function TopicSwitcher({
   sectionId,
   subjectSlug,
   examSlug,
+  view,
 }: {
   topics: ReturnType<typeof useCatalogTopics>['topics']
   activeTopicId: string | undefined
   sectionId: string
   subjectSlug: string
   examSlug: string
+  view: CatalogViewMode
 }) {
   return (
     <div className="mt-4 rounded-2xl bg-gradient-to-r from-slate-50 via-white to-blue-50/70 p-3 ring-1 ring-slate-200/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
@@ -205,7 +266,7 @@ function TopicSwitcher({
           return (
             <Link
               key={topic.id}
-              to={`/catalog/${sectionId}/topic/${topic.id}?subject=${subjectSlug}&exam=${examSlug}`}
+              to={`/catalog/${sectionId}/topic/${topic.id}?subject=${subjectSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`}
               className={`group min-w-[220px] shrink-0 rounded-2xl px-4 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.96] ${
                 active
                   ? 'bg-blue-600 text-white shadow-[0_12px_24px_rgba(37,99,235,0.28)]'
@@ -239,12 +300,14 @@ function TopicSidebar({
   sectionId,
   subjectSlug,
   examSlug,
+  view,
 }: {
   topics: ReturnType<typeof useCatalogTopics>['topics']
   activeTopicId: string | undefined
   sectionId: string
   subjectSlug: string
   examSlug: string
+  view: CatalogViewMode
 }) {
   const activeTopicRef = useRef<HTMLAnchorElement | null>(null)
   const rootTopics = useMemo(
@@ -295,7 +358,7 @@ function TopicSidebar({
               key={root.id}
               topic={root}
               active={isActiveRoot}
-              to={`/catalog/${sectionId}/topic/${root.id}?subject=${subjectSlug}&exam=${examSlug}`}
+              to={`/catalog/${sectionId}/topic/${root.id}?subject=${subjectSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`}
               linkRef={isActiveRoot ? activeTopicRef : null}
             />
           )
@@ -345,7 +408,7 @@ function TopicSidebar({
                       topic={child}
                       active={active}
                       compact
-                      to={`/catalog/${sectionId}/topic/${child.id}?subject=${subjectSlug}&exam=${examSlug}`}
+                      to={`/catalog/${sectionId}/topic/${child.id}?subject=${subjectSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`}
                       linkRef={active ? activeTopicRef : null}
                     />
                   )
@@ -408,10 +471,18 @@ function TaskCard({
   task,
   number,
   onToggle,
+  canEditPhysicsTopics,
+  topicId,
+  sectionId,
+  retryKey,
 }: {
   task: CatalogTask
   number: number
   onToggle: () => void
+  canEditPhysicsTopics: boolean
+  topicId?: string
+  sectionId?: string
+  retryKey?: number
 }) {
   return (
     <TaskDisplayCard
@@ -419,17 +490,30 @@ function TaskCard({
       number={number}
       onToggle={onToggle}
       completed={task.is_completed}
-      extraActions={<AddToCartButton taskId={task.id} />}
+      extraActions={
+        <>
+          <AddToCartButton taskId={task.id} />
+          {canEditPhysicsTopics && (
+            <PhysicsTopicEditorButton
+              task={task}
+              topicId={topicId}
+              sectionId={sectionId}
+              retryKey={retryKey}
+            />
+          )}
+        </>
+      }
     />
   )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function EmptyState({ filter }: { filter: Filter }) {
+function EmptyState({ filter, hasDifficultyFilter }: { filter: Filter; hasDifficultyFilter: boolean }) {
   const msg =
     filter === 'done' ? 'Пока нет выполненных задач в этой теме.' :
     filter === 'todo' ? 'Все задачи выполнены!' :
+    hasDifficultyFilter ? 'Задачи выбранной сложности не найдены.' :
     'Задачи не найдены.'
   return (
     <div className="py-16 text-center">

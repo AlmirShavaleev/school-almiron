@@ -4,6 +4,7 @@ import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
 import { useImageReclassify } from '@/hooks/useImageReclassify'
 import { TaskContentRenderer } from './TaskContentRenderer'
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
+import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
 
 export interface TaskDisplayCardProps {
   task: CatalogTask & { assets?: CatalogTaskAsset[] }
@@ -71,14 +72,24 @@ export function TaskDisplayCard({
   const solOpen  = forceOpen?.solution  ?? showSolution
   const planOpen = forceOpen?.plan      ?? showPlan
   const critOpen = forceOpen?.criteria  ?? showGradeCriteria
+  const difficultyBadge = getDifficultyBadge(task.difficulty)
 
   return (
     <div
       ref={cardRef}
-      className={`bg-white rounded-xl border transition-all ${
+      className={`relative bg-white rounded-xl border transition-all ${
         completed ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
       }`}
     >
+      {difficultyBadge && (
+        <span
+          className={`absolute right-4 top-4 z-10 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${difficultyBadge.className}`}
+          data-testid="task-difficulty-badge"
+        >
+          {difficultyBadge.label}
+        </span>
+      )}
+
       {/* Statement */}
       <div className="flex items-start gap-3 p-4">
         {number !== undefined && (
@@ -86,7 +97,7 @@ export function TaskDisplayCard({
             #{number}
           </span>
         )}
-        <div className="flex-1 min-w-0">
+        <div className={`flex-1 min-w-0 ${difficultyBadge ? 'pr-20 sm:pr-24' : ''}`}>
           <TaskContentRenderer html={stmt} className={figureScaleClass} />
         </div>
         {onToggle && (
@@ -200,6 +211,19 @@ export function TaskDisplayCard({
       )}
     </div>
   )
+}
+
+function getDifficultyBadge(difficulty: string | null | undefined): { label: PhysicsDifficulty; className: string } | null {
+  if (difficulty === 'лёгкая') {
+    return { label: difficulty, className: 'bg-emerald-50 text-emerald-700 ring-emerald-200' }
+  }
+  if (difficulty === 'средняя') {
+    return { label: difficulty, className: 'bg-amber-50 text-amber-700 ring-amber-200' }
+  }
+  if (difficulty === 'сложная') {
+    return { label: difficulty, className: 'bg-rose-50 text-rose-700 ring-rose-200' }
+  }
+  return null
 }
 
 // ── Section divider ───────────────────────────────────────────────────────────

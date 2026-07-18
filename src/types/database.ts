@@ -69,6 +69,7 @@ export type Database = {
           exam_type: Database["public"]["Enums"]["exam_type"]
           id: string
           is_active: boolean
+          owner_id: string | null
           price: number
           start_date: string | null
           subject: Database["public"]["Enums"]["subject_type"]
@@ -83,6 +84,7 @@ export type Database = {
           exam_type: Database["public"]["Enums"]["exam_type"]
           id?: string
           is_active?: boolean
+          owner_id?: string | null
           price?: number
           start_date?: string | null
           subject: Database["public"]["Enums"]["subject_type"]
@@ -97,6 +99,7 @@ export type Database = {
           exam_type?: Database["public"]["Enums"]["exam_type"]
           id?: string
           is_active?: boolean
+          owner_id?: string | null
           price?: number
           start_date?: string | null
           subject?: Database["public"]["Enums"]["subject_type"]

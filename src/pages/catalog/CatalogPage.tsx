@@ -4,11 +4,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useCatalogSections,
   useCatalogDirectionCounts,
+  useCatalogPhysicsTopicSections,
   DIRECTIONS,
   SUBJECT_FROM_SLUG,
   SUBJECT_SLUGS,
   EXAM_FROM_SLUG,
   EXAM_SLUGS,
+  type CatalogViewMode,
+  type CatalogTopic,
 } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
 import type { CatalogSection } from '@/hooks/useCatalog'
@@ -48,9 +51,10 @@ export function CatalogPage() {
   const [searchParams] = useSearchParams()
   const subjectParam   = searchParams.get('subject')
   const examParam      = searchParams.get('exam')
+  const viewParam      = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'
 
   if (!subjectParam) return <DirectionPicker />
-  return <SectionsView subjectSlug={subjectParam} examSlug={examParam ?? 'ege'} />
+  return <SectionsView subjectSlug={subjectParam} examSlug={examParam ?? 'ege'} view={viewParam} />
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -143,46 +147,74 @@ function DirectionCard({
 // 2. Sections view — compact numbered list
 // ══════════════════════════════════════════════════════════════════════════════
 
-function SectionsView({ subjectSlug, examSlug }: { subjectSlug: string; examSlug: string }) {
+function SectionsView({ subjectSlug, examSlug, view }: { subjectSlug: string; examSlug: string; view: CatalogViewMode }) {
   const { profile } = useAuthStore()
   const isStudent   = profile?.role === 'student'
 
   const subject  = SUBJECT_FROM_SLUG[subjectSlug] ?? 'Математика'
   const examType = EXAM_FROM_SLUG[examSlug]        ?? 'ЕГЭ'
+  const isPhysicsTopicsAvailable = subject === 'Физика' && examType === 'ЕГЭ'
+  const activeView: CatalogViewMode = isPhysicsTopicsAvailable ? view : 'exam'
   const direction = DIRECTIONS.find(d => d.subjectSlug === subjectSlug && d.examSlug === examSlug)
   const dirLabel  = direction?.label ?? `${subject} ${examType}`
 
   const [retryKey, setRetryKey] = useState(0)
   const { sections, loading, error } = useCatalogSections(subject, examType, retryKey)
+  const {
+    sections: aiSections,
+    totalTaskCount: aiTotalTaskCount,
+    totalCompletedCount: aiTotalCompletedCount,
+    loading: aiLoading,
+    error: aiError,
+  } = useCatalogPhysicsTopicSections(isPhysicsTopicsAvailable && activeView === 'physics-topics', retryKey)
+  const navigate = useNavigate()
 
   const [filter, setFilter] = useState('')
   const q = filter.trim().toLowerCase()
+  const examSections = sections
+  const physicsSections = aiSections
+  const sectionItems = activeView === 'physics-topics' ? physicsSections : examSections
+  const sectionLoading = activeView === 'physics-topics' ? aiLoading : loading
+  const sectionError = activeView === 'physics-topics' ? aiError : error
 
-  // Numerical sort: exam_number=0 last, null/undefined at end
-  const sorted = useMemo(() =>
-    [...sections].sort((a, b) => {
+  const sortedExamSections = useMemo(() =>
+    [...examSections].sort((a, b) => {
       const an = a.exam_number ?? 999
       const bn = b.exam_number ?? 999
       if (an === 0) return 1
       if (bn === 0) return -1
       return an - bn || a.position - b.position
     }),
-  [sections])
+  [examSections])
+
+  const sortedPhysicsSections = useMemo(() => [...physicsSections].sort((a, b) => a.position - b.position), [physicsSections])
+  const sorted = activeView === 'physics-topics' ? sortedPhysicsSections : sortedExamSections
 
   // Client-side filter by title / exam_number string
   const filtered = useMemo(() => {
     if (!q) return sorted
-    return sorted.filter(s => {
-      const num   = String(s.exam_number ?? '')
-      const title = (s.exam_number === 0 ? 'Задачи старого формата ЕГЭ' : s.title).toLowerCase()
+    return sorted.filter((s: CatalogSection | CatalogTopic) => {
+      if (activeView === 'physics-topics') {
+        return s.title.toLowerCase().includes(q)
+      }
+      const examSection = s as CatalogSection
+      const num   = String(examSection.exam_number ?? '')
+      const title = (examSection.exam_number === 0 ? 'Задачи старого формата ЕГЭ' : examSection.title).toLowerCase()
       return title.includes(q) || num.includes(q)
     })
-  }, [sorted, q])
+  }, [sorted, q, activeView])
 
-  const totalTasks  = sections.reduce((sum, s) => sum + (s.task_count ?? 0), 0)
+  const totalTasks = activeView === 'physics-topics'
+    ? aiTotalTaskCount
+    : sectionItems.reduce((sum, s) => sum + (s.task_count ?? 0), 0)
+  const totalCompletedTasks = activeView === 'physics-topics'
+    ? aiTotalCompletedCount
+    : sectionItems.reduce((sum, s) => sum + (s.completed_count ?? 0), 0)
 
   const sectionLink = (s: CatalogSection) =>
     `/catalog/${s.id}?subject=${SUBJECT_SLUGS[s.subject] ?? subjectSlug}&exam=${examSlug}`
+  const aiSectionLink = (s: CatalogSection) =>
+    `/catalog/${s.id}?subject=${subjectSlug}&exam=${examSlug}&view=physics-topics`
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-6">
@@ -199,10 +231,16 @@ function SectionsView({ subjectSlug, examSlug }: { subjectSlug: string; examSlug
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">{dirLabel}</h1>
-          {!loading && sections.length > 0 && (
+          {!sectionLoading && sectionItems.length > 0 && (
             <p className="text-sm text-gray-500 mt-0.5">
-              {sections.length}&nbsp;{sections.length === 1 ? 'раздел' : 'разделов'}
+              {sectionItems.length}&nbsp;{sectionItems.length === 1 ? 'раздел' : 'разделов'}
               &nbsp;·&nbsp;{numFmt(totalTasks)}&nbsp;задач
+              {isStudent && totalTasks > 0 ? (
+                <>
+                  {' · '}
+                  <span className="tabular-nums">{totalCompletedTasks}&nbsp;из&nbsp;{totalTasks}</span>
+                </>
+              ) : null}
             </p>
           )}
         </div>
@@ -216,7 +254,31 @@ function SectionsView({ subjectSlug, examSlug }: { subjectSlug: string; examSlug
         </Link>
       </div>
 
+      {isPhysicsTopicsAvailable && (
+        <div className="inline-flex rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80">
+          <button
+            type="button"
+            onClick={() => navigate(`/catalog?subject=${subjectSlug}&exam=${examSlug}`)}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              activeView === 'exam' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Задания ЕГЭ
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/catalog?subject=${subjectSlug}&exam=${examSlug}&view=physics-topics`)}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              activeView === 'physics-topics' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Физические темы
+          </button>
+        </div>
+      )}
+
       {/* Filter input */}
+      {activeView === 'exam' && (
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
@@ -237,12 +299,13 @@ function SectionsView({ subjectSlug, examSlug }: { subjectSlug: string; examSlug
           </button>
         )}
       </div>
+      )}
 
       {/* Content */}
-      {loading ? (
+      {sectionLoading ? (
         <SectionsSkeleton />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => setRetryKey(k => k + 1)} />
+      ) : sectionError ? (
+        <ErrorState message={sectionError} onRetry={() => setRetryKey(k => k + 1)} />
       ) : filtered.length === 0 && q ? (
         <EmptyState message={`По запросу «${filter}» разделов не найдено`} />
       ) : sorted.length === 0 ? (
@@ -252,8 +315,8 @@ function SectionsView({ subjectSlug, examSlug }: { subjectSlug: string; examSlug
           {filtered.map(s => (
             <SectionCard
               key={s.id}
-              section={s}
-              to={sectionLink(s)}
+              section={s as CatalogSection}
+              to={activeView === 'physics-topics' ? aiSectionLink(s as CatalogSection) : sectionLink(s as CatalogSection)}
               isStudent={isStudent}
             />
           ))}

@@ -57,11 +57,19 @@ export const ROLE_LABELS: Record<string, string> = {
 export const SUBJECT_LABELS: Record<string, string> = {
   physics: 'Физика',
   math: 'Математика',
+  algebra: 'Алгебра',
+  geometry: 'Геометрия',
+  probability_statistics: 'Вероятность и статистика',
 }
 
 export const EXAM_LABELS: Record<string, string> = {
   ege: 'ЕГЭ',
   oge: 'ОГЭ',
+  grade_7: '7 класс',
+  grade_8: '8 класс',
+  grade_9: '9 класс',
+  grade_10: '10 класс',
+  grade_11: '11 класс',
 }
 
 export const HW_STATUS_LABELS: Record<string, string> = {

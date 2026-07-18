@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS } from '@/hooks/useCatalog'
+import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
 
 const STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
@@ -11,21 +11,28 @@ export function CatalogSectionPage() {
   const [searchParams] = useSearchParams()
   const subjectSlug = searchParams.get('subject') ?? 'math'
   const examSlug    = searchParams.get('exam')    ?? 'ege'
+  const view = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'
+  const subjectLabel = subjectSlug === 'physics' ? 'Физика' : 'Математика'
+  const examLabel = examSlug === 'ege' ? 'ЕГЭ' : 'ОГЭ'
   const [retryKey, setRetryKey] = useState(0)
-  const { topics, loading, error } = useCatalogTopics(sectionId, retryKey)
-  const { sections } = useCatalogSections(undefined, undefined, retryKey)
+  const { sections: aiSections, loading: aiSectionsLoading, error: aiSectionsError } = useCatalogPhysicsTopicSections(subjectSlug === 'physics' && examSlug === 'ege' && view === 'physics-topics', retryKey)
+  const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
+  const { topics, loading, error } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
   const { profile } = useAuthStore()
-  const section = sections.find(s => s.id === sectionId)
-  const backSlug = section ? (SUBJECT_SLUGS[section.subject] ?? subjectSlug) : subjectSlug
+  const aiSection = aiSections.find(s => s.id === sectionId)
+  const examSection = sections.find(s => s.id === sectionId)
+  const section = view === 'physics-topics' ? aiSection : examSection
+  const backSlug = examSection ? (SUBJECT_SLUGS[examSection.subject] ?? subjectSlug) : subjectSlug
 
   const [query, setQuery] = useState('')
-  const { results: searchResults, loading: searchLoading, error: searchError } = useCatalogSearch(query, sectionId)
+  const searchEnabled = view === 'exam'
+  const { results: searchResults, loading: searchLoading, error: searchError } = useCatalogSearch(query, sectionId, searchEnabled)
   const isSearching = query.trim().length >= 2
 
   const isStaff = profile && STAFF_ROLES.has(profile.role)
 
-  if (loading) return <SectionSkeleton />
-  if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
+  if (loading || (view === 'physics-topics' && aiSectionsLoading)) return <SectionSkeleton />
+  if (error || (view === 'physics-topics' && aiSectionsError)) return <ErrorState message={(error || aiSectionsError)!} onRetry={() => setRetryKey(key => key + 1)} />
 
   // Build topic tree (root topics + their children)
   const roots = topics.filter(t => t.parent_id === null || !topics.find(p => p.id === t.parent_id))
@@ -35,7 +42,7 @@ export function CatalogSectionPage() {
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-gray-500">
-        <Link to={`/catalog?subject=${backSlug}&exam=${examSlug}`} className="flex items-center gap-1 hover:text-primary-600">
+        <Link to={`/catalog?subject=${backSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`} className="flex items-center gap-1 hover:text-primary-600">
           <ChevronLeft className="w-4 h-4" />
           Каталог
         </Link>
@@ -44,11 +51,28 @@ export function CatalogSectionPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">{section?.title ?? 'Раздел'}</h1>
-        <p className="text-gray-500 text-sm mt-1">Выберите тему</p>
+        <p className="text-gray-500 text-sm mt-1">{view === 'physics-topics' ? 'Выберите физическую тему' : 'Выберите тему'}</p>
       </div>
 
+      {subjectSlug === 'physics' && examSlug === 'ege' && (
+        <div className="inline-flex rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80">
+          <Link
+            to={`/catalog?subject=${subjectSlug}&exam=${examSlug}`}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${view === 'exam' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Задания ЕГЭ
+          </Link>
+          <Link
+            to={`/catalog?subject=${subjectSlug}&exam=${examSlug}&view=physics-topics`}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${view === 'physics-topics' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Физические темы
+          </Link>
+        </div>
+      )}
+
       {/* Search */}
-      <div className="relative">
+      {view === 'exam' && <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
           type="text"
@@ -66,10 +90,10 @@ export function CatalogSectionPage() {
             <X className="w-4 h-4" />
           </button>
         )}
-      </div>
+      </div>}
 
       {/* Search results */}
-      {isSearching ? (
+      {view === 'exam' && isSearching ? (
         <div className="space-y-2">
           {searchLoading && (
             <div className="text-sm text-gray-400 text-center py-4">Поиск…</div>
@@ -119,6 +143,7 @@ export function CatalogSectionPage() {
               sectionId={sectionId!}
               subjectSlug={backSlug}
               examSlug={examSlug}
+              view={view}
             />
           ))}
         </div>
@@ -133,12 +158,14 @@ function TopicGroup({
   sectionId,
   subjectSlug,
   examSlug,
+  view,
 }: {
   root: ReturnType<typeof import('@/hooks/useCatalog').useCatalogTopics>['topics'][0]
   children: ReturnType<typeof import('@/hooks/useCatalog').useCatalogTopics>['topics']
   sectionId: string
   subjectSlug: string
   examSlug: string
+  view: CatalogViewMode
 }) {
   const hasChildren = children.length > 0
   const allTopics = hasChildren ? children : [root]
@@ -157,7 +184,7 @@ function TopicGroup({
         return (
           <Link
             key={topic.id}
-            to={`/catalog/${sectionId}/topic/${topic.id}?subject=${subjectSlug}&exam=${examSlug}`}
+            to={`/catalog/${sectionId}/topic/${topic.id}?subject=${subjectSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`}
             className={`group flex items-center justify-between gap-3 px-4 py-3 hover:bg-primary-50 transition-colors ${
               idx < allTopics.length - 1 ? 'border-b border-gray-100' : ''
             }`}
