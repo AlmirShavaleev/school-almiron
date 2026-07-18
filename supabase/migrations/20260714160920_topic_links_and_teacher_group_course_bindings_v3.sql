@@ -10,7 +10,7 @@ returns table (
   metadata jsonb
 )
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
@@ -31,6 +31,12 @@ begin
   end if;
   if v_url = '' then
     raise exception 'LINK_URL_REQUIRED';
+  end if;
+  if length(v_title) > 200 then
+    raise exception 'LINK_TITLE_TOO_LONG';
+  end if;
+  if length(v_url) > 2048 then
+    raise exception 'LINK_URL_TOO_LONG';
   end if;
   if v_url ~* '^//' then
     raise exception 'LINK_PROTOCOL_REQUIRED';
@@ -74,7 +80,7 @@ begin
     raise exception 'STAFF_ONLY';
   end if;
 
-  object_path := format('topics/%s/links/%s', p_topic_id, gen_random_uuid());
+  object_path := format('topics/%s/links/%s.link', p_topic_id, gen_random_uuid());
   normalized_title := v_title;
   normalized_url := v_url;
   metadata := jsonb_build_object(
@@ -87,6 +93,7 @@ begin
 end;
 $$;
 
+revoke all on function public.prepare_topic_link_material(uuid, text, text) from public, anon;
 grant execute on function public.prepare_topic_link_material(uuid, text, text) to authenticated;
 
 create policy "groups_select_teacher_owned_for_update" on public.groups

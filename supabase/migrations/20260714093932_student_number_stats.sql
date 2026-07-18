@@ -42,7 +42,8 @@ $$;
 create or replace function public.get_student_number_stats(
   p_student_id uuid,
   p_subject text,
-  p_exam_type text
+  p_exam_type text,
+  p_exam_part integer default 1
 )
 returns table (
   section_id uuid,
@@ -102,6 +103,7 @@ begin
         from public.catalog_tasks ct
         where ct.id = tvi.task_id
           and ct.exam_part is not null
+          and ct.exam_part = p_exam_part
           and not (
             tv.source_type = 'student_self_built'
             and (ct.exam_part = 2 or ct.exam_part is null)
@@ -138,7 +140,7 @@ create index if not exists tvsa_student_submitted_variant_idx
 revoke all on function public.auth_can_view_student_number_stats(uuid) from public, anon;
 grant execute on function public.auth_can_view_student_number_stats(uuid) to authenticated;
 
-revoke all on function public.get_student_number_stats(uuid, text, text) from public, anon;
-grant execute on function public.get_student_number_stats(uuid, text, text) to authenticated;
+revoke all on function public.get_student_number_stats(uuid, text, text, integer) from public, anon;
+grant execute on function public.get_student_number_stats(uuid, text, text, integer) to authenticated;
 
 commit;

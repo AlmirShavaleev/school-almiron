@@ -13,13 +13,17 @@ demo-data scripts to a live database.
 
 1. Prepare SQL intentionally and review it before applying.
 2. Apply migrations through the approved MCP/review-gated process, not through `supabase db push`.
-3. Save the SQL in the repository using the exact same migration version that is written into remote `schema_migrations`.
+3. Save the SQL in the repository using the exact same migration version and migration name that are written into remote `schema_migrations`.
 4. Keep active CLI-visible migrations only in `supabase/migrations/`.
 5. Keep historical or ambiguous files in `supabase/migrations/_legacy/` until their versions are fully reconciled.
 
 ## Naming rule
 
-The filename must begin with the exact migration version used in the database.
+The filename must match `schema_migrations` exactly: `<version>_<name>.sql`.
+
+The version is assigned at apply time through the approved MCP workflow. Create
+the repository file only after the migration has been applied, then copy the
+exact `version` and `name` from remote `schema_migrations`.
 
 Examples:
 - `20260718111619_fix_homeworks_topic_id_fk_restrict.sql`
