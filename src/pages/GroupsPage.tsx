@@ -24,7 +24,7 @@ interface GroupForModal {
 export function GroupsPage() {
   const navigate  = useNavigate()
   const profile   = useAuthStore(s => s.profile)
-  const canManage = !!profile?.role && ['admin', 'owner'].includes(profile.role)
+  const canManage = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const canEditOwn = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
 
   const { groups, loading, reload } = useGroups()
@@ -266,7 +266,7 @@ export function GroupsPage() {
                       >
                         <Pencil size={13} />
                       </button>
-                      {canManage && (
+                      {canEditOwn && (
                         <button
                           onClick={() => openEdit(group, 'students')}
                           className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors"

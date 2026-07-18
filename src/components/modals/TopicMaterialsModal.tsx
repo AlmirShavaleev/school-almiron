@@ -437,6 +437,8 @@ interface Props {
   topicId: string | null
   topicTitle: string
   moduleTitle: string
+  availableFrom?: string | null
+  onSaveTopicMeta?: (values: { available_from: string | null }) => Promise<void>
   lessonDate?: string | null
   hwDeadline?: string | null
   hwStatus?: string | null
@@ -444,15 +446,32 @@ interface Props {
   hwMax?: number | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, lessonDate, hwDeadline, hwStatus, hwScore, hwMax }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, onSaveTopicMeta, lessonDate, hwDeadline, hwStatus, hwScore, hwMax }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
+  const [dateVal, setDateVal] = useState(availableFrom || '')
+  const [savingDate, setSavingDate] = useState(false)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
+
+  useEffect(() => {
+    setDateVal(availableFrom || '')
+  }, [availableFrom, open, topicId])
 
   if (!open || !topicId) return null
 
   const activeSection = SECTIONS.find(s => s.type === activeTab)!
+
+  async function handleDateBlur() {
+    if (!canEdit || !onSaveTopicMeta) return
+    if (dateVal === (availableFrom || '')) return
+    setSavingDate(true)
+    try {
+      await onSaveTopicMeta({ available_from: dateVal || null })
+    } finally {
+      setSavingDate(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -482,6 +501,24 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 </div>
                 <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm">
                   {Object.values(materials).filter(m => m?.content || m?.file_url || m?.link_url || m?.link_meta).length} / {SECTIONS.length} заполнено
+                </div>
+              </div>
+
+              <div className="mb-3 rounded-2xl border border-gray-200 bg-white px-3 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Открывается</span>
+                  <Calendar size={14} className="text-primary-400 shrink-0" />
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={dateVal}
+                      onChange={e => setDateVal(e.target.value)}
+                      onBlur={() => { void handleDateBlur() }}
+                      className="h-10 w-[180px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    {savingDate && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
+                  </div>
+                  <span className="text-xs text-gray-400">Пусто = сразу доступна</span>
                 </div>
               </div>
 

@@ -140,7 +140,7 @@ export function useLessonTemplate(templateId: string | null) {
           })
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить шаблон')
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить урок')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -208,7 +208,7 @@ export function useLessonTemplate(templateId: string | null) {
     file: File,
     onProgress?: (percent: number) => void,
   ) => {
-    if (!templateId) throw new Error('Шаблон не выбран')
+    if (!templateId) throw new Error('Урок не выбран')
     if (!profile?.id) throw new Error('Профиль не загружен')
     const ext = file.name.split('.').pop()
     const path = `owner/${profile.id}/templates/${templateId}/${type}/${Date.now()}.${ext}`

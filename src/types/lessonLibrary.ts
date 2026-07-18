@@ -1,5 +1,5 @@
-export type LessonTemplateSubject = 'physics' | 'math'
-export type LessonTemplateExam = 'ege' | 'oge' | null
+export type LessonTemplateSubject = 'physics' | 'math' | 'algebra' | 'geometry' | 'probability_statistics'
+export type LessonTemplateExam = 'ege' | 'oge' | 'grade_7' | 'grade_8' | 'grade_9' | 'grade_10' | 'grade_11' | null
 export type LessonTemplateMaterialType = 'notes' | 'theory' | 'tasks' | 'homework' | 'solution' | 'video' | 'link'
 
 export interface LessonTemplate {

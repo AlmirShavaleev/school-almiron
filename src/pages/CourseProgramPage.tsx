@@ -1,9 +1,27 @@
-import { useState, useEffect, useRef } from 'react'
+import { Fragment, useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragOverEvent,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, GraduationCap, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw, Users,
+  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw, Users, GripVertical,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -13,42 +31,101 @@ import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
 function InlineEdit({
-  value, onSave, className = '', placeholder = 'Введите название',
-}: { value: string; onSave: (v: string) => Promise<void>; className?: string; placeholder?: string }) {
-  const [editing, setEditing] = useState(false)
+  value, onSave, className = '', placeholder = 'Введите название', startEditing = false, onCancelCreate,
+}: { value: string; onSave: (v: string) => Promise<void>; className?: string; placeholder?: string; startEditing?: boolean; onCancelCreate?: () => Promise<void> | void }) {
+  const [editing, setEditing] = useState(startEditing)
   const [text, setText]       = useState(value)
   const [saving, setSaving]   = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+  useEffect(() => { setText(value) }, [value])
+  useEffect(() => { if (startEditing) { setText(value); setEditing(true) } }, [startEditing, value])
+
+  async function cancelEdit() {
+    if (startEditing && onCancelCreate && text.trim() === value.trim()) {
+      await onCancelCreate()
+      return
+    }
+    setEditing(false)
+    setText(value)
+  }
 
   async function commit() {
-    if (!text.trim() || text === value) { setEditing(false); return }
+    if (!text.trim()) {
+      if (startEditing && onCancelCreate) {
+        await onCancelCreate()
+        return
+      }
+      setEditing(false)
+      setText(value)
+      return
+    }
+    if (text === value) { setEditing(false); return }
     setSaving(true)
-    try { await onSave(text.trim()); setEditing(false) } finally { setSaving(false) }
+    try {
+      await onSave(text.trim())
+      toast.success('Название сохранено')
+      setEditing(false)
+    } catch (e) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code ?? '') : ''
+      if (code === '42501' || code.startsWith('PGRST')) {
+        toast.error('Недостаточно прав для сохранения названия')
+      } else {
+        console.error('Failed to save title', e)
+        toast.error('Не удалось сохранить название')
+      }
+      setText(value)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1">
-        <input
-          ref={inputRef}
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-          className={cn('border border-primary-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400', className)}
-        />
-        <button onClick={commit} disabled={saving} className="text-green-500 hover:text-green-700">
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-red-500">
-          <X size={14} />
-        </button>
+      <div ref={containerRef} className="flex min-w-0 flex-col items-start gap-1">
+        <div className="flex w-full min-w-0 items-center gap-2">
+          <input
+            ref={inputRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onBlur={e => {
+              const nextTarget = e.relatedTarget as HTMLElement | null
+              if (nextTarget && containerRef.current?.contains(nextTarget)) return
+              void commit()
+            }}
+            onKeyDown={e => { if (e.key === 'Enter') void commit(); if (e.key === 'Escape') void cancelEdit() }}
+            className={cn('min-w-0 flex-1 border border-primary-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400', className)}
+          />
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { void commit() }}
+              disabled={saving}
+              title="Сохранить (Enter)"
+              className="rounded-md p-1 text-green-500 hover:bg-green-50 hover:text-green-700"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            </button>
+            <button
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { void cancelEdit() }}
+              title="Отменить (Esc)"
+              className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        <span className="text-[11px] text-gray-400">Enter — сохранить, Esc — отменить</span>
       </div>
     )
   }
@@ -67,15 +144,181 @@ function InlineEdit({
 // ─── Topic row ───────────────────────────────────────────────────────────────
 interface HwStat { submitted: number; pending: number; revision: number; total: number }
 
+type CourseLayoutRow = { module_id: string; topic_ids: string[] }
+const SELECT_PAGE_SIZE = 1000
+
+function formatHomeworkCountMessage(count: number) {
+  return `В теме ${count} домаш${count % 10 === 1 && count % 100 !== 11 ? 'нее задание' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'них задания' : 'них заданий'}. Сначала удалите или перенесите ${count % 10 === 1 && count % 100 !== 11 ? 'его' : 'их'}.`
+}
+
+async function fetchAllPagedRows<T>(buildQuery: (from: number, to: number) => Promise<{ data: T[] | null; error: { message?: string } | null }>): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += SELECT_PAGE_SIZE) {
+    const { data, error } = await buildQuery(from, from + SELECT_PAGE_SIZE - 1)
+    if (error) throw new Error(error.message ?? 'Не удалось загрузить данные')
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < SELECT_PAGE_SIZE) break
+  }
+  return rows
+}
+
+function withNormalizedTopicLayout(modules: Module[]): Module[] {
+  return modules.map((module, moduleIndex) => ({
+    ...module,
+    order_index: module.order_index ?? moduleIndex,
+    topics: module.topics.map((topic, topicIndex) => ({
+      ...topic,
+      module_id: module.id,
+      order_index: topicIndex,
+    })),
+  }))
+}
+
+function buildTopicLayout(modules: Module[]): CourseLayoutRow[] {
+  return modules.map(module => ({
+    module_id: module.id,
+    topic_ids: module.topics.map(topic => topic.id),
+  }))
+}
+
+function getModuleDisplayNumber(moduleIndex: number) {
+  return moduleIndex + 1
+}
+
+function getTopicDisplayNumber(moduleIndex: number, topicIndex: number) {
+  return `${getModuleDisplayNumber(moduleIndex)}.${topicIndex + 1}`
+}
+
+function moveTopicBetweenModules(
+  modules: Module[],
+  activeTopicId: string,
+  overId: string,
+  opts?: {
+    placeAfter?: boolean
+  }
+): Module[] {
+  const sourceModule = modules.find(module => module.topics.some(topic => topic.id === activeTopicId))
+  if (!sourceModule) return modules
+
+  const targetModule = modules.find(module =>
+    module.id === overId || module.topics.some(topic => topic.id === overId),
+  )
+  if (!targetModule) return modules
+
+  const sourceIndex = sourceModule.topics.findIndex(topic => topic.id === activeTopicId)
+  if (sourceIndex < 0) return modules
+
+  const draggedTopic = sourceModule.topics[sourceIndex]
+
+  return withNormalizedTopicLayout(modules.map(module => {
+    if (module.id === sourceModule.id && module.id === targetModule.id) {
+      const nextTopics = [...module.topics]
+      nextTopics.splice(sourceIndex, 1)
+      const targetIndex = overId === module.id
+        ? nextTopics.length
+        : nextTopics.findIndex(topic => topic.id === overId)
+      const insertIndex = targetIndex < 0
+        ? nextTopics.length
+        : opts?.placeAfter
+          ? targetIndex + 1
+          : targetIndex
+      const boundedInsertIndex = Math.max(0, Math.min(insertIndex, nextTopics.length))
+      const currentIndex = nextTopics.findIndex(topic => topic.id === activeTopicId)
+      if (currentIndex === boundedInsertIndex) return module
+      nextTopics.splice(boundedInsertIndex, 0, { ...draggedTopic, module_id: module.id })
+      return { ...module, topics: nextTopics }
+    }
+
+    if (module.id === sourceModule.id) {
+      return {
+        ...module,
+        topics: module.topics.filter(topic => topic.id !== activeTopicId),
+      }
+    }
+
+    if (module.id === targetModule.id) {
+      const nextTopics = [...module.topics]
+      const targetIndex = overId === module.id
+        ? nextTopics.length
+        : nextTopics.findIndex(topic => topic.id === overId)
+      const insertIndex = targetIndex < 0
+        ? nextTopics.length
+        : opts?.placeAfter
+          ? targetIndex + 1
+          : targetIndex
+      const boundedInsertIndex = Math.max(0, Math.min(insertIndex, nextTopics.length))
+      nextTopics.splice(boundedInsertIndex, 0, { ...draggedTopic, module_id: module.id })
+      return { ...module, topics: nextTopics }
+    }
+
+    return module
+  }))
+}
+
+function findTopicPosition(modules: Module[], topicId: string) {
+  for (let moduleIndex = 0; moduleIndex < modules.length; moduleIndex += 1) {
+    const topicIndex = modules[moduleIndex].topics.findIndex(topic => topic.id === topicId)
+    if (topicIndex >= 0) return { moduleIndex, topicIndex }
+  }
+  return null
+}
+
+function findModuleByOverId(modules: Module[], overId: string) {
+  return modules.find(module =>
+    module.id === overId || module.topics.some(topic => topic.id === overId),
+  ) ?? null
+}
+
+function shouldPlaceAfter(overId: string, event: Pick<DragOverEvent, 'active' | 'over'> | Pick<DragEndEvent, 'active' | 'over'>) {
+  if (!event.over || overId === String(event.active.id)) return false
+  const overType = event.over.data.current?.type
+  if (overType !== 'topic') return false
+
+  const translatedTop = event.active.rect.current.translated?.top
+  const translatedHeight = event.active.rect.current.translated?.height
+  if (translatedTop == null || translatedHeight == null) return false
+
+  const activeMiddleY = translatedTop + translatedHeight / 2
+  const overMiddleY = event.over.rect.top + event.over.rect.height / 2
+  return activeMiddleY > overMiddleY
+}
+
+function sameLayout(a: Module[], b: Module[]) {
+  const aLayout = buildTopicLayout(a)
+  const bLayout = buildTopicLayout(b)
+  return JSON.stringify(aLayout) === JSON.stringify(bLayout)
+}
+
+function TopicDragOverlay({ topic, topicNumber }: { topic: Topic; topicNumber: string }) {
+  return (
+    <div className="w-[min(720px,calc(100vw-2rem))] rounded-2xl border border-primary-200 bg-white px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl border border-primary-200 bg-primary-50 text-primary-500">
+          <GripVertical size={15} />
+        </div>
+        <div className="h-2.5 w-2.5 rounded-full bg-primary-400 shrink-0" />
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <span className="pt-1 text-sm font-medium tabular-nums text-gray-400 shrink-0">{topicNumber}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold text-gray-900">{topic.title}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
 function HwTable({
-  modules, hwStats, hwByTopic, groupId,
+  modules, hwStats, hwByTopic, groupId, onOpenTopic,
 }: {
   modules: Module[]
   hwStats: Record<string, HwStat>
   hwByTopic: Record<string, { id: string; title: string; max_score: number }>
   groupId: string | null
+  onOpenTopic: (topic: Topic, moduleTitle: string) => void
 }) {
   const navigate = useNavigate()
 
@@ -118,10 +361,11 @@ function HwTable({
           </tr>
         </thead>
         <tbody>
-          {modules.map(mod => (
-            <>
+          {modules.map((mod, moduleIndex) => (
+            <Fragment key={mod.id}>
               <tr key={`mod-${mod.id}`} className="bg-primary-50/50">
                 <td colSpan={6} className="px-4 py-2">
+                  <span className="mr-2 text-xs font-medium tabular-nums text-primary-400">{getModuleDisplayNumber(moduleIndex)}.</span>
                   <span className="text-xs font-semibold text-primary-700 uppercase tracking-wide">{mod.title}</span>
                   <span className="text-xs text-primary-400 ml-2">{mod.topics.length} тем</span>
                 </td>
@@ -145,22 +389,31 @@ function HwTable({
                   >
                     {/* Clickable topic name */}
                     <td className="px-4 py-3">
-                      {hw ? (
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => navigate(`/homeworks/${hw.id}/review/${groupId}`)}
+                          onClick={() => onOpenTopic(topic, mod.title)}
                           className="group flex items-center gap-1.5 text-left hover:text-primary-600 transition-colors"
                         >
                           <ChevronRight size={13} className="text-gray-300 group-hover:text-primary-400 shrink-0 transition-colors" />
+                          <span className="text-xs font-medium tabular-nums text-gray-400 shrink-0">{getTopicDisplayNumber(moduleIndex, ti)}</span>
                           <span className="text-sm text-gray-800 group-hover:text-primary-600 group-hover:underline underline-offset-2">
                             {topic.title}
                           </span>
                         </button>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <ChevronRight size={13} className="text-gray-200 shrink-0" />
-                          <span className="text-sm text-gray-400">{topic.title}</span>
-                        </div>
-                      )}
+                        {topic.available_from && topic.available_from > new Date().toLocaleDateString('en-CA') && (
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                            Откроется позже
+                          </span>
+                        )}
+                        {hw && (
+                          <button
+                            onClick={() => navigate(`/homeworks/${hw.id}/review/${groupId}`)}
+                            className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
+                          >
+                            ДЗ
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Сдали (проверенные) */}
@@ -222,7 +475,7 @@ function HwTable({
                   </tr>
                 )
               })}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -232,151 +485,223 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, onSave, onDelete, onOpenMaterials, onDeleteHw, onRestoreHw, hwId, archivedHwId, moduleTitle,
+  topic, topicNumber, onSave, onDelete, onOpenMaterials, onDeleteHw, onRestoreHw, hwId, archivedHwId, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
 }: {
   topic: Topic
+  topicNumber: string
   moduleTitle: string
   hwId?: string
   archivedHwId?: string
+  homeworkCount?: number
+  startEditing?: boolean
+  onCancelCreate?: () => Promise<void>
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDeleteHw?: (hwId: string) => Promise<void>
   onRestoreHw?: (hwId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  dragHandle?: {
+    listeners: ReturnType<typeof useSortable>['listeners']
+    attributes: ReturnType<typeof useSortable>['attributes']
+    disabled?: boolean
+  }
+  isDragging?: boolean
 }) {
   const [deleting, setDeleting] = useState(false)
-  const [dateVal,  setDateVal]  = useState(topic.available_from || '')
-  const [savingDate, setSavingDate] = useState(false)
+  const deleteBlockedMessage = homeworkCount && homeworkCount > 0 ? formatHomeworkCountMessage(homeworkCount) : null
 
-  async function handleDateBlur() {
-    if (dateVal === (topic.available_from || '')) return
-    setSavingDate(true)
-    try { await onSave(topic.id, { available_from: dateVal || null }) } finally { setSavingDate(false) }
-  }
-
-  const hwState = hwId
-    ? {
-        label: 'ДЗ добавлено',
-        tone: 'bg-amber-100 text-amber-800 border-amber-200',
-      }
-    : archivedHwId
-      ? {
-          label: 'ДЗ в архиве',
-          tone: 'bg-slate-100 text-slate-700 border-slate-200',
-        }
-      : {
-          label: 'ДЗ не добавлено',
-          tone: 'bg-white/80 text-white border-white/20',
-        }
+  const statusItems = [
+    {
+      label: 'Материалы',
+      active: true,
+      tone: 'bg-blue-50 text-blue-700 border-blue-200',
+    },
+    {
+      label: 'ДЗ',
+      active: !!hwId || !!archivedHwId,
+      tone: hwId
+        ? 'bg-amber-50 text-amber-700 border-amber-200'
+        : archivedHwId
+          ? 'bg-slate-100 text-slate-700 border-slate-200'
+          : 'bg-gray-50 text-gray-500 border-gray-200',
+    },
+    {
+      label: 'Видео',
+      active: true,
+      tone: 'bg-violet-50 text-violet-700 border-violet-200',
+    },
+  ]
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 h-2.5 w-2.5 rounded-full bg-primary-400 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Тема</div>
-              <InlineEdit value={topic.title} onSave={v => onSave(topic.id, { title: v })} className="w-full text-base font-semibold text-gray-900" />
+    <div className={cn(
+      'rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]',
+      isDragging && 'opacity-70 ring-2 ring-primary-200'
+    )}>
+      <div className="space-y-2">
+        <div className="flex items-start gap-3 overflow-visible">
+          {dragHandle && (
+            <button
+              type="button"
+              {...dragHandle.attributes}
+              {...dragHandle.listeners}
+              disabled={dragHandle.disabled}
+              className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Перетащить тему"
+            >
+              <GripVertical size={15} />
+            </button>
+          )}
+          <div className="h-2.5 w-2.5 rounded-full bg-primary-400 shrink-0" />
+          <div className="flex min-w-0 flex-1 items-start gap-2 overflow-visible">
+            <span className="pt-1 text-sm font-medium tabular-nums text-gray-400 shrink-0">{topicNumber}</span>
+            <div className="min-w-0 flex-1 overflow-visible">
+            <InlineEdit
+              value={topic.title}
+              onSave={v => onSave(topic.id, { title: v })}
+              className="w-full text-base font-semibold text-gray-900"
+              startEditing={startEditing}
+              onCancelCreate={onCancelCreate}
+            />
             </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl bg-gray-50 p-3">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Баллы за тему</div>
-              <div className="flex min-h-11 items-center gap-2 text-sm text-gray-600">
-                <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-gray-500 shadow-sm">Макс.</span>
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {statusItems.map(item => (
+              <span
+                key={item.label}
+                className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap', item.tone)}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', item.active ? 'bg-current opacity-80' : 'bg-current opacity-40')} />
+                {item.label} {item.active ? '✓' : '—'}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center xl:justify-end">
+            <div className="flex min-h-10 items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Баллы</span>
+              <span className="rounded-lg bg-white px-2 py-1 text-[11px] font-medium text-gray-500 shadow-sm">Макс.</span>
                 <input
                   type="number"
                   defaultValue={topic.max_score}
                   min={1}
                   max={100}
                   onBlur={e => onSave(topic.id, { max_score: parseInt(e.target.value) || 100 })}
-                  className="h-11 w-24 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  className="h-9 w-20 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
-                <span className="text-sm font-medium text-gray-500">баллов</span>
-              </div>
+                <span className="text-[11px] font-medium text-gray-500">б.</span>
             </div>
 
-            <div className="rounded-2xl bg-gray-50 p-3">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Доступ ученикам</div>
-              <div className="relative flex min-h-11 items-center gap-2">
-                <Calendar size={15} className="text-primary-400 shrink-0" />
-                <input
-                  type="date"
-                  value={dateVal}
-                  onChange={e => setDateVal(e.target.value)}
-                  onBlur={handleDateBlur}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
-                {savingDate && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
-              </div>
-              <p className="mt-2 text-xs text-gray-400">Оставьте пустым, если тема должна быть доступна сразу.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full lg:w-[320px] shrink-0 space-y-3">
-          <div className="overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.24),_transparent_35%),linear-gradient(135deg,#1d4ed8_0%,#2563eb_32%,#0f172a_100%)] p-[1px] shadow-[0_20px_50px_rgba(37,99,235,0.22)]">
-            <div className="rounded-[27px] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.06))] p-4 text-white backdrop-blur-sm">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-100/90">Редактор темы</div>
-              <p className="mb-4 text-sm leading-relaxed text-blue-50/90">
-                Откройте единый редактор, чтобы управлять материалами, ссылками, видео и домашним заданием без лишних кнопок.
-              </p>
-
-              <div className="mb-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">
-                  Материалы
-                </span>
-                <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold', hwState.tone)}>
-                  {hwState.label}
-                </span>
-                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">
-                  Видео и ссылки
-                </span>
-              </div>
-
-            <button
-              onClick={() => onOpenMaterials(topic, moduleTitle)}
-              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-[0_12px_30px_rgba(255,255,255,0.22)] transition-transform transition-colors hover:bg-blue-50 active:scale-[0.96]"
-            >
-              <FileText size={16} />
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <Button variant="secondary" onClick={() => onOpenMaterials(topic, moduleTitle)} className="min-h-9 px-3 text-sm">
+              <FileText size={15} />
               Редактировать тему
-              </button>
+            </Button>
+            <button
+              onClick={async () => { setDeleting(true); try { await onDelete(topic.id) } finally { setDeleting(false) } }}
+              disabled={deleting || !!deleteBlockedMessage}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:opacity-60"
+              title={deleteBlockedMessage || 'Удалить тему'}
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+            </button>
             </div>
           </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-3">
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Что внутри</div>
-            <div className="text-sm leading-relaxed text-gray-600">
-              Один вход вместо нескольких кнопок. Внутри уже доступны материалы темы и действия по домашнему заданию.
-            </div>
-          </div>
-
-          <button
-            onClick={async () => { setDeleting(true); try { await onDelete(topic.id) } finally { setDeleting(false) } }}
-            disabled={deleting}
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition-transform transition-colors hover:bg-red-100 active:scale-[0.96] disabled:opacity-60"
-          >
-            {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-            Удалить тему
-          </button>
         </div>
       </div>
     </div>
   )
 }
 
+function SortableTopicRow({
+  topic,
+  topicNumber,
+  moduleTitle,
+  hwId,
+  archivedHwId,
+  homeworkCount,
+  startEditing,
+  onCancelCreate,
+  onSave,
+  onDelete,
+  onDeleteHw,
+  onRestoreHw,
+  onOpenMaterials,
+  isReordering,
+}: {
+  topic: Topic
+  topicNumber: string
+  moduleTitle: string
+  hwId?: string
+  archivedHwId?: string
+  homeworkCount?: number
+  startEditing?: boolean
+  onCancelCreate?: () => Promise<void>
+  onSave: (id: string, v: Partial<Topic>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  onDeleteHw?: (hwId: string) => Promise<void>
+  onRestoreHw?: (hwId: string) => Promise<void>
+  onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  isReordering: boolean
+}) {
+  const sortable = useSortable({
+    id: topic.id,
+    data: {
+      type: 'topic',
+      moduleId: topic.module_id,
+      topicId: topic.id,
+    },
+    disabled: isReordering,
+  })
+
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }}
+    >
+      <TopicRowEdit
+        topic={topic}
+        topicNumber={topicNumber}
+        moduleTitle={moduleTitle}
+        hwId={hwId}
+        archivedHwId={archivedHwId}
+        homeworkCount={homeworkCount}
+        startEditing={startEditing}
+        onCancelCreate={onCancelCreate}
+        onSave={onSave}
+        onDelete={onDelete}
+        onDeleteHw={onDeleteHw}
+        onRestoreHw={onRestoreHw}
+        onOpenMaterials={onOpenMaterials}
+        dragHandle={{
+          listeners: sortable.listeners,
+          attributes: sortable.attributes,
+          disabled: isReordering,
+        }}
+        isDragging={sortable.isDragging}
+      />
+    </div>
+  )
+}
+
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic,
+  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
 }: {
   module: Module
+  moduleNumber: number
   canEdit: boolean
   editMode: boolean
   hwStats: Record<string, HwStat>
   hwByTopic: Record<string, { id: string; title: string; max_score: number }>
   archivedHwByTopic: Record<string, { id: string; title: string; max_score: number }>
+  homeworkCountsByTopic: Record<string, number>
+  creatingTopicId: string | null
+  onCancelCreateTopic: (topicId: string) => Promise<void>
+  startEditingModule: boolean
+  onCancelCreateModule: (moduleId: string) => Promise<void>
   onSaveModule: (id: string, title: string) => Promise<void>
   onDeleteModule: (id: string) => Promise<void>
   onSaveTopic: (id: string, v: Partial<Topic>) => Promise<void>
@@ -385,10 +710,16 @@ function ModuleCard({
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
   onDeleteHw: (hwId: string) => Promise<void>
   onRestoreHw: (hwId: string) => Promise<void>
+  isReordering: boolean
 }) {
   const [open,     setOpen]     = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [adding,   setAdding]   = useState(false)
+  const { setNodeRef, isOver } = useDroppable({
+    id: module.id,
+    data: { type: 'module', moduleId: module.id },
+    disabled: isReordering,
+  })
 
   async function handleDelete() {
     if (!confirm(`Удалить модуль «${module.title}» и все его темы?`)) return
@@ -405,32 +736,37 @@ function ModuleCard({
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       {/* Module header */}
       <div className={cn(
-        'flex items-center gap-3 px-4 py-4 bg-gray-50 border-b border-gray-100',
+        'flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100',
         canEdit && 'cursor-default'
       )}>
-        <button onClick={() => setOpen(o => !o)} className="text-gray-400 hover:text-gray-600 shrink-0">
+        <button onClick={() => setOpen(o => !o)} className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-600 shrink-0">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <div className="flex-1 font-semibold text-gray-800 text-sm">
-          {canEdit ? (
-            <InlineEdit
-              value={module.title}
-              onSave={v => onSaveModule(module.id, v)}
-              className="font-semibold"
-            />
-          ) : (
-            module.title
-          )}
+        <div className="flex min-w-0 flex-1 items-start gap-2 overflow-visible">
+          <span className="pt-0.5 text-sm font-medium tabular-nums text-gray-400 shrink-0">{moduleNumber}.</span>
+          <div className="min-w-0 flex-1 overflow-visible">
+            {canEdit ? (
+              <InlineEdit
+                value={module.title}
+                onSave={v => onSaveModule(module.id, v)}
+                className="truncate font-semibold"
+                startEditing={startEditingModule}
+                onCancelCreate={() => onCancelCreateModule(module.id)}
+              />
+            ) : (
+              <span className="truncate font-semibold text-gray-800 text-sm">{module.title}</span>
+            )}
+          </div>
+          <Badge variant="default" className="text-[11px] tabular-nums">{module.topics.length} тем</Badge>
         </div>
-
-        <Badge variant="default" className="text-xs tabular-nums">{module.topics.length} тем</Badge>
 
         {canEdit && (
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="text-gray-300 hover:text-red-500 transition-colors ml-1"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white hover:text-red-500 ml-1"
+            title="Удалить модуль"
           >
             {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
           </button>
@@ -439,30 +775,42 @@ function ModuleCard({
 
       {/* Topics */}
       {open && (
-        <div className="space-y-3 bg-white p-3">
+        <div
+          ref={setNodeRef}
+          className={cn('space-y-3 bg-white p-3 transition-colors', isOver && 'bg-primary-50/40')}
+        >
           {module.topics.length === 0 && (
-            <div className="rounded-xl bg-gray-50 px-4 py-6 text-sm italic text-gray-400">Нет тем</div>
+            <div className={cn('rounded-xl px-4 py-6 text-sm italic text-gray-400 border border-dashed', isOver ? 'border-primary-300 bg-primary-50 text-primary-500' : 'border-gray-200 bg-gray-50')}>
+              Перетащите тему сюда
+            </div>
           )}
-          {module.topics.map(t => (
-            <TopicRowEdit
-              key={t.id}
-              topic={t}
-              moduleTitle={module.title}
-              hwId={hwByTopic[t.id]?.id}
-              archivedHwId={archivedHwByTopic[t.id]?.id}
-              onSave={onSaveTopic}
-              onDelete={onDeleteTopic}
-              onDeleteHw={onDeleteHw}
-              onRestoreHw={onRestoreHw}
-              onOpenMaterials={onOpenMaterials}
-            />
-          ))}
+          <SortableContext items={module.topics.map(topic => topic.id)} strategy={verticalListSortingStrategy}>
+            {module.topics.map((t, topicIndex) => (
+              <SortableTopicRow
+                key={t.id}
+                topic={t}
+                topicNumber={getTopicDisplayNumber(moduleNumber - 1, topicIndex)}
+                moduleTitle={module.title}
+                hwId={hwByTopic[t.id]?.id}
+                archivedHwId={archivedHwByTopic[t.id]?.id}
+                homeworkCount={homeworkCountsByTopic[t.id] ?? 0}
+                startEditing={creatingTopicId === t.id}
+                onCancelCreate={() => onCancelCreateTopic(t.id)}
+                onSave={onSaveTopic}
+                onDelete={onDeleteTopic}
+                onDeleteHw={onDeleteHw}
+                onRestoreHw={onRestoreHw}
+                onOpenMaterials={onOpenMaterials}
+                isReordering={isReordering}
+              />
+            ))}
+          </SortableContext>
 
           {canEdit && (
             <div className="px-3 py-2">
               <button
                 onClick={handleAddTopic}
-                disabled={adding}
+                disabled={adding || isReordering}
                 className="flex items-center gap-1.5 text-xs text-primary-500 hover:text-primary-700 transition-colors"
               >
                 {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
@@ -685,35 +1033,68 @@ const MAT_COLS = [
 ]
 
 function MaterialsMatrix({
-  courseId, modules, onOpenTopic,
+  courseId, modules, onOpenTopic, onGoToProgram,
 }: {
   courseId: string
   modules: Module[]
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
+  onGoToProgram: () => void
 }) {
   const [matMap, setMatMap] = useState<Record<string, Set<string>>>({})
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!courseId || !modules.length) return
-    const topicIds = modules.flatMap(m => m.topics.map(t => t.id))
-    if (!topicIds.length) { setLoading(false); return }
+    let cancelled = false
 
-    supabase
-      .from('topic_materials')
-      .select('topic_id, type, file_url, link_url')
-      .in('topic_id', topicIds)
-      .then(({ data }) => {
+    if (!courseId || !modules.length) {
+      setMatMap({})
+      setError(null)
+      setLoading(false)
+      return
+    }
+    const topicIds = modules.flatMap(m => m.topics.map(t => t.id))
+    if (!topicIds.length) {
+      setMatMap({})
+      setError(null)
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    ;(async () => {
+      try {
+        const rows = await fetchAllPagedRows<{ topic_id: string; type: string; file_url: string | null; link_url: string | null }>(async (from, to) =>
+          await supabase
+            .from('topic_materials')
+            .select('topic_id, type, file_url, link_url')
+            .in('topic_id', topicIds)
+            .range(from, to)
+        )
         const map: Record<string, Set<string>> = {}
-        for (const row of data || []) {
+        for (const row of rows) {
           // Only count if actually has file or link
           if (!row.file_url && !row.link_url) continue
           if (!map[row.topic_id]) map[row.topic_id] = new Set()
           map[row.topic_id].add(row.type)
         }
+        if (cancelled) return
         setMatMap(map)
-        setLoading(false)
-      })
+      } catch (e) {
+        if (cancelled) return
+        console.error('Failed to load topic materials', e)
+        setMatMap({})
+        setError('Не удалось загрузить материалы курса')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [courseId, modules])
 
   const allTopics = modules.flatMap(m => m.topics.map(t => ({ topic: t, moduleTitle: m.title })))
@@ -721,6 +1102,7 @@ function MaterialsMatrix({
   const filledCells = allTopics.reduce((s, { topic }) =>
     s + MAT_COLS.filter(c => matMap[topic.id]?.has(c.type)).length, 0)
   const fillPct = totalCells > 0 ? Math.round(filledCells / totalCells * 100) : 0
+  const hasAnyMaterials = filledCells > 0
 
   if (loading) return (
     <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
@@ -728,8 +1110,33 @@ function MaterialsMatrix({
     </div>
   )
 
+  if (allTopics.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-8 text-center">
+        <p className="text-sm font-medium text-gray-700">Материалов пока нет</p>
+        <p className="mt-1 text-sm text-gray-400">Сначала добавьте в курс модули и темы, чтобы их можно было наполнить материалами.</p>
+        <Button className="mt-4" onClick={onGoToProgram}>
+          <Plus size={15} className="mr-1.5" />
+          Перейти к программе
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm font-medium text-red-700">{error}</p>
+        </div>
+      )}
+
+      {!error && !hasAnyMaterials && (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-sm text-gray-600">Материалов пока нет. Нажмите на строку темы, чтобы добавить конспект, теорию, видео или ссылку.</p>
+        </div>
+      )}
+
       {/* Summary bar */}
       <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
         <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -759,9 +1166,9 @@ function MaterialsMatrix({
           </thead>
           <tbody>
             {modules.map(mod => (
-              <>
+              <Fragment key={mod.id}>
                 {/* Module header row */}
-                <tr key={`mod-${mod.id}`} className="bg-primary-50/50">
+                <tr className="bg-primary-50/50">
                   <td colSpan={MAT_COLS.length + 1} className="px-4 py-2">
                     <span className="text-xs font-semibold text-primary-700 uppercase tracking-wide">{mod.title}</span>
                     <span className="text-xs text-primary-400 ml-2">
@@ -799,7 +1206,7 @@ function MaterialsMatrix({
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -811,8 +1218,9 @@ function MaterialsMatrix({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
-  const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
-  const isAdmin = !!profile?.role && ['admin', 'owner'].includes(profile.role)
+  const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
+  const isAdmin = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const {
     courses, loading,
@@ -832,11 +1240,18 @@ export function CourseProgramPage() {
   const [hwStats,       setHwStats]       = useState<Record<string, HwStat>>({})
   const [hwByTopic,         setHwByTopic]         = useState<Record<string, { id: string; title: string; max_score: number }>>({})
   const [archivedHwByTopic, setArchivedHwByTopic] = useState<Record<string, { id: string; title: string; max_score: number }>>({})
+  const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
+  const [statsError, setStatsError] = useState<string | null>(null)
   const [totalStudents,     setTotalStudents]      = useState(0)
   const [editMode,      setEditMode]      = useState(false)
   const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [showCopyTemplate, setShowCopyTemplate] = useState(false)
+  const [isReordering, setIsReordering] = useState(false)
+  const [creatingModuleId, setCreatingModuleId] = useState<string | null>(null)
+  const [creatingTopicId, setCreatingTopicId] = useState<string | null>(null)
+  const [activeDragTopicId, setActiveDragTopicId] = useState<string | null>(null)
+  const dragStartModulesRef = useRef<Module[] | null>(null)
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
@@ -887,62 +1302,86 @@ export function CourseProgramPage() {
   }, [selectedGroupId, modules])
 
   async function loadHwStats(mods: Module[], groupId: string | null) {
-    const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
-    if (!topicIds.length) {
-      setHwStats({}); setHwByTopic({}); setArchivedHwByTopic({}); setTotalStudents(0)
-      return
+    try {
+      setStatsError(null)
+      const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
+      if (!topicIds.length) {
+        setHwStats({}); setHwByTopic({}); setArchivedHwByTopic({}); setHomeworkCountsByTopic({}); setTotalStudents(0)
+        return
+      }
+
+      const [hws, archivedHws] = await Promise.all([
+        fetchAllPagedRows<{ id: string; topic_id: string; title: string; max_score: number }>(async (from, to) =>
+          await supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', false).range(from, to)
+        ),
+        fetchAllPagedRows<{ id: string; topic_id: string; title: string; max_score: number }>(async (from, to) =>
+          await supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', true).range(from, to)
+        ),
+      ])
+      const archivedByTopic: Record<string, { id: string; title: string; max_score: number }> = {}
+      for (const h of archivedHws) archivedByTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
+      setArchivedHwByTopic(archivedByTopic)
+
+      const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
+      for (const h of hws) byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
+      setHwByTopic(byTopic)
+
+      const countsByTopic: Record<string, number> = {}
+      for (const row of [...hws, ...archivedHws]) {
+        countsByTopic[row.topic_id] = (countsByTopic[row.topic_id] ?? 0) + 1
+      }
+      setHomeworkCountsByTopic(countsByTopic)
+
+      if (!groupId || !hws.length) {
+        setHwStats({}); setTotalStudents(0)
+        return
+      }
+
+      const hwIds = hws.map(h => h.id)
+      const gsRows = await fetchAllPagedRows<{ student_id: string }>(async (from, to) =>
+        await supabase
+          .from('group_students')
+          .select('student_id')
+          .eq('group_id', groupId)
+          .range(from, to)
+      )
+      const studentIds = gsRows.map(r => r.student_id)
+      const groupSize = studentIds.length
+      setTotalStudents(groupSize)
+
+      const subs = studentIds.length
+        ? await fetchAllPagedRows<{ homework_id: string; status: string }>(async (from, to) =>
+            await supabase
+              .from('homework_submissions')
+              .select('homework_id, status')
+              .in('homework_id', hwIds)
+              .in('student_id', studentIds)
+              .range(from, to)
+          )
+        : []
+
+      const hwTopic: Record<string, string> = {}
+      const stats: Record<string, HwStat> = {}
+      for (const h of hws) {
+        hwTopic[h.id] = h.topic_id
+        if (!stats[h.topic_id]) stats[h.topic_id] = { submitted: 0, pending: 0, revision: 0, total: groupSize || 0 }
+      }
+
+      for (const s of subs) {
+        const tid = hwTopic[s.homework_id]
+        if (!tid) continue
+        stats[tid].submitted++
+        if (s.status === 'submitted') stats[tid].pending++
+        if (s.status === 'revision')  stats[tid].revision++
+      }
+
+      setHwStats(stats)
+    } catch (e) {
+      console.error('Failed to load course homework stats', e)
+      setHwStats({})
+      setTotalStudents(0)
+      setStatsError('Не удалось загрузить сводку по домашним заданиям')
     }
-
-    // ДЗ курса (на уровне темы — общие для всех групп курса)
-    // Загружаем НЕЗАВИСИМО от выбранной группы — нужны для кнопок в TopicRowEdit
-    const [{ data: hws }, { data: archivedHws }] = await Promise.all([
-      supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', false),
-      supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', true),
-    ])
-    const archivedByTopic: Record<string, { id: string; title: string; max_score: number }> = {}
-    for (const h of (archivedHws || []) as any[]) archivedByTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
-    setArchivedHwByTopic(archivedByTopic)
-
-    const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
-    for (const h of (hws || []) as any[]) byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
-    setHwByTopic(byTopic)
-
-    if (!groupId || !hws?.length) {
-      setHwStats({}); setTotalStudents(0)
-      return
-    }
-
-    // Ученики выбранной группы
-    const hwIds = (hws as any[]).map((h: any) => h.id)
-    const { data: gsRows } = await supabase
-      .from('group_students').select('student_id').eq('group_id', groupId)
-    const studentIds = (gsRows || []).map((r: any) => r.student_id)
-    const groupSize = studentIds.length
-    setTotalStudents(groupSize)
-
-    // Сдачи — только учеников этой группы
-    const { data: subs } = studentIds.length
-      ? await supabase
-          .from('homework_submissions').select('homework_id, status')
-          .in('homework_id', hwIds).in('student_id', studentIds)
-      : { data: [] as any[] }
-
-    const hwTopic: Record<string, string> = {}
-    const stats: Record<string, HwStat> = {}
-    for (const h of hws as any[]) {
-      hwTopic[h.id] = h.topic_id
-      if (!stats[h.topic_id]) stats[h.topic_id] = { submitted: 0, pending: 0, revision: 0, total: groupSize || 0 }
-    }
-
-    for (const s of (subs || []) as any[]) {
-      const tid = hwTopic[s.homework_id]
-      if (!tid) continue
-      stats[tid].submitted++
-      if (s.status === 'submitted') stats[tid].pending++
-      if (s.status === 'revision')  stats[tid].revision++
-    }
-
-    setHwStats(stats)
   }
 
   async function refreshModules() {
@@ -960,25 +1399,44 @@ export function CourseProgramPage() {
     if (!selectedId) return
     setAddingMod(true)
     try {
-      const id = await createModule(selectedId, 'Новый модуль', modules.length)
+      const moduleId = await createModule(selectedId, 'Новый модуль')
       await refreshModules()
+      setCreatingModuleId(moduleId)
+      setEditMode(true)
+    } catch (e) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code ?? '') : ''
+      if (code === '42501' || code.startsWith('PGRST')) {
+        toast.error('Недостаточно прав для создания модуля')
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Не удалось создать модуль')
+      }
     } finally {
       setAddingMod(false)
     }
   }
 
+  async function handleCreateFirstModuleForTemplateCopy() {
+    if (!selectedId) throw new Error('Курс не выбран')
+    const moduleId = await createModule(selectedId, 'Модуль 1')
+    await refreshModules()
+    return moduleId
+  }
+
   async function handleSaveModule(id: string, title: string) {
     await saveModule(id, title)
+    if (creatingModuleId === id) setCreatingModuleId(null)
     await refreshModules()
   }
 
   async function handleDeleteModule(id: string) {
     await deleteModule(id)
+    if (creatingModuleId === id) setCreatingModuleId(null)
     setModules(prev => prev.filter(m => m.id !== id))
   }
 
   async function handleSaveTopic(id: string, values: Partial<Topic>) {
     await saveTopic(id, values)
+    if (creatingTopicId === id && values.title?.trim()) setCreatingTopicId(null)
     setModules(prev => prev.map(m => ({
       ...m,
       topics: m.topics.map(t => t.id === id ? { ...t, ...values } : t),
@@ -986,11 +1444,35 @@ export function CourseProgramPage() {
   }
 
   async function handleDeleteTopic(id: string) {
-    await deleteTopic(id)
+    const visibleHomeworkCount = homeworkCountsByTopic[id] ?? 0
+    if (visibleHomeworkCount > 0) {
+      toast.error(formatHomeworkCountMessage(visibleHomeworkCount))
+      return
+    }
+
+    try {
+      const deletedCount = await deleteTopic(id)
+      if (deletedCount === 0) {
+        toast.error('Недостаточно прав для удаления темы')
+        return
+      }
+    } catch (e) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code ?? '') : ''
+      if (code === '23503') {
+        toast.error('В теме есть домашние задания, удаление невозможно')
+      } else if (code === '42501' || code.startsWith('PGRST')) {
+        toast.error('Недостаточно прав')
+      } else {
+        console.error('Failed to delete topic', e)
+        toast.error('Не удалось удалить тему')
+      }
+      return
+    }
     setModules(prev => prev.map(m => ({
       ...m,
       topics: m.topics.filter(t => t.id !== id),
     })))
+    if (creatingTopicId === id) setCreatingTopicId(null)
   }
 
   async function handleDeleteHw(hwId: string) {
@@ -1023,9 +1505,109 @@ export function CourseProgramPage() {
   }
 
   async function handleAddTopic(moduleId: string) {
-    const mod = modules.find(m => m.id === moduleId)
-    await createTopic(moduleId, 'Новая тема', mod?.topics.length || 0)
-    await refreshModules()
+    try {
+      const topicId = await createTopic(moduleId, 'Новая тема')
+      await refreshModules()
+      setCreatingTopicId(topicId)
+    } catch (e) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code ?? '') : ''
+      if (code === '42501' || code.startsWith('PGRST')) {
+        toast.error('Недостаточно прав для создания темы')
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Не удалось создать тему')
+      }
+    }
+  }
+
+  async function handleCancelCreateModule(id: string) {
+    await deleteModule(id)
+    setCreatingModuleId(null)
+    setModules(prev => prev.filter(m => m.id !== id))
+  }
+
+  async function handleCancelCreateTopic(id: string) {
+    await deleteTopic(id)
+    setCreatingTopicId(null)
+  }
+
+  function handleTopicDragStart(event: DragStartEvent) {
+    setActiveDragTopicId(String(event.active.id))
+    dragStartModulesRef.current = modules
+  }
+
+  function handleTopicDragOver(event: DragOverEvent) {
+    if (!activeDragTopicId || !event.over) return
+
+    const activeTopicId = String(event.active.id)
+    const overId = String(event.over.id)
+    if (activeTopicId === overId) return
+
+    setModules(prev => {
+      const sourcePos = findTopicPosition(prev, activeTopicId)
+      const targetModule = findModuleByOverId(prev, overId)
+      if (!sourcePos || !targetModule) return prev
+
+      const sourceModuleId = prev[sourcePos.moduleIndex].id
+      if (sourceModuleId === targetModule.id) return prev
+
+      const next = moveTopicBetweenModules(prev, activeTopicId, overId, {
+        placeAfter: shouldPlaceAfter(overId, event),
+      })
+      return sameLayout(prev, next) ? prev : next
+    })
+  }
+
+  async function handleTopicDragEnd(event: DragEndEvent) {
+    const startModules = dragStartModulesRef.current ?? modules
+    dragStartModulesRef.current = null
+    setActiveDragTopicId(null)
+
+    if (!selectedId || isReordering) return
+    const { active, over } = event
+    if (!over) {
+      setModules(startModules)
+      return
+    }
+
+    const activeTopicId = String(active.id)
+    const overId = String(over.id)
+    if (activeTopicId === overId) {
+      setModules(startModules)
+      return
+    }
+
+    const nextModules = moveTopicBetweenModules(modules, activeTopicId, overId, {
+      placeAfter: shouldPlaceAfter(overId, event),
+    })
+
+    if (sameLayout(modules, nextModules)) {
+      if (!sameLayout(startModules, modules)) setModules(startModules)
+      return
+    }
+
+    if (sameLayout(startModules, nextModules)) {
+      setModules(nextModules)
+      return
+    }
+
+    setModules(nextModules)
+    setIsReordering(true)
+
+    try {
+      const layout = buildTopicLayout(nextModules)
+      const { error } = await (supabase as any).rpc('reorder_course_topics', {
+        p_course_id: selectedId,
+        p_layout: layout,
+      })
+      if (error) throw new Error(error.message)
+      toast.success('Порядок тем обновлён')
+      await refreshModules()
+    } catch (e) {
+      setModules(startModules)
+      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить порядок тем')
+    } finally {
+      setIsReordering(false)
+    }
   }
 
   // ── New course form state
@@ -1232,8 +1814,6 @@ export function CourseProgramPage() {
                   const totalRevision  = Object.values(hwStats).reduce((s, h) => s + h.revision, 0)
                   const totalExpected  = Object.values(hwStats).reduce((s, h) => s + h.total, 0)
                   const totalNotDone   = Math.max(0, totalExpected - totalSubmitted)
-                  const totalTopics    = modules.reduce((s, m) => s + m.topics.length, 0)
-                  const topicsWithHw   = Object.keys(hwStats).length
 
                   return (
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -1260,6 +1840,28 @@ export function CourseProgramPage() {
                     </div>
                   )
                 })()}
+
+                {!loadingMods && modules.length > 0 && tab === 'program' && !editMode && (
+                  <>
+                    {statsError ? (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-sm font-medium text-red-700">{statsError}</p>
+                      </div>
+                    ) : !selectedGroupId ? (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <p className="text-sm text-gray-600">У курса пока нет групп. Сводка по домашним заданиям показана с нулевыми значениями.</p>
+                      </div>
+                    ) : Object.keys(hwByTopic).length === 0 ? (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <p className="text-sm text-gray-600">Домашние задания ещё не созданы. Темы уже видны ниже, а сводка пока показывает нули.</p>
+                      </div>
+                    ) : totalStudents === 0 ? (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <p className="text-sm text-gray-600">В выбранной группе пока нет учеников. Сводка по домашним заданиям показана с нулевыми значениями.</p>
+                      </div>
+                    ) : null}
+                  </>
+                )}
 
                 {/* ── Edit toggle ── */}
                 {canEdit && !loadingMods && modules.length > 0 && (
@@ -1298,40 +1900,78 @@ export function CourseProgramPage() {
                     </button>
                   </div>
                 ) : modules.length === 0 ? (
-                  <div className="text-center text-gray-400 py-12">
-                    <BookOpen size={32} className="mx-auto mb-3 opacity-30" />
-                    <p>Программа пока пуста</p>
-                    {canEdit && <p className="text-xs mt-1">Добавьте первый модуль</p>}
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
+                    <BookOpen size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
+                    <p className="text-sm font-medium text-gray-700">В курсе пока нет модулей</p>
+                    {canEdit ? (
+                      <>
+                        <p className="mt-1 text-sm text-gray-400">Добавьте первый модуль, чтобы начать собирать программу курса.</p>
+                        <Button className="mt-4" onClick={handleAddModule} loading={addingMod}>
+                          <Plus size={15} className="mr-1.5" />
+                          Добавить модуль
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-400">Обратитесь к владельцу курса или администратору, чтобы заполнить программу.</p>
+                    )}
                   </div>
                 ) : editMode ? (
                   <>
                     <div className="hidden sm:flex items-center gap-3 px-3 text-xs text-gray-400 font-medium uppercase tracking-wide">
                       <div className="flex-1">Тема</div>
                       <div className="w-20 text-center">Баллы</div>
-                      <div className="w-36 text-center">Открывается</div>
                       <div className="w-10" />
                     </div>
-                    <div className="space-y-3">
-                      {modules.map(mod => (
-                        <ModuleCard
-                          key={mod.id}
-                          module={mod}
-                          canEdit={canEdit}
-                          editMode={editMode}
-                          hwStats={hwStats}
-                          hwByTopic={hwByTopic}
-                          archivedHwByTopic={archivedHwByTopic}
-                          onSaveModule={handleSaveModule}
-                          onDeleteModule={handleDeleteModule}
-                          onSaveTopic={handleSaveTopic}
-                          onDeleteTopic={handleDeleteTopic}
-                          onAddTopic={handleAddTopic}
-                          onOpenMaterials={openMaterials}
-                          onDeleteHw={handleDeleteHw}
-                          onRestoreHw={handleRestoreHw}
-                        />
-                      ))}
-                    </div>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCorners}
+                      onDragStart={handleTopicDragStart}
+                      onDragOver={handleTopicDragOver}
+                      onDragEnd={handleTopicDragEnd}
+                    >
+                      <div className="space-y-3">
+                        {modules.map((mod, moduleIndex) => (
+                          <ModuleCard
+                            key={mod.id}
+                            module={mod}
+                            moduleNumber={getModuleDisplayNumber(moduleIndex)}
+                            canEdit={canEdit}
+                            editMode={editMode}
+                            hwStats={hwStats}
+                            hwByTopic={hwByTopic}
+                            archivedHwByTopic={archivedHwByTopic}
+                            homeworkCountsByTopic={homeworkCountsByTopic}
+                            creatingTopicId={creatingTopicId}
+                            onCancelCreateTopic={handleCancelCreateTopic}
+                            startEditingModule={creatingModuleId === mod.id}
+                            onCancelCreateModule={handleCancelCreateModule}
+                            onSaveModule={handleSaveModule}
+                            onDeleteModule={handleDeleteModule}
+                            onSaveTopic={handleSaveTopic}
+                            onDeleteTopic={handleDeleteTopic}
+                            onAddTopic={handleAddTopic}
+                            onOpenMaterials={openMaterials}
+                            onDeleteHw={handleDeleteHw}
+                            onRestoreHw={handleRestoreHw}
+                            isReordering={isReordering}
+                          />
+                        ))}
+                      </div>
+                      <DragOverlay>
+                        {activeDragTopicId ? (() => {
+                          const activePos = findTopicPosition(modules, activeDragTopicId)
+                          if (!activePos) return null
+                          const activeModule = modules[activePos.moduleIndex]
+                          const activeTopic = activeModule.topics[activePos.topicIndex]
+                          return (
+                            <TopicDragOverlay
+                              topic={activeTopic}
+                              topicNumber={getTopicDisplayNumber(activePos.moduleIndex, activePos.topicIndex)}
+                            />
+                          )
+                        })() : null}
+                      </DragOverlay>
+                    </DndContext>
                     <Button variant="secondary" size="sm" onClick={handleAddModule} loading={addingMod}>
                       <Plus size={15} className="mr-1.5" />Добавить модуль
                     </Button>
@@ -1342,6 +1982,7 @@ export function CourseProgramPage() {
                     hwStats={hwStats}
                     hwByTopic={hwByTopic}
                     groupId={selectedGroupId}
+                    onOpenTopic={openMaterials}
                   />
                 )}
               </div>
@@ -1353,6 +1994,7 @@ export function CourseProgramPage() {
                 courseId={selectedCourse.id}
                 modules={modules}
                 onOpenTopic={(topic, moduleTitle) => setMatTopic({ topic, moduleTitle })}
+                onGoToProgram={() => setTab('program')}
               />
             )}
 
@@ -1374,6 +2016,12 @@ export function CourseProgramPage() {
       topicId={matTopic?.topic.id ?? null}
       topicTitle={matTopic?.topic.title ?? ''}
       moduleTitle={matTopic?.moduleTitle ?? ''}
+      availableFrom={matTopic?.topic.available_from ?? null}
+      onSaveTopicMeta={async values => {
+        if (!matTopic?.topic.id) return
+        await handleSaveTopic(matTopic.topic.id, values)
+        setMatTopic(prev => prev ? { ...prev, topic: { ...prev.topic, ...values } } : prev)
+      }}
     />
 
     {/* ДЗ создаётся только здесь — в Course Builder, привязано к теме курса */}
@@ -1397,6 +2045,7 @@ export function CourseProgramPage() {
       groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
       modules={modules}
       defaultModuleId={modules[0]?.id ?? null}
+      onCreateModule={handleCreateFirstModuleForTemplateCopy}
       onClose={() => setShowCopyTemplate(false)}
       onCopied={() => {
         setShowCopyTemplate(false)

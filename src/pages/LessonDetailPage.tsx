@@ -141,6 +141,7 @@ export function LessonDetailPage() {
   const [savingAtt,     setSavingAtt]     = useState<Set<string>>(new Set())
   const [homeworks,     setHomeworks]     = useState<LessonHomework[]>([])
   const [materials,     setMaterials]     = useState<TopicMaterial[]>([])
+  const [materialsError, setMaterialsError] = useState<string | null>(null)
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
   const [hwTick,        setHwTick]        = useState(0)
@@ -198,6 +199,7 @@ export function LessonDetailPage() {
     return () => { cancelled = true }
 
     async function load() {
+      setMaterialsError(null)
       // Round 1: lesson + attendance + homeworks (parallel)
       const [lRes, aRes, hRes] = await Promise.all([
         supabase.from('lessons')
@@ -285,6 +287,18 @@ export function LessonDetailPage() {
 
       const [matsRes, gsRes] = await Promise.all(round2)
       if (cancelled) return
+
+      if (matsRes.error) {
+        const matsCode = typeof matsRes.error === 'object' && matsRes.error && 'code' in matsRes.error
+          ? String((matsRes.error as { code?: unknown }).code ?? '')
+          : ''
+        if (matsCode === '42501' || matsCode.startsWith('PGRST')) {
+          setMaterialsError('Нет доступа к материалам этого урока')
+        } else {
+          console.error('Failed to load topic materials for lesson', matsRes.error)
+          setMaterialsError('Нет доступа к материалам этого урока')
+        }
+      }
 
       const mats: TopicMaterial[] = (matsRes.data || []).map((m: any) => ({
         id: m.id, type: m.type,
@@ -937,6 +951,8 @@ export function LessonDetailPage() {
             </CardHeader>
             {!lesson.topic ? (
               <p className="text-sm text-gray-400 py-4 text-center">Тема не привязана</p>
+            ) : materialsError ? (
+              <p className="text-sm text-amber-700 py-4 text-center">{materialsError}</p>
             ) : materials.length === 0 ? (
               <p className="text-sm text-gray-400 py-4 text-center">Материалов нет</p>
             ) : (

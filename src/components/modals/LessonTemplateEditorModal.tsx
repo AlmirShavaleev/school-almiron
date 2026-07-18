@@ -3,14 +3,14 @@ import { BookOpen, Check, ClipboardList, Link as LinkIcon, Loader2, Trash2, Uplo
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
-import { useCatalogSections, useCatalogTopics, useCatalogTasks, useCatalogTasksBatch, EXAM_FROM_SLUG, SUBJECT_FROM_SLUG, type CatalogTopic } from '@/hooks/useCatalog'
+import { useCatalogSections, useCatalogTopics, useCatalogTasks, useCatalogTasksBatch, EXAM_FROM_SLUG, SUBJECT_FROM_SLUG } from '@/hooks/useCatalog'
 import { useLessonTemplate } from '@/hooks/useLessonLibrary'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
-import type { LessonTemplate, LessonTemplateMaterialType } from '@/types/lessonLibrary'
+import type { LessonTemplate, LessonTemplateExam, LessonTemplateMaterialType, LessonTemplateSubject } from '@/types/lessonLibrary'
 
 const SECTIONS: Array<{
   type: LessonTemplateMaterialType
@@ -44,45 +44,20 @@ export function LessonTemplateEditorModal({
 }) {
   const { data, loading, error, saveTemplate, materialsByType, saveMaterial, uploadMaterialFile, createLinkMaterial, deleteMaterial, replaceTasks } = useLessonTemplate(open ? template?.id ?? null : null)
   const [title, setTitle] = useState('')
-  const [subject, setSubject] = useState<'physics' | 'math'>('physics')
-  const [examType, setExamType] = useState<'ege' | 'oge' | ''>('ege')
+  const [subject, setSubject] = useState<LessonTemplateSubject>('physics')
+  const [examType, setExamType] = useState<Exclude<LessonTemplateExam, null> | ''>('ege')
   const [description, setDescription] = useState('')
-  const [linkedTopicId, setLinkedTopicId] = useState<string>('')
-  const [linkedSectionId, setLinkedSectionId] = useState<string>('')
   const [savingMeta, setSavingMeta] = useState(false)
   const [activeSection, setActiveSection] = useState<LessonTemplateMaterialType>('notes')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const subjectLabel = SUBJECT_FROM_SLUG[subject] ?? 'Физика'
-  const examLabel = examType ? (EXAM_FROM_SLUG[examType] ?? 'ЕГЭ') : undefined
-  const { sections: topicSections, loading: sectionsLoading } = useCatalogSections(subjectLabel, examLabel)
-  const { topics: sectionTopics, loading: topicsLoading } = useCatalogTopics(linkedSectionId || undefined)
 
   useEffect(() => {
     setTitle(data?.title ?? '')
-    setSubject((data?.subject ?? 'physics') as 'physics' | 'math')
-    setExamType((data?.exam_type ?? 'ege') as 'ege' | 'oge')
-    setLinkedTopicId(data?.catalog_topic_id ?? '')
+    setSubject((data?.subject ?? 'physics') as LessonTemplateSubject)
+    setExamType((data?.exam_type ?? 'ege') as Exclude<LessonTemplateExam, null> | '')
     setDescription(data?.description ?? '')
-  }, [data?.catalog_topic_id, data?.description, data?.exam_type, data?.subject, data?.title])
-
-  useEffect(() => {
-    if (!topicSections.length) {
-      setLinkedSectionId('')
-      return
-    }
-    if (!linkedSectionId) {
-      setLinkedSectionId(topicSections[0].id)
-    }
-  }, [linkedSectionId, topicSections])
-
-  useEffect(() => {
-    if (!linkedTopicId) return
-    const existsInSection = sectionTopics.some(topic => topic.id === linkedTopicId)
-    if (!existsInSection && sectionTopics.length && !data?.catalog_topic) {
-      setLinkedTopicId(sectionTopics[0].id)
-    }
-  }, [data?.catalog_topic, linkedTopicId, sectionTopics])
+  }, [data?.description, data?.exam_type, data?.subject, data?.title])
 
   if (!open || !template) return null
 
@@ -93,14 +68,13 @@ export function LessonTemplateEditorModal({
         title: title.trim(),
         subject,
         exam_type: examType || null,
-        catalog_topic_id: linkedTopicId || null,
         description: description.trim() || null,
       })
       onSaved()
-      toast.success('Шаблон урока сохранён')
+      toast.success('Урок сохранён')
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить шаблон')
+      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить урок')
     } finally {
       setSavingMeta(false)
     }
@@ -113,9 +87,9 @@ export function LessonTemplateEditorModal({
       const { error: deleteError } = await (supabase as any).from('lesson_templates').delete().eq('id', data.id)
       if (deleteError) throw new Error(deleteError.message)
       await onDeleted(data.id)
-      toast.success('Шаблон урока удалён')
+      toast.success('Урок удалён')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось удалить шаблон')
+      toast.error(e instanceof Error ? e.message : 'Не удалось удалить урок')
     } finally {
       setDeleting(false)
     }
@@ -140,111 +114,32 @@ export function LessonTemplateEditorModal({
           </button>
         </div>
 
-        <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[320px_1fr]">
-          <aside className="overflow-y-auto border-b border-gray-100 bg-gray-50/80 p-5 lg:border-b-0 lg:border-r">
-            <div className="space-y-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Название</label>
-                <input value={title} onChange={e => setTitle(e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+        <div className="grid flex-1 min-h-0 grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="flex min-h-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
+            <div className="border-b border-gray-100 bg-gradient-to-b from-gray-50/70 to-white px-6 py-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Предмет</label>
-                  <select value={subject} onChange={e => setSubject(e.target.value as 'physics' | 'math')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                    <option value="physics">Физика</option>
-                    <option value="math">Математика</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Экзамен</label>
-                  <select value={examType} onChange={e => setExamType(e.target.value as 'ege' | 'oge' | '')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                    <option value="ege">ЕГЭ</option>
-                    <option value="oge">ОГЭ</option>
-                    <option value="">Без экзамена</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Описание</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
-              </div>
-              <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-3">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Тема каталога</div>
-                {data?.catalog_topic && (
-                  <div className="mb-3 rounded-xl bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
-                    Сейчас привязано: <span className="font-semibold text-gray-900">{data.catalog_topic.title}</span>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <select
-                    value={linkedSectionId}
-                    onChange={e => {
-                      setLinkedSectionId(e.target.value)
-                      setLinkedTopicId('')
-                    }}
-                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-                    disabled={sectionsLoading || topicSections.length === 0}
-                  >
-                    <option value="">{sectionsLoading ? 'Загрузка разделов…' : 'Выберите раздел'}</option>
-                    {topicSections.map(section => (
-                      <option key={section.id} value={section.id}>{section.title}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={linkedTopicId}
-                    onChange={e => setLinkedTopicId(e.target.value)}
-                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-                    disabled={topicsLoading || !linkedSectionId}
-                  >
-                    <option value="">{topicsLoading ? 'Загрузка тем…' : 'Без привязки к теме'}</option>
-                    {sectionTopics.map((topic: CatalogTopic) => (
-                      <option key={topic.id} value={topic.id}>{topic.title}</option>
-                    ))}
-                  </select>
-                  {linkedTopicId && (
-                    <button
-                      type="button"
-                      onClick={() => setLinkedTopicId('')}
-                      className="text-xs font-medium text-gray-500 hover:text-red-600"
-                    >
-                      Убрать привязку
-                    </button>
-                  )}
-                </div>
-              </div>
-              <Button onClick={handleSaveMeta} loading={savingMeta} className="w-full">Сохранить урок</Button>
-            </div>
-
-            <div className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-4">
-              <div className="text-sm font-semibold text-red-700">Удалить шаблон</div>
-              <p className="mt-1 text-xs leading-relaxed text-red-500">Удалится только шаблон библиотеки. Уже скопированные темы в группах останутся.</p>
-              <Button variant="danger" onClick={handleDeleteTemplate} loading={deleting} className="mt-3 w-full">Удалить шаблон</Button>
-            </div>
-          </aside>
-
-          <section className="flex min-h-0 flex-col">
-            <div className="border-b border-gray-100 px-6 py-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">Материалы урока</div>
-                  <div className="text-xs text-gray-500">Паттерн такой же, как у материалов темы, но bucket `lesson-library`.</div>
+                  <div className="text-base font-semibold text-gray-900">Материалы урока</div>
+                  <div className="mt-1 text-sm text-gray-500">Сначала выберите тип материала, потом заполните только нужный блок. Интерфейс работает как единый редактор урока, а не как длинная форма.</div>
                 </div>
                 <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-500">
                   {Object.values(materialsByType).filter(Boolean).length} / {SECTIONS.length} заполнено
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
                 {SECTIONS.map(section => (
                   <button
                     key={section.type}
                     onClick={() => setActiveSection(section.type)}
                     className={cn(
                       'rounded-2xl border px-3 py-3 text-left transition-all',
-                      activeSection === section.type ? 'border-primary-300 bg-primary-50 ring-2 ring-primary-100' : 'border-gray-200 bg-white hover:border-gray-300'
+                      activeSection === section.type
+                        ? 'border-primary-300 bg-primary-50 shadow-sm ring-2 ring-primary-100'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
                     )}
                   >
                     <div className="text-sm font-semibold text-gray-900">{section.label}</div>
-                    <div className="mt-1 text-[11px] text-gray-400">{materialsByType[section.type] ? 'Заполнено' : 'Пока пусто'}</div>
+                    <div className="mt-1 text-[11px] text-gray-400">{materialsByType[section.type] ? 'Уже заполнено' : 'Пока пусто'}</div>
                   </button>
                 ))}
               </div>
@@ -252,7 +147,7 @@ export function LessonTemplateEditorModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               {loading ? (
-                <div className="flex items-center justify-center py-20 text-gray-400"><Loader2 size={18} className="animate-spin" />Загрузка шаблона…</div>
+                <div className="flex items-center justify-center py-20 text-gray-400"><Loader2 size={18} className="animate-spin" />Загрузка урока…</div>
               ) : error ? (
                 <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-600">{error}</div>
               ) : data ? (
@@ -268,6 +163,67 @@ export function LessonTemplateEditorModal({
               ) : null}
             </div>
           </section>
+
+          <aside className="overflow-y-auto bg-gray-50/70 p-5">
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <div className="text-base font-semibold text-gray-900">Параметры урока</div>
+                  <div className="mt-1 text-sm text-gray-500">Здесь задаются базовые свойства урока. Эти поля сохраняются вместе с уроком.</div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Название</label>
+                    <input value={title} onChange={e => setTitle(e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Предмет</label>
+                      <select value={subject} onChange={e => setSubject(e.target.value as LessonTemplateSubject)} className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                        <option value="physics">Физика</option>
+                        <option value="math">Математика</option>
+                        <option value="algebra">Алгебра</option>
+                        <option value="geometry">Геометрия</option>
+                        <option value="probability_statistics">Вероятность и статистика</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Экзамен</label>
+                      <select value={examType} onChange={e => setExamType(e.target.value as Exclude<LessonTemplateExam, null> | '')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                        <option value="ege">ЕГЭ</option>
+                        <option value="oge">ОГЭ</option>
+                        <option value="grade_7">7 класс</option>
+                        <option value="grade_8">8 класс</option>
+                        <option value="grade_9">9 класс</option>
+                        <option value="grade_10">10 класс</option>
+                        <option value="grade_11">11 класс</option>
+                        <option value="">Без экзамена</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Описание</label>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} placeholder="Коротко опишите, что будет на уроке." className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="text-base font-semibold text-gray-900">Действия</div>
+                <div className="mt-1 text-sm text-gray-500">Когда всё готово, сохраните урок. Материалы сохраняются отдельно внутри выбранного блока.</div>
+                <Button onClick={handleSaveMeta} loading={savingMeta} className="mt-4 w-full">Сохранить урок</Button>
+              </div>
+
+              <div className="rounded-3xl border border-red-200 bg-red-50 p-5">
+                <div className="text-sm font-semibold text-red-700">Удалить урок</div>
+                <p className="mt-1 text-xs leading-relaxed text-red-500">Удалится только урок из библиотеки. Уже скопированные темы в группах останутся.</p>
+                <Button variant="danger" onClick={handleDeleteTemplate} loading={deleting} className="mt-3 w-full">Удалить урок</Button>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -282,7 +238,7 @@ export function LessonTemplateEditorModal({
             await replaceTasks(ids)
             setPickerOpen(false)
             onSaved()
-            toast.success('Задачи шаблона обновлены')
+            toast.success('Задачи урока обновлены')
           } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Не удалось сохранить задачи')
           }
@@ -514,8 +470,8 @@ function TemplateTaskPickerModal({
   onSave,
 }: {
   open: boolean
-  subject: 'physics' | 'math'
-  examType: 'ege' | 'oge' | null
+  subject: LessonTemplateSubject
+  examType: LessonTemplateExam
   selectedTaskIds: string[]
   onClose: () => void
   onSave: (ids: string[]) => Promise<void>
@@ -555,7 +511,7 @@ function TemplateTaskPickerModal({
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Прикрепить задачи</h3>
-            <p className="text-sm text-gray-500">Каталог фильтруется по предмету шаблона. Выбор сохраняется как `lesson_template_tasks`.</p>
+            <p className="text-sm text-gray-500">Каталог фильтруется по предмету урока. Выбор сохраняется как `lesson_template_tasks`.</p>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><X size={18} /></button>
         </div>
@@ -607,7 +563,7 @@ function TemplateTaskPickerModal({
           </div>
 
           <div className="overflow-y-auto border-l border-gray-100 bg-gray-50/70 p-4">
-            <div className="text-sm font-semibold text-gray-900">Корзина шаблона</div>
+            <div className="text-sm font-semibold text-gray-900">Корзина урока</div>
             <SelectedTasksList taskIds={picked} />
             <Button
               className="mt-4 w-full"

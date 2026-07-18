@@ -21,6 +21,7 @@ export interface Module {
 
 export interface Course {
   id: string
+  owner_id: string | null
   title: string
   subject: string
   exam_type: string
@@ -31,6 +32,12 @@ export interface Course {
   start_date: string | null
   end_date: string | null
   enrollment_open_until: string | null
+}
+
+function compareByOrderIndexThenId<T extends { order_index?: number | null; id: string }>(a: T, b: T) {
+  const orderDiff = (a.order_index ?? 0) - (b.order_index ?? 0)
+  if (orderDiff !== 0) return orderDiff
+  return a.id.localeCompare(b.id)
 }
 
 export function useCourseProgram() {
@@ -46,14 +53,7 @@ export function useCourseProgram() {
     async function load() {
       try {
         if (profile!.role === 'teacher') {
-          const { data: tc } = await supabase
-            .from('teachers').select('id').eq('profile_id', profile!.id).single()
-          if (!tc) return
-          const { data: gs } = await supabase
-            .from('groups').select('course_id').eq('teacher_id', tc.id)
-          const ids = [...new Set((gs || []).map((g: any) => g.course_id).filter(Boolean))]
-          if (!ids.length) { setCourses([]); return }
-          const { data } = await supabase.from('courses').select('*').in('id', ids).order('title')
+          const { data } = await supabase.from('courses').select('*').order('title')
           setCourses((data || []) as any)
         } else {
           const { data } = await supabase.from('courses').select('*').order('title')
@@ -76,15 +76,19 @@ export function useCourseProgram() {
     if (modsErr) throw new Error(modsErr.message)
     if (!mods?.length) return []
 
+    const sortedModules = [...mods].sort(compareByOrderIndexThenId)
+
     const { data: tops } = await supabase
       .from('topics')
       .select('*')
-      .in('module_id', mods.map(m => m.id))
+      .in('module_id', sortedModules.map(m => m.id))
       .order('order_index')
 
-    return mods.map(m => ({
+    const sortedTopics = [...(tops || [])].sort(compareByOrderIndexThenId)
+
+    return sortedModules.map(m => ({
       ...m,
-      topics: (tops || []).filter(t => t.module_id === m.id),
+      topics: sortedTopics.filter(t => t.module_id === m.id),
     }))
   }
 
@@ -94,7 +98,7 @@ export function useCourseProgram() {
     reload()
   }
 
-  async function createCourse(values: Omit<Course, 'id'>) {
+  async function createCourse(values: Omit<Course, 'id' | 'owner_id'>) {
     const { data, error } = await supabase.from('courses').insert(values as any).select('id').single()
     if (error) throw error
     reload()
@@ -106,11 +110,23 @@ export function useCourseProgram() {
     if (error) throw error
   }
 
-  async function createModule(courseId: string, title: string, orderIndex: number) {
+  async function createModule(courseId: string, title: string) {
+    const { data: lastModule, error: lastModuleError } = await supabase
+      .from('modules')
+      .select('order_index, id')
+      .eq('course_id', courseId)
+      .order('order_index', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (lastModuleError) throw lastModuleError
+
+    const nextOrderIndex = (lastModule?.order_index ?? -1) + 1
     const { data, error } = await supabase
-      .from('modules').insert({ course_id: courseId, title, order_index: orderIndex })
+      .from('modules').insert({ course_id: courseId, title, order_index: nextOrderIndex })
       .select('id').single()
     if (error) throw error
+    if (!data?.id) throw new Error('Недостаточно прав для создания модуля')
     return data!.id as string
   }
 
@@ -124,17 +140,30 @@ export function useCourseProgram() {
     if (error) throw error
   }
 
-  async function createTopic(moduleId: string, title: string, orderIndex: number) {
+  async function createTopic(moduleId: string, title: string) {
+    const { data: lastTopic, error: lastTopicError } = await supabase
+      .from('topics')
+      .select('order_index, id')
+      .eq('module_id', moduleId)
+      .order('order_index', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (lastTopicError) throw lastTopicError
+
+    const nextOrderIndex = (lastTopic?.order_index ?? -1) + 1
     const { data, error } = await supabase
-      .from('topics').insert({ module_id: moduleId, title, order_index: orderIndex, max_score: 100 })
+      .from('topics').insert({ module_id: moduleId, title, order_index: nextOrderIndex, max_score: 100 })
       .select('id').single()
     if (error) throw error
+    if (!data?.id) throw new Error('Недостаточно прав для создания темы')
     return data!.id as string
   }
 
   async function deleteTopic(id: string) {
-    const { error } = await supabase.from('topics').delete().eq('id', id)
+    const { data, error } = await supabase.from('topics').delete().eq('id', id).select('id')
     if (error) throw error
+    return (data || []).length
   }
 
   return {

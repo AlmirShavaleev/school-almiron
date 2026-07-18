@@ -470,7 +470,7 @@ function SubscriptionStatusBadge({ status }: { status: Subscription['status'] })
 function EnrolledCoursesSection({ studentId, currentRole }: { studentId: string; currentRole: string | undefined }) {
   const { courses, loading, unenroll, reload } = useStudentCourses(studentId)
   const [modalOpen, setModalOpen] = useState(false)
-  const canManage = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'curator'
+  const canManage = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'curator' || currentRole === 'teacher'
 
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
     active:    { label: 'Активен',  cls: 'bg-green-100 text-green-700' },

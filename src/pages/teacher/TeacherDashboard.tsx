@@ -66,6 +66,10 @@ export function TeacherDashboard() {
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <button onClick={() => navigate('/course-program')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+              <div className="text-xs text-slate-500">Курсы</div>
+              <div className="font-semibold text-graphite-950">Мои курсы</div>
+            </button>
             <button onClick={() => navigate('/inbox')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">Очередь</div>
               <div className="font-semibold text-graphite-950">{stats?.pending_reviews ?? 0}</div>
@@ -243,12 +247,20 @@ export function TeacherDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Мои группы</CardTitle>
-            <button
-              onClick={() => navigate('/groups')}
-              className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
-            >
-              Управление <ArrowRight size={12} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/course-program')}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
+              >
+                Мои курсы <ArrowRight size={12} />
+              </button>
+              <button
+                onClick={() => navigate('/groups')}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
+              >
+                Группы <ArrowRight size={12} />
+              </button>
+            </div>
           </CardHeader>
 
           {groups.length === 0 ? (

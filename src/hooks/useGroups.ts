@@ -32,11 +32,8 @@ export function useGroups() {
           setGroups(addCount(data))
 
         } else if (role === 'teacher') {
-          const { data: tc } = await supabase
-            .from('teachers').select('id').eq('profile_id', profile!.id).single()
-          if (!tc) return
           const { data } = await supabase
-            .from('groups').select(baseSelect).eq('teacher_id', tc.id).eq('is_active', true)
+            .from('groups').select(baseSelect).order('name')
           setGroups(addCount(data))
 
         } else if (role === 'curator') {

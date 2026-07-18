@@ -31,10 +31,10 @@ export function LessonLibraryPage() {
         exam_type: 'ege',
         description: null,
       })
-      toast.success('Шаблон урока создан')
+      toast.success('Урок создан')
       setOpeningTemplate(created)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось создать шаблон')
+      toast.error(e instanceof Error ? e.message : 'Не удалось создать урок')
     } finally {
       setCreating(false)
     }
@@ -47,16 +47,16 @@ export function LessonLibraryPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
               <LibraryBig size={14} />
-              Lesson Library
+              Библиотека уроков
             </div>
             <h1 className="mt-3 text-3xl font-bold text-gray-900">Библиотека уроков</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-500">
-              Личная библиотека teacher-шаблонов. Здесь редактируются тема, материалы bucket `lesson-library` и задачи каталога. В программу группы урок попадает только через copy-on-add.
+              Личная библиотека учителя. Здесь редактируются тема, материалы bucket `lesson-library` и задачи каталога. В программу группы урок попадает только через copy-on-add.
             </p>
           </div>
           <Button onClick={handleCreateTemplate} loading={creating}>
             <Plus size={16} />
-            Создать урок-шаблон
+            Создать урок
           </Button>
         </div>
 
@@ -83,7 +83,7 @@ export function LessonLibraryPage() {
           <div className="rounded-[32px] border border-dashed border-gray-300 bg-white/80 px-6 py-16 text-center shadow-sm">
             <BookOpen size={28} className="mx-auto text-gray-300" />
             <div className="mt-3 text-lg font-semibold text-gray-900">{templates.length === 0 ? 'Библиотека пока пуста' : 'Ничего не найдено'}</div>
-            <div className="mt-2 text-sm text-gray-500">{templates.length === 0 ? 'Создайте первый урок-шаблон и наполните его материалами.' : 'Попробуйте другой поисковый запрос.'}</div>
+            <div className="mt-2 text-sm text-gray-500">{templates.length === 0 ? 'Создайте первый урок и наполните его материалами.' : 'Попробуйте другой поисковый запрос.'}</div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
