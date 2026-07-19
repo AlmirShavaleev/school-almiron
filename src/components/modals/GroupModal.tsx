@@ -26,6 +26,7 @@ interface GroupData {
 
 interface SelectOption { id: string; label: string; sub?: string }
 interface StudentRow   { student_id: string; full_name: string; email: string; avatar_url: string | null }
+interface CurrentTeacherInfo { id: string; fullName: string | null }
 
 interface Props {
   open:         boolean
@@ -45,6 +46,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   const isEdit     = !!group?.id
   const [tab, setTab] = useState<'settings' | 'students'>('settings')
   const canManageStaff = profile?.role === 'admin' || profile?.role === 'owner'
+  const isTeacherOnly = profile?.role === 'teacher'
 
   // ── Form fields ──────────────────────────────────────────────────────────
   const [name,         setName]         = useState('')
@@ -63,6 +65,8 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   const [teachers, setTeachers] = useState<SelectOption[]>([])
   const [curators, setCurators] = useState<SelectOption[]>([])
   const [optsLoading, setOptsLoading] = useState(false)
+  const [currentTeacher, setCurrentTeacher] = useState<CurrentTeacherInfo | null>(null)
+  const [teacherLookupError, setTeacherLookupError] = useState<string | null>(null)
 
   // ── Students tab ─────────────────────────────────────────────────────────
   const [members,   setMembers]   = useState<StudentRow[]>([])
@@ -82,6 +86,8 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
     setTab(initialTab)
     setErrors({})
     setOptsLoading(true)
+    setTeacherLookupError(null)
+    setCurrentTeacher(null)
 
     // Fill form if editing
     if (group) {
@@ -101,18 +107,31 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
     // Load select options
     Promise.all([
       supabase.from('courses').select('id, title, subject, exam_type').order('title'),
+      isTeacherOnly
+        ? supabase.from('teachers').select('id, profiles(full_name)').eq('profile_id', profile?.id || '').maybeSingle()
+        : Promise.resolve({ data: null as any }),
       canManageStaff
         ? supabase.from('teachers').select('id, profiles(full_name, email)').eq('is_active', true).order('id')
         : Promise.resolve({ data: [] as any[] }),
       canManageStaff
         ? supabase.from('curators').select('id, profiles(full_name, email)').eq('is_active', true).order('id')
         : Promise.resolve({ data: [] as any[] }),
-    ]).then(([cRes, tRes, curRes]) => {
+    ]).then(([cRes, myTeacherRes, tRes, curRes]) => {
       setCourses((cRes.data || []).map((c: any) => ({
         id:    c.id,
         label: c.title,
         sub:   [SUBJECT_LABELS[c.subject] || c.subject, EXAM_LABELS[c.exam_type] || c.exam_type].filter(Boolean).join(' · '),
       })))
+      if (isTeacherOnly) {
+        const teacherRow = (myTeacherRes as any)?.data || null
+        if (teacherRow?.id) {
+          setCurrentTeacher({ id: teacherRow.id, fullName: teacherRow.profiles?.full_name || null })
+          if (!group) setTeacherId(teacherRow.id)
+        } else {
+          setTeacherLookupError('Не удалось определить вашу запись преподавателя. Создание группы временно недоступно.')
+          if (!group) setTeacherId('')
+        }
+      }
       setTeachers((tRes.data || []).map((t: any) => ({
         id:    t.id,
         label: t.profiles?.full_name || '—',
@@ -125,7 +144,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
       })))
       setOptsLoading(false)
     })
-  }, [open, group?.id, canManageStaff])
+  }, [open, group?.id, canManageStaff, isTeacherOnly, profile?.id])
 
   // ── Load members when students tab opens ─────────────────────────────────
 
@@ -198,14 +217,19 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   async function handleSave() {
     const errs: Record<string, string> = {}
     if (!name.trim()) errs.name = 'Введите название группы'
+    if (isTeacherOnly && !isEdit && !currentTeacher?.id) errs.teacher = teacherLookupError || 'Не удалось определить преподавателя группы'
+    if (isTeacherOnly && isEdit && !group?.teacher_id) errs.teacher = 'У этой группы не указан преподаватель. Обратитесь к администратору.'
     if (Object.keys(errs).length) { setErrors(errs); return }
 
     setSaving(true)
     try {
+      const effectiveTeacherId = canManageStaff
+        ? (teacherId || null)
+        : (isEdit ? group?.teacher_id ?? currentTeacher?.id ?? null : currentTeacher?.id ?? null)
       const payload = {
         name:          name.trim(),
         course_id:     courseId || null,
-        teacher_id:    teacherId || null,
+        teacher_id:    effectiveTeacherId,
         curator_id:    curatorId || null,
         max_students:  maxStudents,
         schedule_days: days.length ? days : null,
@@ -372,6 +396,18 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
             </div>
 
             {/* Teacher + Curator row */}
+            {isTeacherOnly && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  <GraduationCap size={13} className="inline mr-1.5 -mt-0.5" />Преподаватель группы
+                </label>
+                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">
+                  Преподаватель группы: Вы
+                  {currentTeacher?.fullName ? <span className="text-gray-500"> · {currentTeacher.fullName}</span> : null}
+                </div>
+                {errors.teacher && <p className="text-xs text-red-500">{errors.teacher}</p>}
+              </div>
+            )}
             {canManageStaff && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
