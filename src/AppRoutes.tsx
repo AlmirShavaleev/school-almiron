@@ -39,6 +39,7 @@ import { MyCoursesPage } from '@/pages/MyCoursesPage'
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
 import { TopicPage } from '@/pages/TopicPage'
 import { StudentProfilePage } from '@/pages/StudentProfilePage'
+import { StudentsPage } from '@/pages/StudentsPage'
 import { SchedulePage } from '@/pages/SchedulePage'
 import { MyProgressPage } from '@/pages/student/MyProgressPage'
 import { CatalogPage } from '@/pages/catalog/CatalogPage'
@@ -84,6 +85,7 @@ export default function AppRoutes() {
         {/* Только персонал (teacher/curator/admin/owner) */}
         <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
         <Route path="/groups/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupControlPanel /></RoleGuard>} />
+        <Route path="/students" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentsPage /></RoleGuard>} />
         <Route path="/teachers/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TeacherDetailPage /></RoleGuard>} />
         <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />

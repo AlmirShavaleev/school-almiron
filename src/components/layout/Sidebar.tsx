@@ -55,6 +55,7 @@ const navItems: NavItem[] = [
   { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'] },
   { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Расписание',        path: '/schedule',       icon: <Calendar size={18} />,      roles: ['curator', 'admin', 'owner', 'teacher'] },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'] },
@@ -66,7 +67,7 @@ const navItems: NavItem[] = [
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/curator', '/admin', '/owner', '/inbox'] },
-  { title: 'Учебный процесс', paths: ['/groups', '/lessons', '/schedule', '/attendance', '/course-program', '/lesson-library'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/lessons', '/schedule', '/attendance', '/course-program', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/payments', '/notifications', '/settings'] },
 ]

@@ -6,13 +6,15 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import type { GroupStudent } from '@/hooks/useGroupControl'
 
 export function StudentManager({
-  students, groupId, max, canManage, onAdd, onTransfer, onChanged,
+  students, groupId, max, canManage, canInvite, onAdd, onInvite, onTransfer, onChanged,
 }: {
   students: GroupStudent[]
   groupId: string
   max: number
   canManage: boolean
+  canInvite: boolean
   onAdd: () => void
+  onInvite: () => void
   onTransfer: (s: GroupStudent) => void
   onChanged: () => void
 }) {
@@ -35,10 +37,17 @@ export function StudentManager({
           <Users size={17} />Ученики
           <span className="text-xs font-normal text-gray-400">{students.length}/{max}</span>
         </CardTitle>
-        {canManage && (
-          <button onClick={onAdd} className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700">
-            <UserPlus size={13} />Добавить
-          </button>
+        {canInvite && (
+          <div className="flex items-center gap-2">
+            <button onClick={onInvite} className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700">
+              <UserPlus size={13} />Добавить учеников
+            </button>
+            {canManage && (
+              <button onClick={onAdd} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
+                Legacy-поиск
+              </button>
+            )}
+          </div>
         )}
       </CardHeader>
       {students.length === 0 ? (

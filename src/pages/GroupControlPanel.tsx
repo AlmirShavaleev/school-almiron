@@ -14,6 +14,7 @@ import { TransferStudentModal } from '@/components/group/TransferStudentModal'
 import { GroupModal } from '@/components/modals/GroupModal'
 import { CreateLessonModal } from '@/components/modals/CreateLessonModal'
 import { ArchiveGroupModal } from '@/components/modals/ArchiveGroupModal'
+import { StudentEnrollmentModal } from '@/components/students/StudentEnrollmentModal'
 
 export function GroupControlPanel() {
   const { id } = useParams<{ id: string }>()
@@ -26,6 +27,7 @@ export function GroupControlPanel() {
 
   const [editOpen, setEditOpen]       = useState(false)
   const [studentsOpen, setStudentsOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [lessonOpen, setLessonOpen]   = useState(false)
   const [transfer, setTransfer]       = useState<GroupStudent | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -131,7 +133,9 @@ export function GroupControlPanel() {
         <StudentManager
           students={students} groupId={group.id} max={group.max_students}
           canManage={canManage}
+          canInvite={canTeach}
           onAdd={() => setStudentsOpen(true)}
+          onInvite={() => setInviteOpen(true)}
           onTransfer={s => setTransfer(s)}
           onChanged={reload}
         />
@@ -162,6 +166,20 @@ export function GroupControlPanel() {
         open={lessonOpen} onClose={() => setLessonOpen(false)} onCreated={reload}
         defaultGroupId={group.id}
         defaultTeacherId={group.teacher_id ?? undefined}
+      />
+      <StudentEnrollmentModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        defaultGroupId={group.id}
+        onCreated={reload}
+        groups={[{
+          id: group.id,
+          name: group.name,
+          courseId: group.course_id,
+          courseTitle: group.course?.title ?? null,
+          disabled: !group.course_id,
+          disabledReason: group.course_id ? null : 'Сначала назначьте курс',
+        }]}
       />
       {transfer && (
         <TransferStudentModal
