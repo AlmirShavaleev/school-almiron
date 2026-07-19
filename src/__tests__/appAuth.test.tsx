@@ -27,9 +27,24 @@ function makeChain(result: MockResult) {
 }
 
 let profileRow: Record<string, unknown> = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'teacher' }
+let profileMissing = false
+const insertSpy = vi.fn()
 
 const fromSpy = vi.fn((table: string) => {
-  if (table === 'profiles') return makeChain({ data: { ...profileRow }, error: null })
+  if (table === 'profiles') {
+    const chain: any = new Proxy({}, {
+      get(_target, prop) {
+        if (prop === 'then') {
+          const result = profileMissing ? { data: null, error: null } : { data: { ...profileRow }, error: null }
+          const p = Promise.resolve(result)
+          return p.then.bind(p)
+        }
+        if (prop === 'insert') return (...args: unknown[]) => { insertSpy(...args); return chain }
+        return () => chain
+      },
+    })
+    return chain
+  }
   return makeChain({ data: null, error: null })
 })
 
@@ -63,9 +78,12 @@ async function fireAuthEvent() {
 describe('AppAuth — skips setProfile on a content-identical profile row', () => {
   beforeEach(() => {
     fromSpy.mockClear()
+    insertSpy.mockClear()
     profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'teacher' }
+    profileMissing = false
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
     authCallback = null
+    sessionStorage.clear()
   })
 
   it('sets the profile once on the first event, then ignores N same-data TOKEN_REFRESHED events', async () => {
@@ -133,5 +151,16 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
 
     expect(setProfileCalls).toBe(1)
     unsub()
+  })
+
+  it('does not auto-create a profile while a pending student invite exists', async () => {
+    profileMissing = true
+    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
+
+    render(<AppAuth />)
+    await fireAuthEvent()
+
+    expect(insertSpy).not.toHaveBeenCalled()
+    expect(useAuthStore.getState().profile).toBeNull()
   })
 })

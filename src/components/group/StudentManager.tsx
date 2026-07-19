@@ -44,7 +44,7 @@ export function StudentManager({
             </button>
             {canManage && (
               <button onClick={onAdd} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
-                Legacy-поиск
+                Добавить зарегистрированного ученика
               </button>
             )}
           </div>

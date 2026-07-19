@@ -31,12 +31,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
+import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
 
 // Auth pages
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { RegisterPage } from '@/pages/auth/RegisterPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
+import { JoinPage } from '@/pages/JoinPage'
 
 // Public — lazy-loaded so framer-motion + landing components stay out of the main chunk
 const LandingPage       = lazy(() => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
@@ -57,16 +59,21 @@ function FullScreenSpinner() {
 
 /** `/` → дашборд если залогинен, иначе лендинг */
 function RootRedirect() {
-  const { profile, loading } = useAuthStore()
+  const { profile, user, loading } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (loading) return
+    const pendingPath = getPendingInvitePath()
+    if (pendingPath && (profile || user)) {
+      navigate(pendingPath, { replace: true })
+      return
+    }
     if (profile) navigate('/dashboard', { replace: true })
-  }, [profile, loading, navigate])
+  }, [profile, user, loading, navigate])
 
   if (loading) return <FullScreenSpinner />
-  if (profile) return null   // сейчас переходим на /dashboard
+  if (profile || (user && getPendingInvitePath())) return null
 
   return <LandingPage />
 }
@@ -100,7 +107,7 @@ export function AppAuth() {
       let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       // Самозарегистрированный пользователь без профиля (email-подтверждение) →
       // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО role='student'.
-      if (!data) {
+      if (!data && !hasPendingInvite()) {
         await supabase.from('profiles').insert({
           id:        user.id,
           email:     user.email || '',
@@ -118,6 +125,7 @@ export function AppAuth() {
       if (!cancelled && data && !profilesEqual(useAuthStore.getState().profile as any, data as any)) {
         setProfile(data as any)
       }
+      if (!cancelled && !data) setProfile(null)
       if (!cancelled) setLoading(false)
     }
 
@@ -172,6 +180,8 @@ export default function App() {
         <Route path="/register"       element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password"  element={<ResetPasswordPage />} />
+        <Route path="/join" element={<JoinPage />} />
+        <Route path="/join/:token" element={<JoinPage />} />
 
         {/* Protected app subtree — lazy chunk, own nested <Routes> (see AppRoutes.tsx) */}
         <Route path="/*" element={<AppRoutes />} />

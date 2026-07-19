@@ -7,6 +7,7 @@ import { GraduationCap, Mail, Lock } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
+import { getPendingInvitePath } from '@/lib/studentInviteSession'
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -43,7 +44,7 @@ export function LoginPage() {
         setError('Неверный email или пароль')
       }
     } else {
-      navigate('/dashboard')
+      navigate(getPendingInvitePath() || '/dashboard')
     }
   }
 
@@ -67,6 +68,11 @@ export function LoginPage() {
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-6">Вход в систему</h2>
+          {getPendingInvitePath() && (
+            <div className="mb-4 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-sm text-primary-700">
+              После входа вы вернётесь к приглашению.
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>

@@ -13,13 +13,26 @@ export function useAuth() {
   const { user, profile, loading, reset } = useAuthStore()
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    return { data, error }
   }
 
-  async function signUp(email: string, password: string, fullName: string, role: UserRole = 'student') {
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (!error && data.user) {
+  async function signUp(
+    email: string,
+    password: string,
+    fullName: string,
+    role: UserRole = 'student',
+    options?: { skipProfileInsert?: boolean; redirectTo?: string | null },
+  ) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: options?.redirectTo ?? `${window.location.origin}/`,
+        data: fullName ? { full_name: fullName } : undefined,
+      },
+    })
+    if (!error && data.user && !options?.skipProfileInsert) {
       await supabase.from('profiles').insert([{
         id: data.user.id,
         email,
@@ -27,7 +40,7 @@ export function useAuth() {
         role,
       }] as any)
     }
-    return { error }
+    return { data, error }
   }
 
   async function signOut() {

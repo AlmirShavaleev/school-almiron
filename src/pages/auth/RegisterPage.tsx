@@ -7,9 +7,10 @@ import { GraduationCap, User, Mail, Lock } from 'lucide-react'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
+import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
 
 const schema = z.object({
-  full_name: z.string().min(2, 'Введите ФИО'),
+  full_name: z.string().optional(),
   email: z.string().email('Введите корректный email'),
   password: z.string().min(6, 'Минимум 6 символов'),
   confirm: z.string().min(1, 'Повторите пароль'),
@@ -17,7 +18,16 @@ const schema = z.object({
 }).refine(d => d.password === d.confirm, {
   message: 'Пароли не совпадают',
   path: ['confirm'],
+}).superRefine((data, ctx) => {
+  if (!hasPendingInvite() && (!data.full_name || data.full_name.trim().length < 2)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['full_name'],
+      message: 'Введите ФИО',
+    })
+  }
 })
+
 type FormData = z.infer<typeof schema>
 
 export function RegisterPage() {
@@ -25,17 +35,37 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const inviteMode = hasPendingInvite()
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: 'student' },
+    defaultValues: { role: 'student', full_name: '' },
   })
 
   async function onSubmit(data: FormData) {
     setError('')
-    const { error } = await signUp(data.email, data.password, data.full_name, data.role)
-    if (error) setError(error.message)
-    else { setSuccess(true); setTimeout(() => navigate('/login'), 2000) }
+    const { data: authData, error } = await signUp(
+      data.email,
+      data.password,
+      inviteMode ? '' : (data.full_name || ''),
+      data.role,
+      {
+        skipProfileInsert: inviteMode,
+        redirectTo: `${window.location.origin}/`,
+      },
+    )
+    if (error) {
+      setError(error.message)
+      return
+    }
+    if (inviteMode && authData.session) {
+      navigate(getPendingInvitePath() || '/join')
+      return
+    }
+    setSuccess(true)
+    if (!inviteMode) {
+      setTimeout(() => navigate('/login'), 2000)
+    }
   }
 
   return (
@@ -54,18 +84,30 @@ export function RegisterPage() {
             <div className="text-center py-6">
               <div className="text-4xl mb-3">✅</div>
               <h3 className="font-semibold text-gray-900">Регистрация успешна!</h3>
-              <p className="text-gray-500 text-sm mt-1">Проверьте email для подтверждения</p>
+              <p className="text-gray-500 text-sm mt-1">
+                {inviteMode
+                  ? 'Подтвердите email. После подтверждения приглашение останется доступным.'
+                  : 'Проверьте email для подтверждения'}
+              </p>
             </div>
           ) : (
             <>
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Создать аккаунт</h2>
+
+              {inviteMode && (
+                <div className="mb-4 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-sm text-primary-700">
+                  После регистрации вы вернётесь к приглашению. Если нужно подтверждение email, приглашение останется доступным.
+                </div>
+              )}
 
               {error && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <Input label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
+                {!inviteMode && (
+                  <Input label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
+                )}
                 <Input label="Email" type="email" placeholder="your@email.ru" icon={<Mail size={16} />} error={errors.email?.message} {...register('email')} />
                 <Input label="Пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.password?.message} {...register('password')} />
                 <Input label="Повторите пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.confirm?.message} {...register('confirm')} />
