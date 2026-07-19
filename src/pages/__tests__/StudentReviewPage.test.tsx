@@ -205,6 +205,54 @@ describe('StudentReviewPage — score validation (no window.alert)', () => {
     expect(updateSpy.mock.calls[0][0]).toMatchObject({ score: 85, status: 'checked' })
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Всё проверено'))
   })
+
+  it('treats an update with no returned row as failure and does not show success', async () => {
+    fromSpy.mockImplementation((table: string) => {
+      if (table === 'teachers') return makeChain({ data: { id: 'teacher-1' }, error: null })
+      if (table === 'homeworks') return makeChain({ data: hwRow, error: null })
+      if (table === 'homework_submissions') {
+        let isUpdate = false
+        const chain: any = new Proxy({}, {
+          get(_target, prop) {
+            if (prop === 'update') {
+              return (...args: unknown[]) => {
+                updateSpy(...args)
+                isUpdate = true
+                return chain
+              }
+            }
+            if (prop === 'then') {
+              const p = Promise.resolve(isUpdate
+                ? { data: null, error: null }
+                : { data: submissionRow(), error: null })
+              return p.then.bind(p)
+            }
+            return () => chain
+          },
+        })
+        return chain
+      }
+      if (table === 'homework_submission_files') return makeChain({ data: submissionFilesRows, error: null })
+      if (table === 'group_students') {
+        groupStudentsCalls++
+        return groupStudentsCalls % 2 === 1
+          ? makeChain({ data: groupStudentRow, error: null })
+          : makeChain({ data: siblingsRows, error: null })
+      }
+      return makeChain({ data: [], error: null })
+    })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Ученик')).toBeInTheDocument())
+
+    const scoreInput = screen.getByPlaceholderText('—') as HTMLInputElement
+    fireEvent.change(scoreInput, { target: { value: '85' } })
+    fireEvent.click(screen.getByRole('button', { name: /Принять/ }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Проверка не была сохранена'))
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
 })
 
 describe('StudentReviewPage — wheel over the reviewer comment area', () => {

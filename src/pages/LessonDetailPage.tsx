@@ -334,14 +334,22 @@ export function LessonDetailPage() {
   async function handleSaveNotes() {
     if (!lesson) return
     setSavingNotes(true)
-    const { error } = await supabase
-      .from('lessons')
-      .update({ notes: notesDraft.trim() || null })
-      .eq('id', lesson.id)
-    setSavingNotes(false)
-    if (error) return
-    setLesson({ ...lesson, notes: notesDraft.trim() || null })
-    setEditingNotes(false)
+    try {
+      const { data, error } = await supabase
+        .from('lessons')
+        .update({ notes: notesDraft.trim() || null })
+        .eq('id', lesson.id)
+        .select('id, notes')
+        .single()
+      if (error) throw error
+      if (!data) throw new Error('Заметки не были сохранены')
+      setLesson({ ...lesson, notes: data.notes })
+      setEditingNotes(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить заметки')
+    } finally {
+      setSavingNotes(false)
+    }
   }
 
   async function markCompleted() {
@@ -354,15 +362,22 @@ export function LessonDetailPage() {
     })
     if (!ok) return
     setCompleting(true)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('lessons') as any).update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', lesson.id)
-    setCompleting(false)
-    if (error) {
-      toast.error('Ошибка: ' + error.message)
-    } else {
-      setLesson({ ...lesson, status: 'completed' })
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from('lessons') as any)
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', lesson.id)
+        .select('id, status')
+        .single()
+      if (error) throw error
+      if (!data) throw new Error('Занятие не было отмечено завершённым')
+      setLesson({ ...lesson, status: data.status })
       setDeleteCheck({ allowed: false, reason: 'Нельзя удалить завершённое занятие — история посещаемости и биллинга должна сохраняться.' })
       toast.success('Занятие отмечено завершённым')
+    } catch (e) {
+      toast.error('Ошибка: ' + (e instanceof Error ? e.message : 'не удалось завершить занятие'))
+    } finally {
+      setCompleting(false)
     }
   }
 
@@ -376,14 +391,22 @@ export function LessonDetailPage() {
     })
     if (!ok) return
     setCancelling(true)
-    const { error } = await supabase.from('lessons').update({ status: 'cancelled' }).eq('id', lesson.id)
-    setCancelling(false)
-    if (error) {
-      toast.error('Ошибка: ' + error.message)
-    } else {
-      setLesson({ ...lesson, status: 'cancelled' })
+    try {
+      const { data, error } = await supabase
+        .from('lessons')
+        .update({ status: 'cancelled' })
+        .eq('id', lesson.id)
+        .select('id, status')
+        .single()
+      if (error) throw error
+      if (!data) throw new Error('Занятие не было отменено')
+      setLesson({ ...lesson, status: data.status })
       setDeleteCheck({ allowed: false, reason: 'Нельзя удалить отменённое занятие — используйте архивирование.' })
       toast.success('Занятие отменено')
+    } catch (e) {
+      toast.error('Ошибка: ' + (e instanceof Error ? e.message : 'не удалось отменить занятие'))
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -439,16 +462,7 @@ export function LessonDetailPage() {
     })
 
     setSavingAtt(prev => new Set(prev).add(studentId))
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(
-        { lesson_id: id, student_id: studentId, status: newStatus } as any,
-        { onConflict: 'lesson_id,student_id' }
-      )
-    setSavingAtt(prev => { const s = new Set(prev); s.delete(studentId); return s })
-
-    if (error) {
-      toast.error('Ошибка сохранения посещаемости')
+    const rollbackAttendance = () => {
       // Rollback optimistic update
       if (prevStatus === null) {
         setAttendance(prev => prev.filter(a => a.student_id !== studentId))
@@ -457,6 +471,32 @@ export function LessonDetailPage() {
           a.student_id === studentId ? { ...a, status: prevStatus! } : a
         ))
       }
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .upsert(
+          { lesson_id: id, student_id: studentId, status: newStatus } as any,
+          { onConflict: 'lesson_id,student_id' }
+        )
+        .select('lesson_id, student_id, status')
+        .single()
+
+      if (error) throw error
+      if (!data) throw new Error('Посещаемость не была сохранена')
+      if (data.lesson_id !== id || data.student_id !== studentId || !data.status) {
+        throw new Error('Посещаемость была сохранена некорректно')
+      }
+
+      setAttendance(prev => prev.map(a =>
+        a.student_id === studentId ? { ...a, status: data.status } : a
+      ))
+    } catch {
+      toast.error('Ошибка сохранения посещаемости')
+      rollbackAttendance()
+    } finally {
+      setSavingAtt(prev => { const s = new Set(prev); s.delete(studentId); return s })
     }
   }, [id, groupStudents, savingAtt])
 

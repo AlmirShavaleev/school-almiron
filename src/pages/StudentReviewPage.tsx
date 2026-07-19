@@ -399,24 +399,43 @@ export function StudentReviewPage() {
       return false
     }
     setSaving(true)
-    const { error } = await supabase.from('homework_submissions').update({
-      score:      newStatus === 'checked' ? parsedScore : null,
-      feedback:   draftFeedback.trim() || null,
-      status:     newStatus,
-      checked_at: new Date().toISOString(),
-      checked_by: teacherId,
-    }).eq('id', sub.id)
-    setSaving(false)
-    if (error) { toast.error(error.message); return false }
+    try {
+      const { data, error } = await supabase
+        .from('homework_submissions')
+        .update({
+          score:      newStatus === 'checked' ? parsedScore : null,
+          feedback:   draftFeedback.trim() || null,
+          status:     newStatus,
+          checked_at: new Date().toISOString(),
+          checked_by: teacherId,
+        })
+        .eq('id', sub.id)
+        .select('id, status, score, feedback')
+        .single()
 
-    setSaved(true)
-    setSub(prev => prev ? { ...prev, status: newStatus, score: newStatus === 'checked' ? parsedScore : null, feedback: draftFeedback.trim() || null } : prev)
+      if (error) throw error
+      if (!data) throw new Error('Проверка не была сохранена')
 
-    if (student?.profileId) {
-      notifyHomeworkChecked(student.profileId, hw.title, newStatus, newStatus === 'checked' ? parsedScore : null, hw.max_score)
+      setSaved(true)
+      setSub(prev => prev ? {
+        ...prev,
+        id: data.id,
+        status: data.status,
+        score: data.score,
+        feedback: data.feedback,
+      } : prev)
+
+      if (student?.profileId) {
+        notifyHomeworkChecked(student.profileId, hw.title, newStatus, newStatus === 'checked' ? parsedScore : null, hw.max_score)
+      }
+
+      return true
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не удалось сохранить проверку')
+      return false
+    } finally {
+      setSaving(false)
     }
-
-    return true
   }
 
   function publishReview(targetStatus: 'checked' | 'revision' = 'checked') {

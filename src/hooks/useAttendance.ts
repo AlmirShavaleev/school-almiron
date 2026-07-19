@@ -70,11 +70,29 @@ export function useAttendance(lessonId: string | null, groupId: string | null) {
       note:       r.note.trim() || null,
     }))
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('attendance')
       .upsert(rows, { onConflict: 'lesson_id,student_id' })
+      .select('lesson_id, student_id')
 
     if (error) throw new Error(error.message)
+
+    const expectedKeys = new Set(rows.map(row => `${row.lesson_id}::${row.student_id}`))
+    const returnedKeys = new Set((data || []).map(row => `${row.lesson_id}::${row.student_id}`))
+
+    if (returnedKeys.size !== expectedKeys.size) {
+      throw new Error('Не все записи посещаемости были сохранены')
+    }
+
+    for (const key of expectedKeys) {
+      if (!returnedKeys.has(key)) {
+        throw new Error('Не все записи посещаемости были сохранены')
+      }
+    }
+
+    if ((data?.length ?? 0) !== rows.length) {
+      throw new Error('Не все записи посещаемости были сохранены')
+    }
     reload()
   }
 
