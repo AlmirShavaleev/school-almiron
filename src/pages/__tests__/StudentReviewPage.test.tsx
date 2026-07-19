@@ -18,7 +18,7 @@ const reviewerRenderSpy = vi.fn()
 let submissionFilesRows: any[] = []
 let pendingQueueItemsMock: any[] = []
 const pendingQueueLoaderSpy = vi.fn()
-const queuePathSpy = vi.fn((item: any) => item.source === 'collection' ? `/review-submissions/${item.submissionId}` : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)
+const queuePathSpy = vi.fn((item: any) => item.source === 'task_collection' ? `/review-submissions/${item.submissionId}` : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`)
 
 function makeChain(result: MockResult | Promise<MockResult>) {
   const chain: any = new Proxy({}, {
@@ -357,8 +357,8 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
 
   it('navigates to the next pending queue item after publish even without queue state', async () => {
     pendingQueueItemsMock = [
-      { source: 'legacy', submissionId: 'sub-1', group: { id: 'group-1' }, homework: { id: 'hw-1' } },
-      { source: 'collection', submissionId: 'task-sub-2', group: { id: 'group-2' }, homework: { id: 'assignment-2' } },
+      { source: 'legacy_homework', submissionId: 'sub-1', group: { id: 'group-1' }, homework: { id: 'hw-1' } },
+      { source: 'task_collection', submissionId: 'task-sub-2', group: { id: 'group-2' }, homework: { id: 'assignment-2' } },
     ]
     renderPage()
 
@@ -366,7 +366,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
     fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '85' } })
     fireEvent.click(screen.getByRole('button', { name: /Опубликовать проверку/ }))
 
-    await waitFor(() => expect(queuePathSpy).toHaveBeenCalledWith(expect.objectContaining({ submissionId: 'task-sub-2', source: 'collection' })))
+    await waitFor(() => expect(queuePathSpy).toHaveBeenCalledWith(expect.objectContaining({ submissionId: 'task-sub-2', source: 'task_collection' })))
   })
 
   it('shows an attempt switcher only when there is history and opens older attempts as teacher read-only without grading controls', async () => {
@@ -394,7 +394,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
 
   it('falls back to the first pending queue item when the current work is already missing from the queue', async () => {
     pendingQueueItemsMock = [
-      { source: 'collection', submissionId: 'task-sub-9', group: { id: 'group-2' }, homework: { id: 'assignment-9' } },
+      { source: 'task_collection', submissionId: 'task-sub-9', group: { id: 'group-2' }, homework: { id: 'assignment-9' } },
     ]
     renderPage()
 
@@ -417,7 +417,7 @@ describe('StudentReviewPage — wheel over the reviewer comment area', () => {
 
   it('hides the next-work button on already checked submissions', async () => {
     mockTables(submissionRow({ file_url: 'submissions/x/y.pdf', status: 'checked', score: 85 }))
-    pendingQueueItemsMock = [{ source: 'legacy', submissionId: 'other-sub', group: { id: 'group-2' }, homework: { id: 'hw-2' } }]
+    pendingQueueItemsMock = [{ source: 'legacy_homework', submissionId: 'other-sub', group: { id: 'group-2' }, homework: { id: 'hw-2' } }]
     renderPage()
 
     await waitFor(() => expect(screen.getByTestId('fake-reviewer')).toBeInTheDocument())

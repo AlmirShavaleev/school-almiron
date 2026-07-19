@@ -3,7 +3,6 @@ import type { QueueBucket, QueueCounts } from '@/hooks/useHomeworkQueue'
 
 const TABS: { key: QueueBucket; label: string; dot: string; active: string }[] = [
   { key: 'urgent',   label: 'Срочные',     dot: 'bg-red-500',    active: 'border-red-300 bg-red-50 text-red-700' },
-  { key: 'revision', label: 'На доработке', dot: 'bg-gold-500', active: 'border-gold-300 bg-gold-50 text-gold-800' },
   { key: 'new',      label: 'Новые',       dot: 'bg-primary-500',   active: 'border-primary-300 bg-primary-50 text-primary-700' },
   { key: 'backlog',  label: 'Бэклог',      dot: 'bg-slate-400',   active: 'border-slate-300 bg-slate-100 text-slate-600' },
 ]

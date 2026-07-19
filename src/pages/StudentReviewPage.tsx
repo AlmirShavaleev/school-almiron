@@ -282,7 +282,8 @@ export function StudentReviewPage() {
     if (!profile) return
     let active = true
     setQueueLoading(true)
-    loadPendingQueueItems(supabase as any, profile)
+    const queueMode = sub?.status === 'revision' ? 'returned' : 'pending'
+    loadPendingQueueItems(supabase as any, profile, queueMode)
       .then(items => { if (active) setPendingQueueItems(items) })
       .finally(() => { if (active) setQueueLoading(false) })
     return () => { active = false }
@@ -455,7 +456,7 @@ export function StudentReviewPage() {
       return
     }
 
-    const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' })
+    const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy_homework' })
     if (!next) {
       toast.success('Всё проверено')
       navigate('/inbox')
@@ -472,7 +473,7 @@ export function StudentReviewPage() {
   const primaryFilePath = selectedAttemptPaths[0] ?? getPrimarySubmissionFilePath(sub)
   const isHistoricalAttempt = !!selectedAttempt && !!submissionAttempts.currentAttempt && selectedAttempt.number !== submissionAttempts.currentAttempt.number
   const isPendingReview = sub?.status === 'submitted' || sub?.status === 'revision'
-  const nextQueueItem = isPendingReview ? resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' }) : null
+  const nextQueueItem = isPendingReview ? resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy_homework' }) : null
   const canPreview = selectedAttemptPaths.length > 0 && selectedAttemptPaths.every(path => {
     const ext = path.split('?')[0].split('.').pop()?.toLowerCase()
     return !!ext && PREVIEWABLE_EXTS.includes(ext)

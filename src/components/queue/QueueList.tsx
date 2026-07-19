@@ -28,8 +28,10 @@ export function QueueList({ items, groupBy, emptyText }: Props) {
   // группировка по группам
   const byGroup: Record<string, { name: string; items: QItem[] }> = {}
   for (const i of items) {
-    if (!byGroup[i.group.id]) byGroup[i.group.id] = { name: i.group.name, items: [] }
-    byGroup[i.group.id].items.push(i)
+    const groupId = i.group.id ?? 'ungrouped'
+    const groupName = i.group.name ?? 'Без группы'
+    if (!byGroup[groupId]) byGroup[groupId] = { name: groupName, items: [] }
+    byGroup[groupId].items.push(i)
   }
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { AssignedCollection, TaskSubmission, RosterRow, StudentAssignmentTask } from '@/types/assignments'
+import { fetchReviewQueuePage, type ReviewQueueItem } from '@/lib/reviewQueue'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -221,7 +222,7 @@ export interface SubmissionRow extends TaskSubmission {
 
 export function useTeacherSubmissions() {
   const profile = useAuthStore(s => s.profile)
-  const [submissions, setSubmissions] = useState<SubmissionRow[]>([])
+  const [submissions, setSubmissions] = useState<ReviewQueueItem[]>([])
   const [loading,      setLoading]     = useState(true)
   const [error,        setError]       = useState<string | null>(null)
   const [tick,         setTick]        = useState(0)
@@ -234,41 +235,21 @@ export function useTeacherSubmissions() {
     setError(null)
 
     async function load() {
-      const { data: ownAssignments, error: e1 } = await db
-        .from('assigned_collections')
-        .select('*')
-        .eq('teacher_id', profile!.id)
-
+      const page = await fetchReviewQueuePage('all', {
+        sourceType: 'task_collection',
+        statuses: ['submitted', 'returned', 'accepted', 'rejected'],
+        limit: 100,
+      })
       if (cancelled) return
-      if (e1) { setError(e1.message); setLoading(false); return }
-
-      const assignmentIds = (ownAssignments ?? []).map((a: AssignedCollection) => a.id)
-      if (!assignmentIds.length) { setSubmissions([]); setLoading(false); return }
-
-      const { data: subs, error: e2 } = await db
-        .from('task_submissions')
-        .select('*')
-        .in('assigned_id', assignmentIds)
-        .order('submitted_at', { ascending: false })
-
-      if (cancelled) return
-      if (e2) { setError(e2.message); setLoading(false); return }
-
-      const byId = new Map<string, AssignedCollection>(
-        (ownAssignments ?? []).map((a: AssignedCollection) => [a.id, a]),
-      )
-      const rows: SubmissionRow[] = (subs ?? [])
-        .map((s: TaskSubmission) => {
-          const assignment = byId.get(s.assigned_id)
-          return assignment ? { ...s, assignment } : null
-        })
-        .filter(Boolean) as SubmissionRow[]
-
-      setSubmissions(rows)
+      setSubmissions(page.items.filter(item => item.submissionId))
       setLoading(false)
     }
 
-    load()
+    load().catch(err => {
+      if (cancelled) return
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить сдачи')
+      setLoading(false)
+    })
     return () => { cancelled = true }
   }, [profile, tick])
 

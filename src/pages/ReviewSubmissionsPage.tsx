@@ -1,16 +1,25 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ClipboardCheck, Filter } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useTeacherSubmissions } from '@/hooks/useAssignments'
 import { SUBMISSION_STATUS_LABELS } from '@/types/assignments'
 import type { SubmissionStatus } from '@/types/assignments'
+import type { ReviewQueueItem } from '@/lib/reviewQueue'
 
 const STATUS_STYLES: Record<SubmissionStatus, string> = {
   submitted: 'bg-blue-50 text-blue-700',
   returned:  'bg-amber-50 text-amber-700',
   accepted:  'bg-green-50 text-green-700',
   rejected:  'bg-red-50 text-red-700',
+}
+
+function isSubmissionStatus(status: string): status is SubmissionStatus {
+  return status === 'submitted' || status === 'returned' || status === 'accepted' || status === 'rejected'
+}
+
+function hasRenderableSubmissionStatus(item: ReviewQueueItem): item is ReviewQueueItem & { status: SubmissionStatus } {
+  return isSubmissionStatus(item.status)
 }
 
 export function ReviewSubmissionsPage() {
@@ -21,6 +30,7 @@ export function ReviewSubmissionsPage() {
     if (statusFilter === 'all') return submissions
     return submissions.filter(s => s.status === statusFilter)
   }, [submissions, statusFilter])
+  const filteredSubmissions = useMemo(() => filtered.filter(hasRenderableSubmissionStatus), [filtered])
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
@@ -59,14 +69,14 @@ export function ReviewSubmissionsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(s => (
-            <Link key={s.id} to={`/review-submissions/${s.id}`} data-testid="submission-row">
+          {filteredSubmissions.map(s => (
+            <Link key={s.submissionId} to={`/review-submissions/${s.submissionId}`} data-testid="submission-row">
               <Card className="hover:border-blue-200 transition-colors">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 truncate">Сдача #{s.id.slice(0, 8)}</p>
+                    <p className="font-medium text-gray-900 truncate">Сдача #{String(s.submissionId).slice(0, 8)}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Отправлено {new Date(s.submitted_at).toLocaleString('ru-RU')}
+                      Отправлено {s.submittedAt ? new Date(s.submittedAt).toLocaleString('ru-RU') : '—'}
                     </p>
                   </div>
                   <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[s.status]}`}>

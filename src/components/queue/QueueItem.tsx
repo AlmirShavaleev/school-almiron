@@ -13,9 +13,9 @@ const BUCKET_STYLE: Record<string, { ring: string; chip: string; label: string; 
 }
 
 const REVIEW_STATUS_STYLE: Record<QItem['status'], { chip: string; label: string; icon?: ReactNode }> = {
+  not_submitted: { chip: 'bg-slate-100 text-slate-500 ring-slate-200', label: 'Не сдано' },
   submitted: { chip: 'bg-primary-50 text-primary-700 ring-primary-200', label: 'На проверке' },
-  revision: { chip: 'bg-gold-50 text-gold-800 ring-gold-200', label: 'На доработке', icon: <RotateCcw size={11} /> },
-  checked: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Проверено', icon: <CheckCircle2 size={11} /> },
+  returned: { chip: 'bg-gold-50 text-gold-800 ring-gold-200', label: 'На доработке', icon: <RotateCcw size={11} /> },
   accepted: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Принято', icon: <CheckCircle2 size={11} /> },
   rejected: { chip: 'bg-red-50 text-red-700 ring-red-200', label: 'Отклонено', icon: <XCircle size={11} /> },
 }

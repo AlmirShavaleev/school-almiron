@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const reviewer = readFileSync('src/components/SubmissionReviewer.tsx', 'utf8')
 const reviewListPage = readFileSync('src/pages/HomeworkReviewPage.tsx', 'utf8')
 const homeworks = readFileSync('src/hooks/useHomeworks.ts', 'utf8')
-const migration = readFileSync('supabase/migrations/017_annotation_sets.sql', 'utf8')
+const migration = readFileSync('supabase/migrations/_legacy/017_annotation_sets.sql', 'utf8')
 const studentReviewPage = readFileSync('src/pages/StudentReviewPage.tsx', 'utf8')
 const queueItem = readFileSync('src/components/queue/QueueItem.tsx', 'utf8')
 const queuePage = readFileSync('src/pages/HomeworkQueuePage.tsx', 'utf8')
@@ -64,17 +64,18 @@ describe('submission annotation reviewer', () => {
 
   it('adds a checked submissions tab backed by group-scoped legacy and collection review statuses', () => {
     expect(queuePage).toContain("setMode('checked')")
+    expect(queuePage).toContain("setMode('returned')")
     expect(queuePage).toContain('Проверенные')
-    expect(queueHook).toContain("export type QueueMode = 'pending' | 'checked'")
-    expect(queueHook).toContain(".eq('status', 'checked')")
-    expect(queueHook).toContain(".in('status', ['accepted', 'rejected'])")
-    expect(queueHook).toContain(".order('checked_at', { ascending: false }).limit(checkedLimit)")
-    expect(queueHook).toContain(".order('reviewed_at', { ascending: false }).limit(checkedLimit)")
+    expect(queuePage).toContain('На доработке')
+    expect(queueHook).toContain("export type QueueMode = Exclude<ReviewQueueMode, 'all'>")
+    expect(queueHook).toContain("fetchReviewQueuePage(mode")
+    expect(queueHook).toContain("fetchReviewQueueCounts(")
     expect(queuePage).toContain('Показать ещё')
   })
 
   it('auto-advances by the pending review queue after a full publish and falls back to inbox when the queue is empty', () => {
-    expect(studentReviewPage).toContain("const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy' })")
+    expect(studentReviewPage).toContain("const queueMode = sub?.status === 'revision' ? 'returned' : 'pending'")
+    expect(studentReviewPage).toContain("const next = resolveNextQueueItem(pendingQueueItems, { submissionId: sub?.id || '', source: 'legacy_homework' })")
     expect(studentReviewPage).toContain("toast.success('Всё проверено')")
     expect(studentReviewPage).toContain("navigate('/inbox')")
     expect(studentReviewPage).toContain("navigate(getQueueItemReviewPath(next), { state: { from: 'queue' } })")
