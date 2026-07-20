@@ -97,6 +97,9 @@ export class StudentEnrollmentError extends Error {
   }
 }
 
+const INCOMPLETE_INVITE_RESPONSE_MESSAGE =
+  'Сервер создал приглашение, но вернул неполные данные. Перевыпустите приглашение'
+
 function toMessage(error: unknown): StudentEnrollmentError {
   if (error instanceof StudentEnrollmentError) return error
   const raw = error as { message?: string; code?: string | null; details?: string | null }
@@ -120,24 +123,46 @@ function toMessage(error: unknown): StudentEnrollmentError {
 }
 
 function expectRecord(value: unknown, fallbackMessage: string): Record<string, any> {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new StudentEnrollmentError(fallbackMessage)
   }
   return value as Record<string, any>
 }
 
+function expectRpcRow(value: unknown, fallbackMessage: string): Record<string, any> {
+  const row = Array.isArray(value) ? value[0] : value
+  return expectRecord(row, fallbackMessage)
+}
+
+function rpcRows(value: unknown): Record<string, any>[] {
+  if (Array.isArray(value)) {
+    return value.filter((row): row is Record<string, any> => Boolean(row) && typeof row === 'object' && !Array.isArray(row))
+  }
+  if (value && typeof value === 'object') return [value as Record<string, any>]
+  return []
+}
+
+function requireInviteField(row: Record<string, any>, field: string): string {
+  const value = row[field]
+  if (value === null || value === undefined || String(value).trim() === '') {
+    throw new StudentEnrollmentError(INCOMPLETE_INVITE_RESPONSE_MESSAGE)
+  }
+  return String(value)
+}
+
 function mapInviteResult(row: Record<string, any>): StudentInviteResult {
   return {
-    inviteId: String(row.invite_id ?? ''),
-    token: String(row.token ?? ''),
-    shortCode: String(row.short_code ?? ''),
-    expiresAt: String(row.expires_at ?? ''),
+    inviteId: requireInviteField(row, 'invite_id'),
+    token: requireInviteField(row, 'token'),
+    shortCode: requireInviteField(row, 'short_code'),
+    expiresAt: requireInviteField(row, 'expires_at'),
   }
 }
 
-export function buildInviteUrl(token: string): string {
+export function buildInviteUrl(token: string | null | undefined): string {
+  if (!token) return ''
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  return `${origin}/join/${token}`
+  return `${origin}/join/${encodeURIComponent(token)}`
 }
 
 export function buildInviteMessage(token: string, shortCode: string): string {
@@ -164,7 +189,7 @@ export async function createStudentInvite(params: StudentInviteCreateParams): Pr
       p_class_grade: params.classGrade ?? null,
     })
     if (error) throw error
-    return mapInviteResult(expectRecord(data, 'Приглашение не было создано'))
+    return mapInviteResult(expectRpcRow(data, 'Приглашение не было создано'))
   } catch (error) {
     throw toMessage(error)
   }
@@ -186,7 +211,7 @@ export async function createStudentInviteBatch(params: StudentInviteBatchParams)
       p_title: params.title ?? null,
     })
     if (error) throw error
-    const payload = expectRecord(data, 'Пакет приглашений не был создан')
+    const payload = expectRpcRow(data, 'Пакет приглашений не был создан')
     const items = Array.isArray(payload.items) ? payload.items : []
     return {
       batchId: String(payload.batch_id ?? ''),
@@ -220,7 +245,7 @@ export async function reissueStudentInvite(inviteId: string): Promise<StudentInv
     const db = supabase as any
     const { data, error } = await db.rpc('reissue_student_invite', { p_invite_id: inviteId })
     if (error) throw error
-    return mapInviteResult(expectRecord(data, 'Приглашение не было перевыпущено'))
+    return mapInviteResult(expectRpcRow(data, 'Приглашение не было перевыпущено'))
   } catch (error) {
     throw toMessage(error)
   }
@@ -231,7 +256,7 @@ export async function reissueStudentInviteBatch(batchId: string): Promise<Studen
     const db = supabase as any
     const { data, error } = await db.rpc('reissue_student_invite_batch', { p_batch_id: batchId })
     if (error) throw error
-    const rows = Array.isArray(data) ? data : []
+    const rows = rpcRows(data)
     return rows.map((item: any) => ({
       clientRowId: String(item.client_row_id ?? ''),
       inviteId: item.invite_id ? String(item.invite_id) : null,

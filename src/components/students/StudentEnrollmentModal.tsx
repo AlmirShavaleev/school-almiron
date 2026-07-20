@@ -361,6 +361,8 @@ export function StudentEnrollmentModal({ open, onClose, groups, defaultGroupId =
   }
 
   const renderedRows = batchRows.length
+  const singleInviteUrl = singleResult ? buildInviteUrl(singleResult.token) : ''
+  const canCopySingleInvite = Boolean(singleInviteUrl && singleResult?.shortCode)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
@@ -445,16 +447,16 @@ export function StudentEnrollmentModal({ open, onClose, groups, defaultGroupId =
                   <div className="grid gap-3 md:grid-cols-2">
                     <ResultTile label="Срок действия" value={formatDate(singleResult.expiresAt)} />
                     <ResultTile label="Короткий код" value={singleResult.shortCode} />
-                    <ResultTile label="Персональная ссылка" value={buildInviteUrl(singleResult.token)} className="md:col-span-2" />
+                    <ResultTile label="Персональная ссылка" value={singleInviteUrl || '—'} className="md:col-span-2" />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="secondary" onClick={() => copyText(buildInviteUrl(singleResult.token), 'Ссылка скопирована')}>
+                    <Button type="button" variant="secondary" disabled={!singleInviteUrl} onClick={() => copyText(singleInviteUrl, 'Ссылка скопирована')}>
                       <Copy size={14} />Скопировать ссылку
                     </Button>
-                    <Button type="button" variant="secondary" onClick={() => copyText(singleResult.shortCode, 'Код скопирован')}>
+                    <Button type="button" variant="secondary" disabled={!singleResult.shortCode} onClick={() => copyText(singleResult.shortCode, 'Код скопирован')}>
                       <Copy size={14} />Скопировать код
                     </Button>
-                    <Button type="button" variant="secondary" onClick={() => copyText(buildInviteMessage(singleResult.token, singleResult.shortCode), 'Приглашение скопировано')}>
+                    <Button type="button" variant="secondary" disabled={!canCopySingleInvite} onClick={() => copyText(buildInviteMessage(singleResult.token, singleResult.shortCode), 'Приглашение скопировано')}>
                       <Copy size={14} />Скопировать приглашение целиком
                     </Button>
                   </div>
