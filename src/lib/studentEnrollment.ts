@@ -178,6 +178,117 @@ export function buildInviteMessage(token: string, shortCode: string): string {
   ].join('\n')
 }
 
+export type EnrollmentFormat = 'individual' | 'mini_group'
+
+export interface InviteStudentFlowParams {
+  fullName: string
+  format: EnrollmentFormat
+  email?: string | null
+  phone?: string | null
+  classGrade?: string | null
+  /** required unless groupId is supplied (existing mini-group) */
+  subject?: string | null
+  examType?: string | null
+  /** existing mini-group chosen by the teacher */
+  groupId?: string | null
+  /** explicit course pick used to resolve COURSE_SELECTION_REQUIRED */
+  courseId?: string | null
+}
+
+export interface InviteStudentFlowResult {
+  inviteId: string
+  token: string
+  shortCode: string
+  expiresAt: string
+  groupId: string
+  courseId: string
+  courseCreated: boolean
+  groupCreated: boolean
+  draftCourse: boolean
+}
+
+/** Raised when a direction has several eligible courses and no default -> UI must offer a picker. */
+export const COURSE_SELECTION_REQUIRED = 'COURSE_SELECTION_REQUIRED'
+
+export async function inviteStudentFlow(params: InviteStudentFlowParams): Promise<InviteStudentFlowResult> {
+  try {
+    const db = supabase as any
+    const { data, error } = await db.rpc('invite_student_flow', {
+      p_full_name: params.fullName,
+      p_format: params.format,
+      p_email: params.email ?? null,
+      p_phone: params.phone ?? null,
+      p_class_grade: params.classGrade ?? null,
+      p_subject: params.subject ?? null,
+      p_exam_type: params.examType ?? null,
+      p_group_id: params.groupId ?? null,
+      p_course_id: params.courseId ?? null,
+    })
+    if (error) throw error
+    const row = expectRecord(data, 'Приглашение не было создано')
+    return {
+      inviteId: requireInviteField(row, 'invite_id'),
+      token: requireInviteField(row, 'token'),
+      shortCode: requireInviteField(row, 'short_code'),
+      expiresAt: requireInviteField(row, 'expires_at'),
+      groupId: String(row.group_id ?? ''),
+      courseId: String(row.course_id ?? ''),
+      courseCreated: Boolean(row.course_created),
+      groupCreated: Boolean(row.group_created),
+      draftCourse: Boolean(row.draft_course),
+    }
+  } catch (error) {
+    const mapped = toMessage(error)
+    if (typeof mapped.message === 'string' && mapped.message.includes(COURSE_SELECTION_REQUIRED)) {
+      mapped.code = COURSE_SELECTION_REQUIRED
+    }
+    throw mapped
+  }
+}
+
+export interface DirectionCourseOption {
+  id: string
+  title: string
+}
+
+/** Non-draft courses owned by the current teacher for a given direction (for the disambiguation picker). */
+export async function listDirectionCourses(ownerId: string, subject: string, examType: string): Promise<DirectionCourseOption[]> {
+  try {
+    const db = supabase as any
+    const { data, error } = await db
+      .from('courses')
+      .select('id, title')
+      .eq('owner_id', ownerId)
+      .eq('subject', subject)
+      .eq('exam_type', examType)
+      .eq('is_draft', false)
+      .order('title')
+    if (error) throw error
+    const rows = Array.isArray(data) ? data : []
+    return rows.map((row: any) => ({ id: String(row.id), title: String(row.title ?? 'Без названия') }))
+  } catch (error) {
+    throw toMessage(error)
+  }
+}
+
+/** Count of non-draft courses owned by the teacher for a direction (drives the draft-course hint). */
+export async function countDirectionCourses(ownerId: string, subject: string, examType: string): Promise<number> {
+  try {
+    const db = supabase as any
+    const { count, error } = await db
+      .from('courses')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_id', ownerId)
+      .eq('subject', subject)
+      .eq('exam_type', examType)
+      .eq('is_draft', false)
+    if (error) throw error
+    return count ?? 0
+  } catch (error) {
+    throw toMessage(error)
+  }
+}
+
 export async function createStudentInvite(params: StudentInviteCreateParams): Promise<StudentInviteResult> {
   try {
     const db = supabase as any

@@ -18,6 +18,7 @@ import {
   type MyStudentInvite,
 } from '@/lib/studentEnrollment'
 import { StudentEnrollmentModal, type EnrollmentGroupOption } from '@/components/students/StudentEnrollmentModal'
+import { InviteStudentWizard, type WizardGroupOption } from '@/components/students/InviteStudentWizard'
 
 type TabKey = 'students' | 'invites'
 
@@ -37,6 +38,7 @@ export function StudentsPage() {
   const { groups } = useGroups()
   const [tab, setTab] = useState<TabKey>('students')
   const [modalOpen, setModalOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   const [students, setStudents] = useState<MyStudent[]>([])
   const [studentsLoading, setStudentsLoading] = useState(true)
@@ -62,6 +64,16 @@ export function StudentsPage() {
       courseTitle: group.courses?.title ?? null,
       disabled: !group.course_id,
       disabledReason: group.course_id ? null : 'Сначала назначьте курс',
+    })),
+    [groups],
+  )
+
+  const wizardGroups = useMemo<WizardGroupOption[]>(
+    () => groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      courseTitle: group.courses?.title ?? null,
+      hasCourse: Boolean(group.course_id),
     })),
     [groups],
   )
@@ -208,9 +220,14 @@ export function StudentsPage() {
             <h1 className="mt-3 text-2xl font-bold tracking-tight text-graphite-950 sm:text-3xl">Ученики</h1>
             <p className="mt-1 text-slate-500">Ваши ученики и активные приглашения</p>
           </div>
-          <Button onClick={() => setModalOpen(true)}>
-            <UserPlus size={15} />Добавить учеников
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setWizardOpen(true)}>
+              <UserPlus size={15} />Пригласить ученика
+            </Button>
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>
+              <Users size={15} />Добавить класс
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -377,6 +394,16 @@ export function StudentsPage() {
           )}
         </div>
       )}
+
+      <InviteStudentWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        groups={wizardGroups}
+        onCreated={() => {
+          loadStudents()
+          loadInvites()
+        }}
+      />
 
       <StudentEnrollmentModal
         open={modalOpen}

@@ -169,7 +169,7 @@ describe('StudentsPage', () => {
 
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
 
-    fireEvent.click(screen.getByText('Добавить учеников'))
+    fireEvent.click(screen.getByText('Добавить класс'))
     expect(await screen.findByText('modal-open')).toBeInTheDocument()
   })
 })
