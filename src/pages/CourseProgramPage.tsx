@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext,
   DragOverlay,
@@ -1196,6 +1196,8 @@ export function CourseProgramPage() {
   } = useCourseProgram()
 
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const appliedCourseParam = useRef(false)
   const [modules,     setModules]     = useState<Module[]>([])
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
@@ -1230,6 +1232,18 @@ export function CourseProgramPage() {
   }
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
+
+  // Deep-link: open a specific course passed as ?courseId=... (e.g. the draft just created in the invite wizard)
+  useEffect(() => {
+    if (appliedCourseParam.current) return
+    const wanted = searchParams.get('courseId')
+    if (!wanted) return
+    if (courses.some(c => c.id === wanted)) {
+      appliedCourseParam.current = true
+      setSelectedId(wanted)
+      setTab('program')
+    }
+  }, [courses, searchParams])
 
   // Load modules + groups when course selected
   useEffect(() => {

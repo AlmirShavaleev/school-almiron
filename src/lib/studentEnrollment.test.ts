@@ -3,6 +3,7 @@ import {
   buildInviteUrl,
   createStudentInvite,
   createStudentInviteBatch,
+  inviteStudentFlow,
   reissueStudentInvite,
   reissueStudentInviteBatch,
 } from '@/lib/studentEnrollment'
@@ -171,5 +172,23 @@ describe('studentEnrollment RPC parsing', () => {
         error: null,
       },
     ])
+  })
+
+  it('forwards the idempotency request_id to invite_student_flow', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        invite_id: 'invite-1', token: 'token-1', short_code: 'CODE1', expires_at: '2026-08-01T12:00:00.000Z',
+        group_id: 'group-1', course_id: 'course-1', course_created: true, group_created: true, draft_course: true,
+      },
+      error: null,
+    })
+
+    const res = await inviteStudentFlow({
+      fullName: 'Иван Петров', format: 'individual', subject: 'physics', examType: 'ege',
+      requestId: 'req-abc',
+    })
+
+    expect(rpc).toHaveBeenCalledWith('invite_student_flow', expect.objectContaining({ p_request_id: 'req-abc' }))
+    expect(res).toMatchObject({ courseId: 'course-1', draftCourse: true })
   })
 })

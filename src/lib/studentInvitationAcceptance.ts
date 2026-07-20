@@ -57,10 +57,12 @@ function mapError(error: unknown): InvitationAcceptanceError {
 }
 
 function mapResult(data: any): InvitationAcceptanceResult {
+  // accept_student_invite* are TABLE-returning RPCs -> supabase yields an array of rows.
+  const row = Array.isArray(data) ? data[0] : data
   return {
-    inviteId: String(data?.invite_id ?? ''),
-    studentId: String(data?.student_id ?? ''),
-    groupId: String(data?.group_id ?? ''),
+    inviteId: String(row?.invite_id ?? ''),
+    studentId: String(row?.student_id ?? ''),
+    groupId: String(row?.group_id ?? ''),
   }
 }
 

@@ -193,6 +193,8 @@ export interface InviteStudentFlowParams {
   groupId?: string | null
   /** explicit course pick used to resolve COURSE_SELECTION_REQUIRED */
   courseId?: string | null
+  /** idempotency key for this send attempt; retries must reuse the same value */
+  requestId: string
 }
 
 export interface InviteStudentFlowResult {
@@ -223,6 +225,7 @@ export async function inviteStudentFlow(params: InviteStudentFlowParams): Promis
       p_exam_type: params.examType ?? null,
       p_group_id: params.groupId ?? null,
       p_course_id: params.courseId ?? null,
+      p_request_id: params.requestId,
     })
     if (error) throw error
     const row = expectRecord(data, 'Приглашение не было создано')

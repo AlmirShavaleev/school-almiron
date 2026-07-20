@@ -62,6 +62,15 @@ async function copyText(value: string, message: string) {
   toast.success(message)
 }
 
+/** idempotency key for one send attempt; reused across retries, rotated per new action */
+function makeRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 export function InviteStudentWizard({ open, onClose, groups, onCreated }: Props) {
   const profile = useAuthStore(s => s.profile)
   const ownerId = profile?.id ?? ''
@@ -82,6 +91,8 @@ export function InviteStudentWizard({ open, onClose, groups, onCreated }: Props)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<null | (InviteStudentFlowResult & { fullName: string })>(null)
+  // one request_id per send attempt; retries/course-pick reuse it, a full reset rotates it
+  const [requestId, setRequestId] = useState<string>(makeRequestId())
 
   useEffect(() => {
     if (!open) return
@@ -89,6 +100,7 @@ export function InviteStudentWizard({ open, onClose, groups, onCreated }: Props)
     setFormat('individual'); setSubject('physics'); setExamType('ege'); setExistingGroupId('')
     setDirectionCourseCount(null); setCoursePicker(null); setChosenCourseId('')
     setSaving(false); setError(null); setResult(null)
+    setRequestId(makeRequestId())
   }, [open])
 
   // "новая группа" path -> tell the teacher upfront if a draft program will be created
@@ -131,6 +143,7 @@ export function InviteStudentWizard({ open, onClose, groups, onCreated }: Props)
         examType: format === 'mini_group' && existingGroupId ? null : examType,
         groupId: format === 'mini_group' && existingGroupId ? existingGroupId : null,
         courseId: courseId ?? null,
+        requestId,
       })
       setResult({ ...res, fullName: fullName.trim() })
       setCoursePicker(null)
@@ -203,7 +216,12 @@ export function InviteStudentWizard({ open, onClose, groups, onCreated }: Props)
                   <div>
                     Для этого направления создан черновик учебной программы. Наполните его позже.
                     <div className="mt-1">
-                      <Link to="/course-program" className="font-semibold text-amber-900 underline">Наполнить программу</Link>
+                      <Link
+                        to={result.courseId ? `/course-program?courseId=${encodeURIComponent(result.courseId)}` : '/course-program'}
+                        className="font-semibold text-amber-900 underline"
+                      >
+                        Наполнить программу
+                      </Link>
                     </div>
                   </div>
                 </div>
