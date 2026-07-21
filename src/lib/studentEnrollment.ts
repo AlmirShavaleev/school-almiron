@@ -109,7 +109,7 @@ function toMessage(error: unknown): StudentEnrollmentError {
   if (message.includes('permission') || code === '42501') {
     return new StudentEnrollmentError('Недостаточно прав для выполнения действия', code)
   }
-  if (message.includes('group_capacity_reached')) {
+  if (message.includes('group_capacity_reached') || message.includes('GROUP_ALREADY_FULL')) {
     return new StudentEnrollmentError('В выбранной группе больше нет свободных мест', code)
   }
   if (message.includes('active_invite_exists')) {
