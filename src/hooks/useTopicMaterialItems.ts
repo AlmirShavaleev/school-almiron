@@ -47,7 +47,7 @@ export function useTopicMaterialItems(topicId: string | null) {
         if (cancelled) return
         if (err) setError(err.message)
         setMaterials(
-          ((data ?? []) as TopicMaterialItemRow[])
+          ((data ?? []) as unknown as TopicMaterialItemRow[])
             .map(toTopicMaterial)
             .filter((m): m is TopicMaterial => m !== null),
         )
@@ -61,13 +61,38 @@ export function useTopicMaterialItems(topicId: string | null) {
 
   /** Загружает файл в приватный бакет и возвращает путь. Строку в БД не создаёт. */
   const uploadMaterialFile = useCallback(
-    async (file: File): Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }> => {
+    async (file: File, onProgress?: (percent: number) => void): Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }> => {
       if (!topicId) throw new Error('Тема не выбрана')
       const storagePath = buildMaterialStoragePath(topicId, file.name)
-      const { error: err } = await supabase.storage
+
+      const { data: signed, error: signErr } = await supabase.storage
         .from(TOPIC_MATERIALS_BUCKET)
-        .upload(storagePath, file, { contentType: file.type, upsert: false })
-      if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
+        .createSignedUploadUrl(storagePath)
+
+      if (signErr || !signed) {
+        // Фолбэк: обычная загрузка без прогресса
+        const { error: err } = await supabase.storage
+          .from(TOPIC_MATERIALS_BUCKET)
+          .upload(storagePath, file, { contentType: file.type, upsert: false })
+        if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
+        return { storagePath, fileName: file.name, mimeType: file.type, sizeBytes: file.size }
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', signed.signedUrl)
+        xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+          ? resolve()
+          : reject(new Error('Ошибка загрузки файла: HTTP ' + xhr.status))
+        xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
+        xhr.send(file)
+      })
+      onProgress?.(100)
       return { storagePath, fileName: file.name, mimeType: file.type, sizeBytes: file.size }
     },
     [topicId],
@@ -83,14 +108,14 @@ export function useTopicMaterialItems(topicId: string | null) {
 
       const { data, error: err } = await supabase
         .from('topic_material_items')
-        .insert(payload)
+        .insert(payload as unknown as any)
         .select('*')
         .single()
 
       if (err) throw err
       if (!data?.id) throw new Error('Недостаточно прав для добавления материала')
 
-      const mapped = toTopicMaterial(data as TopicMaterialItemRow)
+      const mapped = toTopicMaterial(data as unknown as TopicMaterialItemRow)
       if (mapped) setMaterials(prev => [...prev, mapped])
     },
     [topicId, profile, materials],

@@ -156,7 +156,7 @@ function QuickAttach({
   onAdd, onUploadFile, section,
 }: {
   onAdd: (draft: MaterialDraft) => Promise<void>
-  onUploadFile: (file: File) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
+  onUploadFile: (file: File, onProgress?: (percent: number) => void) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
   section?: TopicMaterialSection | null
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -164,12 +164,14 @@ function QuickAttach({
   const [loadingIndex, setLoadingIndex] = useState(0)
   const [totalFiles, setTotalFiles] = useState(0)
   const [errors, setErrors] = useState<string[]>([])
+  const [current, setCurrent] = useState<{ name: string; percent: number } | null>(null)
 
   async function handleFilesSelected(files: FileList) {
     const fileArray = Array.from(files)
     setTotalFiles(fileArray.length)
     setErrors([])
     setLoading(true)
+    setCurrent(null)
 
     const failedFiles: string[] = []
     let firstError: string | null = null
@@ -186,7 +188,8 @@ function QuickAttach({
       }
 
       try {
-        const up = await onUploadFile(file)
+        setCurrent({ name: file.name, percent: 0 })
+        const up = await onUploadFile(file, (p) => setCurrent(c => c ? { ...c, percent: p } : { name: file.name, percent: p }))
         await onAdd({ kind: 'file', title: '', section, ...up })
       } catch (e: any) {
         failedFiles.push(file.name)
@@ -200,6 +203,7 @@ function QuickAttach({
     }
 
     setLoading(false)
+    setCurrent(null)
     // Сброс значения инпута
     if (inputRef.current) {
       inputRef.current.value = ''
@@ -231,7 +235,18 @@ function QuickAttach({
           loading && 'opacity-50 cursor-not-allowed'
         )}
       >
-        {loading ? (
+        {loading && current ? (
+          <div className="w-full max-w-xs">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span className="truncate">{current.name}</span>
+              <span>{current.percent}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+              <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${current.percent}%` }} />
+            </div>
+            <div className="mt-1 text-center text-[11px] text-gray-400">Файл {loadingIndex} из {totalFiles}</div>
+          </div>
+        ) : loading ? (
           <>
             <Loader2 size={20} className="animate-spin" />
             <span className="text-sm font-medium">Загрузка {loadingIndex} из {totalFiles}…</span>
@@ -262,7 +277,7 @@ function AddMaterialForm({
   onAdd, onUploadFile,
 }: {
   onAdd: (draft: MaterialDraft) => Promise<void>
-  onUploadFile: (file: File) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
+  onUploadFile: (file: File, onProgress?: (percent: number) => void) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
 }) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<TopicMaterialKind>('text')
