@@ -28,6 +28,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/schedule$/, 'Расписание'],
   [/^\/attendance$/, 'Посещаемость'],
   [/^\/lessons/, 'Занятия'],
+  [/^\/homework-queue$/, 'Проверка ДЗ'],
   [/^\/homeworks/, 'Домашние задания'],
   [/^\/review-submissions/, 'Проверка работ'],
   [/^\/catalog/, 'Каталог заданий'],

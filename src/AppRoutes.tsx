@@ -62,6 +62,7 @@ import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage'
 import { MyAssignmentsPage } from '@/pages/student/MyAssignmentsPage'
 import { AssignmentDetailPage } from '@/pages/student/AssignmentDetailPage'
 import { HomeworksV2RoleRouter } from '@/pages/HomeworksV2RoleRouter'
+import { HomeworkReviewQueuePage } from '@/pages/HomeworkReviewQueuePage'
 import { HomeworkReviewV2Page } from '@/pages/HomeworkReviewV2Page'
 import { MyHomeworksV2Page } from '@/pages/student/MyHomeworksV2Page'
 import { HomeworkTemplateBuilderPage } from '@/pages/teacher/HomeworkTemplateBuilderPage'
@@ -134,6 +135,9 @@ export default function AppRoutes() {
         <Route path="/student/variants/build" element={<RoleGuard allow={['student']}><StudentVariantBuildPage /></RoleGuard>} />
         <Route path="/student/variants/stats" element={<RoleGuard allow={['student']}><StudentNumberStatsPage /></RoleGuard>} />
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
+
+        {/* Общая очередь проверки PDF-ДЗ нового контура */}
+        <Route path="/homework-queue" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkReviewQueuePage /></RoleGuard>} />
 
         {/* Этап 4: выдача и проверка ДЗ */}
         <Route path="/assign-homework" element={<RoleGuard allow={['teacher','admin','owner']}><AssignHomeworkPage /></RoleGuard>} />

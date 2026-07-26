@@ -42,7 +42,8 @@ function AttemptFiles({ files }: { files: TopicHomeworkAttemptFileRow[] }) {
 
 // ─── Форма вердикта ───────────────────────────────────────────────────────────
 
-function ReviewActions({
+/** Экспортируется для общей очереди проверки (HomeworkReviewQueuePage). */
+export function ReviewActions({
   attempt,
   onReview,
 }: {
