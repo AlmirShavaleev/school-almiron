@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Loader2,
-  Paperclip, Plus, Trash2, Video, X,
+  Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { Button } from '@/components/ui/Button'
@@ -144,6 +144,111 @@ function MaterialCard({
             <span className="text-xs text-gray-400">({formatBytes(material.sizeBytes)})</span>
           )}
         </SignedFileLink>
+      )}
+    </div>
+  )
+}
+
+// ─── Быстрая загрузка файлов ─────────────────────────────────────────────────
+
+function QuickAttach({
+  onAdd, onUploadFile,
+}: {
+  onAdd: (draft: MaterialDraft) => Promise<void>
+  onUploadFile: (file: File) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [loading, setLoading] = useState(false)
+  const [loadingIndex, setLoadingIndex] = useState(0)
+  const [totalFiles, setTotalFiles] = useState(0)
+  const [errors, setErrors] = useState<string[]>([])
+
+  async function handleFilesSelected(files: FileList) {
+    const fileArray = Array.from(files)
+    setTotalFiles(fileArray.length)
+    setErrors([])
+    setLoading(true)
+
+    const failedFiles: string[] = []
+    let firstError: string | null = null
+
+    for (let i = 0; i < fileArray.length; i++) {
+      setLoadingIndex(i + 1)
+      const file = fileArray[i]
+
+      // Проверка размера файла
+      if (file.size > 50 * 1024 * 1024) {
+        failedFiles.push(file.name)
+        if (!firstError) firstError = 'Файл слишком большой'
+        continue
+      }
+
+      try {
+        const up = await onUploadFile(file)
+        await onAdd({ kind: 'file', title: '', ...up })
+      } catch (e: any) {
+        failedFiles.push(file.name)
+        if (!firstError) firstError = e?.message ?? 'Ошибка загрузки'
+      }
+    }
+
+    if (failedFiles.length > 0) {
+      const errorMsg = `Не загружено: ${failedFiles.join(', ')} (${firstError})`
+      setErrors([errorMsg])
+    }
+
+    setLoading(false)
+    // Сброс значения инпута
+    if (inputRef.current) {
+      inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept=".pdf,.png,.jpg,.jpeg,.webp"
+        onChange={(e) => {
+          if (e.target.files) {
+            handleFilesSelected(e.target.files)
+          }
+        }}
+        className="hidden"
+        disabled={loading}
+      />
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={loading}
+        className={cn(
+          'w-full flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors',
+          loading && 'opacity-50 cursor-not-allowed'
+        )}
+      >
+        {loading ? (
+          <>
+            <Loader2 size={20} className="animate-spin" />
+            <span className="text-sm font-medium">Загрузка {loadingIndex} из {totalFiles}…</span>
+          </>
+        ) : (
+          <>
+            <Upload size={20} />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-sm font-medium">Прикрепить PDF или картинки</span>
+              <span className="text-xs">Можно выбрать несколько файлов · до 50 МБ каждый</span>
+            </div>
+          </>
+        )}
+      </button>
+
+      {errors.length > 0 && (
+        <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errors[0]}
+        </div>
       )}
     </div>
   )
@@ -310,6 +415,10 @@ export function TopicMaterialItems({
     <div className={cn('space-y-3', className)}>
       {(error || actionError) && (
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
+      )}
+
+      {canManage && (
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
       )}
 
       {materials.map((m, i) => (
