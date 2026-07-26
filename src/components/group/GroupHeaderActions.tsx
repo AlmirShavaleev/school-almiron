@@ -1,8 +1,8 @@
-import { Pencil, CalendarPlus, Archive, ArchiveRestore, Trash2 } from 'lucide-react'
+import { Pencil, CalendarPlus, Archive, ArchiveRestore, Trash2, ClipboardList } from 'lucide-react'
 import type { GroupMeta } from '@/hooks/useGroupControl'
 
 export function GroupHeaderActions({
-  group, canManage, canTeach, onEdit, onAddLesson, onArchiveToggle, onDelete,
+  group, canManage, canTeach, onEdit, onAddLesson, onArchiveToggle, onDelete, onAssignHomework,
 }: {
   group: GroupMeta
   canManage: boolean   // admin/owner
@@ -11,6 +11,7 @@ export function GroupHeaderActions({
   onAddLesson: () => void
   onArchiveToggle: () => void
   onDelete: () => void
+  onAssignHomework?: () => void
 }) {
   const btn = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-colors'
   return (
@@ -23,6 +24,11 @@ export function GroupHeaderActions({
       {canTeach && (
         <button onClick={onAddLesson} className={`${btn} bg-white border-gray-200 text-gray-700 hover:bg-gray-50`}>
           <CalendarPlus size={14} />Занятие
+        </button>
+      )}
+      {canTeach && onAssignHomework && (
+        <button onClick={onAssignHomework} className={`${btn} bg-primary-600 border-primary-600 text-white hover:bg-primary-700`}>
+          <ClipboardList size={14} />Назначить ДЗ
         </button>
       )}
       {canManage && (

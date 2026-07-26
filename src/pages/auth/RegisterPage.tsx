@@ -8,6 +8,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
+import { getPendingTeacherJoinLinkPath, hasPendingTeacherJoinLink } from '@/lib/teacherJoinLinkSession'
 
 const schema = z.object({
   full_name: z.string().optional(),
@@ -62,8 +63,12 @@ export function RegisterPage() {
       navigate(getPendingInvitePath() || '/join')
       return
     }
+    if (hasPendingTeacherJoinLink() && authData.session) {
+      navigate(getPendingTeacherJoinLinkPath() || '/dashboard')
+      return
+    }
     setSuccess(true)
-    if (!inviteMode) {
+    if (!inviteMode && !hasPendingTeacherJoinLink()) {
       setTimeout(() => navigate('/login'), 2000)
     }
   }
@@ -87,6 +92,8 @@ export function RegisterPage() {
               <p className="text-gray-500 text-sm mt-1">
                 {inviteMode
                   ? 'Подтвердите email. После подтверждения приглашение останется доступным.'
+                  : hasPendingTeacherJoinLink()
+                  ? 'Подтвердите email — после этого заявка преподавателю будет отправлена автоматически.'
                   : 'Проверьте email для подтверждения'}
               </p>
             </div>

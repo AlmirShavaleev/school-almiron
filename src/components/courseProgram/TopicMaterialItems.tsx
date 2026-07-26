@@ -1,0 +1,338 @@
+import { useState } from 'react'
+import {
+  ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Loader2,
+  Paperclip, Plus, Trash2, Video, X,
+} from 'lucide-react'
+import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
+import { Button } from '@/components/ui/Button'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import {
+  TOPIC_MATERIAL_LABELS,
+  bucketForMaterialPath,
+  getVideoEmbedUrl,
+  type MaterialDraft,
+  type TopicMaterial,
+  type TopicMaterialKind,
+} from '@/lib/topicMaterialItems'
+import { cn } from '@/utils/cn'
+
+const KIND_ICON: Record<TopicMaterialKind, typeof FileText> = {
+  text: FileText,
+  video: Video,
+  link: Link2,
+  file: Paperclip,
+}
+
+function formatBytes(bytes: number | null): string | null {
+  if (bytes == null) return null
+  if (bytes < 1024) return `${bytes} Б`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+}
+
+// ─── Одна карточка материала ──────────────────────────────────────────────────
+
+function MaterialCard({
+  material, topicId, canManage, isFirst, isLast,
+  onDelete, onToggleVisibility, onMove,
+}: {
+  material: TopicMaterial
+  topicId: string
+  canManage: boolean
+  isFirst: boolean
+  isLast: boolean
+  onDelete: (id: string) => void
+  onToggleVisibility: (id: string, next: boolean) => void
+  onMove: (id: string, direction: 'up' | 'down') => void
+}) {
+  const Icon = KIND_ICON[material.kind]
+  const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border border-gray-200 bg-white p-4',
+        canManage && !material.isVisible && 'border-dashed opacity-70',
+      )}
+    >
+      <div className="mb-2 flex items-center gap-2">
+        <Icon size={15} className="shrink-0 text-primary-600" />
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
+          {material.title || TOPIC_MATERIAL_LABELS[material.kind]}
+        </span>
+
+        {canManage && (
+          <>
+            {!material.isVisible && (
+              <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-500">
+                Скрыт
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => onMove(material.id, 'up')}
+              disabled={isFirst}
+              aria-label="Поднять выше"
+              title="Поднять выше"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-primary-600 disabled:opacity-30"
+            >
+              <ArrowUp size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onMove(material.id, 'down')}
+              disabled={isLast}
+              aria-label="Опустить ниже"
+              title="Опустить ниже"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-primary-600 disabled:opacity-30"
+            >
+              <ArrowDown size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleVisibility(material.id, !material.isVisible)}
+              aria-label={material.isVisible ? 'Скрыть материал' : 'Показать материал'}
+              title={material.isVisible ? 'Скрыть от учеников' : 'Показать ученикам'}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-primary-600"
+            >
+              {material.isVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(material.id)}
+              aria-label="Удалить материал"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+            >
+              <Trash2 size={14} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {material.kind === 'text' && (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
+      )}
+
+      {material.kind === 'video' &&
+        (embed ? (
+          <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
+            <iframe src={embed} title={material.title || 'Видео темы'} allowFullScreen className="h-full w-full" />
+          </div>
+        ) : (
+          <a href={material.url} target="_blank" rel="noopener noreferrer"
+            className="break-all text-sm text-primary-600 hover:underline">
+            {material.url}
+          </a>
+        ))}
+
+      {material.kind === 'link' && (
+        <a href={material.url} target="_blank" rel="noopener noreferrer"
+          className="break-all text-sm text-primary-600 hover:underline">
+          {material.url}
+        </a>
+      )}
+
+      {material.kind === 'file' && (
+        <SignedFileLink
+          bucket={bucketForMaterialPath(material.storagePath, topicId)}
+          url={material.storagePath}
+          className="inline-flex items-center gap-2 text-sm text-primary-600 hover:underline"
+        >
+          <Paperclip size={14} />
+          {material.fileName || 'Скачать файл'}
+          {formatBytes(material.sizeBytes) && (
+            <span className="text-xs text-gray-400">({formatBytes(material.sizeBytes)})</span>
+          )}
+        </SignedFileLink>
+      )}
+    </div>
+  )
+}
+
+// ─── Форма добавления ─────────────────────────────────────────────────────────
+
+function AddMaterialForm({
+  onAdd, onUploadFile,
+}: {
+  onAdd: (draft: MaterialDraft) => Promise<void>
+  onUploadFile: (file: File) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
+}) {
+  const [open, setOpen] = useState(false)
+  const [kind, setKind] = useState<TopicMaterialKind>('text')
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
+  const [url, setUrl] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() {
+    setKind('text'); setTitle(''); setContent(''); setUrl(''); setFile(null); setError(null)
+  }
+
+  async function handleSubmit() {
+    setBusy(true)
+    setError(null)
+    try {
+      if (kind === 'file') {
+        if (!file) throw new Error('Выберите файл')
+        const uploaded = await onUploadFile(file)
+        await onAdd({ kind, title, ...uploaded })
+      } else if (kind === 'text') {
+        await onAdd({ kind, title, content })
+      } else {
+        await onAdd({ kind, title, url })
+      }
+      reset()
+      setOpen(false)
+    } catch (e: any) {
+      setError(e?.message ?? 'Не удалось добавить материал')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        <Plus size={15} />
+        Добавить материал
+      </Button>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-900">Новый материал</span>
+        <button type="button" onClick={() => { setOpen(false); reset() }} aria-label="Закрыть форму"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Тип материала">
+        {(Object.keys(TOPIC_MATERIAL_LABELS) as TopicMaterialKind[]).map(k => {
+          const Icon = KIND_ICON[k]
+          return (
+            <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition-colors',
+                kind === k
+                  ? 'border-primary-400 bg-primary-50 text-primary-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-primary-200',
+              )}
+            >
+              <Icon size={14} />
+              {TOPIC_MATERIAL_LABELS[k]}
+            </button>
+          )
+        })}
+      </div>
+
+      <input
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        placeholder="Заголовок (необязательно)"
+        aria-label="Заголовок материала"
+        className="mb-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+      />
+
+      {kind === 'text' && (
+        <textarea value={content} onChange={e => setContent(e.target.value)}
+          placeholder="Текст материала" aria-label="Текст материала" rows={5}
+          className="w-full rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+      )}
+
+      {(kind === 'video' || kind === 'link') && (
+        <input value={url} onChange={e => setUrl(e.target.value)}
+          placeholder={kind === 'video' ? 'Ссылка на YouTube или Vimeo' : 'https://…'}
+          aria-label={kind === 'video' ? 'Ссылка на видео' : 'Ссылка'}
+          className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+      )}
+
+      {kind === 'file' && (
+        <input type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} aria-label="Файл материала"
+          className="w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-2 file:text-sm file:text-primary-700" />
+      )}
+
+      {error && <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      <div className="mt-3 flex justify-end">
+        <Button onClick={handleSubmit} loading={busy}>Добавить</Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Список материалов темы ───────────────────────────────────────────────────
+
+/**
+ * canManage=true  — преподаватель: добавление, порядок, скрытие, удаление.
+ * canManage=false — ученик: только чтение.
+ *
+ * Ученику скрытые материалы и закрытые темы не приходят из БД (RLS +
+ * `topics.available_from`), поэтому здесь нет клиентской фильтрации:
+ * полагаться на неё было бы ложной защитой.
+ */
+export function TopicMaterialItems({
+  topicId,
+  canManage,
+  className,
+}: {
+  topicId: string
+  canManage: boolean
+  className?: string
+}) {
+  const {
+    materials, loading, error,
+    uploadMaterialFile, addMaterial, deleteMaterial, toggleVisibility, moveMaterial,
+  } = useTopicMaterialItems(topicId)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  function guard<T extends unknown[]>(fn: (...args: T) => Promise<unknown>) {
+    return (...args: T) => {
+      setActionError(null)
+      fn(...args).catch((e: any) => setActionError(e?.message ?? 'Не удалось выполнить действие'))
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className={cn('flex items-center gap-2 py-6 text-sm text-gray-400', className)}>
+        <Loader2 size={16} className="animate-spin" />
+        Загрузка материалов…
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('space-y-3', className)}>
+      {(error || actionError) && (
+        <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
+      )}
+
+      {materials.map((m, i) => (
+        <MaterialCard
+          key={m.id}
+          material={m}
+          topicId={topicId}
+          canManage={canManage}
+          isFirst={i === 0}
+          isLast={i === materials.length - 1}
+          onDelete={guard(deleteMaterial)}
+          onToggleVisibility={guard(toggleVisibility)}
+          onMove={guard(moveMaterial)}
+        />
+      ))}
+
+      {materials.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+          {canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'}
+        </p>
+      )}
+
+      {canManage && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
+    </div>
+  )
+}

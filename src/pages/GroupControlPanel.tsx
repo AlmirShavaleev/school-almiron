@@ -15,6 +15,8 @@ import { GroupModal } from '@/components/modals/GroupModal'
 import { CreateLessonModal } from '@/components/modals/CreateLessonModal'
 import { ArchiveGroupModal } from '@/components/modals/ArchiveGroupModal'
 import { StudentEnrollmentModal } from '@/components/students/StudentEnrollmentModal'
+import { AssignHomeworkTemplateModal } from '@/components/modals/AssignHomeworkTemplateModal'
+import { GroupHomeworkV2Assignments } from '@/components/group/GroupHomeworkV2Assignments'
 
 export function GroupControlPanel() {
   const { id } = useParams<{ id: string }>()
@@ -31,6 +33,7 @@ export function GroupControlPanel() {
   const [lessonOpen, setLessonOpen]   = useState(false)
   const [transfer, setTransfer]       = useState<GroupStudent | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [assignHwOpen, setAssignHwOpen] = useState(false)
 
   async function archiveToggle() {
     if (!group) return
@@ -100,6 +103,7 @@ export function GroupControlPanel() {
             onAddLesson={() => setLessonOpen(true)}
             onArchiveToggle={archiveToggle}
             onDelete={() => setArchiveOpen(true)}
+            onAssignHomework={canTeach ? () => setAssignHwOpen(true) : undefined}
           />
         </div>
       </div>
@@ -121,11 +125,13 @@ export function GroupControlPanel() {
       {/* KPI */}
       <GroupKPI kpi={kpi} />
 
-      {/* Homework pipeline — ядро */}
+      {/* Homework pipeline — ядро (legacy) */}
       <div>
         <h2 className="text-sm font-bold text-graphite-800 mb-2 flex items-center gap-1.5"><Layers size={15} />Поток домашних заданий</h2>
         <HomeworkPipeline pipeline={pipeline} groupId={group.id} />
       </div>
+
+      <GroupHomeworkV2Assignments groupId={group.id} />
 
       {/* Lessons + Students */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -194,6 +200,14 @@ export function GroupControlPanel() {
         onClose={() => setArchiveOpen(false)}
         onArchived={reload}
         onDeleted={() => navigate('/groups')}
+      />
+      <AssignHomeworkTemplateModal
+        open={assignHwOpen}
+        onClose={() => setAssignHwOpen(false)}
+        onAssigned={reload}
+        courseId={group.course_id}
+        groupId={group.id}
+        students={students}
       />
     </div>
   )

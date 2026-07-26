@@ -27,7 +27,6 @@ import { HomeworkReviewPage } from '@/pages/HomeworkReviewPage'
 import { StudentReviewPage } from '@/pages/StudentReviewPage'
 import { HomeworkQueuePage } from '@/pages/HomeworkQueuePage'
 import { LessonsPage } from '@/pages/LessonsPage'
-import { HomeworksPage } from '@/pages/HomeworksPage'
 import { MockExamsPage } from '@/pages/MockExamsPage'
 import { PaymentsPage } from '@/pages/PaymentsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -62,6 +61,10 @@ import { ReviewSubmissionsPage } from '@/pages/ReviewSubmissionsPage'
 import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage'
 import { MyAssignmentsPage } from '@/pages/student/MyAssignmentsPage'
 import { AssignmentDetailPage } from '@/pages/student/AssignmentDetailPage'
+import { HomeworksV2RoleRouter } from '@/pages/HomeworksV2RoleRouter'
+import { HomeworkReviewV2Page } from '@/pages/HomeworkReviewV2Page'
+import { MyHomeworksV2Page } from '@/pages/student/MyHomeworksV2Page'
+import { HomeworkTemplateBuilderPage } from '@/pages/teacher/HomeworkTemplateBuilderPage'
 
 /** Защищённое поддерево роутов (всё, что раньше висело под DashboardLayout в App.tsx). Lazy-загружается целиком из App.tsx. */
 export default function AppRoutes() {
@@ -103,7 +106,12 @@ export default function AppRoutes() {
 
         {/* Списки, общие для student (своё) и персонала */}
         <Route path="/lessons" element={<LessonsPage />} />
-        <Route path="/homeworks" element={<HomeworksPage />} />
+        {/* Homework v2 — canonical routes. Role-branched at /homeworks; /my-homeworks and
+            /homework-review are direct aliases to the same two pages. */}
+        <Route path="/homeworks" element={<HomeworksV2RoleRouter />} />
+        <Route path="/homework-review" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewV2Page /></RoleGuard>} />
+        <Route path="/homework-templates/new" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkTemplateBuilderPage /></RoleGuard>} />
+        <Route path="/my-homeworks" element={<RoleGuard allow={['student']}><MyHomeworksV2Page /></RoleGuard>} />
         <Route path="/mock-exams" element={<MockExamsPage />} />
 
         <Route path="/catalog" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogPage /></RoleGuard>} />

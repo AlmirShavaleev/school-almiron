@@ -32,6 +32,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
 import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
+import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 
 // Auth pages
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -39,6 +40,7 @@ import { RegisterPage } from '@/pages/auth/RegisterPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 import { JoinPage } from '@/pages/JoinPage'
+import { JoinTeacherPage } from '@/pages/JoinTeacherPage'
 
 // Public — lazy-loaded so framer-motion + landing components stay out of the main chunk
 const LandingPage       = lazy(() => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
@@ -64,7 +66,11 @@ function RootRedirect() {
 
   useEffect(() => {
     if (loading) return
-    const pendingPath = getPendingInvitePath()
+    // This is where Supabase's email-confirmation link lands (emailRedirectTo = origin + "/").
+    // A pending teacher-join-link intent must be checked here too, not just on /login --
+    // otherwise the confirmation redirect drops the user straight onto /dashboard and the
+    // join request never gets submitted until they manually reopen the /jt/:token link.
+    const pendingPath = getPendingInvitePath() || getPendingTeacherJoinLinkPath()
     if (pendingPath && (profile || user)) {
       navigate(pendingPath, { replace: true })
       return
@@ -73,7 +79,7 @@ function RootRedirect() {
   }, [profile, user, loading, navigate])
 
   if (loading) return <FullScreenSpinner />
-  if (profile || (user && getPendingInvitePath())) return null
+  if (profile || (user && (getPendingInvitePath() || getPendingTeacherJoinLinkPath()))) return null
 
   return <LandingPage />
 }
@@ -182,6 +188,7 @@ export default function App() {
         <Route path="/reset-password"  element={<ResetPasswordPage />} />
         <Route path="/join" element={<JoinPage />} />
         <Route path="/join/:token" element={<JoinPage />} />
+        <Route path="/jt/:token" element={<JoinTeacherPage />} />
 
         {/* Protected app subtree — lazy chunk, own nested <Routes> (see AppRoutes.tsx) */}
         <Route path="/*" element={<AppRoutes />} />

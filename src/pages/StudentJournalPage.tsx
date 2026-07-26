@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { JournalView } from '@/components/journal/JournalView'
-import type { JournalAssignment } from '@/types/journal'
 
 export function StudentJournalPage() {
   const { studentId } = useParams<{ studentId: string }>()
@@ -22,9 +21,6 @@ export function StudentJournalPage() {
         studentId={studentId}
         viewerRole="teacher"
         lessonHref={lessonId => `/lessons/${lessonId}`}
-        assignmentHref={(a: JournalAssignment) => a.source === 'legacy'
-          ? `/homeworks/${a.assigned_id}`
-          : a.submission_id ? `/review-submissions/${a.submission_id}` : null}
       />
     </div>
   )

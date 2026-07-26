@@ -730,24 +730,47 @@ export function useCatalogTopics(
       setLoading(true)
       setError(null)
       try {
-        const topicIdsSet = new Set<string>()
-        const taskCountByTopic: Record<string, number> = {}
-        const linkRows = await fetchAllPagedRows<{
-          topic_id: string
-          task_id: string
-        }>((from, to) =>
+        const sectionTasks = await fetchAllPagedRows<{ id: string }>((from, to) =>
           db
-            .from('catalog_task_topics')
-            .select('topic_id, task_id, catalog_tasks!inner(section_id, is_published)')
-            .eq('catalog_tasks.section_id', sectionId)
-            .eq('catalog_tasks.is_published', true)
+            .from('catalog_tasks')
+            .select('id')
+            .eq('section_id', sectionId)
+            .eq('is_published', true)
+            .order('id')
             .range(from, to)
         )
+        if (cancelled) return
+
+        const sectionTaskIds = sectionTasks.map(task => task.id)
+        if (!sectionTaskIds.length) {
+          if (!cancelled) {
+            setTopics([])
+            setLoading(false)
+          }
+          return
+        }
+
+        const topicIdsSet = new Set<string>()
+        const taskCountByTopic: Record<string, number> = {}
+        const linksByTaskId = new Map<string, string[]>()
+        const linkRows: Array<{ topic_id: string; task_id: string }> = []
+        for (const batch of chunk(sectionTaskIds, IN_FILTER_CHUNK)) {
+          const { data, error: linksError } = await db
+            .from('catalog_task_topics')
+            .select('topic_id, task_id')
+            .in('task_id', batch)
+
+          if (linksError) throw new Error(linksError.message ?? 'Не удалось загрузить каталог')
+          linkRows.push(...((data ?? []) as Array<{ topic_id: string; task_id: string }>))
+        }
         if (cancelled) return
 
         for (const row of linkRows) {
           topicIdsSet.add(row.topic_id)
           taskCountByTopic[row.topic_id] = (taskCountByTopic[row.topic_id] ?? 0) + 1
+          const linkedTopicIds = linksByTaskId.get(row.task_id) ?? []
+          linkedTopicIds.push(row.topic_id)
+          linksByTaskId.set(row.task_id, linkedTopicIds)
         }
 
         const topicIds = [...topicIdsSet]
@@ -771,28 +794,15 @@ export function useCatalogTopics(
 
         if (e2 || cancelled) { if (!cancelled) setError(e2?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
-        // User completed per topic
-        const progressData = await fetchAllPagedRows<{
-          task_id: string
-          catalog_tasks?: { catalog_task_topics?: { topic_id: string; source: string | null }[] }
-        }>((from, to) =>
-          db
-            .from('catalog_task_progress')
-            .select('task_id, catalog_tasks!inner(section_id, catalog_task_topics(topic_id, source))')
-            .eq('user_id', profile!.id)
-            .eq('catalog_tasks.section_id', sectionId)
-            .eq('is_completed', true)
-            .range(from, to)
-        )
+        const progressData = await fetchCompletedTaskRowsForUserByTaskIds(profile!.id, sectionTaskIds)
         if (cancelled) return
 
         const doneByTopic: Record<string, number> = {}
         const topicIdSet = new Set(topicIds)
         for (const p of progressData) {
-          const taskRel = (p as { catalog_tasks?: { catalog_task_topics?: { topic_id: string; source: string | null }[] } }).catalog_tasks
-          for (const tt of taskRel?.catalog_task_topics ?? []) {
-            if (topicIdSet.has(tt.topic_id)) {
-              doneByTopic[tt.topic_id] = (doneByTopic[tt.topic_id] ?? 0) + 1
+          for (const linkedTopicId of linksByTaskId.get(p.task_id) ?? []) {
+            if (topicIdSet.has(linkedTopicId)) {
+              doneByTopic[linkedTopicId] = (doneByTopic[linkedTopicId] ?? 0) + 1
             }
           }
         }
@@ -1068,13 +1078,7 @@ export function useCatalogTasksBatch(taskIds: string[]) {
 
 // ── Search tasks in a section (includes unassigned tasks) ─────────────────────
 
-export interface CatalogSearchResult {
-  id: string
-  external_id: number
-  section_id: string
-  statement_html: string
-  has_answer: boolean
-  has_solution: boolean
+export interface CatalogSearchResult extends CatalogTask {
   hasTopicAssigned?: boolean
 }
 
@@ -1095,13 +1099,13 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
       try {
         // Numeric query → search by external_id first
         const isNum = /^\d+$/.test(q)
-        let data: CatalogSearchResult[] | null = null
+        let data: Array<Pick<CatalogTask, 'id' | 'external_id' | 'section_id'>> | null = null
         let err = null
 
         if (isNum) {
           const res = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id, statement_html, has_answer, has_solution')
+            .select('id, external_id, section_id')
             .eq('section_id', sectionId)
             .eq('external_id', parseInt(q, 10))
             .eq('is_published', true)
@@ -1113,7 +1117,7 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
         if (!isNum || !data?.length) {
           const res = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id, statement_html, has_answer, has_solution')
+            .select('id, external_id, section_id')
             .eq('section_id', sectionId)
             .eq('is_published', true)
             .ilike('statement_html', `%${q}%`)
@@ -1125,21 +1129,58 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
         if (err || cancelled) { if (!cancelled) setError(err?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
         const rows = data ?? []
+        const taskIds = rows.map(row => row.id)
+        const tasksData = await fetchTasksByIds(taskIds)
+        if (cancelled) return
+
+        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
+        const ASSET_PAGE = 1000
+        const ASSET_CHUNK = 50
+        for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
+          const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
+          for (let from = 0; ; from += ASSET_PAGE) {
+            const { data: assetPage, error: assetsError } = await db
+              .from('catalog_task_assets')
+              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+              .in('task_id', chunk)
+              .order('position')
+              .range(from, from + ASSET_PAGE - 1)
+            if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
+            if (!assetPage || assetPage.length === 0) break
+            allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
+            if (assetPage.length < ASSET_PAGE) break
+          }
+        }
+
+        const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
+        for (const asset of allAssets) {
+          if (!assetsByTask[asset.task_id]) assetsByTask[asset.task_id] = []
+          assetsByTask[asset.task_id].push(asset)
+        }
 
         // Check which tasks have a topic (for admin marker)
-        const ids = rows.map(r => r.id)
         const linkedSet = new Set<string>()
-        for (let i = 0; i < ids.length; i += 50) {
+        for (let i = 0; i < taskIds.length; i += 50) {
           const { data: links, error: linksError } = await db
             .from('catalog_task_topics')
             .select('task_id')
-            .in('task_id', ids.slice(i, i + 50))
+            .in('task_id', taskIds.slice(i, i + 50))
           if (linksError || cancelled) { if (!cancelled) setError(linksError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
           for (const l of links ?? []) linkedSet.add(l.task_id)
         }
 
         if (!cancelled) {
-          setResults(rows.map(r => ({ ...r, hasTopicAssigned: linkedSet.has(r.id) })))
+          const taskMap = new Map(tasksData.map(task => [task.id, task]))
+          setResults(
+            taskIds
+              .map(id => taskMap.get(id))
+              .filter((task): task is CatalogTask => !!task)
+              .map(task => ({
+                ...task,
+                assets: assetsByTask[task.id] ?? [],
+                hasTopicAssigned: linkedSet.has(task.id),
+              }))
+          )
           setLoading(false)
         }
       } catch (e) {

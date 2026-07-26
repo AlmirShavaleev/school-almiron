@@ -64,7 +64,7 @@ vi.mock('@/components/ui/SignedFileLink', () => ({ SignedFileLink: ({ children }
 vi.mock('@/components/modals/EditLessonModal', () => ({ EditLessonModal: () => null }))
 vi.mock('@/components/lessons/LessonSummaryCard', () => ({ LessonSummaryCard: () => <div>summary</div> }))
 vi.mock('@/components/lessons/LessonMaterialsCard', () => ({ LessonMaterialsCard: () => <div>materials</div> }))
-vi.mock('@/components/lessons/LessonHomeworkCard', () => ({ LessonHomeworkCard: () => <div>homework</div> }))
+vi.mock('@/components/lessons/LessonHomeworkV2Card', () => ({ LessonHomeworkV2Card: () => <div>homework-v2</div> }))
 
 import { LessonDetailPage } from '@/pages/LessonDetailPage'
 

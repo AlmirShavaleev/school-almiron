@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Copy, Loader2, RefreshCw, UserPlus, Users } from 'lucide-react'
+import { AlertCircle, Copy, Loader2, RefreshCw, UserPlus, Users, UserCheck, XCircle, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -17,10 +17,13 @@ import {
   type MyStudent,
   type MyStudentInvite,
 } from '@/lib/studentEnrollment'
+import { buildTeacherJoinUrl, createOrGetTeacherJoinLink, rotateTeacherJoinLink } from '@/lib/teacherJoinLink'
+import { getMyJoinRequests, rejectTeacherJoinRequest, restoreTeacherJoinRequest, type MyJoinRequest } from '@/lib/teacherJoinRequests'
 import { StudentEnrollmentModal, type EnrollmentGroupOption } from '@/components/students/StudentEnrollmentModal'
 import { InviteStudentWizard, type WizardGroupOption } from '@/components/students/InviteStudentWizard'
+import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
 
-type TabKey = 'students' | 'invites'
+type TabKey = 'students' | 'invites' | 'newStudents'
 
 const INVITE_STATUS_LABELS: Record<string, string> = {
   pending: 'Активно',
@@ -39,6 +42,13 @@ export function StudentsPage() {
   const [tab, setTab] = useState<TabKey>('students')
   const [modalOpen, setModalOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [linkBusy, setLinkBusy] = useState(false)
+
+  const [joinRequests, setJoinRequests] = useState<MyJoinRequest[]>([])
+  const [joinRequestsLoading, setJoinRequestsLoading] = useState(true)
+  const [joinRequestsError, setJoinRequestsError] = useState<string | null>(null)
+  const [newStudentsFilter, setNewStudentsFilter] = useState<'pending' | 'rejected'>('pending')
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null)
 
   const [students, setStudents] = useState<MyStudent[]>([])
   const [studentsLoading, setStudentsLoading] = useState(true)
@@ -78,6 +88,23 @@ export function StudentsPage() {
     [groups],
   )
 
+  const distributeGroups = useMemo<DistributeGroupOption[]>(
+    () => groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      courseId: group.course_id ?? null,
+      isActive: Boolean(group.is_active),
+      maxStudents: group.max_students ?? 0,
+      studentCount: group.student_count ?? 0,
+      memberStudentIds: (group.group_students ?? []).map((gs: any) => gs.student_id),
+      scheduleDays: group.schedule_days ?? null,
+      scheduleTime: group.schedule_time ?? null,
+    })),
+    [groups],
+  )
+
+  const [distributeTarget, setDistributeTarget] = useState<MyJoinRequest | null>(null)
+
   async function loadStudents() {
     setStudentsLoading(true)
     setStudentsError(null)
@@ -105,6 +132,18 @@ export function StudentsPage() {
     }
   }
 
+  async function loadJoinRequests() {
+    setJoinRequestsLoading(true)
+    setJoinRequestsError(null)
+    try {
+      setJoinRequests(await getMyJoinRequests(newStudentsFilter))
+    } catch (error) {
+      setJoinRequestsError(error instanceof Error ? error.message : 'Не удалось загрузить заявки')
+    } finally {
+      setJoinRequestsLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadStudents()
   }, [])
@@ -112,6 +151,77 @@ export function StudentsPage() {
   useEffect(() => {
     loadInvites()
   }, [inviteGroupFilter, inviteStatusFilter])
+
+  useEffect(() => {
+    loadJoinRequests()
+  }, [newStudentsFilter])
+
+  async function handleCopyJoinLink() {
+    setLinkBusy(true)
+    try {
+      const result = await createOrGetTeacherJoinLink()
+      if (!result.token) {
+        toast.error('Не удалось получить ссылку регистрации')
+        return
+      }
+      await navigator.clipboard.writeText(buildTeacherJoinUrl(result.token))
+      toast.success('Ссылка регистрации скопирована')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось получить ссылку регистрации')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function handleRotateJoinLink() {
+    setLinkBusy(true)
+    try {
+      const result = await rotateTeacherJoinLink()
+      if (result.token) {
+        await navigator.clipboard.writeText(buildTeacherJoinUrl(result.token))
+        toast.success('Новая ссылка создана и скопирована. Старая ссылка больше не работает.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось обновить ссылку')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function handleRejectJoinRequest(request: MyJoinRequest) {
+    setReviewingRequestId(request.id)
+    try {
+      await rejectTeacherJoinRequest(request.id)
+      toast.success('Заявка отклонена')
+      loadJoinRequests()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось отклонить заявку')
+    } finally {
+      setReviewingRequestId(null)
+    }
+  }
+
+  async function handleRestoreJoinRequest(request: MyJoinRequest) {
+    setReviewingRequestId(request.id)
+    try {
+      await restoreTeacherJoinRequest(request.id)
+      toast.success('Заявка возвращена в новые')
+      loadJoinRequests()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось вернуть заявку')
+    } finally {
+      setReviewingRequestId(null)
+    }
+  }
+
+  function handleOpenDistribute(request: MyJoinRequest) {
+    setDistributeTarget(request)
+  }
+
+  function handleDistributed() {
+    toast.success('Ученик распределён')
+    loadJoinRequests()
+  }
 
   const filteredStudents = useMemo(() => {
     const query = studentQuery.trim().toLowerCase()
@@ -221,11 +331,17 @@ export function StudentsPage() {
             <p className="mt-1 text-slate-500">Ваши ученики и активные приглашения</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setWizardOpen(true)}>
-              <UserPlus size={15} />Пригласить ученика
+            <Button onClick={handleCopyJoinLink} loading={linkBusy}>
+              <Copy size={15} />Скопировать ссылку регистрации
+            </Button>
+            <Button variant="secondary" onClick={() => setWizardOpen(true)}>
+              <UserPlus size={15} />Пригласить сразу в группу
             </Button>
             <Button variant="secondary" onClick={() => setModalOpen(true)}>
               <Users size={15} />Добавить класс
+            </Button>
+            <Button variant="ghost" onClick={handleRotateJoinLink} loading={linkBusy} title="Отзывает старую ссылку и создаёт новую">
+              <RotateCcw size={14} />Обновить ссылку
             </Button>
           </div>
         </div>
@@ -233,6 +349,12 @@ export function StudentsPage() {
 
       <div className="flex gap-2 border-b border-slate-200">
         <TabButton active={tab === 'students'} onClick={() => setTab('students')}>Ученики</TabButton>
+        <TabButton active={tab === 'newStudents'} onClick={() => setTab('newStudents')}>
+          Новые ученики
+          {joinRequests.length > 0 && newStudentsFilter === 'pending' && (
+            <span className="ml-1.5 rounded-full bg-primary-100 px-1.5 py-0.5 text-xs font-semibold text-primary-700">{joinRequests.length}</span>
+          )}
+        </TabButton>
         <TabButton active={tab === 'invites'} onClick={() => setTab('invites')}>Приглашения</TabButton>
       </div>
 
@@ -284,6 +406,87 @@ export function StudentsPage() {
                       </Link>
                     </div>
                   )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'newStudents' && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={newStudentsFilter === 'pending' ? 'primary' : 'secondary'}
+              onClick={() => setNewStudentsFilter('pending')}
+            >
+              Новые
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={newStudentsFilter === 'rejected' ? 'primary' : 'secondary'}
+              onClick={() => setNewStudentsFilter('rejected')}
+            >
+              Отклонённые
+            </Button>
+          </div>
+
+          {joinRequestsLoading ? (
+            <LoadingState label="Загружаем заявки…" />
+          ) : joinRequestsError ? (
+            <ErrorState label={joinRequestsError} onRetry={loadJoinRequests} />
+          ) : joinRequests.length === 0 ? (
+            <EmptyState
+              title={newStudentsFilter === 'pending' ? 'Новых заявок нет' : 'Отклонённых заявок нет'}
+              body={newStudentsFilter === 'pending'
+                ? 'Отправьте ученикам ссылку регистрации — заявки появятся здесь.'
+                : 'Отклонённые заявки будут показаны в этом фильтре.'}
+            />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {joinRequests.map(request => (
+                <Card key={request.id} className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-graphite-950">{request.fullName}</h3>
+                      <p className="text-sm text-slate-500">{request.email || 'Email не указан'}</p>
+                    </div>
+                    <Badge variant={request.status === 'rejected' ? 'default' : 'success'}>
+                      {request.status === 'rejected' ? 'Отклонена' : 'Новая'}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-slate-500">Заявка подана: {formatDate(request.createdAt)}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {request.status === 'pending' ? (
+                      <>
+                        <Button type="button" size="sm" onClick={() => handleOpenDistribute(request)}>
+                          <UserCheck size={14} />Распределить
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          loading={reviewingRequestId === request.id}
+                          onClick={() => handleRejectJoinRequest(request)}
+                        >
+                          <XCircle size={14} />Отклонить
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        loading={reviewingRequestId === request.id}
+                        onClick={() => handleRestoreJoinRequest(request)}
+                      >
+                        <RotateCcw size={14} />Вернуть в новые
+                      </Button>
+                    )}
+                  </div>
                 </Card>
               ))}
             </div>
@@ -414,6 +617,18 @@ export function StudentsPage() {
           loadInvites()
         }}
       />
+
+      {distributeTarget && (
+        <DistributeJoinRequestWizard
+          open={Boolean(distributeTarget)}
+          onClose={() => setDistributeTarget(null)}
+          joinRequestId={distributeTarget.id}
+          studentId={distributeTarget.studentId}
+          studentFullName={distributeTarget.fullName}
+          groups={distributeGroups}
+          onDistributed={handleDistributed}
+        />
+      )}
     </div>
   )
 }

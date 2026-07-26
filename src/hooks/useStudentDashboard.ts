@@ -4,7 +4,6 @@ import { supabase } from '@/lib/supabase'
 interface StudentDashboardData {
   student: any
   nextLesson: any
-  homeworks: any[]
   mockResults: any[]
   recommendations: any[]
   attendanceRate: number
@@ -15,7 +14,6 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
   const [data, setData] = useState<StudentDashboardData>({
     student: null,
     nextLesson: null,
-    homeworks: [],
     mockResults: [],
     recommendations: [],
     attendanceRate: 0,
@@ -43,7 +41,6 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
         .eq('student_id', student.id)
 
       const groupIds = (groupStudents || []).map((gs: any) => gs.group_id)
-      const courseIds = [...new Set((groupStudents || []).map((gs: any) => gs.groups?.course_id).filter(Boolean))]
 
       let nextLesson = null
       if (groupIds.length > 0) {
@@ -56,26 +53,6 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
           .order('scheduled_at', { ascending: true })
           .limit(1)
         nextLesson = lessons?.[0] || null
-      }
-
-      let homeworks: any[] = []
-      if (courseIds.length > 0) {
-        const { data: mods } = await supabase
-          .from('modules').select('topics(id)').in('course_id', courseIds)
-        const topicIds = (mods || []).flatMap((m: any) => (m.topics || []).map((t: any) => t.id))
-        if (topicIds.length) {
-          const { data: hws } = await supabase
-            .from('homeworks')
-            .select('*, homework_submissions(status, score, feedback, submitted_at, student_id)')
-            .in('topic_id', topicIds)
-            .eq('is_archived', false)
-            .order('due_date', { ascending: true })
-          // только сдачи этого ученика
-          homeworks = (hws || []).map((hw: any) => ({
-            ...hw,
-            homework_submissions: (hw.homework_submissions || []).filter((s: any) => s.student_id === student.id),
-          }))
-        }
       }
 
       const { data: mockResults } = await supabase
@@ -105,7 +82,6 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
       setData({
         student,
         nextLesson,
-        homeworks,
         mockResults: mockResults || [],
         recommendations: recs || [],
         attendanceRate,

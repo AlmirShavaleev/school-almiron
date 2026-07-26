@@ -4,12 +4,24 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
+import { useStudentHomeworkSummary } from '@/hooks/useStudentHomeworkSummary'
+import { useMyHomeworkAssignments } from '@/hooks/useMyHomeworkAssignments'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useStudentCourses } from '@/hooks/useStudentCourses'
+import { useMyCourseMemberships } from '@/hooks/useMyCourseMemberships'
 import { CourseSelector } from '@/components/CourseSelector'
-import { formatDate, formatDateTime, HW_STATUS_LABELS, HW_STATUS_COLORS } from '@/utils/format'
+import { formatDate, formatDateTime } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { HW_V2_CATEGORY_LABELS, type HomeworkV2Category } from '@/types/homeworkV2'
+
+const HW_V2_CATEGORY_COLORS: Record<HomeworkV2Category, string> = {
+  not_published: 'bg-gray-100 text-gray-500',
+  new: 'bg-blue-100 text-blue-700',
+  to_do: 'bg-orange-100 text-orange-700',
+  under_review: 'bg-yellow-100 text-yellow-700',
+  returned_for_revision: 'bg-red-100 text-red-700',
+  checked: 'bg-green-100 text-green-700',
+}
 
 function isToday(iso: string) {
   const d = new Date(iso)
@@ -17,17 +29,15 @@ function isToday(iso: string) {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
 }
 
-function isOverdue(iso: string) {
-  return new Date(iso) < new Date()
-}
-
 export function StudentDashboard() {
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
-  const { student, nextLesson, homeworks, mockResults, recommendations, attendanceRate, loading } =
+  const { student, nextLesson, mockResults, recommendations, attendanceRate, loading } =
     useStudentDashboard(profile?.id)
   const { subscription, loading: subLoading } = useSubscription()
-  const studentCourses = useStudentCourses(student?.id)
+  const myCourses = useMyCourseMemberships()
+  const { summary: hwSummary, loading: hwSummaryLoading } = useStudentHomeworkSummary()
+  const { rows: hwRows, loading: hwRowsLoading } = useMyHomeworkAssignments()
 
   if (loading) {
     return (
@@ -45,19 +55,15 @@ export function StudentDashboard() {
     )
   }
 
-  const allHW     = homeworks
-  const pendingHW = allHW.filter((h: any) => {
-    const s = h.homework_submissions?.[0]?.status
-    return !s || s === 'not_submitted'
-  })
-  const urgentHW = pendingHW
-    .filter((h: any) => isOverdue(h.due_date) || (new Date(h.due_date).getTime() - Date.now() < 3 * 86400_000))
+  // Homework V2 — replaces legacy homeworks/homework_submissions reads entirely.
+  const pendingHWCount = hwSummary ? hwSummary.new + hwSummary.to_do + hwSummary.returned_for_revision : 0
+  const checkedCount = hwSummary?.checked ?? 0
+  const overdueCount = hwSummary?.overdue ?? 0
+  const urgentHW = hwRows
+    .filter(r => (r.category === 'new' || r.category === 'to_do' || r.category === 'returned_for_revision') && !r.is_excused)
+    .filter(r => r.overdue || (new Date(r.effective_due_at).getTime() - Date.now() < 3 * 86400_000))
     .slice(0, 3)
-
-  const checkedHW = allHW.filter((h: any) => h.homework_submissions?.[0]?.status === 'checked' && h.homework_submissions[0].score != null)
-  const hwAvgScore = checkedHW.length > 0
-    ? Math.round(checkedHW.reduce((acc: number, h: any) => acc + h.homework_submissions[0].score / h.max_score * 100, 0) / checkedHW.length)
-    : null
+  const recentHW = hwRows.filter(r => r.category !== 'not_published').slice(0, 5)
 
   const lastMock = mockResults[0]
   const progressData = mockResults
@@ -95,7 +101,7 @@ export function StudentDashboard() {
             </button>
             <button onClick={() => navigate('/my-assignments')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">ДЗ</div>
-              <div className="text-sm font-semibold text-graphite-950">{pendingHW.length}</div>
+              <div className="text-sm font-semibold text-graphite-950">{pendingHWCount}</div>
             </button>
             <button onClick={() => navigate('/my-progress')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">Прогресс</div>
@@ -106,11 +112,10 @@ export function StudentDashboard() {
       </div>
 
       {/* Course selector */}
-      {studentCourses.courses.length > 0 && (
+      {myCourses.courses.length > 0 && (
         <CourseSelector
-          courses={studentCourses.courses}
-          activeId={studentCourses.activeCourseId}
-          onSelect={studentCourses.setActive}
+          courses={myCourses.courses}
+          onOpenGroup={groupId => navigate(`/my-course/${groupId}`)}
         />
       )}
 
@@ -118,10 +123,10 @@ export function StudentDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="ДЗ на сдачу"
-          value={pendingHW.length}
+          value={pendingHWCount}
           icon={<BookOpen size={20} />}
-          color={pendingHW.length > 0 ? 'orange' : 'green'}
-          subtitle={pendingHW.length === 0 ? 'Всё сдано' : 'Ожидают выполнения'}
+          color={pendingHWCount > 0 ? 'orange' : 'green'}
+          subtitle={pendingHWCount === 0 ? 'Всё сдано' : 'Ожидают выполнения'}
         />
         <StatCard
           title="Посещаемость"
@@ -131,11 +136,11 @@ export function StudentDashboard() {
           subtitle="За всё время"
         />
         <StatCard
-          title="Средний балл ДЗ"
-          value={hwAvgScore != null ? `${hwAvgScore}%` : '—'}
+          title="Проверено ДЗ"
+          value={checkedCount}
           icon={<TrendingUp size={20} />}
-          color={hwAvgScore != null && hwAvgScore >= 80 ? 'green' : hwAvgScore != null && hwAvgScore >= 60 ? 'orange' : 'purple'}
-          subtitle={checkedHW.length > 0 ? `${checkedHW.length} проверено` : 'Нет проверенных'}
+          color={overdueCount > 0 ? 'red' : 'purple'}
+          subtitle={overdueCount > 0 ? `${overdueCount} просрочено` : 'Просрочек нет'}
         />
         <StatCard
           title="Цель"
@@ -199,44 +204,41 @@ export function StudentDashboard() {
           )}
         </Card>
 
-        {/* Домашние задания */}
+        {/* Домашние задания (Homework V2) */}
         <Card>
           <CardHeader>
             <CardTitle>Домашние задания</CardTitle>
             <button
-              onClick={() => navigate('/homeworks')}
+              onClick={() => navigate('/my-homeworks')}
               className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
             >
               Все <ArrowRight size={12} />
             </button>
           </CardHeader>
-          {allHW.length === 0 ? (
+          {hwRowsLoading ? (
+            <p className="text-gray-400 text-sm py-4 text-center">Загрузка…</p>
+          ) : recentHW.length === 0 ? (
             <p className="text-gray-400 text-sm py-4 text-center">Домашних заданий нет</p>
           ) : (
             <div className="space-y-2">
-              {allHW.slice(0, 5).map((hw: any) => {
-                const sub    = hw.homework_submissions?.[0]
-                const status = sub?.status || 'not_submitted'
-                const over   = isOverdue(hw.due_date) && status === 'not_submitted'
-                return (
-                  <div key={hw.id} className={cn(
-                    'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-colors',
-                    over ? 'border-red-200 bg-red-50' : 'border-gray-100 hover:border-gray-200'
-                  )}>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{hw.title}</div>
-                      <div className={cn('text-xs mt-0.5', over ? 'text-red-500 font-medium' : 'text-gray-400')}>
-                        {over ? 'Просрочено · ' : 'до '}
-                        {formatDate(hw.due_date)}
-                      </div>
+              {recentHW.map(hw => (
+                <div key={hw.assignment_id} onClick={() => navigate('/my-homeworks')} className={cn(
+                  'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-colors cursor-pointer',
+                  hw.overdue ? 'border-red-200 bg-red-50' : 'border-gray-100 hover:border-gray-200'
+                )}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{hw.template_title}</div>
+                    <div className={cn('text-xs mt-0.5', hw.overdue ? 'text-red-500 font-medium' : 'text-gray-400')}>
+                      {hw.overdue ? 'Просрочено · ' : 'до '}
+                      {formatDate(hw.effective_due_at)}
                     </div>
-                    <span className={cn('text-xs font-medium px-2 py-1 rounded-full ml-3 shrink-0', HW_STATUS_COLORS[status])}>
-                      {HW_STATUS_LABELS[status]}
-                      {sub?.score != null && ` · ${sub.score}/${hw.max_score}`}
-                    </span>
                   </div>
-                )
-              })}
+                  <span className={cn('text-xs font-medium px-2 py-1 rounded-full ml-3 shrink-0', HW_V2_CATEGORY_COLORS[hw.category])}>
+                    {HW_V2_CATEGORY_LABELS[hw.category]}
+                    {hw.latest_score != null && ` · ${hw.latest_score}`}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </Card>
@@ -387,10 +389,10 @@ export function StudentDashboard() {
             </div>
           </CardHeader>
           <div className="space-y-2">
-            {urgentHW.map((hw: any) => (
-              <div key={hw.id} className="flex items-center justify-between text-sm">
-                <span className="font-medium text-orange-900">{hw.title}</span>
-                <span className="text-xs text-orange-600">до {formatDate(hw.due_date)}</span>
+            {urgentHW.map(hw => (
+              <div key={hw.assignment_id} className="flex items-center justify-between text-sm">
+                <span className="font-medium text-orange-900">{hw.template_title}</span>
+                <span className="text-xs text-orange-600">до {formatDate(hw.effective_due_at)}</span>
               </div>
             ))}
           </div>

@@ -16,6 +16,19 @@ export function periodToRange(period: JournalPeriod, customFrom?: string, custom
   return { from: null, to: null } // 'all'
 }
 
+// RPC returns SQL NULL (not '[]') for jsonb_agg over an empty set — normalized here once,
+// at the data boundary, so components can rely on arrays always being arrays.
+function normalizeJournal(data: StudentJournal | null): StudentJournal | null {
+  if (!data) return null
+  return {
+    ...data,
+    student: { ...data.student, groups: data.student.groups ?? [] },
+    lessons: data.lessons ?? [],
+    assignments: data.assignments ?? [],
+    trend: data.trend ?? [],
+  }
+}
+
 export function useStudentJournal(
   studentId: string | undefined,
   period: JournalPeriod,
@@ -46,7 +59,7 @@ export function useStudentJournal(
     }).then(({ data, error: err }: { data: StudentJournal | null; error: { message: string } | null }) => {
       if (cancelled) return
       if (err) setError(err.message)
-      else     setJournal(data)
+      else     setJournal(normalizeJournal(data))
       setLoading(false)
     })
 

@@ -34,7 +34,11 @@ e2e/fixtures/*.exe
 
 # Ops / import artifacts
 outputs/
-reports/
+reports/*
+!reports/physics-ege/
+reports/physics-ege/*
+!reports/physics-ege/dry-run-preview.json
+!reports/physics-ege/apply-log.csv
 import-resume.log
 physics-oge-full.log
 physics-oge-full.err
@@ -55,3 +59,4 @@ scripts/.checkpoints/
 scripts/analyze_variant_bank.py
 .codex-vite*.log
 vite-*.log
+_stage_repo.tar.gz

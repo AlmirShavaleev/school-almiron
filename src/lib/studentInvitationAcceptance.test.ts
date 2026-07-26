@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { acceptStudentInvite, acceptStudentInviteByCode } from '@/lib/studentInvitationAcceptance'
+import { acceptStudentInvite, acceptStudentInviteByCode, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
 
 const rpc = vi.fn()
 
@@ -45,5 +45,36 @@ describe('studentInvitationAcceptance result parsing', () => {
     const result = await acceptStudentInvite('token-3')
     expect(result.groupId).toBe('grp-3')
     expect(result.groupId).not.toBe('')
+  })
+})
+
+describe('studentInvitationAcceptance error mapping', () => {
+  beforeEach(() => rpc.mockReset())
+
+  it('maps INVITE_NOT_PENDING: accepted to "used"', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'INVITE_NOT_PENDING: accepted', code: 'P0001' } })
+
+    const err = await acceptStudentInvite('token-used').catch((e) => e)
+    expect(err).toBeInstanceOf(InvitationAcceptanceError)
+    expect(err.kind).toBe('used')
+    expect(err.message).toBe('Это приглашение уже использовано.')
+  })
+
+  it('maps INVITE_NOT_PENDING: revoked to "revoked"', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'INVITE_NOT_PENDING: revoked', code: 'P0001' } })
+
+    const err = await acceptStudentInvite('token-revoked').catch((e) => e)
+    expect(err).toBeInstanceOf(InvitationAcceptanceError)
+    expect(err.kind).toBe('revoked')
+    expect(err.message).toBe('Приглашение было отозвано. Обратитесь к преподавателю за новой ссылкой.')
+  })
+
+  it('maps an unrecognized INVITE_NOT_PENDING status to the generic "unknown" error', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'INVITE_NOT_PENDING: some_future_status', code: 'P0001' } })
+
+    const err = await acceptStudentInvite('token-future-status').catch((e) => e)
+    expect(err).toBeInstanceOf(InvitationAcceptanceError)
+    expect(err.kind).toBe('unknown')
+    expect(err.message).toBe('Не удалось обработать приглашение')
   })
 })

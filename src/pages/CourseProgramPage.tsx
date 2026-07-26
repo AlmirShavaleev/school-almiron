@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   DndContext,
   DragOverlay,
@@ -20,14 +20,15 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
-  Check, X, Calendar, GraduationCap, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, ClipboardList, RotateCcw, Users, GripVertical,
+  Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
+  Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
+import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
-import { CreateHomeworkModal } from '@/components/modals/CreateHomeworkModal'
+import { CourseHomeworkV2Section } from '@/components/courseProgram/CourseHomeworkV2Section'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -142,13 +143,17 @@ function InlineEdit({
 }
 
 // ─── Topic row ───────────────────────────────────────────────────────────────
-interface HwStat { submitted: number; pending: number; revision: number; total: number }
+interface TopicHomeworkV2Summary {
+  templateCount: number
+  assignmentCount: number
+  lastAssignedAt: string | null
+}
 
 type CourseLayoutRow = { module_id: string; topic_ids: string[] }
 const SELECT_PAGE_SIZE = 1000
 
 function formatHomeworkCountMessage(count: number) {
-  return `В теме ${count} домаш${count % 10 === 1 && count % 100 !== 11 ? 'нее задание' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'них задания' : 'них заданий'}. Сначала удалите или перенесите ${count % 10 === 1 && count % 100 !== 11 ? 'его' : 'их'}.`
+  return `В теме ${count} ${count === 1 ? 'шаблон или назначение ДЗ' : 'шаблона или назначения ДЗ'}. Сначала перенесите или удалите их во вкладке «Домашние задания».`
 }
 
 async function fetchAllPagedRows<T>(buildQuery: (from: number, to: number) => Promise<{ data: T[] | null; error: { message?: string } | null }>): Promise<T[]> {
@@ -312,52 +317,22 @@ function TopicDragOverlay({ topic, topicNumber }: { topic: Topic; topicNumber: s
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
 function HwTable({
-  modules, hwStats, hwByTopic, groupId, onOpenTopic,
+  modules, homeworkByTopic, onOpenTopic, onOpenHomeworkTab,
 }: {
   modules: Module[]
-  hwStats: Record<string, HwStat>
-  hwByTopic: Record<string, { id: string; title: string; max_score: number }>
-  groupId: string | null
+  homeworkByTopic: Record<string, TopicHomeworkV2Summary>
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
+  onOpenHomeworkTab: () => void
 }) {
-  const navigate = useNavigate()
-
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Тема</th>
-            <th className="px-3 py-3 text-center w-24">
-              <div className="flex flex-col items-center gap-0.5 text-green-500">
-                <Check size={12} className="text-green-600" />
-                <span className="text-[10px] font-medium text-gray-500">Сдали</span>
-              </div>
-            </th>
-            <th className="px-3 py-3 text-center w-24">
-              <div className="flex flex-col items-center gap-0.5 text-orange-500">
-                <ClipboardList size={12} className="text-orange-500" />
-                <span className="text-[10px] font-medium text-gray-500">На проверке</span>
-              </div>
-            </th>
-            <th className="px-3 py-3 text-center w-24">
-              <div className="flex flex-col items-center gap-0.5 text-yellow-500">
-                <RotateCcw size={12} className="text-yellow-600" />
-                <span className="text-[10px] font-medium text-gray-500">На доработке</span>
-              </div>
-            </th>
-            <th className="px-3 py-3 text-center w-24">
-              <div className="flex flex-col items-center gap-0.5 text-red-400">
-                <X size={12} className="text-red-500" />
-                <span className="text-[10px] font-medium text-gray-500">Не сдали</span>
-              </div>
-            </th>
-            <th className="px-3 py-3 text-center w-28">
-              <div className="flex flex-col items-center gap-0.5 text-blue-400">
-                <GraduationCap size={12} />
-                <span className="text-[10px] font-medium text-gray-500">% сдачи</span>
-              </div>
-            </th>
+            <th className="px-3 py-3 text-center w-24 text-xs font-medium text-gray-500">Шаблоны</th>
+            <th className="px-3 py-3 text-center w-24 text-xs font-medium text-gray-500">Назначения</th>
+            <th className="px-3 py-3 text-center w-28 text-xs font-medium text-gray-500">Последнее назначение</th>
           </tr>
         </thead>
         <tbody>
@@ -372,12 +347,7 @@ function HwTable({
               </tr>
 
               {mod.topics.map((topic, ti) => {
-                const s        = hwStats[topic.id]
-                const revision = s ? s.revision : 0
-                const checked  = s ? Math.max(0, s.submitted - s.pending - revision) : 0
-                const notDone  = s ? Math.max(0, s.total - s.submitted) : 0
-                const pct     = s && s.total > 0 ? Math.round(s.submitted / s.total * 100) : null
-                const hw      = hwByTopic[topic.id]
+                const hw = homeworkByTopic[topic.id]
 
                 return (
                   <tr
@@ -407,7 +377,7 @@ function HwTable({
                         )}
                         {hw && (
                           <button
-                            onClick={() => navigate(`/homeworks/${hw.id}/review/${groupId}`)}
+                            onClick={onOpenHomeworkTab}
                             className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
                           >
                             ДЗ
@@ -416,60 +386,19 @@ function HwTable({
                       </div>
                     </td>
 
-                    {/* Сдали (проверенные) */}
                     <td className="px-3 py-3 text-center">
-                      {checked > 0
-                        ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-green-100 rounded-full text-xs font-semibold text-green-700">{checked}</span>
-                        : s
-                          ? <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full mx-auto"><X size={11} className="text-gray-300" /></span>
-                          : <span className="text-xs text-gray-200">—</span>
-                      }
+                      {hw ? <span className="text-sm font-semibold text-gray-800">{hw.templateCount}</span> : <span className="text-xs text-gray-300">—</span>}
                     </td>
-
-                    {/* На проверке */}
                     <td className="px-3 py-3 text-center">
-                      {s && s.pending > 0
-                        ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-orange-100 rounded-full text-xs font-semibold text-orange-600">{s.pending}</span>
-                        : s
-                          ? <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full mx-auto"><Check size={11} className="text-green-500" /></span>
-                          : <span className="text-xs text-gray-200">—</span>
-                      }
+                      {hw ? <span className="text-sm font-semibold text-gray-800">{hw.assignmentCount}</span> : <span className="text-xs text-gray-300">—</span>}
                     </td>
-
-                    {/* На доработке */}
                     <td className="px-3 py-3 text-center">
-                      {revision > 0
-                        ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-yellow-100 rounded-full text-xs font-semibold text-yellow-700">{revision}</span>
-                        : s
-                          ? <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full mx-auto"><X size={11} className="text-gray-300" /></span>
-                          : <span className="text-xs text-gray-200">—</span>
-                      }
-                    </td>
-
-                    {/* Не сдали */}
-                    <td className="px-3 py-3 text-center">
-                      {notDone > 0
-                        ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-red-100 rounded-full text-xs font-semibold text-red-600">{notDone}</span>
-                        : s
-                          ? <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full mx-auto"><Check size={11} className="text-green-500" /></span>
-                          : <span className="text-xs text-gray-200">—</span>
-                      }
-                    </td>
-
-                    {/* % сдачи */}
-                    <td className="px-3 py-3">
-                      {pct !== null ? (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-400' : 'bg-orange-400')}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500 shrink-0 w-8 text-right">{pct}%</span>
-                        </div>
+                      {hw?.lastAssignedAt ? (
+                        <span className="text-xs text-gray-500">
+                          {new Date(hw.lastAssignedAt).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
                       ) : (
-                        <span className="text-xs text-gray-200">—</span>
+                        <span className="text-xs text-gray-300">—</span>
                       )}
                     </td>
                   </tr>
@@ -485,20 +414,16 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, topicNumber, onSave, onDelete, onOpenMaterials, onDeleteHw, onRestoreHw, hwId, archivedHwId, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
+  topic, topicNumber, onSave, onDelete, onOpenMaterials, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
 }: {
   topic: Topic
   topicNumber: string
   moduleTitle: string
-  hwId?: string
-  archivedHwId?: string
   homeworkCount?: number
   startEditing?: boolean
   onCancelCreate?: () => Promise<void>
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
-  onDeleteHw?: (hwId: string) => Promise<void>
-  onRestoreHw?: (hwId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
   dragHandle?: {
     listeners: ReturnType<typeof useSortable>['listeners']
@@ -585,30 +510,22 @@ function SortableTopicRow({
   topic,
   topicNumber,
   moduleTitle,
-  hwId,
-  archivedHwId,
   homeworkCount,
   startEditing,
   onCancelCreate,
   onSave,
   onDelete,
-  onDeleteHw,
-  onRestoreHw,
   onOpenMaterials,
   isReordering,
 }: {
   topic: Topic
   topicNumber: string
   moduleTitle: string
-  hwId?: string
-  archivedHwId?: string
   homeworkCount?: number
   startEditing?: boolean
   onCancelCreate?: () => Promise<void>
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
-  onDeleteHw?: (hwId: string) => Promise<void>
-  onRestoreHw?: (hwId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
   isReordering: boolean
 }) {
@@ -631,15 +548,11 @@ function SortableTopicRow({
         topic={topic}
         topicNumber={topicNumber}
         moduleTitle={moduleTitle}
-        hwId={hwId}
-        archivedHwId={archivedHwId}
         homeworkCount={homeworkCount}
         startEditing={startEditing}
         onCancelCreate={onCancelCreate}
         onSave={onSave}
         onDelete={onDelete}
-        onDeleteHw={onDeleteHw}
-        onRestoreHw={onRestoreHw}
         onOpenMaterials={onOpenMaterials}
         dragHandle={{
           listeners: sortable.listeners,
@@ -654,15 +567,12 @@ function SortableTopicRow({
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onDeleteHw, onRestoreHw, hwStats, hwByTopic, archivedHwByTopic, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
+  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
 }: {
   module: Module
   moduleNumber: number
   canEdit: boolean
   editMode: boolean
-  hwStats: Record<string, HwStat>
-  hwByTopic: Record<string, { id: string; title: string; max_score: number }>
-  archivedHwByTopic: Record<string, { id: string; title: string; max_score: number }>
   homeworkCountsByTopic: Record<string, number>
   creatingTopicId: string | null
   onCancelCreateTopic: (topicId: string) => Promise<void>
@@ -674,8 +584,6 @@ function ModuleCard({
   onDeleteTopic: (id: string) => Promise<void>
   onAddTopic: (moduleId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
-  onDeleteHw: (hwId: string) => Promise<void>
-  onRestoreHw: (hwId: string) => Promise<void>
   isReordering: boolean
 }) {
   const [open,     setOpen]     = useState(true)
@@ -757,15 +665,11 @@ function ModuleCard({
                 topic={t}
                 topicNumber={getTopicDisplayNumber(moduleNumber - 1, topicIndex)}
                 moduleTitle={module.title}
-                hwId={hwByTopic[t.id]?.id}
-                archivedHwId={archivedHwByTopic[t.id]?.id}
                 homeworkCount={homeworkCountsByTopic[t.id] ?? 0}
                 startEditing={creatingTopicId === t.id}
                 onCancelCreate={() => onCancelCreateTopic(t.id)}
                 onSave={onSaveTopic}
                 onDelete={onDeleteTopic}
-                onDeleteHw={onDeleteHw}
-                onRestoreHw={onRestoreHw}
                 onOpenMaterials={onOpenMaterials}
                 isReordering={isReordering}
               />
@@ -1202,15 +1106,10 @@ export function CourseProgramPage() {
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
-  const [tab,         setTab]         = useState<'program' | 'materials' | 'settings'>('program')
+  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'settings'>('program')
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
-  const [hwStats,       setHwStats]       = useState<Record<string, HwStat>>({})
-  const [hwByTopic,         setHwByTopic]         = useState<Record<string, { id: string; title: string; max_score: number }>>({})
-  const [archivedHwByTopic, setArchivedHwByTopic] = useState<Record<string, { id: string; title: string; max_score: number }>>({})
   const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
-  const [statsError, setStatsError] = useState<string | null>(null)
-  const [totalStudents,     setTotalStudents]      = useState(0)
   const [editMode,      setEditMode]      = useState(false)
   const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
@@ -1220,16 +1119,28 @@ export function CourseProgramPage() {
   const [creatingTopicId, setCreatingTopicId] = useState<string | null>(null)
   const [activeDragTopicId, setActiveDragTopicId] = useState<string | null>(null)
   const dragStartModulesRef = useRef<Module[] | null>(null)
+  const { templates } = useCourseHomeworkTemplates(selectedId)
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
-  const [hwTopic,   setHwTopic]   = useState<Topic | null>(null)
   const [toastMsg,  setToastMsg]  = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function openMaterials(topic: Topic, moduleTitle: string) {
     setMatTopic({ topic, moduleTitle })
   }
+
+  const homeworkByTopic = templates.reduce<Record<string, TopicHomeworkV2Summary>>((acc, template) => {
+    if (!template.topic_id) return acc
+    const current = acc[template.topic_id] ?? { templateCount: 0, assignmentCount: 0, lastAssignedAt: null }
+    current.templateCount += 1
+    current.assignmentCount += template.assignments_count
+    if (!current.lastAssignedAt || (template.last_assigned_at && template.last_assigned_at > current.lastAssignedAt)) {
+      current.lastAssignedAt = template.last_assigned_at
+    }
+    acc[template.topic_id] = current
+    return acc
+  }, {})
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
@@ -1275,101 +1186,17 @@ export function CourseProgramPage() {
   // Clean up toast timer on unmount
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
-  // Recompute HW stats whenever the selected group (or modules) change
   useEffect(() => {
-    loadHwStats(modules, selectedGroupId)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGroupId, modules])
-
-  async function loadHwStats(mods: Module[], groupId: string | null) {
-    try {
-      setStatsError(null)
-      const topicIds = mods.flatMap(m => m.topics.map(t => t.id))
-      if (!topicIds.length) {
-        setHwStats({}); setHwByTopic({}); setArchivedHwByTopic({}); setHomeworkCountsByTopic({}); setTotalStudents(0)
-        return
-      }
-
-      const [hws, archivedHws] = await Promise.all([
-        fetchAllPagedRows<{ id: string; topic_id: string; title: string; max_score: number }>(async (from, to) =>
-          await supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', false).range(from, to)
-        ),
-        fetchAllPagedRows<{ id: string; topic_id: string; title: string; max_score: number }>(async (from, to) =>
-          await supabase.from('homeworks').select('id, topic_id, title, max_score').in('topic_id', topicIds).eq('is_archived', true).range(from, to)
-        ),
-      ])
-      const archivedByTopic: Record<string, { id: string; title: string; max_score: number }> = {}
-      for (const h of archivedHws) archivedByTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
-      setArchivedHwByTopic(archivedByTopic)
-
-      const byTopic: Record<string, { id: string; title: string; max_score: number }> = {}
-      for (const h of hws) byTopic[h.topic_id] = { id: h.id, title: h.title, max_score: h.max_score }
-      setHwByTopic(byTopic)
-
-      const countsByTopic: Record<string, number> = {}
-      for (const row of [...hws, ...archivedHws]) {
-        countsByTopic[row.topic_id] = (countsByTopic[row.topic_id] ?? 0) + 1
-      }
-      setHomeworkCountsByTopic(countsByTopic)
-
-      if (!groupId || !hws.length) {
-        setHwStats({}); setTotalStudents(0)
-        return
-      }
-
-      const hwIds = hws.map(h => h.id)
-      const gsRows = await fetchAllPagedRows<{ student_id: string }>(async (from, to) =>
-        await supabase
-          .from('group_students')
-          .select('student_id')
-          .eq('group_id', groupId)
-          .range(from, to)
-      )
-      const studentIds = gsRows.map(r => r.student_id)
-      const groupSize = studentIds.length
-      setTotalStudents(groupSize)
-
-      const subs = studentIds.length
-        ? await fetchAllPagedRows<{ homework_id: string; status: string }>(async (from, to) =>
-            await supabase
-              .from('homework_submissions')
-              .select('homework_id, status')
-              .in('homework_id', hwIds)
-              .in('student_id', studentIds)
-              .range(from, to)
-          )
-        : []
-
-      const hwTopic: Record<string, string> = {}
-      const stats: Record<string, HwStat> = {}
-      for (const h of hws) {
-        hwTopic[h.id] = h.topic_id
-        if (!stats[h.topic_id]) stats[h.topic_id] = { submitted: 0, pending: 0, revision: 0, total: groupSize || 0 }
-      }
-
-      for (const s of subs) {
-        const tid = hwTopic[s.homework_id]
-        if (!tid) continue
-        stats[tid].submitted++
-        if (s.status === 'submitted') stats[tid].pending++
-        if (s.status === 'revision')  stats[tid].revision++
-      }
-
-      setHwStats(stats)
-    } catch (e) {
-      console.error('Failed to load course homework stats', e)
-      setHwStats({})
-      setTotalStudents(0)
-      setStatsError('Не удалось загрузить сводку по домашним заданиям')
-    }
-  }
+    setHomeworkCountsByTopic(
+      Object.fromEntries(Object.entries(homeworkByTopic).map(([topicId, summary]) => [topicId, summary.templateCount + summary.assignmentCount])),
+    )
+  }, [homeworkByTopic])
 
   async function refreshModules() {
     if (!selectedId) return
     try {
       const mods = await loadModules(selectedId)
       setModules(mods)
-      await loadHwStats(mods, selectedGroupId)
     } catch (e: any) {
       setLoadError(e.message || 'Не удалось обновить программу курса')
     }
@@ -1453,35 +1280,6 @@ export function CourseProgramPage() {
       topics: m.topics.filter(t => t.id !== id),
     })))
     if (creatingTopicId === id) setCreatingTopicId(null)
-  }
-
-  async function handleDeleteHw(hwId: string) {
-    const { count } = await supabase
-      .from('homework_submissions')
-      .select('id', { count: 'exact', head: true })
-      .eq('homework_id', hwId)
-
-    if (count && count > 0) {
-      const n = count
-      const doArchive = confirm(
-        `У этого ДЗ есть ${n} сдач${n === 1 ? 'а' : n < 5 ? 'и' : ''}. Удаление невозможно.\n\nАрхивировать ДЗ? (Сдачи сохранятся, ДЗ будет скрыто от учеников)`
-      )
-      if (!doArchive) return
-      const { error } = await supabase.from('homeworks').update({ is_archived: true } as any).eq('id', hwId)
-      if (error) { alert(error.message); return }
-    } else {
-      if (!confirm('Удалить это домашнее задание?')) return
-      const { error } = await supabase.from('homeworks').delete().eq('id', hwId)
-      if (error) { alert(error.message); return }
-    }
-    await refreshModules()
-  }
-
-  async function handleRestoreHw(hwId: string) {
-    if (!confirm('Восстановить это домашнее задание? Оно снова станет видно ученикам.')) return
-    const { error } = await supabase.from('homeworks').update({ is_archived: false } as any).eq('id', hwId)
-    if (error) { alert(error.message); return }
-    await refreshModules()
   }
 
   async function handleAddTopic(moduleId: string) {
@@ -1743,6 +1541,7 @@ export function CourseProgramPage() {
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
+                { key: 'homework',  label: 'Домашние задания' },
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
                 <button
@@ -1763,85 +1562,6 @@ export function CourseProgramPage() {
             {/* Program tab */}
             {tab === 'program' && (
               <div className="space-y-4">
-
-                {/* ── Group selector ── */}
-                {!loadingMods && groups.length > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-gray-400 flex items-center gap-1">
-                      <Users size={13} /> Группа:
-                    </span>
-                    {groups.map(g => (
-                      <button
-                        key={g.id}
-                        onClick={() => setSelectedGroupId(g.id)}
-                        className={cn(
-                          'min-h-11 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
-                          selectedGroupId === g.id
-                            ? 'bg-primary-50 border-primary-300 text-primary-700'
-                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                        )}
-                      >
-                        {g.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* ── Course summary ── */}
-                {!loadingMods && (() => {
-                  const totalSubmitted = Object.values(hwStats).reduce((s, h) => s + h.submitted, 0)
-                  const totalPending   = Object.values(hwStats).reduce((s, h) => s + h.pending, 0)
-                  const totalRevision  = Object.values(hwStats).reduce((s, h) => s + h.revision, 0)
-                  const totalExpected  = Object.values(hwStats).reduce((s, h) => s + h.total, 0)
-                  const totalNotDone   = Math.max(0, totalExpected - totalSubmitted)
-
-                  return (
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                      <div className="bg-blue-50 rounded-xl p-3 text-center">
-                        <div className="text-xl font-bold text-blue-700">{totalStudents}</div>
-                        <div className="text-xs text-blue-500 mt-0.5">учеников</div>
-                      </div>
-                      <div className="bg-green-50 rounded-xl p-3 text-center">
-                        <div className="text-xl font-bold text-green-700">{totalSubmitted}</div>
-                        <div className="text-xs text-green-500 mt-0.5">сдано работ</div>
-                      </div>
-                      <div className={cn('rounded-xl p-3 text-center', totalNotDone > 0 ? 'bg-red-50' : 'bg-gray-50')}>
-                        <div className={cn('text-xl font-bold', totalNotDone > 0 ? 'text-red-600' : 'text-gray-400')}>{totalNotDone}</div>
-                        <div className={cn('text-xs mt-0.5', totalNotDone > 0 ? 'text-red-400' : 'text-gray-400')}>не сдали</div>
-                      </div>
-                      <div className={cn('rounded-xl p-3 text-center', totalPending > 0 ? 'bg-orange-50' : 'bg-gray-50')}>
-                        <div className={cn('text-xl font-bold', totalPending > 0 ? 'text-orange-600' : 'text-gray-400')}>{totalPending}</div>
-                        <div className={cn('text-xs mt-0.5', totalPending > 0 ? 'text-orange-400' : 'text-gray-400')}>на проверке</div>
-                      </div>
-                      <div className={cn('rounded-xl p-3 text-center', totalRevision > 0 ? 'bg-yellow-50' : 'bg-gray-50')}>
-                        <div className={cn('text-xl font-bold', totalRevision > 0 ? 'text-yellow-700' : 'text-gray-400')}>{totalRevision}</div>
-                        <div className={cn('text-xs mt-0.5', totalRevision > 0 ? 'text-yellow-600' : 'text-gray-400')}>на доработке</div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {!loadingMods && modules.length > 0 && tab === 'program' && !editMode && (
-                  <>
-                    {statsError ? (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-sm font-medium text-red-700">{statsError}</p>
-                      </div>
-                    ) : !selectedGroupId ? (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                        <p className="text-sm text-gray-600">У курса пока нет групп. Сводка по домашним заданиям показана с нулевыми значениями.</p>
-                      </div>
-                    ) : Object.keys(hwByTopic).length === 0 ? (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                        <p className="text-sm text-gray-600">Домашние задания ещё не созданы. Темы уже видны ниже, а сводка пока показывает нули.</p>
-                      </div>
-                    ) : totalStudents === 0 ? (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                        <p className="text-sm text-gray-600">В выбранной группе пока нет учеников. Сводка по домашним заданиям показана с нулевыми значениями.</p>
-                      </div>
-                    ) : null}
-                  </>
-                )}
 
                 {/* ── Edit toggle ── */}
                 {canEdit && !loadingMods && modules.length > 0 && (
@@ -1917,9 +1637,6 @@ export function CourseProgramPage() {
                             moduleNumber={getModuleDisplayNumber(moduleIndex)}
                             canEdit={canEdit}
                             editMode={editMode}
-                            hwStats={hwStats}
-                            hwByTopic={hwByTopic}
-                            archivedHwByTopic={archivedHwByTopic}
                             homeworkCountsByTopic={homeworkCountsByTopic}
                             creatingTopicId={creatingTopicId}
                             onCancelCreateTopic={handleCancelCreateTopic}
@@ -1931,8 +1648,6 @@ export function CourseProgramPage() {
                             onDeleteTopic={handleDeleteTopic}
                             onAddTopic={handleAddTopic}
                             onOpenMaterials={openMaterials}
-                            onDeleteHw={handleDeleteHw}
-                            onRestoreHw={handleRestoreHw}
                             isReordering={isReordering}
                           />
                         ))}
@@ -1959,10 +1674,9 @@ export function CourseProgramPage() {
                 ) : (
                   <HwTable
                     modules={modules}
-                    hwStats={hwStats}
-                    hwByTopic={hwByTopic}
-                    groupId={selectedGroupId}
+                    homeworkByTopic={homeworkByTopic}
                     onOpenTopic={openMaterials}
+                    onOpenHomeworkTab={() => setTab('homework')}
                   />
                 )}
               </div>
@@ -1976,6 +1690,11 @@ export function CourseProgramPage() {
                 onOpenTopic={(topic, moduleTitle) => setMatTopic({ topic, moduleTitle })}
                 onGoToProgram={() => setTab('program')}
               />
+            )}
+
+            {/* Homework V2 tab */}
+            {tab === 'homework' && (
+              <CourseHomeworkV2Section courseId={selectedCourse.id} modules={modules} />
             )}
 
             {/* Settings tab */}
@@ -2002,20 +1721,6 @@ export function CourseProgramPage() {
         await handleSaveTopic(matTopic.topic.id, values)
         setMatTopic(prev => prev ? { ...prev, topic: { ...prev.topic, ...values } } : prev)
       }}
-    />
-
-    {/* ДЗ создаётся только здесь — в Course Builder, привязано к теме курса */}
-    <CreateHomeworkModal
-      open={!!hwTopic}
-      onClose={() => setHwTopic(null)}
-      onCreated={() => {
-        setHwTopic(null)
-        refreshModules()
-        setToastMsg('Домашнее задание создано')
-        if (toastTimer.current) clearTimeout(toastTimer.current)
-        toastTimer.current = setTimeout(() => setToastMsg(null), 3000)
-      }}
-      defaultTopicId={hwTopic?.id}
     />
 
     <AddLessonTemplateToCourseModal

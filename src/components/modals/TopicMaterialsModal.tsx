@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
+import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
+import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 
 const SECTIONS: {
   type: MaterialType
@@ -494,14 +496,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
         {canEdit && (
           <>
             <div className="border-b border-gray-100 bg-gray-50/70 px-5 py-4 shrink-0">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">Материалы темы</div>
-                  <div className="text-xs text-gray-500">Выберите блок ниже и добавьте файл, ссылку, видео или текст.</div>
-                </div>
-                <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm">
-                  {Object.values(materials).filter(m => m?.content || m?.file_url || m?.link_url || m?.link_meta).length} / {SECTIONS.length} заполнено
-                </div>
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-gray-900">Материалы темы</div>
+                <div className="text-xs text-gray-500">Текст, видео, ссылки и файлы. Порядок и видимость настраиваются у каждого материала.</div>
               </div>
 
               <div className="mb-3 rounded-2xl border border-gray-200 bg-white px-3 py-3">
@@ -522,34 +519,6 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                {SECTIONS.map(s => {
-                const mat = materials[s.type]
-                const hasContent = !!(mat?.content || mat?.file_url || mat?.link_url || mat?.link_meta)
-                return (
-                  <button
-                    key={s.type}
-                    onClick={() => setActiveTab(s.type)}
-                    className={cn(
-                      'min-h-11 rounded-2xl border px-3 py-3 text-left transition-all active:scale-[0.96]',
-                      activeTab === s.type
-                        ? 'border-primary-300 bg-white shadow-sm ring-2 ring-primary-100'
-                        : 'border-transparent bg-white/70 hover:bg-white hover:border-gray-200'
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl shrink-0', s.color)}>
-                        {s.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <div className={cn('text-sm font-semibold', activeTab === s.type ? 'text-primary-700' : 'text-gray-800')}>{s.label}</div>
-                        <div className="text-[11px] text-gray-400">{hasContent ? 'Заполнено' : 'Пока пусто'}</div>
-                      </div>
-                    </div>
-                  </button>
-                )
-                })}
-              </div>
             </div>
 
             {(lessonDate || hwDeadline) && (
@@ -559,39 +528,16 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              {loading ? (
-                <div className="flex items-center justify-center py-16 text-gray-400 gap-2"><Loader2 size={20} className="animate-spin" />Загрузка материалов…</div>
-              ) : (
-                <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                  <div className="mb-5 flex items-start gap-3">
-                    <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl shrink-0', activeSection.color)}>
-                      {activeSection.icon}
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{activeSection.label}</h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        {activeSection.type === 'link'
-                          ? 'Добавьте внешнюю ссылку, которую ученик сможет открыть в новой вкладке.'
-                          : activeSection.type === 'video'
-                            ? 'Укажите ссылку на видеоурок и проверьте предпросмотр.'
-                            : 'Загрузите файл или обновите содержимое выбранного блока.'}
-                      </p>
-                    </div>
-                  </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              <TopicMaterialItems topicId={topicId} canManage />
 
-                  <SectionEditor
-                    key={activeTab}
-                    section={activeSection}
-                    canEdit={canEdit}
-                    material={materials[activeTab]}
-                    onSave={saveMaterial}
-                    onUpload={uploadFile}
-                    onDelete={deleteMaterial}
-                    onCreateLink={createLinkMaterial}
-                  />
+              {/* PDF-ДЗ темы. Интерфейс проверки работ — отдельным этапом. */}
+              <div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  Домашнее задание
                 </div>
-              )}
+                <TopicHomeworkEditor topicId={topicId} />
+              </div>
             </div>
           </>
         )}

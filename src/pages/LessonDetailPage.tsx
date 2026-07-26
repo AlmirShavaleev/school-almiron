@@ -19,7 +19,7 @@ import { formatDateTime, formatDate } from '@/utils/format'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
 import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
 import { LessonMaterialsCard } from '@/components/lessons/LessonMaterialsCard'
-import { LessonHomeworkCard } from '@/components/lessons/LessonHomeworkCard'
+import { LessonHomeworkV2Card } from '@/components/lessons/LessonHomeworkV2Card'
 
 interface LessonFull {
   id:               string
@@ -34,7 +34,7 @@ interface LessonFull {
   created_at:       string
   teacher_id:       string | null   // teachers.id (raw FK for updates)
   group_id:         string | null
-  group:   { id: string; name: string; course_title: string | null } | null
+  group:   { id: string; name: string; course_id: string | null; course_title: string | null } | null
   student: { id: string; full_name: string; avatar_url: string | null } | null
   teacher: { id: string; profile_id: string; full_name: string; avatar_url: string | null } | null
   topic:   { id: string; title: string; module_title: string | null } | null
@@ -206,7 +206,7 @@ export function LessonDetailPage() {
           .select(`
             id, group_id, student_id, topic_id, teacher_id, title, scheduled_at, duration_minutes,
             status, format, zoom_link, recording_url, notes, created_at,
-            groups(id, name, courses(title)),
+            groups(id, name, course_id, courses(title)),
             student:student_id(id, full_name, avatar_url),
             teachers(id, profile_id, profiles(full_name, avatar_url)),
             topics(id, title, modules(title))
@@ -243,6 +243,7 @@ export function LessonDetailPage() {
         group_id: l.group_id ?? null,
         group: l.groups ? {
           id: l.groups.id, name: l.groups.name,
+          course_id: l.groups.course_id ?? null,
           course_title: l.groups.courses?.title || null,
         } : null,
         student: l.student ? {
@@ -806,8 +807,14 @@ export function LessonDetailPage() {
           <LessonMaterialsCard lessonId={lesson.id} canEdit={!!canEdit} />
         </div>
         <div data-testid="lesson-homework-section">
-          <LessonHomeworkCard lessonId={lesson.id} canEdit={!!canEdit} isStudent={profile?.role === 'student'} />
-        </div>
+        <LessonHomeworkV2Card
+          lessonId={lesson.id}
+          courseId={lesson.group?.course_id ?? null}
+          topicId={lesson.topic?.id ?? null}
+          topicTitle={lesson.topic?.title ?? null}
+          canEdit={!!canEdit}
+        />
+      </div>
       </div>
 
       {/* ── 2-col: Attendance + Materials/HW ─────────────────────────────── */}

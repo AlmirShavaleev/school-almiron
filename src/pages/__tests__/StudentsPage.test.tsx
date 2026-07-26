@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { StudentsPage } from '@/pages/StudentsPage'
+import { useAuthStore } from '@/store/authStore'
 
 const getMyStudents = vi.fn()
 const getMyStudentInvites = vi.fn()
@@ -32,6 +33,30 @@ vi.mock('@/components/students/StudentEnrollmentModal', () => ({
   StudentEnrollmentModal: ({ open }: { open: boolean }) => open ? <div>modal-open</div> : null,
 }))
 
+const createOrGetTeacherJoinLink = vi.fn()
+const rotateTeacherJoinLink = vi.fn()
+vi.mock('@/lib/teacherJoinLink', () => ({
+  buildTeacherJoinUrl: (token: string) => `http://localhost:3000/jt/${token}`,
+  createOrGetTeacherJoinLink: (...args: unknown[]) => createOrGetTeacherJoinLink(...args),
+  rotateTeacherJoinLink: (...args: unknown[]) => rotateTeacherJoinLink(...args),
+}))
+
+const getMyJoinRequests = vi.fn()
+const rejectTeacherJoinRequest = vi.fn()
+const restoreTeacherJoinRequest = vi.fn()
+vi.mock('@/lib/teacherJoinRequests', () => ({
+  getMyJoinRequests: (...args: unknown[]) => getMyJoinRequests(...args),
+  rejectTeacherJoinRequest: (...args: unknown[]) => rejectTeacherJoinRequest(...args),
+  restoreTeacherJoinRequest: (...args: unknown[]) => restoreTeacherJoinRequest(...args),
+}))
+
+const getMyActiveCourses = vi.fn()
+const distributeJoinRequest = vi.fn()
+vi.mock('@/lib/joinRequestDistribution', () => ({
+  getMyActiveCourses: (...args: unknown[]) => getMyActiveCourses(...args),
+  distributeJoinRequest: (...args: unknown[]) => distributeJoinRequest(...args),
+}))
+
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 vi.mock('@/store/toastStore', () => ({
@@ -50,6 +75,13 @@ describe('StudentsPage', () => {
     revokeStudentInvite.mockReset()
     toastSuccess.mockReset()
     toastError.mockReset()
+    createOrGetTeacherJoinLink.mockReset()
+    rotateTeacherJoinLink.mockReset()
+    getMyJoinRequests.mockReset().mockResolvedValue([])
+    rejectTeacherJoinRequest.mockReset()
+    restoreTeacherJoinRequest.mockReset()
+    getMyActiveCourses.mockReset().mockResolvedValue([])
+    distributeJoinRequest.mockReset()
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
   })
 
@@ -81,6 +113,61 @@ describe('StudentsPage', () => {
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
 
     expect(await screen.findByText('Пока нет учеников')).toBeInTheDocument()
+  })
+
+  it('shows new-student join requests and rejects one', async () => {
+    getMyStudents.mockResolvedValue([])
+    getMyStudentInvites.mockResolvedValue([])
+    getMyJoinRequests.mockResolvedValue([
+      {
+        id: 'req-1',
+        studentId: 'student-9',
+        fullName: 'Новый Ученик',
+        email: 'new@student.ru',
+        status: 'pending',
+        createdAt: '2026-07-20T10:00:00.000Z',
+        reviewedAt: null,
+      },
+    ])
+    rejectTeacherJoinRequest.mockResolvedValue(undefined)
+
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    fireEvent.click(screen.getByText('Новые ученики'))
+    expect(await screen.findByText('Новый Ученик')).toBeInTheDocument()
+
+    getMyJoinRequests.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByText('Отклонить'))
+    await waitFor(() => expect(rejectTeacherJoinRequest).toHaveBeenCalledWith('req-1'))
+  })
+
+  it('opens the distribute wizard for a pending join request', async () => {
+    useAuthStore.getState().setProfile({ id: 'teacher-profile-1', role: 'teacher' } as any)
+    getMyStudents.mockResolvedValue([])
+    getMyStudentInvites.mockResolvedValue([])
+    getMyJoinRequests.mockResolvedValue([
+      {
+        id: 'req-2',
+        studentId: 'student-9',
+        fullName: 'Новый Ученик',
+        email: 'new@student.ru',
+        status: 'pending',
+        createdAt: '2026-07-20T10:00:00.000Z',
+        reviewedAt: null,
+      },
+    ])
+    getMyActiveCourses.mockResolvedValue([{ id: 'course-1', title: 'Физика' }])
+
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    fireEvent.click(screen.getByText('Новые ученики'))
+    expect(await screen.findByText('Новый Ученик')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Распределить'))
+    expect(await screen.findByText('Распределить ученика')).toBeInTheDocument()
+    expect(await screen.findByText('Физика')).toBeInTheDocument()
+
+    useAuthStore.getState().reset()
   })
 
   it('shows error state and allows retry', async () => {

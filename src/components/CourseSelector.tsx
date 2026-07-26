@@ -1,27 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, BookOpen, Check, Calendar, Lock, Clock } from 'lucide-react'
+import { ChevronDown, BookOpen, Users } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import type { StudentCourse } from '@/hooks/useStudentCourses'
+import type { MyCourseMembership } from '@/hooks/useMyCourseMemberships'
 
 interface Props {
-  courses:    StudentCourse[]
-  activeId:   string | null
-  onSelect:   (id: string) => void
+  courses: MyCourseMembership[]
+  /** Navigate to a specific group's course page (/my-course/:groupId). */
+  onOpenGroup: (groupId: string) => void
   className?: string
   /** Compact variant used in headers */
-  compact?:   boolean
-}
-
-const STATUS_META: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
-  active:    { label: 'Активен',   cls: 'bg-green-100 text-green-700' },
-  trial:     { label: 'Триал',     cls: 'bg-blue-100 text-blue-700' },
-  expired:   { label: 'Истёк',     cls: 'bg-gray-100 text-gray-500',  icon: <Lock size={11} /> },
-  cancelled: { label: 'Отменён',   cls: 'bg-gray-100 text-gray-500' },
+  compact?: boolean
 }
 
 const SUBJECT_LABEL: Record<string, string> = { physics: 'Физика', math: 'Математика' }
+const GROUP_TYPE_LABEL: Record<string, string> = { individual: 'Индивидуально', pair: 'Пара', group: 'Мини-группа' }
 
-export function CourseSelector({ courses, activeId, onSelect, className, compact }: Props) {
+export function CourseSelector({ courses, onOpenGroup, className, compact }: Props) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -33,19 +27,23 @@ export function CourseSelector({ courses, activeId, onSelect, className, compact
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [open])
 
-  const active = courses.find(c => c.id === activeId)
-
   if (courses.length === 0) return null
 
-  // Single course — no dropdown
-  if (courses.length === 1 && active) {
+  // Single course, single group -- no dropdown, just a direct link.
+  if (courses.length === 1 && courses[0].groups.length === 1) {
+    const course = courses[0]
     return (
-      <div className={cn('inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary-50 border border-primary-100', className)}>
+      <button
+        onClick={() => onOpenGroup(course.primaryGroupId)}
+        className={cn('inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary-50 border border-primary-100 hover:border-primary-300 transition-colors text-left', className)}
+      >
         <BookOpen size={14} className="text-primary-600 shrink-0" />
-        <div className="text-sm font-medium text-gray-900 truncate">{active.course_title}</div>
-      </div>
+        <div className="text-sm font-medium text-gray-900 truncate">{course.title}</div>
+      </button>
     )
   }
+
+  const totalGroups = courses.reduce((n, c) => n + c.groups.length, 0)
 
   return (
     <div ref={wrapRef} className={cn('relative', className)}>
@@ -59,83 +57,41 @@ export function CourseSelector({ courses, activeId, onSelect, className, compact
       >
         <BookOpen size={15} className="text-primary-600 shrink-0" />
         <div className="flex-1 min-w-0 text-left">
-          {active ? (
-            <>
-              <div className={cn('font-semibold text-gray-900 truncate', compact ? 'text-sm' : 'text-base')}>
-                {active.course_title}
-              </div>
-              {!compact && (
-                <div className="text-xs text-gray-500 truncate">
-                  {active.course_subject && SUBJECT_LABEL[active.course_subject]}
-                  {active.course_exam_type && ` · ${active.course_exam_type.toUpperCase()}`}
-                </div>
-              )}
-            </>
-          ) : (
-            <span className="text-sm text-gray-400">Выберите курс</span>
-          )}
+          <div className={cn('font-semibold text-gray-900', compact ? 'text-sm' : 'text-base')}>
+            {courses.length} курс{courses.length === 1 ? '' : courses.length < 5 ? 'а' : 'ов'} · {totalGroups} групп{totalGroups === 1 ? 'а' : totalGroups < 5 ? 'ы' : ''}
+          </div>
+          {!compact && <div className="text-xs text-gray-500">Выберите курс, чтобы открыть</div>}
         </div>
-        {courses.length > 1 && (
-          <>
-            <span className="text-xs text-gray-400 shrink-0">{courses.length}</span>
-            <ChevronDown size={15} className={cn('text-gray-400 transition-transform shrink-0', open && 'rotate-180')} />
-          </>
-        )}
+        <ChevronDown size={15} className={cn('text-gray-400 transition-transform shrink-0', open && 'rotate-180')} />
       </button>
 
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-96 overflow-y-auto min-w-[280px]">
           <div className="p-1.5">
-            {courses.map(c => {
-              const meta = STATUS_META[c.status]
-              const isActive = c.id === activeId
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => { onSelect(c.id); setOpen(false) }}
-                  className={cn(
-                    'w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors',
-                    isActive ? 'bg-primary-50' : 'hover:bg-gray-50'
-                  )}
-                >
-                  <div className="w-5 h-5 mt-0.5 shrink-0 flex items-center justify-center">
-                    {isActive
-                      ? <Check size={15} className="text-primary-600" />
-                      : <BookOpen size={14} className="text-gray-400" />
-                    }
+            {courses.map(c => (
+              <div key={c.courseId} className="rounded-lg">
+                <div className="px-3 pt-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-gray-900 truncate">{c.title}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className={cn('font-medium text-sm truncate', isActive && 'text-primary-700')}>
-                        {c.course_title}
-                      </span>
-                      {meta && (
-                        <span className={cn('inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0', meta.cls)}>
-                          {meta.icon}{meta.label}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {c.course_subject && SUBJECT_LABEL[c.course_subject]}
-                      {c.course_exam_type && ` · ${c.course_exam_type.toUpperCase()}`}
-                    </div>
-                    {c.expires_at && (
-                      <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
-                        <Clock size={10} />до {new Date(c.expires_at).toLocaleDateString('ru-RU')}
-                      </div>
-                    )}
-                    {c.course_start_date && c.course_end_date && (
-                      <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
-                        <Calendar size={10} />
-                        {new Date(c.course_start_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}
-                        {' — '}
-                        {new Date(c.course_end_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}
-                      </div>
-                    )}
+                  <div className="text-xs text-gray-500">
+                    {c.subject && SUBJECT_LABEL[c.subject]}
+                    {c.examType && ` · ${c.examType.toUpperCase()}`}
                   </div>
-                </button>
-              )
-            })}
+                </div>
+                {c.groups.map(g => (
+                  <button
+                    key={g.groupId}
+                    onClick={() => { onOpenGroup(g.groupId); setOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <Users size={13} className="text-gray-400 shrink-0" />
+                    <span className="text-sm text-gray-700 truncate flex-1">{g.groupTitle}</span>
+                    <span className="text-[10px] font-medium text-gray-400 shrink-0">{GROUP_TYPE_LABEL[g.groupType] || g.groupType}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       )}

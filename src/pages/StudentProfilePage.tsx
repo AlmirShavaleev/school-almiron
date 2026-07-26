@@ -4,9 +4,11 @@ import {
   Star, TrendingUp,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
 import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
+import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
+import { useGroups } from '@/hooks/useGroups'
 import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StatCard } from '@/components/ui/StatCard'
 import { Card } from '@/components/ui/Card'
@@ -17,9 +19,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { supabase } from '@/lib/supabase'
 import type { Subscription } from '@/hooks/useSubscription'
 import { useAuthStore } from '@/store/authStore'
-import { useStudentCourses } from '@/hooks/useStudentCourses'
-import { EnrollCourseModal } from '@/components/modals/EnrollCourseModal'
-import { Plus, BookOpen, Calendar, Trash2 } from 'lucide-react'
+import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
+import { Plus, BookOpen, Calendar } from 'lucide-react'
 
 // ─── Attendance ring ──────────────────────────────────────────────────────────
 function Ring({ value, color, size = 80 }: { value: number; color: string; size?: number }) {
@@ -80,6 +81,7 @@ export function StudentProfilePage() {
   const navigate = useNavigate()
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
+  const [groupsExpanded, setGroupsExpanded] = useState(false)
   const numberStats = useStudentNumberStats(
     s?.student_id ?? null,
     s?.target_subject ?? null,
@@ -174,12 +176,31 @@ export function StudentProfilePage() {
             </div>
 
             <div className="flex flex-wrap gap-2 mt-3">
-              {s.groups.map(g => (
-                <span key={g.id} className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full">
-                  <Users size={11} />{g.name}
-                  <span className="text-primary-400">· {g.course_title}</span>
-                </span>
-              ))}
+              {s.groups.length <= 1 ? (
+                s.groups.map(g => (
+                  <span key={g.id} className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full">
+                    <Users size={11} />{g.name}
+                    <span className="text-primary-400">· {g.course_title}</span>
+                  </span>
+                ))
+              ) : (
+                <>
+                  <button
+                    onClick={() => setGroupsExpanded(v => !v)}
+                    className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full hover:bg-primary-100"
+                  >
+                    <Users size={11} />
+                    {new Set(s.groups.map(g => g.course_title)).size} курс{new Set(s.groups.map(g => g.course_title)).size === 1 ? '' : 'а'} · {s.groups.length} групп{s.groups.length === 1 ? 'а' : 'ы'}
+                    {groupsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  {groupsExpanded && s.groups.map(g => (
+                    <span key={g.id} className="flex items-center gap-1.5 text-xs bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-full">
+                      <Users size={11} />{g.name}
+                      <span className="text-slate-400">· {g.course_title}</span>
+                    </span>
+                  ))}
+                </>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 lg:w-72">
@@ -350,7 +371,7 @@ export function StudentProfilePage() {
 
       {/* Enrolled courses */}
       {s.student_id && (
-        <EnrolledCoursesSection studentId={s.student_id} currentRole={currentUserRole} />
+        <EnrolledCoursesSection studentId={s.student_id} studentFullName={s.full_name} currentRole={currentUserRole} />
       )}
 
       {s.student_id && s.target_subject && s.target_exam && (
@@ -467,29 +488,36 @@ function SubscriptionStatusBadge({ status }: { status: Subscription['status'] })
 }
 
 // ── Enrolled courses section ───────────────────────────────────────────────
-function EnrolledCoursesSection({ studentId, currentRole }: { studentId: string; currentRole: string | undefined }) {
-  const { courses, loading, unenroll, reload } = useStudentCourses(studentId)
-  const [modalOpen, setModalOpen] = useState(false)
+// Source of truth: group_students -> groups -> courses (real access). Deliberately not
+// student_courses -- that table is legacy and disconnected from actual course access, which
+// is exactly the bug this section fixes (header badge showed real groups, this block showed
+// "not enrolled" from an unrelated table).
+function EnrolledCoursesSection({ studentId, studentFullName, currentRole }: { studentId: string; studentFullName: string; currentRole: string | undefined }) {
+  const { courses, loading, reload } = useStudentCourseMemberships(studentId)
+  const { groups: teacherGroups } = useGroups()
+  const [wizardOpen, setWizardOpen] = useState(false)
   const canManage = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'curator' || currentRole === 'teacher'
 
-  const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-    active:    { label: 'Активен',  cls: 'bg-green-100 text-green-700' },
-    trial:     { label: 'Триал',    cls: 'bg-blue-100 text-blue-700' },
-    expired:   { label: 'Истёк',    cls: 'bg-gray-100 text-gray-500' },
-    cancelled: { label: 'Отменён',  cls: 'bg-red-100 text-red-700' },
+  const GROUP_TYPE_LABELS: Record<string, string> = {
+    individual: 'Индивидуально',
+    pair: 'Пара',
+    group: 'Мини-группа',
   }
 
-  const SOURCE_LABELS: Record<string, string> = {
-    purchase: 'Покупка',
-    manual:   'Админ',
-    trial:    'Триал',
-    gift:     'Подарок',
-  }
-
-  async function handleRemove(id: string, title: string) {
-    if (!confirm(`Удалить запись на курс «${title}»?`)) return
-    await unenroll(id)
-  }
+  const distributeGroups: DistributeGroupOption[] = useMemo(
+    () => teacherGroups.map((group: any) => ({
+      id: group.id,
+      name: group.name,
+      courseId: group.course_id ?? null,
+      isActive: Boolean(group.is_active),
+      maxStudents: group.max_students ?? 0,
+      studentCount: group.student_count ?? 0,
+      memberStudentIds: (group.group_students ?? []).map((gs: any) => gs.student_id),
+      scheduleDays: group.schedule_days ?? null,
+      scheduleTime: group.schedule_time ?? null,
+    })),
+    [teacherGroups],
+  )
 
   return (
     <Card className="overflow-hidden p-0">
@@ -502,8 +530,8 @@ function EnrolledCoursesSection({ studentId, currentRole }: { studentId: string;
           )}
         </div>
         {canManage && (
-          <Button size="sm" onClick={() => setModalOpen(true)}>
-            <Plus size={13} className="mr-1" />Добавить курс
+          <Button size="sm" onClick={() => setWizardOpen(true)}>
+            <Plus size={13} className="mr-1" />Распределить
           </Button>
         )}
       </div>
@@ -517,67 +545,48 @@ function EnrolledCoursesSection({ studentId, currentRole }: { studentId: string;
           <BookOpen size={32} className="text-gray-200" />
           <p className="text-sm text-gray-400">Ученик не записан ни на один курс</p>
           {canManage && (
-            <button onClick={() => setModalOpen(true)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
-              Записать на курс
+            <button onClick={() => setWizardOpen(true)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+              Распределить на курс
             </button>
           )}
         </div>
       ) : (
         <div className="divide-y divide-gray-50">
-          {courses.map(c => {
-            const meta = STATUS_BADGE[c.status]
-            const expired = c.expires_at && new Date(c.expires_at) < new Date()
-            return (
-              <div key={c.id} className="flex items-start gap-3 px-5 py-3 hover:bg-gray-50">
-                <div className="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0">
-                  <BookOpen size={15} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900 truncate">{c.course_title}</span>
-                    {meta && <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', meta.cls)}>{meta.label}</span>}
-                    <span className="text-xs text-gray-400">· {SOURCE_LABELS[c.source]}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {c.course_subject === 'physics' ? 'Физика' : c.course_subject === 'math' ? 'Математика' : c.course_subject}
-                    {c.course_exam_type && ` · ${c.course_exam_type.toUpperCase()}`}
-                    <span className="inline-flex items-center gap-1 text-gray-400">
-                      <Calendar size={11} />
-                      Записан {new Date(c.enrolled_at).toLocaleDateString('ru-RU')}
-                    </span>
-                    {c.expires_at && (
-                      <span className={cn('inline-flex items-center gap-1', expired ? 'text-red-500 font-medium' : 'text-gray-400')}>
-                        <Clock size={11} />
-                        {expired ? 'Истёк' : 'до'} {new Date(c.expires_at).toLocaleDateString('ru-RU')}
-                      </span>
-                    )}
-                  </div>
-                  {c.notes && (
-                    <div className="text-xs text-gray-400 italic mt-1">{c.notes}</div>
-                  )}
-                </div>
-                {canManage && (
-                  <button
-                    onClick={() => handleRemove(c.id, c.course_title)}
-                    className="text-gray-300 hover:text-red-500 transition-colors shrink-0 p-1"
-                    title="Удалить запись"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
+          {courses.map(c => (
+            <div key={c.courseId} className="flex items-start gap-3 px-5 py-3 hover:bg-gray-50">
+              <div className="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0">
+                <BookOpen size={15} />
               </div>
-            )
-          })}
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-gray-900 truncate">{c.courseTitle}</span>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {c.courseSubject === 'physics' ? 'Физика' : c.courseSubject === 'math' ? 'Математика' : c.courseSubject}
+                  {c.courseExamType && ` · ${c.courseExamType.toUpperCase()}`}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {c.groups.map(g => (
+                    <span key={g.groupId} className="inline-flex items-center gap-1 text-xs bg-primary-50 text-primary-700 border border-primary-100 px-2 py-0.5 rounded-full">
+                      {g.groupName}
+                      <span className="text-primary-400">· {GROUP_TYPE_LABELS[g.groupType] || g.groupType}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      <EnrollCourseModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onAdded={reload}
-        studentId={studentId}
-        excludeIds={courses.map(c => c.course_id)}
-      />
+      {wizardOpen && (
+        <DistributeJoinRequestWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          studentId={studentId}
+          studentFullName={studentFullName}
+          groups={distributeGroups}
+          onDistributed={reload}
+        />
+      )}
     </Card>
   )
 }

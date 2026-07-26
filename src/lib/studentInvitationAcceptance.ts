@@ -39,6 +39,11 @@ function mapError(error: unknown): InvitationAcceptanceError {
     return new InvitationAcceptanceError('wrong_role', 'Это приглашение предназначено для аккаунта ученика. Выйдите и войдите в ученический аккаунт.')
   }
   if (text.includes('expired')) return new InvitationAcceptanceError('expired', 'Срок действия приглашения истёк. Обратитесь к преподавателю за новой ссылкой.')
+  if (text.includes('invite_not_pending')) {
+    if (text.includes('accepted')) return new InvitationAcceptanceError('used', 'Это приглашение уже использовано.')
+    if (text.includes('revoked')) return new InvitationAcceptanceError('revoked', 'Приглашение было отозвано. Обратитесь к преподавателю за новой ссылкой.')
+    return new InvitationAcceptanceError('unknown', 'Не удалось обработать приглашение')
+  }
   if (text.includes('revoked')) return new InvitationAcceptanceError('revoked', 'Приглашение было отозвано. Обратитесь к преподавателю за новой ссылкой.')
   if (text.includes('already used') || text.includes('already accepted') || text.includes('used')) {
     return new InvitationAcceptanceError('used', 'Это приглашение уже использовано.')

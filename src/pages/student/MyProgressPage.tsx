@@ -8,6 +8,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
+import { useStudentHomeworkSummary } from '@/hooks/useStudentHomeworkSummary'
+import { useMyHomeworkAssignments } from '@/hooks/useMyHomeworkAssignments'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
 import {
@@ -56,7 +58,9 @@ export function MyProgressPage() {
   }, [profile?.id])
 
   const { data: s, loading } = useStudentProfile(studentId)
-  if (resolving || loading) {
+  const { summary: hwSummary, loading: hwSummaryLoading } = useStudentHomeworkSummary()
+  const { rows: hwRows, loading: hwRowsLoading } = useMyHomeworkAssignments()
+  if (resolving || loading || hwSummaryLoading || hwRowsLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <Loader2 size={28} className="animate-spin text-primary-600" />
@@ -74,16 +78,18 @@ export function MyProgressPage() {
     )
   }
 
-  const pendingHW = s.homeworks.filter(h => h.status === 'not_submitted' || h.status === 'revision')
-  const overdueHW = pendingHW.filter(h => new Date(h.due_date) < new Date())
+  const overdueHW = hwRows.filter(row => row.overdue && !row.is_excused)
+  const acceptedScoredRows = hwRows.filter(row => row.latest_review_decision === 'accepted' && row.latest_score != null)
+  const hwAverageScore = acceptedScoredRows.length > 0
+    ? Math.round((acceptedScoredRows.reduce((sum, row) => sum + (row.latest_score || 0), 0) / acceptedScoredRows.length) * 10) / 10
+    : null
 
-  const hwScoreData = s.homeworks
-    .filter(h => h.status === 'checked' && h.score != null)
+  const hwScoreData = acceptedScoredRows
     .slice(0, 10).reverse()
-    .map((h, i) => ({
+    .map((row, i) => ({
       name:  `ДЗ ${i + 1}`,
-      score: Math.round(h.score! / h.max_score * 100),
-      title: h.title,
+      score: Math.round(row.latest_score ?? 0),
+      title: row.template_title,
     }))
 
   const mockChartData = s.mock_results.slice().reverse().map(m => ({
@@ -106,14 +112,14 @@ export function MyProgressPage() {
       label:    'Сдача ДЗ',
       value:    s.hw_completion_pct,
       color:    pctColor(s.hw_completion_pct),
-      sub:      <span className="text-xs text-gray-400">{s.hw_checked} из {s.hw_total}</span>,
+      sub:      <span className="text-xs text-gray-400">{hwSummary?.checked ?? 0} проверено</span>,
     },
     {
       label:    'Средний балл',
-      value:    s.hw_avg_score ?? 0,
+      value:    hwAverageScore ?? 0,
       color:    '#6366f1',
-      valueLabel: s.hw_avg_score != null ? `${s.hw_avg_score}%` : '—',
-      sub:      <span className="text-xs text-gray-400">за ДЗ</span>,
+      valueLabel: hwAverageScore != null ? `${hwAverageScore}%` : '—',
+      sub:      <span className="text-xs text-gray-400">по принятым работам</span>,
     },
     {
       label:    'Прогресс курса',
@@ -161,15 +167,49 @@ export function MyProgressPage() {
           <div>
             <div className="text-sm font-semibold text-red-700">Просроченные задания ({overdueHW.length})</div>
             <div className="text-xs text-red-500 mt-1">
-              {overdueHW.slice(0, 3).map(h => h.title).join(' · ')}
+              {overdueHW.slice(0, 3).map(row => row.template_title).join(' · ')}
               {overdueHW.length > 3 && ` +${overdueHW.length - 3}`}
             </div>
           </div>
-          <Link to="/homeworks" className="ml-auto text-xs text-red-600 font-medium flex items-center gap-0.5 shrink-0">
+          <Link to="/my-homeworks" className="ml-auto text-xs text-red-600 font-medium flex items-center gap-0.5 shrink-0">
             Открыть<ChevronRight size={12} />
           </Link>
         </div>
       )}
+
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-semibold text-gray-900 flex items-center gap-2">
+            <ClipboardList size={16} className="text-primary-500" />
+            Статусы ДЗ
+          </div>
+          <Link to="/my-homeworks" className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
+            Все задания<ChevronRight size={12} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="rounded-xl bg-orange-50 p-3 text-center">
+            <div className="text-xl font-bold text-orange-600">{hwSummary?.to_do ?? 0}</div>
+            <div className="text-xs text-orange-500 mt-0.5">нужно сдать</div>
+          </div>
+          <div className="rounded-xl bg-yellow-50 p-3 text-center">
+            <div className="text-xl font-bold text-yellow-700">{hwSummary?.under_review ?? 0}</div>
+            <div className="text-xs text-yellow-600 mt-0.5">на проверке</div>
+          </div>
+          <div className="rounded-xl bg-red-50 p-3 text-center">
+            <div className="text-xl font-bold text-red-600">{hwSummary?.returned_for_revision ?? 0}</div>
+            <div className="text-xs text-red-500 mt-0.5">на доработке</div>
+          </div>
+          <div className="rounded-xl bg-green-50 p-3 text-center">
+            <div className="text-xl font-bold text-green-700">{hwSummary?.checked ?? 0}</div>
+            <div className="text-xs text-green-500 mt-0.5">проверено</div>
+          </div>
+          <div className={cn('rounded-xl p-3 text-center', (hwSummary?.overdue ?? 0) > 0 ? 'bg-red-50' : 'bg-gray-50')}>
+            <div className={cn('text-xl font-bold', (hwSummary?.overdue ?? 0) > 0 ? 'text-red-600' : 'text-gray-400')}>{hwSummary?.overdue ?? 0}</div>
+            <div className={cn('text-xs mt-0.5', (hwSummary?.overdue ?? 0) > 0 ? 'text-red-500' : 'text-gray-400')}>просрочено</div>
+          </div>
+        </div>
+      </Card>
 
       {/* HW score chart */}
       {hwScoreData.length >= 3 && (
@@ -179,9 +219,9 @@ export function MyProgressPage() {
               <ClipboardList size={16} className="text-primary-500" />
               Баллы за ДЗ
             </div>
-            {s.hw_avg_score != null && (
+            {hwAverageScore != null && (
               <span className="text-sm text-gray-400">
-                Среднее: <span className="font-semibold text-gray-700">{s.hw_avg_score}%</span>
+                Среднее: <span className="font-semibold text-gray-700">{hwAverageScore}%</span>
               </span>
             )}
           </div>
@@ -304,9 +344,6 @@ export function MyProgressPage() {
             studentId={studentId}
             viewerRole="student"
             lessonHref={lessonId => `/lessons/${lessonId}`}
-            assignmentHref={(a: JournalAssignment) => a.source === 'legacy'
-              ? '/homeworks'
-              : `/my-assignments/${a.assigned_id}`}
           />
         </div>
       )}

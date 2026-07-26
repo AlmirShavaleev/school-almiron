@@ -49,6 +49,10 @@ vi.mock('@/hooks/useCourseProgram', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useCourseHomeworkTemplates', () => ({
+  useCourseHomeworkTemplates: () => ({ templates: [] }),
+}))
+
 vi.mock('@/components/modals/TopicMaterialsModal', () => ({ TopicMaterialsModal: () => null }))
 vi.mock('@/components/modals/CreateHomeworkModal', () => ({ CreateHomeworkModal: () => null }))
 vi.mock('@/components/modals/AddLessonTemplateToCourseModal', () => ({ AddLessonTemplateToCourseModal: () => null }))

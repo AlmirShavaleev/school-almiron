@@ -10,18 +10,18 @@ import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useTeacherDashboard } from '@/hooks/useTeacherDashboard'
-import { formatDateTime } from '@/utils/format'
-
-function isOverdue(iso: string) { return new Date(iso) < new Date() }
+import { useTeacherHomeworkSummary } from '@/hooks/useTeacherHomeworkSummary'
+import { formatDateTime, formatDate } from '@/utils/format'
 
 export function TeacherDashboard() {
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
 
   const {
-    groups, lessons, homeworks, pendingSubs, stats,
+    groups, lessons, stats,
     todayLessons, loading,
   } = useTeacherDashboard(profile?.id)
+  const { summary: hwSummary, loading: hwSummaryLoading } = useTeacherHomeworkSummary()
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -31,11 +31,6 @@ export function TeacherDashboard() {
       </div>
     )
   }
-
-  // HW with pending reviews (sorted: most pending first)
-  const hwWithPending = homeworks
-    .filter(hw => hw.pending_count > 0)
-    .sort((a, b) => b.pending_count - a.pending_count)
 
   // Upcoming lessons (excluding today)
   const upcomingLessons = lessons.filter(l => {
@@ -70,9 +65,9 @@ export function TeacherDashboard() {
               <div className="text-xs text-slate-500">Курсы</div>
               <div className="font-semibold text-graphite-950">Мои курсы</div>
             </button>
-            <button onClick={() => navigate('/inbox')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+            <button onClick={() => navigate('/homework-review')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">Очередь</div>
-              <div className="font-semibold text-graphite-950">{stats?.pending_reviews ?? 0}</div>
+              <div className="font-semibold text-graphite-950">{hwSummary?.attempts_awaiting_review ?? 0}</div>
             </button>
             <button onClick={() => navigate('/schedule')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">Сегодня</div>
@@ -82,7 +77,7 @@ export function TeacherDashboard() {
               <div className="text-xs text-slate-500">Группы</div>
               <div className="font-semibold text-graphite-950">{stats?.total_groups ?? 0}</div>
             </button>
-            <button onClick={() => navigate('/assign-homework')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
+            <button onClick={() => navigate('/homework-templates/new')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
               <div className="text-xs text-slate-500">Быстро</div>
               <div className="font-semibold text-graphite-950">Выдать ДЗ</div>
             </button>
@@ -106,10 +101,10 @@ export function TeacherDashboard() {
         />
         <StatCard
           title="На проверке"
-          value={stats?.pending_reviews ?? 0}
+          value={hwSummary?.attempts_awaiting_review ?? 0}
           icon={<ClipboardList size={20} />}
-          color={(stats?.pending_reviews ?? 0) > 0 ? 'orange' : 'green'}
-          subtitle={(stats?.pending_reviews ?? 0) === 0 ? 'Всё проверено' : 'ждут оценки'}
+          color={(hwSummary?.attempts_awaiting_review ?? 0) > 0 ? 'orange' : 'green'}
+          subtitle={(hwSummary?.attempts_awaiting_review ?? 0) === 0 ? 'Всё проверено' : 'ждут оценки'}
         />
         <StatCard
           title="Сегодня занятий"
@@ -159,14 +154,14 @@ export function TeacherDashboard() {
       {/* ── 2-col grid ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Нужно проверить */}
+        {/* Нужно проверить (Homework V2) */}
         <Card>
           <CardHeader>
             <CardTitle>Нужно проверить</CardTitle>
             <div className="flex items-center gap-2">
-              {pendingSubs.length > 0 && <Badge variant="warning">{pendingSubs.length}</Badge>}
+              {(hwSummary?.attempts_awaiting_review ?? 0) > 0 && <Badge variant="warning">{hwSummary!.attempts_awaiting_review}</Badge>}
               <button
-                onClick={() => navigate('/homeworks')}
+                onClick={() => navigate('/homework-review')}
                 className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
               >
                 Все ДЗ <ArrowRight size={12} />
@@ -174,37 +169,48 @@ export function TeacherDashboard() {
             </div>
           </CardHeader>
 
-          {hwWithPending.length === 0 ? (
+          {hwSummaryLoading ? (
+            <p className="text-gray-400 text-sm py-8 text-center">Загрузка…</p>
+          ) : !hwSummary || (hwSummary.attempts_awaiting_review === 0 && hwSummary.returned_for_revision === 0) ? (
             <div className="flex flex-col items-center py-8 text-gray-400 gap-2">
               <CheckCircle2 size={28} className="opacity-30" />
               <p className="text-sm">Все работы проверены</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {hwWithPending.slice(0, 5).map(hw => (
-                <div
-                  key={hw.id}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-orange-100 bg-orange-50 gap-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 truncate">{hw.title}</div>
-                    <div className="text-xs text-gray-500">
-                      {hw.group_name}
-                      {isOverdue(hw.due_date) && (
-                        <span className="ml-1.5 text-red-500 font-medium">· просрочено</span>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => navigate(`/homeworks/${hw.id}/review`)}
-                  >
-                    <ClipboardList size={13} className="mr-1" />
-                    ({hw.pending_count})
+              {hwSummary.attempts_awaiting_review > 0 && (
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-orange-100 bg-orange-50 gap-3">
+                  <div className="text-sm font-medium text-gray-900">Ожидают проверки</div>
+                  <Button size="sm" className="shrink-0" onClick={() => navigate('/homework-review')}>
+                    <ClipboardList size={13} className="mr-1" />({hwSummary.attempts_awaiting_review})
                   </Button>
                 </div>
-              ))}
+              )}
+              {hwSummary.returned_for_revision > 0 && (
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-yellow-100 bg-yellow-50 gap-3">
+                  <div className="text-sm font-medium text-gray-900">На доработке у учеников</div>
+                  <Button size="sm" variant="secondary" className="shrink-0" onClick={() => navigate('/homework-review')}>
+                    ({hwSummary.returned_for_revision})
+                  </Button>
+                </div>
+              )}
+              {hwSummary.overdue_recipients > 0 && (
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-red-100 bg-red-50 gap-3">
+                  <div className="text-sm font-medium text-gray-900">Просрочено ({hwSummary.groups_with_overdue_homework} {hwSummary.groups_with_overdue_homework === 1 ? 'группа' : 'групп'})</div>
+                  <span className="text-sm font-semibold text-red-600 shrink-0">{hwSummary.overdue_recipients}</span>
+                </div>
+              )}
+              {hwSummary.recently_assigned.length > 0 && (
+                <div className="pt-2 mt-2 border-t border-gray-100">
+                  <div className="text-xs text-gray-400 mb-1.5">Недавно назначено</div>
+                  {hwSummary.recently_assigned.slice(0, 3).map(a => (
+                    <div key={a.assignment_id} className="flex items-center justify-between py-1.5 text-sm">
+                      <span className="text-gray-700 truncate">{a.template_title} · {a.group_name}</span>
+                      <span className="text-xs text-gray-400 shrink-0 ml-2">до {formatDate(a.due_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </Card>

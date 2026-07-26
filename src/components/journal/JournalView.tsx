@@ -1,37 +1,23 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Loader2, Users, Calendar, CheckCircle, XCircle, Clock, ClipboardList,
+  Loader2, Users, Calendar, CheckCircle, XCircle, Clock,
   TrendingUp, AlertTriangle, ExternalLink,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
-import { formatDate, formatDateTime } from '@/utils/format'
+import { formatDate } from '@/utils/format'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { useStudentJournal, type JournalPeriod } from '@/hooks/useStudentJournal'
-import {
-  getDisplayHomeworkStatus, isSubmittedOnTime,
-  type JournalLesson, type JournalAssignment, type DisplayHomeworkStatus,
-} from '@/types/journal'
+import { HomeworkV2JournalSection } from '@/components/journal/HomeworkV2JournalSection'
+import type { JournalLesson } from '@/types/journal'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
 const LESSON_STATUS_LABELS: Record<string, string> = {
   scheduled: 'Запланировано', completed: 'Завершено', cancelled: 'Отменено', missed: 'Пропущено',
-}
-const ATT_LABELS: Record<string, string> = { present: 'Присутствовал', late: 'Опоздал', absent: 'Отсутствовал', excused: 'Уважительная причина' }
-const HW_STATUS_LABELS: Record<DisplayHomeworkStatus, string> = {
-  not_started: 'Не начато', submitted: 'На проверке', returned: 'Возвращено', accepted: 'Принято', rejected: 'Отклонено', overdue: 'Просрочено',
-}
-const HW_STATUS_COLORS: Record<DisplayHomeworkStatus, string> = {
-  not_started: 'bg-gray-50 text-gray-500 border-gray-200',
-  submitted:   'bg-blue-50 text-blue-600 border-blue-200',
-  returned:    'bg-orange-50 text-orange-600 border-orange-200',
-  accepted:    'bg-green-50 text-green-600 border-green-200',
-  rejected:    'bg-red-50 text-red-600 border-red-200',
-  overdue:     'bg-red-50 text-red-600 border-red-200',
 }
 
 const PERIODS: { key: JournalPeriod; label: string }[] = [
@@ -39,9 +25,9 @@ const PERIODS: { key: JournalPeriod; label: string }[] = [
 ]
 
 // Canonical two-subject domain (matches SUBJECT_LABELS used elsewhere in the app).
-// Lessons derive this from their group's course; assignments from the collection.
-// Individual lessons without a group have no subject source and are excluded
-// from lesson/attendance results whenever a subject filter is active (never guessed).
+// Lessons derive this from their group's course. Individual lessons without a group have no
+// subject source and are excluded from lesson/attendance results whenever a subject filter is
+// active (never guessed).
 const SUBJECT_OPTIONS = [
   { value: 'Физика', label: 'Физика' },
   { value: 'Математика', label: 'Математика' },
@@ -53,13 +39,15 @@ interface JournalViewProps {
   studentId: string
   viewerRole: 'teacher' | 'student'
   lessonHref: (lessonId: string) => string
-  assignmentHref: (a: JournalAssignment) => string | null
 }
 
-export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref }: JournalViewProps) {
+/** Lessons/attendance/trend still come from get_student_journal (untouched — those blocks
+ * already work correctly). The homework section is Homework V2 only (HomeworkV2JournalSection,
+ * sourced from get_student_homework_journal) — legacy homeworks/task_submissions assignment
+ * data and the source:'legacy'|'collection' toggle have been removed from this view entirely. */
+export function JournalView({ studentId, viewerRole: _viewerRole, lessonHref }: JournalViewProps) {
   const [period, setPeriod] = useState<JournalPeriod>('30d')
   const [subject, setSubject] = useState<string>('')
-  const [hwFilter, setHwFilter] = useState<DisplayHomeworkStatus | 'all'>('all')
   const { journal, loading, error } = useStudentJournal(studentId, period, undefined, undefined, subject || null)
 
   if (loading) {
@@ -70,12 +58,7 @@ export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref 
   }
   if (!journal) return null
 
-  const { student, summary, lessons, assignments, trend } = journal
-
-  const filteredAssignments = hwFilter === 'all'
-    ? assignments
-    : assignments.filter(a => getDisplayHomeworkStatus(a) === hwFilter)
-
+  const { student, summary, lessons, trend } = journal
   const trendHasData = trend.some(w => w.lessons_completed > 0 || w.submitted > 0 || w.accepted > 0)
 
   return (
@@ -121,20 +104,12 @@ export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref 
         {subject && <p className="text-xs text-gray-400 mt-2">Занятия без определённого предмета (индивидуальные, вне группы/курса) скрыты при выбранном фильтре.</p>}
       </Card>
 
-      {/* Summary cards */}
+      {/* Attendance summary — unchanged, still from get_student_journal */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <SummaryCard label="Занятий завершено" value={summary.lessons_completed} />
         {summary.attendance_pct != null
           ? <SummaryCard label="Посещаемость" value={`${summary.attendance_pct}%`} sub={`${summary.attended} из ${summary.attended + summary.missed}`} />
           : <SummaryCard label="Посещаемость" value="—" sub="недостаточно данных" muted />}
-        <SummaryCard label="ДЗ назначено" value={summary.hw_assigned} />
-        <SummaryCard label="ДЗ принято" value={summary.hw_accepted} />
-        <SummaryCard label="ДЗ возвращено" value={summary.hw_returned} />
-        <SummaryCard label="ДЗ просрочено" value={summary.hw_overdue} warn={summary.hw_overdue > 0} />
-        {summary.scored_count > 0
-          ? <SummaryCard label="Средний балл" value={summary.avg_score!} sub={`сырой, по ${summary.scored_count} оценённым раб.`} />
-          : <SummaryCard label="Средний балл" value="—" sub="нет оценённых работ" muted />}
-        <SummaryCard label="Вовремя сдано" value={summary.hw_with_due_date > 0 ? `${summary.hw_on_time} из ${summary.hw_with_due_date}` : '—'} muted={summary.hw_with_due_date === 0} />
       </div>
 
       {/* Attendance breakdown — present/late/absent/excused shown separately */}
@@ -150,17 +125,8 @@ export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref 
         </Card>
       )}
 
-      {/* Basic progress plain-text block */}
-      <Card>
-        <div className="text-sm text-gray-600 leading-relaxed">
-          {summary.attendance_pct != null && <>Посещаемость: <strong>{summary.attendance_pct}%</strong> ({summary.attended} из {summary.attended + summary.missed}). </>}
-          {summary.hw_with_due_date > 0 && <>Вовремя сдано: <strong>{summary.hw_on_time} из {summary.hw_with_due_date}</strong>. </>}
-          Принято работ: <strong>{summary.hw_accepted}</strong>. Возвращено: <strong>{summary.hw_returned}</strong>.
-          {summary.scored_count > 0 && <> Средний сырой балл по оценённым работам: <strong>{summary.avg_score}</strong> (по {summary.scored_count} раб.).</>}
-        </div>
-      </Card>
-
-      {/* Trend chart */}
+      {/* Trend chart — lessons_completed unchanged; submitted/accepted still legacy-sourced
+          (get_student_journal), left as-is per "не меняй занятия/посещаемость" scope. */}
       <Card>
         <CardHeader><CardTitle><TrendingUp size={16} className="inline mr-2 text-primary-500" />Динамика по неделям</CardTitle></CardHeader>
         {trendHasData ? (
@@ -171,8 +137,6 @@ export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref 
               <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
               <Tooltip />
               <Bar dataKey="lessons_completed" name="Занятий" fill="#6366f1" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="submitted" name="Сдано ДЗ" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="accepted" name="Принято ДЗ" fill="#22c55e" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
@@ -192,33 +156,8 @@ export function JournalView({ studentId, viewerRole, lessonHref, assignmentHref 
         )}
       </Card>
 
-      {/* Homework table */}
-      <Card>
-        <CardHeader>
-          <CardTitle><ClipboardList size={16} className="inline mr-2 text-primary-500" />Домашние задания</CardTitle>
-          <select
-            value={hwFilter}
-            onChange={e => setHwFilter(e.target.value as DisplayHomeworkStatus | 'all')}
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-          >
-            <option value="all">Все</option>
-            {(Object.keys(HW_STATUS_LABELS) as DisplayHomeworkStatus[]).map(k => (
-              <option key={k} value={k}>{HW_STATUS_LABELS[k]}</option>
-            ))}
-          </select>
-        </CardHeader>
-        {filteredAssignments.length === 0 ? (
-          <div className="text-center py-8 text-sm text-gray-400">
-            {assignments.length === 0 ? 'Домашних заданий пока нет' : 'Нет заданий с этим статусом'}
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {filteredAssignments.map(a => (
-              <AssignmentRow key={`${a.source}:${a.assigned_id}`} assignment={a} href={assignmentHref(a)} />
-            ))}
-          </div>
-        )}
-      </Card>
+      {/* Homework — Homework V2 only */}
+      <HomeworkV2JournalSection studentId={studentId} />
     </div>
   )
 }
@@ -265,31 +204,4 @@ function LessonRow({ lesson, href }: { lesson: JournalLesson; href: string }) {
       <ExternalLink size={13} className="text-gray-300 group-hover:text-gray-500 shrink-0" />
     </Link>
   )
-}
-
-function AssignmentRow({ assignment, href }: { assignment: JournalAssignment; href: string | null }) {
-  const status = getDisplayHomeworkStatus(assignment)
-  const onTime = isSubmittedOnTime(assignment)
-
-  const inner = (
-    <>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-gray-800 truncate">{assignment.collection_title || 'Задание'}</div>
-        <div className="text-xs text-gray-400 flex items-center gap-2">
-          {assignment.due_date && <span>до {formatDate(assignment.due_date)}</span>}
-          {assignment.submitted_at && onTime === false && <span className="text-orange-500">сдано с опозданием</span>}
-          {assignment.score != null && <span>балл: {assignment.score}</span>}
-        </div>
-      </div>
-      <span className={cn('text-xs px-2 py-0.5 rounded-full border shrink-0', HW_STATUS_COLORS[status])}>
-        {HW_STATUS_LABELS[status]}
-      </span>
-      {href && <ExternalLink size={13} className="text-gray-300 group-hover:text-gray-500 shrink-0" />}
-    </>
-  )
-
-  if (href) {
-    return <Link to={href} className="flex items-center gap-3 py-2.5 px-3 rounded-xl transition-colors group hover:bg-gray-50">{inner}</Link>
-  }
-  return <div className="flex items-center gap-3 py-2.5 px-3 rounded-xl transition-colors group">{inner}</div>
 }
