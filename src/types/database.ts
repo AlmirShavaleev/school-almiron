@@ -4251,6 +4251,7 @@ export type Database = {
           lesson_id: string | null
           mime_type: string | null
           position: number
+          section: string | null
           size_bytes: number | null
           source_topic_material_id: string | null
           storage_path: string | null
@@ -4270,6 +4271,7 @@ export type Database = {
           lesson_id?: string | null
           mime_type?: string | null
           position?: number
+          section?: string | null
           size_bytes?: number | null
           source_topic_material_id?: string | null
           storage_path?: string | null
@@ -4289,6 +4291,7 @@ export type Database = {
           lesson_id?: string | null
           mime_type?: string | null
           position?: number
+          section?: string | null
           size_bytes?: number | null
           source_topic_material_id?: string | null
           storage_path?: string | null

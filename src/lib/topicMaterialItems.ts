@@ -26,6 +26,19 @@ export const LEGACY_TOPIC_MATERIALS_BUCKET = 'course-materials'
 
 export type TopicMaterialKind = 'text' | 'video' | 'link' | 'file'
 
+/** Рубрика материала (быстрые кнопки в модалке темы). NULL — без рубрики. */
+export type TopicMaterialSection = 'notes' | 'theory' | 'tasks' | 'solution'
+
+export const TOPIC_MATERIAL_SECTIONS: readonly TopicMaterialSection[] =
+  ['notes', 'theory', 'tasks', 'solution'] as const
+
+export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string> = {
+  notes: 'Конспект',
+  theory: 'Теория',
+  tasks: 'Задачи',
+  solution: 'Решение ДЗ',
+}
+
 export const TOPIC_MATERIAL_KINDS: readonly TopicMaterialKind[] = ['text', 'video', 'link', 'file'] as const
 
 export const TOPIC_MATERIAL_LABELS: Record<TopicMaterialKind, string> = {
@@ -49,6 +62,7 @@ export interface TopicMaterialItemRow {
   size_bytes: number | null
   position: number
   is_visible: boolean
+  section: TopicMaterialSection | null
   created_by: string
   created_at: string
   updated_at: string
@@ -59,15 +73,16 @@ export interface TopicMaterialItemRow {
  * поле есть, и компонентам не нужно проверять null у полей чужих типов.
  */
 export type TopicMaterial =
-  | { kind: 'text'; id: string; title: string | null; position: number; isVisible: boolean; content: string }
-  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; url: string }
-  | { kind: 'link'; id: string; title: string | null; position: number; isVisible: boolean; url: string }
+  | { kind: 'text'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; content: string }
+  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; url: string }
+  | { kind: 'link'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; url: string }
   | {
       kind: 'file'
       id: string
       title: string | null
       position: number
       isVisible: boolean
+      section: TopicMaterialSection | null
       storagePath: string
       fileName: string | null
       sizeBytes: number | null
@@ -75,7 +90,13 @@ export type TopicMaterial =
 
 /** Приводит строку БД к дискриминированному виду. Возвращает null, если строка битая. */
 export function toTopicMaterial(row: TopicMaterialItemRow): TopicMaterial | null {
-  const base = { id: row.id, title: row.title, position: row.position, isVisible: row.is_visible }
+  const base = {
+    id: row.id,
+    title: row.title,
+    position: row.position,
+    isVisible: row.is_visible,
+    section: row.section ?? null,
+  }
   switch (row.kind) {
     case 'text':
       return row.content ? { ...base, kind: 'text', content: row.content } : null
@@ -155,6 +176,7 @@ export function buildMaterialStoragePath(topicId: string, fileName: string, now:
 export interface MaterialDraft {
   kind: TopicMaterialKind
   title?: string | null
+  section?: TopicMaterialSection | null
   content?: string | null
   url?: string | null
   storagePath?: string | null
@@ -174,6 +196,7 @@ export interface MaterialInsertPayload {
   mime_type: string | null
   size_bytes: number | null
   position: number
+  section: TopicMaterialSection | null
   created_by: string
 }
 
@@ -199,6 +222,7 @@ export function buildMaterialInsert(
     mime_type: null as string | null,
     size_bytes: null as number | null,
     position,
+    section: draft.section ?? null,
     created_by: createdBy,
   }
 

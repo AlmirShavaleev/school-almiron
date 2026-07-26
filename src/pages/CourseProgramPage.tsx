@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap,
+  Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -893,13 +893,13 @@ function CourseSettings({ course, onSave }: { course: Course; onSave: (v: Partia
 
 // ─── Materials matrix ─────────────────────────────────────────────────────────
 const MAT_COLS = [
-  { type: 'notes',    label: 'Конспект',  icon: <BookMarked size={13} />,    color: 'text-blue-500' },
-  { type: 'theory',   label: 'Теория',    icon: <BookOpen size={13} />,      color: 'text-purple-500' },
-  { type: 'tasks',    label: 'Задачи',    icon: <ClipboardList size={13} />, color: 'text-orange-500' },
-  { type: 'homework', label: 'ДЗ',        icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
-  { type: 'solution', label: 'Решение',   icon: <Check size={13} />,         color: 'text-green-500' },
-  { type: 'video',    label: 'Видео',     icon: <Video size={13} />,         color: 'text-red-500' },
-  { type: 'link',     label: 'Ссылка',    icon: <FileText size={13} />,      color: 'text-cyan-600' },
+  { type: 'notes',    label: 'Конспект',     icon: <BookMarked size={13} />,    color: 'text-blue-500' },
+  { type: 'theory',   label: 'Теория',       icon: <BookOpen size={13} />,      color: 'text-purple-500' },
+  { type: 'tasks',    label: 'Задачи',       icon: <ClipboardList size={13} />, color: 'text-orange-500' },
+  { type: 'hw',       label: 'ДЗ',           icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
+  { type: 'solution', label: 'Решение ДЗ',   icon: <Check size={13} />,         color: 'text-green-500' },
+  { type: 'video',    label: 'Видео',        icon: <Video size={13} />,         color: 'text-red-500' },
+  { type: 'test',     label: 'Тестирование', icon: <BarChart3 size={13} />,     color: 'text-indigo-500' },
 ]
 
 function MaterialsMatrix({
@@ -936,20 +936,62 @@ function MaterialsMatrix({
 
     ;(async () => {
       try {
-        const rows = await fetchAllPagedRows<{ topic_id: string; type: string; file_url: string | null; link_url: string | null }>(async (from, to) =>
-          await supabase
-            .from('topic_materials')
-            .select('topic_id, type, file_url, link_url')
-            .in('topic_id', topicIds)
-            .range(from, to)
-        )
+        const [materialItems, homeworkRows, testRows] = await Promise.all([
+          // Query 1: topic_material_items with pagination
+          fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>(async (from, to) =>
+            await supabase
+              .from('topic_material_items')
+              .select('topic_id, kind, section')
+              .in('topic_id', topicIds)
+              .range(from, to)
+          ),
+          // Query 2: topic_homework (no pagination)
+          (async () => {
+            const { data, error } = await supabase
+              .from('topic_homework')
+              .select('topic_id')
+              .in('topic_id', topicIds)
+            if (error) throw new Error(error.message ?? 'Не удалось загрузить домашние задания')
+            return (data as { topic_id: string }[] | null) || []
+          })(),
+          // Query 3: topic_tests (no pagination)
+          (async () => {
+            const { data, error } = await supabase
+              .from('topic_tests')
+              .select('topic_id')
+              .in('topic_id', topicIds)
+            if (error) throw new Error(error.message ?? 'Не удалось загрузить тесты')
+            return (data as { topic_id: string }[] | null) || []
+          })(),
+        ])
+
         const map: Record<string, Set<string>> = {}
-        for (const row of rows) {
-          // Only count if actually has file or link
-          if (!row.file_url && !row.link_url) continue
+
+        // Process topic_material_items
+        for (const row of materialItems) {
           if (!map[row.topic_id]) map[row.topic_id] = new Set()
-          map[row.topic_id].add(row.type)
+          // If section is one of: notes, theory, tasks, solution -> add(section)
+          if (row.section && ['notes', 'theory', 'tasks', 'solution'].includes(row.section)) {
+            map[row.topic_id].add(row.section)
+          }
+          // If kind === 'video' -> add('video')
+          if (row.kind === 'video') {
+            map[row.topic_id].add('video')
+          }
         }
+
+        // Process topic_homework
+        for (const row of homeworkRows) {
+          if (!map[row.topic_id]) map[row.topic_id] = new Set()
+          map[row.topic_id].add('hw')
+        }
+
+        // Process topic_tests
+        for (const row of testRows) {
+          if (!map[row.topic_id]) map[row.topic_id] = new Set()
+          map[row.topic_id].add('test')
+        }
+
         if (cancelled) return
         setMatMap(map)
       } catch (e) {

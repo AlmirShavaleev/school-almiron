@@ -278,3 +278,17 @@ Frontend нового контура:
 попыток — каскадом, ок; результаты теста в журнале/дашбордах НЕ показываются
 (журнал легаси, см. §5.4); teacher-view результатов по группе — только через
 таблицы attempts/answers, отдельного UI нет (следующая итерация).
+
+### 10.1. Плиточная модалка темы + рубрики материалов
+
+- Миграция `20260726135515_topic_material_items_section`: колонка
+  `topic_material_items.section` ('notes'|'theory'|'tasks'|'solution', NULL = без рубрики).
+- Модалка темы (canEdit): 7 одинаковых плиток — Конспект / Теория / Задачи /
+  ДЗ / Решение ДЗ / Видео / Тестирование; клик раскрывает панель (мультизагрузка
+  файлов с прогрессом / ссылка на видео / TopicHomeworkEditor / TopicTestEditor).
+  Зелёная точка = рубрика заполнена. Дата «Открывается» в шапке. Старая полная
+  форма — в details «Прочие материалы (без рубрики)».
+- MaterialsMatrix в CourseProgramPage переведена со старой topic_materials на
+  topic_material_items(section/kind) + topic_homework + topic_tests — колонки
+  совпадают с плитками. (Ученические has_notes/has_theory в
+  useStudentCourseProgram — всё ещё легаси, см. §4 оч.7.)

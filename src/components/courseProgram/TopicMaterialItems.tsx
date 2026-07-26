@@ -13,6 +13,7 @@ import {
   type MaterialDraft,
   type TopicMaterial,
   type TopicMaterialKind,
+  type TopicMaterialSection,
 } from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
 
@@ -152,10 +153,11 @@ function MaterialCard({
 // ─── Быстрая загрузка файлов ─────────────────────────────────────────────────
 
 function QuickAttach({
-  onAdd, onUploadFile,
+  onAdd, onUploadFile, section,
 }: {
   onAdd: (draft: MaterialDraft) => Promise<void>
   onUploadFile: (file: File) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
+  section?: TopicMaterialSection | null
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
@@ -185,7 +187,7 @@ function QuickAttach({
 
       try {
         const up = await onUploadFile(file)
-        await onAdd({ kind: 'file', title: '', ...up })
+        await onAdd({ kind: 'file', title: '', section, ...up })
       } catch (e: any) {
         failedFiles.push(file.name)
         if (!firstError) firstError = e?.message ?? 'Ошибка загрузки'
@@ -370,6 +372,54 @@ function AddMaterialForm({
   )
 }
 
+// ─── Компактная форма для видео ───────────────────────────────────────────────
+
+function VideoAddForm({
+  onAdd, loading,
+}: {
+  onAdd: (draft: MaterialDraft) => Promise<void>
+  loading: boolean
+}) {
+  const [url, setUrl] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await onAdd({ kind: 'video', title: '', url: url.trim() })
+      setUrl('')
+    } catch (e: any) {
+      setError(e?.message ?? 'Не удалось добавить видео')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="url"
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') void handleSubmit() }}
+        placeholder="Ссылка на YouTube / Vimeo"
+        disabled={loading || busy}
+        className="flex-1 h-10 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-50"
+      />
+      <Button
+        onClick={handleSubmit}
+        loading={busy}
+        disabled={loading || !url.trim()}
+      >
+        Добавить видео
+      </Button>
+      {error && <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+    </div>
+  )
+}
+
 // ─── Список материалов темы ───────────────────────────────────────────────────
 
 /**
@@ -379,15 +429,22 @@ function AddMaterialForm({
  * Ученику скрытые материалы и закрытые темы не приходят из БД (RLS +
  * `topics.available_from`), поэтому здесь нет клиентской фильтрации:
  * полагаться на неё было бы ложной защитой.
+ *
+ * section — фильтр по рубрике или 'video'. Если задана, показываются только материалы
+ * из этой рубрики/вида, и форма добавления подменяется.
  */
 export function TopicMaterialItems({
   topicId,
   canManage,
   className,
+  section,
+  hideAddForm,
 }: {
   topicId: string
   canManage: boolean
   className?: string
+  section?: TopicMaterialSection | 'video'
+  hideAddForm?: boolean
 }) {
   const {
     materials, loading, error,
@@ -402,6 +459,14 @@ export function TopicMaterialItems({
     }
   }
 
+  // Фильтруем материалы по section
+  let filtered = materials
+  if (section && section !== 'video') {
+    filtered = materials.filter(m => m.section === section)
+  } else if (section === 'video') {
+    filtered = materials.filter(m => m.kind === 'video')
+  }
+
   if (loading) {
     return (
       <div className={cn('flex items-center gap-2 py-6 text-sm text-gray-400', className)}>
@@ -411,37 +476,49 @@ export function TopicMaterialItems({
     )
   }
 
+  const emptyMessage = section
+    ? 'В этой рубрике пока пусто'
+    : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
+
   return (
     <div className={cn('space-y-3', className)}>
       {(error || actionError) && (
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
       )}
 
-      {canManage && (
+      {canManage && section === 'video' && (
+        <VideoAddForm onAdd={addMaterial} loading={loading} />
+      )}
+
+      {canManage && section && section !== 'video' && (
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
+      )}
+
+      {canManage && !section && (
         <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
       )}
 
-      {materials.map((m, i) => (
+      {filtered.map((m, i) => (
         <MaterialCard
           key={m.id}
           material={m}
           topicId={topicId}
           canManage={canManage}
           isFirst={i === 0}
-          isLast={i === materials.length - 1}
+          isLast={i === filtered.length - 1}
           onDelete={guard(deleteMaterial)}
           onToggleVisibility={guard(toggleVisibility)}
           onMove={guard(moveMaterial)}
         />
       ))}
 
-      {materials.length === 0 && (
+      {filtered.length === 0 && (
         <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
-          {canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'}
+          {emptyMessage}
         </p>
       )}
 
-      {canManage && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
+      {canManage && !hideAddForm && !section && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
     </div>
   )
 }

@@ -2,9 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import {
   X, FileText, Link, Upload, Loader2, Check, Trash2,
   BookOpen, ClipboardList, Video, Lightbulb, GraduationCap, BookMarked,
-  Calendar, Clock, Lock,
+  Calendar, Clock, Lock, BarChart3,
 } from 'lucide-react'
 import { useTopicMaterials, type MaterialType } from '@/hooks/useTopicMaterials'
+import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
+import { useTopicTest } from '@/hooks/useTopicTest'
+import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -13,6 +16,7 @@ import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
+import { type TopicMaterialSection } from '@/lib/topicMaterialItems'
 
 const SECTIONS: {
   type: MaterialType
@@ -455,7 +459,13 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
   const [dateVal, setDateVal] = useState(availableFrom || '')
   const [savingDate, setSavingDate] = useState(false)
+  const [activeTile, setActiveTile] = useState<string | null>(null)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
+
+  // Новые хуки для новой системы материалов
+  const { materials: newMaterials } = useTopicMaterialItems(open && canEdit && topicId ? topicId : null)
+  const { test } = useTopicTest(open && canEdit && topicId ? topicId : null)
+  const { homework } = useTopicHomework(open && canEdit && topicId ? topicId : null)
 
   useEffect(() => {
     setDateVal(availableFrom || '')
@@ -476,6 +486,38 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     }
   }
 
+  // Плитки для новой системы
+  const TILES: Array<{
+    key: string
+    label: string
+    icon: typeof BookMarked
+  }> = [
+    { key: 'notes', label: 'Конспект', icon: BookMarked },
+    { key: 'theory', label: 'Теория', icon: BookOpen },
+    { key: 'tasks', label: 'Задачи', icon: ClipboardList },
+    { key: 'hw', label: 'ДЗ', icon: Lightbulb },
+    { key: 'solution', label: 'Решение ДЗ', icon: Check },
+    { key: 'video', label: 'Видео', icon: Video },
+    { key: 'test', label: 'Тестирование', icon: BarChart3 },
+  ]
+
+  // Определяем, есть ли что-то в каждой рубрике
+  function hasTileContent(tileKey: string): boolean {
+    if (tileKey === 'notes' || tileKey === 'theory' || tileKey === 'tasks' || tileKey === 'solution') {
+      return newMaterials.some(m => m.section === tileKey)
+    }
+    if (tileKey === 'video') {
+      return newMaterials.some(m => m.kind === 'video')
+    }
+    if (tileKey === 'hw') {
+      return homework !== null
+    }
+    if (tileKey === 'test') {
+      return test !== null
+    }
+    return false
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -485,6 +527,23 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
             <h2 className="font-bold text-gray-900 leading-tight">{topicTitle}</h2>
             {moduleTitle && <div className="flex items-center gap-1.5 mt-0.5"><GraduationCap size={12} className="text-gray-400" /><span className="text-xs text-gray-400">{moduleTitle}</span></div>}
           </div>
+          {canEdit && (
+            <div className="flex items-center gap-3 ml-3 shrink-0">
+              <div className="flex flex-col items-end gap-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Открывается</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={dateVal}
+                    onChange={e => setDateVal(e.target.value)}
+                    onBlur={() => { void handleDateBlur() }}
+                    className="h-9 w-[140px] rounded-lg border border-gray-200 bg-white px-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  {savingDate && <Loader2 size={12} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
+                </div>
+              </div>
+            </div>
+          )}
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors ml-3 shrink-0 p-1"><X size={20} /></button>
         </div>
 
@@ -495,60 +554,81 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
         )}
 
         {canEdit && (
-          <>
-            <div className="border-b border-gray-100 bg-gray-50/70 px-5 py-4 shrink-0">
-              <div className="mb-3">
-                <div className="text-sm font-semibold text-gray-900">Материалы темы</div>
-                <div className="text-xs text-gray-500">Текст, видео, ссылки и файлы. Порядок и видимость настраиваются у каждого материала.</div>
-              </div>
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/* Сетка плиток */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {TILES.map((tile) => {
+                const Icon = tile.icon
+                const isActive = activeTile === tile.key
+                const hasContent = hasTileContent(tile.key)
 
-              <div className="mb-3 rounded-2xl border border-gray-200 bg-white px-3 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Открывается</span>
-                  <Calendar size={14} className="text-primary-400 shrink-0" />
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={dateVal}
-                      onChange={e => setDateVal(e.target.value)}
-                      onBlur={() => { void handleDateBlur() }}
-                      className="h-10 w-[180px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                    />
-                    {savingDate && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
-                  </div>
-                  <span className="text-xs text-gray-400">Пусто = сразу доступна</span>
-                </div>
-              </div>
-
+                return (
+                  <button
+                    key={tile.key}
+                    onClick={() => setActiveTile(isActive ? null : tile.key)}
+                    className={cn(
+                      'h-[92px] rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-sm font-semibold transition-colors',
+                      isActive
+                        ? 'border-2 border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-600'
+                    )}
+                  >
+                    <Icon size={20} />
+                    <span className="text-xs">{tile.label}</span>
+                    {hasContent && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
-            {(lessonDate || hwDeadline) && (
-              <div className="flex items-center gap-4 px-6 py-2.5 bg-gray-50 border-b border-gray-100 text-xs shrink-0 flex-wrap">
-                {lessonDate && <span className="flex items-center gap-1.5 text-gray-500"><Calendar size={12} className="text-primary-400" />Занятие: <span className="font-medium text-gray-700">{new Date(lessonDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span></span>}
-                {hwDeadline && <span className="flex items-center gap-1.5 text-gray-500"><Clock size={12} className="text-orange-400" />Сдать до: <span className="font-medium text-gray-700">{new Date(hwDeadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span></span>}
+            {/* Панель под сеткой */}
+            {activeTile && (
+              <div className="rounded-2xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
+                <div className="text-sm font-semibold text-primary-700">
+                  {TILES.find(t => t.key === activeTile)?.label}
+                </div>
+
+                {(activeTile === 'notes' || activeTile === 'theory' || activeTile === 'tasks' || activeTile === 'solution') && (
+                  <TopicMaterialItems
+                    topicId={topicId}
+                    canManage
+                    section={activeTile as TopicMaterialSection}
+                    hideAddForm
+                  />
+                )}
+
+                {activeTile === 'video' && (
+                  <TopicMaterialItems
+                    topicId={topicId}
+                    canManage
+                    section="video"
+                    hideAddForm
+                  />
+                )}
+
+                {activeTile === 'hw' && (
+                  <TopicHomeworkEditor topicId={topicId} />
+                )}
+
+                {activeTile === 'test' && (
+                  <TopicTestEditor topicId={topicId} />
+                )}
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-              <TopicMaterialItems topicId={topicId} canManage />
-
-              {/* PDF-ДЗ темы. Интерфейс проверки работ — отдельным этапом. */}
-              <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  Домашнее задание
-                </div>
-                <TopicHomeworkEditor topicId={topicId} />
+            {/* Прочие материалы (без рубрики) */}
+            <details className="group">
+              <summary className="cursor-pointer select-none py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-2">
+                <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+                Прочие материалы (без рубрики)
+              </summary>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <TopicMaterialItems topicId={topicId} canManage />
               </div>
-
-              {/* Тест по теме. */}
-              <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  Тестирование
-                </div>
-                <TopicTestEditor topicId={topicId} />
-              </div>
-            </div>
-          </>
+            </details>
+          </div>
         )}
       </div>
     </div>
