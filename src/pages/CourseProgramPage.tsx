@@ -28,7 +28,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
-import { CourseHomeworkV2Section } from '@/components/courseProgram/CourseHomeworkV2Section'
+import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -954,10 +954,10 @@ function MaterialsMatrix({
             if (error) throw new Error(error.message ?? 'Не удалось загрузить домашние задания')
             return (data as { topic_id: string }[] | null) || []
           })(),
-          // Query 3: topic_tests (no pagination)
+          // Query 3: привязки тестов банка к темам
           (async () => {
             const { data, error } = await supabase
-              .from('topic_tests')
+              .from('topic_test_assignments')
               .select('topic_id')
               .in('topic_id', topicIds)
             if (error) throw new Error(error.message ?? 'Не удалось загрузить тесты')
@@ -1734,9 +1734,9 @@ export function CourseProgramPage() {
               />
             )}
 
-            {/* Homework V2 tab */}
+            {/* Homework tab */}
             {tab === 'homework' && (
-              <CourseHomeworkV2Section courseId={selectedCourse.id} modules={modules} />
+              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} />
             )}
 
             {/* Settings tab */}
