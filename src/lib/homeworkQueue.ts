@@ -12,6 +12,7 @@ export interface QueueRow {
   attempt: TopicHomeworkAttemptRow
   homeworkId: string
   homeworkTitle: string
+  gradeScale: 'five' | 'hundred' | null
   topicId: string
   topicTitle: string
   courseId: string
@@ -35,6 +36,7 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
       attempt: attempt as TopicHomeworkAttemptRow,
       homeworkId: hw.id,
       homeworkTitle: hw.title ?? 'Домашнее задание',
+      gradeScale: hw.grade_scale ?? null,
       topicId: topic.id,
       topicTitle: topic.title ?? 'Тема',
       courseId: course.id,

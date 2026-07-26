@@ -4005,6 +4005,8 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          due_at: string | null
+          grade_scale: string | null
           id: string
           instructions: string | null
           is_published: boolean
@@ -4015,6 +4017,8 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          due_at?: string | null
+          grade_scale?: string | null
           id?: string
           instructions?: string | null
           is_published?: boolean
@@ -4025,6 +4029,8 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          due_at?: string | null
+          grade_scale?: string | null
           id?: string
           instructions?: string | null
           is_published?: boolean
@@ -4205,6 +4211,7 @@ export type Database = {
           decision: Database["public"]["Enums"]["topic_homework_review_decision"]
           id: string
           reviewer_id: string
+          score: number | null
         }
         Insert: {
           attempt_id: string
@@ -4213,6 +4220,7 @@ export type Database = {
           decision: Database["public"]["Enums"]["topic_homework_review_decision"]
           id?: string
           reviewer_id: string
+          score?: number | null
         }
         Update: {
           attempt_id?: string
@@ -4221,6 +4229,7 @@ export type Database = {
           decision?: Database["public"]["Enums"]["topic_homework_review_decision"]
           id?: string
           reviewer_id?: string
+          score?: number | null
         }
         Relationships: [
           {
@@ -5923,11 +5932,16 @@ export type Database = {
         Args: { p_homework_id: string }
         Returns: boolean
       }
+      topic_homework_notify_students: {
+        Args: { p_homework_id: string }
+        Returns: number
+      }
       topic_homework_review_attempt: {
         Args: {
           p_attempt_id: string
           p_comment?: string
           p_decision: Database["public"]["Enums"]["topic_homework_review_decision"]
+          p_score?: number
         }
         Returns: string
       }

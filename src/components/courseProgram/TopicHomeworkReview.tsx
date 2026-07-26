@@ -45,12 +45,15 @@ function AttemptFiles({ files }: { files: TopicHomeworkAttemptFileRow[] }) {
 /** Экспортируется для общей очереди проверки (HomeworkReviewQueuePage). */
 export function ReviewActions({
   attempt,
+  gradeScale,
   onReview,
 }: {
   attempt: TopicHomeworkAttemptRow
-  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => Promise<void>
+  gradeScale?: 'five' | 'hundred' | null
+  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
 }) {
   const [comment, setComment] = useState('')
+  const [score, setScore] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,12 +62,19 @@ export function ReviewActions({
   // а не вместо базы.
   const canReturn = comment.trim().length > 0
 
+  const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
+  const scoreNum = score === '' ? null : parseInt(score, 10)
+  const scoreValid = scoreMax == null || (scoreNum != null && scoreNum >= 0 && scoreNum <= scoreMax)
+  const canAccept = scoreMax == null || (scoreNum != null && scoreValid)
+
   async function run(decision: 'accepted' | 'returned_for_revision') {
     setBusy(true)
     setError(null)
     try {
-      await onReview(attempt.id, decision, comment)
+      const scoreToPass = decision === 'accepted' ? scoreNum : null
+      await onReview(attempt.id, decision, comment, scoreToPass)
       setComment('')
+      setScore('')
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось сохранить решение')
     } finally {
@@ -83,10 +93,23 @@ export function ReviewActions({
         className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
       />
 
+      {scoreMax != null && (
+        <input
+          type="number"
+          value={score}
+          onChange={e => setScore(e.target.value)}
+          placeholder={`Балл (0–${scoreMax})`}
+          aria-label={`Балл (0–${scoreMax})`}
+          min="0"
+          max={scoreMax}
+          className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+        />
+      )}
+
       {error && <div className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="success" onClick={() => run('accepted')} loading={busy}>
+        <Button size="sm" variant="success" onClick={() => run('accepted')} loading={busy} disabled={busy || !canAccept}>
           <Check size={14} />
           Принять
         </Button>
@@ -101,6 +124,9 @@ export function ReviewActions({
           Вернуть на доработку
         </Button>
         {!canReturn && <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>}
+        {scoreMax != null && !scoreValid && score !== '' && (
+          <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
+        )}
       </div>
     </div>
   )
@@ -109,17 +135,20 @@ export function ReviewActions({
 // ─── Карточка ученика ─────────────────────────────────────────────────────────
 
 function SubmissionCard({
-  submission, studentName, attemptFiles, reviews, onReview,
+  submission, studentName, attemptFiles, reviews, gradeScale, onReview,
 }: {
   submission: StudentSubmission
   studentName: string
   attemptFiles: TopicHomeworkAttemptFileRow[]
   reviews: TopicHomeworkReviewRow[]
-  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => Promise<void>
+  gradeScale?: 'five' | 'hundred' | null
+  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const { latest, history } = submission
   const filesOf = (id: string) => attemptFiles.filter(f => f.attempt_id === id)
+  const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
+  const latestReviewData = latestReview(reviews, latest.id)
 
   return (
     <li className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -138,13 +167,19 @@ function SubmissionCard({
         <AttemptFiles files={filesOf(latest.id)} />
       </div>
 
-      {latestReview(reviews, latest.id)?.comment && (
+      {latestReviewData?.comment && (
         <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
-          {latestReview(reviews, latest.id)!.comment}
+          {latestReviewData.comment}
         </p>
       )}
 
-      {isReviewable(latest) && <ReviewActions attempt={latest} onReview={onReview} />}
+      {latest.status === 'accepted' && latestReviewData?.score != null && scoreMax != null && (
+        <p className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-700">
+          Оценка: {latestReviewData.score}/{scoreMax}
+        </p>
+      )}
+
+      {isReviewable(latest) && <ReviewActions attempt={latest} gradeScale={gradeScale} onReview={onReview} />}
 
       {history.length > 0 && (
         <div className="mt-3">
@@ -181,6 +216,11 @@ function SubmissionCard({
                         {review.comment}
                       </p>
                     )}
+                    {a.status === 'accepted' && review?.score != null && scoreMax != null && (
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        Оценка: {review.score}/{scoreMax}
+                      </p>
+                    )}
                   </li>
                 )
               })}
@@ -206,6 +246,7 @@ export function TopicHomeworkReview({
   attemptFiles,
   reviews,
   studentNames,
+  gradeScale,
   loading,
   onReview,
   className,
@@ -214,8 +255,9 @@ export function TopicHomeworkReview({
   attemptFiles: TopicHomeworkAttemptFileRow[]
   reviews: TopicHomeworkReviewRow[]
   studentNames: Record<string, string>
+  gradeScale?: 'five' | 'hundred' | null
   loading?: boolean
-  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => Promise<void>
+  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
   className?: string
 }) {
   const submissions = groupAttemptsByStudent(attempts)
@@ -250,6 +292,7 @@ export function TopicHomeworkReview({
               studentName={studentNames[s.studentId] ?? 'Ученик'}
               attemptFiles={attemptFiles}
               reviews={reviews}
+              gradeScale={gradeScale}
               onReview={onReview}
             />
           ))}

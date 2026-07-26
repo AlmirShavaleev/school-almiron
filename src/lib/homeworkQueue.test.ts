@@ -14,6 +14,7 @@ function rawRow(over: Record<string, unknown> = {}) {
     homework: {
       id: 'hw1',
       title: 'ДЗ по кинематике',
+      grade_scale: null,
       topic: { id: 't1', title: 'Кинематика', module: { id: 'm1', course: { id: 'c1', title: 'Физика ОГЭ' } } },
     },
     ...over,
@@ -26,6 +27,7 @@ describe('toQueueRows', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].attempt.id).toBe('a1')
     expect(rows[0].homeworkTitle).toBe('ДЗ по кинематике')
+    expect(rows[0].gradeScale).toBe(null)
     expect(rows[0].topicTitle).toBe('Кинематика')
     expect(rows[0].courseTitle).toBe('Физика ОГЭ')
     // homework не должен протечь в attempt
@@ -57,6 +59,7 @@ describe('groupByCourse', () => {
       homework: {
         id: 'hw3',
         title: 'ДЗ',
+        grade_scale: null,
         topic: { id: 't2', title: 'Проценты', module: { id: 'm2', course: { id: 'c2', title: 'Математика ОГЭ' } } },
       },
     })

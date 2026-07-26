@@ -314,3 +314,22 @@ Frontend нового контура:
   Хуки: useTestBank / useBankTest / useTestResults / useTopicTestAssignment /
   useTopicTestStudent (через привязку). Из модалки убраны «Прочие материалы»
   и старая форма «Добавить материал».
+
+### 10.3. ДЗ: дедлайн, баллы, Telegram (миграция 20260726203833)
+
+- topic_homework: due_at (date, НЕ блокирует сдачу — только бейдж «Просрочено»),
+  grade_scale ('five' | 'hundred' | NULL = без баллов).
+- topic_homework_reviews.score; topic_homework_review_attempt(+p_score):
+  при accepted и заданной шкале балл обязателен и в диапазоне (проверяет RPC).
+- topic_homework_notify_students(hw): security definer, кладёт в
+  notification_queue (event_type 'new_homework', канал telegram) оповещения
+  ученикам курса с включённой telegram_connections; дедуп-ключ
+  topic_homework:{hw}:{profile} — повтор вернёт 0. Разослал — существующий
+  воркер process-notification-queue (living legacy, впервые задействован).
+- UI: редактор ДЗ — дедлайн, шкала, «Оповестить учеников в Telegram»;
+  ученик — «Сдать до…», «Просрочено», «Оценка: N/шкала»; очередь проверки
+  и разбор — обязательный input балла при принятии.
+- Также в этой сессии: банк тестов + CatalogTaskBrowser + «Создать тест из
+  подборки» (CartPage); фикс Invalid key (транслитерация имён файлов в
+  Storage — sanitizeStorageFileName, применён и к ДЗ); прогресс-бар загрузки
+  материалов (signed URL + XHR).

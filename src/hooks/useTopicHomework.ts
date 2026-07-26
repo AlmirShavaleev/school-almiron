@@ -142,7 +142,7 @@ export function useTopicHomework(topicId: string | null) {
   )
 
   const updateHomework = useCallback(
-    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published'>>) => {
+    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published' | 'due_at' | 'grade_scale'>>) => {
       if (!homework) throw new Error('ДЗ ещё не создано')
       const { error: err } = await supabase.from('topic_homework').update(patch).eq('id', homework.id)
       if (err) throw err
@@ -240,16 +240,18 @@ export function useTopicHomework(topicId: string | null) {
   /**
    * Вердикт по сданной попытке. Комментарий обязателен только при возврате —
    * это же условие держит CHECK `topic_homework_reviews_comment_chk` в БД.
+   * Балл обязателен только при принятии, если задана шкала баллов.
    * Данные перечитываются здесь же, без перезагрузки страницы.
    */
   const reviewAttempt = useCallback(
-    async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => {
+    async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => {
       const { error: err } = await supabase.rpc('topic_homework_review_attempt', {
         p_attempt_id: attemptId,
         p_decision: decision,
         // не null: в сгенерированных типах параметр опционален, а в БД
         // у него DEFAULT null — семантика та же
         p_comment: comment?.trim() || undefined,
+        p_score: score ?? undefined,
       })
       if (err) throw err
       reload()
@@ -263,12 +265,21 @@ export function useTopicHomework(topicId: string | null) {
     reload()
   }, [reload])
 
+  const notifyStudents = useCallback(async (): Promise<number> => {
+    if (!homework) throw new Error('ДЗ не найдено')
+    const { data, error: err } = await supabase.rpc('topic_homework_notify_students', {
+      p_homework_id: homework.id,
+    })
+    if (err) throw new Error(err.message)
+    return data as number
+  }, [homework])
+
   return {
     homework, files, attempts, attemptFiles, reviews, studentNames,
     loading, error, reload,
     createHomework, updateHomework, uploadHomeworkFile,
     startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
-    reviewAttempt,
+    reviewAttempt, notifyStudents,
   }
 }
 

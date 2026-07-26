@@ -18,7 +18,7 @@ function QueueCard({
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
   studentName: string
-  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => Promise<void>
+  onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
 }) {
   const { attempt } = row
   return (
@@ -55,7 +55,7 @@ function QueueCard({
         )}
       </div>
 
-      <ReviewActions attempt={attempt} onReview={onReview} />
+      <ReviewActions attempt={attempt} gradeScale={row.gradeScale} onReview={onReview} />
     </li>
   )
 }

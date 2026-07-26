@@ -33,6 +33,7 @@ const NAMES = { s1: 'Иванов Пётр', s2: 'Петрова Анна' }
 function renderReview(attempts: TopicHomeworkAttemptRow[], opts: {
   files?: TopicHomeworkAttemptFileRow[]
   reviews?: TopicHomeworkReviewRow[]
+  gradeScale?: 'five' | 'hundred' | null
 } = {}) {
   return render(
     <TopicHomeworkReview
@@ -40,6 +41,7 @@ function renderReview(attempts: TopicHomeworkAttemptRow[], opts: {
       attemptFiles={opts.files ?? []}
       reviews={opts.reviews ?? []}
       studentNames={NAMES}
+      gradeScale={opts.gradeScale}
       onReview={onReview}
     />,
   )
@@ -77,11 +79,23 @@ describe('Проверка ДЗ — преподаватель видит отп
 })
 
 describe('Проверка ДЗ — решения', () => {
-  it('принимает работу; комментарий необязателен', async () => {
+  it('принимает работу без баллов; комментарий необязателен', async () => {
     renderReview([attempt('a1', 's1', 1, 'submitted')])
 
     fireEvent.click(screen.getByText('Принять'))
-    await waitFor(() => expect(onReview).toHaveBeenCalledWith('a1', 'accepted', ''))
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith('a1', 'accepted', '', null))
+  })
+
+  it('принимает работу с баллами; балл обязателен если задана шкала', async () => {
+    renderReview([attempt('a1', 's1', 1, 'submitted')], { gradeScale: 'five' })
+
+    // Кнопка принять должна быть заблокирована пока балл не введён
+    expect(screen.getByText('Принять').closest('button')).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Балл (0–5)'), { target: { value: '4' } })
+    fireEvent.click(screen.getByText('Принять'))
+
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith('a1', 'accepted', '', 4))
   })
 
   it('возвращает на доработку с комментарием', async () => {
@@ -93,7 +107,7 @@ describe('Проверка ДЗ — решения', () => {
     fireEvent.click(screen.getByText('Вернуть на доработку'))
 
     await waitFor(() =>
-      expect(onReview).toHaveBeenCalledWith('a1', 'returned_for_revision', 'Задача 3 решена неверно'),
+      expect(onReview).toHaveBeenCalledWith('a1', 'returned_for_revision', 'Задача 3 решена неверно', null),
     )
   })
 
@@ -145,7 +159,7 @@ describe('Проверка ДЗ — история попыток', () => {
     const rows = [attempt('a1', 's1', 1, 'returned_for_revision'), attempt('a2', 's1', 2, 'submitted')]
     const reviews: TopicHomeworkReviewRow[] = [{
       id: 'r1', attempt_id: 'a1', reviewer_id: 'teacher',
-      decision: 'returned_for_revision', comment: 'Переделайте задачу 3',
+      decision: 'returned_for_revision', comment: 'Переделайте задачу 3', score: null,
       created_at: '2026-07-26T11:00:00Z',
     }]
     renderReview(rows, { reviews, files: [file('f1', 'a1', 'old.jpg')] })

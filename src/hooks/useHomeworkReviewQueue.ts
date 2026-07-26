@@ -28,7 +28,7 @@ export function useHomeworkReviewQueue() {
       const { data, error: err } = await supabase
         .from('topic_homework_attempts')
         .select(
-          '*, homework:topic_homework!inner(id, title, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
+          '*, homework:topic_homework!inner(id, title, grade_scale, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
         )
         .eq('status', 'submitted')
         .order('submitted_at', { ascending: true })
@@ -71,11 +71,12 @@ export function useHomeworkReviewQueue() {
    * убирается локально: попытка перестала быть `submitted`, ей тут не место.
    */
   const reviewAttempt = useCallback(
-    async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string) => {
+    async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => {
       const { error: err } = await supabase.rpc('topic_homework_review_attempt', {
         p_attempt_id: attemptId,
         p_decision: decision,
         p_comment: comment?.trim() || undefined,
+        p_score: score ?? undefined,
       })
       if (err) throw err
       setRows(prev => prev.filter(r => r.attempt.id !== attemptId))

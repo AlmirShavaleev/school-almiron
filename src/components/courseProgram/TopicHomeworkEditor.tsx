@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, FileText, Loader2, Plus, Save, Upload } from 'lucide-react'
+import { Bell, Eye, EyeOff, FileText, Loader2, Plus, Save, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
+import { TOPIC_HOMEWORK_BUCKET, formatBytes, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { TopicHomeworkReview } from '@/components/courseProgram/TopicHomeworkReview'
 
@@ -16,19 +16,25 @@ import { TopicHomeworkReview } from '@/components/courseProgram/TopicHomeworkRev
 export function TopicHomeworkEditor({ topicId, className }: { topicId: string; className?: string }) {
   const {
     homework, files, attempts, attemptFiles, reviews, studentNames, loading, error,
-    createHomework, updateHomework, uploadHomeworkFile, reviewAttempt,
+    createHomework, updateHomework, uploadHomeworkFile, reviewAttempt, notifyStudents,
   } = useTopicHomework(topicId)
 
   const [title, setTitle] = useState('')
   const [instructions, setInstructions] = useState('')
+  const [dueAt, setDueAt] = useState('')
+  const [gradeScale, setGradeScale] = useState<'five' | 'hundred' | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [notifyBusy, setNotifyBusy] = useState(false)
+  const [notifyMessage, setNotifyMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     setTitle(homework?.title ?? '')
     setInstructions(homework?.instructions ?? '')
-  }, [homework?.id, homework?.title, homework?.instructions])
+    setDueAt(homework?.due_at ? homework.due_at.slice(0, 10) : '')
+    setGradeScale(homework?.grade_scale ?? null)
+  }, [homework?.id, homework?.title, homework?.instructions, homework?.due_at, homework?.grade_scale])
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -41,6 +47,24 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
       setLocalError(e?.message ?? 'Не удалось выполнить действие')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleNotify() {
+    setNotifyBusy(true)
+    setNotifyMessage(null)
+    try {
+      const n = await notifyStudents()
+      if (n > 0) {
+        setNotifyMessage({ type: 'success', text: `Оповещение отправлено: ${n} ученика(ов) в очереди` })
+      } else {
+        setNotifyMessage({ type: 'warning', text: 'Все уже оповещены (или ни у кого не привязан Telegram)' })
+      }
+      setTimeout(() => setNotifyMessage(null), 3000)
+    } catch (e: any) {
+      setNotifyMessage({ type: 'error', text: e?.message ?? 'Не удалось отправить оповещение' })
+    } finally {
+      setNotifyBusy(false)
     }
   }
 
@@ -87,6 +111,32 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             rows={3}
             className="mb-3 w-full rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Дедлайн</label>
+              <input
+                type="date"
+                value={dueAt}
+                onChange={e => setDueAt(e.target.value)}
+                aria-label="Дедлайн"
+                className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+              <p className="mt-1 text-xs text-gray-400">Не блокирует сдачу — просто напоминание</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Баллы</label>
+              <select
+                value={gradeScale ?? ''}
+                onChange={e => setGradeScale((e.target.value as any) || null)}
+                aria-label="Шкала баллов"
+                className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              >
+                <option value="">Без баллов</option>
+                <option value="five">5-балльная</option>
+                <option value="hundred">100-балльная</option>
+              </select>
+            </div>
+          </div>
           <Button onClick={() => run(() => createHomework(title, instructions))} loading={busy}>
             <Plus size={15} />
             Создать ДЗ
@@ -132,6 +182,45 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             className="mb-2 w-full rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
 
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Дедлайн</label>
+              <input
+                type="date"
+                value={dueAt}
+                onChange={e => {
+                  setDueAt(e.target.value)
+                  run(() => updateHomework({ due_at: e.target.value || null }))
+                }}
+                onBlur={() => {
+                  if (dueAt !== homework?.due_at?.slice(0, 10)) {
+                    run(() => updateHomework({ due_at: dueAt || null }))
+                  }
+                }}
+                aria-label="Дедлайн"
+                className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+              <p className="mt-1 text-xs text-gray-400">Не блокирует сдачу — просто напоминание</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Баллы</label>
+              <select
+                value={gradeScale ?? ''}
+                onChange={e => {
+                  const newScale = (e.target.value as any) || null
+                  setGradeScale(newScale)
+                  run(() => updateHomework({ grade_scale: newScale }))
+                }}
+                aria-label="Шкала баллов"
+                className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              >
+                <option value="">Без баллов</option>
+                <option value="five">5-балльная</option>
+                <option value="hundred">100-балльная</option>
+              </select>
+            </div>
+          </div>
+
           <div className="mb-3 flex items-center gap-2">
             <Button
               variant="secondary"
@@ -145,7 +234,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             {saved && <span className="text-xs text-emerald-600">Сохранено</span>}
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+          <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               Файл задания
             </div>
@@ -179,6 +268,33 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             </label>
           </div>
 
+          {notifyMessage && (
+            <div
+              className={cn(
+                'mb-4 rounded-xl px-3 py-2 text-sm',
+                notifyMessage.type === 'success' && 'bg-emerald-50 text-emerald-700',
+                notifyMessage.type === 'warning' && 'bg-gray-50 text-gray-600',
+                notifyMessage.type === 'error' && 'bg-red-50 text-red-700',
+              )}
+            >
+              {notifyMessage.text}
+            </div>
+          )}
+
+          <div className="mb-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleNotify}
+              disabled={!homework.is_published || notifyBusy}
+              loading={notifyBusy}
+              title={!homework.is_published ? 'Сначала опубликуйте ДЗ' : undefined}
+            >
+              <Bell size={14} />
+              Оповестить учеников в Telegram
+            </Button>
+          </div>
+
           {/* Локальная проверка работ этой темы. Общей очереди нет. */}
           <TopicHomeworkReview
             className="mt-4"
@@ -186,6 +302,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             attemptFiles={attemptFiles}
             reviews={reviews}
             studentNames={studentNames}
+            gradeScale={homework?.grade_scale}
             onReview={reviewAttempt}
           />
         </div>

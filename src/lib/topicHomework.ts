@@ -51,6 +51,8 @@ export interface TopicHomeworkRow {
   title: string
   instructions: string | null
   is_published: boolean
+  due_at: string | null
+  grade_scale: 'five' | 'hundred' | null
   created_by: string
   created_at: string
   updated_at: string
@@ -95,6 +97,7 @@ export interface TopicHomeworkReviewRow {
   reviewer_id: string
   decision: 'accepted' | 'returned_for_revision'
   comment: string | null
+  score: number | null
   created_at: string
 }
 
@@ -202,4 +205,30 @@ export function formatBytes(bytes: number | null): string | null {
   if (bytes < 1024) return `${bytes} Б`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+}
+
+export type GradeScale = 'five' | 'hundred'
+
+export const GRADE_SCALE_LABEL: Record<GradeScale, string> = {
+  five: '5-балльная',
+  hundred: '100-балльная',
+}
+
+export function gradeScaleMax(scale: GradeScale | null): number | null {
+  if (scale === 'five') return 5
+  if (scale === 'hundred') return 100
+  return null
+}
+
+export function isOverdue(dueAt: string | null, today?: string): boolean {
+  if (!dueAt) return false
+  const dueDate = dueAt.slice(0, 10)
+  const todayDate = today ?? new Date().toLocaleDateString('en-CA')
+  return dueDate < todayDate
+}
+
+export function formatDue(dueAt: string | null): string | null {
+  if (!dueAt) return null
+  const date = new Date(dueAt)
+  return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
 }

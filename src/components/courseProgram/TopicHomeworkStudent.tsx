@@ -13,6 +13,9 @@ import {
   attemptsNewestFirst,
   canStartNewAttempt,
   formatBytes,
+  formatDue,
+  gradeScaleMax,
+  isOverdue,
   latestReview,
 } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
@@ -62,6 +65,11 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const taskFile = files[0] ?? null
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
 
+  const isPastDue = isOverdue(homework.due_at) && active && !accepted
+  const gradeMax = gradeScaleMax(homework.grade_scale)
+  const lastReview = accepted ? latestReview(reviews, accepted.id) : null
+  const showGrade = accepted && homework.grade_scale && lastReview?.score !== null && lastReview?.score !== undefined
+
   return (
     <div className={cn('rounded-2xl border border-gray-200 bg-white p-5', className)}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -70,6 +78,14 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
         {accepted && (
           <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', ATTEMPT_STATUS_TONE.accepted)}>
             {ATTEMPT_STATUS_LABEL.accepted}
+          </span>
+        )}
+        {formatDue(homework.due_at) && (
+          <span className="text-xs text-gray-500">{formatDue(homework.due_at)}</span>
+        )}
+        {isPastDue && (
+          <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+            Просрочено
           </span>
         )}
       </div>
@@ -94,6 +110,15 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
 
       {(error || localError) && (
         <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</div>
+      )}
+
+      {showGrade && (
+        <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-center">
+          <div className="text-xs font-medium uppercase tracking-wide text-emerald-600">Оценка</div>
+          <div className="mt-1 text-2xl font-bold text-emerald-700">
+            {lastReview.score} / {gradeMax}
+          </div>
+        </div>
       )}
 
       {/* ── Текущая сдача ── */}

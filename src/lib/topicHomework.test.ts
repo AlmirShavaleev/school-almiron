@@ -11,6 +11,9 @@ import {
   buildHomeworkFilePath,
   canStartNewAttempt,
   formatBytes,
+  formatDue,
+  gradeScaleMax,
+  isOverdue,
   latestReview,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkAttemptStatus,
@@ -216,5 +219,63 @@ describe('formatBytes', () => {
   })
   it('null остаётся null', () => {
     expect(formatBytes(null)).toBeNull()
+  })
+})
+
+// ── Дедлайны и баллы ──────────────────────────────────────────────────────────
+
+describe('gradeScaleMax', () => {
+  it('пятибалльная шкала → 5', () => {
+    expect(gradeScaleMax('five')).toBe(5)
+  })
+
+  it('стобалльная шкала → 100', () => {
+    expect(gradeScaleMax('hundred')).toBe(100)
+  })
+
+  it('отсутствие шкалы → null', () => {
+    expect(gradeScaleMax(null)).toBeNull()
+  })
+})
+
+describe('isOverdue', () => {
+  it('дедлайн в прошлом → просрочено', () => {
+    expect(isOverdue('2026-07-25')).toBe(true)
+  })
+
+  it('дедлайн сегодня → не просрочено', () => {
+    const today = new Date().toLocaleDateString('en-CA')
+    expect(isOverdue(today)).toBe(false)
+  })
+
+  it('дедлайн в будущем → не просрочено', () => {
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA')
+    expect(isOverdue(tomorrow)).toBe(false)
+  })
+
+  it('null дедлайн → не просрочено', () => {
+    expect(isOverdue(null)).toBe(false)
+  })
+
+  it('сравнивает по передаваемой дате', () => {
+    expect(isOverdue('2026-07-25', '2026-07-26')).toBe(true)
+    expect(isOverdue('2026-07-26', '2026-07-25')).toBe(false)
+  })
+})
+
+describe('formatDue', () => {
+  it('форматирует дату в русском стиле', () => {
+    const result = formatDue('2026-07-15')
+    expect(result).toBe('до 15 июля')
+  })
+
+  it('null дедлайн → null', () => {
+    expect(formatDue(null)).toBeNull()
+  })
+
+  it('игнорирует время в дате', () => {
+    const result1 = formatDue('2026-08-01')
+    const result2 = formatDue('2026-08-01T23:59:59Z')
+    expect(result1).toBe(result2)
   })
 })
