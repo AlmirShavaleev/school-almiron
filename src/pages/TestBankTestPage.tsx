@@ -1,13 +1,13 @@
-import { AlertCircle, ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Loader2, Trash2 } from 'lucide-react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useBankTest, useTestResults } from '@/hooks/useTopicTest'
-import { useCatalogSections, useCatalogSearch } from '@/hooks/useCatalog'
 import { Button } from '@/components/ui/Button'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
-import { totalMaxPoints, hasTextAnswer, formatScore, scorePercent } from '@/lib/topicTest'
+import { totalMaxPoints, formatScore, scorePercent } from '@/lib/topicTest'
 import { cn } from '@/utils/cn'
+import { CatalogTaskBrowser } from '@/components/courseProgram/CatalogTaskBrowser'
 
 /**
  * Страница теста в банке: редактирование заданий и просмотр результатов.
@@ -24,7 +24,6 @@ export function TestBankTestPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'results'>('items')
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [showPicker, setShowPicker] = useState(false)
 
   useEffect(() => {
     setTitle(test?.title ?? '')
@@ -208,26 +207,17 @@ export function TestBankTestPage() {
             Всего: <span className="font-semibold text-gray-700">{totalMaxPoints(items)} б.</span> · <span className="font-semibold text-gray-700">{items.length} заданий</span>
           </div>
 
-          {/* Add item button */}
-          {!hasAttempts && (
-            <Button
-              variant="secondary"
-              onClick={() => setShowPicker(!showPicker)}
-              disabled={busy}
-            >
-              <Plus size={14} />
-              Добавить задание из каталога
-            </Button>
-          )}
-
-          {/* Task picker */}
-          {showPicker && !hasAttempts && (
+          {/* Catalog browser or frozen message */}
+          {hasAttempts ? (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>По тесту уже есть попытки — добавлять новые задания нельзя</span>
+            </div>
+          ) : (
             <div className="border-t border-gray-200 pt-3 mt-3">
-              <CatalogTaskPicker
-                onSelect={taskId => {
-                  void run(() => addItem(taskId)).then(() => setShowPicker(false))
-                }}
-                alreadyAdded={new Set(items.map(i => i.task_id).filter((id): id is string => id !== null))}
+              <CatalogTaskBrowser
+                onAdd={taskId => run(() => addItem(taskId))}
+                addedTaskIds={new Set(items.map(i => i.task_id).filter((id): id is string => id !== null))}
               />
             </div>
           )}
@@ -311,162 +301,6 @@ export function TestBankTestPage() {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-/**
- * Панель выбора задания из каталога.
- */
-function CatalogTaskPicker({
-  onSelect,
-  alreadyAdded,
-}: {
-  onSelect: (taskId: string) => void
-  alreadyAdded: Set<string>
-}) {
-  const [subject, setSubject] = useState<'Математика' | 'Физика'>('Математика')
-  const [examType, setExamType] = useState<'ОГЭ' | 'ЕГЭ'>('ЕГЭ')
-  const [sectionId, setSectionId] = useState<string | undefined>()
-  const [query, setQuery] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const { sections, loading: sectionsLoading } = useCatalogSections(subject, examType)
-  const { results, loading: resultsLoading } = useCatalogSearch(query, sectionId, query.length >= 2)
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <select
-          value={subject}
-          onChange={e => {
-            setSubject(e.target.value as 'Математика' | 'Физика')
-            setSectionId(undefined)
-            setQuery('')
-          }}
-          className="h-9 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"
-        >
-          <option value="Математика">Математика</option>
-          <option value="Физика">Физика</option>
-        </select>
-
-        <select
-          value={examType}
-          onChange={e => {
-            setExamType(e.target.value as 'ОГЭ' | 'ЕГЭ')
-            setSectionId(undefined)
-            setQuery('')
-          }}
-          className="h-9 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"
-        >
-          <option value="ОГЭ">ОГЭ</option>
-          <option value="ЕГЭ">ЕГЭ</option>
-        </select>
-      </div>
-
-      {sectionsLoading ? (
-        <div className="flex items-center gap-1 text-xs text-gray-400">
-          <Loader2 size={12} className="animate-spin" />
-          Загрузка разделов…
-        </div>
-      ) : (
-        <select
-          value={sectionId ?? ''}
-          onChange={e => {
-            setSectionId(e.target.value || undefined)
-            setQuery('')
-          }}
-          className="w-full h-9 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"
-        >
-          <option value="">Выберите раздел…</option>
-          {sections.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-      )}
-
-      <input
-        type="text"
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        placeholder="Поиск по номеру или тексту (мин. 2 символа)"
-        disabled={!sectionId}
-        className="w-full h-9 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:bg-gray-50 disabled:text-gray-400"
-      />
-
-      {resultsLoading && (
-        <div className="flex items-center gap-1 text-xs text-gray-400 py-4 justify-center">
-          <Loader2 size={12} className="animate-spin" />
-          Поиск…
-        </div>
-      )}
-
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {!resultsLoading && results.length === 0 && query.length >= 2 && (
-          <p className="text-xs text-gray-400 text-center py-4">Задания не найдены</p>
-        )}
-
-        {results.map(task => {
-          const isAdded = alreadyAdded.has(task.id)
-          const canAdd = task.has_answer && hasTextAnswer(task.answer_html, task.has_answer)
-
-          return (
-            <div key={task.id} className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                {task.exam_part && (
-                  <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
-                    Часть {task.exam_part}
-                  </span>
-                )}
-                {task.max_points && (
-                  <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-                    {task.max_points} б.
-                  </span>
-                )}
-                {task.partial_type && (
-                  <span className="rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">
-                    {task.partial_type === 'matching' ? 'Сопоставление' : 'Мультивыбор'}
-                  </span>
-                )}
-              </div>
-
-              <div className="max-h-40 overflow-hidden">
-                <TaskContentRenderer
-                  html={resolveTaskHtml(task.statement_html, task.assets)}
-                  className="text-xs"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isAdded ? (
-                  <Button variant="secondary" size="sm" disabled>
-                    Добавлено
-                  </Button>
-                ) : canAdd ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setBusy(true)
-                      onSelect(task.id)
-                      setBusy(false)
-                    }}
-                    loading={busy}
-                  >
-                    <Plus size={12} />
-                    Добавить
-                  </Button>
-                ) : (
-                  <Button variant="secondary" size="sm" disabled title="Нет текстового эталона ответа">
-                    Нет эталона
-                  </Button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }
