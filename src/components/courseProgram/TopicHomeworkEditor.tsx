@@ -95,11 +95,11 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
       {!homework && (
         <div className="rounded-2xl border border-dashed border-gray-200 p-4">
           <div className="mb-2 text-sm font-semibold text-gray-900">Домашнее задание</div>
-          <p className="mb-3 text-xs text-gray-500">Одно PDF-ДЗ на тему. Дедлайнов и баллов нет.</p>
+          <p className="mb-3 text-xs text-gray-500">Одно ДЗ на тему. После создания появятся загрузка PDF, публикация и оповещение в Telegram.</p>
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
-            placeholder="Название ДЗ"
+            placeholder="Название ДЗ (по умолчанию «Домашнее задание»)"
             aria-label="Название ДЗ"
             className="mb-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
@@ -137,10 +137,16 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
               </select>
             </div>
           </div>
-          <Button onClick={() => run(() => createHomework(title, instructions))} loading={busy}>
+          <Button
+            onClick={() => run(() => createHomework(title, instructions, { due_at: dueAt || null, grade_scale: gradeScale }))}
+            loading={busy}
+          >
             <Plus size={15} />
             Создать ДЗ
           </Button>
+          <p className="mt-2 text-xs text-gray-400">
+            Название можно оставить пустым — подставится «Домашнее задание».
+          </p>
         </div>
       )}
 

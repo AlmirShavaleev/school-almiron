@@ -116,11 +116,15 @@ export function useTopicHomework(topicId: string | null) {
   // ── преподаватель ──────────────────────────────────────────
 
   const createHomework = useCallback(
-    async (title: string, instructions: string) => {
+    async (
+      title: string,
+      instructions: string,
+      extra?: { due_at?: string | null; grade_scale?: 'five' | 'hundred' | null },
+    ) => {
       if (!topicId) throw new Error('Тема не выбрана')
       if (!profile) throw new Error('Нет активного профиля')
-      const clean = title.trim()
-      if (!clean) throw new Error('Название ДЗ не может быть пустым')
+      // Пустое название не блокирует создание — подставляем дефолт
+      const clean = title.trim() || 'Домашнее задание'
 
       const { data, error: err } = await supabase
         .from('topic_homework')
@@ -130,6 +134,8 @@ export function useTopicHomework(topicId: string | null) {
           instructions: instructions.trim() || null,
           is_published: false,
           created_by: profile.id,
+          due_at: extra?.due_at || null,
+          grade_scale: extra?.grade_scale ?? null,
         })
         .select('*')
         .single()
