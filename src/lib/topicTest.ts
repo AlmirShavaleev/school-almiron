@@ -9,12 +9,13 @@
 
 export type TopicTestPartialType = 'matching' | 'multi_choice' | null
 
+/**
+ * Тест из банка (без привязки к теме).
+ */
 export interface TopicTestRow {
   id: string
-  topic_id: string
   title: string
   description: string | null
-  is_published: boolean
   created_by: string
   created_at: string
   updated_at: string
@@ -38,13 +39,32 @@ export interface TopicTestItemRow {
 
 export interface TopicTestAttemptRow {
   id: string
-  test_id: string
+  assignment_id: string
   student_id: string
   status: 'in_progress' | 'completed'
   started_at: string
   completed_at: string | null
   total_points: number | null
   max_points: number | null
+}
+
+export interface TopicTestAssignmentRow {
+  id: string
+  test_id: string
+  topic_id: string
+  assigned_by: string
+  created_at: string
+}
+
+export interface BankTestSummary {
+  id: string
+  title: string
+  description: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  itemCount: number
+  assignmentCount: number
 }
 
 export interface TopicTestAnswerRow {
@@ -58,8 +78,8 @@ export interface TopicTestAnswerRow {
 }
 
 /**
- * Задание глазами ученика (RPC topic_test_student_items).
- * Эталоны (answer_html, answer_text, solution_html) — null до завершения попытки.
+ * Задание глазами ученика (RPC topic_test_assignment_items).
+ * Эталоны (answer_html, answer_text, solution_html) — null до завершения СВОЕЙ попытки этой привязки.
  */
 export interface StudentTestItem {
   id: string

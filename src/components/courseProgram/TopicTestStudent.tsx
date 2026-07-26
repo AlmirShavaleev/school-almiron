@@ -113,7 +113,9 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
       {/* ─── Заголовок ─── */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ClipboardList size={16} className="text-primary-600" />
-        <h2 className="text-base font-semibold text-gray-900">Тестирование</h2>
+        <h2 className="text-base font-semibold text-gray-900 truncate">
+          Тестирование · {test.title}
+        </h2>
         {attempt && (
           <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', {
             'in_progress': 'bg-blue-100 text-blue-700',
@@ -156,13 +158,17 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
             </p>
           </div>
 
-          {/* Кнопка начать */}
-          <Button
-            onClick={() => start().catch((e: any) => setLocalError(e?.message ?? 'Не удалось начать тест'))}
-            size="md"
-          >
-            Начать тест
-          </Button>
+          {/* Кнопка начать / статус готовности */}
+          {items.length === 0 ? (
+            <p className="text-sm text-gray-400">Тест пока не готов</p>
+          ) : (
+            <Button
+              onClick={() => start().catch((e: any) => setLocalError(e?.message ?? 'Не удалось начать тест'))}
+              size="md"
+            >
+              Начать тест
+            </Button>
+          )}
         </div>
       )}
 

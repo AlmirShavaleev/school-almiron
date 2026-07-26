@@ -4424,8 +4424,55 @@ export type Database = {
           },
         ]
       }
+      topic_test_assignments: {
+        Row: {
+          assigned_by: string
+          created_at: string
+          id: string
+          test_id: string
+          topic_id: string
+        }
+        Insert: {
+          assigned_by: string
+          created_at?: string
+          id?: string
+          test_id: string
+          topic_id: string
+        }
+        Update: {
+          assigned_by?: string
+          created_at?: string
+          id?: string
+          test_id?: string
+          topic_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_test_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_test_assignments_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "topic_tests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_test_assignments_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: true
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_test_attempts: {
         Row: {
+          assignment_id: string
           completed_at: string | null
           id: string
           max_points: number | null
@@ -4436,6 +4483,7 @@ export type Database = {
           total_points: number | null
         }
         Insert: {
+          assignment_id: string
           completed_at?: string | null
           id?: string
           max_points?: number | null
@@ -4446,6 +4494,7 @@ export type Database = {
           total_points?: number | null
         }
         Update: {
+          assignment_id?: string
           completed_at?: string | null
           id?: string
           max_points?: number | null
@@ -4456,6 +4505,13 @@ export type Database = {
           total_points?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "topic_test_attempts_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "topic_test_assignments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "topic_test_attempts_student_id_fkey"
             columns: ["student_id"]
@@ -4543,7 +4599,6 @@ export type Database = {
           id: string
           is_published: boolean
           title: string
-          topic_id: string
           updated_at: string
         }
         Insert: {
@@ -4553,7 +4608,6 @@ export type Database = {
           id?: string
           is_published?: boolean
           title: string
-          topic_id: string
           updated_at?: string
         }
         Update: {
@@ -4563,7 +4617,6 @@ export type Database = {
           id?: string
           is_published?: boolean
           title?: string
-          topic_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -4572,13 +4625,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "topic_tests_topic_id_fkey"
-            columns: ["topic_id"]
-            isOneToOne: true
-            referencedRelation: "topics"
             referencedColumns: ["id"]
           },
         ]
@@ -5906,6 +5952,21 @@ export type Database = {
         Args: { p_task_id: string; p_test_id: string }
         Returns: string
       }
+      topic_test_assignment_items: {
+        Args: { p_assignment_id: string }
+        Returns: {
+          answer_html: string
+          answer_text: string
+          assets: Json
+          exam_part: number
+          id: string
+          max_points: number
+          partial_type: string
+          position: number
+          solution_html: string
+          statement_html: string
+        }[]
+      }
       topic_test_attempt_can_view: {
         Args: { p_attempt_id: string }
         Returns: boolean
@@ -5914,6 +5975,11 @@ export type Database = {
         Args: { p_attempt_id: string }
         Returns: boolean
       }
+      topic_test_bank_can_manage: {
+        Args: { p_test_id: string }
+        Returns: boolean
+      }
+      topic_test_bank_is_staff: { Args: never; Returns: boolean }
       topic_test_can_manage: { Args: { p_test_id: string }; Returns: boolean }
       topic_test_save_answer: {
         Args: { p_answer: string; p_attempt_id: string; p_item_id: string }
@@ -5928,26 +5994,18 @@ export type Database = {
         }
         Returns: number
       }
-      topic_test_start_attempt: { Args: { p_test_id: string }; Returns: string }
+      topic_test_start_attempt: {
+        Args: { p_assignment_id: string }
+        Returns: string
+      }
       topic_test_strip_html: { Args: { p_html: string }; Returns: string }
       topic_test_student_can_see: {
         Args: { p_test_id: string }
         Returns: boolean
       }
-      topic_test_student_items: {
-        Args: { p_test_id: string }
-        Returns: {
-          answer_html: string
-          answer_text: string
-          assets: Json
-          exam_part: number
-          id: string
-          max_points: number
-          partial_type: string
-          position: number
-          solution_html: string
-          statement_html: string
-        }[]
+      topic_test_student_can_see_assignment: {
+        Args: { p_assignment_id: string }
+        Returns: boolean
       }
       topic_test_submit_attempt: {
         Args: { p_attempt_id: string }

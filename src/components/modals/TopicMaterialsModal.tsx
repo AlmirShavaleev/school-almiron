@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useTopicMaterials, type MaterialType } from '@/hooks/useTopicMaterials'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
-import { useTopicTest } from '@/hooks/useTopicTest'
+import { useTopicTestAssignment } from '@/hooks/useTopicTest'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
@@ -464,7 +464,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
   // Новые хуки для новой системы материалов
   const { materials: newMaterials } = useTopicMaterialItems(open && canEdit && topicId ? topicId : null)
-  const { test } = useTopicTest(open && canEdit && topicId ? topicId : null)
+  const { assignment } = useTopicTestAssignment(open && canEdit && topicId ? topicId : null)
   const { homework } = useTopicHomework(open && canEdit && topicId ? topicId : null)
 
   useEffect(() => {
@@ -513,7 +513,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
       return homework !== null
     }
     if (tileKey === 'test') {
-      return test !== null
+      return assignment !== null
     }
     return false
   }
@@ -618,16 +618,6 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             )}
 
-            {/* Прочие материалы (без рубрики) */}
-            <details className="group">
-              <summary className="cursor-pointer select-none py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-2">
-                <span className="inline-block transition-transform group-open:rotate-90">▸</span>
-                Прочие материалы (без рубрики)
-              </summary>
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <TopicMaterialItems topicId={topicId} canManage />
-              </div>
-            </details>
           </div>
         )}
       </div>

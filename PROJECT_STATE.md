@@ -292,3 +292,25 @@ Frontend нового контура:
   topic_material_items(section/kind) + topic_homework + topic_tests — колонки
   совпадают с плитками. (Ученические has_notes/has_theory в
   useStudentCourseProgram — всё ещё легаси, см. §4 оч.7.)
+
+### 10.2. Банк тестов (миграция 20260726142040_topic_test_bank)
+
+Продуктовые решения владельца: тест — сущность банка (страница /tests),
+составляется из каталога, имеет название; к теме прикрепляется
+(topic_test_assignments, UNIQUE(topic_id)); ПОПЫТКА НА ПРИВЯЗКУ
+(UNIQUE(assignment_id, student_id)) — тот же тест в другой теме проходится
+заново; видимость ученика — через привязку к доступной теме
+(is_published — легаси-флаг, в видимости не участвует).
+
+- topic_tests.topic_id удалён; банк: персонал школы читает всё, правит
+  автор/admin/owner (topic_test_bank_*). Пустой тест не прикрепляется,
+  привязка с попытками не открепляется (триггеры).
+- RPC ученика на привязках: topic_test_assignment_items,
+  topic_test_start_attempt(assignment); save/submit прежние.
+- Фронт: /tests (TestBankPage), /tests/:testId (TestBankTestPage —
+  конструктор + вкладка «Результаты»: по привязкам, таблица учеников,
+  баллы/%/дата), пункт «Тесты» в Sidebar. Плитка «Тестирование» в модалке
+  темы = прикрепить/открепить тест из банка (TopicTestEditor переписан).
+  Хуки: useTestBank / useBankTest / useTestResults / useTopicTestAssignment /
+  useTopicTestStudent (через привязку). Из модалки убраны «Прочие материалы»
+  и старая форма «Добавить материал».

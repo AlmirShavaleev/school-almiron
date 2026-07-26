@@ -66,6 +66,8 @@ import { HomeworkReviewQueuePage } from '@/pages/HomeworkReviewQueuePage'
 import { HomeworkReviewV2Page } from '@/pages/HomeworkReviewV2Page'
 import { MyHomeworksV2Page } from '@/pages/student/MyHomeworksV2Page'
 import { HomeworkTemplateBuilderPage } from '@/pages/teacher/HomeworkTemplateBuilderPage'
+import { TestBankPage } from '@/pages/TestBankPage'
+import { TestBankTestPage } from '@/pages/TestBankTestPage'
 
 /** Защищённое поддерево роутов (всё, что раньше висело под DashboardLayout в App.tsx). Lazy-загружается целиком из App.tsx. */
 export default function AppRoutes() {
@@ -138,6 +140,10 @@ export default function AppRoutes() {
 
         {/* Общая очередь проверки PDF-ДЗ нового контура */}
         <Route path="/homework-queue" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkReviewQueuePage /></RoleGuard>} />
+
+        {/* Банк тестов */}
+        <Route path="/tests" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankPage /></RoleGuard>} />
+        <Route path="/tests/:testId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankTestPage /></RoleGuard>} />
 
         {/* Этап 4: выдача и проверка ДЗ */}
         <Route path="/assign-homework" element={<RoleGuard allow={['teacher','admin','owner']}><AssignHomeworkPage /></RoleGuard>} />
