@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Trash2, Save, BookOpen, ArrowLeft, FileDown } from 'lucide-react'
+import { Trash2, Save, BookOpen, ArrowLeft, FileDown, Zap } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { useSaveCollection } from '@/hooks/useCollections'
 import { useCatalogTasksBatch, type CatalogTask, type CatalogTaskAsset } from '@/hooks/useCatalog'
@@ -9,21 +9,34 @@ import type { WorkType } from '@/types/collections'
 import { WORK_TYPE_LABELS } from '@/types/collections'
 import { useAuthStore } from '@/store/authStore'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
+import { useTestBank } from '@/hooks/useTopicTest'
+import { supabase } from '@/lib/supabase'
+import { hasTextAnswer } from '@/lib/topicTest'
 
 export function CartPage() {
   const navigate = useNavigate()
   const { items, removeItem, clearCart } = useCartStore()
   const profile = useAuthStore(s => s.profile)
   const { save, loading: saving, error: saveError } = useSaveCollection()
+  const { createTest } = useTestBank()
 
   const [title,    setTitle]    = useState('')
   const [subject,  setSubject]  = useState<'Математика' | 'Физика'>('Математика')
   const [workType, setWorkType] = useState<WorkType>('custom')
 
+  const [testTitle, setTestTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null)
+
   const isStudent = profile?.role === 'student'
   const taskIds = items.map(item => item.catalog_task_id)
   const { tasks: batchTasks, loading: batchLoading } = useCatalogTasksBatch(taskIds)
   const taskMap = new Map(batchTasks.map(task => [task.id, task]))
+
+  const tasksWithoutAnswer = batchTasks.filter(
+    task => !hasTextAnswer(task.answer_html, task.has_answer)
+  ).length
 
   if (items.length === 0) {
     return (
@@ -70,6 +83,77 @@ export function CartPage() {
       } else {
         navigate(`/collections/${id}`)
       }
+    }
+  }
+
+  const handleCreateTest = async () => {
+    const trimmed = testTitle.trim()
+    if (!trimmed) return
+
+    setCreating(true)
+    setCreateError(null)
+    setProgress(null)
+
+    try {
+      // 1. Создаём тест
+      const testId = await createTest(trimmed)
+
+      // 2. Добавляем задачи из подборки в порядке
+      const skipped: Array<{ externalId: string; message: string }> = []
+      let addedCount = 0
+
+      for (let i = 0; i < batchTasks.length; i++) {
+        const task = batchTasks[i]
+        setProgress({ current: i + 1, total: batchTasks.length })
+
+        // Проверяем наличие текстового ответа до добавления
+        if (!hasTextAnswer(task.answer_html, task.has_answer)) {
+          skipped.push({
+            externalId: String(task.external_id),
+            message: 'нет текстового эталона',
+          })
+          continue
+        }
+
+        // Добавляем задачу в тест
+        const { error } = await supabase.rpc('topic_test_add_item', {
+          p_test_id: testId,
+          p_task_id: task.id,
+        })
+
+        if (error) {
+          skipped.push({
+            externalId: String(task.external_id),
+            message: error.message || 'неизвестная ошибка',
+          })
+        } else {
+          addedCount++
+        }
+      }
+
+      setProgress(null)
+
+      // 3. Проверяем результаты
+      if (addedCount === 0) {
+        // Ни одна задача не добавлена
+        const firstError = skipped[0]?.message || 'неизвестная ошибка'
+        setCreateError(`Ни одна задача не добавлена: ${firstError}`)
+        setCreating(false)
+        return
+      }
+
+      // Если есть пропущенные, но не все — показываем alert перед переходом
+      if (skipped.length > 0) {
+        window.alert(`Пропущено задач: ${skipped.length} (нет текстового эталона)`)
+      }
+
+      // 4. Очищаем корзину и переходим на страницу теста
+      clearCart()
+      navigate(`/tests/${testId}`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+      setCreateError(message)
+      setCreating(false)
     }
   }
 
@@ -130,65 +214,112 @@ export function CartPage() {
           </div>
         </>
       ) : (
-        <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-base font-semibold text-gray-900">Сохранить подборку</h2>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Название <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Например: Кинематика — контрольная"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              onKeyDown={e => e.key === 'Enter' && handleSave()}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Предмет</label>
-              <select
-                value={subject}
-                onChange={e => setSubject(e.target.value as 'Математика' | 'Физика')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option>Математика</option>
-                <option>Физика</option>
-              </select>
-            </div>
+        <>
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">
+            <h2 className="text-base font-semibold text-gray-900">Сохранить подборку</h2>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип работы</label>
-              <select
-                value={workType}
-                onChange={e => setWorkType(e.target.value as WorkType)}
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Название <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Например: Кинематика — контрольная"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                {(Object.entries(WORK_TYPE_LABELS) as [WorkType, string][]).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+              />
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Предмет</label>
+                <select
+                  value={subject}
+                  onChange={e => setSubject(e.target.value as 'Математика' | 'Физика')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option>Математика</option>
+                  <option>Физика</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Тип работы</label>
+                <select
+                  value={workType}
+                  onChange={e => setWorkType(e.target.value as WorkType)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  {(Object.entries(WORK_TYPE_LABELS) as [WorkType, string][]).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {saveError && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
+            )}
+
+            <button
+              onClick={handleSave}
+              disabled={!title.trim() || saving}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
+                bg-blue-600 text-white text-sm font-medium
+                hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Save size={16} />
+              {saving ? 'Сохраняем…' : 'Сохранить подборку'}
+            </button>
           </div>
 
-          {saveError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
-          )}
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">
+            <h2 className="text-base font-semibold text-gray-900">Создать тест из подборки</h2>
 
-          <button
-            onClick={handleSave}
-            disabled={!title.trim() || saving}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
-              bg-blue-600 text-white text-sm font-medium
-              hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Save size={16} />
-            {saving ? 'Сохраняем…' : 'Сохранить подборку'}
-          </button>
-        </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Название теста
+              </label>
+              <input
+                type="text"
+                value={testTitle}
+                onChange={e => setTestTitle(e.target.value)}
+                placeholder="Например: Кинематика, часть 1"
+                disabled={creating}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                onKeyDown={e => e.key === 'Enter' && handleCreateTest()}
+              />
+            </div>
+
+            <p className="text-sm text-gray-500">
+              {batchTasks.length} задач в подборке; {tasksWithoutAnswer > 0 && `${tasksWithoutAnswer} без текстового эталона — будут пропущены`}
+              {tasksWithoutAnswer === 0 && 'все имеют текстовый эталон'}
+            </p>
+
+            {createError && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{createError}</p>
+            )}
+
+            {progress && (
+              <p className="text-sm text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+                Добавляем {progress.current} из {progress.total}…
+              </p>
+            )}
+
+            <button
+              onClick={handleCreateTest}
+              disabled={!testTitle.trim() || creating}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
+                bg-blue-600 text-white text-sm font-medium
+                hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Zap size={16} />
+              {creating ? 'Создаём тест…' : 'Создать тест'}
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
