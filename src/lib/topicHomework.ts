@@ -1,3 +1,5 @@
+import { sanitizeStorageFileName } from './topicMaterialItems'
+
 /**
  * Чистые помощники для PDF-ДЗ темы.
  *
@@ -181,10 +183,8 @@ export function latestReview(
 }
 
 function safeName(fileName: string): string {
-  return (fileName || 'file')
-    .replace(/[/\\]+/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(-120)
+  // Кириллица в ключе Supabase Storage даёт "Invalid key" — транслитерируем.
+  return sanitizeStorageFileName(fileName)
 }
 
 /** Путь задания. Первый сегмент — topic_id, на нём держится storage-политика. */

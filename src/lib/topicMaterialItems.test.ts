@@ -105,7 +105,7 @@ describe('buildMaterialStoragePath', () => {
   it('первым сегментом ставит topic_id — на этом держатся storage-политики', () => {
     const path = buildMaterialStoragePath(TOPIC, 'конспект.pdf', 1700000000000)
     expect(path.split('/')[0]).toBe(TOPIC)
-    expect(path).toBe(`${TOPIC}/1700000000000_конспект.pdf`)
+    expect(path).toBe(`${TOPIC}/1700000000000_konspekt.pdf`)
   })
 
   it('вычищает слэши из имени файла, чтобы нельзя было уйти в чужую папку', () => {
@@ -115,7 +115,7 @@ describe('buildMaterialStoragePath', () => {
   })
 
   it('заменяет пробелы', () => {
-    expect(buildMaterialStoragePath(TOPIC, 'моя работа.pdf', 1)).toBe(`${TOPIC}/1_моя_работа.pdf`)
+    expect(buildMaterialStoragePath(TOPIC, 'моя работа.pdf', 1)).toBe(`${TOPIC}/1_moya_rabota.pdf`)
   })
 })
 

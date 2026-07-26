@@ -204,7 +204,7 @@ describe('пути файлов', () => {
   })
 
   it('пробелы заменяются', () => {
-    expect(buildHomeworkFilePath(TOPIC, 'моя работа.pdf', 1)).toBe(`${TOPIC}/1_моя_работа.pdf`)
+    expect(buildHomeworkFilePath(TOPIC, 'моя работа.pdf', 1)).toBe(`${TOPIC}/1_moya_rabota.pdf`)
   })
 })
 

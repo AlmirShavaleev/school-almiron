@@ -164,13 +164,38 @@ export function bucketForMaterialPath(storagePath: string, topicId: string) {
   return LEGACY_LESSON_MATERIALS_BUCKET
 }
 
+
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+}
+
+/**
+ * Supabase Storage принимает только безопасные ASCII-ключи: кириллица в пути
+ * даёт "Invalid key" и загрузка падает. Транслитерируем и вычищаем всё
+ * лишнее. Оригинальное имя не теряется — оно хранится в колонке file_name.
+ */
+export function sanitizeStorageFileName(fileName: string): string {
+  const raw = (fileName || 'file').trim()
+  const dot = raw.lastIndexOf('.')
+  const base = dot > 0 ? raw.slice(0, dot) : raw
+  const ext = dot > 0 ? raw.slice(dot + 1) : ''
+
+  const translitBase = base
+    .toLowerCase()
+    .split('')
+    .map(ch => (TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch))
+    .join('')
+  const safeBase = translitBase.replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'file'
+  const safeExt = ext.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 10)
+  return safeExt ? `${safeBase}.${safeExt}` : safeBase
+}
+
 /** Путь в бакете. Конвенция завязана на storage-политики: первый сегмент — topic_id. */
 export function buildMaterialStoragePath(topicId: string, fileName: string, now: number = Date.now()): string {
-  const safeName = (fileName || 'file')
-    .replace(/[/\\]+/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(-120)
-  return `${topicId}/${now}_${safeName}`
+  return `${topicId}/${now}_${sanitizeStorageFileName(fileName)}`
 }
 
 export interface MaterialDraft {
