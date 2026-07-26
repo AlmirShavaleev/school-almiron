@@ -14,6 +14,7 @@ import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
+import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,10 @@ export function TopicPage() {
       {/* ── PDF-ДЗ ТЕМЫ ──
           Неопубликованное ДЗ сюда не доезжает: отсекает RLS. */}
       <TopicHomeworkStudent topicId={topic.id} />
+
+      {/* ── ТЕСТИРОВАНИЕ ТЕМЫ ──
+          Неопубликованный тест сюда не доезжает: отсекает RLS. */}
+      <TopicTestStudent topicId={topic.id} />
 
       {/* Старый список фиксированных блоков topic_materials убран: те же
           материалы уже перенесены в topic_material_items и показываются выше.

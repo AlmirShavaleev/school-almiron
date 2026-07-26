@@ -12,6 +12,7 @@ import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
+import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 
 const SECTIONS: {
   type: MaterialType
@@ -537,6 +538,14 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                   Домашнее задание
                 </div>
                 <TopicHomeworkEditor topicId={topicId} />
+              </div>
+
+              {/* Тест по теме. */}
+              <div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  Тестирование
+                </div>
+                <TopicTestEditor topicId={topicId} />
               </div>
             </div>
           </>

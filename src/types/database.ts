@@ -4376,6 +4376,210 @@ export type Database = {
           },
         ]
       }
+      topic_test_answers: {
+        Row: {
+          answer_text: string
+          attempt_id: string
+          awarded_points: number | null
+          id: string
+          is_correct: boolean | null
+          item_id: string
+          updated_at: string
+        }
+        Insert: {
+          answer_text?: string
+          attempt_id: string
+          awarded_points?: number | null
+          id?: string
+          is_correct?: boolean | null
+          item_id: string
+          updated_at?: string
+        }
+        Update: {
+          answer_text?: string
+          attempt_id?: string
+          awarded_points?: number | null
+          id?: string
+          is_correct?: boolean | null
+          item_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_test_answers_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "topic_test_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_test_answers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "topic_test_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_test_attempts: {
+        Row: {
+          completed_at: string | null
+          id: string
+          max_points: number | null
+          started_at: string
+          status: Database["public"]["Enums"]["topic_test_attempt_status"]
+          student_id: string
+          test_id: string
+          total_points: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          id?: string
+          max_points?: number | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["topic_test_attempt_status"]
+          student_id: string
+          test_id: string
+          total_points?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          id?: string
+          max_points?: number | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["topic_test_attempt_status"]
+          student_id?: string
+          test_id?: string
+          total_points?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_test_attempts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_test_attempts_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "topic_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_test_items: {
+        Row: {
+          answer_html: string
+          answer_text: string
+          assets: Json
+          created_at: string
+          exam_part: number | null
+          id: string
+          max_points: number
+          partial_type: string | null
+          position: number
+          solution_html: string | null
+          statement_html: string
+          task_id: string | null
+          test_id: string
+        }
+        Insert: {
+          answer_html: string
+          answer_text: string
+          assets?: Json
+          created_at?: string
+          exam_part?: number | null
+          id?: string
+          max_points: number
+          partial_type?: string | null
+          position?: number
+          solution_html?: string | null
+          statement_html: string
+          task_id?: string | null
+          test_id: string
+        }
+        Update: {
+          answer_html?: string
+          answer_text?: string
+          assets?: Json
+          created_at?: string
+          exam_part?: number | null
+          id?: string
+          max_points?: number
+          partial_type?: string | null
+          position?: number
+          solution_html?: string | null
+          statement_html?: string
+          task_id?: string | null
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_test_items_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_test_items_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "topic_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_tests: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_published: boolean
+          title: string
+          topic_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_published?: boolean
+          title: string
+          topic_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_published?: boolean
+          title?: string
+          topic_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_tests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_tests_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: true
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topics: {
         Row: {
           available_from: string | null
@@ -5695,6 +5899,60 @@ export type Database = {
         Args: { p_topic_id: string }
         Returns: boolean
       }
+      topic_test_add_item: {
+        Args: { p_task_id: string; p_test_id: string }
+        Returns: string
+      }
+      topic_test_attempt_can_view: {
+        Args: { p_attempt_id: string }
+        Returns: boolean
+      }
+      topic_test_attempt_is_own: {
+        Args: { p_attempt_id: string }
+        Returns: boolean
+      }
+      topic_test_can_manage: { Args: { p_test_id: string }; Returns: boolean }
+      topic_test_save_answer: {
+        Args: { p_answer: string; p_attempt_id: string; p_item_id: string }
+        Returns: undefined
+      }
+      topic_test_score_item: {
+        Args: {
+          p_correct: string
+          p_max_points: number
+          p_partial_type: string
+          p_student: string
+        }
+        Returns: number
+      }
+      topic_test_start_attempt: { Args: { p_test_id: string }; Returns: string }
+      topic_test_strip_html: { Args: { p_html: string }; Returns: string }
+      topic_test_student_can_see: {
+        Args: { p_test_id: string }
+        Returns: boolean
+      }
+      topic_test_student_items: {
+        Args: { p_test_id: string }
+        Returns: {
+          answer_html: string
+          answer_text: string
+          assets: Json
+          exam_part: number
+          id: string
+          max_points: number
+          partial_type: string
+          position: number
+          solution_html: string
+          statement_html: string
+        }[]
+      }
+      topic_test_submit_attempt: {
+        Args: { p_attempt_id: string }
+        Returns: {
+          max_points: number
+          total_points: number
+        }[]
+      }
       update_variant_assignment: {
         Args: {
           p_allow_retry?: boolean
@@ -5782,6 +6040,7 @@ export type Database = {
         | "accepted"
         | "returned_for_revision"
       topic_homework_review_decision: "accepted" | "returned_for_revision"
+      topic_test_attempt_status: "in_progress" | "completed"
       transaction_type:
         | "deposit"
         | "lesson_charge"
@@ -6053,6 +6312,7 @@ export const Constants = {
         "returned_for_revision",
       ],
       topic_homework_review_decision: ["accepted", "returned_for_revision"],
+      topic_test_attempt_status: ["in_progress", "completed"],
       transaction_type: [
         "deposit",
         "lesson_charge",
