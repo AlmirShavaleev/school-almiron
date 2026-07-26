@@ -569,8 +569,23 @@ export function safeDecodeStoragePath(path: string): string {
   }
 }
 
+/**
+ * Base URL for catalog assets served from external storage (Cloudflare R2).
+ * When set (e.g. "https://assets.alminion.ru"), asset URLs are built as
+ * `${base}/${path}` with per-segment percent-encoding. When empty, falls back
+ * to Supabase Storage public URLs (legacy behaviour, incl. the /render/image
+ * workaround for PNGs imported with a wrong Content-Type).
+ */
+const ASSETS_BASE_URL: string = (import.meta.env.VITE_ASSETS_BASE_URL ?? '').replace(/\/+$/, '')
+
 export function getAssetUrl(storagePath: string): string {
   const decoded = safeDecodeStoragePath(storagePath)
+  if (ASSETS_BASE_URL) {
+    // Object keys in R2 are stored decoded ("1 (1).png"); encode each path
+    // segment so spaces/parentheses/Cyrillic survive as a valid URL.
+    const encoded = decoded.split('/').map(encodeURIComponent).join('/')
+    return `${ASSETS_BASE_URL}/${encoded}`
+  }
   // PNG/JPEG files were imported with Content-Type: image/svg+xml (wrong).
   // The /render/image/ endpoint reads actual bytes and serves the correct MIME type.
   const lower = decoded.toLowerCase()

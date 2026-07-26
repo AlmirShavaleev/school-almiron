@@ -60,3 +60,6 @@ scripts/analyze_variant_bank.py
 .codex-vite*.log
 vite-*.log
 _stage_repo.tar.gz
+
+# migration secrets
+r2-migration/
