@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
-import { NotificationBell } from './NotificationBell'
+// import { NotificationBell } from './NotificationBell' // скрыто на время MVP
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
@@ -103,7 +103,9 @@ export function DashboardLayout() {
             </div>
           </div>
 
-          <NotificationBell />
+          {/* Скрыто на время MVP: уведомления не подключены к новому контуру
+              (PROJECT_STATE §5.5). Вернуть — раскомментировать. */}
+          {/* <NotificationBell /> */}
 
           {/* Avatar + name */}
           <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">

@@ -19,27 +19,33 @@ interface NavItem {
   icon:    React.ReactNode
   roles:   UserRole[]
   section?: string
+  /**
+   * Легаси-раздел, скрытый из навигации на время MVP (карта сноса —
+   * PROJECT_STATE §4). Страница и роут остаются рабочими по прямой ссылке;
+   * чтобы вернуть пункт в меню, удалите флаг.
+   */
+  hidden?: boolean
 }
 
 const navItems: NavItem[] = [
   // Non-student roles
   { label: 'Главная',           path: '/dashboard',      icon: <Home size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Очередь задач',     path: '/inbox',          icon: <Inbox size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Очередь задач',     path: '/inbox',          icon: <Inbox size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
 
   // Student navigation (grouped)
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
 
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
-  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба' },
-  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
+  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
+  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
 
-  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба' },
-  { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба' },
+  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба', hidden: true },
+  { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
-  { label: 'Подписка',          path: '/payments',       icon: <CreditCard size={18} />,    roles: ['student'],  section: 'Аккаунт' },
-  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
+  { label: 'Подписка',          path: '/payments',       icon: <CreditCard size={18} />,    roles: ['student'],  section: 'Аккаунт', hidden: true },
+  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт', hidden: true },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
   // Other roles (flat)
@@ -48,20 +54,20 @@ const navItems: NavItem[] = [
   { label: 'Панель админа',     path: '/admin',          icon: <Settings size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Школа',             path: '/owner',          icon: <BarChart3 size={18} />,     roles: ['owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'] },
-  { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'] },
+  { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'] },
-  { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'] },
-  { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'] },
-  { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
+  { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
+  { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
+  { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Расписание',        path: '/schedule',       icon: <Calendar size={18} />,      roles: ['curator', 'admin', 'owner', 'teacher'] },
-  { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'] },
-  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'] },
-  { label: 'Платежи',           path: '/payments',       icon: <CreditCard size={18} />,    roles: ['admin', 'owner'] },
-  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
+  { label: 'Расписание',        path: '/schedule',       icon: <Calendar size={18} />,      roles: ['curator', 'admin', 'owner', 'teacher'], hidden: true },
+  { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
+  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'], hidden: true },
+  { label: 'Платежи',           path: '/payments',       icon: <CreditCard size={18} />,    roles: ['admin', 'owner'], hidden: true },
+  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
 ]
 
@@ -96,7 +102,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   if (!profile) return null
 
   const isStudent    = profile.role === 'student'
-  const visibleItems = navItems.filter(item => item.roles.includes(profile.role))
+  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(profile.role))
 
   async function handleSignOut() {
     await signOut()
