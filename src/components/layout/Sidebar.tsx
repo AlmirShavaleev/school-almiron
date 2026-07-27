@@ -62,7 +62,7 @@ const navItems: NavItem[] = [
   { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
-  { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   { label: 'Расписание',        path: '/schedule',       icon: <Calendar size={18} />,      roles: ['curator', 'admin', 'owner', 'teacher'], hidden: true },

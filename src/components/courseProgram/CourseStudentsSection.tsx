@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Users, AlertCircle, MessageCircle } from 'lucide-react'
+import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, Trash2, RotateCcw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
+import {
+  createStudentInvite,
+  buildInviteUrl,
+  buildInviteMessage,
+  getMyStudentInvites,
+  revokeStudentInvite,
+  reissueStudentInvite,
+  type MyStudentInvite,
+} from '@/lib/studentEnrollment'
+import { toast } from '@/store/toastStore'
 
 interface StudentInfo {
   studentId: string
@@ -23,6 +33,19 @@ interface StudentRow {
   enrolledAt: string | null
 }
 
+interface CourseGroup {
+  id: string
+  name: string
+}
+
+interface InviteResult {
+  inviteId: string
+  token: string
+  shortCode: string
+  expiresAt: string
+  fullName: string
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('ru-RU', {
@@ -39,6 +62,22 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Invite form state
+  const [courseGroup, setCourseGroup] = useState<CourseGroup | null>(null)
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [creatingInvite, setCreatingInvite] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null)
+
+  // Active invites
+  const [activeInvites, setActiveInvites] = useState<MyStudentInvite[]>([])
+  const [invitesLoading, setInvitesLoading] = useState(false)
+
+  // Refresh trigger
+  const [tick, setTick] = useState(0)
+
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
     // и внешний объект остался бы «отменённым» навсегда (вечный спиннер).
@@ -49,6 +88,21 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
       try {
         setLoading(true)
         setError(null)
+
+        // Load course group
+        const groupResult: any = await supabase
+          .from('groups')
+          .select('id, name')
+          .eq('course_id', courseId)
+          .order('created_at')
+          .limit(1)
+
+        if (groupResult.error) throw new Error(groupResult.error.message)
+
+        const groupData = groupResult.data?.[0]
+        if (!cancelled.value) {
+          setCourseGroup(groupData ? { id: groupData.id, name: groupData.name } : null)
+        }
 
         // Load enrolled students
         let enrolledResult: any = await supabase
@@ -159,7 +213,152 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
       cancelled.value = true
       abortController.abort()
     }
-  }, [courseId])
+  }, [courseId, tick])
+
+  // Load active invites when courseGroup changes
+  useEffect(() => {
+    if (!courseGroup) {
+      setActiveInvites([])
+      return
+    }
+
+    let cancelled = false
+
+    async function loadInvites() {
+      try {
+        setInvitesLoading(true)
+        const invites = await getMyStudentInvites({ groupId: courseGroup!.id })
+        // Filter only pending invites (not accepted)
+        const pendingInvites = invites.filter(i => i.status === 'pending')
+        if (!cancelled) {
+          setActiveInvites(pendingInvites)
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.error('Ошибка при загрузке приглашений:', e)
+        }
+      } finally {
+        if (!cancelled) {
+          setInvitesLoading(false)
+        }
+      }
+    }
+
+    loadInvites()
+
+    return () => {
+      cancelled = true
+    }
+  }, [courseGroup])
+
+  // Helper function to copy text
+  async function copyToClipboard(text: string | undefined, successMsg: string, inviteId?: string) {
+    if (!text) {
+      toast.error('Нечего копировать')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      if (inviteId) {
+        setCopiedInviteId(inviteId)
+        setTimeout(() => setCopiedInviteId(null), 2000)
+      }
+      toast.success(successMsg)
+    } catch (err) {
+      toast.error('Не удалось скопировать')
+    }
+  }
+
+  // Create or get course group, then create invite
+  async function handleCreateInvite() {
+    if (!fullName.trim()) {
+      setInviteError('Укажите ФИО ученика')
+      return
+    }
+
+    setCreatingInvite(true)
+    setInviteError(null)
+
+    try {
+      let groupId = courseGroup?.id
+
+      // If no group, create one
+      if (!groupId) {
+        const createGroupResult: any = await supabase
+          .from('groups')
+          .insert({ course_id: courseId, name: 'Группа курса' })
+          .select('id, name')
+          .single()
+
+        if (createGroupResult.error) throw new Error(createGroupResult.error.message)
+
+        const newGroup = createGroupResult.data
+        setCourseGroup({ id: newGroup.id, name: newGroup.name })
+        groupId = newGroup.id
+      }
+
+      // Create invite
+      const result = await createStudentInvite({
+        groupId: groupId!,
+        fullName: fullName.trim(),
+        email: email.trim() || null,
+      })
+
+      setInviteResult({
+        ...result,
+        fullName: fullName.trim(),
+      })
+      setFullName('')
+      setEmail('')
+
+      // Reload active invites
+      const invites = await getMyStudentInvites({ groupId })
+      const pendingInvites = invites.filter(i => i.status === 'pending')
+      setActiveInvites(pendingInvites)
+    } catch (e: any) {
+      setInviteError(e.message || 'Ошибка при создании приглашения')
+    } finally {
+      setCreatingInvite(false)
+    }
+  }
+
+  // Revoke invite
+  async function handleRevokeInvite(inviteId: string) {
+    if (!window.confirm('Отозвать приглашение?')) return
+
+    try {
+      await revokeStudentInvite(inviteId)
+      // Reload active invites
+      if (courseGroup) {
+        const invites = await getMyStudentInvites({ groupId: courseGroup.id })
+        const pendingInvites = invites.filter(i => i.status === 'pending')
+        setActiveInvites(pendingInvites)
+      }
+      toast.success('Приглашение отозвано')
+    } catch (e: any) {
+      setInviteError(e.message || 'Ошибка при отзыве приглашения')
+    }
+  }
+
+  // Reissue invite
+  async function handleReissueInvite(inviteId: string) {
+    try {
+      const result = await reissueStudentInvite(inviteId)
+      setInviteResult({
+        ...result,
+        fullName: 'Переизданное приглашение',
+      })
+      // Reload active invites
+      if (courseGroup) {
+        const invites = await getMyStudentInvites({ groupId: courseGroup.id })
+        const pendingInvites = invites.filter(i => i.status === 'pending')
+        setActiveInvites(pendingInvites)
+      }
+      toast.success('Приглашение переиздано')
+    } catch (e: any) {
+      setInviteError(e.message || 'Ошибка при переиздании приглашения')
+    }
+  }
 
   if (loading) {
     return (
@@ -181,84 +380,262 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     )
   }
 
-  if (students.length === 0) {
-    return (
-      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
-        <Users size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
-        <p className="text-sm font-medium text-gray-700">В курсе пока нет учеников</p>
-        <p className="mt-1 text-sm text-gray-400">Зачисление — через приглашения на странице «Ученики»</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      {/* Header with badge */}
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium text-gray-900">Ученики курса</h3>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium">
-          {students.length}
-        </span>
+    <div className="space-y-6">
+      {/* Invite block - always visible */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-gray-900">Пригласить ученика в курс</h3>
+
+        {/* Invite form */}
+        <div className="border border-gray-200 rounded-lg p-4 bg-white">
+          {inviteResult ? (
+            // Show invite result
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-emerald-900">Приглашение создано</p>
+                  <p className="text-xs text-emerald-700">{inviteResult.fullName}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-gray-200 pt-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Персональная ссылка</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={buildInviteUrl(inviteResult.token)}
+                      className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 text-gray-600"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(buildInviteUrl(inviteResult.token), 'Ссылка скопирована', inviteResult.inviteId)}
+                      className={cn('px-3 py-1 rounded text-xs font-medium transition-colors',
+                        copiedInviteId === inviteResult.inviteId ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}
+                    >
+                      {copiedInviteId === inviteResult.inviteId ? 'Скопировано' : 'Скопировать'}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => copyToClipboard(buildInviteMessage(inviteResult.token, inviteResult.shortCode), 'Приглашение скопировано', 'msg_' + inviteResult.inviteId)}
+                  className="w-full text-xs px-3 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                  <CopyIcon size={14} />
+                  Скопировать приглашение
+                </button>
+
+                {inviteResult.expiresAt && (
+                  <p className="text-xs text-gray-500">
+                    Действует до {new Date(inviteResult.expiresAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setInviteResult(null)
+                  setFullName('')
+                  setEmail('')
+                }}
+                className="w-full text-xs px-3 py-2 rounded bg-primary-500 text-white hover:bg-primary-600 transition-colors font-medium"
+              >
+                Создать ещё одно приглашение
+              </button>
+            </div>
+          ) : (
+            // Show invite form
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">ФИО ученика *</label>
+                <input
+                  type="text"
+                  placeholder="Иван Петров"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Email (необязательно)</label>
+                <input
+                  type="email"
+                  placeholder="ivan@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {inviteError && (
+                <div className="flex gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                  <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-700">{inviteError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleCreateInvite}
+                disabled={creatingInvite || !fullName.trim()}
+                className={cn('w-full text-sm px-3 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2',
+                  creatingInvite || !fullName.trim()
+                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                    : 'bg-primary-500 text-white hover:bg-primary-600'
+                )}
+              >
+                {creatingInvite ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Создаём…
+                  </>
+                ) : (
+                  'Создать приглашение'
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Active invites */}
+        {courseGroup && activeInvites.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-medium text-gray-600">Активные приглашения</h4>
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">ФИО</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Статус</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeInvites.map((invite, idx) => (
+                    <tr key={invite.inviteId} className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}>
+                      <td className="px-3 py-2">
+                        <span className="text-gray-900">{invite.fullName}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                          Ожидание
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => handleReissueInvite(invite.inviteId)}
+                            className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                            title="Перевыпустить приглашение (получить свежую ссылку)"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleRevokeInvite(invite.inviteId)}
+                            className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-600 transition-colors"
+                            title="Отозвать приглашение"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ученик</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Группа</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Телефон</th>
-                {showTelegramColumn && (
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Telegram</th>
-                )}
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Зачислен</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((student, idx) => (
-                <tr
-                  key={student.studentId}
-                  className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
-                >
-                  <td className="px-4 py-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-gray-900">{student.name}</span>
-                      <span className="text-xs text-gray-400">{student.email}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-gray-900">
-                      {Array.from(student.groupNames).join(', ') || '—'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-gray-600">{student.phone || '—'}</span>
-                  </td>
-                  {showTelegramColumn && (
-                    <td className="px-4 py-2">
-                      {telegramSet.has(student.profileId) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium">
-                          <MessageCircle size={12} />
-                          привязан
+      {/* Students section */}
+      {students.length > 0 ? (
+        <div className="space-y-4">
+          {/* Header with badge and refresh button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-gray-900">Ученики курса</h3>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium">
+                {students.length}
+              </span>
+            </div>
+            <button
+              onClick={() => setTick(t => t + 1)}
+              title="Обновить список"
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-600"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ученик</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Группа</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Телефон</th>
+                    {showTelegramColumn && (
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Telegram</th>
+                    )}
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Зачислен</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student, idx) => (
+                    <tr
+                      key={student.studentId}
+                      className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium text-gray-900">{student.name}</span>
+                          <span className="text-xs text-gray-400">{student.email}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-900">
+                          {Array.from(student.groupNames).join(', ') || '—'}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium">
-                          —
-                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-600">{student.phone || '—'}</span>
+                      </td>
+                      {showTelegramColumn && (
+                        <td className="px-4 py-2">
+                          {telegramSet.has(student.profileId) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium">
+                              <MessageCircle size={12} />
+                              привязан
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium">
+                              —
+                            </span>
+                          )}
+                        </td>
                       )}
-                    </td>
-                  )}
-                  <td className="px-4 py-2">
-                    <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
+          <Users size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
+          <p className="text-sm font-medium text-gray-700">В курсе пока нет учеников</p>
+          <p className="mt-1 text-sm text-gray-400">Приглашение принимается выше, ученики появятся в этом списке</p>
+        </div>
+      )}
     </div>
   )
 }
