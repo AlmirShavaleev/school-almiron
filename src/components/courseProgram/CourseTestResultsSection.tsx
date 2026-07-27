@@ -77,7 +77,16 @@ function getScoreColor(percent: number | null): string {
   return 'text-red-600'
 }
 
-export function CourseTestResultsSection({ courseId, modules }: { courseId: string; modules: Module[] }) {
+export function CourseTestResultsSection({
+  courseId,
+  modules,
+  refreshKey = 0,
+}: {
+  courseId: string
+  modules: Module[]
+  /** Растёт при закрытии модалки темы: тест могли прикрепить или открепить прямо там. */
+  refreshKey?: number
+}) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [assignments, setAssignments] = useState<TopicTestAssignment[]>([])
   const [attempts, setAttempts] = useState<TopicTestAttempt[]>([])
@@ -174,7 +183,7 @@ export function CourseTestResultsSection({ courseId, modules }: { courseId: stri
       cancelled.value = true
       abortController.abort()
     }
-  }, [courseId, modules])
+  }, [courseId, modules, refreshKey])
 
   if (loading) {
     return (

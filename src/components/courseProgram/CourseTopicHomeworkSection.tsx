@@ -107,7 +107,16 @@ function getStudentAttemptStatus(
   return { status: latest.status, score: null, submittedAt: latest.submitted_at }
 }
 
-export function CourseTopicHomeworkSection({ courseId, modules }: { courseId: string; modules: Module[] }) {
+export function CourseTopicHomeworkSection({
+  courseId,
+  modules,
+  refreshKey = 0,
+}: {
+  courseId: string
+  modules: Module[]
+  /** Растёт при закрытии модалки темы: ДЗ могли создать или опубликовать прямо там. */
+  refreshKey?: number
+}) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [homeworks, setHomeworks] = useState<TopicHomework[]>([])
   const [attempts, setAttempts] = useState<TopicHomeworkAttempt[]>([])
@@ -208,7 +217,7 @@ export function CourseTopicHomeworkSection({ courseId, modules }: { courseId: st
       cancelled.value = true
       abortController.abort()
     }
-  }, [courseId, modules])
+  }, [courseId, modules, refreshKey])
 
   const toggleTopic = (topicId: string) => {
     setExpandedTopics(prev => {
