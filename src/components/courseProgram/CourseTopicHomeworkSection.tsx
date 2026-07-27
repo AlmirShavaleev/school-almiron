@@ -115,9 +115,10 @@ export function CourseTopicHomeworkSection({ courseId, modules }: { courseId: st
   const [error, setError] = useState<string | null>(null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
 
-  const cancelled = { value: false }
-
   useEffect(() => {
+    // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
+    // и внешний объект остался бы «отменённым» навсегда (вечный спиннер).
+    const cancelled = { value: false }
     const abortController = new AbortController()
 
     async function loadData() {
