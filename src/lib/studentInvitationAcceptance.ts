@@ -7,9 +7,10 @@ export interface InvitationAcceptanceResult {
 }
 
 export interface CourseJoinAccepted {
-  groupId: string
+  groupId: string | null
   courseId: string
   courseTitle: string
+  joinedAs: 'student' | 'curator'
 }
 
 export type InvitationErrorKind =
@@ -107,9 +108,10 @@ export async function acceptCourseJoin(value: string): Promise<CourseJoinAccepte
     // course_join_accept is a TABLE-returning RPC -> data is an array
     const row = Array.isArray(data) ? data[0] : data
     return {
-      groupId: String(row?.group_id ?? ''),
+      groupId: row?.group_id ?? null,
       courseId: String(row?.course_id ?? ''),
       courseTitle: String(row?.course_title ?? ''),
+      joinedAs: row?.joined_as ?? 'student',
     }
   } catch (error) {
     throw new Error((error as any)?.message ?? 'Не удалось обработать приглашение')

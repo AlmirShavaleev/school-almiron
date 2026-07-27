@@ -95,7 +95,7 @@ export default function AppRoutes() {
         <Route path="/teachers/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TeacherDetailPage /></RoleGuard>} />
         <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />
-        <Route path="/course-program" element={<RoleGuard allow={['teacher','admin','owner']}><CourseProgramPage /></RoleGuard>} />
+        <Route path="/course-program" element={<RoleGuard allow={['teacher','curator','admin','owner']}><CourseProgramPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
         <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
@@ -139,7 +139,7 @@ export default function AppRoutes() {
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Общая очередь проверки PDF-ДЗ нового контура */}
-        <Route path="/homework-queue" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkReviewQueuePage /></RoleGuard>} />
+        <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewQueuePage /></RoleGuard>} />
 
         {/* Банк тестов */}
         <Route path="/tests" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankPage /></RoleGuard>} />

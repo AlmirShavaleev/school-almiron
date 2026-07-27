@@ -11,8 +11,9 @@ type JoinMode = 'token' | 'code'
 type AcceptState = 'idle' | 'success'
 
 interface JoinResult {
-  groupId: string
+  groupId: string | null
   courseTitle?: string
+  joinedAs?: 'student' | 'curator'
 }
 
 function isStaffRole(role?: string | null): boolean {
@@ -77,7 +78,11 @@ export function JoinPage() {
     try {
       const accepted = await acceptAny(token || normalizedCode, !!token)
       clearPendingInvite()
-      setResult({ groupId: accepted.groupId, courseTitle: (accepted as any).courseTitle })
+      setResult({
+        groupId: accepted.groupId,
+        courseTitle: (accepted as any).courseTitle,
+        joinedAs: (accepted as any).joinedAs,
+      })
     } catch (err) {
       const mapped = err instanceof InvitationAcceptanceError
         ? err
@@ -118,16 +123,38 @@ export function JoinPage() {
               <CheckCircle2 size={28} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Вы присоединились</h1>
-              <p className="mt-2 text-gray-500">
-                {result.courseTitle
-                  ? `Вы зачислены на курс "${result.courseTitle}". Курс уже доступен в разделе "Мои курсы".`
-                  : 'Вы добавлены в учебную группу. Курс уже доступен в разделе "Мои курсы".'}
-              </p>
+              {result.joinedAs === 'curator' ? (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Вы куратор курса «{result.courseTitle}»
+                  </h1>
+                  <p className="mt-2 text-gray-500">
+                    Теперь вы можете проверять домашние задания и видеть результаты учеников этого курса.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900">Вы присоединились</h1>
+                  <p className="mt-2 text-gray-500">
+                    {result.courseTitle
+                      ? `Вы зачислены на курс "${result.courseTitle}". Курс уже доступен в разделе "Мои курсы".`
+                      : 'Вы добавлены в учебную группу. Курс уже доступен в разделе "Мои курсы".'}
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button onClick={() => navigate(`/my-course/${result.groupId}`)}>Открыть курс</Button>
-              <Button variant="secondary" onClick={() => navigate('/my-course')}>Перейти в мои курсы</Button>
+              {result.joinedAs === 'curator' ? (
+                <>
+                  <Button onClick={() => navigate('/homework-queue')}>К проверке ДЗ</Button>
+                  <Button variant="secondary" onClick={() => navigate('/course-program')}>Программа курса</Button>
+                </>
+              ) : (
+                <>
+                  <Button onClick={() => navigate(`/my-course/${result.groupId}`)}>Открыть курс</Button>
+                  <Button variant="secondary" onClick={() => navigate('/my-course')}>Перейти в мои курсы</Button>
+                </>
+              )}
             </div>
           </div>
         ) : (

@@ -31,6 +31,13 @@ interface CourseJoinLink {
   isActive: boolean
 }
 
+interface Curator {
+  id: string
+  profileId: string
+  fullName: string
+  email: string
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('ru-RU', {
@@ -38,6 +45,155 @@ function formatDate(value: string | null): string {
     month: 'long',
     year: 'numeric',
   })
+}
+
+interface JoinLinkCardProps {
+  link: CourseJoinLink | null
+  role: 'student' | 'curator'
+  courseTitle?: string
+  copiedField: string | null
+  onCopy: (text: string | undefined, successMsg: string, fieldId?: string) => Promise<void>
+  onSetActive: (active: boolean, role: 'student' | 'curator') => Promise<void>
+  onRotate: (role: 'student' | 'curator') => Promise<void>
+}
+
+function JoinLinkCard({
+  link,
+  role,
+  courseTitle,
+  copiedField,
+  onCopy,
+  onSetActive,
+  onRotate,
+}: JoinLinkCardProps) {
+  if (!link) return null
+
+  const roleLabel = role === 'student' ? 'Для учеников' : 'Для кураторов'
+  const caption = role === 'curator'
+    ? 'Куратор проверяет ДЗ и видит результаты учеников этого курса. Количество кураторов не ограничено.'
+    : 'Ссылка постоянная и общая для всех учеников. Ученик регистрируется сам и сразу попадает в курс.'
+  const invitationButtonLabel = role === 'curator' ? 'Скопировать приглашение куратора' : 'Скопировать приглашение'
+  const fieldIdPrefix = role === 'curator' ? 'curator_' : ''
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-6 bg-white space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-900">{roleLabel}</h3>
+        <span className={cn(
+          'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+          link.isActive
+            ? 'bg-emerald-50 text-emerald-700'
+            : 'bg-gray-100 text-gray-700'
+        )}>
+          {link.isActive ? 'Набор открыт' : 'Набор закрыт'}
+        </span>
+      </div>
+
+      {/* Link row */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">Ссылка</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            readOnly
+            value={`${window.location.origin}/join/${link.token}`}
+            className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-600 font-mono truncate"
+          />
+          <button
+            onClick={() => onCopy(`${window.location.origin}/join/${link.token}`, 'Ссылка скопирована', `${fieldIdPrefix}link`)}
+            className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
+              copiedField === `${fieldIdPrefix}link`
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            )}
+          >
+            {copiedField === `${fieldIdPrefix}link` ? 'Скопировано' : 'Копировать'}
+          </button>
+        </div>
+      </div>
+
+      {/* Code row */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">Код курса</p>
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 font-mono text-2xl tracking-widest text-gray-900 font-bold">
+            {formatInviteCode(link.shortCode)}
+          </div>
+          <button
+            onClick={() => onCopy(link.shortCode, 'Код скопирован', `${fieldIdPrefix}code`)}
+            className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
+              copiedField === `${fieldIdPrefix}code`
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            )}
+          >
+            {copiedField === `${fieldIdPrefix}code` ? 'Скопировано' : 'Копировать'}
+          </button>
+        </div>
+      </div>
+
+      {/* Copy invitation message button */}
+      <button
+        onClick={() => {
+          const origin = window.location.origin
+          const url = `${origin}/join/${link.token}`
+          const formattedCode = formatInviteCode(link.shortCode)
+          let message: string
+          if (role === 'curator') {
+            message = `Привет! Ты куратор курса «${courseTitle}» в School Almiron. Перейди по ссылке и зарегистрируйся:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
+          } else {
+            message = `Привет! Присоединяйся к курсу в School Almiron:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
+          }
+          onCopy(message, 'Приглашение скопировано', `${fieldIdPrefix}invitation`)
+        }}
+        className={cn('w-full text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
+          copiedField === `${fieldIdPrefix}invitation`
+            ? 'bg-emerald-100 text-emerald-700'
+            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+        )}
+      >
+        <CopyIcon size={14} />
+        {copiedField === `${fieldIdPrefix}invitation` ? `${invitationButtonLabel} скопировано` : invitationButtonLabel}
+      </button>
+
+      {/* Caption */}
+      <p className="text-xs text-gray-500">
+        {caption}
+      </p>
+
+      {/* Control buttons */}
+      <div className="flex gap-2 border-t border-gray-100 pt-4">
+        <button
+          onClick={() => onSetActive(!link.isActive, role)}
+          className={cn('flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
+            link.isActive
+              ? 'bg-red-50 text-red-700 hover:bg-red-100'
+              : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+          )}
+        >
+          {link.isActive ? (
+            <>
+              <Lock size={14} />
+              Закрыть набор
+            </>
+          ) : (
+            <>
+              <Unlock size={14} />
+              Открыть набор
+            </>
+          )}
+        </button>
+        <button
+          onClick={() => onRotate(role)}
+          className="flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2 bg-gray-100 text-gray-700 hover:bg-gray-200"
+        >
+          <RotateCcw size={14} />
+          Перевыпустить
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function CourseStudentsSection({ courseId }: { courseId: string }) {
@@ -48,10 +204,15 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const [error, setError] = useState<string | null>(null)
 
   // Course join link
-  const [link, setLink] = useState<CourseJoinLink | null>(null)
+  const [studentLink, setStudentLink] = useState<CourseJoinLink | null>(null)
+  const [curatorLink, setCuratorLink] = useState<CourseJoinLink | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [copiedField, setCopiedField] = useState<string | null>(null)
+
+  // Curators
+  const [curators, setCurators] = useState<Curator[]>([])
+  const [loadingCurators, setLoadingCurators] = useState(false)
 
   // Refresh trigger
   const [tick, setTick] = useState(0)
@@ -74,25 +235,69 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         setLoading(true)
         setError(null)
 
-        // Load course join link
+        // Load course join link (students)
         try {
           const linkResult: any = await (supabase.rpc as any)('course_join_link_get', {
             p_course_id: courseId,
+            p_role: 'student',
           })
 
           if (linkResult.error) throw new Error(linkResult.error.message)
 
           const linkData = linkResult.data?.[0]
           if (!cancelled.value && linkData) {
-            setLink({
+            setStudentLink({
               token: linkData.token,
               shortCode: linkData.short_code,
               isActive: linkData.is_active,
             })
           }
         } catch (e: any) {
-          console.error('Ошибка при загрузке ссылки приглашения:', e)
+          console.error('Ошибка при загрузке ссылки приглашения для учеников:', e)
           // Don't fail the whole load if link fetch fails
+        }
+
+        // Load course join link (curators)
+        try {
+          const linkResult: any = await (supabase.rpc as any)('course_join_link_get', {
+            p_course_id: courseId,
+            p_role: 'curator',
+          })
+
+          if (linkResult.error) throw new Error(linkResult.error.message)
+
+          const linkData = linkResult.data?.[0]
+          if (!cancelled.value && linkData) {
+            setCuratorLink({
+              token: linkData.token,
+              shortCode: linkData.short_code,
+              isActive: linkData.is_active,
+            })
+          }
+        } catch (e: any) {
+          console.error('Ошибка при загрузке ссылки приглашения для кураторов:', e)
+          // Don't fail the whole load if link fetch fails
+        }
+
+        // Load curators
+        try {
+          const curatorResult: any = await (supabase as any)
+            .from('course_curators')
+            .select('id, profile_id, profiles(full_name, email)')
+            .eq('course_id', courseId)
+
+          if (!cancelled.value && curatorResult.data) {
+            const curatorsList = (curatorResult.data || []).map((row: any) => ({
+              id: row.id,
+              profileId: row.profile_id,
+              fullName: row.profiles?.full_name || 'Куратор',
+              email: row.profiles?.email || '',
+            }))
+            setCurators(curatorsList)
+          }
+        } catch (e: any) {
+          console.error('Ошибка при загрузке списка кураторов:', e)
+          // Don't fail the whole load if curators fetch fails
         }
 
         // Load enrolled students
@@ -226,7 +431,8 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   }
 
   // Set active status for join link
-  async function handleSetActive(active: boolean) {
+  async function handleSetActive(active: boolean, role: 'student' | 'curator') {
+    const link = role === 'student' ? studentLink : curatorLink
     if (!link) return
 
     setLinkError(null)
@@ -236,17 +442,23 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
       const result: any = await (supabase.rpc as any)('course_join_link_set_active', {
         p_course_id: courseId,
         p_active: active,
+        p_role: role,
       })
 
       if (result.error) throw new Error(result.error.message)
 
       const linkData = result.data?.[0]
       if (linkData) {
-        setLink({
+        const updatedLink = {
           token: linkData.token,
           shortCode: linkData.short_code,
           isActive: linkData.is_active,
-        })
+        }
+        if (role === 'student') {
+          setStudentLink(updatedLink)
+        } else {
+          setCuratorLink(updatedLink)
+        }
         toast.success(active ? 'Набор открыт' : 'Набор закрыт')
       }
     } catch (e: any) {
@@ -257,7 +469,8 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   }
 
   // Rotate join link
-  async function handleRotate() {
+  async function handleRotate(role: 'student' | 'curator') {
+    const link = role === 'student' ? studentLink : curatorLink
     if (!link) return
 
     if (!window.confirm('Старая ссылка и код перестанут работать. Уже зачисленных это не касается. Продолжить?')) {
@@ -270,23 +483,55 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     try {
       const result: any = await (supabase.rpc as any)('course_join_link_rotate', {
         p_course_id: courseId,
+        p_role: role,
       })
 
       if (result.error) throw new Error(result.error.message)
 
       const linkData = result.data?.[0]
       if (linkData) {
-        setLink({
+        const updatedLink = {
           token: linkData.token,
           shortCode: linkData.short_code,
           isActive: linkData.is_active,
-        })
+        }
+        if (role === 'student') {
+          setStudentLink(updatedLink)
+        } else {
+          setCuratorLink(updatedLink)
+        }
         toast.success('Ссылка перевыпущена')
       }
     } catch (e: any) {
       const errMsg = e.message || 'Ошибка при перевыпуске ссылки'
       setRpcError(errMsg)
       console.error('Error rotating link:', e)
+    }
+  }
+
+  // Remove curator
+  async function handleRemoveCurator(curatorId: string, curatorName: string) {
+    if (!window.confirm(`Убрать ${curatorName} из кураторов курса?`)) {
+      return
+    }
+
+    setRpcError(null)
+
+    try {
+      const { error } = await (supabase as any)
+        .from('course_curators')
+        .delete()
+        .eq('id', curatorId)
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Remove locally
+      setCurators(curators.filter(c => c.id !== curatorId))
+      toast.success('Куратор удален')
+    } catch (e: any) {
+      setRpcError(e.message || 'Ошибка при удалении куратора')
     }
   }
 
@@ -543,117 +788,60 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
       )}
 
       {/* Course Join Link Block */}
-      {link && (
-        <div className="border border-gray-200 rounded-lg p-6 bg-white space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900">Приглашение в курс</h3>
-            <span className={cn(
-              'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-              link.isActive
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-gray-100 text-gray-700'
-            )}>
-              {link.isActive ? 'Набор открыт' : 'Набор закрыт'}
-            </span>
-          </div>
+      {(studentLink || curatorLink) && (
+        <div className="space-y-6">
+          {/* Student link card */}
+          <JoinLinkCard
+            link={studentLink}
+            role="student"
+            copiedField={copiedField}
+            onCopy={copyToClipboard}
+            onSetActive={handleSetActive}
+            onRotate={handleRotate}
+          />
 
-          {/* Link row */}
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Ссылка</p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                readOnly
-                value={`${window.location.origin}/join/${link.token}`}
-                className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-600 font-mono truncate"
-              />
-              <button
-                onClick={() => copyToClipboard(`${window.location.origin}/join/${link.token}`, 'Ссылка скопирована', 'link')}
-                className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
-                  copiedField === 'link'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                {copiedField === 'link' ? 'Скопировано' : 'Копировать'}
-              </button>
-            </div>
-          </div>
+          {/* Curator link card */}
+          <JoinLinkCard
+            link={curatorLink}
+            role="curator"
+            courseTitle={students.length > 0 || curators.length > 0 ? (students[0] as any)?.courseTitle : 'курс'}
+            copiedField={copiedField}
+            onCopy={copyToClipboard}
+            onSetActive={handleSetActive}
+            onRotate={handleRotate}
+          />
 
-          {/* Code row */}
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Код курса</p>
-            <div className="flex gap-2 items-center">
-              <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 font-mono text-2xl tracking-widest text-gray-900 font-bold">
-                {formatInviteCode(link.shortCode)}
+          {/* Curators list */}
+          <div className="border border-gray-200 rounded-lg p-6 bg-white">
+            <h3 className="text-sm font-medium text-gray-900 mb-4">
+              Кураторы курса ({curators.length})
+            </h3>
+
+            {curators.length > 0 ? (
+              <div className="space-y-2">
+                {curators.map(curator => (
+                  <div
+                    key={curator.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">
+                        {curator.fullName} ({curator.email})
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCurator(curator.id, curator.fullName)}
+                      className="ml-2 p-1.5 rounded text-red-600 hover:bg-red-100 hover:text-red-800 transition-colors shrink-0"
+                      title="Убрать куратора"
+                    >
+                      <UserMinus size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <button
-                onClick={() => copyToClipboard(link.shortCode, 'Код скопирован', 'code')}
-                className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
-                  copiedField === 'code'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                {copiedField === 'code' ? 'Скопировано' : 'Копировать'}
-              </button>
-            </div>
-          </div>
-
-          {/* Copy invitation message button */}
-          <button
-            onClick={() => {
-              const origin = window.location.origin
-              const url = `${origin}/join/${link.token}`
-              const formattedCode = formatInviteCode(link.shortCode)
-              const message = `Привет! Присоединяйся к курсу в School Almiron:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
-              copyToClipboard(message, 'Приглашение скопировано', 'invitation')
-            }}
-            className={cn('w-full text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
-              copiedField === 'invitation'
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            ) : (
+              <p className="text-sm text-gray-500">Кураторов пока нет</p>
             )}
-          >
-            <CopyIcon size={14} />
-            {copiedField === 'invitation' ? 'Приглашение скопировано' : 'Скопировать приглашение'}
-          </button>
-
-          {/* Caption */}
-          <p className="text-xs text-gray-500">
-            Ссылка постоянная и общая для всех учеников. Ученик регистрируется сам и сразу попадает в курс.
-          </p>
-
-          {/* Control buttons */}
-          <div className="flex gap-2 border-t border-gray-100 pt-4">
-            <button
-              onClick={() => handleSetActive(!link.isActive)}
-              className={cn('flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
-                link.isActive
-                  ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-              )}
-            >
-              {link.isActive ? (
-                <>
-                  <Lock size={14} />
-                  Закрыть набор
-                </>
-              ) : (
-                <>
-                  <Unlock size={14} />
-                  Открыть набор
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleRotate}
-              className="flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2 bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              <RotateCcw size={14} />
-              Перевыпустить
-            </button>
           </div>
         </div>
       )}
