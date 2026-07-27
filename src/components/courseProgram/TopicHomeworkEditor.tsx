@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Eye, EyeOff, FileText, Loader2, Send, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ClipboardPaste, Eye, EyeOff, FileText, Loader2, Send, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
+import { TOPIC_HOMEWORK_BUCKET, formatBytes, nameForPastedImage } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 
 /** Что принимаем как файл задания: PDF и картинки. */
@@ -45,6 +45,10 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
   const [notifyBusy, setNotifyBusy] = useState(false)
   const [notifyMessage, setNotifyMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null)
 
+  // Читается из обработчика paste, который живёт вне рендера — отсюда ref.
+  const uploadingRef = useRef(false)
+  uploadingRef.current = uploads.length > 0
+
   useEffect(() => {
     setDueAt(homework?.due_at ? homework.due_at.slice(0, 10) : '')
     setGradeScale(homework?.grade_scale ?? null)
@@ -64,23 +68,60 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     }
   }
 
+  const uploadPicked = useCallback(
+    async (picked: File[]) => {
+      if (picked.length === 0) return
+      setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
+      setLocalError(null)
+      try {
+        await uploadHomeworkFiles(picked, (index, percent) => {
+          setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
+        })
+      } catch (err: any) {
+        setLocalError(err?.message ?? 'Не удалось загрузить файлы')
+      } finally {
+        setUploads([])
+      }
+    },
+    [uploadHomeworkFiles],
+  )
+
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (picked.length === 0) return
-
-    setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
-    setLocalError(null)
-    try {
-      await uploadHomeworkFiles(picked, (index, percent) => {
-        setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
-      })
-    } catch (err: any) {
-      setLocalError(err?.message ?? 'Не удалось загрузить файлы')
-    } finally {
-      setUploads([])
-    }
+    await uploadPicked(picked)
   }
+
+  /**
+   * Скриншот из буфера обмена: Ctrl+V прямо в открытой плитке ДЗ.
+   *
+   * Слушатель на document, а не на контейнере: у блока нет фокусируемого
+   * элемента, и требовать «сначала кликни сюда» — лишний шаг. Плитка ДЗ
+   * рендерится только когда она раскрыта (TopicMaterialsModal), поэтому
+   * перехват не «залипает» на всю страницу. Вставку в поля ввода
+   * пропускаем — там Ctrl+V должен работать как обычно.
+   */
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('input, textarea, [contenteditable="true"]')) return
+
+      const picked = Array.from(e.clipboardData?.items ?? [])
+        .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+        .map(item => item.getAsFile())
+        .filter((f): f is File => f !== null)
+      if (picked.length === 0) return
+
+      e.preventDefault()
+      if (uploadingRef.current) return
+      void uploadPicked(
+        picked.map((f, i) => new File([f], nameForPastedImage(f.name, f.type, i), { type: f.type })),
+      )
+    }
+
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [uploadPicked])
 
   /**
    * Публикация и снятие с публикации. При публикации сразу оповещаем в
@@ -234,7 +275,11 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
               className="hidden"
             />
           </label>
-          <p className="mt-1 text-xs text-gray-400">PDF и картинки, можно несколько сразу</p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
+            <ClipboardPaste size={12} className="shrink-0" />
+            PDF и картинки, можно несколько сразу — или вставьте скриншот
+            из буфера через Ctrl+V
+          </p>
         </div>
 
         {/* ── Дедлайн и баллы ── */}

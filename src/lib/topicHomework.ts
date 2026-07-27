@@ -232,3 +232,26 @@ export function formatDue(dueAt: string | null): string | null {
   const date = new Date(dueAt)
   return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
 }
+
+/**
+ * Имя для картинки, вставленной из буфера обмена.
+ *
+ * Скриншоты приходят безымянными или как `image.png` / «Снимок экрана…» —
+ * то есть все одинаковые. В списке файлов ДЗ это стопка неразличимых строк,
+ * поэтому подставляем читаемое имя со временем. Файл, у которого имя
+ * осмысленное (скопировали из проводника), не трогаем.
+ *
+ * `now` и `index` — параметры, чтобы функция была чистой и тестируемой:
+ * index различает несколько картинок из одной вставки.
+ */
+export function nameForPastedImage(fileName: string, mimeType: string, index = 0, now: Date = new Date()): string {
+  if (fileName && !/^(image|снимок экрана)[.\s]/i.test(fileName)) return fileName
+
+  const ext = (mimeType.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png'
+  const p = (n: number) => String(n).padStart(2, '0')
+  const stamp =
+    `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}` +
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`
+  const suffix = index > 0 ? `-${index + 1}` : ''
+  return `screenshot-${stamp}${suffix}.${ext}`
+}

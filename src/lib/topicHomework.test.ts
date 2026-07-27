@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  nameForPastedImage,
   ATTEMPT_STATUS_LABEL,
   TEACHER_ATTEMPT_STATUS_LABEL,
   groupAttemptsByStudent,
@@ -277,5 +278,34 @@ describe('formatDue', () => {
     const result1 = formatDue('2026-08-01')
     const result2 = formatDue('2026-08-01T23:59:59Z')
     expect(result1).toBe(result2)
+  })
+})
+
+describe('nameForPastedImage', () => {
+  const at = new Date(2026, 6, 27, 22, 45, 3)
+
+  it('даёт скриншоту из буфера читаемое имя со временем', () => {
+    expect(nameForPastedImage('image.png', 'image/png', 0, at)).toBe('screenshot-2026-07-27-224503.png')
+  })
+
+  it('различает несколько картинок из одной вставки', () => {
+    expect(nameForPastedImage('image.png', 'image/png', 1, at)).toBe('screenshot-2026-07-27-224503-2.png')
+  })
+
+  it('берёт расширение из mime-типа', () => {
+    expect(nameForPastedImage('', 'image/jpeg', 0, at)).toBe('screenshot-2026-07-27-224503.jpeg')
+  })
+
+  it('падает на png, если mime-типа нет вовсе', () => {
+    expect(nameForPastedImage('', '', 0, at)).toBe('screenshot-2026-07-27-224503.png')
+  })
+
+  it('не трогает осмысленное имя из проводника', () => {
+    expect(nameForPastedImage('вариант-3.png', 'image/png', 0, at)).toBe('вариант-3.png')
+  })
+
+  it('переименовывает русский «Снимок экрана»', () => {
+    expect(nameForPastedImage('Снимок экрана 2026-07-27.png', 'image/png', 0, at))
+      .toBe('screenshot-2026-07-27-224503.png')
   })
 })
