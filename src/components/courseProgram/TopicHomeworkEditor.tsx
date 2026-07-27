@@ -1,22 +1,29 @@
 import { useEffect, useState } from 'react'
-import { Bell, Eye, EyeOff, FileText, Loader2, Trash2, Upload } from 'lucide-react'
+import { Eye, EyeOff, FileText, Loader2, Send, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
-import { TopicHomeworkReview } from '@/components/courseProgram/TopicHomeworkReview'
 
 /** Что принимаем как файл задания: PDF и картинки. */
 const HOMEWORK_ACCEPT = 'application/pdf,image/*'
 
 /**
- * Преподавательский блок ДЗ темы.
+ * Преподавательский блок ДЗ темы — только ВЫДАЧА задания.
  *
  * Сознательно упрощён: у темы одно ДЗ, поэтому ни названия, ни инструкции
  * здесь нет — заголовок «Домашнее задание» ничего не сообщал, а инструкция
  * жила в самом PDF. Осталось то, что действительно решает преподаватель:
- * файлы, дедлайн, шкала баллов, публикация и оповещение.
+ * файлы, дедлайн, шкала баллов, публикация.
+ *
+ * Проверки работ здесь НЕТ: она живёт на `/homework-queue` — одна точка
+ * вместо двух, как уже сделано у ученика со сдачей (§12.3).
+ *
+ * Telegram-оповещение не кнопка, а следствие публикации: нажал
+ * «Опубликовать» — ученики узнали. Дедупликация по ключу
+ * `topic_homework:{hw}:{profile}` живёт в RPC, поэтому снять/опубликовать
+ * повторно не спамит.
  *
  * Строка ДЗ в базе заводится лениво (`ensureHomework`) — при первом файле
  * или первой настройке. Пустых черновиков от случайного открытия плитки
@@ -24,9 +31,9 @@ const HOMEWORK_ACCEPT = 'application/pdf,image/*'
  */
 export function TopicHomeworkEditor({ topicId, className }: { topicId: string; className?: string }) {
   const {
-    homework, files, attempts, attemptFiles, reviews, studentNames, loading, error,
+    homework, files, loading, error,
     updateHomework, uploadHomeworkFiles, removeHomeworkFile,
-    reviewAttempt, notifyStudents, notifyRecipientCount,
+    notifyStudents, notifyRecipientCount,
   } = useTopicHomework(topicId)
 
   const [dueAt, setDueAt] = useState('')
@@ -75,19 +82,32 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     }
   }
 
-  async function handleNotify() {
-    setNotifyBusy(true)
+  /**
+   * Публикация и снятие с публикации. При публикации сразу оповещаем в
+   * Telegram: отдельной кнопки нет, чтобы преподаватель не забывал её нажать.
+   *
+   * Сбой оповещения НЕ откатывает публикацию — задание уже видно ученикам,
+   * и это важнее доставки уведомления; о сбое просто сообщаем.
+   */
+  async function handleTogglePublish() {
+    const publishing = !isPublished
     setNotifyMessage(null)
+    await run(() => updateHomework({ is_published: publishing }))
+    if (!publishing) return
+
+    setNotifyBusy(true)
     try {
       const n = await notifyStudents()
-      if (n > 0) {
-        setNotifyMessage({ type: 'success', text: `Оповещение отправлено: ${n} ученика(ов) в очереди` })
-      } else {
-        setNotifyMessage({ type: 'warning', text: 'Все уже оповещены (или ни у кого не привязан Telegram)' })
-      }
-      setTimeout(() => setNotifyMessage(null), 3000)
+      setNotifyMessage(
+        n > 0
+          ? { type: 'success', text: `Опубликовано. Оповещено в Telegram: ${n}` }
+          : { type: 'warning', text: 'Опубликовано. Оповещать некого — ни у кого не привязан Telegram' },
+      )
     } catch (e: any) {
-      setNotifyMessage({ type: 'error', text: e?.message ?? 'Не удалось отправить оповещение' })
+      setNotifyMessage({
+        type: 'error',
+        text: 'Опубликовано, но оповещение не ушло: ' + (e?.message ?? 'неизвестная ошибка'),
+      })
     } finally {
       setNotifyBusy(false)
     }
@@ -127,8 +147,9 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           <Button
             variant={isPublished ? 'secondary' : 'primary'}
             size="sm"
-            onClick={() => run(() => updateHomework({ is_published: !isPublished }))}
-            disabled={busy || uploading || (!isPublished && !canPublish)}
+            onClick={handleTogglePublish}
+            disabled={busy || uploading || notifyBusy || (!isPublished && !canPublish)}
+            loading={notifyBusy}
             title={!isPublished && !canPublish ? 'Сначала загрузите файл задания' : undefined}
           >
             {isPublished ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -252,53 +273,29 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           </div>
         </div>
 
-        {saved && <div className="mb-3 text-xs text-emerald-600">Сохранено</div>}
+        {saved && <div className="mb-2 text-xs text-emerald-600">Сохранено</div>}
+
+        {/* До публикации — предупреждаем, скольким уйдёт; после — что ушло. */}
+        {!isPublished && !notifyMessage && canPublish && notifyRecipientCount !== null && (
+          <p className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Send size={12} />
+            {notifyRecipientCount > 0
+              ? `При публикации оповестим в Telegram: ${notifyRecipientCount}`
+              : 'Оповещать некого — ни у кого из учеников не привязан Telegram'}
+          </p>
+        )}
 
         {notifyMessage && (
           <div
             className={cn(
-              'mb-4 rounded-xl px-3 py-2 text-sm',
+              'rounded-xl px-3 py-2 text-sm',
               notifyMessage.type === 'success' && 'bg-emerald-50 text-emerald-700',
               notifyMessage.type === 'warning' && 'bg-gray-50 text-gray-600',
-              notifyMessage.type === 'error' && 'bg-red-50 text-red-700',
+              notifyMessage.type === 'error' && 'bg-amber-50 text-amber-700',
             )}
           >
             {notifyMessage.text}
           </div>
-        )}
-
-        {/* Оповещение появляется только после публикации: до неё ученик ДЗ не видит. */}
-        {isPublished && (
-          <div className="mb-4">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleNotify}
-              disabled={notifyBusy}
-              loading={notifyBusy}
-            >
-              <Bell size={14} />
-              {notifyRecipientCount === null
-                ? 'Оповестить в Telegram'
-                : `Оповестить в Telegram (${notifyRecipientCount})`}
-            </Button>
-            {notifyRecipientCount === 0 && (
-              <p className="mt-1 text-xs text-gray-400">Ни у кого из учеников курса не привязан Telegram</p>
-            )}
-          </div>
-        )}
-
-        {/* Локальная проверка работ этой темы. Общая очередь — на /homework-queue. */}
-        {homework && (
-          <TopicHomeworkReview
-            className="mt-4"
-            attempts={attempts}
-            attemptFiles={attemptFiles}
-            reviews={reviews}
-            studentNames={studentNames}
-            gradeScale={homework.grade_scale}
-            onReview={reviewAttempt}
-          />
         )}
       </div>
     </div>
