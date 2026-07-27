@@ -59,7 +59,29 @@ scripts/.checkpoints/
 scripts/analyze_variant_bank.py
 .codex-vite*.log
 vite-*.log
-_stage_repo.tar.gz
 
 # migration secrets
 r2-migration/
+
+# ── Мусор рабочего процесса (чистка 2026-07-27, §11 ЧАТ В) ──────────────────
+# Архивы, которыми репозиторий переносили в облако через мост
+*.tar.gz
+# Мост Claude не умеет удалять файлы — вместо удаления он их сюда переносит
+_to_delete/
+# Скриншоты ручных прогонов
+shot-*.png
+screenshots/
+# Отчёт покрытия (генерируется `vitest --coverage`)
+coverage/
+# Профиль браузера парсера и его выгрузки
+shkolkovo-chrome-profile/
+# Питоновские кэши и логи вспомогательных скриптов
+__pycache__/
+*.pyc
+*.pid
+doc_web/_out.txt
+doc_web/_err.txt
+# Загрузки локального редактора документов (doc_web) — не исходники
+doc_web/data/
+# Разовая тестовая фикстура
+test_doc.doc
