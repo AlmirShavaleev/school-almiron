@@ -538,3 +538,9 @@ auth.users+identities+profiles(триггер students)+group_students в мин
 в этом чате, сделать руками после ревью диффа (CartPage.tsx, тест-фикстуры
 topicHomework/topicMaterialItems, миграция 20260727153802; TopicPage — версия
 ЧАТ Б). Временный файл _obkatka_typecheck.tar.gz в корне репо — удалить.
+
+### R2 — статус на 2026-07-27
+rclone докачал бакет полностью. Проверено: assets.alminion.ru отдаёт и SVG,
+и PNG. Осталось: env VITE_ASSETS_BASE_URL=https://assets.alminion.ru в Vercel
+(Production+Preview) + Redeploy. Напоминание об удалении catalog-assets из
+Supabase Storage поставлено на 10.08.2026 (scheduled task).
