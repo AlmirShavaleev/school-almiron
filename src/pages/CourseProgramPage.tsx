@@ -29,6 +29,7 @@ import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
+import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -1148,7 +1149,7 @@ export function CourseProgramPage() {
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
-  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'settings'>('program')
+  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'students' | 'settings'>('program')
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
@@ -1584,6 +1585,7 @@ export function CourseProgramPage() {
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
                 { key: 'homework',  label: 'Домашние задания' },
+                { key: 'students',  label: 'Ученики' },
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
                 <button
@@ -1737,6 +1739,11 @@ export function CourseProgramPage() {
             {/* Homework tab */}
             {tab === 'homework' && (
               <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} />
+            )}
+
+            {/* Students tab */}
+            {tab === 'students' && (
+              <CourseStudentsSection courseId={selectedCourse.id} />
             )}
 
             {/* Settings tab */}
