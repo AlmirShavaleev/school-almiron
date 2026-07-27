@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, Trash2, RotateCcw } from 'lucide-react'
+import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, Trash2, RotateCcw, Pencil, UserMinus, Check, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
 import {
@@ -77,6 +77,13 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
 
   // Refresh trigger
   const [tick, setTick] = useState(0)
+
+  // Editing state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+  const [rpcError, setRpcError] = useState<string | null>(null)
 
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
@@ -360,6 +367,79 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     }
   }
 
+  // Handle rename
+  async function handleStartEdit(studentId: string, currentName: string) {
+    setEditingId(studentId)
+    setEditName(currentName)
+    setEditError(null)
+  }
+
+  async function handleSaveRename(studentId: string) {
+    if (!editName.trim()) {
+      setEditError('Имя не может быть пустым')
+      return
+    }
+
+    setEditLoading(true)
+    setEditError(null)
+    setRpcError(null)
+
+    try {
+      const { error } = await (supabase.rpc as any)('course_member_rename', {
+        p_student_id: studentId,
+        p_full_name: editName.trim(),
+      })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Update locally
+      setStudents(students.map(s =>
+        s.studentId === studentId ? { ...s, name: editName.trim() } : s
+      ))
+      setEditingId(null)
+      setEditName('')
+      toast.success('Имя ученика изменено')
+    } catch (e: any) {
+      setRpcError(e.message || 'Ошибка при переименовании')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditingId(null)
+    setEditName('')
+    setEditError(null)
+  }
+
+  // Handle remove
+  async function handleRemoveStudent(studentId: string, studentName: string) {
+    if (!window.confirm(`Отчислить ${studentName} с курса? Аккаунт и его работы сохранятся, но доступ к курсу пропадёт.`)) {
+      return
+    }
+
+    setRpcError(null)
+
+    try {
+      const { error } = await (supabase.rpc as any)('course_member_remove', {
+        p_course_id: courseId,
+        p_student_id: studentId,
+      })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Remove locally
+      setStudents(students.filter(s => s.studentId !== studentId))
+      toast.success('Ученик отчислен с курса')
+    } catch (e: any) {
+      setRpcError(e.message || 'Ошибка при отчислении')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
@@ -382,9 +462,169 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Invite block - always visible */}
+      {/* RPC Error banner */}
+      {rpcError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div className="flex gap-2">
+            <AlertCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{rpcError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Students section */}
+      {students.length > 0 ? (
+        <div className="space-y-4">
+          {/* Header with badge and refresh button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-gray-900">Ученики курса</h3>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium">
+                {students.length}
+              </span>
+            </div>
+            <button
+              onClick={() => setTick(t => t + 1)}
+              title="Обновить список"
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-600"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ученик</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Группа</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Телефон</th>
+                    {showTelegramColumn && (
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Telegram</th>
+                    )}
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Зачислен</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student, idx) => (
+                    <tr
+                      key={student.studentId}
+                      className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col gap-0.5">
+                          {editingId === student.studentId ? (
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveRename(student.studentId)
+                                  } else if (e.key === 'Escape') {
+                                    handleCancelEdit()
+                                  }
+                                }}
+                                autoFocus
+                                className="flex-1 text-sm border border-primary-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                              <button
+                                onClick={() => handleSaveRename(student.studentId)}
+                                disabled={editLoading}
+                                className="p-1 rounded hover:bg-primary-100 text-primary-600"
+                                title="Сохранить"
+                              >
+                                {editLoading ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Check size={16} />
+                                )}
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                disabled={editLoading}
+                                className="p-1 rounded hover:bg-gray-200 text-gray-600"
+                                title="Отмена"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-sm font-medium text-gray-900">{student.name}</span>
+                          )}
+                          <span className="text-xs text-gray-400">{student.email}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-900">
+                          {Array.from(student.groupNames).join(', ') || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-600">{student.phone || '—'}</span>
+                      </td>
+                      {showTelegramColumn && (
+                        <td className="px-4 py-2">
+                          {telegramSet.has(student.profileId) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium">
+                              <MessageCircle size={12} />
+                              привязан
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium">
+                              —
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-2">
+                        <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleStartEdit(student.studentId, student.name)}
+                            disabled={editingId !== null}
+                            className="p-1.5 rounded text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors disabled:opacity-50"
+                            title="Переименовать"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleRemoveStudent(student.studentId, student.name)}
+                            disabled={editingId !== null}
+                            className="p-1.5 rounded text-red-600 hover:bg-red-100 hover:text-red-800 transition-colors disabled:opacity-50"
+                            title="Отчислить с курса"
+                          >
+                            <UserMinus size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
+          <Users size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
+          <p className="text-sm font-medium text-gray-700">В курсе пока нет учеников</p>
+          <p className="mt-1 text-sm text-gray-400">Приглашение принимается ниже, ученики появятся в этом списке</p>
+        </div>
+      )}
+
+      {/* Invite block */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium text-gray-900">Пригласить ученика в курс</h3>
+        <div>
+          <h3 className="text-sm font-medium text-gray-900">Пригласить ученика в курс</h3>
+          <p className="text-xs text-gray-500 mt-1">1. Создайте персональное приглашение → 2. Отправьте ссылку ученику → 3. После регистрации он появится в таблице выше</p>
+        </div>
 
         {/* Invite form */}
         <div className="border border-gray-200 rounded-lg p-4 bg-white">
@@ -550,92 +790,6 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         )}
       </div>
 
-      {/* Students section */}
-      {students.length > 0 ? (
-        <div className="space-y-4">
-          {/* Header with badge and refresh button */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-gray-900">Ученики курса</h3>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium">
-                {students.length}
-              </span>
-            </div>
-            <button
-              onClick={() => setTick(t => t + 1)}
-              title="Обновить список"
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-
-          {/* Table */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ученик</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Группа</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Телефон</th>
-                    {showTelegramColumn && (
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Telegram</th>
-                    )}
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Зачислен</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student, idx) => (
-                    <tr
-                      key={student.studentId}
-                      className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
-                    >
-                      <td className="px-4 py-2">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium text-gray-900">{student.name}</span>
-                          <span className="text-xs text-gray-400">{student.email}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="text-sm text-gray-900">
-                          {Array.from(student.groupNames).join(', ') || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="text-sm text-gray-600">{student.phone || '—'}</span>
-                      </td>
-                      {showTelegramColumn && (
-                        <td className="px-4 py-2">
-                          {telegramSet.has(student.profileId) ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium">
-                              <MessageCircle size={12} />
-                              привязан
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium">
-                              —
-                            </span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-4 py-2">
-                        <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
-          <Users size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
-          <p className="text-sm font-medium text-gray-700">В курсе пока нет учеников</p>
-          <p className="mt-1 text-sm text-gray-400">Приглашение принимается выше, ученики появятся в этом списке</p>
-        </div>
-      )}
     </div>
   )
 }
