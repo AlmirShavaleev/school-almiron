@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 
 const acceptStudentInvite = vi.fn()
 const acceptStudentInviteByCode = vi.fn()
+const acceptCourseJoin = vi.fn()
 const signOut = vi.fn()
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -23,6 +24,7 @@ vi.mock('@/lib/studentInvitationAcceptance', () => {
   return {
     acceptStudentInvite: (token: string) => acceptStudentInvite(token),
     acceptStudentInviteByCode: (code: string) => acceptStudentInviteByCode(code),
+    acceptCourseJoin: (value: string) => acceptCourseJoin(value),
     InvitationAcceptanceError,
   }
 })
@@ -42,6 +44,7 @@ describe('JoinPage', () => {
   beforeEach(() => {
     acceptStudentInvite.mockReset()
     acceptStudentInviteByCode.mockReset()
+    acceptCourseJoin.mockReset()
     signOut.mockReset()
     useAuthStore.setState({ user: null, profile: null, loading: false } as any)
     sessionStorage.clear()
@@ -125,6 +128,10 @@ describe('JoinPage', () => {
     } as any)
     const { InvitationAcceptanceError } = await import('@/lib/studentInvitationAcceptance')
     acceptStudentInvite.mockRejectedValue(new InvitationAcceptanceError(_kind as any, message))
+    // For 'invalid' errors, also mock acceptCourseJoin to fail
+    if (_kind === 'invalid') {
+      acceptCourseJoin.mockRejectedValue(new Error(message))
+    }
 
     renderJoin('/join/token-secret-123')
     fireEvent.click(screen.getByText('Присоединиться'))

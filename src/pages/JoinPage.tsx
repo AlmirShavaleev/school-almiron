@@ -5,10 +5,15 @@ import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { useAuth } from '@/hooks/useAuth'
 import { clearPendingInvite, formatInviteCode, normalizeInviteCode, readPendingInvite, savePendingInvite } from '@/lib/studentInviteSession'
-import { acceptStudentInvite, acceptStudentInviteByCode, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
+import { acceptStudentInvite, acceptStudentInviteByCode, acceptCourseJoin, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
 
 type JoinMode = 'token' | 'code'
 type AcceptState = 'idle' | 'success'
+
+interface JoinResult {
+  groupId: string
+  courseTitle?: string
+}
 
 function isStaffRole(role?: string | null): boolean {
   return ['teacher', 'admin', 'owner', 'curator', 'parent'].includes(role || '')
@@ -25,7 +30,7 @@ export function JoinPage() {
   const [codeInput, setCodeInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ groupId: string } | null>(null)
+  const [result, setResult] = useState<JoinResult | null>(null)
 
   useEffect(() => {
     if (token) {
@@ -47,20 +52,38 @@ export function JoinPage() {
     if (normalizedCode) savePendingInvite({ type: 'code', value: normalizedCode })
   }, [mode, normalizedCode])
 
+  async function acceptAny(tokenOrCode: string, isToken: boolean) {
+    try {
+      if (isToken) {
+        return await acceptStudentInvite(tokenOrCode)
+      } else {
+        return await acceptStudentInviteByCode(tokenOrCode)
+      }
+    } catch (err) {
+      const invError = err instanceof InvitationAcceptanceError ? err : null
+      if (invError?.kind === 'invalid') {
+        // Try course join as fallback
+        const courseAccepted = await acceptCourseJoin(tokenOrCode)
+        return { groupId: courseAccepted.groupId, courseTitle: courseAccepted.courseTitle }
+      }
+      throw err
+    }
+  }
+
   async function handleAccept() {
     if (submitting) return
     setSubmitting(true)
     setError(null)
     try {
-      const accepted = token
-        ? await acceptStudentInvite(token)
-        : await acceptStudentInviteByCode(normalizedCode)
+      const accepted = await acceptAny(token || normalizedCode, !!token)
       clearPendingInvite()
-      setResult({ groupId: accepted.groupId })
+      setResult({ groupId: accepted.groupId, courseTitle: (accepted as any).courseTitle })
     } catch (err) {
       const mapped = err instanceof InvitationAcceptanceError
         ? err
-        : new InvitationAcceptanceError('unknown', 'Не удалось обработать приглашение')
+        : err instanceof Error
+          ? new InvitationAcceptanceError('unknown', err.message)
+          : new InvitationAcceptanceError('unknown', 'Не удалось обработать приглашение')
       if (['invalid', 'expired', 'revoked', 'used', 'group_unavailable', 'group_full'].includes(mapped.kind)) {
         clearPendingInvite()
       }
@@ -96,7 +119,11 @@ export function JoinPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Вы присоединились</h1>
-              <p className="mt-2 text-gray-500">Вы добавлены в учебную группу. Курс уже доступен в разделе “Мои курсы”.</p>
+              <p className="mt-2 text-gray-500">
+                {result.courseTitle
+                  ? `Вы зачислены на курс "${result.courseTitle}". Курс уже доступен в разделе "Мои курсы".`
+                  : 'Вы добавлены в учебную группу. Курс уже доступен в разделе "Мои курсы".'}
+              </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Button onClick={() => navigate(`/my-course/${result.groupId}`)}>Открыть курс</Button>
@@ -110,13 +137,13 @@ export function JoinPage() {
               <p className="mt-2 text-gray-500">
                 {mode === 'token'
                   ? 'Войдите в существующий аккаунт ученика или зарегистрируйтесь, чтобы присоединиться к группе.'
-                  : 'Введите код приглашения, затем войдите в существующий аккаунт ученика или зарегистрируйтесь.'}
+                  : 'Введите код курса или приглашения, затем войдите в существующий аккаунт ученика или зарегистрируйтесь.'}
               </p>
             </div>
 
             {mode === 'code' && (
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">Код приглашения</label>
+                <label className="block text-sm font-semibold text-gray-700">Код курса или приглашения</label>
                 <input
                   aria-label="Код приглашения"
                   value={codeInput}
@@ -133,7 +160,7 @@ export function JoinPage() {
                   placeholder="ABCD-1234"
                   className="w-full rounded-xl border border-gray-200 px-4 py-3 text-lg tracking-[0.2em] focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <p className="text-xs text-gray-400">Можно вводить с дефисами, пробелами и в любом регистре.</p>
+                <p className="text-xs text-gray-400">Код даёт преподаватель. Можно вводить с дефисами, пробелами и в любом регистре.</p>
               </div>
             )}
 

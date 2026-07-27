@@ -6,6 +6,12 @@ export interface InvitationAcceptanceResult {
   groupId: string
 }
 
+export interface CourseJoinAccepted {
+  groupId: string
+  courseId: string
+  courseTitle: string
+}
+
 export type InvitationErrorKind =
   | 'invalid'
   | 'expired'
@@ -90,5 +96,22 @@ export async function acceptStudentInviteByCode(shortCode: string): Promise<Invi
     return mapResult(data)
   } catch (error) {
     throw mapError(error)
+  }
+}
+
+export async function acceptCourseJoin(value: string): Promise<CourseJoinAccepted> {
+  try {
+    const db = supabase as any
+    const { data, error } = await db.rpc('course_join_accept', { p_value: value })
+    if (error) throw error
+    // course_join_accept is a TABLE-returning RPC -> data is an array
+    const row = Array.isArray(data) ? data[0] : data
+    return {
+      groupId: String(row?.group_id ?? ''),
+      courseId: String(row?.course_id ?? ''),
+      courseTitle: String(row?.course_title ?? ''),
+    }
+  } catch (error) {
+    throw new Error((error as any)?.message ?? 'Не удалось обработать приглашение')
   }
 }

@@ -1,16 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, Trash2, RotateCcw, Pencil, UserMinus, Check, X } from 'lucide-react'
+import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
-import {
-  createStudentInvite,
-  buildInviteUrl,
-  buildInviteMessage,
-  getMyStudentInvites,
-  revokeStudentInvite,
-  reissueStudentInvite,
-  type MyStudentInvite,
-} from '@/lib/studentEnrollment'
+import { formatInviteCode } from '@/lib/studentInviteSession'
 import { toast } from '@/store/toastStore'
 
 interface StudentInfo {
@@ -33,17 +25,10 @@ interface StudentRow {
   enrolledAt: string | null
 }
 
-interface CourseGroup {
-  id: string
-  name: string
-}
-
-interface InviteResult {
-  inviteId: string
+interface CourseJoinLink {
   token: string
   shortCode: string
-  expiresAt: string
-  fullName: string
+  isActive: boolean
 }
 
 function formatDate(value: string | null): string {
@@ -62,18 +47,11 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Invite form state
-  const [courseGroup, setCourseGroup] = useState<CourseGroup | null>(null)
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [creatingInvite, setCreatingInvite] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
-  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null)
-
-  // Active invites
-  const [activeInvites, setActiveInvites] = useState<MyStudentInvite[]>([])
-  const [invitesLoading, setInvitesLoading] = useState(false)
+  // Course join link
+  const [link, setLink] = useState<CourseJoinLink | null>(null)
+  const [linkLoading, setLinkLoading] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   // Refresh trigger
   const [tick, setTick] = useState(0)
@@ -96,19 +74,25 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         setLoading(true)
         setError(null)
 
-        // Load course group
-        const groupResult: any = await supabase
-          .from('groups')
-          .select('id, name')
-          .eq('course_id', courseId)
-          .order('created_at')
-          .limit(1)
+        // Load course join link
+        try {
+          const linkResult: any = await (supabase.rpc as any)('course_join_link_get', {
+            p_course_id: courseId,
+          })
 
-        if (groupResult.error) throw new Error(groupResult.error.message)
+          if (linkResult.error) throw new Error(linkResult.error.message)
 
-        const groupData = groupResult.data?.[0]
-        if (!cancelled.value) {
-          setCourseGroup(groupData ? { id: groupData.id, name: groupData.name } : null)
+          const linkData = linkResult.data?.[0]
+          if (!cancelled.value && linkData) {
+            setLink({
+              token: linkData.token,
+              shortCode: linkData.short_code,
+              isActive: linkData.is_active,
+            })
+          }
+        } catch (e: any) {
+          console.error('Ошибка при загрузке ссылки приглашения:', e)
+          // Don't fail the whole load if link fetch fails
         }
 
         // Load enrolled students
@@ -222,53 +206,18 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     }
   }, [courseId, tick])
 
-  // Load active invites when courseGroup changes
-  useEffect(() => {
-    if (!courseGroup) {
-      setActiveInvites([])
-      return
-    }
-
-    let cancelled = false
-
-    async function loadInvites() {
-      try {
-        setInvitesLoading(true)
-        const invites = await getMyStudentInvites({ groupId: courseGroup!.id })
-        // Filter only pending invites (not accepted)
-        const pendingInvites = invites.filter(i => i.status === 'pending')
-        if (!cancelled) {
-          setActiveInvites(pendingInvites)
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          console.error('Ошибка при загрузке приглашений:', e)
-        }
-      } finally {
-        if (!cancelled) {
-          setInvitesLoading(false)
-        }
-      }
-    }
-
-    loadInvites()
-
-    return () => {
-      cancelled = true
-    }
-  }, [courseGroup])
 
   // Helper function to copy text
-  async function copyToClipboard(text: string | undefined, successMsg: string, inviteId?: string) {
+  async function copyToClipboard(text: string | undefined, successMsg: string, fieldId?: string) {
     if (!text) {
       toast.error('Нечего копировать')
       return
     }
     try {
       await navigator.clipboard.writeText(text)
-      if (inviteId) {
-        setCopiedInviteId(inviteId)
-        setTimeout(() => setCopiedInviteId(null), 2000)
+      if (fieldId) {
+        setCopiedField(fieldId)
+        setTimeout(() => setCopiedField(null), 2000)
       }
       toast.success(successMsg)
     } catch (err) {
@@ -276,94 +225,68 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     }
   }
 
-  // Create or get course group, then create invite
-  async function handleCreateInvite() {
-    if (!fullName.trim()) {
-      setInviteError('Укажите ФИО ученика')
+  // Set active status for join link
+  async function handleSetActive(active: boolean) {
+    if (!link) return
+
+    setLinkError(null)
+    setRpcError(null)
+
+    try {
+      const result: any = await (supabase.rpc as any)('course_join_link_set_active', {
+        p_course_id: courseId,
+        p_active: active,
+      })
+
+      if (result.error) throw new Error(result.error.message)
+
+      const linkData = result.data?.[0]
+      if (linkData) {
+        setLink({
+          token: linkData.token,
+          shortCode: linkData.short_code,
+          isActive: linkData.is_active,
+        })
+        toast.success(active ? 'Набор открыт' : 'Набор закрыт')
+      }
+    } catch (e: any) {
+      const errMsg = e.message || `Ошибка при ${active ? 'открытии' : 'закрытии'} набора`
+      setRpcError(errMsg)
+      console.error('Error setting link active:', e)
+    }
+  }
+
+  // Rotate join link
+  async function handleRotate() {
+    if (!link) return
+
+    if (!window.confirm('Старая ссылка и код перестанут работать. Уже зачисленных это не касается. Продолжить?')) {
       return
     }
 
-    setCreatingInvite(true)
-    setInviteError(null)
+    setLinkError(null)
+    setRpcError(null)
 
     try {
-      let groupId = courseGroup?.id
-
-      // If no group, create one
-      if (!groupId) {
-        const createGroupResult: any = await supabase
-          .from('groups')
-          .insert({ course_id: courseId, name: 'Группа курса' })
-          .select('id, name')
-          .single()
-
-        if (createGroupResult.error) throw new Error(createGroupResult.error.message)
-
-        const newGroup = createGroupResult.data
-        setCourseGroup({ id: newGroup.id, name: newGroup.name })
-        groupId = newGroup.id
-      }
-
-      // Create invite
-      const result = await createStudentInvite({
-        groupId: groupId!,
-        fullName: fullName.trim(),
-        email: email.trim() || null,
+      const result: any = await (supabase.rpc as any)('course_join_link_rotate', {
+        p_course_id: courseId,
       })
 
-      setInviteResult({
-        ...result,
-        fullName: fullName.trim(),
-      })
-      setFullName('')
-      setEmail('')
+      if (result.error) throw new Error(result.error.message)
 
-      // Reload active invites
-      const invites = await getMyStudentInvites({ groupId })
-      const pendingInvites = invites.filter(i => i.status === 'pending')
-      setActiveInvites(pendingInvites)
-    } catch (e: any) {
-      setInviteError(e.message || 'Ошибка при создании приглашения')
-    } finally {
-      setCreatingInvite(false)
-    }
-  }
-
-  // Revoke invite
-  async function handleRevokeInvite(inviteId: string) {
-    if (!window.confirm('Отозвать приглашение?')) return
-
-    try {
-      await revokeStudentInvite(inviteId)
-      // Reload active invites
-      if (courseGroup) {
-        const invites = await getMyStudentInvites({ groupId: courseGroup.id })
-        const pendingInvites = invites.filter(i => i.status === 'pending')
-        setActiveInvites(pendingInvites)
+      const linkData = result.data?.[0]
+      if (linkData) {
+        setLink({
+          token: linkData.token,
+          shortCode: linkData.short_code,
+          isActive: linkData.is_active,
+        })
+        toast.success('Ссылка перевыпущена')
       }
-      toast.success('Приглашение отозвано')
     } catch (e: any) {
-      setInviteError(e.message || 'Ошибка при отзыве приглашения')
-    }
-  }
-
-  // Reissue invite
-  async function handleReissueInvite(inviteId: string) {
-    try {
-      const result = await reissueStudentInvite(inviteId)
-      setInviteResult({
-        ...result,
-        fullName: 'Переизданное приглашение',
-      })
-      // Reload active invites
-      if (courseGroup) {
-        const invites = await getMyStudentInvites({ groupId: courseGroup.id })
-        const pendingInvites = invites.filter(i => i.status === 'pending')
-        setActiveInvites(pendingInvites)
-      }
-      toast.success('Приглашение переиздано')
-    } catch (e: any) {
-      setInviteError(e.message || 'Ошибка при переиздании приглашения')
+      const errMsg = e.message || 'Ошибка при перевыпуске ссылки'
+      setRpcError(errMsg)
+      console.error('Error rotating link:', e)
     }
   }
 
@@ -619,176 +542,121 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         </div>
       )}
 
-      {/* Invite block */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-medium text-gray-900">Пригласить ученика в курс</h3>
-          <p className="text-xs text-gray-500 mt-1">1. Создайте персональное приглашение → 2. Отправьте ссылку ученику → 3. После регистрации он появится в таблице выше</p>
-        </div>
+      {/* Course Join Link Block */}
+      {link && (
+        <div className="border border-gray-200 rounded-lg p-6 bg-white space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-900">Приглашение в курс</h3>
+            <span className={cn(
+              'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+              link.isActive
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-gray-100 text-gray-700'
+            )}>
+              {link.isActive ? 'Набор открыт' : 'Набор закрыт'}
+            </span>
+          </div>
 
-        {/* Invite form */}
-        <div className="border border-gray-200 rounded-lg p-4 bg-white">
-          {inviteResult ? (
-            // Show invite result
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-emerald-900">Приглашение создано</p>
-                  <p className="text-xs text-emerald-700">{inviteResult.fullName}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 border-t border-gray-200 pt-4">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Персональная ссылка</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={buildInviteUrl(inviteResult.token)}
-                      className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 text-gray-600"
-                    />
-                    <button
-                      onClick={() => copyToClipboard(buildInviteUrl(inviteResult.token), 'Ссылка скопирована', inviteResult.inviteId)}
-                      className={cn('px-3 py-1 rounded text-xs font-medium transition-colors',
-                        copiedInviteId === inviteResult.inviteId ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}
-                    >
-                      {copiedInviteId === inviteResult.inviteId ? 'Скопировано' : 'Скопировать'}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => copyToClipboard(buildInviteMessage(inviteResult.token, inviteResult.shortCode), 'Приглашение скопировано', 'msg_' + inviteResult.inviteId)}
-                  className="w-full text-xs px-3 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
-                >
-                  <CopyIcon size={14} />
-                  Скопировать приглашение
-                </button>
-
-                {inviteResult.expiresAt && (
-                  <p className="text-xs text-gray-500">
-                    Действует до {new Date(inviteResult.expiresAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
-                )}
-              </div>
-
+          {/* Link row */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Ссылка</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/join/${link.token}`}
+                className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-600 font-mono truncate"
+              />
               <button
-                onClick={() => {
-                  setInviteResult(null)
-                  setFullName('')
-                  setEmail('')
-                }}
-                className="w-full text-xs px-3 py-2 rounded bg-primary-500 text-white hover:bg-primary-600 transition-colors font-medium"
-              >
-                Создать ещё одно приглашение
-              </button>
-            </div>
-          ) : (
-            // Show invite form
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">ФИО ученика *</label>
-                <input
-                  type="text"
-                  placeholder="Иван Петров"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Email (необязательно)</label>
-                <input
-                  type="email"
-                  placeholder="ivan@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              {inviteError && (
-                <div className="flex gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
-                  <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-700">{inviteError}</p>
-                </div>
-              )}
-
-              <button
-                onClick={handleCreateInvite}
-                disabled={creatingInvite || !fullName.trim()}
-                className={cn('w-full text-sm px-3 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2',
-                  creatingInvite || !fullName.trim()
-                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                    : 'bg-primary-500 text-white hover:bg-primary-600'
+                onClick={() => copyToClipboard(`${window.location.origin}/join/${link.token}`, 'Ссылка скопирована', 'link')}
+                className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
+                  copiedField === 'link'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 )}
               >
-                {creatingInvite ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Создаём…
-                  </>
-                ) : (
-                  'Создать приглашение'
-                )}
+                {copiedField === 'link' ? 'Скопировано' : 'Копировать'}
               </button>
-            </div>
-          )}
-        </div>
-
-        {/* Active invites */}
-        {courseGroup && activeInvites.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-medium text-gray-600">Активные приглашения</h4>
-            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">ФИО</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">Статус</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-500">Действия</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeInvites.map((invite, idx) => (
-                    <tr key={invite.inviteId} className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}>
-                      <td className="px-3 py-2">
-                        <span className="text-gray-900">{invite.fullName}</span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
-                          Ожидание
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => handleReissueInvite(invite.inviteId)}
-                            className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                            title="Перевыпустить приглашение (получить свежую ссылку)"
-                          >
-                            <RotateCcw size={12} />
-                          </button>
-                          <button
-                            onClick={() => handleRevokeInvite(invite.inviteId)}
-                            className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-600 transition-colors"
-                            title="Отозвать приглашение"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Code row */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Код курса</p>
+            <div className="flex gap-2 items-center">
+              <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 font-mono text-2xl tracking-widest text-gray-900 font-bold">
+                {formatInviteCode(link.shortCode)}
+              </div>
+              <button
+                onClick={() => copyToClipboard(link.shortCode, 'Код скопирован', 'code')}
+                className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
+                  copiedField === 'code'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                )}
+              >
+                {copiedField === 'code' ? 'Скопировано' : 'Копировать'}
+              </button>
+            </div>
+          </div>
+
+          {/* Copy invitation message button */}
+          <button
+            onClick={() => {
+              const origin = window.location.origin
+              const url = `${origin}/join/${link.token}`
+              const formattedCode = formatInviteCode(link.shortCode)
+              const message = `Привет! Присоединяйся к курсу в School Almiron:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
+              copyToClipboard(message, 'Приглашение скопировано', 'invitation')
+            }}
+            className={cn('w-full text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
+              copiedField === 'invitation'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            )}
+          >
+            <CopyIcon size={14} />
+            {copiedField === 'invitation' ? 'Приглашение скопировано' : 'Скопировать приглашение'}
+          </button>
+
+          {/* Caption */}
+          <p className="text-xs text-gray-500">
+            Ссылка постоянная и общая для всех учеников. Ученик регистрируется сам и сразу попадает в курс.
+          </p>
+
+          {/* Control buttons */}
+          <div className="flex gap-2 border-t border-gray-100 pt-4">
+            <button
+              onClick={() => handleSetActive(!link.isActive)}
+              className={cn('flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2',
+                link.isActive
+                  ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+              )}
+            >
+              {link.isActive ? (
+                <>
+                  <Lock size={14} />
+                  Закрыть набор
+                </>
+              ) : (
+                <>
+                  <Unlock size={14} />
+                  Открыть набор
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleRotate}
+              className="flex-1 text-xs px-3 py-2 rounded font-medium transition-colors flex items-center justify-center gap-2 bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              <RotateCcw size={14} />
+              Перевыпустить
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   )
