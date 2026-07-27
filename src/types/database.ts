@@ -5584,6 +5584,10 @@ export type Database = {
               wrong_count: number
             }[]
           }
+      get_student_topic_journal: {
+        Args: { p_course_id?: string; p_student_id: string }
+        Returns: Json
+      }
       get_student_work_detail: {
         Args: { p_student_assignment_id: string }
         Returns: Json

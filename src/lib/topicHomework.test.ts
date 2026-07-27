@@ -165,7 +165,7 @@ describe('история попыток', () => {
 describe('latestReview — комментарий преподавателя', () => {
   const review = (id: string, attemptId: string, at: string, comment: string): TopicHomeworkReviewRow => ({
     id, attempt_id: attemptId, reviewer_id: 'teacher',
-    decision: 'returned_for_revision', comment, created_at: at,
+    decision: 'returned_for_revision', comment, created_at: at, score: null,
   })
 
   it('берёт самый свежий вердикт по попытке', () => {

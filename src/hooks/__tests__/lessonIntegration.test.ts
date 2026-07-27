@@ -229,11 +229,15 @@ describe('LessonDetailPage — Etap 5 sections wired without touching legacy blo
   it('renders LessonSummaryCard, LessonMaterialsCard, LessonHomeworkCard', () => {
     expect(src).toContain('<LessonSummaryCard')
     expect(src).toContain('<LessonMaterialsCard')
-    expect(src).toContain('<LessonHomeworkCard')
+    expect(src).toContain('<LessonHomeworkV2Card')
   })
 
-  it('legacy topic_materials and homeworks-table blocks remain untouched', () => {
-    expect(src).toContain("from('topic_materials')")
+  // Блок материалов переведён на новый контур (ЧАТ Б): topic_materials больше
+  // не читается нигде во фронте. Легаси-таблица homeworks здесь пока остаётся —
+  // она уйдёт вместе с очередью 1 §4.
+  it('materials come from topic_material_items, not the legacy topic_materials table', () => {
+    expect(src).toContain("from('topic_material_items')")
+    expect(src).not.toContain("from('topic_materials')")
     expect(src).toContain("from('homeworks')")
   })
 

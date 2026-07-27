@@ -1,10 +1,28 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import type {
+  TopicHomeworkAttemptRow, TopicHomeworkReviewRow, GradeScale,
+} from '@/lib/topicHomework'
 import {
-  aggregateStatus, mapCollectionSubmission, mapLegacySubmission, progressOf,
-  type UnifiedStatus, type UnifiedSubmission,
-} from '@/lib/unifiedSubmissions'
+  sectionsFromMaterials, homeworkStatus, statusAttempt, reviewOfAttempt,
+  homeworkMax, testStatus, topicProgress,
+  type TopicSection, type TopicHwStatus, type TopicTestStatus,
+} from '@/lib/studentProgram'
+
+/**
+ * Программа курса глазами ученика.
+ *
+ * Читает ТОЛЬКО новый контур (§10 PROJECT_STATE): topic_material_items.section,
+ * topic_homework + попытки/вердикты, topic_test_assignments + попытки.
+ * Легаси (topic_materials, homeworks/homework_submissions, assigned_collections)
+ * убрано целиком — оно пусто и показывало ученику ложную картину.
+ *
+ * Клиент не дублирует RLS: неопубликованное ДЗ и закрытую тему база просто
+ * не отдаст. Здесь только сборка того, что видно.
+ */
+
+const SELECT_PAGE_SIZE = 1000
 
 export interface TopicProgress {
   id:             string
@@ -12,26 +30,26 @@ export interface TopicProgress {
   order_index:    number
   max_score:      number
   available_from: string | null
-  // materials
-  has_notes:    boolean
-  has_theory:   boolean
-  has_tasks:    boolean
-  has_homework: boolean
-  has_solution: boolean
-  has_video:    boolean
-  has_link:     boolean
-  // homework submission
-  hw_status:      UnifiedStatus | null
-  hw_score:       number | null
-  hw_max:         number | null
-  hw_id:          string | null
-  hw_file_url:    string | null
-  hw_deadline:    string | null
-  hw_description: string | null
-  hw_feedback:    string | null
-  lesson_date:    string | null
-  assignments:    UnifiedSubmission[]
-  completed_count: number
+  /** Заполненные рубрики темы — те же плитки, что у преподавателя. */
+  sections:       Set<TopicSection>
+  // ── ДЗ темы (topic_homework) ──
+  hw_id:           string | null
+  hw_title:        string | null
+  hw_instructions: string | null
+  hw_due_at:       string | null
+  hw_grade_scale:  GradeScale | null
+  hw_status:       TopicHwStatus | null
+  hw_score:        number | null
+  hw_max:          number | null
+  hw_comment:      string | null
+  // ── Тест темы (привязка из банка) ──
+  test_assignment_id: string | null
+  test_title:         string | null
+  test_status:        TopicTestStatus | null
+  test_points:        number | null
+  test_max_points:    number | null
+  // ── Прогресс ──
+  completed_count:  number
   assignment_count: number
 }
 
@@ -40,8 +58,8 @@ export interface ModuleProgress {
   title:       string
   order_index: number
   topics:      TopicProgress[]
-  done:        number   // accepted assignments
-  total:       number   // all assignments
+  done:        number   // выполненные задания (принятое ДЗ + завершённый тест)
+  total:       number   // все задания тем модуля
 }
 
 export interface StaffInfo {
@@ -62,11 +80,26 @@ export interface CourseInfo {
   curator:     StaffInfo | null
 }
 
+async function fetchAllPagedRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += SELECT_PAGE_SIZE) {
+    const { data, error } = await buildQuery(from, from + SELECT_PAGE_SIZE - 1)
+    if (error) throw new Error(error.message ?? 'Не удалось загрузить данные')
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < SELECT_PAGE_SIZE) break
+  }
+  return rows
+}
+
 export function useStudentCourseProgram(targetGroupId?: string | null) {
   const profile = useAuthStore(s => s.profile)
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
@@ -77,6 +110,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
 
   async function load() {
     setLoading(true)
+    setError(null)
     try {
       // 1. Get student id
       const { data: student } = await supabase
@@ -112,14 +146,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         return { id: p.id, full_name: p.full_name, email: p.email ?? '', phone: p.phone ?? null, avatar_url: p.avatar_url ?? null }
       }
 
-      const teacher = extractStaff(group.teachers)
-      const curator = extractStaff(group.curators)
-
       setCourse({
         id: course.id, title: course.title, subject: course.subject, exam_type: course.exam_type,
         group_name: group.name,
-        teacher,
-        curator,
+        teacher: extractStaff(group.teachers),
+        curator: extractStaff(group.curators),
       })
 
       // 3. Modules + topics
@@ -129,123 +160,150 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         .eq('course_id', course.id)
         .order('order_index')
 
-      // 4. Topic materials (just check existence per type)
       const topicIds = (mods || []).flatMap((m: any) => m.topics.map((t: any) => t.id))
-
-      const { data: mats } = await supabase
-        .from('topic_materials')
-        .select('topic_id, type')
-        .in('topic_id', topicIds)
-
-      const matMap: Record<string, Set<string>> = {}
-      for (const mat of mats || []) {
-        if (!matMap[mat.topic_id]) matMap[mat.topic_id] = new Set()
-        matMap[mat.topic_id].add(mat.type)
+      if (topicIds.length === 0) {
+        setModules((mods || []).map((m: any) => ({
+          id: m.id, title: m.title, order_index: m.order_index, topics: [], done: 0, total: 0,
+        })))
+        return
       }
 
-      // 5. Homeworks курса (на уровне темы) + сдачи студента
-      const { data: hws } = await supabase
-        .from('homeworks')
-        .select('id, title, topic_id, lesson_id, max_score, due_date, file_url, description, created_at')
-        .in('topic_id', topicIds)
-        .eq('is_archived', false)
+      // 4. Рубрики материалов + ДЗ темы + привязанные тесты
+      const [materialRows, homeworkRows, assignmentRows] = await Promise.all([
+        fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>((from, to) =>
+          supabase
+            .from('topic_material_items')
+            .select('topic_id, kind, section')
+            .in('topic_id', topicIds)
+            .range(from, to)),
+        (async () => {
+          const { data, error } = await supabase
+            .from('topic_homework')
+            .select('id, topic_id, title, instructions, due_at, grade_scale')
+            .in('topic_id', topicIds)
+          if (error) throw new Error(error.message ?? 'Не удалось загрузить домашние задания')
+          return (data || []) as unknown as {
+            id: string; topic_id: string; title: string; instructions: string | null
+            due_at: string | null; grade_scale: GradeScale | null
+          }[]
+        })(),
+        (async () => {
+          const { data, error } = await supabase
+            .from('topic_test_assignments')
+            .select('id, topic_id, test_id, topic_tests(title)')
+            .in('topic_id', topicIds)
+          if (error) throw new Error(error.message ?? 'Не удалось загрузить тесты')
+          return (data || []) as any[]
+        })(),
+      ])
 
-      const hwByTopic: Record<string, any[]> = {}
-      for (const hw of hws || []) {
-        if (hw.topic_id) (hwByTopic[hw.topic_id] ||= []).push(hw)
-      }
+      // 5. Попытки ученика: ДЗ и тесты
+      const homeworkIds   = homeworkRows.map(h => h.id)
+      const assignmentIds = assignmentRows.map(a => a.id)
 
-      // Lessons per topic (latest scheduled)
-      const { data: lessons } = await supabase
-        .from('lessons')
-        .select('id, topic_id, scheduled_at')
-        .eq('group_id', group.id)
-        .order('scheduled_at', { ascending: false })
-
-      const lessonByTopic: Record<string, string> = {}
-      const topicByLesson: Record<string, string> = {}
-      for (const l of lessons || []) {
-        if (l.topic_id && !lessonByTopic[l.topic_id]) lessonByTopic[l.topic_id] = l.scheduled_at
-        if (l.topic_id) topicByLesson[l.id] = l.topic_id
-      }
-
-      const hwIds = (hws || []).map((h: any) => h.id)
-      const { data: subs } = hwIds.length
-        ? await supabase
-            .from('homework_submissions')
-            .select('id, homework_id, status, score, feedback, submitted_at, checked_at')
+      const [attempts, testAttempts] = await Promise.all([
+        (async () => {
+          if (!homeworkIds.length) return [] as TopicHomeworkAttemptRow[]
+          const { data, error } = await supabase
+            .from('topic_homework_attempts')
+            .select('id, homework_id, student_id, attempt_number, status, submitted_at, created_at, updated_at')
             .eq('student_id', student.id)
-            .in('homework_id', hwIds)
-        : { data: [] }
+            .in('homework_id', homeworkIds)
+          if (error) throw new Error(error.message ?? 'Не удалось загрузить попытки')
+          return (data || []) as unknown as TopicHomeworkAttemptRow[]
+        })(),
+        (async () => {
+          type TestAttemptRow = { assignment_id: string; status: string; total_points: number | null; max_points: number | null }
+          if (!assignmentIds.length) return [] as TestAttemptRow[]
+          const { data, error } = await supabase
+            .from('topic_test_attempts')
+            .select('assignment_id, status, total_points, max_points')
+            .eq('student_id', student.id)
+            .in('assignment_id', assignmentIds)
+          if (error) throw new Error(error.message ?? 'Не удалось загрузить результаты тестов')
+          return (data || []) as unknown as TestAttemptRow[]
+        })(),
+      ])
 
-      const subByHw: Record<string, any> = {}
-      for (const s of subs || []) subByHw[s.homework_id] = s
-
-      // Collection assignments enter topic progress only through lesson.topic_id.
-      const db = supabase as any
-      const { data: assigned } = await db.from('assigned_collections')
-        .select('id, collection_id, lesson_id, due_date, created_at, lessons(topic_id), task_collections(title, subject)')
-        .or(`group_id.eq.${group.id},student_id.eq.${student.id}`)
-      const assignedIds = (assigned || []).map((item: any) => item.id)
-      const { data: collectionSubs } = assignedIds.length
-        ? await db.from('task_submissions').select('*').eq('student_id', student.id).in('assigned_id', assignedIds)
-        : { data: [] }
-      const collectionSubByAssignment = new Map((collectionSubs || []).map((s: any) => [s.assigned_id, s]))
-
-      const unifiedByTopic: Record<string, UnifiedSubmission[]> = {}
-      for (const hw of hws || []) {
-        if (!hw.topic_id) continue
-        ;(unifiedByTopic[hw.topic_id] ||= []).push(mapLegacySubmission(hw, subByHw[hw.id] || null, {
-          studentId: student.id, courseId: course.id, subject: course.subject,
-        }))
-      }
-      for (const assignment of assigned || []) {
-        const topicId = assignment.lesson_id
-          ? (assignment.lessons?.topic_id ?? topicByLesson[assignment.lesson_id] ?? null)
-          : null
-        if (!topicId) continue
-        ;(unifiedByTopic[topicId] ||= []).push(mapCollectionSubmission(
-          assignment, collectionSubByAssignment.get(assignment.id) || null,
-          { studentId: student.id, lessonId: assignment.lesson_id, topicId, courseId: course.id,
-            subject: assignment.task_collections?.subject ?? null, title: assignment.task_collections?.title ?? null },
-        ))
+      // 6. Вердикты по попыткам ученика (балл + комментарий)
+      const attemptIds = attempts.map(a => a.id)
+      let reviews: TopicHomeworkReviewRow[] = []
+      if (attemptIds.length) {
+        const { data, error } = await supabase
+          .from('topic_homework_reviews')
+          .select('id, attempt_id, reviewer_id, decision, comment, score, created_at')
+          .in('attempt_id', attemptIds)
+        if (error) throw new Error(error.message ?? 'Не удалось загрузить проверки')
+        reviews = (data || []) as unknown as TopicHomeworkReviewRow[]
       }
 
-      // 6. Assemble
+      // 7. Индексы
+      const sectionMap = sectionsFromMaterials(materialRows)
+
+      const hwByTopic = new Map<string, (typeof homeworkRows)[number]>()
+      for (const hw of homeworkRows) if (!hwByTopic.has(hw.topic_id)) hwByTopic.set(hw.topic_id, hw)
+
+      const attemptsByHw = new Map<string, TopicHomeworkAttemptRow[]>()
+      for (const a of attempts) {
+        const list = attemptsByHw.get(a.homework_id) ?? []
+        list.push(a)
+        attemptsByHw.set(a.homework_id, list)
+      }
+
+      const assignmentByTopic = new Map<string, any>()
+      for (const a of assignmentRows) if (!assignmentByTopic.has(a.topic_id)) assignmentByTopic.set(a.topic_id, a)
+
+      const testAttemptByAssignment = new Map<string, { status: string; total_points: number | null; max_points: number | null }>()
+      for (const ta of testAttempts) testAttemptByAssignment.set(ta.assignment_id, ta)
+
+      // 8. Сборка
       const result: ModuleProgress[] = (mods || []).map((m: any) => {
         const topics: TopicProgress[] = (m.topics || [])
           .sort((a: any, b: any) => a.order_index - b.order_index)
           .map((t: any) => {
-            const types = matMap[t.id] || new Set()
-            const legacyHws = hwByTopic[t.id] || []
-            const hw = legacyHws[0] || null
-            const sub = hw ? subByHw[hw.id] : null
-            const assignments = unifiedByTopic[t.id] || []
-            const progress = progressOf(assignments)
+            const sections = new Set<TopicSection>(sectionMap[t.id] ?? [])
+
+            const hw = hwByTopic.get(t.id) ?? null
+            const hwAttempts = hw ? attemptsByHw.get(hw.id) ?? [] : []
+            const hwStatus = hw ? homeworkStatus(hwAttempts) : null
+            const shown = statusAttempt(hwAttempts)
+            const review = reviewOfAttempt(reviews, shown?.id ?? null)
+            if (hw) sections.add('homework')
+
+            const assignment = assignmentByTopic.get(t.id) ?? null
+            const testAttempt = assignment ? testAttemptByAssignment.get(assignment.id) ?? null : null
+            const tStatus = assignment ? testStatus(testAttempt) : null
+            if (assignment) sections.add('test')
+
+            const testRel = assignment?.topic_tests
+            const testTitle = Array.isArray(testRel) ? testRel[0]?.title ?? null : testRel?.title ?? null
+
+            const progress = topicProgress({
+              hasHomework: !!hw, hwStatus, hasTest: !!assignment, testStatus: tStatus,
+            })
+
             return {
               id:             t.id,
               title:          t.title,
               order_index:    t.order_index,
               max_score:      t.max_score,
               available_from: t.available_from,
-              has_notes:    types.has('notes'),
-              has_theory:   types.has('theory'),
-              has_tasks:    types.has('tasks'),
-              has_homework: types.has('homework'),
-              has_solution: types.has('solution'),
-              has_video:    types.has('video'),
-              has_link:     types.has('link'),
-              hw_status:      aggregateStatus(assignments),
-              hw_score:       sub?.score     ?? null,
-              hw_max:         hw?.max_score  ?? null,
-              hw_id:          hw?.id         ?? null,
-              hw_file_url:    hw?.file_url   ?? null,
-              hw_deadline:    hw?.due_date   ?? null,
-              hw_description: hw?.description ?? null,
-              hw_feedback:    sub?.feedback  ?? null,
-              lesson_date:    lessonByTopic[t.id] ?? null,
-              assignments,
-              completed_count: progress.completed,
+              sections,
+              hw_id:           hw?.id ?? null,
+              hw_title:        hw?.title ?? null,
+              hw_instructions: hw?.instructions ?? null,
+              hw_due_at:       hw?.due_at ?? null,
+              hw_grade_scale:  hw?.grade_scale ?? null,
+              hw_status:       hwStatus,
+              hw_score:        review?.score ?? null,
+              hw_max:          homeworkMax(hw?.grade_scale ?? null),
+              hw_comment:      review?.comment ?? null,
+              test_assignment_id: assignment?.id ?? null,
+              test_title:         testTitle,
+              test_status:        tStatus,
+              test_points:        testAttempt?.total_points ?? null,
+              test_max_points:    testAttempt?.max_points ?? null,
+              completed_count:  progress.completed,
               assignment_count: progress.assigned,
             }
           })
@@ -257,10 +315,13 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       })
 
       setModules(result)
+    } catch (e) {
+      console.error('Failed to load student course program', e)
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить программу курса')
     } finally {
       setLoading(false)
     }
   }
 
-  return { course, modules, loading, reload }
+  return { course, modules, loading, error, reload }
 }

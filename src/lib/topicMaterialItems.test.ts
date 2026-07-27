@@ -17,7 +17,7 @@ function row(patch: Partial<TopicMaterialItemRow>): TopicMaterialItemRow {
   return {
     id: 'm1', topic_id: TOPIC, kind: 'text', title: null, content: null, url: null,
     storage_path: null, file_name: null, mime_type: null, size_bytes: null,
-    position: 0, is_visible: true, created_by: AUTHOR,
+    position: 0, is_visible: true, created_by: AUTHOR, section: null,
     created_at: '2026-07-25T00:00:00Z', updated_at: '2026-07-25T00:00:00Z',
     ...patch,
   }

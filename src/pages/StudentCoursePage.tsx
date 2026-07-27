@@ -3,29 +3,29 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   BookOpen, Check, Clock, Video, Lightbulb, BookMarked, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
-  Upload, ArrowLeft, ChevronRight, Play, FileText, MessageSquare,
-  LayoutList, LayoutGrid,
+  Upload, ArrowLeft, ChevronRight, Play, MessageSquare, BarChart3,
+  LayoutList, LayoutGrid, FileEdit,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
-import { SubmitHomeworkModal } from '@/components/modals/SubmitHomeworkModal'
 import { StatCard } from '@/components/ui/StatCard'
-import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
-import { SUBJECT_LABELS, EXAM_LABELS, formatDate, isOverdue } from '@/utils/format'
-import { supabase } from '@/lib/supabase'
-import { useAuthStore } from '@/store/authStore'
+import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
+import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
+import { testPercent, type TopicSection } from '@/lib/studentProgram'
 
-// ─── Material pills config ────────────────────────────────────────────────────
+// ─── Section pills config ─────────────────────────────────────────────────────
+// Те же 7 рубрик, что в плиточной модалке преподавателя (§10.1): «зелёная точка»
+// у преподавателя и плашка у ученика теперь означают ровно одно и то же.
 
-const MAT_CONFIG = [
-  { key: 'has_video',    label: 'Видео',    icon: <Video size={10} />,         color: 'bg-red-50 text-red-600 border-red-100' },
-  { key: 'has_notes',    label: 'Конспект', icon: <BookMarked size={10} />,    color: 'bg-blue-50 text-blue-600 border-blue-100' },
-  { key: 'has_theory',   label: 'Теория',   icon: <BookOpen size={10} />,      color: 'bg-purple-50 text-purple-600 border-purple-100' },
-  { key: 'has_tasks',    label: 'Задачи',   icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
-  { key: 'has_homework', label: 'ДЗ',       icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
-  { key: 'has_solution', label: 'Решение',  icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
-  { key: 'has_link',     label: 'Ссылка',   icon: <BookOpen size={10} />,      color: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
-] as const
+const SECTION_CONFIG: { key: TopicSection; label: string; icon: React.ReactNode; color: string }[] = [
+  { key: 'notes',    label: 'Конспект',     icon: <BookMarked size={10} />,    color: 'bg-blue-50 text-blue-600 border-blue-100' },
+  { key: 'theory',   label: 'Теория',       icon: <BookOpen size={10} />,      color: 'bg-purple-50 text-purple-600 border-purple-100' },
+  { key: 'tasks',    label: 'Задачи',       icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
+  { key: 'homework', label: 'ДЗ',           icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
+  { key: 'solution', label: 'Решение ДЗ',   icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
+  { key: 'video',    label: 'Видео',        icon: <Video size={10} />,         color: 'bg-red-50 text-red-600 border-red-100' },
+  { key: 'test',     label: 'Тестирование', icon: <BarChart3 size={10} />,     color: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
+]
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -37,25 +37,6 @@ function getViewPref(): CourseView {
 }
 function saveViewPref(v: CourseView) {
   try { localStorage.setItem(VIEW_PREF_KEY, v) } catch {}
-}
-
-// ─── HW Badge ─────────────────────────────────────────────────────────────────
-
-function HwBadge({ status, score, max }: { status: string | null; score: number | null; max: number | null }) {
-  if (!status) return null
-  const cfg = {
-    not_started:   { label: 'Не сдано',    icon: <AlertCircle size={10} />, cls: 'bg-gray-100 text-gray-500' },
-    submitted:     { label: 'На проверке', icon: <Clock size={10} />,       cls: 'bg-blue-100 text-blue-600' },
-    accepted:      { label: score != null && max != null ? `${score}/${max}` : 'Принято', icon: <CheckCircle size={10} />, cls: 'bg-green-100 text-green-700' },
-    rejected:      { label: 'Отклонено', icon: <AlertCircle size={10} />, cls: 'bg-red-100 text-red-700' },
-    returned:      { label: 'Доработать',  icon: <RotateCcw size={10} />,   cls: 'bg-orange-100 text-orange-600' },
-  }[status] || { label: status, icon: null, cls: 'bg-gray-100 text-gray-400' }
-
-  return (
-    <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full', cfg.cls)}>
-      {cfg.icon}{cfg.label}
-    </span>
-  )
 }
 
 // ─── Progress ring ────────────────────────────────────────────────────────────
@@ -194,6 +175,14 @@ const TOPIC_STATE = {
     labelCls: 'bg-orange-100 text-orange-700 border border-orange-200',
     titleCls: 'text-gray-800',
   },
+  draft: {
+    card:   'border-sky-200 bg-sky-50/40 hover:border-sky-300 hover:shadow-md',
+    header: 'bg-sky-50/60',
+    num:    'bg-sky-400 text-white',
+    label:  'Черновик',
+    labelCls: 'bg-sky-100 text-sky-700 border border-sky-200',
+    titleCls: 'text-gray-800',
+  },
   not_started: {
     card:   'border-gray-200 hover:border-primary-300 hover:shadow-md',
     header: 'bg-white',
@@ -218,22 +207,21 @@ function TopicCard({
   moduleTitle,
   groupId,
   onOpenTopic,
-  onSubmitHW,
+  onOpenHomework,
 }: {
   topic: TopicProgress
   index: number
   moduleTitle: string
   groupId: string
   onOpenTopic: (t: TopicProgress) => void
-  onSubmitHW: (t: TopicProgress) => void
+  onOpenHomework: (t: TopicProgress) => void
 }) {
   // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
   const todayStr   = new Date().toLocaleDateString('en-CA')
   const availStr   = topic.available_from ? topic.available_from.slice(0, 10) : null
   const availDate  = availStr ? new Date(availStr + 'T00:00:00') : null
   const isLocked   = !!availStr && availStr > todayStr
-  const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
-    topic.has_homework || topic.has_solution || topic.has_video || topic.has_link
+  const hasMaterials = topic.sections.size > 0
   const isDone     = topic.hw_status === 'accepted'
 
   // Pick visual state
@@ -293,10 +281,21 @@ function TopicCard({
           {topic.title}
         </div>
 
-        {/* Score for checked */}
-        {isDone && topic.hw_score != null && (
+        {/* Оценка за ДЗ. Шкала может быть не задана — тогда просто «Принято». */}
+        {isDone && (
           <div className="mt-1 text-xs font-semibold text-green-700">
-            {topic.hw_score} / {topic.hw_max} б.
+            {topic.hw_score != null && topic.hw_max != null
+              ? `${topic.hw_score} / ${topic.hw_max} б.`
+              : 'ДЗ принято'}
+          </div>
+        )}
+
+        {/* Результат теста */}
+        {!isLocked && topic.test_status === 'completed' && (
+          <div className="mt-1 text-xs font-semibold text-indigo-700">
+            Тест: {topic.test_points ?? 0} / {topic.test_max_points ?? 0} б.
+            {testPercent(topic.test_points, topic.test_max_points) != null &&
+              ` · ${testPercent(topic.test_points, topic.test_max_points)}%`}
           </div>
         )}
 
@@ -310,7 +309,7 @@ function TopicCard({
       {/* Material pills */}
       {!isLocked && hasMaterials && (
         <div className="px-4 pb-3 flex flex-wrap gap-1">
-          {MAT_CONFIG.map(m => topic[m.key] && (
+          {SECTION_CONFIG.map(m => topic.sections.has(m.key) && (
             <span key={m.key}
               className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md border', m.color)}
             >
@@ -322,21 +321,21 @@ function TopicCard({
 
       {/* Footer */}
       <div className="mt-auto px-4 pb-4 flex items-center justify-between gap-2">
-        {/* Сдать ДЗ */}
-        {!isLocked && topic.hw_id && (topic.hw_status === 'not_started' || topic.hw_status === 'returned') && (
+        {/* Сдать ДЗ — сдача живёт на странице темы (TopicHomeworkStudent) */}
+        {!isLocked && topic.hw_id && (topic.hw_status === 'not_started' || topic.hw_status === 'draft' || topic.hw_status === 'returned') && (
           <button
-            onClick={e => { e.stopPropagation(); onSubmitHW(topic) }}
+            onClick={e => { e.stopPropagation(); onOpenHomework(topic) }}
             className="min-h-11 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
           >
             <Upload size={11} />
-            {topic.hw_status === 'returned' ? 'Переслать' : 'Сдать ДЗ'}
+            {topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
           </button>
         )}
 
         {/* Open materials hint */}
         {!isLocked && hasMaterials && (
           <span className="ml-auto flex items-center gap-1 text-[11px] text-primary-500 font-medium">
-            {topic.has_video && <Play size={11} />}
+            {topic.sections.has('video') && <Play size={11} />}
             Открыть
             <ChevronRight size={12} />
           </span>
@@ -376,6 +375,12 @@ const LIST_STATE: Record<string, {
     statusLabel: 'Доработать', statusCls: 'bg-orange-100 text-orange-700',
     icon: <RotateCcw size={12} className="text-orange-600" />,
   },
+  draft: {
+    row: 'bg-sky-50/40 border-sky-200 hover:border-sky-300',
+    numBg: 'bg-sky-400 text-white', titleCls: 'text-gray-800',
+    statusLabel: 'Черновик', statusCls: 'bg-sky-100 text-sky-700',
+    icon: <FileEdit size={12} className="text-sky-500" />,
+  },
   not_started: {
     row: 'bg-blue-50/40 border-blue-200 hover:border-blue-300',
     numBg: 'bg-blue-100 text-blue-600', titleCls: 'text-gray-800',
@@ -393,12 +398,12 @@ const LIST_STATE: Record<string, {
 // ─── TopicListRow ─────────────────────────────────────────────────────────────
 
 function TopicListRow({
-  topic, index, onOpen, onSubmitHW,
+  topic, index, onOpen, onOpenHomework,
 }: {
   topic: TopicProgress
   index: number
   onOpen: () => void
-  onSubmitHW: () => void
+  onOpenHomework: () => void
 }) {
   const todayStr  = new Date().toLocaleDateString('en-CA')
   const availStr  = topic.available_from ? topic.available_from.slice(0, 10) : null
@@ -409,15 +414,15 @@ function TopicListRow({
     : topic.hw_status === 'accepted'      ? 'accepted'
     : topic.hw_status === 'submitted'     ? 'submitted'
     : topic.hw_status === 'returned'      ? 'returned'
+    : topic.hw_status === 'draft'         ? 'draft'
     : topic.hw_status === 'not_started'   ? 'not_started'
     : 'none'
 
   const st = LIST_STATE[stateKey]
   const isDone = topic.hw_status === 'accepted'
-  const hasMaterials = topic.has_notes || topic.has_theory || topic.has_tasks ||
-    topic.has_homework || topic.has_solution || topic.has_video || topic.has_link
+  const hasMaterials = topic.sections.size > 0
   const canSubmit = !isLocked && topic.hw_id &&
-    (topic.hw_status === 'not_started' || topic.hw_status === 'returned')
+    (topic.hw_status === 'not_started' || topic.hw_status === 'draft' || topic.hw_status === 'returned')
 
   return (
     <div
@@ -472,16 +477,28 @@ function TopicListRow({
         </p>
 
         {/* Score — mobile */}
-        {isDone && topic.hw_score != null && (
+        {isDone && topic.hw_score != null && topic.hw_max != null && (
           <p className="sm:hidden text-xs font-semibold text-green-700 mt-0.5">
             {topic.hw_score}/{topic.hw_max} б.
           </p>
         )}
 
+        {/* Результат теста */}
+        {!isLocked && topic.test_status === 'completed' && (
+          <p className="text-xs font-semibold text-indigo-700 mt-0.5">
+            Тест: {topic.test_points ?? 0}/{topic.test_max_points ?? 0} б.
+            {testPercent(topic.test_points, topic.test_max_points) != null &&
+              ` · ${testPercent(topic.test_points, topic.test_max_points)}%`}
+          </p>
+        )}
+        {!isLocked && topic.test_status === 'not_started' && (
+          <p className="text-xs text-indigo-500 mt-0.5">Тест не пройден</p>
+        )}
+
         {/* Material badges */}
         {!isLocked && hasMaterials && (
           <div className="flex flex-wrap gap-1 mt-1.5">
-            {MAT_CONFIG.map(m => topic[m.key] && (
+            {SECTION_CONFIG.map(m => topic.sections.has(m.key) && (
               <span key={m.key}
                 className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md border', m.color)}
               >
@@ -501,7 +518,7 @@ function TopicListRow({
       {/* ── Right: score + status + buttons ── */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Score — desktop */}
-        {isDone && topic.hw_score != null && (
+        {isDone && topic.hw_score != null && topic.hw_max != null && (
           <span className="hidden sm:block text-xs font-semibold text-green-700 whitespace-nowrap">
             {topic.hw_score}/{topic.hw_max}&nbsp;б
           </span>
@@ -517,21 +534,21 @@ function TopicListRow({
           </span>
         )}
 
-        {/* Submit HW */}
+        {/* Submit HW — сдача живёт на странице темы */}
         {canSubmit && (
           <button
-            onClick={e => { e.stopPropagation(); onSubmitHW() }}
+            onClick={e => { e.stopPropagation(); onOpenHomework() }}
             className={cn(
               'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px]',
               topic.hw_status === 'returned'
                 ? 'text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100'
                 : 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
             )}
-            aria-label={topic.hw_status === 'returned' ? 'Переслать домашнее задание' : 'Сдать домашнее задание'}
+            aria-label={topic.hw_status === 'returned' ? 'Переделать домашнее задание' : 'Сдать домашнее задание'}
           >
             <Upload size={11} />
             <span className="hidden sm:inline">
-              {topic.hw_status === 'returned' ? 'Переслать' : 'Сдать ДЗ'}
+              {topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
             </span>
           </button>
         )}
@@ -543,7 +560,7 @@ function TopicListRow({
             className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px] text-primary-700 bg-primary-50 border border-primary-200 hover:bg-primary-100"
             aria-label={`Открыть тему ${topic.title}`}
           >
-            {topic.has_video && <Play size={11} />}
+            {topic.sections.has('video') && <Play size={11} />}
             Открыть
           </button>
         )}
@@ -648,16 +665,19 @@ function StaffCard({
   )
 }
 
-// ─── HOMEWORK BLOCK ───────────────────────────────────────────────────────────
+// ─── БЛОК «ЗАДАНИЯ» ───────────────────────────────────────────────────────────
+// Сводка по всем темам курса: ДЗ темы (topic_homework) и тест темы (привязка из
+// банка). Сдача и прохождение живут на странице темы — здесь только статус и
+// переход, чтобы не заводить вторую точку сдачи.
 
-type FlatHw = TopicProgress & { moduleTitle: string }
+type FlatTask = TopicProgress & { moduleTitle: string }
 
 function HwStatusBadge({ status, score, max }: { status: string; score: number | null; max: number | null }) {
   const cfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
     not_started:   { label: 'Не сдано',    cls: 'bg-gray-100 text-gray-500',    icon: <AlertCircle size={11} /> },
+    draft:         { label: 'Черновик',    cls: 'bg-sky-100 text-sky-700',      icon: <FileEdit size={11} /> },
     submitted:     { label: 'На проверке', cls: 'bg-blue-100 text-blue-700',    icon: <Clock size={11} /> },
-    accepted:      { label: score != null && max != null ? `${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
-    rejected:      { label: 'Отклонено', cls: 'bg-red-100 text-red-700', icon: <AlertCircle size={11} /> },
+    accepted:      { label: score != null && max != null ? `Принято · ${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
     returned:      { label: 'Доработать',  cls: 'bg-orange-100 text-orange-700', icon: <RotateCcw size={11} /> },
   }
   const c = cfg[status] || { label: status, cls: 'bg-gray-100 text-gray-400', icon: null }
@@ -668,141 +688,147 @@ function HwStatusBadge({ status, score, max }: { status: string; score: number |
   )
 }
 
+function TestStatusBadge({ topic }: { topic: TopicProgress }) {
+  if (!topic.test_assignment_id) return null
+  if (topic.test_status === 'completed') {
+    const pct = testPercent(topic.test_points, topic.test_max_points)
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-indigo-100 text-indigo-700">
+        <BarChart3 size={11} />
+        Тест: {topic.test_points ?? 0}/{topic.test_max_points ?? 0} б.{pct != null ? ` · ${pct}%` : ''}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-indigo-50 text-indigo-600">
+      <BarChart3 size={11} />
+      {topic.test_status === 'in_progress' ? 'Тест начат' : 'Тест не пройден'}
+    </span>
+  )
+}
+
 function HomeworkBlock({
   modules,
-  onSubmit,
+  onOpenTopic,
 }: {
   modules: ModuleProgress[]
-  onSubmit: (t: TopicProgress) => void
+  onOpenTopic: (t: TopicProgress) => void
 }) {
-  const flatHws = useMemo<FlatHw[]>(() => {
-    const list: FlatHw[] = []
+  const flatTasks = useMemo<FlatTask[]>(() => {
+    const list: FlatTask[] = []
     for (const mod of modules) {
       for (const t of mod.topics) {
         if (t.assignment_count > 0) list.push({ ...t, moduleTitle: mod.title })
       }
     }
-    // Sort: overdue not_submitted first, then by deadline asc, null deadline last
+    // Просроченное несданное — вверх, дальше по дедлайну, темы без дедлайна в конце
     return list.sort((a, b) => {
-      const aOverdue = a.hw_deadline && isOverdue(a.hw_deadline) && a.hw_status === 'not_started'
-      const bOverdue = b.hw_deadline && isOverdue(b.hw_deadline) && b.hw_status === 'not_started'
+      const aOverdue = !!a.hw_due_at && isOverdue(a.hw_due_at) && a.hw_status !== 'accepted' && a.hw_status !== 'submitted'
+      const bOverdue = !!b.hw_due_at && isOverdue(b.hw_due_at) && b.hw_status !== 'accepted' && b.hw_status !== 'submitted'
       if (aOverdue && !bOverdue) return -1
       if (!aOverdue && bOverdue) return 1
-      if (!a.hw_deadline && !b.hw_deadline) return 0
-      if (!a.hw_deadline) return 1
-      if (!b.hw_deadline) return -1
-      return a.hw_deadline.localeCompare(b.hw_deadline)
+      if (!a.hw_due_at && !b.hw_due_at) return a.order_index - b.order_index
+      if (!a.hw_due_at) return 1
+      if (!b.hw_due_at) return -1
+      return a.hw_due_at.localeCompare(b.hw_due_at)
     })
   }, [modules])
 
-  if (flatHws.length === 0) return null
+  if (flatTasks.length === 0) return null
 
-  const notSubmitted = flatHws.filter(t => t.hw_status === 'not_started').length
-  const submitted    = flatHws.filter(t => t.hw_status === 'submitted').length
-  const checked      = flatHws.filter(t => t.hw_status === 'accepted').length
+  const notSubmitted = flatTasks.filter(t => t.hw_status === 'not_started' || t.hw_status === 'draft' || t.hw_status === 'returned').length
+  const submitted    = flatTasks.filter(t => t.hw_status === 'submitted').length
+  const checked      = flatTasks.filter(t => t.hw_status === 'accepted').length
+  const testsLeft    = flatTasks.filter(t => t.test_assignment_id && t.test_status !== 'completed').length
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
         <ClipboardList size={20} className="text-primary-600" />
-        Домашние задания
+        Задания
       </h2>
 
       {/* StatCards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard title="Не сдано"    value={notSubmitted} icon={<AlertCircle size={18} />} color="red" />
-        <StatCard title="На проверке" value={submitted}    icon={<Clock size={18} />}       color="orange" />
-        <StatCard title="Проверено"   value={checked}      icon={<CheckCircle size={18} />} color="green" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard title="Не сдано"     value={notSubmitted} icon={<AlertCircle size={18} />} color="red" />
+        <StatCard title="На проверке"  value={submitted}    icon={<Clock size={18} />}       color="orange" />
+        <StatCard title="Проверено"    value={checked}      icon={<CheckCircle size={18} />} color="green" />
+        <StatCard title="Тестов ждёт"  value={testsLeft}    icon={<BarChart3 size={18} />}   color="blue" />
       </div>
 
       {/* Flat list */}
       <div className="space-y-3">
-        {flatHws.map(hw => {
-          const overdue     = !!hw.hw_deadline && isOverdue(hw.hw_deadline)
-          const overdueFlag = overdue && hw.hw_status === 'not_started'
-          const canSubmit   = !!hw.hw_id && (hw.hw_status === 'not_started' || hw.hw_status === 'returned')
+        {flatTasks.map(task => {
+          const overdue     = !!task.hw_due_at && isOverdue(task.hw_due_at)
+          const overdueFlag = overdue && task.hw_status !== 'accepted' && task.hw_status !== 'submitted'
 
           return (
             <div
-              key={hw.id}
+              key={task.id}
               className={cn(
                 'rounded-2xl border bg-white p-4 transition-all',
                 overdueFlag ? 'border-red-200 bg-red-50' : 'border-gray-200'
               )}
+              data-testid="student-task-row"
             >
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
                   {/* Title + module breadcrumb */}
                   <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-0.5">
-                    <span>{hw.moduleTitle}</span>
+                    <span>{task.moduleTitle}</span>
                     <ChevronRight size={10} />
-                    <span>{hw.title}</span>
+                    <span>{task.title}</span>
                   </div>
 
-                  {/* Description */}
-                  {hw.hw_description && (
-                    <p className="text-sm text-gray-600 mt-1 mb-1.5">{hw.hw_description}</p>
+                  {task.hw_title && (
+                    <p className="text-sm font-semibold text-gray-800">{task.hw_title}</p>
+                  )}
+                  {task.hw_instructions && (
+                    <p className="text-sm text-gray-600 mt-1 mb-1.5 whitespace-pre-line">{task.hw_instructions}</p>
                   )}
 
                   {/* Meta row */}
-                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
-                    {hw.hw_deadline && (
+                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap mt-1">
+                    {task.hw_due_at && (
                       <span className={cn('flex items-center gap-1', overdueFlag && 'text-red-500 font-semibold')}>
                         <Clock size={11} />
-                        {overdueFlag ? 'Просрочено · ' : 'До '}
-                        {formatDate(hw.hw_deadline)}
+                        {overdueFlag ? 'Просрочено · ' : 'Сдать до '}
+                        {formatDate(task.hw_due_at)}
                       </span>
                     )}
-                    {hw.hw_max && <span>Макс: {hw.hw_max} б.</span>}
+                    {task.hw_grade_scale && <span>Шкала: {GRADE_SCALE_LABEL[task.hw_grade_scale]}</span>}
+                    {task.test_title && <span>Тест: {task.test_title}</span>}
                   </div>
 
-                  {/* Teacher file */}
-                  {hw.hw_file_url && (
-                    <SignedFileLink
-                      bucket="homeworks"
-                      url={hw.hw_file_url}
-                      className="inline-flex items-center gap-1.5 mt-2 text-xs text-primary-600 hover:text-primary-800 bg-primary-50 px-2.5 py-1 rounded-lg transition-colors"
-                    >
-                      <FileText size={12} />
-                      Файл задания
-                    </SignedFileLink>
-                  )}
-
-                  {/* Feedback */}
-                  {hw.hw_feedback && (
+                  {/* Комментарий преподавателя к последнему вердикту */}
+                  {task.hw_comment && (
                     <div className="mt-2.5 flex items-start gap-2 p-2.5 bg-blue-50 rounded-xl border border-blue-100">
                       <MessageSquare size={13} className="text-blue-500 mt-0.5 shrink-0" />
                       <p className="text-xs text-blue-800 leading-relaxed">
                         <span className="font-semibold">Комментарий: </span>
-                        {hw.hw_feedback}
+                        {task.hw_comment}
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* Right column: status + button */}
+                {/* Right column: статусы + переход в тему */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  {hw.hw_status && (
+                  {task.hw_status && (
                     <HwStatusBadge
-                      status={hw.hw_status}
-                      score={hw.hw_score}
-                      max={hw.hw_max}
+                      status={task.hw_status}
+                      score={task.hw_score}
+                      max={task.hw_max}
                     />
                   )}
-                  {canSubmit && (
-                    <button
-                      onClick={() => onSubmit(hw)}
-                      className={cn(
-                        'min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors',
-                        hw.hw_status === 'returned'
-                          ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
-                          : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
-                      )}
-                    >
-                      <Upload size={12} />
-                      {hw.hw_status === 'returned' ? 'Переделать' : 'Сдать ДЗ'}
-                    </button>
-                  )}
+                  <TestStatusBadge topic={task} />
+                  <button
+                    onClick={() => onOpenTopic(task)}
+                    className="min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100"
+                  >
+                    <Upload size={12} />
+                    Открыть тему
+                  </button>
                 </div>
               </div>
             </div>
@@ -817,13 +843,10 @@ function HomeworkBlock({
 
 export function StudentCoursePage() {
   const { groupId }  = useParams<{ groupId?: string }>()
-  const profile      = useAuthStore(s => s.profile)
   const navigate     = useNavigate()
-  const { course, modules, loading, reload } = useStudentCourseProgram(groupId)
+  const { course, modules, loading, error } = useStudentCourseProgram(groupId)
 
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
-  const [submitTopic,    setSubmitTopic]    = useState<TopicProgress | null>(null)
-  const [studentId,      setStudentId]      = useState<string | null>(null)
   const [view,           setView]           = useState<CourseView>(getViewPref)
 
   function handleViewChange(v: CourseView) {
@@ -831,11 +854,8 @@ export function StudentCoursePage() {
     saveViewPref(v)
   }
 
-  useEffect(() => {
-    if (!profile) return
-    supabase.from('students').select('id').eq('profile_id', profile.id).single()
-      .then(({ data }) => setStudentId(data?.id ?? null))
-  }, [profile])
+  // Сдача ДЗ и прохождение теста живут на странице темы — сюда ведут все кнопки
+  const openTopic = (topic: TopicProgress) => navigate(`/my-course/${groupId}/topic/${topic.id}`)
 
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
@@ -847,6 +867,13 @@ export function StudentCoursePage() {
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
       <Loader2 size={20} className="animate-spin" />Загрузка…
+    </div>
+  )
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-64 text-red-500 gap-2">
+      <AlertCircle size={32} className="opacity-60" />
+      <p>{error}</p>
     </div>
   )
 
@@ -974,8 +1001,8 @@ export function StudentCoursePage() {
                   key={topic.id}
                   topic={topic}
                   index={i}
-                  onOpen={() => navigate(`/my-course/${groupId}/topic/${topic.id}`)}
-                  onSubmitHW={() => setSubmitTopic(topic)}
+                  onOpen={() => openTopic(topic)}
+                  onOpenHomework={() => openTopic(topic)}
                 />
               ))}
             </div>
@@ -988,8 +1015,8 @@ export function StudentCoursePage() {
                   index={i}
                   moduleTitle={activeMod.title}
                   groupId={groupId ?? ''}
-                  onOpenTopic={t => navigate(`/my-course/${groupId}/topic/${t.id}`)}
-                  onSubmitHW={setSubmitTopic}
+                  onOpenTopic={openTopic}
+                  onOpenHomework={openTopic}
                 />
               ))}
             </div>
@@ -997,27 +1024,13 @@ export function StudentCoursePage() {
         </div>
       )}
 
-      {/* ══ HOMEWORK BLOCK (main view only) ══ */}
+      {/* ══ БЛОК ЗАДАНИЙ (только на главном экране курса) ══ */}
       {!activeMod && (
         <HomeworkBlock
           modules={modules}
-          onSubmit={setSubmitTopic}
+          onOpenTopic={openTopic}
         />
       )}
-
-      {/* ── Modals ── */}
-      <SubmitHomeworkModal
-        open={!!submitTopic}
-        onClose={() => setSubmitTopic(null)}
-        onSubmitted={() => { setSubmitTopic(null); reload() }}
-        homework={submitTopic ? {
-          id:        submitTopic.hw_id!,
-          title:     submitTopic.title,
-          max_score: submitTopic.hw_max ?? 100,
-          file_url:  submitTopic.hw_file_url ?? undefined,
-        } : null}
-        studentId={studentId}
-      />
     </div>
   )
 }

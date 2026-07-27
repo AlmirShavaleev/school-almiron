@@ -11,7 +11,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { useStudentJournal, type JournalPeriod } from '@/hooks/useStudentJournal'
-import { HomeworkV2JournalSection } from '@/components/journal/HomeworkV2JournalSection'
+import { TopicJournalSection } from '@/components/journal/TopicJournalSection'
 import type { JournalLesson } from '@/types/journal'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -41,10 +41,11 @@ interface JournalViewProps {
   lessonHref: (lessonId: string) => string
 }
 
-/** Lessons/attendance/trend still come from get_student_journal (untouched — those blocks
- * already work correctly). The homework section is Homework V2 only (HomeworkV2JournalSection,
- * sourced from get_student_homework_journal) — legacy homeworks/task_submissions assignment
- * data and the source:'legacy'|'collection' toggle have been removed from this view entirely. */
+/** Занятия/посещаемость/динамика по-прежнему приходят из get_student_journal — эти блоки
+ * работают и в scope ЧАТа Б не входили. Блок заданий переведён на новый контур:
+ * TopicJournalSection читает get_student_topic_journal (ДЗ тем + тесты тем). Homework V2
+ * (get_student_homework_journal) из журнала убран — ДЗ в продукте существует только в теме
+ * (§9.3 PROJECT_STATE), а ветка homework_templates уходит по очереди 2 §4. */
 export function JournalView({ studentId, viewerRole: _viewerRole, lessonHref }: JournalViewProps) {
   const [period, setPeriod] = useState<JournalPeriod>('30d')
   const [subject, setSubject] = useState<string>('')
@@ -156,8 +157,8 @@ export function JournalView({ studentId, viewerRole: _viewerRole, lessonHref }: 
         )}
       </Card>
 
-      {/* Homework — Homework V2 only */}
-      <HomeworkV2JournalSection studentId={studentId} />
+      {/* ДЗ и тесты — новый контур (topic_homework + topic_tests) */}
+      <TopicJournalSection studentId={studentId} />
     </div>
   )
 }

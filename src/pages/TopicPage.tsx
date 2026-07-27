@@ -1,17 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  ArrowLeft, BookMarked, BookOpen, Check, CheckCircle,
-  Clock, ClipboardList, ExternalLink, FileText, GraduationCap,
-  Lightbulb, Loader2, Lock, Paperclip, Play, RotateCcw, Send,
-  Video, AlertCircle, ChevronRight, XCircle,
+  ArrowLeft, ChevronRight, ExternalLink, GraduationCap,
+  Loader2, Lock, Play, Video, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { useAuthStore } from '@/store/authStore'
-import { useTopicMaterials } from '@/hooks/useTopicMaterials'
-import { cn } from '@/utils/cn'
-import { getMaterialFileIcon } from '@/lib/materialIcons'
+import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
@@ -27,15 +22,6 @@ interface TopicInfo {
   course_title:   string
   group_id:       string
   group_name:     string
-}
-
-interface HwInfo {
-  id:        string | null   // null = no formal HW assigned
-  max_score: number
-  due_date:  string | null
-  file_url:  string | null
-  status:    string          // 'not_submitted' | 'submitted' | 'checked' | 'revision'
-  score:     number | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,23 +49,6 @@ function getVimeoEmbed(url: string): string | null {
   } catch { return null }
 }
 
-function niceName(url: string) {
-  try {
-    return decodeURIComponent(url.split('/').pop() || 'Файл').split('?')[0].replace(/^\d{10,}\./, '')
-  } catch { return 'Файл' }
-}
-
-// ─── Material section config ──────────────────────────────────────────────────
-
-const SECTIONS = [
-  { type: 'notes'    as const, label: 'Конспект',     icon: <BookMarked size={18} />,    color: 'bg-blue-500'   },
-  { type: 'theory'   as const, label: 'Теория',       icon: <BookOpen size={18} />,      color: 'bg-purple-500' },
-  { type: 'tasks'    as const, label: 'Список задач', icon: <ClipboardList size={18} />, color: 'bg-orange-500' },
-  { type: 'homework' as const, label: 'ДЗ',           icon: <Lightbulb size={18} />,     color: 'bg-yellow-500' },
-  { type: 'solution' as const, label: 'Решение',      icon: <Check size={18} />,         color: 'bg-green-500'  },
-  { type: 'link'     as const, label: 'Ссылка',       icon: <ExternalLink size={18} />,  color: 'bg-cyan-500'   },
-]
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function TopicPage() {
@@ -88,20 +57,13 @@ export function TopicPage() {
   const navigate = useNavigate()
   const canBypassAvailability = !!profile?.role && ['teacher', 'curator', 'admin', 'owner'].includes(profile.role)
 
-  const [topic,      setTopic]      = useState<TopicInfo | null>(null)
-  const [hw,           setHw]           = useState<HwInfo>({ id: null, max_score: 100, due_date: null, file_url: null, status: 'not_submitted', score: null })
-  const [subExists,    setSubExists]    = useState(false)   // true if a submission row already exists in DB
-  const [studentId,    setStudentId]    = useState<string | null>(null)
-  const [loading,      setLoading]      = useState(true)
+  const [topic,   setTopic]   = useState<TopicInfo | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Submit form state
-  const [hwText,      setHwText]      = useState('')
-  const [hwFile,      setHwFile]      = useState<File | null>(null)
-  const [hwUploading, setHwUploading] = useState(false)
-  const [hwError,     setHwError]     = useState('')
-  const hwFileRef = useRef<HTMLInputElement>(null)
-
-  const { materials, loading: matsLoading } = useTopicMaterials(topicId ?? null)
+  // Видео темы живёт в topic_material_items: плитка «Видео» в модалке
+  // преподавателя пишет ссылку туда (kind='video'), старая topic_materials
+  // здесь больше не читается.
+  const { materials } = useTopicMaterialItems(topicId ?? null)
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -112,11 +74,10 @@ export function TopicPage() {
     async function load() {
       setLoading(true)
       try {
-        // 1. Student record
+        // 1. Student record (страница ученика: без записи students темы нет)
         const { data: student } = await supabase
           .from('students').select('id').eq('profile_id', profile!.id).single()
         if (!student || cancelled) return
-        setStudentId(student.id)
 
         // 2. Topic + group info (parallel)
         const [topicRes, groupRes] = await Promise.all([
@@ -142,36 +103,6 @@ export function TopicPage() {
           group_id:       groupId!,
           group_name:     gd?.name || '',
         })
-
-        // 3. HW for this topic (курс-уровень, общее для всех групп; может не быть)
-        const { data: hwData } = await supabase
-          .from('homeworks')
-          .select('id, max_score, due_date, file_url')
-          .eq('topic_id', topicId!)
-          .maybeSingle()
-
-        if (cancelled) return
-
-        if (hwData) {
-          const { data: sub } = await supabase
-            .from('homework_submissions')
-            .select('status, score')
-            .eq('homework_id', hwData.id).eq('student_id', student.id)
-            .maybeSingle()
-
-          if (!cancelled) {
-            setSubExists(!!sub)
-            setHw({
-              id:        hwData.id,
-              max_score: hwData.max_score,
-              due_date:  hwData.due_date,
-              file_url:  hwData.file_url,
-              status:    sub?.status || 'not_submitted',
-              score:     sub?.score ?? null,
-            })
-          }
-        }
-        // Если ДЗ не назначено — форма сдачи скрыта (hw.id остаётся null)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -181,60 +112,9 @@ export function TopicPage() {
     return () => { cancelled = true }
   }, [topicId, groupId, profile])
 
-  // ── Submit homework ──────────────────────────────────────────────────────────
-
-  async function handleHwSubmit() {
-    if (!studentId || !topicId) return
-    if (!hwText.trim() && !hwFile) { setHwError('Введите ответ или прикрепите файл'); return }
-    setHwError(''); setHwUploading(true)
-
-    try {
-      // Upload file if attached
-      let fileUrl: string | null = null
-      if (hwFile) {
-        const hwId   = hw.id || topicId
-        const ext    = hwFile.name.split('.').pop()
-        const path   = `submissions/${hwId}/${studentId}/${Date.now()}.${ext}`
-        const { error: upErr } = await supabase.storage.from('homeworks')
-          .upload(path, hwFile, { contentType: hwFile.type, upsert: true })
-        if (upErr) throw new Error('Ошибка загрузки: ' + upErr.message)
-        // Private bucket: store the storage path, not a public URL.
-        fileUrl = path
-      }
-
-      const payload = {
-        answer_text:  hwText.trim() || null,
-        file_url:     fileUrl,
-        status:       'submitted',
-        submitted_at: new Date().toISOString(),
-      }
-
-      if (!hw.id) { setHwError('ДЗ не назначено для этой темы'); return }
-
-      if (subExists) {
-        const { error } = await supabase.from('homework_submissions')
-          .update(payload as any)
-          .eq('homework_id', hw.id).eq('student_id', studentId)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('homework_submissions')
-          .insert({ ...payload, homework_id: hw.id, student_id: studentId } as any)
-        if (error) throw error
-      }
-
-      setHwText(''); setHwFile(null)
-      setSubExists(true)
-      setHw(prev => ({ ...prev, status: 'submitted' }))
-    } catch (e: any) {
-      setHwError(e.message || 'Ошибка при отправке')
-    } finally {
-      setHwUploading(false)
-    }
-  }
-
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const videoUrl   = materials['video']?.link_url || ''
+  const videoUrl   = materials.find(m => m.kind === 'video')?.url || ''
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
   const embedUrl   = ytEmbed || vimeoEmbed
@@ -242,8 +122,6 @@ export function TopicPage() {
   const isLocked   = topic?.available_from
     ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
     : false
-  const solutionLocked = hw.status !== 'checked'
-  const canSubmit  = hw.status === 'not_submitted' || hw.status === 'revision'
 
   // ── States ───────────────────────────────────────────────────────────────────
 
@@ -296,10 +174,6 @@ export function TopicPage() {
         <div className="flex items-center gap-2 text-xs text-gray-400 mt-1 flex-wrap">
           <GraduationCap size={12} />
           <span>{topic.group_name}</span>
-          {hw.due_date && (
-            <><span className="text-gray-200">·</span><Clock size={11} />
-              до {new Date(hw.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</>
-          )}
         </div>
       </div>
 
@@ -337,188 +211,16 @@ export function TopicPage() {
       <TopicMaterialItems topicId={topic.id} canManage={false} />
 
       {/* ── PDF-ДЗ ТЕМЫ ──
-          Неопубликованное ДЗ сюда не доезжает: отсекает RLS. */}
+          Неопубликованное ДЗ сюда не доезжает: отсекает RLS.
+          Единственная система ДЗ в продукте — topic_homework (решение владельца,
+          PROJECT_STATE §9.3). Легаси-блок Homework V1 (homeworks/
+          homework_submissions) отсюда удалён 2026-07-27: он дублировал ДЗ
+          и путал учеников («Срок не указан» рядом с настоящим дедлайном). */}
       <TopicHomeworkStudent topicId={topic.id} />
 
       {/* ── ТЕСТИРОВАНИЕ ТЕМЫ ──
           Неопубликованный тест сюда не доезжает: отсекает RLS. */}
       <TopicTestStudent topicId={topic.id} />
-
-      {/* Старый список фиксированных блоков topic_materials убран: те же
-          материалы уже перенесены в topic_material_items и показываются выше.
-          Оставлять оба списка — значит дублировать каждый файл. */}
-
-      {/* ══ ДОМАШНЕЕ ЗАДАНИЕ — всегда видна ══ */}
-      <div className="rounded-2xl border border-gray-200 overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-gray-100">
-          <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shrink-0">
-            <Lightbulb size={18} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-gray-800">Домашнее задание</div>
-            {hw.due_date ? (
-              <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                <Clock size={10} />
-                Сдать до {new Date(hw.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </div>
-            ) : (
-              <div className="text-xs text-gray-400 mt-0.5">Срок не указан</div>
-            )}
-          </div>
-          {/* Status badge */}
-          <span className={cn('text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shrink-0', {
-            'not_submitted': 'bg-gray-100 text-gray-500',
-            'submitted':     'bg-blue-100 text-blue-600',
-            'checked':       'bg-green-100 text-green-700',
-            'revision':      'bg-orange-100 text-orange-600',
-          }[hw.status] || 'bg-gray-100 text-gray-500')}>
-            {{
-              'not_submitted': <><AlertCircle size={11} />Не сдано</>,
-              'submitted':     <><Clock size={11} />На проверке</>,
-              'checked':       <><CheckCircle size={11} />{hw.score != null ? `${hw.score}/${hw.max_score} балл.` : 'Принято'}</>,
-              'revision':      <><RotateCcw size={11} />Доработать</>,
-            }[hw.status] || hw.status}
-          </span>
-        </div>
-
-        <div className="px-5 py-5 space-y-4 bg-white">
-
-          {/* Teacher's task file */}
-          {hw.file_url && (
-            <SignedFileLink bucket="homeworks" url={hw.file_url}
-              className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors group">
-              <FileText size={18} className="text-amber-600 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-amber-800">Файл задания от преподавателя</div>
-                <div className="text-xs text-amber-500 truncate">{niceName(hw.file_url)}</div>
-              </div>
-              <ExternalLink size={14} className="text-amber-400 shrink-0" />
-            </SignedFileLink>
-          )}
-
-          {/* ── ФОРМА СДАЧИ ── */}
-          {canSubmit && (
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-gray-700">
-                {hw.status === 'revision' ? '✏️ Исправленная работа' : '📤 Ваш ответ'}
-              </div>
-
-              {/* Text answer */}
-              <textarea
-                rows={4}
-                value={hwText}
-                onChange={e => { setHwText(e.target.value); setHwError('') }}
-                placeholder="Введите решение, ответ или ссылку на Google Docs / Яндекс Диск…"
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none placeholder:text-gray-300"
-              />
-
-              {/* File attach */}
-              {hwFile ? (
-                <div className="flex items-center gap-3 p-3.5 bg-green-50 border border-green-200 rounded-xl">
-                  <FileText size={20} className="text-green-600 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-green-800 truncate">{hwFile.name}</div>
-                    <div className="text-xs text-green-500">{(hwFile.size / 1024).toFixed(0)} КБ</div>
-                  </div>
-                  <button
-                    onClick={() => { setHwFile(null); if (hwFileRef.current) hwFileRef.current.value = '' }}
-                    className="text-green-400 hover:text-red-500 transition-colors p-1"
-                  >
-                    <XCircle size={20} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => hwFileRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 text-sm text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors"
-                >
-                  <Paperclip size={16} />
-                  Прикрепить файл (PDF, DOCX, PNG, JPG — до 10 МБ)
-                </button>
-              )}
-              <input
-                ref={hwFileRef} type="file"
-                accept=".pdf,.docx,.png,.jpg,.jpeg"
-                className="hidden"
-                onChange={e => {
-                  const f = e.target.files?.[0]
-                  if (!f) return
-                  if (f.size > 10 * 1024 * 1024) { setHwError('Файл слишком большой (макс. 10 МБ)'); return }
-                  setHwFile(f); setHwError('')
-                }}
-              />
-
-              {hwError && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2.5">
-                  {hwError}
-                </div>
-              )}
-
-              <button
-                onClick={handleHwSubmit}
-                disabled={hwUploading}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary-600 text-white font-bold text-sm hover:bg-primary-700 active:scale-[.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-              >
-                {hwUploading
-                  ? <><Loader2 size={16} className="animate-spin" />Отправляем…</>
-                  : <><Send size={15} />Отправить работу</>
-                }
-              </button>
-            </div>
-          )}
-
-          {/* Submitted */}
-          {hw.status === 'submitted' && (
-            <div className="flex items-start gap-3 py-4 px-4 bg-blue-50 border border-blue-100 rounded-xl">
-              <Clock size={18} className="text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-semibold text-blue-700 text-sm">Работа отправлена — ожидайте проверки</div>
-                <div className="text-xs text-blue-400 mt-1">Преподаватель проверит и выставит оценку</div>
-              </div>
-            </div>
-          )}
-
-          {/* Checked */}
-          {hw.status === 'checked' && (
-            <div className="flex items-start gap-3 py-4 px-4 bg-green-50 border border-green-100 rounded-xl">
-              <CheckCircle size={18} className="text-green-600 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-semibold text-green-700 text-sm">
-                  Работа проверена
-                  {hw.score != null && (
-                    <span className="ml-2 text-base font-bold">{hw.score} / {hw.max_score} баллов</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Expandable text section ──────────────────────────────────────────────────
-
-function TextSection({ section, content }: { section: typeof SECTIONS[0]; content: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="rounded-2xl border border-gray-200 overflow-hidden">
-      <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-4 px-5 py-4 bg-white hover:bg-gray-50 transition-colors text-left">
-        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0', section.color)}>
-          {section.icon}
-        </div>
-        <span className="flex-1 font-semibold text-gray-800 text-sm">{section.label}</span>
-        <ChevronRight size={16} className={cn('text-gray-300 transition-transform shrink-0', open && 'rotate-90')} />
-      </button>
-      {open && (
-        <div className="px-5 pb-5 pt-1 bg-gray-50 border-t border-gray-100">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{content}</p>
-        </div>
-      )}
     </div>
   )
 }

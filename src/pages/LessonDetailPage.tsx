@@ -4,7 +4,7 @@ import {
   ArrowLeft, Calendar, Clock, Video, FileText, BookOpen, Users,
   CheckCircle2, XCircle, Loader2, AlertCircle, ChevronRight,
   GraduationCap, ClipboardList, ExternalLink, Pencil, Save,
-  PlayCircle, BookMarked, Lightbulb, ClipboardCheck, Check, User,
+  PlayCircle, BookMarked, ClipboardCheck, Check, User,
   UserCheck, UserX, Timer, ShieldCheck, Trash2, Ban,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDateTime, formatDate } from '@/utils/format'
+import { bucketForMaterialPath } from '@/lib/topicMaterialItems'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
 import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
 import { LessonMaterialsCard } from '@/components/lessons/LessonMaterialsCard'
@@ -60,21 +61,38 @@ interface LessonHomework {
   due_date: string
 }
 
+/**
+ * Материал темы нового контура (topic_material_items). Старая таблица
+ * topic_materials здесь больше не читается: рубрика приходит в `section`,
+ * тип носителя — в `kind`, файл лежит по `storage_path`, а бакет выбирается
+ * из пути (bucketForMaterialPath) — файлов там три поколения.
+ */
 interface TopicMaterial {
-  id:       string
-  type:     string
-  content:  string | null
-  file_url: string | null
-  link_url: string | null
+  id:           string
+  kind:         string
+  section:      string | null
+  title:        string | null
+  content:      string | null
+  url:          string | null
+  storage_path: string | null
+  file_name:    string | null
 }
 
+/** Подпись по рубрике; если рубрики нет — по типу носителя. */
 const MATERIAL_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  notes:    { label: 'Конспект',    icon: <BookMarked size={14} />,    color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  theory:   { label: 'Теория',      icon: <BookOpen size={14} />,      color: 'bg-purple-50 text-purple-700 border-purple-200' },
-  tasks:    { label: 'Задачи',      icon: <ClipboardList size={14} />, color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  homework: { label: 'ДЗ-материал', icon: <Lightbulb size={14} />,    color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-  solution: { label: 'Решение',     icon: <Check size={14} />,         color: 'bg-green-50 text-green-700 border-green-200' },
-  video:    { label: 'Видео',       icon: <Video size={14} />,         color: 'bg-red-50 text-red-700 border-red-200' },
+  notes:    { label: 'Конспект',   icon: <BookMarked size={14} />,    color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  theory:   { label: 'Теория',     icon: <BookOpen size={14} />,      color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  tasks:    { label: 'Задачи',     icon: <ClipboardList size={14} />, color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  solution: { label: 'Решение ДЗ', icon: <Check size={14} />,         color: 'bg-green-50 text-green-700 border-green-200' },
+  video:    { label: 'Видео',      icon: <Video size={14} />,         color: 'bg-red-50 text-red-700 border-red-200' },
+  link:     { label: 'Ссылка',     icon: <ExternalLink size={14} />,  color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  text:     { label: 'Текст',      icon: <FileText size={14} />,      color: 'bg-gray-50 text-gray-700 border-gray-200' },
+  file:     { label: 'Файл',       icon: <FileText size={14} />,      color: 'bg-gray-50 text-gray-700 border-gray-200' },
+}
+
+function materialMeta(m: TopicMaterial) {
+  return MATERIAL_META[m.section ?? ''] ?? MATERIAL_META[m.kind]
+    ?? { label: m.kind, icon: <FileText size={14} />, color: 'bg-gray-50 text-gray-700 border-gray-200' }
 }
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -268,9 +286,10 @@ export function LessonDetailPage() {
 
       if (built.topic) {
         round2.push(
-          supabase.from('topic_materials')
-            .select('id, type, content, file_url, link_url')
+          supabase.from('topic_material_items')
+            .select('id, kind, section, title, content, url, storage_path, file_name, position')
             .eq('topic_id', built.topic.id)
+            .order('position')
         )
       } else {
         round2.push(Promise.resolve({ data: [] }))
@@ -302,8 +321,8 @@ export function LessonDetailPage() {
       }
 
       const mats: TopicMaterial[] = (matsRes.data || []).map((m: any) => ({
-        id: m.id, type: m.type,
-        content: m.content, file_url: m.file_url, link_url: m.link_url,
+        id: m.id, kind: m.kind, section: m.section ?? null, title: m.title ?? null,
+        content: m.content, url: m.url, storage_path: m.storage_path, file_name: m.file_name ?? null,
       }))
 
       const gs: GroupStudent[] = (gsRes.data || [])
@@ -1005,24 +1024,32 @@ export function LessonDetailPage() {
             ) : (
               <div className="space-y-2">
                 {materials.map(m => {
-                  const meta = MATERIAL_META[m.type] || { label: m.type, icon: <FileText size={14} />, color: 'bg-gray-50 text-gray-700 border-gray-200' }
-                  const hasLink = !!(m.link_url || m.file_url)
+                  const meta = materialMeta(m)
+                  const hasLink = !!(m.url || m.storage_path)
+                  const subtitle = m.title || m.file_name || m.content
                   const body = (
                     <div className={cn('flex items-center gap-3 p-3 rounded-xl border', meta.color)}>
                       <span className="shrink-0">{meta.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium">{meta.label}</div>
-                        {m.content && <div className="text-xs opacity-75 truncate">{m.content}</div>}
+                        {subtitle && <div className="text-xs opacity-75 truncate">{subtitle}</div>}
                       </div>
                       {hasLink && <ExternalLink size={13} className="opacity-60 shrink-0" />}
                     </div>
                   )
-                  // External link_url is plain; file_url lives in the private
-                  // course-materials bucket and must be served via a signed URL.
-                  if (m.link_url)
-                    return <a key={m.id} href={m.link_url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">{body}</a>
-                  if (m.file_url)
-                    return <SignedFileLink key={m.id} bucket="course-materials" url={m.file_url} className="block hover:opacity-80 transition-opacity">{body}</SignedFileLink>
+                  // Ссылка/видео открываются как есть; файл лежит в приватном бакете
+                  // (какой именно — решает путь, см. bucketForMaterialPath) и требует signed URL.
+                  if (m.url)
+                    return <a key={m.id} href={m.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">{body}</a>
+                  if (m.storage_path)
+                    return (
+                      <SignedFileLink
+                        key={m.id}
+                        bucket={bucketForMaterialPath(m.storage_path, lesson.topic!.id)}
+                        url={m.storage_path}
+                        className="block hover:opacity-80 transition-opacity"
+                      >{body}</SignedFileLink>
+                    )
                   return <div key={m.id}>{body}</div>
                 })}
               </div>

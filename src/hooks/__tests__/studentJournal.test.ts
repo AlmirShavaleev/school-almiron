@@ -104,9 +104,16 @@ describe('JournalView shared component', () => {
     expect(src).not.toContain('teacher_notes')
   })
 
-  it('is parameterized by lessonHref/assignmentHref so teacher and student pages reuse one component', () => {
+  // Блок заданий больше не живёт в JournalView: он вынесен в TopicJournalSection
+  // (новый контур). Параметризуется только ссылка на занятие.
+  it('is parameterized by lessonHref so teacher and student pages reuse one component', () => {
     expect(src).toContain('lessonHref: (lessonId: string) => string')
-    expect(src).toContain('assignmentHref: (a: JournalAssignment) => string | null')
+    expect(src).not.toContain('assignmentHref')
+  })
+
+  it('блок заданий берётся из нового контура (topic_homework + topic_tests)', () => {
+    expect(src).toContain('<TopicJournalSection')
+    expect(src).not.toContain('HomeworkV2JournalSection')
   })
 
   it('shows the explicit empty-state message for trend data rather than a fake zero-line', () => {
@@ -127,16 +134,11 @@ describe('JournalView shared component', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('journal cross-navigation reuses existing routes', () => {
-  it('StudentJournalPage (teacher) links to /review-submissions/:id using submission_id', () => {
-    const src = read('src/pages/StudentJournalPage.tsx')
-    expect(src).toContain('/review-submissions/${a.submission_id}')
-    expect(src).toContain('/homeworks/${a.assigned_id}')
-  })
-
-  it('MyProgressPage (student) links to /my-assignments/:id using assigned_id', () => {
-    const src = read('src/pages/student/MyProgressPage.tsx')
-    expect(src).toContain('/my-assignments/${a.assigned_id}')
-    expect(src).toContain("a.source === 'legacy'")
+  // Ссылки на легаси-сдачи из журнала убраны вместе с блоком заданий Homework V2:
+  // ДЗ и тесты теперь показывает TopicJournalSection, переход — на страницу темы.
+  it('журнал больше не ведёт на легаси-страницы сдач', () => {
+    expect(read('src/pages/StudentJournalPage.tsx')).not.toContain('/review-submissions/')
+    expect(read('src/pages/student/MyProgressPage.tsx')).not.toContain('/my-assignments/${a.assigned_id}')
   })
 
   it('both pages link lessons to the existing /lessons/:id route', () => {
@@ -165,7 +167,7 @@ describe('journal route access in App.tsx', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('get_student_journal RPC formulas (016_student_journal.sql)', () => {
-  const sql = read('supabase/migrations/016_student_journal.sql')
+  const sql = read('supabase/migrations/_legacy/016_student_journal.sql')
 
   it('validates p_student_id and period ordering before any role check', () => {
     expect(sql).toContain("RAISE EXCEPTION 'p_student_id is required'")
@@ -272,8 +274,10 @@ describe('JournalView UI — attendance breakdown and subject filter', () => {
     expect(src).toContain("value: 'Математика'")
   })
 
-  it('labels avg_score as a raw score, explicitly noting it is not a normalized percentage', () => {
-    expect(src).toContain('сырой')
+  // avg_score легаси-заданий из JournalView убран: средний балл считается по
+  // принятым ДЗ нового контура и живёт в TopicJournalSection, отдельно по шкалам.
+  it('никакого avg_score легаси-заданий в занятиях не осталось', () => {
+    expect(src).not.toContain('avg_score')
   })
 
   it('passes the subject filter into useStudentJournal so the RPC (not client-side filtering) scopes the data', () => {

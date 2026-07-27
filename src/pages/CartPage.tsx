@@ -8,6 +8,7 @@ import { getLessonHomeworkDraftContext, clearLessonHomeworkDraftContext } from '
 import type { WorkType } from '@/types/collections'
 import { WORK_TYPE_LABELS } from '@/types/collections'
 import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/store/toastStore'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
 import { useTestBank } from '@/hooks/useTopicTest'
 import { supabase } from '@/lib/supabase'
@@ -142,9 +143,11 @@ export function CartPage() {
         return
       }
 
-      // Если есть пропущенные, но не все — показываем alert перед переходом
+      // Если есть пропущенные, но не все — сообщаем toast'ом (не блокирует
+      // страницу, в отличие от window.alert, из-за которого вкладка «висела»
+      // до клика OK)
       if (skipped.length > 0) {
-        window.alert(`Пропущено задач: ${skipped.length} (нет текстового эталона)`)
+        toast.warning(`Пропущено задач: ${skipped.length} (нет текстового эталона)`)
       }
 
       // 4. Очищаем корзину и переходим на страницу теста
