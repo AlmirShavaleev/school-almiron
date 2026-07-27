@@ -1,143 +1,171 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
-export interface TeacherGroup {
-  id:            string
-  name:          string
-  is_active:     boolean
-  student_count: number
-  schedule_days: string[] | null
-  schedule_time: string | null
-  course_title:  string | null
-  subject:       string | null
+export interface TeacherCourseCard {
+  id: string
+  title: string
+  subject: string | null
+  exam_type: string | null
+  is_active: boolean
+  studentCount: number
 }
 
-export interface TeacherLesson {
-  id:               string
-  title:            string
-  scheduled_at:     string
-  duration_minutes: number | null
-  zoom_link:        string | null
-  group_id:         string
-  group_name:       string
+export interface PendingReviewItem {
+  attemptId: string
+  studentName: string
+  hwTitle: string
+  submittedAt: string | null
+}
+
+export interface RecentTestResult {
+  attemptId: string
+  studentName: string
+  testTitle: string
+  totalPoints: number | null
+  maxPoints: number | null
+  completedAt: string | null
 }
 
 export interface TeacherStats {
-  total_groups:   number
-  total_students: number
-  today_lessons:  number
+  courses: number
+  students: number
+  pendingReviews: number
+  bankTests: number
 }
 
-export function useTeacherDashboard(profileId: string | undefined) {
-  const [groups,       setGroups]       = useState<TeacherGroup[]>([])
-  const [lessons,      setLessons]      = useState<TeacherLesson[]>([])
-  const [stats,        setStats]        = useState<TeacherStats | null>(null)
-  const [loading,      setLoading]      = useState(true)
-  const [tick,         setTick]         = useState(0)
+export function useTeacherDashboard(profileId: string | undefined, role: string | undefined) {
+  const [courses,         setCourses]         = useState<TeacherCourseCard[]>([])
+  const [pendingReviews,  setPendingReviews]  = useState<PendingReviewItem[]>([])
+  const [recentTests,     setRecentTests]     = useState<RecentTestResult[]>([])
+  const [stats,           setStats]           = useState<TeacherStats | null>(null)
+  const [loading,         setLoading]         = useState(true)
+  const [tick,            setTick]            = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
     if (!profileId) return
     let cancelled = false
     setLoading(true)
-    load(profileId)
+    load(profileId, role)
       .then(() => { if (!cancelled) setLoading(false) })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId, tick])
+  }, [profileId, role, tick])
 
-  async function load(pid: string) {
-    // ── Round 1: teacher record ───────────────────────────────────────────────
-    const { data: teacher } = await supabase
-      .from('teachers')
-      .select('id')
-      .eq('profile_id', pid)
-      .single()
+  async function load(pid: string, r: string | undefined) {
+    try {
+      // ── 1. Fetch courses ───────────────────────────────────────────────────
+      let coursesQuery = supabase
+        .from('courses')
+        .select('id, title, subject, exam_type, is_active')
+        .order('created_at', { ascending: false })
 
-    if (!teacher) return
+      if (r === 'teacher') {
+        coursesQuery = coursesQuery.eq('owner_id', pid)
+      }
 
-    const tid = teacher.id
-    const now  = new Date().toISOString()
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-    const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999)
+      const { data: coursesData } = await coursesQuery
+      const rawCourses = coursesData || []
+      const courseIds = rawCourses.map(c => c.id)
 
-    // ── Round 2: groups + lessons (parallel) ──────────────────────────────────
-    const [groupsRes, lessonsRes] = await Promise.all([
-      supabase.from('groups')
-        .select('id, name, is_active, schedule_days, schedule_time, group_students(count), courses(title, subject)')
-        .eq('teacher_id', tid)
-        .eq('is_active', true)
-        .order('name'),
+      // ── 2. Fetch student counts per course ──────────────────────────────────
+      let courseStudentMap: Record<string, number> = {}
+      let totalUniqueStudents = new Set<string>()
 
-      supabase.from('lessons')
-        .select('id, title, scheduled_at, duration_minutes, zoom_link, group_id, groups(name)')
-        .eq('teacher_id', tid)
-        .gte('scheduled_at', now)
-        .order('scheduled_at', { ascending: true })
-        .limit(20),
-    ])
+      if (courseIds.length > 0) {
+        const { data: groupStudents } = await supabase
+          .from('group_students')
+          .select('student_id, groups!inner(course_id)')
+          .in('groups.course_id', courseIds)
 
-    const rawGroups  = groupsRes.data  || []
-    const rawLessons = lessonsRes.data || []
+        const rawGroupStudents = groupStudents || []
+        for (const gs of rawGroupStudents) {
+          const courseId = (gs.groups as any)?.course_id
+          if (courseId) {
+            if (!courseStudentMap[courseId]) courseStudentMap[courseId] = 0
+            courseStudentMap[courseId]++
+            totalUniqueStudents.add(gs.student_id)
+          }
+        }
+      }
 
-    // Build group student-count map
-    const groupStudentCount: Record<string, number> = {}
-    for (const g of rawGroups) {
-      groupStudentCount[(g as any).id] = (g as any).group_students?.[0]?.count || 0
+      // ── 3. Build courses with student counts ────────────────────────────────
+      const builtCourses: TeacherCourseCard[] = rawCourses.map(c => ({
+        id: c.id,
+        title: c.title,
+        subject: c.subject || null,
+        exam_type: c.exam_type || null,
+        is_active: c.is_active !== false,
+        studentCount: courseStudentMap[c.id] || 0,
+      }))
+
+      // ── 4. Fetch pending reviews ───────────────────────────────────────────
+      const { data: rawPendingReviews } = await supabase
+        .from('topic_homework_attempts')
+        .select('id, submitted_at, students(profiles(full_name)), topic_homework(title)')
+        .eq('status', 'submitted')
+        .order('submitted_at', { ascending: true })
+        .limit(5)
+
+      const builtPendingReviews: PendingReviewItem[] = (rawPendingReviews || []).map((r: any) => ({
+        attemptId: r.id,
+        studentName: r.students?.profiles?.full_name ?? 'Ученик',
+        hwTitle: r.topic_homework?.title ?? '—',
+        submittedAt: r.submitted_at,
+      }))
+
+      // ── 5. Fetch recent test results ───────────────────────────────────────
+      const { data: rawRecentTests } = await supabase
+        .from('topic_test_attempts')
+        .select('id, total_points, max_points, completed_at, students(profiles(full_name)), topic_tests(title)')
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+        .limit(5)
+
+      const builtRecentTests: RecentTestResult[] = (rawRecentTests || []).map((r: any) => ({
+        attemptId: r.id,
+        studentName: r.students?.profiles?.full_name ?? 'Ученик',
+        testTitle: r.topic_tests?.title ?? '—',
+        totalPoints: r.total_points,
+        maxPoints: r.max_points,
+        completedAt: r.completed_at,
+      }))
+
+      // ── 6. Count pending reviews (exact count) ──────────────────────────────
+      const { count: pendingReviewsCount } = await supabase
+        .from('topic_homework_attempts')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'submitted')
+
+      // ── 7. Count bank tests ────────────────────────────────────────────────
+      const { count: bankTestsCount } = await supabase
+        .from('topic_tests')
+        .select('id', { count: 'exact', head: true })
+
+      // ── 8. Build stats ────────────────────────────────────────────────────
+      const builtStats: TeacherStats = {
+        courses: builtCourses.length,
+        students: totalUniqueStudents.size,
+        pendingReviews: pendingReviewsCount || 0,
+        bankTests: bankTestsCount || 0,
+      }
+
+      setCourses(builtCourses)
+      setPendingReviews(builtPendingReviews)
+      setRecentTests(builtRecentTests)
+      setStats(builtStats)
+    } catch (err) {
+      console.error('useTeacherDashboard load error:', err)
     }
-
-    // ── Build typed structures ────────────────────────────────────────────────
-
-    const builtGroups: TeacherGroup[] = rawGroups.map((g: any) => ({
-      id:            g.id,
-      name:          g.name,
-      is_active:     g.is_active !== false,
-      student_count: groupStudentCount[g.id] || 0,
-      schedule_days: g.schedule_days,
-      schedule_time: g.schedule_time,
-      course_title:  g.courses?.title || null,
-      subject:       g.courses?.subject || null,
-    }))
-
-    const builtLessons: TeacherLesson[] = rawLessons.map((l: any) => ({
-      id:               l.id,
-      title:            l.title,
-      scheduled_at:     l.scheduled_at,
-      duration_minutes: l.duration_minutes,
-      zoom_link:        l.zoom_link,
-      group_id:         l.group_id,
-      group_name:       l.groups?.name || '—',
-    }))
-
-    // Stats
-    const todayLessons = builtLessons.filter(l => {
-      const d = new Date(l.scheduled_at)
-      return d >= todayStart && d <= todayEnd
-    })
-
-    const builtStats: TeacherStats = {
-      total_groups:    builtGroups.length,
-      total_students:  builtGroups.reduce((s, g) => s + g.student_count, 0),
-      today_lessons:   todayLessons.length,
-    }
-
-    setGroups(builtGroups)
-    setLessons(builtLessons)
-    setStats(builtStats)
   }
 
-  // Computed helpers
-  const todayLessons = lessons.filter(l => {
-    const d = new Date(l.scheduled_at)
-    const s = new Date(); s.setHours(0, 0, 0, 0)
-    const e = new Date(); e.setHours(23, 59, 59, 999)
-    return d >= s && d <= e
-  })
-
   return {
-    groups, lessons, stats,
-    todayLessons,
-    loading, reload,
+    courses,
+    pendingReviews,
+    recentTests,
+    stats,
+    loading,
+    reload,
   }
 }

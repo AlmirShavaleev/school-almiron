@@ -544,3 +544,10 @@ rclone докачал бакет полностью. Проверено: assets.
 и PNG. Осталось: env VITE_ASSETS_BASE_URL=https://assets.alminion.ru в Vercel
 (Production+Preview) + Redeploy. Напоминание об удалении catalog-assets из
 Supabase Storage поставлено на 10.08.2026 (scheduled task).
+
+### Дашборды на новом контуре (2026-07-28)
+useTeacherDashboard/TeacherDashboard: курсы+ученики, очередь проверки
+(submitted-попытки, баннер), последние результаты тестов, банк тестов;
+useStudentDashboard/StudentDashboard: курсы, ДЗ (принято/на проверке/
+доработка + оценки), тесты (пройдено/доступно). Легаси (lessons,
+mock_exams, attendance, recommendations, подписка) из кабинетов удалено.

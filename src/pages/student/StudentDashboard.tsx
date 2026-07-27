@@ -1,43 +1,18 @@
 import { useNavigate } from 'react-router-dom'
-import { Calendar, BookOpen, TrendingUp, Target, Clock, CheckCircle, AlertCircle, ArrowRight, CreditCard, RefreshCw } from 'lucide-react'
+import { BookOpen, Target, AlertCircle, ArrowRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
-import { useStudentHomeworkSummary } from '@/hooks/useStudentHomeworkSummary'
-import { useMyHomeworkAssignments } from '@/hooks/useMyHomeworkAssignments'
-import { useSubscription } from '@/hooks/useSubscription'
-import { useMyCourseMemberships } from '@/hooks/useMyCourseMemberships'
-import { CourseSelector } from '@/components/CourseSelector'
-import { formatDate, formatDateTime } from '@/utils/format'
+import { formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { HW_V2_CATEGORY_LABELS, type HomeworkV2Category } from '@/types/homeworkV2'
-
-const HW_V2_CATEGORY_COLORS: Record<HomeworkV2Category, string> = {
-  not_published: 'bg-gray-100 text-gray-500',
-  new: 'bg-blue-100 text-blue-700',
-  to_do: 'bg-orange-100 text-orange-700',
-  under_review: 'bg-yellow-100 text-yellow-700',
-  returned_for_revision: 'bg-red-100 text-red-700',
-  checked: 'bg-green-100 text-green-700',
-}
-
-function isToday(iso: string) {
-  const d = new Date(iso)
-  const n = new Date()
-  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
-}
+import { ATTEMPT_STATUS_LABEL, ATTEMPT_STATUS_TONE, gradeScaleMax } from '@/lib/topicHomework'
+import { formatScore, scorePercent } from '@/lib/topicTest'
 
 export function StudentDashboard() {
-  const profile  = useAuthStore(s => s.profile)
+  const profile = useAuthStore(s => s.profile)
   const navigate = useNavigate()
-  const { student, nextLesson, mockResults, recommendations, attendanceRate, loading } =
-    useStudentDashboard(profile?.id)
-  const { subscription, loading: subLoading } = useSubscription()
-  const myCourses = useMyCourseMemberships()
-  const { summary: hwSummary, loading: hwSummaryLoading } = useStudentHomeworkSummary()
-  const { rows: hwRows, loading: hwRowsLoading } = useMyHomeworkAssignments()
+  const { courses, hwItems, testItems, stats, loading } = useStudentDashboard(profile?.id)
 
   if (loading) {
     return (
@@ -47,357 +22,185 @@ export function StudentDashboard() {
     )
   }
 
-  if (!student) {
-    return (
-      <div className="text-center py-16 text-gray-500">
-        Профиль ученика не найден. Обратитесь к администратору.
-      </div>
-    )
-  }
-
-  // Homework V2 — replaces legacy homeworks/homework_submissions reads entirely.
-  const pendingHWCount = hwSummary ? hwSummary.new + hwSummary.to_do + hwSummary.returned_for_revision : 0
-  const checkedCount = hwSummary?.checked ?? 0
-  const overdueCount = hwSummary?.overdue ?? 0
-  const urgentHW = hwRows
-    .filter(r => (r.category === 'new' || r.category === 'to_do' || r.category === 'returned_for_revision') && !r.is_excused)
-    .filter(r => r.overdue || (new Date(r.effective_due_at).getTime() - Date.now() < 3 * 86400_000))
-    .slice(0, 3)
-  const recentHW = hwRows.filter(r => r.category !== 'not_published').slice(0, 5)
-
-  const lastMock = mockResults[0]
-  const progressData = mockResults
-    .slice().reverse()
-    .map((r: any) => ({
-      label: formatDate(r.mock_exams?.date),
-      score: r.score,
-    }))
-    .slice(-6)
-
-  const lessonIsToday = nextLesson && isToday(nextLesson.scheduled_at)
+  const hasRevisions = stats.hwRevision > 0
+  const checkedAndWaiting = stats.hwWaiting + stats.hwRevision
 
   return (
     <div className="space-y-7">
-
       {/* Hero */}
       <div className="platform-surface rounded-lg p-5 sm:p-6">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
-              <Target size={13} />
-              Личный маршрут
-            </div>
-            <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 break-words">
-              Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}
-            </h1>
-            <p className="text-slate-500 mt-1">
-              {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 ring-1 ring-primary-100">
+            <Target size={13} />
+            Личный маршрут
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => navigate('/my-course')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
-              <div className="text-xs text-slate-500">Курс</div>
-              <div className="text-sm font-semibold text-graphite-950">Открыть</div>
-            </button>
-            <button onClick={() => navigate('/my-assignments')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
-              <div className="text-xs text-slate-500">ДЗ</div>
-              <div className="text-sm font-semibold text-graphite-950">{pendingHWCount}</div>
-            </button>
-            <button onClick={() => navigate('/my-progress')} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50/40 transition-colors">
-              <div className="text-xs text-slate-500">Прогресс</div>
-              <div className="text-sm font-semibold text-graphite-950">Смотреть</div>
-            </button>
-          </div>
+          <h1 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 break-words">
+            Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}
+          </h1>
+          <p className="text-slate-500 mt-1">
+            {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
         </div>
       </div>
-
-      {/* Course selector */}
-      {myCourses.courses.length > 0 && (
-        <CourseSelector
-          courses={myCourses.courses}
-          onOpenGroup={groupId => navigate(`/my-course/${groupId}`)}
-        />
-      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="ДЗ на сдачу"
-          value={pendingHWCount}
+          title="Мои курсы"
+          value={stats.courses}
           icon={<BookOpen size={20} />}
-          color={pendingHWCount > 0 ? 'orange' : 'green'}
-          subtitle={pendingHWCount === 0 ? 'Всё сдано' : 'Ожидают выполнения'}
-        />
-        <StatCard
-          title="Посещаемость"
-          value={attendanceRate > 0 ? `${attendanceRate}%` : '—'}
-          icon={<CheckCircle size={20} />}
-          color={attendanceRate >= 80 ? 'green' : attendanceRate >= 60 ? 'orange' : 'red'}
-          subtitle="За всё время"
-        />
-        <StatCard
-          title="Проверено ДЗ"
-          value={checkedCount}
-          icon={<TrendingUp size={20} />}
-          color={overdueCount > 0 ? 'red' : 'purple'}
-          subtitle={overdueCount > 0 ? `${overdueCount} просрочено` : 'Просрочек нет'}
-        />
-        <StatCard
-          title="Цель"
-          value={student.target_score ? `${student.target_score} б.` : '—'}
-          icon={<Target size={20} />}
           color="blue"
-          subtitle={student.target_exam?.toUpperCase() || 'Не задана'}
+          subtitle={stats.courses === 1 ? 'курс' : 'курсов'}
+        />
+        <StatCard
+          title="ДЗ принято"
+          value={`${stats.hwAccepted}/${stats.hwTotal}`}
+          icon={<BookOpen size={20} />}
+          color={stats.hwAccepted === stats.hwTotal && stats.hwTotal > 0 ? 'green' : 'blue'}
+          subtitle="выполнено"
+        />
+        <StatCard
+          title="На проверке/доработке"
+          value={checkedAndWaiting}
+          icon={<AlertCircle size={20} />}
+          color={checkedAndWaiting > 0 ? 'orange' : 'green'}
+          subtitle={checkedAndWaiting > 0 ? 'ожидают действия' : 'всё чисто'}
+        />
+        <StatCard
+          title="Тесты"
+          value={`${stats.testsCompleted}/${stats.testsAvailable}`}
+          icon={<Target size={20} />}
+          color={stats.testsCompleted === stats.testsAvailable && stats.testsAvailable > 0 ? 'green' : 'purple'}
+          subtitle="пройдено"
         />
       </div>
 
-      {/* Today lesson alert */}
-      {lessonIsToday && (
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 p-4 bg-primary-50/80 border border-primary-200 rounded-lg">
+      {/* Revision banner */}
+      {hasRevisions && (
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-sm">
-            <Calendar size={20} className="text-primary-600" />
+            <AlertCircle size={20} className="text-amber-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-primary-900">Сегодня занятие!</div>
-            <div className="text-sm text-primary-700">{nextLesson.title} · {formatDateTime(nextLesson.scheduled_at)}</div>
+            <div className="font-semibold text-amber-900">
+              У вас {stats.hwRevision} {stats.hwRevision === 1 ? 'работа' : stats.hwRevision % 10 === 1 && stats.hwRevision % 100 !== 11 ? 'работа' : 'работ'} на доработке
+            </div>
           </div>
-          {nextLesson.zoom_link && (
-            <a
-              href={nextLesson.zoom_link}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full sm:w-auto min-h-11 shrink-0 flex items-center justify-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
-            >
-              Подключиться
-            </a>
-          )}
+          <button
+            onClick={() => navigate('/my-course')}
+            className="w-full sm:w-auto min-h-11 shrink-0 flex items-center justify-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 transition-colors"
+          >
+            К курсу
+          </button>
         </div>
       )}
 
-      {/* Main 2-col grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Ближайшее занятие */}
+      {/* Courses section */}
+      {courses.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Ближайшее занятие</CardTitle>
-            <Calendar size={16} className="text-gray-400" />
+            <CardTitle>Мои курсы</CardTitle>
           </CardHeader>
-          {nextLesson ? (
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-              <div className="font-semibold text-gray-900">{nextLesson.title}</div>
-              <div className="flex items-center gap-1.5 text-sm text-gray-500">
-                <Clock size={13} />
-                {formatDateTime(nextLesson.scheduled_at)}
-                <span className="text-gray-300">·</span>
-                {nextLesson.duration_minutes} мин.
-              </div>
-              {nextLesson.zoom_link && !lessonIsToday && (
-                <a href={nextLesson.zoom_link} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium mt-1">
-                  Ссылка на занятие
-                </a>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-400 text-sm py-4 text-center">Занятий не запланировано</p>
-          )}
-        </Card>
-
-        {/* Домашние задания (Homework V2) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Домашние задания</CardTitle>
-            <button
-              onClick={() => navigate('/my-homeworks')}
-              className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
-            >
-              Все <ArrowRight size={12} />
-            </button>
-          </CardHeader>
-          {hwRowsLoading ? (
-            <p className="text-gray-400 text-sm py-4 text-center">Загрузка…</p>
-          ) : recentHW.length === 0 ? (
-            <p className="text-gray-400 text-sm py-4 text-center">Домашних заданий нет</p>
-          ) : (
-            <div className="space-y-2">
-              {recentHW.map(hw => (
-                <div key={hw.assignment_id} onClick={() => navigate('/my-homeworks')} className={cn(
-                  'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-colors cursor-pointer',
-                  hw.overdue ? 'border-red-200 bg-red-50' : 'border-gray-100 hover:border-gray-200'
-                )}>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">{hw.template_title}</div>
-                    <div className={cn('text-xs mt-0.5', hw.overdue ? 'text-red-500 font-medium' : 'text-gray-400')}>
-                      {hw.overdue ? 'Просрочено · ' : 'до '}
-                      {formatDate(hw.effective_due_at)}
-                    </div>
-                  </div>
-                  <span className={cn('text-xs font-medium px-2 py-1 rounded-full ml-3 shrink-0', HW_V2_CATEGORY_COLORS[hw.category])}>
-                    {HW_V2_CATEGORY_LABELS[hw.category]}
-                    {hw.latest_score != null && ` · ${hw.latest_score}`}
-                  </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {courses.map(course => (
+              <div
+                key={course.courseId}
+                onClick={() => navigate(`/my-course/${course.groupId}`)}
+                className="flex flex-col justify-between p-4 rounded-xl border border-gray-100 bg-gray-50 hover:border-primary-200 hover:bg-primary-50/40 transition-colors cursor-pointer"
+              >
+                <div>
+                  <div className="font-semibold text-gray-900">{course.courseTitle}</div>
+                  {course.subject && (
+                    <div className="text-xs text-gray-500 mt-1">{course.subject}</div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        {/* Прогресс пробников */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Прогресс по пробникам</CardTitle>
-            <TrendingUp size={16} className="text-green-500" />
-          </CardHeader>
-          {progressData.length >= 2 ? (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => [`${v} б.`, 'Балл']} />
-                <Area type="monotone" dataKey="score" stroke="#3b82f6" fill="url(#scoreGrad)" strokeWidth={2} dot={{ r: 3 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : lastMock ? (
-            <div className="flex items-center gap-5 py-3">
-              <div className="w-16 h-16 relative shrink-0">
-                <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">
-                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none" stroke="#e5e7eb" strokeWidth="3" />
-                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none" stroke="#3b82f6" strokeWidth="3"
-                    strokeDasharray={`${Math.round(lastMock.score / (lastMock.mock_exams?.max_score || 100) * 100)}, 100`} />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
-                  {Math.round(lastMock.score / (lastMock.mock_exams?.max_score || 100) * 100)}%
+                <div className="text-xs text-primary-600 font-medium mt-3 flex items-center gap-1">
+                  Открыть <ArrowRight size={12} />
                 </div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary-600">{lastMock.score} б.</div>
-                <div className="text-xs text-gray-400">{lastMock.mock_exams?.title}</div>
-                <div className="text-xs text-gray-400">{formatDate(lastMock.mock_exams?.date)}</div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-400 text-sm py-8 text-center">Пробников пока нет</p>
-          )}
-        </Card>
-
-        {/* Рекомендации преподавателя */}
-        {recommendations.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Рекомендации преподавателя</CardTitle>
-            </CardHeader>
-            <div className="space-y-2.5">
-              {recommendations.slice(0, 3).map((rec: any) => (
-                <div key={rec.id} className="flex gap-3 p-3 bg-blue-50 rounded-xl">
-                  <div className="w-1.5 h-full min-h-[16px] rounded-full bg-primary-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="text-sm text-gray-700">{rec.text}</div>
-                    {rec.profiles?.full_name && (
-                      <div className="text-xs text-gray-400 mt-1">— {rec.profiles.full_name}</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : (
-          <Card className="flex flex-col items-center justify-center py-10 text-center">
-            <TrendingUp size={32} className="text-gray-200 mb-3" />
-              <div className="text-sm font-medium text-gray-500">Хорошая работа</div>
-            <div className="text-xs text-gray-400 mt-1">Рекомендации преподавателя появятся здесь</div>
-            <button
-              onClick={() => navigate('/my-progress')}
-              className="mt-4 text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
-            >
-              Посмотреть прогресс <ArrowRight size={12} />
-            </button>
-          </Card>
-        )}
-      </div>
-
-      {/* Subscription widget */}
-      {!subLoading && (
-        subscription ? (
-          <div
-            onClick={() => navigate('/payments')}
-            className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary-50 to-gold-50/70 border border-primary-200 rounded-lg cursor-pointer hover:shadow-md transition-all"
-          >
-            <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
-              <CreditCard size={18} className="text-primary-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-primary-900">{subscription.plans?.name || 'Подписка'}</span>
-                <span className={cn(
-                  'text-xs font-semibold px-2 py-0.5 rounded-full',
-                  subscription.status === 'active'   ? 'bg-green-100 text-green-700' :
-                  subscription.status === 'trial'    ? 'bg-blue-100 text-blue-700' :
-                  subscription.status === 'past_due' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
-                )}>
-                  {subscription.status === 'active'   ? 'Активна' :
-                   subscription.status === 'trial'    ? 'Пробная' :
-                   subscription.status === 'past_due' ? 'Просрочена' : subscription.status}
-                </span>
-                {subscription.cancel_at_period_end && (
-                <span className="text-xs text-orange-500 font-medium">отменяется</span>
-                )}
-              </div>
-              {subscription.current_period_end && (
-                <div className="text-xs text-primary-600 mt-0.5 flex items-center gap-1">
-                  <RefreshCw size={11} />
-                  {subscription.cancel_at_period_end ? 'Истекает' : 'Следующий платёж'}
-                  {' '}{new Date(subscription.current_period_end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
-                </div>
-              )}
-            </div>
-            <ArrowRight size={16} className="text-primary-400 shrink-0" />
-          </div>
-        ) : (
-          <div
-            onClick={() => navigate('/pricing')}
-            className="flex items-center gap-4 p-4 platform-empty rounded-lg cursor-pointer hover:border-primary-300 hover:bg-primary-50 transition-all group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gray-100 group-hover:bg-primary-100 flex items-center justify-center shrink-0 transition-colors">
-              <CreditCard size={18} className="text-gray-400 group-hover:text-primary-600 transition-colors" />
-            </div>
-            <div className="flex-1">
-              <div className="font-medium text-gray-700 group-hover:text-primary-900 transition-colors">Нет активной подписки</div>
-              <div className="text-xs text-gray-400 group-hover:text-primary-600 transition-colors">Выбрать тариф и начать учиться</div>
-            </div>
-            <ArrowRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 transition-colors" />
-          </div>
-        )
-      )}
-
-      {/* Urgent HW alert */}
-      {urgentHW.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertCircle size={16} className="text-orange-500" />
-              <CardTitle className="text-orange-800">Срочно сдать!</CardTitle>
-            </div>
-          </CardHeader>
-          <div className="space-y-2">
-            {urgentHW.map(hw => (
-              <div key={hw.assignment_id} className="flex items-center justify-between text-sm">
-                <span className="font-medium text-orange-900">{hw.template_title}</span>
-                <span className="text-xs text-orange-600">до {formatDate(hw.effective_due_at)}</span>
               </div>
             ))}
           </div>
         </Card>
       )}
+
+      {/* Recent HW section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Последние ДЗ</CardTitle>
+        </CardHeader>
+        {hwItems.length === 0 ? (
+          <p className="text-gray-400 text-sm py-4 text-center">Домашних заданий пока нет</p>
+        ) : (
+          <div className="space-y-2">
+            {hwItems.map(hw => {
+              const statusLabel = ATTEMPT_STATUS_LABEL[hw.status]
+              const statusTone = ATTEMPT_STATUS_TONE[hw.status]
+              const maxScore = hw.gradeScale ? gradeScaleMax(hw.gradeScale) : null
+              const scoreDisplay = hw.status === 'accepted' && hw.score != null && maxScore ? `${hw.score}/${maxScore}` : null
+
+              return (
+                <div
+                  key={hw.attemptId}
+                  className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{hw.hwTitle}</div>
+                    {hw.updatedAt && (
+                      <div className="text-xs text-gray-400 mt-0.5">{formatDate(hw.updatedAt)}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    {scoreDisplay && (
+                      <span className="text-xs font-medium text-gray-600">{scoreDisplay}</span>
+                    )}
+                    <span className={cn('text-xs font-medium px-2 py-1 rounded-full', statusTone)}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Recent tests section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Мои тесты</CardTitle>
+        </CardHeader>
+        {testItems.length === 0 ? (
+          <p className="text-gray-400 text-sm py-4 text-center">Пройденных тестов пока нет</p>
+        ) : (
+          <div className="space-y-2">
+            {testItems.map(test => {
+              const percent = scorePercent(test.totalPoints, test.maxPoints)
+
+              return (
+                <div
+                  key={test.attemptId}
+                  className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{test.testTitle}</div>
+                    {test.completedAt && (
+                      <div className="text-xs text-gray-400 mt-0.5">{formatDate(test.completedAt)}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 ml-3 shrink-0">
+                    <div className="text-right">
+                      <div className="text-xs font-medium text-gray-600">{formatScore(test.totalPoints, test.maxPoints)}</div>
+                      {percent != null && (
+                        <div className="text-xs text-gray-400">{percent}%</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   )
 }
