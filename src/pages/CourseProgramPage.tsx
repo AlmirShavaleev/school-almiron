@@ -29,6 +29,7 @@ import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
+import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { Badge } from '@/components/ui/Badge'
@@ -1149,7 +1150,7 @@ export function CourseProgramPage() {
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
-  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'students' | 'settings'>('program')
+  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'testresults' | 'students' | 'settings'>('program')
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
@@ -1585,6 +1586,7 @@ export function CourseProgramPage() {
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
                 { key: 'homework',  label: 'Домашние задания' },
+                { key: 'testresults', label: 'Результаты тестов' },
                 { key: 'students',  label: 'Ученики' },
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
@@ -1739,6 +1741,11 @@ export function CourseProgramPage() {
             {/* Homework tab */}
             {tab === 'homework' && (
               <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} />
+            )}
+
+            {/* Test Results tab */}
+            {tab === 'testresults' && (
+              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} />
             )}
 
             {/* Students tab */}
