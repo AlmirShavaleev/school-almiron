@@ -229,7 +229,13 @@ export function isOverdue(dueAt: string | null, today?: string): boolean {
 
 export function formatDue(dueAt: string | null): string | null {
   if (!dueAt) return null
-  const date = new Date(dueAt)
+  // due_at — календарная дата (тип date), а не момент времени. `new Date(str)`
+  // трактует и 'YYYY-MM-DD', и метку с 'Z' как UTC, поэтому в поясах восточнее
+  // Гринвича (например, у владельца — Москва, UTC+3) '2026-08-01T23:59:59Z'
+  // уезжал бы на «2 августа». Берём только дату и собираем локальную полночь —
+  // день дедлайна одинаков в любом часовом поясе.
+  const [y, m, d] = dueAt.slice(0, 10).split('-').map(Number)
+  const date = new Date(y, m - 1, d)
   return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
 }
 
