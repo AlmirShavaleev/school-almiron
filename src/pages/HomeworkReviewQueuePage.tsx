@@ -22,7 +22,7 @@ function QueueCard({
 }) {
   const { attempt } = row
   return (
-    <li className="rounded-2xl border border-gray-200 bg-white p-4">
+    <li data-testid="queue-attempt-card" data-attempt-id={attempt.id} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-gray-900">{studentName}</span>
         <span className="text-xs text-gray-400">
@@ -75,7 +75,7 @@ export function HomeworkReviewQueuePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Проверка домашних заданий</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p data-testid="queue-count" className="mt-0.5 text-sm text-gray-500">
             {loading ? 'Загрузка…' : rows.length === 0 ? 'Всё проверено' : `Ждут проверки: ${rows.length}`}
           </p>
         </div>

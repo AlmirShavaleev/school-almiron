@@ -113,7 +113,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
       )}
 
       {showGrade && (
-        <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-center">
+        <div data-testid="hw-grade" className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-center">
           <div className="text-xs font-medium uppercase tracking-wide text-emerald-600">Оценка</div>
           <div className="mt-1 text-2xl font-bold text-emerald-700">
             {lastReview.score} / {gradeMax}
@@ -164,6 +164,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                 <Upload size={14} />
                 Добавить файл работы
                 <input
+                  data-testid="hw-attempt-file-input"
                   type="file"
                   aria-label="Файл работы"
                   onChange={async e => {
@@ -176,6 +177,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                 />
               </label>
               <Button
+                data-testid="hw-submit-attempt"
                 size="sm"
                 onClick={() => run(() => submitAttempt(active.id))}
                 loading={busy}
@@ -196,7 +198,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
 
       {/* ── Начать сдачу ── */}
       {!active && !accepted && (
-        <Button onClick={() => run(() => startAttempt())} loading={busy}>
+        <Button data-testid="hw-start-attempt" onClick={() => run(() => startAttempt())} loading={busy}>
           <Upload size={15} />
           {attempts.length === 0 ? 'Загрузить работу' : 'Сдать заново'}
         </Button>
@@ -215,7 +217,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
               const review = latestReview(reviews, a.id)
               const attFiles = attemptFiles.filter(f => f.attempt_id === a.id)
               return (
-                <li key={a.id} className="rounded-xl border border-gray-200 px-3 py-2.5">
+                <li key={a.id} data-testid="hw-attempt-row" data-status={a.status} className="rounded-xl border border-gray-200 px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-800">Попытка №{a.attempt_number}</span>
                     <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', ATTEMPT_STATUS_TONE[a.status])}>
@@ -245,7 +247,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                   )}
 
                   {review?.comment && (
-                    <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                    <p data-testid="hw-review-comment" className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
                       {review.comment}
                     </p>
                   )}

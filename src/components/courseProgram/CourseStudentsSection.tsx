@@ -76,7 +76,7 @@ function JoinLinkCard({
   const fieldIdPrefix = role === 'curator' ? 'curator_' : ''
 
   return (
-    <div className="border border-gray-200 rounded-lg p-6 bg-white space-y-6">
+    <div data-testid="join-link-card" data-role={role} className="border border-gray-200 rounded-lg p-6 bg-white space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-gray-900">{roleLabel}</h3>
@@ -95,12 +95,14 @@ function JoinLinkCard({
         <p className="text-xs font-medium text-gray-500 mb-2">Ссылка</p>
         <div className="flex gap-2">
           <input
+            data-testid="join-link-url"
             type="text"
             readOnly
             value={`${window.location.origin}/join/${link.token}`}
             className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-600 font-mono truncate"
           />
           <button
+            data-testid="join-copy-link"
             onClick={() => onCopy(`${window.location.origin}/join/${link.token}`, 'Ссылка скопирована', `${fieldIdPrefix}link`)}
             className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
               copiedField === `${fieldIdPrefix}link`
@@ -117,10 +119,11 @@ function JoinLinkCard({
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">Код курса</p>
         <div className="flex gap-2 items-center">
-          <div className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 font-mono text-2xl tracking-widest text-gray-900 font-bold">
+          <div data-testid="join-link-code" className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 font-mono text-2xl tracking-widest text-gray-900 font-bold">
             {formatInviteCode(link.shortCode)}
           </div>
           <button
+            data-testid="join-copy-code"
             onClick={() => onCopy(link.shortCode, 'Код скопирован', `${fieldIdPrefix}code`)}
             className={cn('px-3 py-2 rounded text-xs font-medium transition-colors shrink-0',
               copiedField === `${fieldIdPrefix}code`
@@ -680,6 +683,8 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                   {students.map((student, idx) => (
                     <tr
                       key={student.studentId}
+                      data-testid="course-student-row"
+                      data-student-id={student.studentId}
                       className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
                     >
                       <td className="px-4 py-2">

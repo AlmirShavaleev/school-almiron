@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 const acceptStudentInvite = vi.fn()
 const acceptStudentInviteByCode = vi.fn()
 const acceptCourseJoin = vi.fn()
+const ensureStudentProfile = vi.fn()
 const signOut = vi.fn()
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -25,6 +26,7 @@ vi.mock('@/lib/studentInvitationAcceptance', () => {
     acceptStudentInvite: (token: string) => acceptStudentInvite(token),
     acceptStudentInviteByCode: (code: string) => acceptStudentInviteByCode(code),
     acceptCourseJoin: (value: string) => acceptCourseJoin(value),
+    ensureStudentProfile: () => ensureStudentProfile(),
     InvitationAcceptanceError,
   }
 })
@@ -45,6 +47,8 @@ describe('JoinPage', () => {
     acceptStudentInvite.mockReset()
     acceptStudentInviteByCode.mockReset()
     acceptCourseJoin.mockReset()
+    ensureStudentProfile.mockReset()
+    ensureStudentProfile.mockResolvedValue(null)
     signOut.mockReset()
     useAuthStore.setState({ user: null, profile: null, loading: false } as any)
     sessionStorage.clear()
@@ -128,8 +132,9 @@ describe('JoinPage', () => {
     } as any)
     const { InvitationAcceptanceError } = await import('@/lib/studentInvitationAcceptance')
     acceptStudentInvite.mockRejectedValue(new InvitationAcceptanceError(_kind as any, message))
-    // For 'invalid' errors, also mock acceptCourseJoin to fail
-    if (_kind === 'invalid') {
+    // 'invalid' и 'unknown' уходят в курсовой fallback — он тоже должен упасть,
+    // чтобы проверить именно текст ошибки, показанный человеку.
+    if (_kind === 'invalid' || _kind === 'unknown') {
       acceptCourseJoin.mockRejectedValue(new Error(message))
     }
 
@@ -138,6 +143,145 @@ describe('JoinPage', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument()
     expect(screen.queryByText(/token-secret-123/i)).not.toBeInTheDocument()
+  })
+
+  describe('курсовой fallback (постоянная ссылка/код курса)', () => {
+    function asStudent() {
+      useAuthStore.setState({
+        user: { id: 'u1', email: 's@example.com' },
+        profile: { id: 'u1', email: 's@example.com', full_name: 'Student', role: 'student', created_at: '', updated_at: '' },
+        loading: false,
+      } as any)
+    }
+
+    async function failLegacyWith(kind: string, message: string) {
+      const { InvitationAcceptanceError } = await import('@/lib/studentInvitationAcceptance')
+      acceptStudentInvite.mockRejectedValue(new InvitationAcceptanceError(kind as any, message))
+      acceptStudentInviteByCode.mockRejectedValue(new InvitationAcceptanceError(kind as any, message))
+    }
+
+    // Главный продовый сценарий: токен курса → легаси INVITE_NOT_FOUND
+    // (kind='invalid') → course_join_accept.
+    it('kind=invalid → доходит до course_join_accept и показывает курс', async () => {
+      asStudent()
+      await failLegacyWith('invalid', 'Ссылка или код приглашения недействительны.')
+      acceptCourseJoin.mockResolvedValue({ groupId: 'g-1', courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'student' })
+
+      renderJoin('/join/course-token-1')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      await waitFor(() => expect(acceptCourseJoin).toHaveBeenCalledWith('course-token-1'))
+      expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
+      expect(screen.getByText(/Физика ЕГЭ/)).toBeInTheDocument()
+      expect(sessionStorage.getItem('student-invite-pending')).toBeNull()
+    })
+
+    it('нераспознанная ошибка легаси (kind=unknown) тоже доходит до course_join_accept', async () => {
+      asStudent()
+      await failLegacyWith('unknown', 'Не удалось обработать приглашение')
+      acceptCourseJoin.mockResolvedValue({ groupId: 'g-1', courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'student' })
+
+      renderJoin('/join/course-token-1')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      await waitFor(() => expect(acceptCourseJoin).toHaveBeenCalledWith('course-token-1'))
+      expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
+    })
+
+    it('курсовой код тоже доходит до course_join_accept', async () => {
+      asStudent()
+      await failLegacyWith('invalid', 'Ссылка или код приглашения недействительны.')
+      acceptCourseJoin.mockResolvedValue({ groupId: 'g-1', courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'student' })
+
+      renderJoin('/join')
+      fireEvent.change(screen.getByLabelText('Код приглашения'), { target: { value: 'ab cd12' } })
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      await waitFor(() => expect(acceptCourseJoin).toHaveBeenCalledWith('ABCD12'))
+    })
+
+    it('кураторская ссылка показывает кураторский экран', async () => {
+      asStudent()
+      await failLegacyWith('invalid', 'Ссылка или код приглашения недействительны.')
+      acceptCourseJoin.mockResolvedValue({ groupId: null, courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'curator' })
+
+      renderJoin('/join/curator-token')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText('Вы куратор курса «Физика ЕГЭ»')).toBeInTheDocument()
+      expect(screen.getByText('К проверке ДЗ')).toBeInTheDocument()
+    })
+
+    // Осмысленные отказы легаси не должны подменяться курсовым fallback'ом.
+    it.each([
+      ['used', 'Это приглашение уже использовано.'],
+      ['revoked', 'Приглашение было отозвано. Обратитесь к преподавателю за новой ссылкой.'],
+      ['expired', 'Срок действия приглашения истёк. Обратитесь к преподавателю за новой ссылкой.'],
+      ['email_unconfirmed', 'Подтвердите email, затем вернитесь к приглашению.'],
+      ['wrong_role', 'Это приглашение предназначено для аккаунта ученика. Выйдите и войдите в ученический аккаунт.'],
+      ['group_full', 'В этой группе больше нет свободных мест.'],
+      ['group_unavailable', 'Группа больше недоступна.'],
+      ['network', 'Нет соединения. Проверьте интернет и попробуйте снова.'],
+    ])('kind=%s НЕ уходит в курсовой fallback и показывается человеку', async (kind, message) => {
+      asStudent()
+      await failLegacyWith(kind, message)
+      acceptCourseJoin.mockResolvedValue({ groupId: 'g-1', courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'student' })
+
+      renderJoin('/join/token-secret-123')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText(message)).toBeInTheDocument()
+      expect(acceptCourseJoin).not.toHaveBeenCalled()
+      expect(screen.queryByText('Вы присоединились')).not.toBeInTheDocument()
+    })
+
+    it('при kind=unknown падение курсовой RPC не подменяет исходную ошибку', async () => {
+      asStudent()
+      await failLegacyWith('unknown', 'Не удалось обработать приглашение')
+      acceptCourseJoin.mockRejectedValue(new Error('Ссылка или код не найдены. Проверьте код у преподавателя.'))
+
+      renderJoin('/join/some-token')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText('Не удалось обработать приглашение')).toBeInTheDocument()
+    })
+
+    it('при kind=invalid показывается сообщение курсовой RPC', async () => {
+      asStudent()
+      await failLegacyWith('invalid', 'Ссылка или код приглашения недействительны.')
+      acceptCourseJoin.mockRejectedValue(new Error('Набор закрыт. Обратитесь к преподавателю.'))
+
+      renderJoin('/join/some-token')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText('Набор закрыт. Обратитесь к преподавателю.')).toBeInTheDocument()
+    })
+
+    // Регистрация по приглашению идёт со skipProfileInsert → в сторе профиля нет,
+    // а DashboardLayout при пустом профиле выкидывает на /login.
+    it('после вступления без профиля в сторе подтягивает его', async () => {
+      useAuthStore.setState({ user: { id: 'u1', email: 's@example.com' }, profile: null, loading: false } as any)
+      await failLegacyWith('invalid', 'Ссылка или код приглашения недействительны.')
+      acceptCourseJoin.mockResolvedValue({ groupId: 'g-1', courseId: 'c-1', courseTitle: 'Физика ЕГЭ', joinedAs: 'student' })
+      ensureStudentProfile.mockResolvedValue({ id: 'u1', email: 's@example.com', full_name: 's', role: 'student', created_at: '', updated_at: '' })
+
+      renderJoin('/join/course-token-1')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
+      await waitFor(() => expect(useAuthStore.getState().profile?.id).toBe('u1'))
+    })
+
+    it('существующий профиль в сторе не перезапрашивается', async () => {
+      asStudent()
+      acceptStudentInvite.mockResolvedValue({ inviteId: 'i1', studentId: 's1', groupId: 'group-77' })
+
+      renderJoin('/join/token-123')
+      fireEvent.click(screen.getByText('Присоединиться'))
+
+      expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
+      expect(ensureStudentProfile).not.toHaveBeenCalled()
+    })
   })
 
   it('shows wrong-role state and lets the user switch account', async () => {

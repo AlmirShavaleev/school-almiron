@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { useAuth } from '@/hooks/useAuth'
 import { clearPendingInvite, formatInviteCode, normalizeInviteCode, readPendingInvite, savePendingInvite } from '@/lib/studentInviteSession'
-import { acceptStudentInvite, acceptStudentInviteByCode, acceptCourseJoin, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
+import { acceptStudentInvite, acceptStudentInviteByCode, acceptCourseJoin, ensureStudentProfile, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
 
 type JoinMode = 'token' | 'code'
 type AcceptState = 'idle' | 'success'
@@ -62,10 +62,30 @@ export function JoinPage() {
       }
     } catch (err) {
       const invError = err instanceof InvitationAcceptanceError ? err : null
-      if (invError?.kind === 'invalid') {
-        // Try course join as fallback
-        const courseAccepted = await acceptCourseJoin(tokenOrCode)
-        return { groupId: courseAccepted.groupId, courseTitle: courseAccepted.courseTitle }
+      // Постоянная ссылка/код курса не лежат в enrollment_invites, поэтому
+      // легаси-RPC на них отвечает INVITE_NOT_FOUND. Пробуем курсовую RPC не
+      // только на kind='invalid', но и на 'unknown': mapError — строковая
+      // эвристика по серверным сообщениям, и любое нераспознанное сообщение
+      // (новый текст ошибки, иной SQLSTATE) не должно навсегда закрывать путь
+      // курса — ровно на этом продовый сценарий и ломался.
+      // Осмысленные отказы легаси (used / revoked / expired / wrong_role /
+      // email_unconfirmed / group_full / group_unavailable / network) курсовым
+      // fallback'ом НЕ подменяем — их показываем человеку как есть.
+      if (invError && (invError.kind === 'invalid' || invError.kind === 'unknown')) {
+        try {
+          const courseAccepted = await acceptCourseJoin(tokenOrCode)
+          return {
+            groupId: courseAccepted.groupId,
+            courseTitle: courseAccepted.courseTitle,
+            joinedAs: courseAccepted.joinedAs,
+          }
+        } catch (courseErr) {
+          // 'invalid': легаси прямо сказал «такого приглашения нет» — значит
+          // пользователь почти наверняка шёл по курсовой ссылке, показываем
+          // ошибку курса. 'unknown': легаси упал по своей (непонятой) причине,
+          // курсовая попытка была спекулятивной — возвращаем исходную ошибку.
+          throw invError.kind === 'invalid' ? courseErr : invError
+        }
       }
       throw err
     }
@@ -78,6 +98,19 @@ export function JoinPage() {
     try {
       const accepted = await acceptAny(token || normalizedCode, !!token)
       clearPendingInvite()
+      // Профиль мог появиться только что: курсовой путь создаёт его в
+      // ensureStudentProfile, легаси — внутри _accept_invite_core. В сторе он
+      // при этом всё ещё null (AppAuth грузил профиль до вступления), а
+      // DashboardLayout при пустом профиле выкидывает на /login — то есть
+      // кнопка «Открыть курс» вела бы на экран входа. Подтягиваем профиль.
+      if (!useAuthStore.getState().profile) {
+        try {
+          const fresh = await ensureStudentProfile()
+          if (fresh) useAuthStore.getState().setProfile(fresh)
+        } catch {
+          // не критично: профиль подтянется на следующем auth-событии
+        }
+      }
       setResult({
         groupId: accepted.groupId,
         courseTitle: (accepted as any).courseTitle,
@@ -118,7 +151,7 @@ export function JoinPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-blue-100 flex items-center justify-center p-4">
       <div className="w-full max-w-xl rounded-2xl bg-white p-8 shadow-xl">
         {result ? (
-          <div className="space-y-5 text-center">
+          <div className="space-y-5 text-center" data-testid="join-success">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
               <CheckCircle2 size={28} />
             </div>
@@ -151,7 +184,7 @@ export function JoinPage() {
                 </>
               ) : (
                 <>
-                  <Button onClick={() => navigate(`/my-course/${result.groupId}`)}>Открыть курс</Button>
+                  <Button data-testid="join-open-course" onClick={() => navigate(`/my-course/${result.groupId}`)}>Открыть курс</Button>
                   <Button variant="secondary" onClick={() => navigate('/my-course')}>Перейти в мои курсы</Button>
                 </>
               )}
@@ -172,6 +205,7 @@ export function JoinPage() {
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-gray-700">Код курса или приглашения</label>
                 <input
+                  data-testid="join-code-input"
                   aria-label="Код приглашения"
                   value={codeInput}
                   onChange={(event) => {
@@ -215,6 +249,7 @@ export function JoinPage() {
                 )}
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button
+                    data-testid="join-accept"
                     className="flex-1"
                     onClick={handleAccept}
                     loading={submitting}
@@ -230,7 +265,7 @@ export function JoinPage() {
             )}
 
             {error && (
-              <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div data-testid="join-error" className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>

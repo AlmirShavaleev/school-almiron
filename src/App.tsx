@@ -31,7 +31,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
-import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
+import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 
 // Auth pages
@@ -112,12 +112,36 @@ export function AppAuth() {
     async function loadProfile(user: { id: string; email?: string; user_metadata?: any }) {
       let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       // Самозарегистрированный пользователь без профиля (email-подтверждение) →
-      // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО role='student'.
-      if (!data && !hasPendingInvite()) {
+      // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО своей
+      // строки (id = auth.uid()), поэтому вставлять можно исключительно там, где
+      // сессия уже есть, — то есть здесь, а не в signUp: при включённом
+      // подтверждении почты сразу после signUp сессии нет вообще.
+      //
+      // Раньше здесь стояло дополнительное условие `&& !hasPendingInvite()`:
+      // пока в sessionStorage висит приглашение, профиль не создавался — расчёт
+      // был на то, что легаси-RPC `_accept_invite_core` создаст его сама и
+      // подставит ФИО из приглашения преподавателя. Для курсовых ссылок
+      // (course_join_accept) это оказалось смертельным: RPC читает
+      // `select p.role from profiles` , получает NULL и падает на
+      // `v_role is distinct from 'student'` сообщением «По этой ссылке
+      // присоединяются только ученики» — ни один ученик так и не вступил.
+      // Профиль нужен ОБОИМ курсовым веткам: ученической (проверка роли) и
+      // кураторской (`update profiles set role='curator'` по существующей
+      // строке), поэтому создаём его сразу, как только появилась сессия.
+      //
+      // Плата за это: легаси-приглашение теперь застаёт профиль уже созданным и
+      // не перезаписывает full_name именем из списка преподавателя. Чтобы в
+      // журнале не появлялись пустые строки, берём лучшее из доступного:
+      // ФИО из метаданных регистрации → локальная часть email. Ученик и
+      // преподаватель могут поправить ФИО в профиле; курсовое вступление,
+      // которое не работало вовсе, важнее точности автозаполнения имени.
+      if (!data) {
+        const metaName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : ''
+        const email = user.email || ''
         await supabase.from('profiles').insert({
           id:        user.id,
-          email:     user.email || '',
-          full_name: user.user_metadata?.full_name || '',
+          email,
+          full_name: metaName || email.split('@')[0] || 'Ученик',
           role:      'student',
         } as any)
         const res = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()

@@ -153,14 +153,38 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     unsub()
   })
 
-  it('does not auto-create a profile while a pending student invite exists', async () => {
+  // Раньше вставка профиля пропускалась, пока в sessionStorage висит
+  // приглашение (расчёт на то, что легаси-RPC создаст профиль сама и подставит
+  // ФИО из приглашения). Курсовым ссылкам это ломало вступление насмерть:
+  // course_join_accept читает роль из profiles, получает NULL и отвечает «По
+  // этой ссылке присоединяются только ученики». Профиль обязан появиться сразу,
+  // как только есть сессия, — RLS позволяет вставить его только здесь.
+  it('создаёт профиль student даже при висящем приглашении (иначе course_join_accept отказывает)', async () => {
     profileMissing = true
     sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
 
     render(<AppAuth />)
     await fireAuthEvent()
 
+    expect(insertSpy).toHaveBeenCalledTimes(1)
+    expect(insertSpy.mock.calls[0][0]).toMatchObject({ id: 'u1', email: 'a@a.com', role: 'student' })
+  })
+
+  // full_name в profiles — NOT NULL, а в invite-режиме ФИО не спрашивают:
+  // пустая строка засоряла бы журнал преподавателя безымянными учениками.
+  it('подставляет непустое full_name, если ФИО при регистрации не вводили', async () => {
+    profileMissing = true
+
+    render(<AppAuth />)
+    await fireAuthEvent()
+
+    expect(insertSpy.mock.calls[0][0].full_name).toBe('a')
+  })
+
+  it('не вставляет профиль, если он уже есть', async () => {
+    render(<AppAuth />)
+    await fireAuthEvent()
+
     expect(insertSpy).not.toHaveBeenCalled()
-    expect(useAuthStore.getState().profile).toBeNull()
   })
 })

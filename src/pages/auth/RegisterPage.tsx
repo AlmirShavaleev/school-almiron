@@ -86,7 +86,7 @@ export function RegisterPage() {
 
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {success ? (
-            <div className="text-center py-6">
+            <div className="text-center py-6" data-testid="register-success">
               <div className="text-4xl mb-3">✅</div>
               <h3 className="font-semibold text-gray-900">Регистрация успешна!</h3>
               <p className="text-gray-500 text-sm mt-1">
@@ -108,22 +108,22 @@ export function RegisterPage() {
               )}
 
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+                <div data-testid="register-error" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 {!inviteMode && (
                   <Input label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
                 )}
-                <Input label="Email" type="email" placeholder="your@email.ru" icon={<Mail size={16} />} error={errors.email?.message} {...register('email')} />
-                <Input label="Пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.password?.message} {...register('password')} />
-                <Input label="Повторите пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.confirm?.message} {...register('confirm')} />
+                <Input data-testid="register-email" label="Email" type="email" placeholder="your@email.ru" icon={<Mail size={16} />} error={errors.email?.message} {...register('email')} />
+                <Input data-testid="register-password" label="Пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.password?.message} {...register('password')} />
+                <Input data-testid="register-password-confirm" label="Повторите пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.confirm?.message} {...register('confirm')} />
                 <Select
                   label="Роль"
                   options={[{ value: 'student', label: 'Ученик' }]}
                   {...register('role')}
                 />
-                <Button type="submit" loading={isSubmitting} className="w-full" size="lg">
+                <Button data-testid="register-submit" type="submit" loading={isSubmitting} className="w-full" size="lg">
                   Зарегистрироваться
                 </Button>
               </form>

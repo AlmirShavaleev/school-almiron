@@ -521,7 +521,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full sm:rounded-2xl shadow-2xl sm:max-w-2xl max-h-[92vh] flex flex-col z-10 overflow-hidden">
+      <div data-testid="topic-materials-modal" role="dialog" aria-modal="true" aria-label={topicTitle} className="relative bg-white w-full sm:rounded-2xl shadow-2xl sm:max-w-2xl max-h-[92vh] flex flex-col z-10 overflow-hidden">
         <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="min-w-0 flex-1">
             <h2 className="font-bold text-gray-900 leading-tight">{topicTitle}</h2>
@@ -544,7 +544,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             </div>
           )}
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors ml-3 shrink-0 p-1"><X size={20} /></button>
+          <button data-testid="topic-modal-close" aria-label="Закрыть" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors ml-3 shrink-0 p-1"><X size={20} /></button>
         </div>
 
         {!canEdit && (
@@ -565,6 +565,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 return (
                   <button
                     key={tile.key}
+                    data-testid={`topic-tile-${tile.key}`}
                     onClick={() => setActiveTile(isActive ? null : tile.key)}
                     className={cn(
                       'h-[92px] rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-sm font-semibold transition-colors',
@@ -576,7 +577,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                     <Icon size={20} />
                     <span className="text-xs">{tile.label}</span>
                     {hasContent && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      <div data-testid="topic-tile-filled" className="w-1.5 h-1.5 rounded-full bg-green-500" />
                     )}
                   </button>
                 )

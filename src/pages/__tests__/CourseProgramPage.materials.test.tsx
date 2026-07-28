@@ -99,7 +99,7 @@ async function openMaterialsTab() {
   fireEvent.click(screen.getByRole('button', { name: /Физика/i }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
-  fireEvent.click(screen.getByRole('button', { name: /Материалы/i }))
+  fireEvent.click(screen.getByRole('tab', { name: /Материалы/i }))
 }
 
 describe('CourseProgramPage materials tab', () => {
@@ -168,6 +168,6 @@ describe('CourseProgramPage materials tab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Перейти к программе/i }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Программа курса/i })).toHaveClass('border-primary-600'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Программа курса/i })).toHaveClass('border-primary-600'))
   })
 })

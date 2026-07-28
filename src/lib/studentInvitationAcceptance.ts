@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { Profile } from '@/types'
 
 export interface InvitationAcceptanceResult {
   inviteId: string
@@ -61,7 +62,13 @@ function mapError(error: unknown): InvitationAcceptanceError {
   if (text.includes('group') && (text.includes('not found') || text.includes('inactive') || text.includes('unavailable'))) {
     return new InvitationAcceptanceError('group_unavailable', 'Группа больше недоступна.')
   }
-  if (text.includes('invalid') || text.includes('not found') || text.includes('token') || text.includes('code')) {
+  // Легаси-RPC поднимают SQLSTATE-исключения машинными кодами через underscore:
+  // `INVITE_NOT_FOUND`, `INVALID_CODE`. postgrest-js отдаёт их как
+  // { code: 'P0001', message: 'INVITE_NOT_FOUND' } → склейка выше даёт
+  // 'p0001 invite_not_found', где нет подстроки 'not found' (там underscore).
+  // Именно из-за этого курсовые токены получали kind='unknown' и никогда не
+  // доходили до course_join_accept — поэтому проверяем оба написания.
+  if (text.includes('invalid') || text.includes('not found') || text.includes('not_found') || text.includes('token') || text.includes('code')) {
     return new InvitationAcceptanceError('invalid', 'Ссылка или код приглашения недействительны.')
   }
 
@@ -100,8 +107,64 @@ export async function acceptStudentInviteByCode(shortCode: string): Promise<Invi
   }
 }
 
+/**
+ * Гарантирует, что у текущего пользователя есть строка в `profiles`.
+ *
+ * Зачем: регистрация по приглашению идёт с `skipProfileInsert: true`
+ * (RegisterPage), а триггера на `auth.users` в схеме нет. Если профиля нет,
+ * `course_join_accept` читает `v_role = NULL` и падает на
+ * `v_role is distinct from 'student'` сообщением «По этой ссылке присоединяются
+ * только ученики» — ровно этот отказ и наблюдался в проде.
+ *
+ * Основную вставку делает AppAuth.loadProfile, как только появилась сессия
+ * (там же объяснение, почему раньше нельзя — RLS требует `id = auth.uid()`).
+ * Здесь — вторая линия защиты ровно перед RPC: сессия могла появиться в обход
+ * loadProfile (другая вкладка, гонка с редиректом подтверждения почты), а
+ * вставка там могла не успеть или молча упасть. Вызов идемпотентен, поэтому
+ * дублирование безопасно и стоит один SELECT.
+ *
+ * RLS `profiles_insert_admin` разрешает вставку только своей строки
+ * (`id = auth.uid()`) — вставляем ровно её с ролью student, единственной, на
+ * которую пользователь имеет право сам себя записать.
+ * Существующий профиль не трогаем (даже с ролью не student): решение о том,
+ * годится ли роль, принимает RPC и выдаёт осмысленную ошибку.
+ */
+export async function ensureStudentProfile(): Promise<Profile | null> {
+  const db = supabase as any
+  const { data: authData } = await supabase.auth.getUser()
+  const user = authData?.user
+  if (!user) return null
+
+  const { data: existing } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
+  if (existing) return existing as Profile
+
+  const email: string = user.email ?? ''
+  // profiles.full_name — NOT NULL, а в invite-режиме ФИО не спрашивают.
+  // Порядок: метаданные регистрации → локальная часть email → заглушка.
+  const metaName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : ''
+  const fullName = metaName || email.split('@')[0] || 'Ученик'
+
+  const { data: inserted, error } = await db
+    .from('profiles')
+    .insert({ id: user.id, email, full_name: fullName, role: 'student' })
+    .select('*')
+    .maybeSingle()
+  if (!error && inserted) return inserted as Profile
+
+  // Гонка с параллельной вставкой (легаси-путь, второй таб) или отказ RLS —
+  // перечитываем: если профиль всё-таки есть, продолжаем как ни в чём не бывало.
+  const { data: after } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
+  if (after) return after as Profile
+  if (error) {
+    throw new InvitationAcceptanceError('unknown', 'Не удалось создать профиль ученика. Обновите страницу и попробуйте снова.')
+  }
+  return null
+}
+
 export async function acceptCourseJoin(value: string): Promise<CourseJoinAccepted> {
   try {
+    // course_join_accept требует профиль с ролью student — см. ensureStudentProfile.
+    await ensureStudentProfile()
     const db = supabase as any
     const { data, error } = await db.rpc('course_join_accept', { p_value: value })
     if (error) throw error

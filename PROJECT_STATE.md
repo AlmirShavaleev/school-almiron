@@ -786,3 +786,77 @@ UI: две карточки ссылок на вкладке «Ученики» 
 Это загрузки локального редактора документов, не исходники; в `.gitignore`
 путь уже внесён, поэтому новые файлы туда не попадут. Убрать старые:
 `git rm -r --cached doc_web/data`.
+
+## 15. Сессия 2026-07-28: вступление по ссылке ПОЧИНЕНО + smoke-тест цикла ДЗ
+
+### 15.1. КРИТИЧЕСКОЕ: приглашения по ссылке/коду не работали вовсе
+
+Разведка перед написанием smoke-тестов показала: по ссылкам §14.2 не вступил
+НИ ОДИН человек (course_join_links 4, course_curators 0, membership'ов по
+ссылкам 0; проба владельца 27.07 21:15 застряла без профиля). Три блокера:
+
+1. **Fallback не срабатывал.** `JoinPage.acceptAny` шёл в курсовую RPC только
+   при kind='invalid', а легаси `accept_student_invite` кидает
+   `INVITE_NOT_FOUND` — mapError искал 'not found' С ПРОБЕЛОМ и давал
+   kind='unknown'. Починено: mapError понимает `not_found`; fallback
+   пробуется и на 'invalid', и на 'unknown' (спекулятивно; при провале
+   возвращается осмысленная из двух ошибок). Тесты в
+   `studentInvitationAcceptance.test.ts` + JoinPage.test.tsx (31).
+2. **Профиль не создавался.** Регистрация по приглашению идёт со
+   `skipProfileInsert`, страховка в App.tsx пропускалась условием
+   `!hasPendingInvite()`, триггера на auth.users нет → у нового юзера нет
+   `profiles`, а `course_join_accept` читает роль и падает («…только
+   ученики»). Починено: App.tsx создаёт профиль (role student, имя из
+   метаданных → локальная часть email) как только есть сессия, независимо от
+   висящего приглашения; вторая линия — `ensureStudentProfile()` прямо перед
+   RPC (идемпотентна, ловит гонку). Плата: легаси-инвайт больше не
+   подставляет ФИО из списка преподавателя — есть course_member_rename.
+3. **Подтверждение email (НЕ РЕШЕНО, владелец думает).** Пока Confirm email
+   включён, самостоятельная регистрация по ссылке всё равно застревает на
+   «Подтвердите email» (после signUp нет сессии; приглашение в
+   sessionStorage теряется в новой вкладке письма). Варианты: выключить
+   тумблер в Supabase Auth ИЛИ localStorage + доработать возврат. До решения
+   регистрация в e2e не покрывается — тест ходит готовым учеником.
+
+### 15.2. data-testid для e2e
+
+Расставлены по всему контуру (только атрибуты, поведение не менялось):
+курс/вкладки (`course-list-item`, `course-tab-{key}` + role=tab/aria-selected),
+программа (`program-topic-row`, `program-topic-hw-badge`), модалка темы
+(`topic-materials-modal` + role=dialog, `topic-modal-close` + aria-label
+«Закрыть», `topic-tile-{key}`, `topic-tile-filled`), редактор ДЗ (`hw-*`),
+ученик (`hw-start-attempt`, `hw-attempt-file-input`, `hw-submit-attempt`,
+`hw-grade`, `hw-attempt-row[data-status]`, `hw-review-comment`), очередь
+(`queue-attempt-card[data-attempt-id]`, `queue-count`, `review-*`), вкладка
+«Ученики» (`join-link-card[data-role]`, `join-link-url`, `join-link-code`,
+`course-student-row`), auth (`login-*`, `register-*`, `join-accept`,
+`join-success`, `join-error`).
+
+### 15.3. Smoke-тест: e2e/topic-homework-cycle.spec.ts (НЕ ПРОГНАН)
+
+Сквозной цикл: сид [E2E]-курса+темы через supabase-js под physics@demo.ru →
+преподаватель берёт ссылку с вкладки «Ученики», выдаёт ДЗ (PDF, дедлайн,
+шкала five, публикация) → ученик alex@demo.ru вступает по /join/{token},
+сдаёт → возврат с комментарием из /homework-queue → пересдача → приём с
+баллом 4 → ученик видит «Принято», 4/5, комментарий; журнал /my-progress.
+Teardown удаляет курс каскадом (только по префиксу [E2E], перечитанному из
+базы). Файлы Storage остаются сиротами — известный компромисс.
+
+Прогнать из облачной сессии НЕЛЬЗЯ (egress-прокси режет *.supabase.co) —
+запускать на машине владельца: `npx playwright test e2e/topic-homework-cycle.spec.ts`.
+Требования: .env с прод-ключами, `node e2e/fixtures/make-fixtures.mjs`,
+демо-аккаунты physics@demo.ru / alex@demo.ru (оба demo123, подтверждены).
+
+### 15.4. Известное на потом
+
+- `maria@demo.ru` — есть в auth.users, но НЕТ строки profiles: битый
+  демо-аккаунт, `lesson-materials-upload.spec.ts` под ней почти наверняка
+  падает.
+- Три теста `src/pages/__tests__/CourseProgramPage.{materials,program,topic-delete}.test.tsx`
+  ВИСНУТ (таймаут) — предсуществующее, проверено на чистом 127b416/dc36ed3;
+  `StudentReviewPage.routing.test.tsx` шумит unhandled rejection. Полный
+  `vitest run` из-за них не завершается — гонять точечно (§6).
+- В кураторскую карточку приглашений уходит courseTitle=undefined
+  (CourseStudentsSection ~807) — битый текст сообщения куратору.
+- Фикстура oversized.pdf (21 МБ) не «oversized» для бакетов topic-homework*
+  (лимит 50 МБ).

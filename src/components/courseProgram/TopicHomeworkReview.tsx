@@ -85,6 +85,7 @@ export function ReviewActions({
   return (
     <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
       <textarea
+        data-testid="review-comment-input"
         value={comment}
         onChange={e => setComment(e.target.value)}
         placeholder="Комментарий (обязателен при возврате на доработку)"
@@ -95,6 +96,7 @@ export function ReviewActions({
 
       {scoreMax != null && (
         <input
+          data-testid="review-score-input"
           type="number"
           value={score}
           onChange={e => setScore(e.target.value)}
@@ -109,11 +111,12 @@ export function ReviewActions({
       {error && <div className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="success" onClick={() => run('accepted')} loading={busy} disabled={busy || !canAccept}>
+        <Button data-testid="review-accept-button" size="sm" variant="success" onClick={() => run('accepted')} loading={busy} disabled={busy || !canAccept}>
           <Check size={14} />
           Принять
         </Button>
         <Button
+          data-testid="review-return-button"
           size="sm"
           variant="secondary"
           onClick={() => run('returned_for_revision')}

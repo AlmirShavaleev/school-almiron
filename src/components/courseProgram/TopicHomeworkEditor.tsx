@@ -186,6 +186,8 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             )}
           </div>
           <Button
+            data-testid="hw-publish-toggle"
+            data-published={isPublished}
             variant={isPublished ? 'secondary' : 'primary'}
             size="sm"
             onClick={handleTogglePublish}
@@ -211,7 +213,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           {files.length > 0 && (
             <ul className="mb-2 space-y-1">
               {files.map(f => (
-                <li key={f.id} className="flex items-center justify-between gap-2">
+                <li key={f.id} data-testid="hw-task-file" className="flex items-center justify-between gap-2">
                   <SignedFileLink
                     bucket={TOPIC_HOMEWORK_BUCKET}
                     url={f.storage_path}
@@ -266,6 +268,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {uploading ? 'Загрузка…' : 'Загрузить файлы'}
             <input
+              data-testid="hw-task-files-input"
               type="file"
               accept={HOMEWORK_ACCEPT}
               multiple
@@ -318,7 +321,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           </div>
         </div>
 
-        {saved && <div className="mb-2 text-xs text-emerald-600">Сохранено</div>}
+        {saved && <div data-testid="hw-saved-flag" className="mb-2 text-xs text-emerald-600">Сохранено</div>}
 
         {/* До публикации — предупреждаем, скольким уйдёт; после — что ушло. */}
         {!isPublished && !notifyMessage && canPublish && notifyRecipientCount !== null && (
@@ -332,6 +335,8 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
 
         {notifyMessage && (
           <div
+            data-testid="hw-notify-message"
+            data-tone={notifyMessage.type}
             className={cn(
               'rounded-xl px-3 py-2 text-sm',
               notifyMessage.type === 'success' && 'bg-emerald-50 text-emerald-700',

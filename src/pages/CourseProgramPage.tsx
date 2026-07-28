@@ -363,6 +363,8 @@ function HwTable({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
+                          data-testid="program-topic-row"
+                          data-topic-id={topic.id}
                           onClick={() => onOpenTopic(topic, mod.title)}
                           className="group flex items-center gap-1.5 text-left hover:text-primary-600 transition-colors"
                         >
@@ -379,6 +381,7 @@ function HwTable({
                         )}
                         {hw && (
                           <button
+                            data-testid="program-topic-hw-badge"
                             onClick={onOpenHomeworkTab}
                             className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
                           >
@@ -1568,6 +1571,8 @@ export function CourseProgramPage() {
             {courses.map(c => (
               <button
                 key={c.id}
+                data-testid="course-list-item"
+                data-course-id={c.id}
                 onClick={() => { setSelectedId(c.id); setTab('program') }}
                 className={cn(
                   'w-full text-left p-3 rounded-xl border transition-all',
@@ -1623,7 +1628,7 @@ export function CourseProgramPage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+            <div role="tablist" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
@@ -1634,6 +1639,9 @@ export function CourseProgramPage() {
               ].map(t => (
                 <button
                   key={t.key}
+                  data-testid={`course-tab-${t.key}`}
+                  role="tab"
+                  aria-selected={tab === t.key}
                   onClick={() => setTab(t.key as any)}
                   className={cn(
                     'min-h-11 shrink-0 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',

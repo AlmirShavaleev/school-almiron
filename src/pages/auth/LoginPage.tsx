@@ -76,11 +76,12 @@ export function LoginPage() {
           )}
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+            <div data-testid="login-error" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
+              data-testid="login-email"
               label="Email"
               type="email"
               placeholder="your@email.ru"
@@ -89,6 +90,7 @@ export function LoginPage() {
               {...register('email')}
             />
             <Input
+              data-testid="login-password"
               label="Пароль"
               type="password"
               placeholder="••••••••"
@@ -103,7 +105,7 @@ export function LoginPage() {
               </Link>
             </div>
 
-            <Button type="submit" loading={isSubmitting} className="w-full" size="lg">
+            <Button data-testid="login-submit" type="submit" loading={isSubmitting} className="w-full" size="lg">
               Войти
             </Button>
           </form>
