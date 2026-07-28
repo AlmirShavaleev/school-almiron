@@ -6,6 +6,7 @@ import {
   resolveSectionLabel,
   printContentWidthMm,
   printContentHeightMm,
+  shouldBoostPrintFigures,
   type PrintableItem,
   type KeyEntry,
 } from '@/utils/variantPrintUtils'
@@ -160,6 +161,8 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                   : ''
               const sourceLabel = showSource ? resolveSourceLabel(task) : null
               const sectionLabel = showCodifierSection ? resolveSectionLabel(task) : null
+              // Физика ЕГЭ: иллюстрации в PDF укрупняются (см. shouldBoostPrintFigures)
+              const figuresBoostClass = shouldBoostPrintFigures(task) ? ' print-figures-boost' : ''
 
               return (
                 <div key={item.id} className={taskClassName}>
@@ -170,7 +173,7 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                   </div>
 
                   <div
-                    className="catalog-html print-statement"
+                    className={`catalog-html print-statement${figuresBoostClass}`}
                     dangerouslySetInnerHTML={{ __html: stmt }}
                   />
 
@@ -181,7 +184,7 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                   {explanationHtml && (
                     <div className="print-section print-section--explanation">
                       <p className="print-section-label">Решение</p>
-                      <div className="catalog-html" dangerouslySetInnerHTML={{ __html: explanationHtml }} />
+                      <div className={`catalog-html${figuresBoostClass}`} dangerouslySetInnerHTML={{ __html: explanationHtml }} />
                     </div>
                   )}
 

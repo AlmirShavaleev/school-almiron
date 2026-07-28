@@ -17,6 +17,31 @@ export interface PrintableItem {
   customNumber?: string | null
 }
 
+/**
+ * Каким задачам в PDF укрупнять иллюстрации (класс print-figures-boost,
+ * правило в index.css).
+ *
+ * Зачем: базовое правило каталога жмёт иллюстрации до 50% ширины —
+ * на экране это компенсирует лайтбокс (клик — во весь экран), а в PDF
+ * кликать некуда, и графики/схемы физики становятся нечитаемыми на бумаге.
+ *
+ * Владелец попросил начать с физики ЕГЭ (2026-07-28) — расширять охват
+ * здесь, одним условием, а не новыми CSS-правилами по месту.
+ * В каталоге предмет/экзамен хранятся по-русски («Физика», «ЕГЭ»),
+ * но в courses — слагами (physics, ege); принимаем оба написания, чтобы
+ * функция не зависела от источника задачи.
+ */
+export function shouldBoostPrintFigures(
+  task: Pick<PrintableTask, 'subject' | 'exam_type'> | null | undefined,
+): boolean {
+  if (!task) return false
+  const subject = String(task.subject ?? '').toLowerCase()
+  const exam = String(task.exam_type ?? '').toLowerCase()
+  const isPhysics = subject === 'физика' || subject === 'physics'
+  const isEge = exam === 'егэ' || exam === 'ege'
+  return isPhysics && isEge
+}
+
 // ── File name ────────────────────────────────────────────────────────────────
 
 const SUBJECT_SLUGS: Record<string, string> = {

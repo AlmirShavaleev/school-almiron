@@ -235,6 +235,21 @@ body {
 }
 
 /*
+ * Физика ЕГЭ в PDF: иллюстрации укрупнены (класс вешает VariantDocument по
+ * shouldBoostPrintFigures). На экране мелкоту компенсирует лайтбокс, в PDF
+ * кликать некуда — графики и схемы должны читаться прямо на бумаге.
+ * min-width подтягивает мелкие исходники вверх (ценой резкости — осознанно:
+ * крупное мыльцо читается, мелкая чёткость — нет); max-width ограничивает
+ * гигантов. Специфичность (0,3,1)+!important бьёт базовые 50% (0,2,1).
+ * Формулы (math / math-display) не трогаем — у них свои правила выше.
+ */
+.print-document .catalog-html.print-figures-boost img.catalog-condition-figure,
+.print-document .catalog-html.print-figures-boost img.catalog-solution-image {
+  min-width: 55%;
+  max-width: 88% !important;
+}
+
+/*
  * Answer-template blanks (TeX-rendered А|Б / А|Б|В tables).
  * Detected in resolveHtml by ASCII-table alt pattern; gets this class added.
  * Override math-display margins with a compact block.
