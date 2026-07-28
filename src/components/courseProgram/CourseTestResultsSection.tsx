@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle } from 'lucide-r
 import { supabase } from '@/lib/supabase'
 import { formatScore, scorePercent } from '@/lib/topicTest'
 import { cn } from '@/utils/cn'
+import { TestAttemptDetailModal } from './TestAttemptDetailModal'
 
 interface Module {
   id: string
@@ -113,6 +114,14 @@ export function CourseTestResultsSection({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+  const [selectedAttempt, setSelectedAttempt] = useState<{
+    assignmentId: string
+    attemptId: string
+    studentName: string
+    testTitle: string
+    totalPoints: number | null
+    maxPoints: number | null
+  } | null>(null)
 
   useEffect(() => {
     const cancelled = { value: false }
@@ -402,7 +411,25 @@ export function CourseTestResultsSection({
                                       </span>
                                     )}
                                     {result.status === 'completed' && (
-                                      <div className="space-y-0.5">
+                                      <button
+                                        data-testid="test-result-cell"
+                                        title="Открыть разбор теста"
+                                        onClick={() => {
+                                          const attempt = attempts.find(
+                                            a => a.assignment_id === assignment.id && a.student_id === student.studentId,
+                                          )
+                                          if (!attempt) return
+                                          setSelectedAttempt({
+                                            assignmentId: assignment.id,
+                                            attemptId: attempt.id,
+                                            studentName: student.name,
+                                            testTitle: assignment.topic_tests?.title || 'Тест',
+                                            totalPoints: result.score,
+                                            maxPoints: result.maxScore,
+                                          })
+                                        }}
+                                        className="space-y-0.5 mx-auto rounded-md px-1.5 py-0.5 hover:bg-gray-100 transition-colors cursor-pointer"
+                                      >
                                         <div>
                                           <span className={cn('text-sm font-medium', getScoreColor(percent))}>
                                             {formatScore(result.score, result.maxScore)}
@@ -417,7 +444,7 @@ export function CourseTestResultsSection({
                                           {formatDate(result.completedAt)}
                                           {result.durationLabel && ` · ${result.durationLabel}`}
                                         </div>
-                                      </div>
+                                      </button>
                                     )}
                                   </td>
                                 )
@@ -449,6 +476,18 @@ export function CourseTestResultsSection({
           })}
         </div>
       ))}
+
+      {selectedAttempt && (
+        <TestAttemptDetailModal
+          assignmentId={selectedAttempt.assignmentId}
+          attemptId={selectedAttempt.attemptId}
+          studentName={selectedAttempt.studentName}
+          testTitle={selectedAttempt.testTitle}
+          totalPoints={selectedAttempt.totalPoints}
+          maxPoints={selectedAttempt.maxPoints}
+          onClose={() => setSelectedAttempt(null)}
+        />
+      )}
     </div>
   )
 }
