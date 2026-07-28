@@ -11,7 +11,7 @@ import type {
 
 const startAttempt = vi.fn()
 const submitAttempt = vi.fn()
-const uploadAttemptFile = vi.fn()
+const uploadAttemptFiles = vi.fn()
 const removeAttemptFile = vi.fn()
 
 let homework: TopicHomeworkRow | null = null
@@ -25,7 +25,7 @@ vi.mock('@/hooks/useTopicHomework', () => ({
   useTopicHomework: () => ({
     homework, files, attempts, attemptFiles, reviews, loading, error: null, reload: vi.fn(),
     createHomework: vi.fn(), updateHomework: vi.fn(), uploadHomeworkFile: vi.fn(),
-    startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
   }),
 }))
 
@@ -52,7 +52,7 @@ beforeEach(() => {
   loading = false
   startAttempt.mockReset().mockResolvedValue('att-new')
   submitAttempt.mockReset().mockResolvedValue(undefined)
-  uploadAttemptFile.mockReset().mockResolvedValue(undefined)
+  uploadAttemptFiles.mockReset().mockResolvedValue([])
   removeAttemptFile.mockReset().mockResolvedValue(undefined)
 })
 
@@ -104,6 +104,40 @@ describe('ДЗ ученику — цикл сдачи', () => {
     attempts = [attempt(1, 'draft')]
     renderStudent()
     expect(screen.getByText('Отправить на проверку').closest('button')).toBeDisabled()
+  })
+
+  it('пикер принимает несколько файлов сразу (не только один, не только PDF)', () => {
+    attempts = [attempt(1, 'draft')]
+    renderStudent()
+    const input = screen.getByLabelText('Файлы работы') as HTMLInputElement
+    expect(input.multiple).toBe(true)
+    expect(input.accept).toBe('application/pdf,image/*')
+  })
+
+  it('выбор нескольких фото сразу уходит одним вызовом с индикатором загрузки', async () => {
+    attempts = [attempt(1, 'draft')]
+    let resolveUpload: (v: unknown) => void = () => {}
+    uploadAttemptFiles.mockImplementation(
+      () => new Promise(resolve => { resolveUpload = resolve }),
+    )
+    renderStudent()
+
+    const photo1 = new File(['a'], 'photo1.jpg', { type: 'image/jpeg' })
+    const photo2 = new File(['b'], 'photo2.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText('Файлы работы'), { target: { files: [photo1, photo2] } })
+
+    await waitFor(() =>
+      expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [photo1, photo2], expect.any(Function)),
+    )
+    // Индикатор загрузки: имя каждого файла + кнопка «Отправить» заблокирована,
+    // пока сдача не завершена — иначе можно нажать «Отправить» на середине загрузки.
+    expect(screen.getByText('photo1.jpg')).toBeInTheDocument()
+    expect(screen.getByText('photo2.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Загрузка…')).toBeInTheDocument()
+    expect(screen.getByText('Отправить на проверку').closest('button')).toBeDisabled()
+
+    resolveUpload([])
+    await waitFor(() => expect(screen.queryByText('Загрузка…')).not.toBeInTheDocument())
   })
 
   it('после отправки показывает «Отправлено» и ждёт проверки', () => {

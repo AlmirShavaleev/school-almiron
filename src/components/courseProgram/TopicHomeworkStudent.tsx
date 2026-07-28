@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { FileText, Loader2, Paperclip, Send, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { Button } from '@/components/ui/Button'
@@ -6,6 +6,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
+  HOMEWORK_FILE_ACCEPT,
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
   TOPIC_HOMEWORK_BUCKET,
   acceptedAttempt,
@@ -21,7 +22,7 @@ import {
 import { cn } from '@/utils/cn'
 
 /**
- * Ученический блок PDF-ДЗ темы.
+ * Ученический блок ДЗ темы.
  *
  * Черновик ДЗ и чужие попытки сюда не приходят — их отсекает RLS вместе
  * с `topics.available_from`. Клиент ничего не перепроверяет: скрытие кнопки
@@ -30,11 +31,18 @@ import { cn } from '@/utils/cn'
 export function TopicHomeworkStudent({ topicId, className }: { topicId: string; className?: string }) {
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
-    startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
   } = useTopicHomework(topicId)
 
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  // Прогресс сдачи файлов — отдельно от busy: раньше один общий busy на
+  // «прикрепить» и «отправить» заставлял кнопку «Отправить на проверку»
+  // мигать спиннером во время простой загрузки фото. Теперь у сдачи
+  // файлов свой честный индикатор (имя + %), как у преподавателя при
+  // выдаче задания (uploadHomeworkFiles) — тот же приём через XHR.
+  const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
+  const uploadingFiles = uploads.length > 0
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -47,6 +55,24 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
       setBusy(false)
     }
   }
+
+  const uploadPicked = useCallback(
+    async (attemptId: string, picked: File[]) => {
+      if (picked.length === 0) return
+      setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
+      setLocalError(null)
+      try {
+        await uploadAttemptFiles(attemptId, picked, (index, percent) => {
+          setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
+        })
+      } catch (err: any) {
+        setLocalError(err?.message ?? 'Не удалось загрузить файлы')
+      } finally {
+        setUploads([])
+      }
+    },
+    [uploadAttemptFiles],
+  )
 
   if (loading) {
     return (
@@ -147,8 +173,9 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                     <button
                       type="button"
                       onClick={() => run(() => removeAttemptFile(f.id, f.storage_path))}
+                      disabled={busy || uploadingFiles}
                       aria-label="Убрать файл"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -158,20 +185,49 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             </ul>
           )}
 
+          {/* Индикатор загрузки: имя файла + честный % через XHR-прогресс,
+              один на каждое сдаваемое фото/PDF — видно прямо во время сдачи,
+              а не только «спиннер и тишина» до завершения. */}
+          {uploadingFiles && (
+            <ul className="mb-3 space-y-1.5">
+              {uploads.map((u, i) => (
+                <li key={`${u.name}-${i}`}>
+                  <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                    <span className="truncate">{u.name}</span>
+                    <span className="shrink-0 tabular-nums">{u.percent}%</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="h-full rounded-full bg-primary-500 transition-all"
+                      style={{ width: `${u.percent}%` }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
           {active.status === 'draft' && (
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-primary-600 hover:underline">
-                <Upload size={14} />
-                Добавить файл работы
+              <label
+                className={cn(
+                  'inline-flex items-center gap-2 text-sm text-primary-600',
+                  uploadingFiles ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:underline',
+                )}
+              >
+                {uploadingFiles ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {uploadingFiles ? 'Загрузка…' : 'Добавить фото или файл'}
                 <input
                   data-testid="hw-attempt-file-input"
                   type="file"
-                  aria-label="Файл работы"
+                  accept={HOMEWORK_FILE_ACCEPT}
+                  multiple
+                  disabled={uploadingFiles}
+                  aria-label="Файлы работы"
                   onChange={async e => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    await run(() => uploadAttemptFile(active.id, file))
+                    const picked = Array.from(e.target.files ?? [])
                     e.target.value = ''
+                    await uploadPicked(active.id, picked)
                   }}
                   className="hidden"
                 />
@@ -181,7 +237,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                 size="sm"
                 onClick={() => run(() => submitAttempt(active.id))}
                 loading={busy}
-                disabled={draftFiles.length === 0}
+                disabled={draftFiles.length === 0 || uploadingFiles}
                 title={draftFiles.length === 0 ? 'Сначала прикрепите работу' : undefined}
               >
                 <Send size={14} />

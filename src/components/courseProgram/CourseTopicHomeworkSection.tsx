@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { ATTEMPT_STATUS_TONE, gradeScaleMax, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
+import { ATTEMPT_STATUS_TONE, gradeScaleMax, type GradeScale, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
+import { HomeworkAttemptDetailModal } from './HomeworkAttemptDetailModal'
 
 interface Module {
   id: string
@@ -123,6 +124,13 @@ export function CourseTopicHomeworkSection({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+  const [selectedSubmission, setSelectedSubmission] = useState<{
+    homeworkId: string
+    studentId: string
+    studentName: string
+    homeworkTitle: string
+    gradeScale: GradeScale | null
+  } | null>(null)
 
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
@@ -407,7 +415,23 @@ export function CourseTopicHomeworkSection({
                               return (
                                 <tr
                                   key={student.studentId}
-                                  className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+                                  data-testid="homework-student-row"
+                                  onClick={() => {
+                                    if (!attempt) return
+                                    setSelectedSubmission({
+                                      homeworkId: firstHw.id,
+                                      studentId: student.studentId,
+                                      studentName: student.name,
+                                      homeworkTitle: firstHw.title,
+                                      gradeScale: firstHw.grade_scale,
+                                    })
+                                  }}
+                                  className={cn(
+                                    'border-b border-gray-100',
+                                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50',
+                                    attempt && 'cursor-pointer hover:bg-primary-50/40 transition-colors',
+                                  )}
+                                  title={attempt ? 'Открыть работу ученика' : undefined}
                                 >
                                   <td className="px-4 py-2">
                                     <span className="text-sm text-gray-900">{student.name}</span>
@@ -451,6 +475,17 @@ export function CourseTopicHomeworkSection({
         <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
           <p className="text-sm font-medium text-gray-700">В этом курсе нет домашних заданий по темам</p>
         </div>
+      )}
+
+      {selectedSubmission && (
+        <HomeworkAttemptDetailModal
+          homeworkId={selectedSubmission.homeworkId}
+          studentId={selectedSubmission.studentId}
+          studentName={selectedSubmission.studentName}
+          homeworkTitle={selectedSubmission.homeworkTitle}
+          gradeScale={selectedSubmission.gradeScale}
+          onClose={() => setSelectedSubmission(null)}
+        />
       )}
     </div>
   )

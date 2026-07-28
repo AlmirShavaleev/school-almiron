@@ -13,6 +13,14 @@ import { sanitizeStorageFileName } from './topicMaterialItems'
 export const TOPIC_HOMEWORK_BUCKET = 'topic-homework'
 export const TOPIC_HOMEWORK_ATTEMPTS_BUCKET = 'topic-homework-attempts'
 
+/**
+ * Что принимаем как файл — и задания от преподавателя, и сдачи ученика:
+ * PDF и картинки (фото работы с телефона). Ни бакет, ни RLS тип файла не
+ * ограничивают — это чисто подсказка для системного пикера (на мобильном
+ * с image/* обычно предлагает камеру наравне с галереей).
+ */
+export const HOMEWORK_FILE_ACCEPT = 'application/pdf,image/*'
+
 export type TopicHomeworkAttemptStatus =
   | 'draft'
   | 'submitted'

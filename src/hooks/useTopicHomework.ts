@@ -390,29 +390,87 @@ export function useTopicHomework(topicId: string | null) {
     return data as string
   }, [homework, reload])
 
-  const uploadAttemptFile = useCallback(async (attemptId: string, file: File) => {
-    const path = buildAttemptFilePath(attemptId, file.name)
-    const up = await supabase.storage
-      .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false })
-    if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
+  /**
+   * Мультизагрузка файлов сдачи (несколько фото работы или PDF) с прогрессом.
+   *
+   * Тот же приём, что и uploadHomeworkFiles на стороне преподавателя: signed
+   * upload URL + XHR, потому что у supabase-js нет колбэка прогресса.
+   * Загрузка последовательная — прогресс честный, а не «всё сразу 100%», и
+   * это даёт ученику реальный индикатор во время сдачи, а не молчание до
+   * завершения. Позиции продолжают уже загруженные файлы этой попытки —
+   * повторное открытие «Добавить файл» не затирает порядок.
+   */
+  const uploadAttemptFiles = useCallback(
+    async (
+      attemptId: string,
+      list: File[],
+      onProgress?: (index: number, percent: number) => void,
+    ): Promise<TopicHomeworkAttemptFileRow[]> => {
+      if (list.length === 0) return []
 
-    const { data, error: err } = await supabase
-      .from('topic_homework_attempt_files')
-      .insert({
-        attempt_id: attemptId,
-        storage_path: path,
-        file_name: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        position: 0,
-      })
-      .select('*')
-      .single()
+      let position = attemptFiles
+        .filter(f => f.attempt_id === attemptId)
+        .reduce((max, f) => Math.max(max, f.position), -1) + 1
+      const created: TopicHomeworkAttemptFileRow[] = []
 
-    if (err) throw err
-    setAttemptFiles(prev => [...prev, data as TopicHomeworkAttemptFileRow])
-  }, [])
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i]
+        const path = buildAttemptFilePath(attemptId, file.name)
+
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
+          .createSignedUploadUrl(path)
+
+        if (signErr || !signed) {
+          // Фолбэк без прогресса — лучше загрузить молча, чем не загрузить.
+          const up = await supabase.storage
+            .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
+            .upload(path, file, { contentType: file.type, upsert: false })
+          if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
+        } else {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.open('PUT', signed.signedUrl)
+            xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+            xhr.setRequestHeader('x-upsert', 'false')
+            xhr.upload.onprogress = e => {
+              if (e.lengthComputable) onProgress?.(i, Math.round((e.loaded / e.total) * 100))
+            }
+            xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+              ? resolve()
+              : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
+            xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
+            xhr.send(file)
+          })
+        }
+        onProgress?.(i, 100)
+
+        const { data, error: err } = await supabase
+          .from('topic_homework_attempt_files')
+          .insert({
+            attempt_id: attemptId,
+            storage_path: path,
+            file_name: file.name,
+            mime_type: file.type,
+            size_bytes: file.size,
+            position: position++,
+          })
+          .select('*')
+          .single()
+
+        if (err) {
+          // Строка не создалась — не оставляем осиротевший объект в бакете.
+          await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([path])
+          throw err
+        }
+        created.push(data as TopicHomeworkAttemptFileRow)
+      }
+
+      setAttemptFiles(prev => [...prev, ...created])
+      return created
+    },
+    [attemptFiles],
+  )
 
   const removeAttemptFile = useCallback(async (fileId: string, storagePath: string) => {
     const { error: err } = await supabase.from('topic_homework_attempt_files').delete().eq('id', fileId)
@@ -465,7 +523,7 @@ export function useTopicHomework(topicId: string | null) {
     loading, error, reload,
     createHomework, ensureHomework, updateHomework,
     uploadHomeworkFile, uploadHomeworkFiles, removeHomeworkFile,
-    startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
     reviewAttempt, notifyStudents, notifyRecipientCount,
   }
 }

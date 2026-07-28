@@ -182,7 +182,7 @@ vi.mock('@/hooks/useTopicHomework', () => ({
     files: [], attempts: [attempt('a1', 's1', 1, 'submitted')], attemptFiles: [], reviews: [],
     studentNames: NAMES, loading: false, error: null, reload: vi.fn(),
     createHomework: vi.fn(), updateHomework: vi.fn(), uploadHomeworkFile: vi.fn(),
-    startAttempt: vi.fn(), uploadAttemptFile: vi.fn(), removeAttemptFile: vi.fn(),
+    startAttempt: vi.fn(), uploadAttemptFiles: vi.fn(), removeAttemptFile: vi.fn(),
     submitAttempt: vi.fn(), reviewAttempt: vi.fn(),
   }),
 }))

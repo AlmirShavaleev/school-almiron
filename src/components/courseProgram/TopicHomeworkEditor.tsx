@@ -3,11 +3,8 @@ import { ClipboardPaste, Eye, EyeOff, FileText, Loader2, Send, Trash2, Upload } 
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { TOPIC_HOMEWORK_BUCKET, formatBytes, nameForPastedImage } from '@/lib/topicHomework'
+import { HOMEWORK_FILE_ACCEPT, TOPIC_HOMEWORK_BUCKET, formatBytes, nameForPastedImage } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
-
-/** Что принимаем как файл задания: PDF и картинки. */
-const HOMEWORK_ACCEPT = 'application/pdf,image/*'
 
 /**
  * Преподавательский блок ДЗ темы — только ВЫДАЧА задания.
@@ -270,7 +267,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             <input
               data-testid="hw-task-files-input"
               type="file"
-              accept={HOMEWORK_ACCEPT}
+              accept={HOMEWORK_FILE_ACCEPT}
               multiple
               disabled={uploading}
               onChange={handleFiles}
