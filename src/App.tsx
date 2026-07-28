@@ -31,6 +31,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
+import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 
@@ -200,6 +201,8 @@ export default function App() {
     <BrowserRouter>
       <AppAuth />
       <Toaster />
+      {/* Клик по картинке задачи каталога — полноэкранный просмотр (см. компонент) */}
+      <CatalogImageLightbox />
       <Suspense fallback={<FullScreenSpinner />}>
       <Routes>
         {/* Public */}

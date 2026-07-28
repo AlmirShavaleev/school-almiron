@@ -140,6 +140,25 @@ body {
   height: auto;
   margin: 8px auto;
   object-fit: contain;
+  /* Клик раскрывает на весь экран (CatalogImageLightbox) — курсор-подсказка */
+  cursor: zoom-in;
+}
+
+/* Настоящие HTML-таблицы в задачах (редкие, ~150 задач): читаемые границы,
+ * на узких экранах прокрутка вместо сплющивания колонок. */
+.catalog-html table {
+  border-collapse: collapse;
+  margin: 0.5em auto;
+  max-width: 100%;
+  display: block;
+  width: fit-content;
+  overflow-x: auto;
+}
+.catalog-html th,
+.catalog-html td {
+  border: 1px solid #d1d5db;
+  padding: 4px 10px;
+  text-align: center;
 }
 
 /*
