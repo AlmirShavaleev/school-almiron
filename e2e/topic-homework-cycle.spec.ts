@@ -2,6 +2,7 @@ import { test, expect, chromium, type BrowserContext } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { execSync } from 'child_process'
 import { AUTH_FILE } from './global-setup'
 
 /**
@@ -83,6 +84,12 @@ async function getSeedClient(): Promise<SupabaseClient> {
 const STUDENT_EMAIL = 'alex@demo.ru'
 const STUDENT_PASSWORD = 'demo123'
 const HOMEWORK_PDF = path.resolve('e2e/fixtures/test-material.pdf')
+
+// Фикстуры gitignored и генерируются на лету — тот же приём, что в
+// lesson-materials-upload.spec.ts: спек не должен требовать ручного шага.
+if (!fs.existsSync(HOMEWORK_PDF)) {
+  execSync('node e2e/fixtures/make-fixtures.mjs', { cwd: process.cwd(), stdio: 'inherit' })
+}
 
 interface SeedResult {
   courseId: string
