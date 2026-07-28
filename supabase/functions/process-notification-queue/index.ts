@@ -35,10 +35,47 @@ function buildMessage(item: QueueItem, appUrl: string) {
         (p.course_title ? `Курс: ${p.course_title}\n` : '') +
         `Тема: ${p.title}\n` +
         `Дедлайн: ${p.due_date}\n` +
-        (p.entity_id ? `\n<a href="${appUrl}/homeworks/${p.entity_id}">Открыть задание →</a>` : '')
+        // p.link — новый контур (страница темы); entity_id — легаси-фолбэк
+        (p.link
+          ? `\n<a href="${appUrl}${String(p.link)}">Открыть задание →</a>`
+          : p.entity_id ? `\n<a href="${appUrl}/homeworks/${p.entity_id}">Открыть задание →</a>` : '')
         ),
         replyMarkup: null,
       }
+
+    // ── Новый контур ДЗ (topic_homework) ──────────────────────────────────
+
+    case 'topic_homework_submitted':
+      return {
+        text: (
+        `📥 <b>Ученик сдал домашнее задание</b>\n\n` +
+        `${String(p.student_name ?? 'Ученик')}` +
+        (Number(p.attempt_number) > 1 ? ` (попытка №${p.attempt_number})` : '') + `\n` +
+        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
+        `Тема: ${p.title}\n` +
+        (p.link ? `\n<a href="${appUrl}${String(p.link)}">Проверить работу →</a>` : '')
+        ),
+        replyMarkup: null,
+      }
+
+    case 'topic_homework_reviewed': {
+      const accepted = p.decision === 'accepted'
+      const comment  = typeof p.comment === 'string' && p.comment.trim()
+        ? (p.comment.length > 300 ? p.comment.slice(0, 300) + '…' : p.comment)
+        : null
+      return {
+        text: (
+        `📝 <b>Домашнее задание проверено</b>\n\n` +
+        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
+        `Тема: ${p.title}\n` +
+        `Статус: ${accepted ? '✅ Принято' : '🔄 На доработку'}\n` +
+        (accepted && p.score != null && p.max_score != null ? `Оценка: ${p.score} из ${p.max_score}\n` : '') +
+        (comment ? `Комментарий: ${comment}\n` : '') +
+        (p.link ? `\n<a href="${appUrl}${String(p.link)}">Открыть тему →</a>` : '')
+        ),
+        replyMarkup: null,
+      }
+    }
 
     case 'lesson_reminder': {
       const is24h = p.reminder_type === '24h'

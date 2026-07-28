@@ -173,6 +173,8 @@ export function isTelegramPreferenceEnabled(
     case 'lesson_reminder':
       return prefs.lesson ?? true
     case 'homework_reviewed':
+    // Вердикт по ДЗ нового контура — та же настройка «проверено», что у легаси
+    case 'topic_homework_reviewed':
       return prefs.checked ?? true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':
