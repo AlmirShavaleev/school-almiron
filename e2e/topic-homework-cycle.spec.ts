@@ -105,8 +105,12 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(async () => {
   const c = await getSeedClient()
 
-  const courseTitle = `${E2E_PREFIX} Цикл ДЗ ${Date.now().toString(36)}`
-  const topicTitle = `${E2E_PREFIX} Тема ДЗ`
+  const runTag = Date.now().toString(36)
+  const courseTitle = `${E2E_PREFIX} Цикл ДЗ ${runTag}`
+  // runTag и в теме: очередь и журнал фильтруются по названию темы, а строки
+  // прошлых прогонов могут пережить teardown (см. фолбэк ниже) — фильтр по
+  // одному лишь [E2E] тогда находит несколько строк и роняет strict mode.
+  const topicTitle = `${E2E_PREFIX} Тема ДЗ ${runTag}`
 
   const { data: userData, error: userErr } = await c.auth.getUser()
   if (userErr || !userData.user) throw new Error(`topic-homework-cycle: cannot resolve teacher user: ${userErr?.message}`)
@@ -185,10 +189,42 @@ test.afterAll(async () => {
   // ON DELETE CASCADE сносит модуль -> тему -> topic_homework -> attempts/reviews
   // -> группы -> членства. Файлы Storage остаются сиротами (см. комментарий в шапке).
   const { error: deleteErr } = await c.from('courses').delete().eq('id', seed.courseId)
-  if (deleteErr) {
-    console.error(`[topic-homework-cycle] teardown: failed to delete course ${seed.courseId}:`, deleteErr)
-  } else {
+  if (!deleteErr) {
     console.log(`[topic-homework-cycle] teardown: deleted course ${seed.courseId} ("${row.title}")`)
+    return
+  }
+
+  // Полное удаление невозможно: триггер «Сданную попытку удалить нельзя»
+  // (23514, миграция topic_homework) защищает сданные/принятые попытки даже от
+  // каскада — курс, в котором хоть раз сдали ДЗ, под RLS не удаляется вовсе.
+  // Это продуктовое свойство (история не затирается, §2 PROJECT_STATE), а не
+  // баг теста. Фолбэк-уборка того, что реально мешает следующим прогонам:
+  //   1) отчисляем учеников (course_member_remove) — иначе у демо-ученика
+  //      копятся членства, [E2E]-строки остаются в его журнале, и фильтры
+  //      следующего прогона находят несколько строк;
+  //   2) архивируем курс (is_active=false) — чтобы не мозолил список курсов.
+  // Скелет курса с попытками остаётся — вычищать его может только админ с
+  // отключёнными триггерами (session_replication_role=replica).
+  console.warn(`[topic-homework-cycle] teardown: cascade delete blocked (${deleteErr.code} ${deleteErr.message}) — falling back to unenroll+archive`)
+
+  const { data: memberRows } = await c
+    .from('group_students')
+    .select('student_id, groups!inner(course_id)')
+    .eq('groups.course_id', seed.courseId)
+  const studentIds = Array.from(new Set((memberRows ?? []).map(r => (r as { student_id: string }).student_id)))
+  for (const studentId of studentIds) {
+    const { error: removeErr } = await (c as SupabaseClient).rpc('course_member_remove', {
+      p_course_id: seed.courseId,
+      p_student_id: studentId,
+    })
+    if (removeErr) console.error(`[topic-homework-cycle] teardown: course_member_remove(${studentId}) failed:`, removeErr)
+  }
+
+  const { error: archiveErr } = await c.from('courses').update({ is_active: false }).eq('id', seed.courseId)
+  if (archiveErr) {
+    console.error(`[topic-homework-cycle] teardown: failed to archive course ${seed.courseId}:`, archiveErr)
+  } else {
+    console.log(`[topic-homework-cycle] teardown: unenrolled ${studentIds.length} student(s), archived course ${seed.courseId} ("${row.title}")`)
   }
 })
 
@@ -309,7 +345,7 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
 
     await test.step('teacher: return the first attempt for revision', async () => {
       await teacherPage.goto('/homework-queue')
-      const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: E2E_PREFIX })
+      const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: topicTitle })
       await expect(card).toBeVisible({ timeout: 20_000 })
 
       await card.locator('[data-testid="review-comment-input"]').fill('Перерисуй график, задача 2')
@@ -339,7 +375,7 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
 
     await test.step('teacher: accept the resubmission with a score', async () => {
       await teacherPage.goto('/homework-queue')
-      const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: E2E_PREFIX })
+      const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: topicTitle })
       await expect(card).toBeVisible({ timeout: 20_000 })
 
       await card.locator('[data-testid="review-score-input"]').fill('4')
@@ -357,7 +393,7 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
 
     await test.step('student: see the grade in the progress journal', async () => {
       await studentPage.goto('/my-progress')
-      const journalRow = studentPage.locator('[data-testid="journal-homework-row"]', { hasText: E2E_PREFIX })
+      const journalRow = studentPage.locator('[data-testid="journal-homework-row"]', { hasText: topicTitle })
       await expect(journalRow).toBeVisible({ timeout: 20_000 })
       await expect(journalRow).toContainText('Принято')
       await expect(journalRow).toContainText('4 / 5')
