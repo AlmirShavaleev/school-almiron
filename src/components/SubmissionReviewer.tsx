@@ -75,6 +75,14 @@ interface BaseProps {
    * кнопка публикует только пометки.
    */
   publishButtonLabel?: string
+  /**
+   * Спрятать кнопку публикации в тулбаре. Нужно там, где решение принимается
+   * внешней формой вердикта: две зелёные кнопки рядом («Опубликовать» в тулбаре
+   * и «Принять/Вернуть» в футере) читались как одно и то же действие —
+   * владелец решил, что публикация сама отправила работу на доработку.
+   * Пометки в этом режиме публикуются вместе с вердиктом, через publishRef.
+   */
+  hideToolbarPublish?: boolean
   header?: ReactNode
   onPublish?: (targetStatus?: 'checked' | 'revision') => Promise<boolean | void>
   onPublishComplete?: (success: boolean) => void
@@ -168,6 +176,7 @@ export function SubmissionReviewer({
   footer,
   footerPublishLabel,
   publishButtonLabel = 'Опубликовать проверку',
+  hideToolbarPublish = false,
   header,
   onPublish,
   onPublishComplete,
@@ -624,7 +633,7 @@ export function SubmissionReviewer({
         </div>
         {!readOnly && <div className="flex items-center gap-2">
           <SaveStatePill saving={saving} saveState={saveState} />
-          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>
+          {!hideToolbarPublish && <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>}
         </div>}
       </div>
     </div>

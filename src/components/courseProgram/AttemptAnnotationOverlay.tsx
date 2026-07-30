@@ -62,6 +62,7 @@ export function AttemptAnnotationOverlay({
   footer,
   footerPublishLabel,
   publishButtonLabel = 'Опубликовать пометки',
+  hideToolbarPublish = false,
   onClose,
 }: {
   attemptId: string
@@ -72,6 +73,7 @@ export function AttemptAnnotationOverlay({
   footer?: AttemptAnnotationFooter
   footerPublishLabel?: string
   publishButtonLabel?: string
+  hideToolbarPublish?: boolean
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -159,6 +161,7 @@ export function AttemptAnnotationOverlay({
               footer={footerContent}
               footerPublishLabel={footerPublishLabel}
               publishButtonLabel={publishButtonLabel}
+              hideToolbarPublish={hideToolbarPublish}
               publishRef={publishRef}
             />
           </Suspense>

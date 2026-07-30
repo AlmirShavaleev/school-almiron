@@ -345,12 +345,17 @@ export function HomeworkAttemptDetailModal({
           attemptId={annotating.id}
           files={files.filter(f => f.attempt_id === annotating.id)}
           title={homeworkTitle}
-          subtitle={`${studentName} · попытка №${annotating.attempt_number}`}
-          footerPublishLabel="Опубликовать пометки ученику"
+          subtitle={studentName}
+          // Единственная кнопка публикации — в футере, под объяснением, что она
+          // делает. Дубль в тулбаре убран: две зелёные кнопки рядом читались как
+          // одно действие и создавали ощущение, что работа куда-то отправлена.
+          hideToolbarPublish
+          footerPublishLabel="Показать пометки ученику"
           footer={() => (
             <p className="text-xs text-gray-500">
-              Рамки сохраняются сразу, но ученик увидит их только после публикации.
-              Оценку и вердикт ставят в «Проверке домашних заданий».
+              Рамки сохраняются сразу, но ученик их пока не видит. Кнопка ниже открывает
+              их ученику — работу она никуда не отправляет. Оценка и вердикт ставятся
+              в разделе «Проверка ДЗ».
             </p>
           )}
           onClose={() => setAnnotating(null)}

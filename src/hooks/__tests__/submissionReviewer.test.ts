@@ -65,6 +65,22 @@ describe('submission annotation reviewer', () => {
     expect(newMigration).toContain('topic_homework_attempt_is_own(attempt_id)')
   })
 
+  it('оставляет ровно одну кнопку публикации там, где действие принимает внешняя форма', () => {
+    // Владелец: «процесс опубликовать не очень понятно, вроде как это кнопка
+    // отправила автоматически работу на доработку». Причина — две зелёные
+    // кнопки рядом: «Опубликовать» в тулбаре аннотатора и «Принять/Вернуть»
+    // в форме вердикта. Тулбарную в этих местах убираем.
+    const modal = readFileSync('src/components/courseProgram/HomeworkAttemptDetailModal.tsx', 'utf8')
+    const reviewQueue = readFileSync('src/pages/HomeworkReviewQueuePage.tsx', 'utf8')
+
+    expect(reviewer).toContain('hideToolbarPublish')
+    expect(reviewer).toContain('{!hideToolbarPublish && <button type="button" data-testid="review-toolbar-publish-button"')
+    expect(modal).toContain('hideToolbarPublish')
+    expect(reviewQueue).toContain('hideToolbarPublish')
+    // В очереди вердикт публикует пометки сам — об этом сказано в подсказке.
+    expect(reviewQueue).toContain('hint=')
+  })
+
   it('stores normalized region comments and supports pointer input', () => {
     expect(reviewer).toContain("viewBox=\"0 0 1 1\"")
     expect(reviewer).toContain('onPointerDown={pointerDown}')

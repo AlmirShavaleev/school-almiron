@@ -47,10 +47,16 @@ export function ReviewActions({
   attempt,
   gradeScale,
   onReview,
+  hint,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
   onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
+  /**
+   * Строка над формой — нужна там, где решение делает не только то, что
+   * написано на кнопке (в разборе с рамками оно ещё и публикует пометки).
+   */
+  hint?: string
 }) {
   const [comment, setComment] = useState('')
   const [score, setScore] = useState<string>('')
@@ -84,6 +90,9 @@ export function ReviewActions({
 
   return (
     <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+      {hint && (
+        <p data-testid="review-hint" className="mb-2 text-xs text-gray-500">{hint}</p>
+      )}
       <textarea
         data-testid="review-comment-input"
         value={comment}

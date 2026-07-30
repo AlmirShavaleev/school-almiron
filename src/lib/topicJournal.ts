@@ -130,6 +130,48 @@ export function journalCourses(journal: TopicJournal): { id: string; title: stri
   return [...seen].map(([id, title]) => ({ id, title }))
 }
 
+/** ДЗ, которое ждёт действия ученика: не начато, черновик или возвращено. */
+export function needsAction(row: TopicJournalHomework): boolean {
+  return row.status === 'not_started' || row.status === 'draft' || row.status === 'returned'
+}
+
+export interface HomeworkBuckets {
+  /** Нужно сделать: не начато / черновик / возвращено. Просроченные — первыми. */
+  todo: TopicJournalHomework[]
+  /** Сдано, ждёт вердикта. */
+  awaiting: TopicJournalHomework[]
+  /** Принято. Свежепроверенные сверху. */
+  done: TopicJournalHomework[]
+}
+
+/** Просроченное вперёд, затем по дедлайну; работы без срока — в конец. */
+function byDue(a: TopicJournalHomework, b: TopicJournalHomework): number {
+  if (a.is_overdue !== b.is_overdue) return a.is_overdue ? -1 : 1
+  if (!a.due_at && !b.due_at) return 0
+  if (!a.due_at) return 1
+  if (!b.due_at) return -1
+  return a.due_at.localeCompare(b.due_at)
+}
+
+function byReviewedDesc(a: TopicJournalHomework, b: TopicJournalHomework): number {
+  return (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? '')
+}
+
+/**
+ * Раскладка ДЗ для страницы «Домашние задания» ученика.
+ *
+ * Чистая функция, а не часть хука: именно порядок внутри корзин легко сломать
+ * (просрочка должна быть выше близкого дедлайна), и проверять это удобнее
+ * напрямую. Сортировка не мутирует вход.
+ */
+export function splitHomeworkBuckets(rows: TopicJournalHomework[]): HomeworkBuckets {
+  return {
+    todo: rows.filter(needsAction).slice().sort(byDue),
+    awaiting: rows.filter(r => r.status === 'submitted').slice().sort(byDue),
+    done: rows.filter(r => r.status === 'accepted').slice().sort(byReviewedDesc),
+  }
+}
+
 export function filterByCourse(journal: TopicJournal, courseId: string | null): TopicJournal {
   if (!courseId) return journal
   return {

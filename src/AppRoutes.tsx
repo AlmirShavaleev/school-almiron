@@ -41,6 +41,7 @@ import { StudentProfilePage } from '@/pages/StudentProfilePage'
 import { StudentsPage } from '@/pages/StudentsPage'
 import { SchedulePage } from '@/pages/SchedulePage'
 import { MyProgressPage } from '@/pages/student/MyProgressPage'
+import { MyTopicHomeworkPage } from '@/pages/student/MyTopicHomeworkPage'
 import { CatalogPage } from '@/pages/catalog/CatalogPage'
 import { CatalogSectionPage } from '@/pages/catalog/CatalogSectionPage'
 import { CatalogTopicPage } from '@/pages/catalog/CatalogTopicPage'
@@ -156,6 +157,8 @@ export default function AppRoutes() {
         <Route path="/my-course" element={<RoleGuard allow={['student']}><MyCoursesPage /></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']}><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']}><TopicPage /></RoleGuard>} />
+        {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт). */}
+        <Route path="/my-homework" element={<RoleGuard allow={['student']}><MyTopicHomeworkPage /></RoleGuard>} />
         <Route path="/my-progress" element={<RoleGuard allow={['student']}><MyProgressPage /></RoleGuard>} />
       </Route>
 

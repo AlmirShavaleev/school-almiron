@@ -1,9 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
@@ -36,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
 
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
+  { label: 'Домашние задания',  path: '/my-homework',    icon: <ClipboardCheck size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
   { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
   { label: 'Подписка',          path: '/payments',       icon: <CreditCard size={18} />,    roles: ['student'],  section: 'Аккаунт', hidden: true },
-  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт', hidden: true },
+  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
   // Other roles (flat)
@@ -69,7 +69,7 @@ const navItems: NavItem[] = [
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Платежи',           path: '/payments',       icon: <CreditCard size={18} />,    roles: ['admin', 'owner'], hidden: true },
-  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
+  { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
 ]
 
@@ -89,17 +89,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const profile = useAuthStore(s => s.profile)
   const { signOut } = useAuth()
   const navigate = useNavigate()
-  const [unreadCount, setUnreadCount] = useState(0)
-
-  useEffect(() => {
-    if (!profile) return
-    supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', profile.id)
-      .eq('read', false)
-      .then(({ count }) => setUnreadCount(count || 0))
-  }, [profile])
+  const badges = useSidebarBadges()
 
   if (!profile) return null
 
@@ -194,7 +184,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     <SidebarNavItem
                       key={item.path}
                       item={item}
-                      unreadCount={unreadCount}
+                      badge={badges[item.path]}
                       onClose={onClose}
                     />
                   ))}
@@ -202,7 +192,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               ))}
             </div>
           ) : (
-            <StaffNavigation items={visibleItems} unreadCount={unreadCount} onClose={onClose} />
+            <StaffNavigation items={visibleItems} badges={badges} onClose={onClose} />
           )}
         </nav>
 
@@ -221,7 +211,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   )
 }
 
-function StaffNavigation({ items, unreadCount, onClose }: { items: NavItem[]; unreadCount: number; onClose: () => void }) {
+function StaffNavigation({ items, badges, onClose }: { items: NavItem[]; badges: Record<string, number>; onClose: () => void }) {
   const used = new Set<string>()
   const sections = STAFF_SECTION_LABELS.map(section => ({
     title: section.title,
@@ -243,7 +233,7 @@ function StaffNavigation({ items, unreadCount, onClose }: { items: NavItem[]; un
           <ul className="space-y-0.5">
             {section.items.map(item => (
               <li key={item.label + item.path}>
-                <SidebarNavItem item={item} unreadCount={unreadCount} onClose={onClose} />
+                <SidebarNavItem item={item} badge={badges[item.path]} onClose={onClose} />
               </li>
             ))}
           </ul>
@@ -253,7 +243,7 @@ function StaffNavigation({ items, unreadCount, onClose }: { items: NavItem[]; un
   )
 }
 
-function SidebarNavItem({ item, unreadCount, onClose }: { item: NavItem; unreadCount: number; onClose: () => void }) {
+function SidebarNavItem({ item, badge, onClose }: { item: NavItem; badge?: number; onClose: () => void }) {
   return (
     <NavLink
       to={item.path}
@@ -267,9 +257,13 @@ function SidebarNavItem({ item, unreadCount, onClose }: { item: NavItem; unreadC
     >
       {item.icon}
       <span className="flex-1">{item.label}</span>
-      {item.path === '/notifications' && unreadCount > 0 && (
-        <span className="bg-gold-300 text-primary-950 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none">
-          {unreadCount > 99 ? '99+' : unreadCount}
+      {badge != null && badge > 0 && (
+        <span
+          data-testid="nav-badge"
+          data-path={item.path}
+          className="bg-gold-300 text-primary-950 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none"
+        >
+          {badge > 99 ? '99+' : badge}
         </span>
       )}
       <ChevronRight size={14} className="opacity-0 group-hover:opacity-50 transition-opacity" />

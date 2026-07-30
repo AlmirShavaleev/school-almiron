@@ -154,11 +154,15 @@ export function HomeworkReviewQueuePage() {
           attemptId={annotating.attempt.id}
           files={filesOf(annotating.attempt.id)}
           title={annotating.homeworkTitle}
-          subtitle={`${studentNames[annotating.attempt.student_id] ?? 'Ученик'} · ${annotating.topicTitle} · попытка №${annotating.attempt.attempt_number}`}
+          subtitle={`${studentNames[annotating.attempt.student_id] ?? 'Ученик'} · ${annotating.topicTitle}`}
+          // Решение принимает форма вердикта ниже — своя кнопка публикации в
+          // тулбаре только путала: две зелёные кнопки читались как одно действие.
+          hideToolbarPublish
           footer={({ publishAnnotations }) => (
             <ReviewActions
               attempt={annotating.attempt}
               gradeScale={annotating.gradeScale}
+              hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
               onReview={async (attemptId, decision, comment, score) => {
                 // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть
                 // «на доработку» без рамок, на которые ссылается комментарий.
