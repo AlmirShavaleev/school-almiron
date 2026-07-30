@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, CheckCircle2, ChevronRight, Eye, Inbox, Loader2, Paperclip, RefreshCw,
 } from 'lucide-react'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
+import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
+import type { ImportedRegion } from '@/components/SubmissionReviewer'
+import { findingsToRegions } from '@/lib/aiHomeworkCheck'
+import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { groupByCourse, isSubmittedLate, type QueueRow } from '@/lib/homeworkQueue'
@@ -118,6 +122,28 @@ export function HomeworkReviewQueuePage() {
   const { viewers } = useReviewPresence({ courseIds, attemptId: reviewing?.row.attempt.id ?? null })
   const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
 
+  // ── Черновик ИИ ─────────────────────────────────────────────────────
+  const openAttemptId = reviewing?.row.attempt.id ?? null
+  const ai = useHomeworkAiCheck(openAttemptId)
+  // Перенос рамок делает сам аннотатор: он владеет страницами и умеет их
+  // сохранять. Отсюда ref вместо проброса данных вниз.
+  const importRegionsRef = useRef<((regions: ImportedRegion[]) => Promise<number>) | null>(null)
+  const [fillRequest, setFillRequest] = useState<{ comment?: string } | null>(null)
+
+  async function applyAiFrames(): Promise<number> {
+    const importRegions = importRegionsRef.current
+    if (!importRegions) throw new Error('Разбор ещё не готов — попробуйте через секунду')
+    // Находка ссылается на файл по id, аннотатор адресует страницы по пути.
+    const pathById = Object.fromEntries(attemptFiles.map(f => [f.id, f.storage_path]))
+    const count = await importRegions(findingsToRegions(ai.findings, pathById))
+    if (count > 0 && ai.job) {
+      // Отметка «черновик забрали» — для статистики пользы ИИ, а не для логики.
+      // Её сбой не должен выглядеть как несработавший перенос.
+      try { await ai.markAccepted(ai.job.id) } catch { /* рамки уже перенесены */ }
+    }
+    return count
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,11 +223,26 @@ export function HomeworkReviewQueuePage() {
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
           // тулбаре только путала: две зелёные кнопки читались как одно действие.
           hideToolbarPublish
+          importRegionsRef={importRegionsRef}
           footer={({ publishAnnotations }) => (
             <ReviewActions
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
+              above={
+                <AiCheckPanel
+                  job={ai.job}
+                  findings={ai.findings}
+                  running={ai.running}
+                  error={ai.error}
+                  onRun={ai.runCheck}
+                  onApplyFrames={applyAiFrames}
+                  // Новый объект на каждое нажатие: вставить один и тот же
+                  // текст второй раз тоже должно получаться.
+                  onUseText={text => setFillRequest({ comment: text })}
+                />
+              }
+              fillRequest={fillRequest}
               onReview={async (attemptId, decision, comment, score) => {
                 // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть
                 // «на доработку» без рамок, на которые ссылается комментарий.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Loader2, Paperclip, RotateCcw, Users } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -48,6 +48,8 @@ export function ReviewActions({
   gradeScale,
   onReview,
   hint,
+  above,
+  fillRequest,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -57,11 +59,27 @@ export function ReviewActions({
    * написано на кнопке (в разборе с рамками оно ещё и публикует пометки).
    */
   hint?: string
+  /** Блок над формой вердикта — сюда попадает панель черновика ИИ. */
+  above?: React.ReactNode
+  /**
+   * Запрос «подставь это в форму». Меняется целиком новым объектом при каждом
+   * нажатии, поэтому повторная вставка того же текста тоже срабатывает —
+   * сравнение по значению здесь дало бы «кнопка не работает второй раз».
+   * Поля перезаписываются, а не дописываются: предложение ИИ — это черновик,
+   * который преподаватель дальше правит сам.
+   */
+  fillRequest?: { comment?: string; score?: number | null } | null
 }) {
   const [comment, setComment] = useState('')
   const [score, setScore] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!fillRequest) return
+    if (typeof fillRequest.comment === 'string') setComment(fillRequest.comment)
+    if (fillRequest.score != null) setScore(String(fillRequest.score))
+  }, [fillRequest])
 
   // Комментарий обязателен только при возврате. То же условие держит
   // CHECK topic_homework_reviews_comment_chk — здесь оно ради подсказки,
@@ -90,6 +108,7 @@ export function ReviewActions({
 
   return (
     <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+      {above && <div className="mb-3">{above}</div>}
       {hint && (
         <p data-testid="review-hint" className="mb-2 text-xs text-gray-500">{hint}</p>
       )}

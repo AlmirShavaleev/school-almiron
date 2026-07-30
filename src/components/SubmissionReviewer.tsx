@@ -94,6 +94,20 @@ interface BaseProps {
    * ученик не получил вердикт без пометок, на которые тот ссылается.
    */
   publishRef?: MutableRefObject<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>
+  /**
+   * Императивный перенос готовых рамок в разбор — им пользуется панель
+   * черновика ИИ. Возвращает, сколько рамок реально легло на страницы.
+   */
+  importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
+}
+
+/** Рамка, приходящая извне (черновик ИИ), до превращения в обычную пометку. */
+export interface ImportedRegion {
+  filePath: string
+  page: number
+  rect: { x: number; y: number; w: number; h: number }
+  category: Category
+  text: string
 }
 
 type Props = BaseProps & AnnotationTarget
@@ -182,6 +196,7 @@ export function SubmissionReviewer({
   onPublish,
   onPublishComplete,
   publishRef,
+  importRegionsRef,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -609,6 +624,54 @@ export function SubmissionReviewer({
     if (!publishRef) return
     publishRef.current = publish
     return () => { publishRef.current = null }
+  })
+
+  /**
+   * Перенести чужие рамки в разбор (сейчас — черновик ИИ).
+   *
+   * Ключевое здесь: рамки становятся ОБЫЧНЫМИ рамками преподавателя. Тот же
+   * тип, тот же author_id, та же дальнейшая судьба — их можно двигать,
+   * править и удалять. Никакого отдельного «режима ИИ» в разборе нет и не
+   * должно быть: преподаватель принял предложение, дальше это его пометки.
+   *
+   * Страницы сохраняются по одной и последовательно: savePage перезаписывает
+   * страницу целиком, и параллельные вызовы затёрли бы друг друга.
+   */
+  async function importRegions(items: ImportedRegion[]): Promise<number> {
+    if (readOnly || items.length === 0) return 0
+
+    const byPage = new Map<string, { filePath: string; page: number; regions: Region[] }>()
+    for (const item of items) {
+      const text = item.text.trim()
+      if (!text) continue
+      if (item.rect.w < MIN_REGION_SIZE || item.rect.h < MIN_REGION_SIZE) continue
+      const key = pageKey(item.filePath, item.page)
+      const bucket = byPage.get(key) ?? { filePath: item.filePath, page: item.page, regions: [] }
+      bucket.regions.push({ id: id(), type: 'region', rect: item.rect, category: item.category, text })
+      byPage.set(key, bucket)
+    }
+
+    let imported = 0
+    const nextPages: Record<string, PageData> = {}
+    for (const [key, bucket] of byPage) {
+      const base = nextPages[key] ?? pages[key] ?? EMPTY
+      const nextData = pageWithVersion([...base.objects, ...bucket.regions])
+      const ok = await savePage(bucket.filePath, bucket.page, nextData)
+      // Сбой на одной странице не должен отменять уже перенесённые: они уже
+      // в базе, и «откатить» их значило бы стереть заодно ручные пометки.
+      if (!ok) continue
+      nextPages[key] = nextData
+      imported += bucket.regions.length
+    }
+
+    if (imported > 0) setPages(value => ({ ...value, ...nextPages }))
+    return imported
+  }
+
+  useEffect(() => {
+    if (!importRegionsRef) return
+    importRegionsRef.current = importRegions
+    return () => { importRegionsRef.current = null }
   })
 
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>

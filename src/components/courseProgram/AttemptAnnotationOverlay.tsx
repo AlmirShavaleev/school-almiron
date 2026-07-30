@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useMemo, useRef } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, type MutableRefObject } from 'react'
+import type { ImportedRegion } from '@/components/SubmissionReviewer'
 import { Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
@@ -126,6 +127,7 @@ export function AttemptAnnotationOverlay({
   footerPublishLabel,
   publishButtonLabel = 'Опубликовать пометки',
   hideToolbarPublish = false,
+  importRegionsRef,
   onClose,
 }: {
   attemptId: string
@@ -146,6 +148,8 @@ export function AttemptAnnotationOverlay({
   footerPublishLabel?: string
   publishButtonLabel?: string
   hideToolbarPublish?: boolean
+  /** Проброс к аннотатору: через него панель черновика ИИ переносит рамки. */
+  importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -272,6 +276,7 @@ export function AttemptAnnotationOverlay({
               publishButtonLabel={publishButtonLabel}
               hideToolbarPublish={hideToolbarPublish}
               publishRef={publishRef}
+              importRegionsRef={importRegionsRef}
             />
           </Suspense>
         )}

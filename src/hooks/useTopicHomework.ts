@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import {
@@ -34,16 +34,25 @@ export function useTopicHomework(topicId: string | null) {
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
-  /**
-   * Сколько учеников курса реально получат Telegram-оповещение.
-   * Считается для подписи кнопки; сам отбор получателей делает RPC на сервере,
-   * это число — только подсказка преподавателю.
-   */
-  const [notifyRecipientCount, setNotifyRecipientCount] = useState<number | null>(null)
+
+  // ДЗ и его файлы дублируются в ref-ах: обработчик может создать ДЗ и тут же
+  // грузить в него файлы, не дожидаясь ре-рендера (иначе гонка со state).
+  const homeworkRef = useRef<TopicHomeworkRow | null>(null)
+  const filesRef = useRef<TopicHomeworkFileRow[]>([])
+
+  const applyHomework = useCallback((row: TopicHomeworkRow | null) => {
+    homeworkRef.current = row
+    setHomework(row)
+  }, [])
+
+  const applyFiles = useCallback((rows: TopicHomeworkFileRow[]) => {
+    filesRef.current = rows
+    setFiles(rows)
+  }, [])
 
   useEffect(() => {
     if (!topicId) {
-      setHomework(null); setFiles([]); setAttempts([]); setAttemptFiles([]); setReviews([]); setStudentNames({})
+      applyHomework(null); applyFiles([]); setAttempts([]); setAttemptFiles([]); setReviews([]); setStudentNames({})
       return
     }
     let cancelled = false
@@ -60,9 +69,9 @@ export function useTopicHomework(topicId: string | null) {
       if (cancelled) return
       if (hwErr) { setError(hwErr.message); setLoading(false); return }
 
-      setHomework((hw as TopicHomeworkRow) ?? null)
+      applyHomework((hw as TopicHomeworkRow) ?? null)
       if (!hw) {
-        setFiles([]); setAttempts([]); setAttemptFiles([]); setReviews([]); setStudentNames({})
+        applyFiles([]); setAttempts([]); setAttemptFiles([]); setReviews([]); setStudentNames({})
         setLoading(false)
         return
       }
@@ -73,7 +82,7 @@ export function useTopicHomework(topicId: string | null) {
       ])
       if (cancelled) return
 
-      setFiles((filesRes.data ?? []) as TopicHomeworkFileRow[])
+      applyFiles((filesRes.data ?? []) as TopicHomeworkFileRow[])
       const rows = (attemptsRes.data ?? []) as TopicHomeworkAttemptRow[]
       setAttempts(rows)
 
@@ -117,47 +126,7 @@ export function useTopicHomework(topicId: string | null) {
 
     load()
     return () => { cancelled = true }
-  }, [topicId, tick])
-
-  // Количество получателей Telegram-оповещения. Отдельным эффектом: ученику
-  // эти таблицы не отдаст RLS, и это нормально — тогда просто нет подсказки.
-  useEffect(() => {
-    if (!topicId) { setNotifyRecipientCount(null); return }
-    let cancelled = false
-
-    async function countRecipients() {
-      const { data: topicRow } = await supabase
-        .from('topics')
-        .select('modules(course_id)')
-        .eq('id', topicId!)
-        .maybeSingle()
-      const courseId = (topicRow as any)?.modules?.course_id as string | undefined
-      if (cancelled || !courseId) { if (!cancelled) setNotifyRecipientCount(null); return }
-
-      const { data: roster } = await supabase
-        .from('group_students')
-        .select('students!inner(profile_id), groups!inner(course_id)')
-        .eq('groups.course_id', courseId)
-      if (cancelled) return
-
-      const profileIds = Array.from(
-        new Set(((roster ?? []) as any[]).map(r => r.students?.profile_id).filter(Boolean)),
-      ) as string[]
-      if (profileIds.length === 0) { setNotifyRecipientCount(0); return }
-
-      const { data: connections, error: connErr } = await supabase
-        .from('telegram_connections')
-        .select('profile_id, is_enabled')
-        .in('profile_id', profileIds)
-      if (cancelled) return
-      if (connErr) { setNotifyRecipientCount(null); return }
-
-      setNotifyRecipientCount(((connections ?? []) as any[]).filter(c => c.is_enabled).length)
-    }
-
-    countRecipients()
-    return () => { cancelled = true }
-  }, [topicId])
+  }, [topicId, tick, applyHomework, applyFiles])
 
   // ── преподаватель ──────────────────────────────────────────
 
@@ -187,195 +156,103 @@ export function useTopicHomework(topicId: string | null) {
         .single()
 
       if (err) throw err
-      setHomework(data as TopicHomeworkRow)
+      // Пишем и в ref: следующий шаг того же обработчика (загрузка файла,
+      // сохранение дедлайна) не должен ждать ре-рендера.
+      applyHomework(data as TopicHomeworkRow)
+      applyFiles([])
       return data.id as string
     },
-    [topicId, profile],
+    [topicId, profile, applyHomework, applyFiles],
   )
-
-  /**
-   * Ленивое создание: ДЗ появляется в базе в момент первого осмысленного
-   * действия (загрузили файл, поставили дедлайн), а не по отдельной кнопке
-   * «Создать». Идемпотентна — если ДЗ уже есть, просто возвращает его.
-   *
-   * Название и инструкция из интерфейса убраны: у темы одно ДЗ, и заголовок
-   * «Домашнее задание» ничего не добавлял. Колонка `title` NOT NULL, поэтому
-   * дефолт подставляется здесь.
-   */
-  const ensureHomework = useCallback(async (): Promise<TopicHomeworkRow> => {
-    if (homework) return homework
-    if (!topicId) throw new Error('Тема не выбрана')
-    if (!profile) throw new Error('Нет активного профиля')
-
-    // Гонка двух вкладок: UNIQUE(topic_id) отдаст 23505 — тогда перечитываем.
-    const { data, error: err } = await supabase
-      .from('topic_homework')
-      .insert({
-        topic_id: topicId,
-        title: 'Домашнее задание',
-        instructions: null,
-        is_published: false,
-        created_by: profile.id,
-      })
-      .select('*')
-      .single()
-
-    if (err) {
-      if ((err as { code?: string }).code === '23505') {
-        const { data: existing } = await supabase
-          .from('topic_homework')
-          .select('*')
-          .eq('topic_id', topicId)
-          .single()
-        if (existing) {
-          setHomework(existing as TopicHomeworkRow)
-          return existing as TopicHomeworkRow
-        }
-      }
-      throw err
-    }
-
-    setHomework(data as TopicHomeworkRow)
-    return data as TopicHomeworkRow
-  }, [homework, topicId, profile])
 
   const updateHomework = useCallback(
     async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published' | 'due_at' | 'grade_scale'>>) => {
-      // Ленивое создание: правка дедлайна или шкалы сама заводит ДЗ, если его ещё нет.
-      const hw = homework ?? (await ensureHomework())
-      const { error: err } = await supabase.from('topic_homework').update(patch).eq('id', hw.id)
+      const current = homeworkRef.current
+      if (!current) throw new Error('ДЗ ещё не создано')
+      const { error: err } = await supabase.from('topic_homework').update(patch).eq('id', current.id)
       if (err) throw err
-      setHomework(prev => (prev ? { ...prev, ...patch } : { ...hw, ...patch }))
+      applyHomework({ ...current, ...patch })
     },
-    [homework, ensureHomework],
+    [applyHomework],
   )
 
   /**
-   * Загружает PDF задания. `replace = true` — сначала убирает прежние файлы,
-   * чтобы у ДЗ остался ровно один актуальный PDF.
+   * Добавляет файл задания: PDF или картинку. Файлы не заменяют друг друга —
+   * их может быть сколько угодно, порядок задаёт `position`.
+   *
+   * Грузим через signed URL и XHR: только так можно показать прогресс.
+   * Если подписать URL не удалось — обычная загрузка, но уже без процентов.
    */
   const uploadHomeworkFile = useCallback(
-    async (file: File, replace = true) => {
+    async (file: File, onProgress?: (percent: number) => void) => {
       if (!topicId) throw new Error('Тема не выбрана')
-      if (!homework) throw new Error('Сначала создайте ДЗ')
+      const current = homeworkRef.current
+      if (!current) throw new Error('Сначала создайте ДЗ')
 
       const path = buildHomeworkFilePath(topicId, file.name)
-      const up = await supabase.storage
-        .from(TOPIC_HOMEWORK_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false })
-      if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
 
-      if (replace && files.length > 0) {
-        await supabase.storage.from(TOPIC_HOMEWORK_BUCKET).remove(files.map(f => f.storage_path))
-        const del = await supabase.from('topic_homework_files').delete().eq('homework_id', homework.id)
-        if (del.error) throw del.error
+      const { data: signed, error: signErr } = await supabase.storage
+        .from(TOPIC_HOMEWORK_BUCKET)
+        .createSignedUploadUrl(path)
+
+      if (signErr || !signed) {
+        // Фолбэк: обычная загрузка без прогресса
+        const up = await supabase.storage
+          .from(TOPIC_HOMEWORK_BUCKET)
+          .upload(path, file, { contentType: file.type, upsert: false })
+        if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('PUT', signed.signedUrl)
+          xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+          xhr.setRequestHeader('x-upsert', 'false')
+          xhr.upload.onprogress = e => {
+            if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+          }
+          xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+            ? resolve()
+            : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
+          xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
+          xhr.send(file)
+        })
+        onProgress?.(100)
       }
 
       const { data, error: err } = await supabase
         .from('topic_homework_files')
         .insert({
-          homework_id: homework.id,
+          homework_id: current.id,
           storage_path: path,
           original_filename: file.name,
           mime_type: file.type,
           size_bytes: file.size,
-          position: 0,
+          position: filesRef.current.length,
         })
         .select('*')
         .single()
 
       if (err) throw err
-      setFiles(replace ? [data as TopicHomeworkFileRow] : prevAppend(files, data as TopicHomeworkFileRow))
+      applyFiles(prevAppend(filesRef.current, data as TopicHomeworkFileRow))
     },
-    [topicId, homework, files],
+    [topicId, applyFiles],
   )
 
-  /**
-   * Мультизагрузка файлов задания (PDF и картинки) с прогрессом.
-   *
-   * Файлы НЕ заменяют друг друга — у ДЗ может быть несколько вложений.
-   * Прогресс берётся через signed upload URL + XHR: у supabase-js нет
-   * колбэка прогресса, тот же приём уже используется в материалах темы.
-   * Загрузка последовательная — так прогресс честный, а не «всё сразу 100 %».
-   */
-  const uploadHomeworkFiles = useCallback(
-    async (
-      list: File[],
-      onProgress?: (index: number, percent: number) => void,
-    ): Promise<TopicHomeworkFileRow[]> => {
-      if (!topicId) throw new Error('Тема не выбрана')
-      if (list.length === 0) return []
+  /** Убирает файл задания: сначала объект в Storage, затем строку в БД. */
+  const deleteHomeworkFile = useCallback(
+    async (fileId: string) => {
+      const target = filesRef.current.find(f => f.id === fileId)
+      if (!target) return
 
-      const hw = homework ?? (await ensureHomework())
-      let position = files.reduce((max, f) => Math.max(max, f.position), -1) + 1
-      const created: TopicHomeworkFileRow[] = []
+      await supabase.storage.from(TOPIC_HOMEWORK_BUCKET).remove([target.storage_path])
 
-      for (let i = 0; i < list.length; i++) {
-        const file = list[i]
-        const path = buildHomeworkFilePath(topicId, file.name)
+      const { error: err } = await supabase.from('topic_homework_files').delete().eq('id', fileId)
+      if (err) throw err
 
-        const { data: signed, error: signErr } = await supabase.storage
-          .from(TOPIC_HOMEWORK_BUCKET)
-          .createSignedUploadUrl(path)
-
-        if (signErr || !signed) {
-          // Фолбэк без прогресса — лучше загрузить молча, чем не загрузить.
-          const up = await supabase.storage
-            .from(TOPIC_HOMEWORK_BUCKET)
-            .upload(path, file, { contentType: file.type, upsert: false })
-          if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
-        } else {
-          await new Promise<void>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('PUT', signed.signedUrl)
-            xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
-            xhr.setRequestHeader('x-upsert', 'false')
-            xhr.upload.onprogress = e => {
-              if (e.lengthComputable) onProgress?.(i, Math.round((e.loaded / e.total) * 100))
-            }
-            xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-              ? resolve()
-              : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
-            xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-            xhr.send(file)
-          })
-        }
-        onProgress?.(i, 100)
-
-        const { data, error: err } = await supabase
-          .from('topic_homework_files')
-          .insert({
-            homework_id: hw.id,
-            storage_path: path,
-            original_filename: file.name,
-            mime_type: file.type,
-            size_bytes: file.size,
-            position: position++,
-          })
-          .select('*')
-          .single()
-
-        if (err) {
-          // Строка не создалась — не оставляем осиротевший объект в бакете.
-          await supabase.storage.from(TOPIC_HOMEWORK_BUCKET).remove([path])
-          throw err
-        }
-        created.push(data as TopicHomeworkFileRow)
-      }
-
-      setFiles(prev => [...prev, ...created])
-      return created
+      applyFiles(filesRef.current.filter(f => f.id !== fileId))
     },
-    [topicId, homework, files, ensureHomework],
+    [applyFiles],
   )
-
-  /** Убирает файл задания: сначала строку (её держит RLS), потом объект в бакете. */
-  const removeHomeworkFile = useCallback(async (fileId: string, storagePath: string) => {
-    const { error: err } = await supabase.from('topic_homework_files').delete().eq('id', fileId)
-    if (err) throw err
-    await supabase.storage.from(TOPIC_HOMEWORK_BUCKET).remove([storagePath])
-    setFiles(prev => prev.filter(f => f.id !== fileId))
-  }, [])
 
   // ── ученик ─────────────────────────────────────────────────
 
@@ -390,87 +267,29 @@ export function useTopicHomework(topicId: string | null) {
     return data as string
   }, [homework, reload])
 
-  /**
-   * Мультизагрузка файлов сдачи (несколько фото работы или PDF) с прогрессом.
-   *
-   * Тот же приём, что и uploadHomeworkFiles на стороне преподавателя: signed
-   * upload URL + XHR, потому что у supabase-js нет колбэка прогресса.
-   * Загрузка последовательная — прогресс честный, а не «всё сразу 100%», и
-   * это даёт ученику реальный индикатор во время сдачи, а не молчание до
-   * завершения. Позиции продолжают уже загруженные файлы этой попытки —
-   * повторное открытие «Добавить файл» не затирает порядок.
-   */
-  const uploadAttemptFiles = useCallback(
-    async (
-      attemptId: string,
-      list: File[],
-      onProgress?: (index: number, percent: number) => void,
-    ): Promise<TopicHomeworkAttemptFileRow[]> => {
-      if (list.length === 0) return []
+  const uploadAttemptFile = useCallback(async (attemptId: string, file: File) => {
+    const path = buildAttemptFilePath(attemptId, file.name)
+    const up = await supabase.storage
+      .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false })
+    if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
 
-      let position = attemptFiles
-        .filter(f => f.attempt_id === attemptId)
-        .reduce((max, f) => Math.max(max, f.position), -1) + 1
-      const created: TopicHomeworkAttemptFileRow[] = []
+    const { data, error: err } = await supabase
+      .from('topic_homework_attempt_files')
+      .insert({
+        attempt_id: attemptId,
+        storage_path: path,
+        file_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+        position: 0,
+      })
+      .select('*')
+      .single()
 
-      for (let i = 0; i < list.length; i++) {
-        const file = list[i]
-        const path = buildAttemptFilePath(attemptId, file.name)
-
-        const { data: signed, error: signErr } = await supabase.storage
-          .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-          .createSignedUploadUrl(path)
-
-        if (signErr || !signed) {
-          // Фолбэк без прогресса — лучше загрузить молча, чем не загрузить.
-          const up = await supabase.storage
-            .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-            .upload(path, file, { contentType: file.type, upsert: false })
-          if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
-        } else {
-          await new Promise<void>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('PUT', signed.signedUrl)
-            xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
-            xhr.setRequestHeader('x-upsert', 'false')
-            xhr.upload.onprogress = e => {
-              if (e.lengthComputable) onProgress?.(i, Math.round((e.loaded / e.total) * 100))
-            }
-            xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-              ? resolve()
-              : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
-            xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-            xhr.send(file)
-          })
-        }
-        onProgress?.(i, 100)
-
-        const { data, error: err } = await supabase
-          .from('topic_homework_attempt_files')
-          .insert({
-            attempt_id: attemptId,
-            storage_path: path,
-            file_name: file.name,
-            mime_type: file.type,
-            size_bytes: file.size,
-            position: position++,
-          })
-          .select('*')
-          .single()
-
-        if (err) {
-          // Строка не создалась — не оставляем осиротевший объект в бакете.
-          await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([path])
-          throw err
-        }
-        created.push(data as TopicHomeworkAttemptFileRow)
-      }
-
-      setAttemptFiles(prev => [...prev, ...created])
-      return created
-    },
-    [attemptFiles],
-  )
+    if (err) throw err
+    setAttemptFiles(prev => [...prev, data as TopicHomeworkAttemptFileRow])
+  }, [])
 
   const removeAttemptFile = useCallback(async (fileId: string, storagePath: string) => {
     const { error: err } = await supabase.from('topic_homework_attempt_files').delete().eq('id', fileId)
@@ -510,21 +329,21 @@ export function useTopicHomework(topicId: string | null) {
   }, [reload])
 
   const notifyStudents = useCallback(async (): Promise<number> => {
-    if (!homework) throw new Error('ДЗ не найдено')
+    const current = homeworkRef.current
+    if (!current) throw new Error('ДЗ не найдено')
     const { data, error: err } = await supabase.rpc('topic_homework_notify_students', {
-      p_homework_id: homework.id,
+      p_homework_id: current.id,
     })
     if (err) throw new Error(err.message)
     return data as number
-  }, [homework])
+  }, [])
 
   return {
     homework, files, attempts, attemptFiles, reviews, studentNames,
     loading, error, reload,
-    createHomework, ensureHomework, updateHomework,
-    uploadHomeworkFile, uploadHomeworkFiles, removeHomeworkFile,
-    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
-    reviewAttempt, notifyStudents, notifyRecipientCount,
+    createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
+    startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    reviewAttempt, notifyStudents,
   }
 }
 

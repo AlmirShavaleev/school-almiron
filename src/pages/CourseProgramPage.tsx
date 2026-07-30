@@ -363,8 +363,6 @@ function HwTable({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
-                          data-testid="program-topic-row"
-                          data-topic-id={topic.id}
                           onClick={() => onOpenTopic(topic, mod.title)}
                           className="group flex items-center gap-1.5 text-left hover:text-primary-600 transition-colors"
                         >
@@ -381,7 +379,6 @@ function HwTable({
                         )}
                         {hw && (
                           <button
-                            data-testid="program-topic-hw-badge"
                             onClick={onOpenHomeworkTab}
                             className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
                           >
@@ -914,7 +911,7 @@ function MaterialsMatrix({
   modules: Module[]
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
   onGoToProgram: () => void
-  /** Меняется при закрытии модалки темы — заставляет матрицу перечитать данные. */
+  /** Меняется при закрытии модалки темы — матрица перечитывает заполненность. */
   refreshKey?: number
 }) {
   const [matMap, setMatMap] = useState<Record<string, Set<string>>>({})
@@ -1135,15 +1132,6 @@ function MaterialsMatrix({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-
-/** Вкладки курса. Значения попадают в адрес как `?tab=…`, поэтому их менять нельзя. */
-const COURSE_TABS = ['program', 'materials', 'homework', 'testresults', 'students', 'settings'] as const
-type CourseTab = (typeof COURSE_TABS)[number]
-
-function isCourseTab(value: string | null): value is CourseTab {
-  return !!value && (COURSE_TABS as readonly string[]).includes(value)
-}
-
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
@@ -1157,19 +1145,19 @@ export function CourseProgramPage() {
     saveTopic, createTopic, deleteTopic,
   } = useCourseProgram()
 
-  const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
-  const hydratedFromUrl = useRef(false)
+  // Курс и вкладка живут в адресе: F5 и «назад» не выкидывают к списку курсов.
+  const [selectedId,  setSelectedId]  = useState<string | null>(() => searchParams.get('courseId'))
+  const appliedCourseParam = useRef(false)
   const [modules,     setModules]     = useState<Module[]>([])
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
-  const [tab,         setTab]         = useState<CourseTab>('program')
-  /**
-   * Растёт при закрытии модалки темы. Вкладки курса читают его в зависимостях
-   * эффектов, поэтому правки внутри темы сразу видны без перезагрузки страницы.
-   */
-  const [refreshKey,  setRefreshKey]  = useState(0)
+  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'testresults' | 'students' | 'settings'>(() => {
+    const t = searchParams.get('tab')
+    const allowed = ['program', 'materials', 'homework', 'testresults', 'students', 'settings']
+    return (allowed.includes(t ?? '') ? t : 'program') as 'program' | 'materials' | 'homework' | 'testresults' | 'students' | 'settings'
+  })
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
@@ -1186,6 +1174,8 @@ export function CourseProgramPage() {
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
+  // Растёт при закрытии модалки: вкладки курса перечитывают данные без F5.
+  const [matRefreshKey, setMatRefreshKey] = useState(0)
   const [toastMsg,  setToastMsg]  = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1207,43 +1197,28 @@ export function CourseProgramPage() {
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
-  /**
-   * Состояние страницы живёт в адресе: `?courseId=…&tab=…`.
-   *
-   * Это же и deep-link (мастер приглашения открывает свежесозданный курс),
-   * и защита от F5: перезагрузка возвращает на тот же курс и ту же вкладку,
-   * а не в список курсов.
-   *
-   * Гидратация ровно один раз — после загрузки списка курсов, чтобы успеть
-   * проверить, что курс из адреса вообще доступен этому пользователю.
-   */
+  // Состояние -> адрес: перезагрузка страницы возвращает на тот же курс и вкладку.
   useEffect(() => {
-    if (hydratedFromUrl.current) return
-    if (loading) return
-    hydratedFromUrl.current = true
-
-    const wantedCourse = searchParams.get('courseId')
-    if (!wantedCourse || !courses.some(c => c.id === wantedCourse)) return
-
-    setSelectedId(wantedCourse)
-    const wantedTab = searchParams.get('tab')
-    setTab(isCourseTab(wantedTab) && (wantedTab !== 'settings' || canEdit) ? wantedTab : 'program')
-  }, [courses, loading, searchParams, canEdit])
-
-  // Обратная сторона: выбор курса и вкладки пишется в адрес (replace — чтобы
-  // переключение вкладок не засоряло историю браузера).
-  useEffect(() => {
-    if (!hydratedFromUrl.current) return
     const next = new URLSearchParams(searchParams)
-    if (selectedId) {
-      next.set('courseId', selectedId)
-      next.set('tab', tab)
-    } else {
-      next.delete('courseId')
-      next.delete('tab')
+    if (selectedId) next.set('courseId', selectedId)
+    else next.delete('courseId')
+    if (selectedId && tab !== 'program') next.set('tab', tab)
+    else next.delete('tab')
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true })
     }
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
   }, [selectedId, tab, searchParams, setSearchParams])
+
+  // Deep-link: open a specific course passed as ?courseId=... (e.g. the draft just created in the invite wizard)
+  useEffect(() => {
+    if (appliedCourseParam.current) return
+    const wanted = searchParams.get('courseId')
+    if (!wanted) return
+    if (courses.some(c => c.id === wanted)) {
+      appliedCourseParam.current = true
+      setSelectedId(wanted)
+    }
+  }, [courses, searchParams])
 
   // Load modules + groups when course selected
   useEffect(() => {
@@ -1571,8 +1546,6 @@ export function CourseProgramPage() {
             {courses.map(c => (
               <button
                 key={c.id}
-                data-testid="course-list-item"
-                data-course-id={c.id}
                 onClick={() => { setSelectedId(c.id); setTab('program') }}
                 className={cn(
                   'w-full text-left p-3 rounded-xl border transition-all',
@@ -1628,7 +1601,7 @@ export function CourseProgramPage() {
             </div>
 
             {/* Tabs */}
-            <div role="tablist" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+            <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
@@ -1639,9 +1612,6 @@ export function CourseProgramPage() {
               ].map(t => (
                 <button
                   key={t.key}
-                  data-testid={`course-tab-${t.key}`}
-                  role="tab"
-                  aria-selected={tab === t.key}
                   onClick={() => setTab(t.key as any)}
                   className={cn(
                     'min-h-11 shrink-0 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
@@ -1785,18 +1755,18 @@ export function CourseProgramPage() {
                 modules={modules}
                 onOpenTopic={(topic, moduleTitle) => setMatTopic({ topic, moduleTitle })}
                 onGoToProgram={() => setTab('program')}
-                refreshKey={refreshKey}
+                refreshKey={matRefreshKey}
               />
             )}
 
             {/* Homework tab */}
             {tab === 'homework' && (
-              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={refreshKey} />
+              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} />
             )}
 
             {/* Test Results tab */}
             {tab === 'testresults' && (
-              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} refreshKey={refreshKey} />
+              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} />
             )}
 
             {/* Students tab */}
@@ -1818,9 +1788,7 @@ export function CourseProgramPage() {
 
     <TopicMaterialsModal
       open={!!matTopic}
-      // Внутри модалки могли добавить материалы, ДЗ или прикрепить тест —
-      // на закрытии дёргаем refreshKey, и вкладки курса перечитывают себя сами.
-      onClose={() => { setMatTopic(null); setRefreshKey(k => k + 1) }}
+      onClose={() => { setMatTopic(null); setMatRefreshKey(k => k + 1) }}
       topicId={matTopic?.topic.id ?? null}
       topicTitle={matTopic?.topic.title ?? ''}
       moduleTitle={matTopic?.moduleTitle ?? ''}

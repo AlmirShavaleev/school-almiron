@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { ATTEMPT_STATUS_TONE, gradeScaleMax, type GradeScale, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
+import { ATTEMPT_STATUS_TONE, gradeScaleMax, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
-import { HomeworkAttemptDetailModal } from './HomeworkAttemptDetailModal'
 
 interface Module {
   id: string
@@ -108,29 +107,13 @@ function getStudentAttemptStatus(
   return { status: latest.status, score: null, submittedAt: latest.submitted_at }
 }
 
-export function CourseTopicHomeworkSection({
-  courseId,
-  modules,
-  refreshKey = 0,
-}: {
-  courseId: string
-  modules: Module[]
-  /** Растёт при закрытии модалки темы: ДЗ могли создать или опубликовать прямо там. */
-  refreshKey?: number
-}) {
+export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0 }: { courseId: string; modules: Module[]; refreshKey?: number }) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [homeworks, setHomeworks] = useState<TopicHomework[]>([])
   const [attempts, setAttempts] = useState<TopicHomeworkAttempt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
-  const [selectedSubmission, setSelectedSubmission] = useState<{
-    homeworkId: string
-    studentId: string
-    studentName: string
-    homeworkTitle: string
-    gradeScale: GradeScale | null
-  } | null>(null)
 
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
@@ -314,25 +297,10 @@ export function CourseTopicHomeworkSection({
     <div className="space-y-4">
       {/* Summary card */}
       {totalHomeworks > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
+        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
           <p className="text-sm text-green-800 font-medium">
             Выполнено {completedAssignments} из {totalAssignments} работ по курсу
           </p>
-          {/*
-            Сколько работ прямо сейчас ждёт проверки. Это единственное на
-            вкладке, что требует действия преподавателя, поэтому вынесено в
-            шапку и выделено — раньше сдачу можно было заметить только по
-            неприметному «⏳ 1» у темы.
-          */}
-          {totalStats.submitted > 0 && (
-            <span
-              data-testid="course-hw-awaiting"
-              className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900"
-            >
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Ждут проверки: {totalStats.submitted}
-            </span>
-          )}
         </div>
       )}
 
@@ -377,36 +345,25 @@ export function CourseTopicHomeworkSection({
                       <span className="text-sm font-medium text-gray-900 truncate">{topic.title}</span>
                     </div>
 
-                    {/*
-                      Бейджи темы. «На проверку» — единственный, требующий
-                      действия, поэтому он словом и цветом внимания; остальные
-                      компактные, со всплывающей подсказкой (раньше все четыре
-                      были одинаково незаметными значками ✓/⏳/↻/—, и сдачу
-                      ученика легко было пропустить).
-                    */}
+                    {/* Status badges */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {stats.submitted > 0 && (
-                        <span
-                          data-testid="topic-hw-awaiting"
-                          title="Сдано и ждёт вашей проверки"
-                          className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900"
-                        >
-                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
-                          {stats.submitted} на проверку
-                        </span>
-                      )}
                       {stats.accepted > 0 && (
-                        <span title="Принято" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
                           <span>✓</span> {stats.accepted}
                         </span>
                       )}
+                      {stats.submitted > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                          <span>⏳</span> {stats.submitted}
+                        </span>
+                      )}
                       {stats.returned_for_revision > 0 && (
-                        <span title="Возвращено на доработку" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
                           <span>↻</span> {stats.returned_for_revision}
                         </span>
                       )}
                       {stats.draft > 0 && (
-                        <span title="Ещё не сдали" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
                           <span>—</span> {stats.draft}
                         </span>
                       )}
@@ -441,23 +398,7 @@ export function CourseTopicHomeworkSection({
                               return (
                                 <tr
                                   key={student.studentId}
-                                  data-testid="homework-student-row"
-                                  onClick={() => {
-                                    if (!attempt) return
-                                    setSelectedSubmission({
-                                      homeworkId: firstHw.id,
-                                      studentId: student.studentId,
-                                      studentName: student.name,
-                                      homeworkTitle: firstHw.title,
-                                      gradeScale: firstHw.grade_scale,
-                                    })
-                                  }}
-                                  className={cn(
-                                    'border-b border-gray-100',
-                                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50',
-                                    attempt && 'cursor-pointer hover:bg-primary-50/40 transition-colors',
-                                  )}
-                                  title={attempt ? 'Открыть работу ученика' : undefined}
+                                  className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
                                 >
                                   <td className="px-4 py-2">
                                     <span className="text-sm text-gray-900">{student.name}</span>
@@ -501,18 +442,6 @@ export function CourseTopicHomeworkSection({
         <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
           <p className="text-sm font-medium text-gray-700">В этом курсе нет домашних заданий по темам</p>
         </div>
-      )}
-
-      {selectedSubmission && (
-        <HomeworkAttemptDetailModal
-          courseId={courseId}
-          homeworkId={selectedSubmission.homeworkId}
-          studentId={selectedSubmission.studentId}
-          studentName={selectedSubmission.studentName}
-          homeworkTitle={selectedSubmission.homeworkTitle}
-          gradeScale={selectedSubmission.gradeScale}
-          onClose={() => setSelectedSubmission(null)}
-        />
       )}
     </div>
   )
