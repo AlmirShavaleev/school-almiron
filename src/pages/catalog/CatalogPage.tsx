@@ -3,7 +3,6 @@ import { BookOpen, Calculator, ChevronLeft, ChevronRight, FlaskConical, Search, 
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useCatalogSections,
-  useCatalogDirectionCounts,
   useCatalogPhysicsTopicSections,
   DIRECTIONS,
   SUBJECT_FROM_SLUG,
@@ -62,20 +61,9 @@ export function CatalogPage() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function DirectionPicker() {
-  const [retryKey, setRetryKey] = useState(0)
-  const { counts, error } = useCatalogDirectionCounts(retryKey)
-
-  if (error) {
-    return (
-      <div className="max-w-[1100px] mx-auto px-4 py-16">
-        <ErrorState
-          message={error}
-          onRetry={() => setRetryKey(key => key + 1)}
-        />
-      </div>
-    )
-  }
-
+  // Ни запросов, ни состояний загрузки/ошибки: числа задач зафиксированы в
+  // DIRECTIONS. Раньше лендинг ждал RPC get_catalog_direction_counts — 2645 мс
+  // на проде, и до её ответа карточки стояли без чисел.
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-8">
       <div>
@@ -83,10 +71,9 @@ function DirectionPicker() {
         <p className="text-gray-500 mt-1">Выберите предмет и формат экзамена</p>
       </div>
 
-      {/* Cards render immediately; counts fill in asynchronously */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="direction-grid">
         {DIRECTIONS.map(d => (
-          <DirectionCard key={d.key} direction={d} count={counts[d.key] ?? null} />
+          <DirectionCard key={d.key} direction={d} count={d.taskCount} />
         ))}
       </div>
     </div>
@@ -98,7 +85,7 @@ function DirectionCard({
   count,
 }: {
   direction: typeof DIRECTIONS[number]
-  count: number | null
+  count: number
 }) {
   const navigate = useNavigate()
   const Icon     = SUBJECT_ICON[d.subjectSlug] ?? BookOpen
@@ -129,13 +116,10 @@ function DirectionCard({
         <div className="text-sm text-gray-500 mb-3">{d.desc}</div>
       </div>
 
-      {/* Footer */}
+      {/* Footer. Скелетона больше нет: число известно на момент рендера. */}
       <div className="flex items-center justify-between pt-3 border-t border-gray-100">
         <span className="text-sm font-medium text-gray-700">
-          {count == null
-            ? <span className="inline-block w-14 h-3.5 bg-gray-200 rounded animate-pulse" />
-            : <>{numFmt(count)} <span className="text-gray-400 font-normal">задач</span></>
-          }
+          {numFmt(count)} <span className="text-gray-400 font-normal">задач</span>
         </span>
         <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all" />
       </div>

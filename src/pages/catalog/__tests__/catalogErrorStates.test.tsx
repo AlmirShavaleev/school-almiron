@@ -3,7 +3,6 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({
-  useCatalogDirectionCounts: vi.fn(),
   useCatalogSections: vi.fn(),
   useCatalogTopics: vi.fn(),
   useCatalogPhysicsTopicSections: vi.fn(),
@@ -12,7 +11,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/hooks/useCatalog', () => ({
-  useCatalogDirectionCounts: (...args: unknown[]) => mocks.useCatalogDirectionCounts(...args),
   useCatalogSections: (...args: unknown[]) => mocks.useCatalogSections(...args),
   useCatalogTopics: (...args: unknown[]) => mocks.useCatalogTopics(...args),
   useCatalogPhysicsTopicSections: (...args: unknown[]) => mocks.useCatalogPhysicsTopicSections(...args),
@@ -22,8 +20,9 @@ vi.mock('@/hooks/useCatalog', () => ({
   SUBJECT_FROM_SLUG: { math: 'Математика', physics: 'Физика' },
   EXAM_FROM_SLUG: { ege: 'ЕГЭ', oge: 'ОГЭ' },
   EXAM_SLUGS: { 'ЕГЭ': 'ege', 'ОГЭ': 'oge' },
+  // taskCount теперь часть константы — счётчики направлений больше не грузятся.
   DIRECTIONS: [
-    { key: 'math-ege', subject: 'Математика', examType: 'ЕГЭ', subjectSlug: 'math', examSlug: 'ege', label: 'Математика ЕГЭ', desc: 'desc' },
+    { key: 'math-ege', subject: 'Математика', examType: 'ЕГЭ', subjectSlug: 'math', examSlug: 'ege', label: 'Математика ЕГЭ', desc: 'desc', taskCount: 9515 },
   ],
 }))
 
@@ -41,7 +40,6 @@ import { CatalogTopicPage } from '@/pages/catalog/CatalogTopicPage'
 describe('Catalog error states', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.useCatalogDirectionCounts.mockReturnValue({ counts: {}, error: null })
     mocks.useCatalogSections.mockReturnValue({ sections: [], loading: false, error: null })
     mocks.useCatalogTopics.mockReturnValue({ topics: [], loading: false, error: null })
     mocks.useCatalogPhysicsTopicSections.mockReturnValue({ sections: [], loading: false, error: null })
@@ -55,12 +53,11 @@ describe('Catalog error states', () => {
     })
   })
 
-  it('shows a retryable error state on catalog landing when direction counts fail', () => {
-    mocks.useCatalogDirectionCounts.mockReturnValue({
-      counts: {},
-      error: 'rpc rejected',
-    })
-
+  it('лендинг каталога показывает числа сразу и ничего не грузит — падать нечему', () => {
+    // Раньше здесь проверялось состояние ошибки с кнопкой «Повторить»: числа
+    // тянулись RPC get_catalog_direction_counts (2645 мс на проде), и запрос мог
+    // упасть. Теперь они зафиксированы в DIRECTIONS, поэтому у лендинга нет ни
+    // загрузки, ни ошибки, ни скелетона — только готовые числа.
     render(
       <MemoryRouter initialEntries={['/catalog']}>
         <Routes>
@@ -69,9 +66,10 @@ describe('Catalog error states', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Не удалось загрузить каталог')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
-    expect(screen.getByText('rpc rejected')).toBeInTheDocument()
+    expect(screen.getByTestId('direction-card')).toBeInTheDocument()
+    expect(screen.getByText('9.5 тыс.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+    expect(document.querySelector('.animate-pulse')).toBeNull()
   })
 
   it('shows a retryable error state on section page when topics fail', () => {

@@ -534,9 +534,22 @@ describe('Математика ОГЭ — exam routing & data separation', () =>
     const src = read('src/pages/catalog/CatalogPage.tsx')
     // New implementation: 4 direction cards from DIRECTIONS array
     expect(src).toContain('DIRECTIONS')
-    expect(src).toContain('useCatalogDirectionCounts')
     // exam is in URL param (subjectSlug + examSlug from URL)
     expect(src).toContain('examSlug')
+  })
+
+  it('числа на карточках лендинга берутся из константы, а не из запроса', () => {
+    // Решение владельца 2026-07-30: числа фиксированные, лендинг не должен
+    // ничего ждать (RPC счётчиков занимала 2645 мс на проде).
+    const src = read('src/pages/catalog/CatalogPage.tsx')
+    const hookSrc = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('count={d.taskCount}')
+    expect(src).not.toContain('useCatalogDirectionCounts')
+    expect(hookSrc).not.toContain('useCatalogDirectionCounts(')
+    expect(hookSrc).not.toContain("db.rpc('get_catalog_direction_counts')")
+    // Все четыре направления обязаны иметь число, иначе карточка отрендерит пустоту.
+    expect(hookSrc).toMatch(/taskCount: \d+ \}/)
+    expect((hookSrc.match(/taskCount: \d+/g) ?? []).length).toBe(4)
   })
 
   it('CatalogPage передаёт subject и examType в useCatalogSections', () => {
@@ -1133,7 +1146,9 @@ describe('Search — unassigned tasks', () => {
   it('задача без темы находится через поиск — hasTopicAssigned проверяется отдельно', () => {
     const hookSrc = read('src/hooks/useCatalog.ts')
     expect(hookSrc).toContain('hasTopicAssigned')
-    expect(hookSrc).toContain('linkedSet.has(r.id)')
+    // Было `linkedSet.has(r.id)`; переменную переименовали в task, а проверку по
+    // тексту исходника забыли обновить — тест падал независимо от правок каталога.
+    expect(hookSrc).toContain('linkedSet.has(task.id)')
   })
 
   it('результаты поиска открываются через /catalog/task/:id', () => {
@@ -1336,14 +1351,13 @@ describe('CatalogPage — direction picker', () => {
   })
 
   // 9. Loading state — skeleton
-  it('loading state показывает skeleton-заглушки', () => {
-    // Sections view has a full-page skeleton
+  it('loading state показывает skeleton-заглушки там, где загрузка есть', () => {
+    // Раздел действительно грузится — у него полноэкранный скелетон.
     expect(src).toContain('SectionsSkeleton')
     expect(src).toContain('animate-pulse')
-    // Direction cards use inline skeleton in footer (count shimmer) — not a separate component
-    // Cards render immediately; counts load asynchronously via inline pulse
-    expect(src).toContain('animate-pulse')
-    expect(src).toContain('useCatalogDirectionCounts')
+    // А у карточек направлений скелетона больше НЕТ и быть не должно: числа
+    // зафиксированы в DIRECTIONS, ждать нечего.
+    expect(src).not.toContain('useCatalogDirectionCounts')
   })
 
   // 10. Поиск продолжает работать через CatalogSectionPage

@@ -859,65 +859,44 @@ export function useCatalogTopics(
 
 // ── Direction task counts (for landing picker) ────────────────────────────────
 
+/**
+ * Четыре карточки лендинга каталога.
+ *
+ * taskCount ЗАФИКСИРОВАН в коде намеренно (решение владельца 2026-07-30:
+ * «сделай это просто фиксированными числами, чтобы они не подгружались откуда
+ * либо»). Раньше числа тянулись RPC get_catalog_direction_counts, и лендинг
+ * ждал ответа: замер на проде до оптимизации — 2645 мс на один запрос
+ * (полный проход по catalog_tasks с широкими строками контента). Индекс
+ * catalog_tasks_counts_covering_idx (миграция 20260730_catalog_counts_covering_index)
+ * сбил это до ~10 мс, но лендингу и этого ждать незачем: числа показываются
+ * округлёнными («9.5 тыс.»), меняются только при заливке новых задач в
+ * каталог и ни на что в логике не влияют.
+ *
+ * КАК ОБНОВИТЬ после пополнения каталога:
+ *   select * from get_catalog_direction_counts();
+ * и вписать сюда. Округление до десятых долей тысячи (numFmt в CatalogPage)
+ * скрывает расхождение примерно до ±50 задач, так что точность здесь
+ * заведомо избыточна.
+ *
+ * Снято 2026-07-30: math_ege 9515, math_oge 5972, physics_ege 3386, physics_oge 2910.
+ */
 export const DIRECTIONS = [
   { key: 'math-ege',    subject: 'Математика', examType: 'ЕГЭ', subjectSlug: 'math',    examSlug: 'ege',
-    label: 'Математика ЕГЭ', desc: 'Профильная математика, задания №1–19' },
+    label: 'Математика ЕГЭ', desc: 'Профильная математика, задания №1–19', taskCount: 9515 },
   { key: 'math-oge',    subject: 'Математика', examType: 'ОГЭ', subjectSlug: 'math',    examSlug: 'oge',
-    label: 'Математика ОГЭ', desc: 'Подготовка к экзамену за 9 класс' },
+    label: 'Математика ОГЭ', desc: 'Подготовка к экзамену за 9 класс', taskCount: 5972 },
   { key: 'physics-ege', subject: 'Физика',     examType: 'ЕГЭ', subjectSlug: 'physics', examSlug: 'ege',
-    label: 'Физика ЕГЭ',     desc: 'Задачи первой и второй части' },
+    label: 'Физика ЕГЭ',     desc: 'Задачи первой и второй части', taskCount: 3386 },
   { key: 'physics-oge', subject: 'Физика',     examType: 'ОГЭ', subjectSlug: 'physics', examSlug: 'oge',
-    label: 'Физика ОГЭ',     desc: 'Задания по всем разделам экзамена' },
+    label: 'Физика ОГЭ',     desc: 'Задания по всем разделам экзамена', taskCount: 2910 },
 ] as const
 
 export type DirectionKey = typeof DIRECTIONS[number]['key']
 
-// Shape returned by get_catalog_direction_counts RPC
-interface DirectionCountRow {
-  math_ege:    number
-  math_oge:    number
-  physics_ege: number
-  physics_oge: number
-}
-
-export function useCatalogDirectionCounts(_retryKey?: number) {
-  const { profile } = useAuthStore()
-  const [counts, setCounts] = useState<Record<string, number>>({})
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!profile) return
-    let cancelled = false
-
-    async function load() {
-      setError(null)
-      try {
-        // Single aggregating RPC — one table scan, RLS enforced (SECURITY INVOKER)
-        const { data, error } = await db.rpc('get_catalog_direction_counts')
-        if (cancelled) return
-        if (error) {
-          setError(error.message || 'Не удалось загрузить каталог')
-          return
-        }
-        if (!data || !(data as unknown[]).length) return
-        const row = (data as DirectionCountRow[])[0]
-        setCounts({
-          'math-ege':    row.math_ege    ?? 0,
-          'math-oge':    row.math_oge    ?? 0,
-          'physics-ege': row.physics_ege ?? 0,
-          'physics-oge': row.physics_oge ?? 0,
-        })
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [profile, _retryKey])
-
-  return { counts, error }
-}
+// Счётчики направлений больше не читаются из базы: числа зафиксированы в
+// DIRECTIONS выше (см. комментарий там). Хук useCatalogDirectionCounts и тип
+// DirectionCountRow удалены как мёртвый код — RPC get_catalog_direction_counts
+// в базе оставлена, ей теперь пользуются только для обновления констант.
 
 // ── Single task by id ────────────────────────────────────────────────────────
 
