@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef } from 'react'
 import { Loader2, Paperclip, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { cn } from '@/utils/cn'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
   type TopicHomeworkAttemptFileRow,
@@ -125,20 +126,36 @@ export function AttemptAnnotationOverlay({
         </button>
       </div>
 
-      {other.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 shrink-0">
-          <span className="text-xs text-amber-800">Без разметки (открыть отдельно):</span>
-          {other.map(f => (
-            <SignedFileLink
-              key={f.id}
-              bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
-              url={f.storage_path}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs text-amber-900 hover:border-amber-400"
-            >
-              <Paperclip size={11} />
-              {f.file_name}
-            </SignedFileLink>
-          ))}
+      {/*
+        Полоса со ВСЕМИ файлами работы, а не только с неразмечаемыми.
+        Так у преподавателя всегда есть способ открыть оригинал — это важно,
+        когда встроенный просмотр не завёлся (например, браузер не смог
+        подгрузить движок PDF). Неразмечаемые помечены отдельно.
+      */}
+      {files.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 shrink-0">
+          <span className="text-xs text-gray-500">Файлы работы:</span>
+          {[...annotatable, ...other].map(f => {
+            const isOther = other.some(o => o.id === f.id)
+            return (
+              <SignedFileLink
+                key={f.id}
+                bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
+                url={f.storage_path}
+                title={isOther ? 'Этот файл нельзя разметить — откроется отдельно' : 'Открыть оригинал в новой вкладке'}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-xs',
+                  isOther
+                    ? 'border-amber-300 text-amber-900 hover:border-amber-400'
+                    : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-700',
+                )}
+              >
+                <Paperclip size={11} />
+                {f.file_name}
+                {isOther && <span className="text-[10px] text-amber-700">без разметки</span>}
+              </SignedFileLink>
+            )
+          })}
         </div>
       )}
 

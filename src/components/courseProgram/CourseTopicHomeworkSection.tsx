@@ -314,10 +314,25 @@ export function CourseTopicHomeworkSection({
     <div className="space-y-4">
       {/* Summary card */}
       {totalHomeworks > 0 && (
-        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
           <p className="text-sm text-green-800 font-medium">
             Выполнено {completedAssignments} из {totalAssignments} работ по курсу
           </p>
+          {/*
+            Сколько работ прямо сейчас ждёт проверки. Это единственное на
+            вкладке, что требует действия преподавателя, поэтому вынесено в
+            шапку и выделено — раньше сдачу можно было заметить только по
+            неприметному «⏳ 1» у темы.
+          */}
+          {totalStats.submitted > 0 && (
+            <span
+              data-testid="course-hw-awaiting"
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Ждут проверки: {totalStats.submitted}
+            </span>
+          )}
         </div>
       )}
 
@@ -362,25 +377,36 @@ export function CourseTopicHomeworkSection({
                       <span className="text-sm font-medium text-gray-900 truncate">{topic.title}</span>
                     </div>
 
-                    {/* Status badges */}
+                    {/*
+                      Бейджи темы. «На проверку» — единственный, требующий
+                      действия, поэтому он словом и цветом внимания; остальные
+                      компактные, со всплывающей подсказкой (раньше все четыре
+                      были одинаково незаметными значками ✓/⏳/↻/—, и сдачу
+                      ученика легко было пропустить).
+                    */}
                     <div className="flex items-center gap-2 shrink-0">
+                      {stats.submitted > 0 && (
+                        <span
+                          data-testid="topic-hw-awaiting"
+                          title="Сдано и ждёт вашей проверки"
+                          className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900"
+                        >
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          {stats.submitted} на проверку
+                        </span>
+                      )}
                       {stats.accepted > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
+                        <span title="Принято" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
                           <span>✓</span> {stats.accepted}
                         </span>
                       )}
-                      {stats.submitted > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
-                          <span>⏳</span> {stats.submitted}
-                        </span>
-                      )}
                       {stats.returned_for_revision > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+                        <span title="Возвращено на доработку" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
                           <span>↻</span> {stats.returned_for_revision}
                         </span>
                       )}
                       {stats.draft > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                        <span title="Ещё не сдали" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
                           <span>—</span> {stats.draft}
                         </span>
                       )}

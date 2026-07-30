@@ -208,6 +208,40 @@ export function buildAttemptFilePath(attemptId: string, fileName: string, now: n
   return `${attemptId}/${now}_${safeName(fileName)}`
 }
 
+/** Что ученик вправе приложить к работе: PDF и любые картинки. */
+export function isAcceptedHomeworkFile(file: File): boolean {
+  const type = (file.type || '').toLowerCase()
+  if (type === 'application/pdf' || type.startsWith('image/')) return true
+  // Некоторые браузеры и Android-галереи отдают пустой type — судим по имени.
+  return /\.(pdf|png|jpe?g|webp|gif|bmp|heic|heif|avif)$/i.test(file.name)
+}
+
+/**
+ * Скриншот из буфера обмена приходит без осмысленного имени — обычно
+ * «image.png», а при вставке нескольких подряд все они называются одинаково.
+ * Даём человекочитаемое имя с номером: в списке приложенного видно, что это
+ * разные снимки. (Коллизий в Storage и так нет — buildAttemptFilePath
+ * добавляет к пути метку времени.)
+ */
+export function namePastedFile(file: File, index: number): File {
+  const looksGeneric = !file.name || /^image\.\w+$/i.test(file.name)
+  if (!looksGeneric) return file
+  const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+  return new File([file], `Снимок экрана ${index + 1}.${ext}`, { type: file.type })
+}
+
+/**
+ * Разделяет выбранное на «можно приложить» и «нельзя». Отдельная чистая
+ * функция, потому что источников теперь три — кнопка выбора, перетаскивание
+ * и вставка из буфера, — и правило отбора у них обязано быть одним.
+ */
+export function splitHomeworkFiles(files: File[]): { accepted: File[]; rejected: File[] } {
+  const accepted: File[] = []
+  const rejected: File[] = []
+  for (const f of files) (isAcceptedHomeworkFile(f) ? accepted : rejected).push(f)
+  return { accepted, rejected }
+}
+
 export function formatBytes(bytes: number | null): string | null {
   if (bytes == null) return null
   if (bytes < 1024) return `${bytes} Б`

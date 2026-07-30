@@ -20,6 +20,8 @@ import {
   gradeScaleMax,
   isOverdue,
   latestReview,
+  namePastedFile,
+  splitHomeworkFiles,
 } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 
@@ -53,6 +55,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   // «Пометки учителя», ведущую в пустой просмотр.
   const [annotatedAttempts, setAnnotatedAttempts] = useState<Set<string>>(new Set())
   const [viewingMarks, setViewingMarks] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const attemptIdsKey = attempts.map(a => a.id).sort().join(',')
 
   useEffect(() => {
@@ -86,11 +89,27 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
     }
   }
 
+  /**
+   * Единая точка приёма файлов для всех трёх способов: кнопка выбора,
+   * перетаскивание и вставка из буфера. Отбор и переименование — общие
+   * (splitHomeworkFiles / namePastedFile), чтобы способы не разъезжались.
+   */
   const uploadPicked = useCallback(
-    async (attemptId: string, picked: File[]) => {
+    async (attemptId: string, incoming: File[], { fromPaste = false } = {}) => {
+      if (incoming.length === 0) return
+      const { accepted, rejected } = splitHomeworkFiles(incoming)
+      const picked = fromPaste ? accepted.map(namePastedFile) : accepted
+
+      if (rejected.length > 0) {
+        setLocalError(
+          `Можно приложить только PDF и картинки. Не подошло: ${rejected.map(f => f.name).join(', ')}`,
+        )
+      } else {
+        setLocalError(null)
+      }
       if (picked.length === 0) return
+
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
-      setLocalError(null)
       try {
         await uploadAttemptFiles(attemptId, picked, (index, percent) => {
           setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
@@ -103,6 +122,34 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
     },
     [uploadAttemptFiles],
   )
+
+  // Черновик, в который сейчас можно докладывать файлы. Считаем до ранних
+  // return'ов: обработчик вставки — хук, он обязан вызываться всегда.
+  const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
+  const draftAttemptId = draftAttempt?.id ?? null
+
+  /**
+   * Вставка из буфера обмена (Ctrl/Cmd+V).
+   *
+   * Ради этого всё и затевалось: скриншот решения лежит в буфере, и раньше
+   * ученику приходилось сначала сохранять его файлом, потом искать через
+   * «Обзор». Теперь достаточно вставить. Слушаем на документе, а не на поле:
+   * ученик не станет специально фокусироваться на зоне загрузки.
+   */
+  useEffect(() => {
+    if (!draftAttemptId || uploadingFiles) return
+    function onPaste(e: ClipboardEvent) {
+      const target = e.target as HTMLElement | null
+      // Не перехватываем вставку текста в поля ввода.
+      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
+      const files = Array.from(e.clipboardData?.files ?? [])
+      if (files.length === 0) return
+      e.preventDefault()
+      void uploadPicked(draftAttemptId!, files, { fromPaste: true })
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [draftAttemptId, uploadingFiles, uploadPicked])
 
   if (loading) {
     return (
@@ -238,15 +285,48 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
           )}
 
           {active.status === 'draft' && (
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-3">
+              {/*
+                Зона приёма работы. Три способа вместо одного «Обзора»:
+                выбрать файл, перетащить, вставить из буфера. Последний —
+                главный: скриншот решения уже в буфере, и сохранять его
+                файлом только ради загрузки было лишним шагом.
+              */}
               <label
+                data-testid="hw-dropzone"
+                onDragOver={e => { e.preventDefault(); if (!uploadingFiles) setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={async e => {
+                  e.preventDefault()
+                  setDragOver(false)
+                  if (uploadingFiles) return
+                  await uploadPicked(active.id, Array.from(e.dataTransfer.files ?? []))
+                }}
                 className={cn(
-                  'inline-flex items-center gap-2 text-sm text-primary-600',
-                  uploadingFiles ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:underline',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors',
+                  uploadingFiles
+                    ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+                    : dragOver
+                      ? 'cursor-copy border-primary-400 bg-primary-50'
+                      : 'cursor-pointer border-gray-300 bg-white hover:border-primary-300 hover:bg-primary-50/30',
                 )}
               >
-                {uploadingFiles ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                {uploadingFiles ? 'Загрузка…' : 'Добавить фото или файл'}
+                {uploadingFiles ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin text-gray-400" />
+                    <span className="text-sm text-gray-500">Загрузка…</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={20} className="text-gray-400" />
+                    <span className="text-sm font-medium text-gray-700">
+                      Перетащите фото или PDF, либо нажмите чтобы выбрать
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      Скриншот можно просто вставить — Ctrl+V
+                    </span>
+                  </>
+                )}
                 <input
                   data-testid="hw-attempt-file-input"
                   type="file"
@@ -262,17 +342,23 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                   className="hidden"
                 />
               </label>
-              <Button
-                data-testid="hw-submit-attempt"
-                size="sm"
-                onClick={() => run(() => submitAttempt(active.id))}
-                loading={busy}
-                disabled={draftFiles.length === 0 || uploadingFiles}
-                title={draftFiles.length === 0 ? 'Сначала прикрепите работу' : undefined}
-              >
-                <Send size={14} />
-                Отправить на проверку
-              </Button>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  data-testid="hw-submit-attempt"
+                  size="sm"
+                  onClick={() => run(() => submitAttempt(active.id))}
+                  loading={busy}
+                  disabled={draftFiles.length === 0 || uploadingFiles}
+                  title={draftFiles.length === 0 ? 'Сначала прикрепите работу' : undefined}
+                >
+                  <Send size={14} />
+                  Отправить на проверку
+                </Button>
+                {draftFiles.length === 0 && (
+                  <span className="text-xs text-gray-400">Сначала прикрепите работу</span>
+                )}
+              </div>
             </div>
           )}
 

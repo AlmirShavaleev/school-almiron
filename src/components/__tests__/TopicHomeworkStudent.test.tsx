@@ -195,3 +195,62 @@ describe('ДЗ ученику — история попыток', () => {
     expect(screen.getAllByText(/Попытка №1/).length).toBeGreaterThan(0)
   })
 })
+
+describe('ДЗ ученику — способы приложить работу', () => {
+  beforeEach(() => {
+    attempts = [attempt(1, 'draft')]
+  })
+
+  it('показывает зону перетаскивания и подсказку про Ctrl+V', () => {
+    // Владелец: «модалка загрузки ДЗ у ученика очень неудобно сделана».
+    // Скриншот уже лежит в буфере — сохранять его файлом ради загрузки лишнее.
+    renderStudent()
+    expect(screen.getByTestId('hw-dropzone')).toBeInTheDocument()
+    expect(screen.getByText(/Ctrl\+V/)).toBeInTheDocument()
+  })
+
+  it('принимает файлы перетаскиванием', async () => {
+    renderStudent()
+    const photo = new File(['x'], 'фото.png', { type: 'image/png' })
+
+    fireEvent.drop(screen.getByTestId('hw-dropzone'), { dataTransfer: { files: [photo] } })
+
+    await waitFor(() =>
+      expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [photo], expect.any(Function)))
+  })
+
+  it('принимает скриншот из буфера и даёт ему понятное имя', async () => {
+    renderStudent()
+    const shot = new File(['x'], 'image.png', { type: 'image/png' })
+
+    fireEvent.paste(document, { clipboardData: { files: [shot] } })
+
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalled())
+    const sent = uploadAttemptFiles.mock.calls[0][1] as File[]
+    expect(sent[0].name).toBe('Снимок экрана 1.png')
+  })
+
+  it('неподходящий файл отклоняет с понятным сообщением и не грузит', async () => {
+    renderStudent()
+
+    fireEvent.drop(screen.getByTestId('hw-dropzone'), {
+      dataTransfer: { files: [new File(['x'], 'архив.zip', { type: 'application/zip' })] },
+    })
+
+    expect(await screen.findByText(/Можно приложить только PDF и картинки/)).toBeInTheDocument()
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+  })
+
+  it('вставку в поле ввода не перехватывает — там печатают текст', () => {
+    renderStudent()
+    const field = document.createElement('textarea')
+    document.body.appendChild(field)
+
+    fireEvent.paste(field, {
+      clipboardData: { files: [new File(['x'], 'image.png', { type: 'image/png' })] },
+    })
+
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+    field.remove()
+  })
+})

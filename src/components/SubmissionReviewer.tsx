@@ -366,7 +366,17 @@ export function SubmissionReviewer({
       setLoading(false)
     }).catch((e: any) => {
       if (!active) return
-      setError(e?.message ?? 'Не удалось открыть файл')
+      // Отдельно про воркер pdf.js: если браузер не смог его подгрузить
+      // (в проде так падало из-за Content-Type у .mjs), сообщение вида
+      // «Setting up fake worker failed» ничего не говорит преподавателю.
+      // Показываем понятный текст — а ссылка «открыть файл» рядом даёт
+      // возможность посмотреть работу, пока движок разметки недоступен.
+      const raw = String(e?.message ?? '')
+      setError(
+        /fake worker|dynamically imported module|worker/i.test(raw)
+          ? 'Не удалось загрузить движок просмотра PDF. Откройте файл отдельно — ссылка выше.'
+          : raw || 'Не удалось открыть файл',
+      )
       setLoading(false)
     })
     return () => {
