@@ -1,19 +1,45 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
-import { useEffect, Component, Suspense, lazy, type ReactNode } from 'react'
+import { useEffect, Component, Suspense, type ReactNode } from 'react'
+import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
   render() {
     if (this.state.error) {
+      const error = this.state.error as Error
+      // Не доехал файл страницы (обычно — вкладка была открыта до деплоя).
+      // lazyPage такое чинит сам, сюда попадёт лишь то, что он не осилил:
+      // повторный сбой или обрыв не на границе lazy. Показывать пользователю
+      // «Failed to fetch dynamically imported module» и стек в таком случае
+      // бессмысленно — он ничего с этим не сделает, кроме перезагрузки.
+      if (isChunkLoadError(error)) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50 p-8">
+            <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
+              <h1 className="text-lg font-bold text-gray-900 mb-2">Вышло обновление</h1>
+              <p className="text-sm text-gray-500">
+                Страница не догрузилась, потому что приложение обновилось. Обновите вкладку —
+                всё встанет на место.
+              </p>
+              <button
+                className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm"
+                onClick={() => window.location.reload()}
+              >
+                Обновить страницу
+              </button>
+            </div>
+          </div>
+        )
+      }
       return (
         <div className="min-h-screen flex items-center justify-center bg-red-50 p-8">
           <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full">
             <h1 className="text-xl font-bold text-red-600 mb-3">Ошибка приложения</h1>
             <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg overflow-auto whitespace-pre-wrap">
-              {(this.state.error as Error).message}
+              {error.message}
               {'\n\n'}
-              {(this.state.error as Error).stack}
+              {error.stack}
             </pre>
             <button
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm"
@@ -43,13 +69,15 @@ import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 import { JoinPage } from '@/pages/JoinPage'
 import { JoinTeacherPage } from '@/pages/JoinTeacherPage'
 
-// Public — lazy-loaded so framer-motion + landing components stay out of the main chunk
-const LandingPage       = lazy(() => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
-const PricingPage       = lazy(() => import('@/pages/PricingPage').then(m => ({ default: m.PricingPage })))
-const PaymentResultPage = lazy(() => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
+// Public — lazy-loaded so framer-motion + landing components stay out of the main chunk.
+// lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
+// не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
+const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
+const PricingPage       = lazyPage('PricingPage', () => import('@/pages/PricingPage').then(m => ({ default: m.PricingPage })))
+const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 
 // Protected app subtree (DashboardLayout + all its child routes) — lazy so its page code stays out of the entry chunk
-const AppRoutes = lazy(() => import('@/AppRoutes'))
+const AppRoutes = lazyPage('AppRoutes', () => import('@/AppRoutes'))
 
 /** Полноэкранный спиннер — общий для loading-состояния и Suspense-фолбэка. */
 function FullScreenSpinner() {
