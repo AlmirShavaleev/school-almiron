@@ -505,6 +505,7 @@ export function CourseTopicHomeworkSection({
 
       {selectedSubmission && (
         <HomeworkAttemptDetailModal
+          courseId={courseId}
           homeworkId={selectedSubmission.homeworkId}
           studentId={selectedSubmission.studentId}
           studentName={selectedSubmission.studentName}

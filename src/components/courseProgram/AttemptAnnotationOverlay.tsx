@@ -1,7 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef } from 'react'
-import { Loader2, Paperclip, X } from 'lucide-react'
+import { Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
+import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
   type TopicHomeworkAttemptFileRow,
@@ -40,6 +41,64 @@ export function splitAnnotatableFiles(files: TopicHomeworkAttemptFileRow[]) {
   return { annotatable, other }
 }
 
+/**
+ * Полоса «работу смотрит кто-то ещё».
+ *
+ * Два разных случая, и их важно не смешивать:
+ *  - `locked` — при открытии внутри УЖЕ кто-то был, поэтому вход только на
+ *    чтение. Выход есть: «Всё равно редактировать» — осознанное решение, а не
+ *    запертая навсегда работа.
+ *  - иначе — коллега зашёл ПОСЛЕ вас. Выгонять на чтение поздно (можно затереть
+ *    начатое), поэтому просто предупреждаем.
+ */
+function PresenceBanner({
+  viewers,
+  locked,
+  onForceEdit,
+}: {
+  viewers: PresenceMeta[]
+  locked: boolean
+  onForceEdit?: () => void
+}) {
+  if (viewers.length === 0) return null
+  const label = viewersLabel(viewers)
+
+  if (!locked) {
+    return (
+      <div
+        data-testid="presence-banner-warning"
+        className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 shrink-0"
+      >
+        <Eye size={13} className="shrink-0" />
+        <span>{label}. Правки могут перекрыть друг друга — лучше договориться, кто проверяет.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      data-testid="presence-banner-locked"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 shrink-0"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <Eye size={13} className="shrink-0" />
+        {label}. Открыто только для чтения, чтобы не затереть чужие пометки.
+      </span>
+      {onForceEdit && (
+        <button
+          type="button"
+          data-testid="presence-force-edit"
+          onClick={onForceEdit}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 transition-colors hover:border-amber-400 hover:bg-amber-100"
+        >
+          <Pencil size={12} />
+          Всё равно редактировать
+        </button>
+      )}
+    </div>
+  )
+}
+
 export type AttemptAnnotationFooter = (context: {
   publishing: boolean
   published: boolean
@@ -60,6 +119,9 @@ export function AttemptAnnotationOverlay({
   title,
   subtitle,
   readOnly = false,
+  viewers = [],
+  locked = false,
+  onForceEdit,
   footer,
   footerPublishLabel,
   publishButtonLabel = 'Опубликовать пометки',
@@ -71,6 +133,15 @@ export function AttemptAnnotationOverlay({
   title: string
   subtitle?: string
   readOnly?: boolean
+  /** Кто ещё сейчас в этой работе (из Supabase Presence). */
+  viewers?: PresenceMeta[]
+  /**
+   * При открытии внутри уже кто-то был — входим на чтение. Решение снимается
+   * один раз, в момент открытия: выкидывать из редактирования того, кто уже
+   * рисует, потому что зашёл второй, было бы хуже самой проблемы.
+   */
+  locked?: boolean
+  onForceEdit?: () => void
   footer?: AttemptAnnotationFooter
   footerPublishLabel?: string
   publishButtonLabel?: string
@@ -78,6 +149,9 @@ export function AttemptAnnotationOverlay({
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
+  // Мягкая защита = тот же режим чтения, что и обычный readOnly: рисовать
+  // нельзя, вердикт не ставится. Разница только в баннере и кнопке выхода.
+  const viewOnly = readOnly || locked
   const { annotatable, other } = useMemo(() => splitAnnotatableFiles(files), [files])
   const paths = useMemo(() => annotatable.map(f => f.storage_path), [annotatable])
 
@@ -126,6 +200,8 @@ export function AttemptAnnotationOverlay({
         </button>
       </div>
 
+      <PresenceBanner viewers={viewers} locked={locked} onForceEdit={onForceEdit} />
+
       {/*
         Полоса со ВСЕМИ файлами работы, а не только с неразмечаемыми.
         Так у преподавателя всегда есть способ открыть оригинал — это важно,
@@ -171,7 +247,7 @@ export function AttemptAnnotationOverlay({
                 ? 'В этой попытке нет файлов — размечать нечего'
                 : 'Ни один файл этой попытки нельзя разметить (нужен PDF или картинка)'}
             </div>
-            {!readOnly && footer && (
+            {!viewOnly && footer && (
               <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5">
                 {footer({ publishing: false, published: false, publishAnnotations: async () => true })}
               </div>
@@ -184,7 +260,12 @@ export function AttemptAnnotationOverlay({
               bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
               filePath={paths[0]}
               filePaths={paths}
-              readOnly={readOnly}
+              readOnly={viewOnly}
+              // В режиме чтения аннотатор по умолчанию показывает только
+              // опубликованные пометки. Здесь это было бы вредно: второй
+              // проверяющий пришёл посмотреть ровно то, что коллега рисует
+              // прямо сейчас, — а оно ещё в черновике.
+              annotationVisibility={locked ? 'all' : undefined}
               className="h-full min-h-0"
               footer={footerContent}
               footerPublishLabel={footerPublishLabel}

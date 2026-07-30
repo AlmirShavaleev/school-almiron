@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle2, ChevronRight, Inbox, Loader2, Paperclip, RefreshCw,
+  AlertTriangle, CheckCircle2, ChevronRight, Eye, Inbox, Loader2, Paperclip, RefreshCw,
 } from 'lucide-react'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
+import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { groupByCourse, isSubmittedLate, type QueueRow } from '@/lib/homeworkQueue'
+import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
 import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 
 function formatDate(value: string | null): string | null {
@@ -23,11 +25,13 @@ function formatDate(value: string | null): string | null {
  * список в стену полей. Вердикт живёт внутри разбора.
  */
 function QueueRowItem({
-  row, files, studentName, onOpen,
+  row, files, studentName, viewers, onOpen,
 }: {
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
   studentName: string
+  /** Коллеги, открывшие эту работу прямо сейчас. */
+  viewers: PresenceMeta[]
   onOpen: () => void
 }) {
   const { attempt } = row
@@ -61,6 +65,15 @@ function QueueRowItem({
                 попытка №{attempt.attempt_number}
               </span>
             )}
+            {viewers.length > 0 && (
+              <span
+                data-testid="queue-viewer-badge"
+                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800"
+              >
+                <Eye size={11} />
+                {viewersLabel(viewers)}
+              </span>
+            )}
           </div>
 
           <p className="mt-0.5 truncate text-xs text-gray-500">
@@ -90,10 +103,20 @@ function QueueRowItem({
  */
 export function HomeworkReviewQueuePage() {
   const { rows, attemptFiles, studentNames, loading, error, reload, reviewAttempt } = useHomeworkReviewQueue()
-  const [reviewing, setReviewing] = useState<QueueRow | null>(null)
+  /**
+   * `locked` снимается один раз — в момент открытия. Дальше кнопка «Всё равно
+   * редактировать» его сбрасывает, а приход нового зрителя уже не возвращает:
+   * иначе коллега, зашедший посмотреть, выбивал бы из редактирования того, кто
+   * начал первым.
+   */
+  const [reviewing, setReviewing] = useState<{ row: QueueRow; locked: boolean } | null>(null)
   const filesOf = (attemptId: string) => attemptFiles.filter(f => f.attempt_id === attemptId)
   const groups = groupByCourse(rows)
   const lateCount = rows.filter(isSubmittedLate).length
+
+  const courseIds = useMemo(() => rows.map(r => r.courseId), [rows])
+  const { viewers } = useReviewPresence({ courseIds, attemptId: reviewing?.row.attempt.id ?? null })
+  const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
 
   return (
     <div className="space-y-5">
@@ -149,7 +172,8 @@ export function HomeworkReviewQueuePage() {
                     row={row}
                     files={filesOf(row.attempt.id)}
                     studentName={studentNames[row.attempt.student_id] ?? 'Ученик'}
-                    onOpen={() => setReviewing(row)}
+                    viewers={viewersOf(row.attempt.id)}
+                    onOpen={() => setReviewing({ row, locked: viewersOf(row.attempt.id).length > 0 })}
                   />
                 ))}
               </ul>
@@ -160,20 +184,23 @@ export function HomeworkReviewQueuePage() {
 
       {reviewing && (
         <AttemptAnnotationOverlay
-          attemptId={reviewing.attempt.id}
-          files={filesOf(reviewing.attempt.id)}
-          title={reviewing.homeworkTitle}
+          attemptId={reviewing.row.attempt.id}
+          files={filesOf(reviewing.row.attempt.id)}
+          title={reviewing.row.homeworkTitle}
           subtitle={
-            `${studentNames[reviewing.attempt.student_id] ?? 'Ученик'} · ${reviewing.topicTitle}`
-            + (isSubmittedLate(reviewing) ? ' · сдано с опозданием' : '')
+            `${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.topicTitle}`
+            + (isSubmittedLate(reviewing.row) ? ' · сдано с опозданием' : '')
           }
+          viewers={viewersOf(reviewing.row.attempt.id)}
+          locked={reviewing.locked}
+          onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
           // тулбаре только путала: две зелёные кнопки читались как одно действие.
           hideToolbarPublish
           footer={({ publishAnnotations }) => (
             <ReviewActions
-              attempt={reviewing.attempt}
-              gradeScale={reviewing.gradeScale}
+              attempt={reviewing.row.attempt}
+              gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
               onReview={async (attemptId, decision, comment, score) => {
                 // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть

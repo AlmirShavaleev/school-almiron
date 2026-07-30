@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, Loader2, AlertCircle, Paperclip, SquareDashed } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
+import { useReviewPresence } from '@/hooks/useReviewPresence'
+import { viewersOfAttempt } from '@/lib/reviewPresence'
 import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
 import {
   ATTEMPT_STATUS_TONE,
@@ -147,6 +149,7 @@ function AttemptFilePreview({
  * учеников» из редактора темы убран сознательно).
  */
 export function HomeworkAttemptDetailModal({
+  courseId,
   homeworkId,
   studentId,
   studentName,
@@ -154,6 +157,8 @@ export function HomeworkAttemptDetailModal({
   gradeScale,
   onClose,
 }: {
+  /** Нужен только для присутствия: канал Realtime заведён на курс. */
+  courseId: string
   homeworkId: string
   studentId: string
   studentName: string
@@ -166,7 +171,16 @@ export function HomeworkAttemptDetailModal({
   const [reviews, setReviews] = useState<TopicHomeworkReviewRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [annotating, setAnnotating] = useState<TopicHomeworkAttemptRow | null>(null)
+  const [annotating, setAnnotating] = useState<{ attempt: TopicHomeworkAttemptRow; locked: boolean } | null>(null)
+
+  // Разбор с рамками открывается и отсюда, и из общей очереди — присутствие
+  // должно быть общим, иначе двое «не увидят» друг друга просто потому, что
+  // пришли разными дверями.
+  const courseIds = useMemo(() => [courseId], [courseId])
+  const { viewers } = useReviewPresence({ courseIds, attemptId: annotating?.attempt.id ?? null })
+  const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
+  const openAnnotator = (attempt: TopicHomeworkAttemptRow) =>
+    setAnnotating({ attempt, locked: viewersOf(attempt.id).length > 0 })
 
   useEffect(() => {
     let cancelled = false
@@ -300,7 +314,7 @@ export function HomeworkAttemptDetailModal({
                                 file={f}
                                 onAnnotate={
                                   splitAnnotatableFiles([f]).annotatable.length > 0
-                                    ? () => setAnnotating(attempt)
+                                    ? () => openAnnotator(attempt)
                                     : undefined
                                 }
                               />
@@ -310,7 +324,7 @@ export function HomeworkAttemptDetailModal({
                             <button
                               type="button"
                               data-testid="attempt-annotate-button"
-                              onClick={() => setAnnotating(attempt)}
+                              onClick={() => openAnnotator(attempt)}
                               className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 hover:border-primary-300"
                             >
                               <SquareDashed size={12} />
@@ -342,10 +356,13 @@ export function HomeworkAttemptDetailModal({
 
       {annotating && (
         <AttemptAnnotationOverlay
-          attemptId={annotating.id}
-          files={files.filter(f => f.attempt_id === annotating.id)}
+          attemptId={annotating.attempt.id}
+          files={files.filter(f => f.attempt_id === annotating.attempt.id)}
           title={homeworkTitle}
           subtitle={studentName}
+          viewers={viewersOf(annotating.attempt.id)}
+          locked={annotating.locked}
+          onForceEdit={() => setAnnotating(a => (a ? { ...a, locked: false } : a))}
           // Единственная кнопка публикации — в футере, под объяснением, что она
           // делает. Дубль в тулбаре убран: две зелёные кнопки рядом читались как
           // одно действие и создавали ощущение, что работа куда-то отправлена.
