@@ -3,10 +3,10 @@ import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertC
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
-import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
+import { extractStoragePath, getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
-import type { ReactNode } from 'react'
+import type { MutableRefObject, ReactNode } from 'react'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -45,8 +45,21 @@ type FooterRenderContext = {
 }
 type FooterContent = ReactNode | ((context: FooterRenderContext) => ReactNode)
 
-interface Props {
-  submissionId: string
+/**
+ * Цель аннотаций. Ровно одна из двух — тем же правилом, что CHECK
+ * annotation_sets_one_target_chk в базе, только проверяется на этапе
+ * компиляции (`?: never` не даст передать обе):
+ *  - submissionId — старый контур (homework_submissions, бакет 'homeworks');
+ *  - attemptId    — новый контур (topic_homework_attempts,
+ *                   бакет 'topic-homework-attempts').
+ */
+type AnnotationTarget =
+  | { submissionId: string; attemptId?: never }
+  | { attemptId: string; submissionId?: never }
+
+interface BaseProps {
+  /** Бакет, в котором лежат файлы работы. По умолчанию — старый контур. */
+  bucket?: PrivateBucket
   filePath: string
   filePaths?: string[]
   readOnly?: boolean
@@ -55,10 +68,26 @@ interface Props {
   fitWidth?: boolean
   footer?: FooterContent
   footerPublishLabel?: string
+  /**
+   * Подпись кнопки публикации в тулбаре. По умолчанию «Опубликовать проверку»
+   * (старый контур, где публикация рамок и есть публикация проверки). Там, где
+   * вердикт ставится отдельной формой, подпись должна честно говорить, что
+   * кнопка публикует только пометки.
+   */
+  publishButtonLabel?: string
   header?: ReactNode
   onPublish?: (targetStatus?: 'checked' | 'revision') => Promise<boolean | void>
   onPublishComplete?: (success: boolean) => void
+  /**
+   * Императивный доступ к публикации рамок (draft → published).
+   * Нужен там, где кнопку рисует не футер аннотатора, а внешняя форма
+   * вердикта: она сначала публикует пометки, потом ставит оценку — чтобы
+   * ученик не получил вердикт без пометок, на которые тот ссылается.
+   */
+  publishRef?: MutableRefObject<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>
 }
+
+type Props = BaseProps & AnnotationTarget
 
 const MIN_REGION_SIZE = 0.015
 const EMPTY: PageData = { version: 2, objects: [] }
@@ -128,6 +157,8 @@ function SaveStatePill({ saving, saveState }: { saving: boolean; saveState: 'idl
 
 export function SubmissionReviewer({
   submissionId,
+  attemptId,
+  bucket = 'homeworks',
   filePath,
   filePaths,
   readOnly = false,
@@ -136,16 +167,26 @@ export function SubmissionReviewer({
   fitWidth = true,
   footer,
   footerPublishLabel,
+  publishButtonLabel = 'Опубликовать проверку',
   header,
   onPublish,
   onPublishComplete,
+  publishRef,
 }: Props) {
+  // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
+  // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
+  // (CHECK в базе всё равно не даст записать сразу оба).
+  const targetColumn = attemptId ? 'attempt_id' : 'submission_id'
+  const targetId = attemptId ?? submissionId
   const normalizedPaths = useMemo(() => {
     const raw = filePaths?.length ? filePaths : [filePath]
-    return raw.map(path => extractStoragePath(path, 'homeworks') ?? path)
-  }, [filePath, filePaths])
+    return raw.map(path => extractStoragePath(path, bucket) ?? path)
+  }, [bucket, filePath, filePaths])
   const effectiveAnnotationVisibility = annotationVisibility ?? (readOnly ? 'published' : 'all')
-  const persistenceKey = useMemo(() => `${submissionId}:${normalizedPaths.join('|')}`, [normalizedPaths, submissionId])
+  const persistenceKey = useMemo(
+    () => `${targetColumn}:${targetId}:${normalizedPaths.join('|')}`,
+    [normalizedPaths, targetColumn, targetId],
+  )
   const frameRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const dragStartRef = useRef<{ surfaceKey: string; filePath: string; fileIndex: number; page: number; globalPage: number; point: Point } | null>(null)
@@ -234,19 +275,23 @@ export function SubmissionReviewer({
     setError('')
     try {
       const next = await Promise.all(normalizedPaths.map(async path => {
-        const url = await getSignedFileUrl('homeworks', path)
+        const url = await getSignedFileUrl(bucket, path)
         if (!url) throw new Error('Файл не найден')
         const ext = path.split('?')[0].split('.').pop()?.toLowerCase() || ''
         if (ext === 'pdf') return { filePath: path, url, ext, kind: 'pdf' as const }
-        if (['png', 'jpg', 'jpeg'].includes(ext)) return { filePath: path, url, ext, kind: 'image' as const }
-        throw new Error('Предпросмотр доступен только для PDF, PNG и JPG.')
+        // webp/heic ученик тоже может прислать (в инпуте accept="image/*"),
+        // браузер их рисует — значит рамки по ним ставить можно.
+        if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'heic', 'heif', 'avif'].includes(ext)) {
+          return { filePath: path, url, ext, kind: 'image' as const }
+        }
+        throw new Error('Предпросмотр доступен только для PDF и картинок.')
       }))
       setSourceFiles(next)
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось открыть файл')
       setLoading(false)
     }
-  }, [normalizedPaths])
+  }, [bucket, normalizedPaths])
 
   useEffect(() => { void getUrls() }, [getUrls])
 
@@ -264,7 +309,7 @@ export function SubmissionReviewer({
       if (!active) return
 
       const query = (supabase as any).from('annotation_sets').select('page,data,status,file_path')
-        .eq('submission_id', submissionId)
+        .eq(targetColumn, targetId)
       if (normalizedPaths.length === 1) query.eq('file_path', normalizedPaths[0])
       else query.in('file_path', normalizedPaths)
       if (effectiveAnnotationVisibility === 'published') query.eq('status', 'published')
@@ -276,7 +321,7 @@ export function SubmissionReviewer({
       setPublished((data ?? []).some(row => row.status === 'published'))
     })()
     return () => { active = false }
-  }, [effectiveAnnotationVisibility, normalizedPaths, persistenceKey, submissionId])
+  }, [effectiveAnnotationVisibility, normalizedPaths, persistenceKey, targetColumn, targetId])
 
   useEffect(() => {
     if (!sourceFiles.length) return
@@ -389,12 +434,12 @@ export function SubmissionReviewer({
       setSaving(true)
       setSaveState('idle')
       const { error: saveError } = await (supabase as any).from('annotation_sets').upsert({
-        submission_id: submissionId,
+        [targetColumn]: targetId,
         file_path: filePath,
         page: number,
         data: { ...data, version: 2 },
         status: 'draft',
-      }, { onConflict: 'submission_id,file_path,page' })
+      }, { onConflict: `${targetColumn},file_path,page` })
       setSaving(false)
       setSaveState(saveError ? 'error' : 'saved')
       if (saveError) {
@@ -413,7 +458,7 @@ export function SubmissionReviewer({
         inflightPageSaves.delete(persistenceKey)
       }
     }
-  }, [persistenceKey, readOnly, submissionId])
+  }, [persistenceKey, readOnly, targetColumn, targetId])
 
   function pointerDown(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
     if (readOnly || draft) return
@@ -492,12 +537,12 @@ export function SubmissionReviewer({
     pageRefs.current[item.surfaceKey]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
-  async function publish(targetStatus: 'checked' | 'revision' = 'checked') {
+  async function publish(targetStatus: 'checked' | 'revision' = 'checked'): Promise<boolean> {
     setPublishing(true)
     if (onPublish && await onPublish(targetStatus) === false) {
       setPublishing(false)
       onPublishComplete?.(false)
-      return
+      return false
     }
     // Every edit is already persisted by the time it's made (saveDraft/
     // deleteRegion await savePage immediately) — this re-save is just a
@@ -509,10 +554,10 @@ export function SubmissionReviewer({
     if (!ok.every(Boolean)) {
       setPublishing(false)
       onPublishComplete?.(false)
-      return
+      return false
     }
     const publishQuery = (supabase as any).from('annotation_sets').update({ status: 'published' })
-      .eq('submission_id', submissionId)
+      .eq(targetColumn, targetId)
     const publishResult = normalizedPaths.length === 1
       ? await publishQuery.eq('file_path', normalizedPaths[0])
       : await publishQuery.in('file_path', normalizedPaths)
@@ -521,13 +566,23 @@ export function SubmissionReviewer({
     setPublishing(false)
     if (publishError) {
       onPublishComplete?.(false)
-      return
+      return false
     }
     setPublished(true)
     onPublishComplete?.(true)
+    return true
   }
 
-  if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF, PNG и JPG.</div>
+  // Без массива зависимостей: publish пересоздаётся каждый рендер и замыкает
+  // текущие pages — ref должен указывать на свежую версию, иначе внешняя форма
+  // вердикта опубликует устаревший набор страниц.
+  useEffect(() => {
+    if (!publishRef) return
+    publishRef.current = publish
+    return () => { publishRef.current = null }
+  })
+
+  if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
   const triggerPublish = (targetStatus?: 'checked' | 'revision') => { void publish(targetStatus) }
@@ -569,7 +624,7 @@ export function SubmissionReviewer({
         </div>
         {!readOnly && <div className="flex items-center gap-2">
           <SaveStatePill saving={saving} saveState={saveState} />
-          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : 'Опубликовать проверку'}</button>
+          <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>
         </div>}
       </div>
     </div>

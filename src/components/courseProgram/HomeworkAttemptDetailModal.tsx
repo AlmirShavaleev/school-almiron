@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { X, Loader2, AlertCircle, Paperclip } from 'lucide-react'
+import { X, Loader2, AlertCircle, Paperclip, SquareDashed } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
+import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -30,9 +31,19 @@ function formatDate(value: string | null): string | null {
  * Один файл попытки: картинка — сразу превью (сигнатура подписывается один
  * раз при монтировании, не дожидаясь клика — иначе владелец увидел бы
  * плейсхолдер вместо фото), остальное — плашка-ссылка как в очереди проверки
- * (TopicHomeworkReview.AttemptFiles), открывается в новой вкладке.
+ * (TopicHomeworkReview.AttemptFiles).
+ *
+ * Клик по файлу, который можно разметить (PDF/картинка), открывает
+ * аннотатор — рамки с указанием ошибок. Файл, который разметить нельзя,
+ * по-прежнему открывается в новой вкладке.
  */
-function AttemptFilePreview({ file }: { file: TopicHomeworkAttemptFileRow }) {
+function AttemptFilePreview({
+  file,
+  onAnnotate,
+}: {
+  file: TopicHomeworkAttemptFileRow
+  onAnnotate?: () => void
+}) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const isImage = (file.mime_type || '').startsWith('image/')
@@ -52,6 +63,36 @@ function AttemptFilePreview({ file }: { file: TopicHomeworkAttemptFileRow }) {
   }, [file.storage_path])
 
   if (isImage) {
+    const thumb = loading ? (
+      <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+        <Loader2 size={16} className="animate-spin text-gray-300" />
+      </div>
+    ) : signedUrl ? (
+      <img
+        src={signedUrl}
+        alt={file.file_name}
+        className="h-28 w-28 rounded-lg border border-gray-200 object-cover transition-opacity hover:opacity-90"
+      />
+    ) : (
+      <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-center text-xs text-gray-400">
+        Не удалось открыть
+      </div>
+    )
+
+    if (onAnnotate) {
+      return (
+        <button
+          type="button"
+          data-testid="attempt-file-annotate"
+          onClick={onAnnotate}
+          title={`${file.file_name} — открыть с разметкой`}
+          className="block shrink-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+        >
+          {thumb}
+        </button>
+      )
+    }
+
     return (
       <a
         href={signedUrl ?? undefined}
@@ -60,22 +101,23 @@ function AttemptFilePreview({ file }: { file: TopicHomeworkAttemptFileRow }) {
         className={cn('block shrink-0', !signedUrl && 'pointer-events-none')}
         title={file.file_name}
       >
-        {loading ? (
-          <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
-            <Loader2 size={16} className="animate-spin text-gray-300" />
-          </div>
-        ) : signedUrl ? (
-          <img
-            src={signedUrl}
-            alt={file.file_name}
-            className="h-28 w-28 rounded-lg border border-gray-200 object-cover hover:opacity-90 transition-opacity"
-          />
-        ) : (
-          <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400 text-center px-2">
-            Не удалось открыть
-          </div>
-        )}
+        {thumb}
       </a>
+    )
+  }
+
+  if (onAnnotate) {
+    return (
+      <button
+        type="button"
+        data-testid="attempt-file-annotate"
+        onClick={onAnnotate}
+        title={`${file.file_name} — открыть с разметкой`}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-primary-600 hover:border-primary-300 hover:underline"
+      >
+        <Paperclip size={12} />
+        {file.file_name}
+      </button>
     )
   }
 
@@ -124,6 +166,7 @@ export function HomeworkAttemptDetailModal({
   const [reviews, setReviews] = useState<TopicHomeworkReviewRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [annotating, setAnnotating] = useState<TopicHomeworkAttemptRow | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -173,11 +216,13 @@ export function HomeworkAttemptDetailModal({
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      // Пока открыт аннотатор, Esc закрывает его, а не всю модалку —
+      // иначе одно нажатие схлопнуло бы оба слоя разом.
+      if (e.key === 'Escape' && !annotating) onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [annotating, onClose])
 
   const scoreMax = gradeScaleMax(gradeScale)
 
@@ -247,11 +292,32 @@ export function HomeworkAttemptDetailModal({
                       {attemptFiles.length === 0 ? (
                         <p className="text-xs text-gray-400">Файлов нет</p>
                       ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {attemptFiles.map(f => (
-                            <AttemptFilePreview key={f.id} file={f} />
-                          ))}
-                        </div>
+                        <>
+                          <div className="flex flex-wrap gap-2">
+                            {attemptFiles.map(f => (
+                              <AttemptFilePreview
+                                key={f.id}
+                                file={f}
+                                onAnnotate={
+                                  splitAnnotatableFiles([f]).annotatable.length > 0
+                                    ? () => setAnnotating(attempt)
+                                    : undefined
+                                }
+                              />
+                            ))}
+                          </div>
+                          {splitAnnotatableFiles(attemptFiles).annotatable.length > 0 && (
+                            <button
+                              type="button"
+                              data-testid="attempt-annotate-button"
+                              onClick={() => setAnnotating(attempt)}
+                              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 hover:border-primary-300"
+                            >
+                              <SquareDashed size={12} />
+                              Указать ошибки рамками
+                            </button>
+                          )}
+                        </>
                       )}
 
                       {review?.comment && (
@@ -273,6 +339,23 @@ export function HomeworkAttemptDetailModal({
           )}
         </div>
       </div>
+
+      {annotating && (
+        <AttemptAnnotationOverlay
+          attemptId={annotating.id}
+          files={files.filter(f => f.attempt_id === annotating.id)}
+          title={homeworkTitle}
+          subtitle={`${studentName} · попытка №${annotating.attempt_number}`}
+          footerPublishLabel="Опубликовать пометки ученику"
+          footer={() => (
+            <p className="text-xs text-gray-500">
+              Рамки сохраняются сразу, но ученик увидит их только после публикации.
+              Оценку и вердикт ставят в «Проверке домашних заданий».
+            </p>
+          )}
+          onClose={() => setAnnotating(null)}
+        />
+      )}
     </div>
   )
 }

@@ -12,9 +12,57 @@ const queueHook = readFileSync('src/hooks/useHomeworkQueue.ts', 'utf8')
 
 describe('submission annotation reviewer', () => {
   it('normalizes legacy URLs, uses signed URLs and retries file loading', () => {
-    expect(reviewer).toContain("extractStoragePath(path, 'homeworks') ?? path")
+    // Бакет параметризован (старый контур — 'homeworks' по умолчанию,
+    // новый — 'topic-homework-attempts'), но нормализация пути и порядок
+    // filePaths/filePath остались те же.
+    expect(reviewer).toContain("extractStoragePath(path, bucket) ?? path")
     expect(reviewer).toContain("const raw = filePaths?.length ? filePaths : [filePath]")
-    expect(reviewer).toContain("getSignedFileUrl('homeworks', path)")
+    expect(reviewer).toContain("getSignedFileUrl(bucket, path)")
+    expect(reviewer).toContain("bucket = 'homeworks'")
+  })
+
+  it('targets exactly one contour — legacy submission or topic-homework attempt', () => {
+    // Взаимоисключимость целей держится на этапе компиляции (?: never),
+    // как CHECK annotation_sets_one_target_chk в базе.
+    expect(reviewer).toContain('{ submissionId: string; attemptId?: never }')
+    expect(reviewer).toContain('{ attemptId: string; submissionId?: never }')
+    expect(reviewer).toContain("const targetColumn = attemptId ? 'attempt_id' : 'submission_id'")
+    expect(reviewer).toContain('const targetId = attemptId ?? submissionId')
+    expect(reviewer).toContain('.eq(targetColumn, targetId)')
+    expect(reviewer).toContain('onConflict: `${targetColumn},file_path,page`')
+    // Ключ дедупликации сохранений должен включать колонку: иначе попытка и
+    // сдача с одинаковым uuid делили бы одну очередь inflight-сохранений.
+    expect(reviewer).toContain('`${targetColumn}:${targetId}:${normalizedPaths.join(\'|\')}`')
+  })
+
+  it('is integrated into both new-contour review surfaces and the student view', () => {
+    const overlay = readFileSync('src/components/courseProgram/AttemptAnnotationOverlay.tsx', 'utf8')
+    const modal = readFileSync('src/components/courseProgram/HomeworkAttemptDetailModal.tsx', 'utf8')
+    const reviewQueue = readFileSync('src/pages/HomeworkReviewQueuePage.tsx', 'utf8')
+    const student = readFileSync('src/components/courseProgram/TopicHomeworkStudent.tsx', 'utf8')
+    const newMigration = readFileSync(
+      'supabase/migrations/20260730095422_annotation_sets_topic_homework_attempts.sql', 'utf8',
+    )
+
+    // Аннотатор грузится лениво — 450 КБ pdfjs не должны попадать в общий бандл.
+    expect(overlay).toContain("lazy(() => import('@/components/SubmissionReviewer'))")
+    expect(overlay).toContain('bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}')
+    expect(overlay).toContain('attemptId={attemptId}')
+
+    expect(modal).toContain('<AttemptAnnotationOverlay')
+    expect(reviewQueue).toContain('<AttemptAnnotationOverlay')
+    // В очереди вердикт и публикация пометок — одно нажатие, пометки первыми.
+    expect(reviewQueue).toContain('const ok = await publishAnnotations(')
+    expect(reviewQueue).toContain('await reviewAttempt(attemptId, decision, comment, score)')
+
+    // Ученик видит рамки только для чтения и только там, где они опубликованы.
+    expect(student).toContain('readOnly')
+    expect(student).toContain("eq('status', 'published')")
+
+    expect(newMigration).toContain('num_nonnulls(submission_id, attempt_id) = 1')
+    expect(newMigration).toContain('annotation_sets_attempt_file_page_key')
+    expect(newMigration).toContain('topic_homework_attempt_can_review(attempt_id)')
+    expect(newMigration).toContain('topic_homework_attempt_is_own(attempt_id)')
   })
 
   it('stores normalized region comments and supports pointer input', () => {

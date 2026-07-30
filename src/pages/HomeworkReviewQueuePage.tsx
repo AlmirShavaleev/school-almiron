@@ -1,5 +1,10 @@
-import { CheckCircle2, Inbox, Loader2, Paperclip, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle2, Inbox, Loader2, Paperclip, RefreshCw, SquareDashed } from 'lucide-react'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
+import {
+  AttemptAnnotationOverlay,
+  splitAnnotatableFiles,
+} from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { groupByCourse, type QueueRow } from '@/lib/homeworkQueue'
@@ -13,14 +18,16 @@ function formatDate(value: string | null): string | null {
 }
 
 function QueueCard({
-  row, files, studentName, onReview,
+  row, files, studentName, onReview, onAnnotate,
 }: {
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
   studentName: string
   onReview: (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => Promise<void>
+  onAnnotate: () => void
 }) {
   const { attempt } = row
+  const canAnnotate = splitAnnotatableFiles(files).annotatable.length > 0
   return (
     <li data-testid="queue-attempt-card" data-attempt-id={attempt.id} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -39,7 +46,7 @@ function QueueCard({
         {files.length === 0 ? (
           <p className="text-xs text-gray-400">Файлов нет</p>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {files.map(f => (
               <SignedFileLink
                 key={f.id}
@@ -51,6 +58,17 @@ function QueueCard({
                 {f.file_name}
               </SignedFileLink>
             ))}
+            {canAnnotate && (
+              <button
+                type="button"
+                data-testid="queue-annotate-button"
+                onClick={onAnnotate}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 hover:border-primary-300"
+              >
+                <SquareDashed size={12} />
+                Проверить с рамками
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -67,6 +85,7 @@ function QueueCard({
  */
 export function HomeworkReviewQueuePage() {
   const { rows, attemptFiles, studentNames, loading, error, reload, reviewAttempt } = useHomeworkReviewQueue()
+  const [annotating, setAnnotating] = useState<QueueRow | null>(null)
   const filesOf = (attemptId: string) => attemptFiles.filter(f => f.attempt_id === attemptId)
   const groups = groupByCourse(rows)
 
@@ -121,12 +140,38 @@ export function HomeworkReviewQueuePage() {
                     files={filesOf(row.attempt.id)}
                     studentName={studentNames[row.attempt.student_id] ?? 'Ученик'}
                     onReview={reviewAttempt}
+                    onAnnotate={() => setAnnotating(row)}
                   />
                 ))}
               </ul>
             </section>
           ))}
         </div>
+      )}
+
+      {annotating && (
+        <AttemptAnnotationOverlay
+          attemptId={annotating.attempt.id}
+          files={filesOf(annotating.attempt.id)}
+          title={annotating.homeworkTitle}
+          subtitle={`${studentNames[annotating.attempt.student_id] ?? 'Ученик'} · ${annotating.topicTitle} · попытка №${annotating.attempt.attempt_number}`}
+          footer={({ publishAnnotations }) => (
+            <ReviewActions
+              attempt={annotating.attempt}
+              gradeScale={annotating.gradeScale}
+              onReview={async (attemptId, decision, comment, score) => {
+                // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть
+                // «на доработку» без рамок, на которые ссылается комментарий.
+                // Ошибку не глотаем — ReviewActions покажет её и оставит форму.
+                const ok = await publishAnnotations(decision === 'accepted' ? 'checked' : 'revision')
+                if (!ok) throw new Error('Не удалось опубликовать пометки — вердикт не сохранён')
+                await reviewAttempt(attemptId, decision, comment, score)
+                setAnnotating(null)
+              }}
+            />
+          )}
+          onClose={() => setAnnotating(null)}
+        />
       )}
     </div>
   )

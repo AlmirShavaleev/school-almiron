@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react'
-import { FileText, Loader2, Paperclip, Send, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { FileText, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
@@ -43,6 +45,34 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   // выдаче задания (uploadHomeworkFiles) — тот же приём через XHR.
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
+
+  // По каким попыткам учитель ОПУБЛИКОВАЛ рамки с ошибками. Черновые пометки
+  // сюда не попадут — их отсекает RLS (annotation_sets_select пускает ученика
+  // только к status='published' своей попытки), так что фильтр по статусу
+  // здесь ради явности, а не вместо базы. Нужно, чтобы не показывать кнопку
+  // «Пометки учителя», ведущую в пустой просмотр.
+  const [annotatedAttempts, setAnnotatedAttempts] = useState<Set<string>>(new Set())
+  const [viewingMarks, setViewingMarks] = useState<string | null>(null)
+  const attemptIdsKey = attempts.map(a => a.id).sort().join(',')
+
+  useEffect(() => {
+    const ids = attemptIdsKey ? attemptIdsKey.split(',') : []
+    if (ids.length === 0) {
+      setAnnotatedAttempts(new Set())
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await (supabase as any)
+        .from('annotation_sets')
+        .select('attempt_id')
+        .in('attempt_id', ids)
+        .eq('status', 'published')
+      if (cancelled) return
+      setAnnotatedAttempts(new Set((data ?? []).map((r: { attempt_id: string }) => r.attempt_id)))
+    })()
+    return () => { cancelled = true }
+  }, [attemptIdsKey])
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -302,6 +332,18 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                     </div>
                   )}
 
+                  {annotatedAttempts.has(a.id) && (
+                    <button
+                      type="button"
+                      data-testid="hw-view-marks-button"
+                      onClick={() => setViewingMarks(a.id)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:border-rose-300"
+                    >
+                      <SquareDashed size={12} />
+                      Пометки учителя на работе
+                    </button>
+                  )}
+
                   {review?.comment && (
                     <p data-testid="hw-review-comment" className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
                       {review.comment}
@@ -312,6 +354,17 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             })}
           </ul>
         </div>
+      )}
+
+      {viewingMarks && (
+        <AttemptAnnotationOverlay
+          attemptId={viewingMarks}
+          files={attemptFiles.filter(f => f.attempt_id === viewingMarks)}
+          title={homework.title}
+          subtitle="Пометки учителя — нажмите на рамку, чтобы прочитать замечание"
+          readOnly
+          onClose={() => setViewingMarks(null)}
+        />
       )}
 
       {canStartNewAttempt(attempts) && attempts.length > 0 && (
