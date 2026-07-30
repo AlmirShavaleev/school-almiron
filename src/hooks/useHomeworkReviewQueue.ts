@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { sortQueue, toQueueRows, type QueueRow } from '@/lib/homeworkQueue'
+import { isAlreadyReviewedError, sortQueue, toQueueRows, type QueueRow } from '@/lib/homeworkQueue'
 import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 
 /**
@@ -69,6 +69,14 @@ export function useHomeworkReviewQueue() {
   /**
    * Вердикт из очереди — тот же RPC, что и в теме. После успеха строка
    * убирается локально: попытка перестала быть `submitted`, ей тут не место.
+   *
+   * Двойная проверка одной работы возможна: персонала у курса несколько
+   * (владелец, преподаватели групп, кураторы), и очередь у всех общая. От
+   * порчи данных защищает сама RPC — она меняет статус только `where status =
+   * 'submitted'` и иначе падает, так что второй вердикт не перезапишет первый.
+   * Но её текст «Попытка не в статусе "сдано"» ничего не объясняет
+   * преподавателю. Переводим его на человеческий и сразу убираем строку из
+   * очереди: работы там уже нет, держать её — вводить в заблуждение.
    */
   const reviewAttempt = useCallback(
     async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => {
@@ -78,7 +86,13 @@ export function useHomeworkReviewQueue() {
         p_comment: comment?.trim() || undefined,
         p_score: score ?? undefined,
       })
-      if (err) throw err
+      if (err) {
+        if (isAlreadyReviewedError(err)) {
+          setRows(prev => prev.filter(r => r.attempt.id !== attemptId))
+          throw new Error('Эту работу уже проверил кто-то другой — она убрана из очереди.')
+        }
+        throw err
+      }
       setRows(prev => prev.filter(r => r.attempt.id !== attemptId))
     },
     [],

@@ -3,6 +3,7 @@ import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertC
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import { extractStoragePath, getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
@@ -22,7 +23,7 @@ type LegacyMark =
   | { id: string; type: 'text'; text: string; x: number; y: number; color: string; size: number }
 type Mark = Region | LegacyMark
 type PageData = { version: 2; objects: Mark[] }
-type Row = { page: number; file_path: string; data: unknown; status: 'draft' | 'published' }
+type Row = { page: number; file_path: string; data: unknown; status: 'draft' | 'published'; author_id?: string | null }
 type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string }
 type PageMetrics = { width: number; height: number; ratio: number }
 type DragState = { surfaceKey: string; rect: Rect } | null
@@ -185,6 +186,7 @@ export function SubmissionReviewer({
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
   // (CHECK в базе всё равно не даст записать сразу оба).
+  const myProfileId = useAuthStore(s => s.profile?.id)
   const targetColumn = attemptId ? 'attempt_id' : 'submission_id'
   const targetId = attemptId ?? submissionId
   const normalizedPaths = useMemo(() => {
@@ -218,6 +220,7 @@ export function SubmissionReviewer({
   const [dragState, setDragState] = useState<DragState>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [visiblePages, setVisiblePages] = useState<Set<string>>(new Set())
+  const [hasOtherAuthor, setHasOtherAuthor] = useState(false)
 
   const pdfRefs = useRef<Record<string, pdfjs.PDFDocumentProxy | null>>({})
   const visibilityRef = useRef<Record<string, number>>({})
@@ -317,7 +320,7 @@ export function SubmissionReviewer({
       }
       if (!active) return
 
-      const query = (supabase as any).from('annotation_sets').select('page,data,status,file_path')
+      const query = (supabase as any).from('annotation_sets').select('page,data,status,file_path,author_id')
         .eq(targetColumn, targetId)
       if (normalizedPaths.length === 1) query.eq('file_path', normalizedPaths[0])
       else query.in('file_path', normalizedPaths)
@@ -328,9 +331,16 @@ export function SubmissionReviewer({
       for (const row of data ?? []) next[pageKey(row.file_path || normalizedPaths[0], row.page)] = cleanData(row.data)
       setPages(next)
       setPublished((data ?? []).some(row => row.status === 'published'))
+      // Работу мог уже смотреть другой сотрудник курса: очередь у персонала
+      // общая, и никакого «занято» в ней нет. Отмечаем это явно — иначе второй
+      // проверяющий не поймёт, чьи рамки видит, и рискует переписать чужую
+      // работу своим сохранением (страница пишется целиком).
+      setHasOtherAuthor(
+        (data ?? []).some(row => row.author_id && row.author_id !== myProfileId),
+      )
     })()
     return () => { active = false }
-  }, [effectiveAnnotationVisibility, normalizedPaths, persistenceKey, targetColumn, targetId])
+  }, [effectiveAnnotationVisibility, myProfileId, normalizedPaths, persistenceKey, targetColumn, targetId])
 
   useEffect(() => {
     if (!sourceFiles.length) return
@@ -641,6 +651,16 @@ export function SubmissionReviewer({
           <span className="w-12 text-center text-xs font-semibold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
           <ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton>
         </div>
+        {!readOnly && hasOtherAuthor && (
+          <span
+            data-testid="review-other-author"
+            title="Очередь проверки общая для персонала курса. Ваше сохранение перезапишет страницу целиком — сверьтесь, прежде чем удалять чужие пометки."
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800"
+          >
+            <AlertCircle size={12} />
+            Работу уже смотрел другой преподаватель
+          </span>
+        )}
         {!readOnly && <div className="flex items-center gap-2">
           <SaveStatePill saving={saving} saveState={saveState} />
           {!hideToolbarPublish && <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>}

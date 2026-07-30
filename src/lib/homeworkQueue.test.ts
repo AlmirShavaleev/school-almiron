@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupByCourse, isSubmittedLate, sortQueue, toQueueRows } from './homeworkQueue'
+import { groupByCourse, isAlreadyReviewedError, isSubmittedLate, sortQueue, toQueueRows } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
   return {
@@ -108,5 +108,25 @@ describe('isSubmittedLate', () => {
 
   it('due_at пробрасывается в строку очереди', () => {
     expect(row('2026-07-20T00:00:00Z', '2026-07-21T10:00:00Z').dueAt).toBe('2026-07-20T00:00:00Z')
+  })
+})
+
+describe('isAlreadyReviewedError — работу успел проверить кто-то другой', () => {
+  it('узнаёт отказ RPC при повторном вердикте', () => {
+    // topic_homework_review_attempt меняет статус только where status='submitted'
+    // и иначе падает этим текстом — своего кода ошибки у него нет.
+    expect(isAlreadyReviewedError({ message: 'Попытка не в статусе «сдано»' })).toBe(true)
+  })
+
+  it('не путает с другими ошибками того же RPC', () => {
+    expect(isAlreadyReviewedError({ message: 'Балл должен быть от 0 до 5' })).toBe(false)
+    expect(isAlreadyReviewedError({ message: 'У этого ДЗ есть шкала баллов — укажите балл (0–5)' })).toBe(false)
+    expect(isAlreadyReviewedError({ message: 'Нет прав' })).toBe(false)
+  })
+
+  it('не падает на пустом и не-объекте', () => {
+    expect(isAlreadyReviewedError(null)).toBe(false)
+    expect(isAlreadyReviewedError(undefined)).toBe(false)
+    expect(isAlreadyReviewedError('Попытка не в статусе «сдано»')).toBe(true)
   })
 })
