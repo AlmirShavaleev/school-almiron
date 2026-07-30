@@ -28,7 +28,7 @@ export function useHomeworkReviewQueue() {
       const { data, error: err } = await supabase
         .from('topic_homework_attempts')
         .select(
-          '*, homework:topic_homework!inner(id, title, grade_scale, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
+          '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
         )
         .eq('status', 'submitted')
         .order('submitted_at', { ascending: true })

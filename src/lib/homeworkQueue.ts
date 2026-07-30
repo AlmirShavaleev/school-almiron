@@ -13,10 +13,24 @@ export interface QueueRow {
   homeworkId: string
   homeworkTitle: string
   gradeScale: 'five' | 'hundred' | null
+  /** Срок сдачи ДЗ — нужен, чтобы отметить в списке опоздавших. */
+  dueAt: string | null
   topicId: string
   topicTitle: string
   courseId: string
   courseTitle: string
+}
+
+/**
+ * Сдано ли позже срока. Сравниваем именно момент СДАЧИ с дедлайном, а не
+ * «сейчас» с дедлайном: работа уже сдана, и для преподавателя важно, опоздал
+ * ли ученик, а не сколько времени прошло с тех пор.
+ */
+export function isSubmittedLate(row: QueueRow): boolean {
+  const { dueAt } = row
+  const submittedAt = row.attempt.submitted_at
+  if (!dueAt || !submittedAt) return false
+  return new Date(submittedAt).getTime() > new Date(dueAt).getTime()
 }
 
 /**
@@ -37,6 +51,7 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
       homeworkId: hw.id,
       homeworkTitle: hw.title ?? 'Домашнее задание',
       gradeScale: hw.grade_scale ?? null,
+      dueAt: hw.due_at ?? null,
       topicId: topic.id,
       topicTitle: topic.title ?? 'Тема',
       courseId: course.id,

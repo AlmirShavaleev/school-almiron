@@ -142,12 +142,23 @@ export function AttemptAnnotationOverlay({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 p-3 sm:p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4">
         {paths.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white text-center text-sm text-gray-400">
-            {files.length === 0
-              ? 'В этой попытке нет файлов — размечать нечего'
-              : 'Ни один файл этой попытки нельзя разметить (нужен PDF или картинка)'}
+          // Размечать нечего (только .docx, .zip и т.п. или файлов нет вовсе),
+          // но вердикт поставить всё равно нужно — иначе такая работа осталась
+          // бы в очереди навсегда. Поэтому футер рисуем и здесь, а публиковать
+          // нечего: publishAnnotations сразу отвечает «успешно».
+          <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-sm text-gray-400">
+              {files.length === 0
+                ? 'В этой попытке нет файлов — размечать нечего'
+                : 'Ни один файл этой попытки нельзя разметить (нужен PDF или картинка)'}
+            </div>
+            {!readOnly && footer && (
+              <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5">
+                {footer({ publishing: false, published: false, publishAnnotations: async () => true })}
+              </div>
+            )}
           </div>
         ) : (
           <Suspense fallback={<ReviewerFallback />}>

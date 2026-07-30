@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupByCourse, sortQueue, toQueueRows } from './homeworkQueue'
+import { groupByCourse, isSubmittedLate, sortQueue, toQueueRows } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
   return {
@@ -68,5 +68,45 @@ describe('groupByCourse', () => {
     expect(groups[0].courseTitle).toBe('Физика ОГЭ')
     expect(groups[0].rows.map(r => r.attempt.id)).toEqual(['a1', 'a4'])
     expect(groups[1].rows.map(r => r.attempt.id)).toEqual(['a3'])
+  })
+})
+
+describe('isSubmittedLate', () => {
+  function row(dueAt: string | null, submittedAt: string | null) {
+    return toQueueRows([
+      rawRow({
+        submitted_at: submittedAt,
+        homework: {
+          id: 'hw1', title: 'ДЗ', grade_scale: 'five', due_at: dueAt,
+          topic: { id: 't1', title: 'Тема', module: { id: 'm1', course: { id: 'c1', title: 'Курс' } } },
+        },
+      }),
+    ])[0]
+  }
+
+  it('сдано позже срока — просрочено', () => {
+    expect(isSubmittedLate(row('2026-07-20T00:00:00Z', '2026-07-21T10:00:00Z'))).toBe(true)
+  })
+
+  it('сдано до срока — не просрочено', () => {
+    expect(isSubmittedLate(row('2026-07-25T00:00:00Z', '2026-07-21T10:00:00Z'))).toBe(false)
+  })
+
+  it('срока нет — просрочки быть не может', () => {
+    expect(isSubmittedLate(row(null, '2026-07-21T10:00:00Z'))).toBe(false)
+  })
+
+  it('даты сдачи нет — не угадываем, считаем «не просрочено»', () => {
+    expect(isSubmittedLate(row('2026-07-20T00:00:00Z', null))).toBe(false)
+  })
+
+  it('сравнивается момент СДАЧИ с дедлайном, а не «сейчас»: работа, сданная вовремя, не станет просроченной со временем', () => {
+    // Дедлайн давно прошёл, но сдали до него — значит ученик не опоздал.
+    const long_ago = row('2020-01-10T00:00:00Z', '2020-01-05T00:00:00Z')
+    expect(isSubmittedLate(long_ago)).toBe(false)
+  })
+
+  it('due_at пробрасывается в строку очереди', () => {
+    expect(row('2026-07-20T00:00:00Z', '2026-07-21T10:00:00Z').dueAt).toBe('2026-07-20T00:00:00Z')
   })
 })

@@ -348,8 +348,16 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
       const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: topicTitle })
       await expect(card).toBeVisible({ timeout: 20_000 })
 
-      await card.locator('[data-testid="review-comment-input"]').fill('Перерисуй график, задача 2')
-      await card.locator('[data-testid="review-return-button"]').click()
+      // Форма вердикта живёт внутри разбора, а не в списке: список — только
+      // выбор работы (кто сдал, когда, просрочено ли). Клик по строке
+      // открывает полноэкранный разбор, там комментарий/балл и решение.
+      await card.click()
+      const review = teacherPage.locator('[data-testid="attempt-annotation-overlay"]')
+      await expect(review).toBeVisible({ timeout: 20_000 })
+
+      await review.locator('[data-testid="review-comment-input"]').fill('Перерисуй график, задача 2')
+      await review.locator('[data-testid="review-return-button"]').click()
+      await expect(review).toHaveCount(0, { timeout: 15_000 })
       await expect(card).toHaveCount(0, { timeout: 15_000 })
     })
 
@@ -378,8 +386,13 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
       const card = teacherPage.locator('[data-testid="queue-attempt-card"]', { hasText: topicTitle })
       await expect(card).toBeVisible({ timeout: 20_000 })
 
-      await card.locator('[data-testid="review-score-input"]').fill('4')
-      await card.locator('[data-testid="review-accept-button"]').click()
+      await card.click()
+      const review = teacherPage.locator('[data-testid="attempt-annotation-overlay"]')
+      await expect(review).toBeVisible({ timeout: 20_000 })
+
+      await review.locator('[data-testid="review-score-input"]').fill('4')
+      await review.locator('[data-testid="review-accept-button"]').click()
+      await expect(review).toHaveCount(0, { timeout: 15_000 })
       await expect(card).toHaveCount(0, { timeout: 15_000 })
     })
 
