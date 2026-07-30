@@ -130,6 +130,14 @@ const AI_PHYSICS_ROOT_EXTERNAL_ID = 900000
 const AI_PHYSICS_MAX_EXTERNAL_ID = 900712
 const IN_FILTER_CHUNK = 50
 const PHYSICS_TOPICS_CACHE_MS = 5 * 60 * 1000
+/**
+ * Структура каталога (разделы, темы, число задач) меняется только при заливке
+ * новых задач, то есть раз в недели. Прогресс ученика едет чаще, но он входит
+ * в те же RPC, поэтому кэш держим умеренным: 5 минут достаточно, чтобы
+ * переходы «раздел → тема → назад» были мгновенными, и при этом отмеченная
+ * задача отражается в счётчиках без перезагрузки страницы.
+ */
+const CATALOG_STRUCTURE_CACHE_MS = 5 * 60 * 1000
 const AI_PHYSICS_SECTION_META: Record<number, string> = {
   1: 'Механика',
   2: 'МКТ и термодинамика',
@@ -152,6 +160,41 @@ function getCatalogPhysicsQueryKeys(userId?: string, retryKey?: number, sectionI
     sectionTopics: ['catalog-physics-section-topics', userId ?? 'anon', sectionId ?? 'none', retryKey ?? 0] as const,
     topicTasks: ['catalog-physics-topic-tasks', userId ?? 'anon', topicId ?? 'none', retryKey ?? 0] as const,
   }
+}
+
+/**
+ * Темы раздела одним запросом.
+ *
+ * Раньше это считалось в браузере: выкачать все id задач раздела, разбить на
+ * пачки по 50 и на каждую сделать отдельный запрос к связям, потом ещё раз
+ * пачками — за прогрессом. На разделе в 1036 задач получалось ~32
+ * последовательных запроса; при задержке 150–250 мс это 5–8 секунд.
+ * RPC get_catalog_section_topic_tree делает ту же группировку в базе за 11 мс.
+ */
+async function loadSectionTopicTree(sectionId: string): Promise<CatalogTopic[]> {
+  const { data, error } = await db.rpc('get_catalog_section_topic_tree', {
+    p_section_id: sectionId,
+  })
+  if (error) throw new Error(error.message ?? 'Не удалось загрузить каталог')
+  return ((data ?? []) as Array<{
+    id: string
+    external_id: number
+    parent_id: string | null
+    title: string
+    slug: string | null
+    position: number
+    task_count: number
+    completed_count: number
+  }>).map(row => ({
+    id: row.id,
+    external_id: row.external_id,
+    parent_id: row.parent_id,
+    title: row.title,
+    slug: row.slug,
+    position: row.position,
+    task_count: row.task_count ?? 0,
+    completed_count: row.completed_count ?? 0,
+  }))
 }
 
 function isMissingCatalogTopicPublishedColumn(error: unknown): boolean {
@@ -599,98 +642,89 @@ export function getAssetUrl(storagePath: string): string {
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
+/**
+ * Разделы каталога с числом задач и личным прогрессом.
+ *
+ * Три источника независимы (список разделов, счётчики задач, прогресс), но
+ * раньше запрашивались строго друг за другом через await — три круговые
+ * задержки вместо одной. Теперь Promise.all, и всё завёрнуто в react-query:
+ * возврат в тот же раздел не перезапрашивает ничего.
+ */
+async function loadCatalogSections(
+  userId: string,
+  subject?: string,
+  examType?: string,
+): Promise<CatalogSection[]> {
+  const sectionsQuery = (() => {
+    let q = db.from('catalog_sections').select('*').eq('is_published', true)
+    if (subject)  q = q.eq('subject', subject)
+    if (examType) q = q.eq('exam_type', examType)
+    return q.order('position')
+  })()
+
+  const [sectionsRes, countsRes, progressRows] = await Promise.all([
+    sectionsQuery,
+    db.rpc('get_catalog_section_counts', {
+      p_subject:   subject   ?? null,
+      p_exam_type: examType  ?? null,
+    }),
+    fetchAllPagedRows<{ task_id: string; catalog_tasks?: { section_id?: string } }>((from, to) =>
+      db
+        .from('catalog_task_progress')
+        .select('task_id, catalog_tasks!inner(section_id)')
+        .eq('user_id', userId)
+        .eq('is_completed', true)
+        .range(from, to)
+    ),
+  ])
+
+  if (sectionsRes.error) throw new Error(sectionsRes.error.message ?? 'Не удалось загрузить каталог')
+  if (countsRes.error)   throw new Error(countsRes.error.message ?? 'Не удалось загрузить каталог')
+
+  const countBySec: Record<string, number> = {}
+  const part1BySec: Record<string, number> = {}
+  const part2BySec: Record<string, number> = {}
+  for (const row of (countsRes.data ?? []) as {
+    section_id: string
+    task_count: number
+    part1_count?: number | null
+    part2_count?: number | null
+  }[]) {
+    countBySec[row.section_id] = row.task_count
+    part1BySec[row.section_id] = row.part1_count ?? 0
+    part2BySec[row.section_id] = row.part2_count ?? 0
+  }
+
+  const doneBySec: Record<string, number> = {}
+  for (const p of progressRows) {
+    const secId = p.catalog_tasks?.section_id
+    if (secId) doneBySec[secId] = (doneBySec[secId] ?? 0) + 1
+  }
+
+  return ((sectionsRes.data ?? []) as CatalogSection[]).map(s => ({
+    ...s,
+    task_count:      countBySec[s.id] ?? 0,
+    part1_count:     part1BySec[s.id] ?? 0,
+    part2_count:     part2BySec[s.id] ?? 0,
+    completed_count: doneBySec[s.id]  ?? 0,
+  }))
+}
+
 export function useCatalogSections(subject?: string, examType?: string, _retryKey?: number) {
   const { profile } = useAuthStore()
-  const [sections, setSections] = useState<CatalogSection[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const query = useQuery({
+    queryKey: ['catalog-sections', profile?.id ?? 'anon', subject ?? 'all', examType ?? 'all', _retryKey ?? 0] as const,
+    enabled: Boolean(profile?.id),
+    staleTime: CATALOG_STRUCTURE_CACHE_MS,
+    gcTime: CATALOG_STRUCTURE_CACHE_MS * 6,
+    queryFn: () => loadCatalogSections(profile!.id, subject, examType),
+  })
 
-  useEffect(() => {
-    if (!profile) return
-    let cancelled = false
-
-    async function load() {
-      setLoading(true)
-      setError(null)
-      setSections([])
-      try {
-        let q = db.from('catalog_sections').select('*').eq('is_published', true)
-        if (subject)   q = q.eq('subject',   subject)
-        if (examType)  q = q.eq('exam_type', examType)
-        const { data: sectionsData, error: e1 } = await q.order('position')
-
-        if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-
-        // Task counts per section via SQL function (avoids 1000-row default limit)
-        const { data: sectionCounts, error: countsError } = await db.rpc('get_catalog_section_counts', {
-          p_subject:   subject   ?? null,
-          p_exam_type: examType  ?? null,
-        })
-        if (countsError || cancelled) {
-          if (!cancelled) setError(countsError?.message ?? 'Не удалось загрузить каталог')
-          setLoading(false)
-          return
-        }
-
-        // User progress counts
-        const progressData = await fetchAllPagedRows<{
-          task_id: string
-          catalog_tasks?: { section_id?: string }
-        }>((from, to) =>
-          db
-            .from('catalog_task_progress')
-            .select('task_id, catalog_tasks!inner(section_id)')
-            .eq('user_id', profile!.id)
-            .eq('is_completed', true)
-            .range(from, to)
-        )
-        if (cancelled) return
-
-        const countBySec: Record<string, number> = {}
-        const part1BySec: Record<string, number> = {}
-        const part2BySec: Record<string, number> = {}
-        for (const row of (sectionCounts ?? []) as {
-          section_id: string
-          task_count: number
-          part1_count?: number | null
-          part2_count?: number | null
-        }[]) {
-          countBySec[row.section_id] = row.task_count
-          part1BySec[row.section_id] = row.part1_count ?? 0
-          part2BySec[row.section_id] = row.part2_count ?? 0
-        }
-
-        const doneBySec: Record<string, number> = {}
-        for (const p of progressData) {
-          const secId = (p as { catalog_tasks?: { section_id?: string } }).catalog_tasks?.section_id
-          if (secId) doneBySec[secId] = (doneBySec[secId] ?? 0) + 1
-        }
-
-        if (!cancelled) {
-          setSections(
-            (sectionsData ?? []).map((s: CatalogSection) => ({
-              ...s,
-              task_count:      countBySec[s.id] ?? 0,
-              part1_count:     part1BySec[s.id] ?? 0,
-              part2_count:     part2BySec[s.id] ?? 0,
-              completed_count: doneBySec[s.id]  ?? 0,
-            }))
-          )
-          setLoading(false)
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
-          setLoading(false)
-        }
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [profile, subject, examType, _retryKey])
-
-  return { sections, loading, error }
+  return {
+    sections: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : query.error ? 'Не удалось загрузить каталог' : null,
+  }
 }
 
 export function useCatalogPhysicsTopicSections(enabled: boolean, _retryKey?: number) {
@@ -725,6 +759,7 @@ export function useCatalogTopics(
   const { profile } = useAuthStore()
   const isPhysicsTopicsView = view === 'physics-topics' && subject === 'Физика' && examType === 'ЕГЭ'
   const queryKey = getCatalogPhysicsQueryKeys(profile?.id, _retryKey, sectionId)
+
   const physicsTopicsQuery = useQuery({
     queryKey: queryKey.sectionTopics,
     enabled: Boolean(profile?.id && sectionId && isPhysicsTopicsView),
@@ -732,119 +767,18 @@ export function useCatalogTopics(
     gcTime: PHYSICS_TOPICS_CACHE_MS * 6,
     queryFn: () => loadPhysicsSectionTopics(sectionId!, profile!.id),
   })
-  const [topics, setTopics] = useState<CatalogTopic[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!profile || !sectionId) return
-    if (isPhysicsTopicsView) return
-    let cancelled = false
-
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const sectionTasks = await fetchAllPagedRows<{ id: string }>((from, to) =>
-          db
-            .from('catalog_tasks')
-            .select('id')
-            .eq('section_id', sectionId)
-            .eq('is_published', true)
-            .order('id')
-            .range(from, to)
-        )
-        if (cancelled) return
-
-        const sectionTaskIds = sectionTasks.map(task => task.id)
-        if (!sectionTaskIds.length) {
-          if (!cancelled) {
-            setTopics([])
-            setLoading(false)
-          }
-          return
-        }
-
-        const topicIdsSet = new Set<string>()
-        const taskCountByTopic: Record<string, number> = {}
-        const linksByTaskId = new Map<string, string[]>()
-        const linkRows: Array<{ topic_id: string; task_id: string }> = []
-        for (const batch of chunk(sectionTaskIds, IN_FILTER_CHUNK)) {
-          const { data, error: linksError } = await db
-            .from('catalog_task_topics')
-            .select('topic_id, task_id')
-            .in('task_id', batch)
-
-          if (linksError) throw new Error(linksError.message ?? 'Не удалось загрузить каталог')
-          linkRows.push(...((data ?? []) as Array<{ topic_id: string; task_id: string }>))
-        }
-        if (cancelled) return
-
-        for (const row of linkRows) {
-          topicIdsSet.add(row.topic_id)
-          taskCountByTopic[row.topic_id] = (taskCountByTopic[row.topic_id] ?? 0) + 1
-          const linkedTopicIds = linksByTaskId.get(row.task_id) ?? []
-          linkedTopicIds.push(row.topic_id)
-          linksByTaskId.set(row.task_id, linkedTopicIds)
-        }
-
-        const topicIds = [...topicIdsSet]
-        if (!topicIds.length) {
-          if (!cancelled) {
-            setTopics([])
-            setLoading(false)
-          }
-          return
-        }
-
-        const { data: topicsData, error: e2 } = await fetchCatalogTopicsWithPublishedFallback(includePublishedFilter => {
-          let query = db
-            .from('catalog_topics')
-            .select('*')
-            .in('id', topicIds)
-            .order('position')
-          if (includePublishedFilter) query = query.eq('is_published', true)
-          return query
-        })
-
-        if (e2 || cancelled) { if (!cancelled) setError(e2?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-
-        const progressData = await fetchCompletedTaskRowsForUserByTaskIds(profile!.id, sectionTaskIds)
-        if (cancelled) return
-
-        const doneByTopic: Record<string, number> = {}
-        const topicIdSet = new Set(topicIds)
-        for (const p of progressData) {
-          for (const linkedTopicId of linksByTaskId.get(p.task_id) ?? []) {
-            if (topicIdSet.has(linkedTopicId)) {
-              doneByTopic[linkedTopicId] = (doneByTopic[linkedTopicId] ?? 0) + 1
-            }
-          }
-        }
-
-        const typedTopics = (topicsData ?? []) as CatalogTopic[]
-
-        if (!cancelled) {
-          setTopics(
-            typedTopics.map(t => ({
-              ...t,
-              task_count:      taskCountByTopic[t.id] ?? 0,
-              completed_count: doneByTopic[t.id]      ?? 0,
-            }))
-          )
-          setLoading(false)
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
-          setLoading(false)
-        }
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [profile, sectionId, _retryKey, isPhysicsTopicsView])
+  // Обычный (экзаменационный) вид: один запрос вместо ~32 последовательных,
+  // и через react-query — возврат в уже открытый раздел берётся из кэша,
+  // а не перезапрашивается заново. Прогресс входит в ту же RPC, поэтому
+  // ключ кэша обязан включать пользователя.
+  const examTopicsQuery = useQuery({
+    queryKey: ['catalog-section-topic-tree', profile?.id ?? 'anon', sectionId ?? 'none', _retryKey ?? 0] as const,
+    enabled: Boolean(profile?.id && sectionId && !isPhysicsTopicsView),
+    staleTime: CATALOG_STRUCTURE_CACHE_MS,
+    gcTime: CATALOG_STRUCTURE_CACHE_MS * 6,
+    queryFn: () => loadSectionTopicTree(sectionId!),
+  })
 
   if (isPhysicsTopicsView) {
     return {
@@ -854,7 +788,11 @@ export function useCatalogTopics(
     }
   }
 
-  return { topics, loading, error }
+  return {
+    topics: examTopicsQuery.data ?? [],
+    loading: examTopicsQuery.isLoading,
+    error: examTopicsQuery.error instanceof Error ? examTopicsQuery.error.message : examTopicsQuery.error ? 'Не удалось загрузить каталог' : null,
+  }
 }
 
 // ── Direction task counts (for landing picker) ────────────────────────────────

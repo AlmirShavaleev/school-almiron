@@ -1,78 +1,105 @@
+import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
 
 // Dashboard
-import { DashboardPage } from '@/pages/DashboardPage'
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
 
 // Role dashboards
-import { StudentDashboard } from '@/pages/student/StudentDashboard'
-import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'
-import { CuratorDashboard } from '@/pages/curator/CuratorDashboard'
-import { AdminDashboard } from '@/pages/admin/AdminDashboard'
-import { OwnerDashboard } from '@/pages/owner/OwnerDashboard'
-import { CartPage } from '@/pages/CartPage'
-import { CollectionDetailPage } from '@/pages/CollectionDetailPage'
+const StudentDashboard = lazy(() => import('@/pages/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })))
+const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
+const CuratorDashboard = lazy(() => import('@/pages/curator/CuratorDashboard').then(m => ({ default: m.CuratorDashboard })))
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
+const OwnerDashboard = lazy(() => import('@/pages/owner/OwnerDashboard').then(m => ({ default: m.OwnerDashboard })))
+const CartPage = lazy(() => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
+const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
 
 // Shared pages
-import { GroupsPage } from '@/pages/GroupsPage'
-import { GroupControlPanel } from '@/pages/GroupControlPanel'
-import { TeacherDetailPage } from '@/pages/TeacherDetailPage'
-import { LessonDetailPage } from '@/pages/LessonDetailPage'
-import { StudentJournalPage } from '@/pages/StudentJournalPage'
-import { HomeworkDetailPage } from '@/pages/HomeworkDetailPage'
-import { HomeworkReviewPage } from '@/pages/HomeworkReviewPage'
-import { StudentReviewPage } from '@/pages/StudentReviewPage'
-import { HomeworkQueuePage } from '@/pages/HomeworkQueuePage'
-import { LessonsPage } from '@/pages/LessonsPage'
-import { MockExamsPage } from '@/pages/MockExamsPage'
-import { PaymentsPage } from '@/pages/PaymentsPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { NotificationsPage } from '@/pages/NotificationsPage'
-import { CourseProgramPage } from '@/pages/CourseProgramPage'
-import { LessonLibraryPage } from '@/pages/LessonLibraryPage'
-import { AttendancePage } from '@/pages/AttendancePage'
-import { MyCoursesPage } from '@/pages/MyCoursesPage'
-import { StudentCoursePage } from '@/pages/StudentCoursePage'
-import { TopicPage } from '@/pages/TopicPage'
-import { StudentProfilePage } from '@/pages/StudentProfilePage'
-import { StudentsPage } from '@/pages/StudentsPage'
-import { SchedulePage } from '@/pages/SchedulePage'
-import { MyProgressPage } from '@/pages/student/MyProgressPage'
-import { MyTopicHomeworkPage } from '@/pages/student/MyTopicHomeworkPage'
-import { CatalogPage } from '@/pages/catalog/CatalogPage'
-import { CatalogSectionPage } from '@/pages/catalog/CatalogSectionPage'
-import { CatalogTopicPage } from '@/pages/catalog/CatalogTopicPage'
-import { CatalogTaskPage } from '@/pages/catalog/CatalogTaskPage'
-import { VariantBuilderPage } from '@/pages/variants/VariantBuilderPage'
-import { VariantsListPage } from '@/pages/variants/VariantsListPage'
-import { VariantDetailPage } from '@/pages/variants/VariantDetailPage'
-import { AssignVariantPage } from '@/pages/variants/AssignVariantPage'
-import { VariantAssignmentsPage } from '@/pages/variants/VariantAssignmentsPage'
-import { VariantStudentWorkPage } from '@/pages/variants/VariantStudentWorkPage'
-import { StudentVariantsPage } from '@/pages/student/StudentVariantsPage'
-import { StudentVariantDetailPage } from '@/pages/student/StudentVariantDetailPage'
-import { StudentVariantBuildPage } from '@/pages/student/StudentVariantBuildPage'
-import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
-import { StudentNumberStatsPage } from '@/pages/student/StudentNumberStatsPage'
-import { AssignHomeworkPage } from '@/pages/AssignHomeworkPage'
-import { ReviewSubmissionsPage } from '@/pages/ReviewSubmissionsPage'
-import { SubmissionDetailPage } from '@/pages/SubmissionDetailPage'
-import { MyAssignmentsPage } from '@/pages/student/MyAssignmentsPage'
-import { AssignmentDetailPage } from '@/pages/student/AssignmentDetailPage'
-import { HomeworksV2RoleRouter } from '@/pages/HomeworksV2RoleRouter'
-import { HomeworkReviewQueuePage } from '@/pages/HomeworkReviewQueuePage'
-import { HomeworkReviewV2Page } from '@/pages/HomeworkReviewV2Page'
-import { MyHomeworksV2Page } from '@/pages/student/MyHomeworksV2Page'
-import { HomeworkTemplateBuilderPage } from '@/pages/teacher/HomeworkTemplateBuilderPage'
-import { TestBankPage } from '@/pages/TestBankPage'
-import { TestBankTestPage } from '@/pages/TestBankTestPage'
+const GroupsPage = lazy(() => import('@/pages/GroupsPage').then(m => ({ default: m.GroupsPage })))
+const GroupControlPanel = lazy(() => import('@/pages/GroupControlPanel').then(m => ({ default: m.GroupControlPanel })))
+const TeacherDetailPage = lazy(() => import('@/pages/TeacherDetailPage').then(m => ({ default: m.TeacherDetailPage })))
+const LessonDetailPage = lazy(() => import('@/pages/LessonDetailPage').then(m => ({ default: m.LessonDetailPage })))
+const StudentJournalPage = lazy(() => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
+const HomeworkDetailPage = lazy(() => import('@/pages/HomeworkDetailPage').then(m => ({ default: m.HomeworkDetailPage })))
+const HomeworkReviewPage = lazy(() => import('@/pages/HomeworkReviewPage').then(m => ({ default: m.HomeworkReviewPage })))
+const StudentReviewPage = lazy(() => import('@/pages/StudentReviewPage').then(m => ({ default: m.StudentReviewPage })))
+const HomeworkQueuePage = lazy(() => import('@/pages/HomeworkQueuePage').then(m => ({ default: m.HomeworkQueuePage })))
+const LessonsPage = lazy(() => import('@/pages/LessonsPage').then(m => ({ default: m.LessonsPage })))
+const MockExamsPage = lazy(() => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
+const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
+const CourseProgramPage = lazy(() => import('@/pages/CourseProgramPage').then(m => ({ default: m.CourseProgramPage })))
+const LessonLibraryPage = lazy(() => import('@/pages/LessonLibraryPage').then(m => ({ default: m.LessonLibraryPage })))
+const AttendancePage = lazy(() => import('@/pages/AttendancePage').then(m => ({ default: m.AttendancePage })))
+const MyCoursesPage = lazy(() => import('@/pages/MyCoursesPage').then(m => ({ default: m.MyCoursesPage })))
+const StudentCoursePage = lazy(() => import('@/pages/StudentCoursePage').then(m => ({ default: m.StudentCoursePage })))
+const TopicPage = lazy(() => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
+const StudentProfilePage = lazy(() => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
+const StudentsPage = lazy(() => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
+const SchedulePage = lazy(() => import('@/pages/SchedulePage').then(m => ({ default: m.SchedulePage })))
+const MyProgressPage = lazy(() => import('@/pages/student/MyProgressPage').then(m => ({ default: m.MyProgressPage })))
+const MyTopicHomeworkPage = lazy(() => import('@/pages/student/MyTopicHomeworkPage').then(m => ({ default: m.MyTopicHomeworkPage })))
+const CatalogPage = lazy(() => import('@/pages/catalog/CatalogPage').then(m => ({ default: m.CatalogPage })))
+const CatalogSectionPage = lazy(() => import('@/pages/catalog/CatalogSectionPage').then(m => ({ default: m.CatalogSectionPage })))
+const CatalogTopicPage = lazy(() => import('@/pages/catalog/CatalogTopicPage').then(m => ({ default: m.CatalogTopicPage })))
+const CatalogTaskPage = lazy(() => import('@/pages/catalog/CatalogTaskPage').then(m => ({ default: m.CatalogTaskPage })))
+const VariantBuilderPage = lazy(() => import('@/pages/variants/VariantBuilderPage').then(m => ({ default: m.VariantBuilderPage })))
+const VariantsListPage = lazy(() => import('@/pages/variants/VariantsListPage').then(m => ({ default: m.VariantsListPage })))
+const VariantDetailPage = lazy(() => import('@/pages/variants/VariantDetailPage').then(m => ({ default: m.VariantDetailPage })))
+const AssignVariantPage = lazy(() => import('@/pages/variants/AssignVariantPage').then(m => ({ default: m.AssignVariantPage })))
+const VariantAssignmentsPage = lazy(() => import('@/pages/variants/VariantAssignmentsPage').then(m => ({ default: m.VariantAssignmentsPage })))
+const VariantStudentWorkPage = lazy(() => import('@/pages/variants/VariantStudentWorkPage').then(m => ({ default: m.VariantStudentWorkPage })))
+const StudentVariantsPage = lazy(() => import('@/pages/student/StudentVariantsPage').then(m => ({ default: m.StudentVariantsPage })))
+const StudentVariantDetailPage = lazy(() => import('@/pages/student/StudentVariantDetailPage').then(m => ({ default: m.StudentVariantDetailPage })))
+const StudentVariantBuildPage = lazy(() => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
+const StudentVariantGeneratePage = lazy(() => import('@/pages/student/StudentVariantGeneratePage').then(m => ({ default: m.StudentVariantGeneratePage })))
+const StudentNumberStatsPage = lazy(() => import('@/pages/student/StudentNumberStatsPage').then(m => ({ default: m.StudentNumberStatsPage })))
+const AssignHomeworkPage = lazy(() => import('@/pages/AssignHomeworkPage').then(m => ({ default: m.AssignHomeworkPage })))
+const ReviewSubmissionsPage = lazy(() => import('@/pages/ReviewSubmissionsPage').then(m => ({ default: m.ReviewSubmissionsPage })))
+const SubmissionDetailPage = lazy(() => import('@/pages/SubmissionDetailPage').then(m => ({ default: m.SubmissionDetailPage })))
+const MyAssignmentsPage = lazy(() => import('@/pages/student/MyAssignmentsPage').then(m => ({ default: m.MyAssignmentsPage })))
+const AssignmentDetailPage = lazy(() => import('@/pages/student/AssignmentDetailPage').then(m => ({ default: m.AssignmentDetailPage })))
+const HomeworksV2RoleRouter = lazy(() => import('@/pages/HomeworksV2RoleRouter').then(m => ({ default: m.HomeworksV2RoleRouter })))
+const HomeworkReviewQueuePage = lazy(() => import('@/pages/HomeworkReviewQueuePage').then(m => ({ default: m.HomeworkReviewQueuePage })))
+const HomeworkReviewV2Page = lazy(() => import('@/pages/HomeworkReviewV2Page').then(m => ({ default: m.HomeworkReviewV2Page })))
+const MyHomeworksV2Page = lazy(() => import('@/pages/student/MyHomeworksV2Page').then(m => ({ default: m.MyHomeworksV2Page })))
+const HomeworkTemplateBuilderPage = lazy(() => import('@/pages/teacher/HomeworkTemplateBuilderPage').then(m => ({ default: m.HomeworkTemplateBuilderPage })))
+const TestBankPage = lazy(() => import('@/pages/TestBankPage').then(m => ({ default: m.TestBankPage })))
+const TestBankTestPage = lazy(() => import('@/pages/TestBankTestPage').then(m => ({ default: m.TestBankTestPage })))
 
-/** Защищённое поддерево роутов (всё, что раньше висело под DashboardLayout в App.tsx). Lazy-загружается целиком из App.tsx. */
+/**
+ * Заглушка на время подгрузки чанка страницы. Намеренно скромная и без
+ * полноэкранного оверлея: каркас (сайдбар, шапка) уже отрисован
+ * DashboardLayout, подменяется только содержимое.
+ */
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center py-16 text-gray-400" role="status" aria-live="polite">
+      <Loader2 size={20} className="animate-spin" />
+      <span className="ml-2 text-sm">Загрузка…</span>
+    </div>
+  )
+}
+
+/**
+ * Защищённое поддерево роутов (всё, что раньше висело под DashboardLayout
+ * в App.tsx). Само lazy-загружается из App.tsx, а КАЖДАЯ страница внутри —
+ * своим чанком.
+ *
+ * Почему постранично: раньше все 60 страниц были статическими импортами и
+ * собирались в один чанк AppRoutes на 3,16 МБ (757 КБ gzip). Браузер обязан
+ * был скачать и разобрать его целиком, чтобы показать любую страницу — на
+ * мобильном интернете это секунды до первого пикселя, независимо от того,
+ * насколько быстры запросы к базе. Теперь грузится только открытая страница.
+ */
 export default function AppRoutes() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Protected — dashboard layout */}
       <Route element={<DashboardLayout />}>
@@ -164,5 +191,6 @@ export default function AppRoutes() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }

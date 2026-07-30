@@ -972,11 +972,15 @@ describe('Catalog role access', () => {
   })
 
   it('unauthorized пользователь перенаправляется — catalog routes внутри DashboardLayout', () => {
-    // DashboardLayout checks auth; catalog routes are nested inside it
-    expect(appSrc).toContain('DashboardLayout')
-    const layoutStart = appSrc.indexOf('DashboardLayout')
-    const layoutBlock = appSrc.slice(layoutStart, layoutStart + 3000)
-    expect(layoutBlock).toContain('/catalog')
+    // Проверка та же: маршруты каталога вложены в DashboardLayout, который и
+    // сторожит авторизацию. Раньше здесь бралось «3000 символов от первого
+    // упоминания DashboardLayout» — после перевода 60 страниц на lazy этот
+    // отрезок стал попадать в блок импортов, и тест падал, хотя маршруты не
+    // менялись. Теперь отсчёт идёт от самого элемента маршрута.
+    const layoutRouteStart = appSrc.indexOf('element={<DashboardLayout />}')
+    expect(layoutRouteStart).toBeGreaterThan(-1)
+    const layoutBlock = appSrc.slice(layoutRouteStart)
+    expect(layoutBlock).toContain('path="/catalog"')
   })
 
   it('route params subject и exam сохраняются в CatalogPage', () => {
@@ -992,11 +996,20 @@ describe('Catalog role access', () => {
 
 describe('Empty topic filtering', () => {
   it('exam-mode сохраняет старое поведение и не фильтрует legacy-связи по source', () => {
+    // Сбор тем раздела переехал из браузера в RPC get_catalog_section_topic_tree
+    // (было ~30 последовательных запросов, стало один). Гарантия та же:
+    // в экзаменационном виде учитываются ВСЕ связи, и legacy (source is null),
+    // и ai_physics_v1 — то есть фильтра по source в запросе быть не должно.
+    const mig = read('supabase/migrations/20260730134546_get_catalog_section_topic_tree.sql')
+    const body = mig.slice(mig.indexOf('create or replace function'))
+    expect(body).toContain('from catalog_task_topics tt')
+    expect(body).toContain('join catalog_tasks t on t.id = tt.task_id')
+    expect(body).not.toMatch(/\bsource\b\s*=/)
+    expect(body).not.toMatch(/source is null/)
+    // Клиент должен ходить именно в эту RPC, а не собирать связи сам.
     const hookSrc = read('src/hooks/useCatalog.ts')
-    expect(hookSrc).not.toContain("view === 'physics-topics'\n            ? query.eq('source', AI_PHYSICS_SOURCE)\n            : query.is('source', null)")
-    expect(hookSrc).not.toContain(".select('topic_id, task_id')\n              .is('source', null)")
-    expect(hookSrc).toContain('topicIdsSet')
-    expect(hookSrc).toContain(".in('id', topicIds)")
+    expect(hookSrc).toContain("db.rpc('get_catalog_section_topic_tree'")
+    expect(hookSrc).not.toContain('topicIdsSet')
   })
 
   it('родительская тема с непустыми дочерними не исчезает из дерева', () => {
@@ -1006,9 +1019,19 @@ describe('Empty topic filtering', () => {
   })
 
   it('непустая тема отображается — task_count считается по catalog_task_topics', () => {
+    // Счёт переехал в RPC: task_count — это distinct task_id из связей, а
+    // completed_count — только СВОЙ прогресс (иначе ученик увидел бы чужой).
+    const mig = read('supabase/migrations/20260730134546_get_catalog_section_topic_tree.sql')
+    expect(mig).toContain('count(distinct l.task_id)   as task_count')
+    expect(mig).toContain('count(distinct ctp.task_id) as completed_count')
+    expect(mig).toContain('ctp.user_id = auth.uid()')
+    // Тема без задач в раздел не попадает: agg строится ОТ связей (inner join
+    // на catalog_topics), а не от всех тем предмета.
+    expect(mig).toContain('join catalog_topics tp on tp.id = a.topic_id')
+    // Клиент только раскладывает ответ по полям, ничего не досчитывая.
     const hookSrc = read('src/hooks/useCatalog.ts')
-    expect(hookSrc).toContain('taskCountByTopic[row.topic_id] = (taskCountByTopic[row.topic_id] ?? 0) + 1')
-    expect(hookSrc).toContain('taskCountByTopic[t.id] ?? 0')
+    expect(hookSrc).toContain('task_count: row.task_count ?? 0')
+    expect(hookSrc).toContain('completed_count: row.completed_count ?? 0')
   })
 })
 

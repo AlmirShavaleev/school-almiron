@@ -70,13 +70,16 @@ vi.mock('@/pages/student/AssignmentDetailPage', () => ({ AssignmentDetailPage: (
 import AppRoutes from '@/AppRoutes'
 
 describe('Students route', () => {
-  it('renders /students for teacher staff area', () => {
+  it('renders /students for teacher staff area', async () => {
     render(
       <MemoryRouter initialEntries={['/students']}>
         <AppRoutes />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('students-page-marker')).toBeInTheDocument()
+    // findBy, а не getBy: страницы теперь грузятся своими чанками через
+    // React.lazy, поэтому сначала показывается Suspense-заглушка. Это не
+    // регрессия, а следствие разбиения бандла (AppRoutes: 3,16 МБ -> 43 КБ).
+    expect(await screen.findByText('students-page-marker')).toBeInTheDocument()
   })
 })

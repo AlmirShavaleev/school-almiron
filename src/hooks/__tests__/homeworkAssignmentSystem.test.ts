@@ -213,7 +213,9 @@ describe('ReviewSubmissionsPage', () => {
   })
 
   it('links each row to submission detail page', () => {
-    expect(src).toContain('/review-submissions/${s.id}')
+    // Было `/review-submissions/${s.id}`, но в коде поле называется
+    // submissionId — тест падал независимо от правок каталога/бандла.
+    expect(src).toContain('/review-submissions/${s.submissionId}')
   })
 })
 
