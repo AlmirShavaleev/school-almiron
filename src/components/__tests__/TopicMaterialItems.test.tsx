@@ -21,7 +21,7 @@ vi.mock('@/hooks/useTopicMaterialItems', () => ({
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 
 const text = (id: string, title: string, position = 0, isVisible = true): TopicMaterial =>
-  ({ kind: 'text', id, title, position, isVisible, content: 'Текст ' + title })
+  ({ kind: 'text', id, title, position, isVisible, section: null, content: 'Текст ' + title })
 
 function renderItems(canManage: boolean) {
   return render(<TopicMaterialItems topicId={TOPIC} canManage={canManage} />)

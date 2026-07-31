@@ -6,6 +6,9 @@ interface Props {
   /** storage path or legacy full public URL from a *_url column */
   url: string | null | undefined
   className?: string
+  /** Всплывающая подсказка. Ссылка часто ведёт на файл, который нельзя
+   *  разметить, и объяснить это нужно до клика. */
+  title?: string
   children: React.ReactNode
   onClick?: (e: React.MouseEvent) => void
 }
@@ -14,7 +17,7 @@ interface Props {
  * Anchor for files in PRIVATE buckets. Resolves a fresh short-lived signed URL
  * at click time (not at render) so URLs never go stale in long-lived lists.
  */
-export function SignedFileLink({ bucket, url, className, children, onClick }: Props) {
+export function SignedFileLink({ bucket, url, className, title, children, onClick }: Props) {
   const [busy, setBusy] = useState(false)
 
   async function handleClick(e: React.MouseEvent) {
@@ -34,7 +37,7 @@ export function SignedFileLink({ bucket, url, className, children, onClick }: Pr
   }
 
   return (
-    <a href="#" onClick={handleClick} className={className} aria-busy={busy}>
+    <a href="#" onClick={handleClick} className={className} title={title} aria-busy={busy}>
       {children}
     </a>
   )

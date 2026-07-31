@@ -34,6 +34,7 @@ const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const hw = (): TopicHomeworkRow => ({
   id: 'hw1', topic_id: TOPIC, title: 'ДЗ по кинематике',
   instructions: 'Решите 5 задач', is_published: true, created_by: 'teacher',
+  due_at: null, grade_scale: null,
   created_at: '', updated_at: '',
 })
 
@@ -153,6 +154,7 @@ describe('ДЗ ученику — цикл сдачи', () => {
     reviews = [{
       id: 'r1', attempt_id: 'att-1', reviewer_id: 'teacher',
       decision: 'returned_for_revision', comment: 'Задача 3 решена неверно',
+      score: null,
       created_at: '2026-07-26T11:00:00Z',
     }]
     renderStudent()

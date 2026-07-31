@@ -20,7 +20,6 @@ import { bucketForMaterialPath } from '@/lib/topicMaterialItems'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
 import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
 import { LessonMaterialsCard } from '@/components/lessons/LessonMaterialsCard'
-import { LessonHomeworkV2Card } from '@/components/lessons/LessonHomeworkV2Card'
 
 interface LessonFull {
   id:               string
@@ -821,19 +820,11 @@ export function LessonDetailPage() {
       <div data-testid="lesson-summary-section">
         <LessonSummaryCard lessonId={lesson.id} canEdit={!!canEdit} />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div data-testid="lesson-materials-section">
-          <LessonMaterialsCard lessonId={lesson.id} canEdit={!!canEdit} />
-        </div>
-        <div data-testid="lesson-homework-section">
-        <LessonHomeworkV2Card
-          lessonId={lesson.id}
-          courseId={lesson.group?.course_id ?? null}
-          topicId={lesson.topic?.id ?? null}
-          topicTitle={lesson.topic?.title ?? null}
-          canEdit={!!canEdit}
-        />
-      </div>
+      {/* Карточка Homework V2 убрана: контур мёртв (0 строк), а её запрос шёл
+          в несуществующую колонку homework_templates.lesson_id и всегда падал.
+          Весь трафик ДЗ идёт через темы курса. */}
+      <div data-testid="lesson-materials-section">
+        <LessonMaterialsCard lessonId={lesson.id} canEdit={!!canEdit} />
       </div>
 
       {/* ── 2-col: Attendance + Materials/HW ─────────────────────────────── */}

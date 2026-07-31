@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       annotation_sets: {
         Row: {
+          attempt_id: string | null
           author_id: string
           created_at: string
           data: Json
@@ -23,10 +24,11 @@ export type Database = {
           id: string
           page: number
           status: string
-          submission_id: string
+          submission_id: string | null
           updated_at: string
         }
         Insert: {
+          attempt_id?: string | null
           author_id?: string
           created_at?: string
           data?: Json
@@ -34,10 +36,11 @@ export type Database = {
           id?: string
           page?: number
           status?: string
-          submission_id: string
+          submission_id?: string | null
           updated_at?: string
         }
         Update: {
+          attempt_id?: string | null
           author_id?: string
           created_at?: string
           data?: Json
@@ -45,10 +48,17 @@ export type Database = {
           id?: string
           page?: number
           status?: string
-          submission_id?: string
+          submission_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "annotation_sets_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "topic_homework_attempts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "annotation_sets_author_id_fkey"
             columns: ["author_id"]
@@ -495,6 +505,93 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "catalog_topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_curators: {
+        Row: {
+          course_id: string
+          created_at: string
+          id: string
+          profile_id: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          id?: string
+          profile_id: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_curators_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_curators_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_join_links: {
+        Row: {
+          course_id: string
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          link_role: string
+          rotated_at: string | null
+          short_code: string
+          token: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          link_role?: string
+          rotated_at?: string | null
+          short_code: string
+          token: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          link_role?: string
+          rotated_at?: string | null
+          short_code?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_join_links_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_join_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2660,6 +2757,7 @@ export type Database = {
       notifications: {
         Row: {
           created_at: string
+          dedup_key: string | null
           id: string
           link: string | null
           message: string
@@ -2670,6 +2768,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dedup_key?: string | null
           id?: string
           link?: string | null
           message: string
@@ -2680,6 +2779,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dedup_key?: string | null
           id?: string
           link?: string | null
           message?: string
@@ -4055,6 +4155,141 @@ export type Database = {
           },
         ]
       }
+      topic_homework_ai_findings: {
+        Row: {
+          category: string
+          file_id: string
+          id: string
+          job_id: string
+          page: number
+          position: number
+          rect_h: number
+          rect_w: number
+          rect_x: number
+          rect_y: number
+          text: string
+        }
+        Insert: {
+          category: string
+          file_id: string
+          id?: string
+          job_id: string
+          page?: number
+          position?: number
+          rect_h: number
+          rect_w: number
+          rect_x: number
+          rect_y: number
+          text: string
+        }
+        Update: {
+          category?: string
+          file_id?: string
+          id?: string
+          job_id?: string
+          page?: number
+          position?: number
+          rect_h?: number
+          rect_w?: number
+          rect_x?: number
+          rect_y?: number
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_homework_ai_findings_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "topic_homework_attempt_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_homework_ai_findings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "topic_homework_ai_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_homework_ai_jobs: {
+        Row: {
+          accepted_at: string | null
+          attempt_id: string
+          attempts: number
+          completed_at: string | null
+          confidence: string | null
+          created_at: string
+          id: string
+          input_tokens: number | null
+          last_error: string | null
+          model: string | null
+          output_tokens: number | null
+          provider: string | null
+          readable: boolean | null
+          requested_by: string | null
+          started_at: string | null
+          status: string
+          suggested_score: number | null
+          summary: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          attempt_id: string
+          attempts?: number
+          completed_at?: string | null
+          confidence?: string | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          last_error?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          provider?: string | null
+          readable?: boolean | null
+          requested_by?: string | null
+          started_at?: string | null
+          status?: string
+          suggested_score?: number | null
+          summary?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          attempt_id?: string
+          attempts?: number
+          completed_at?: string | null
+          confidence?: string | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          last_error?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          provider?: string | null
+          readable?: boolean | null
+          requested_by?: string | null
+          started_at?: string | null
+          status?: string
+          suggested_score?: number | null
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_homework_ai_jobs_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "topic_homework_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_homework_ai_jobs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_homework_attempt_files: {
         Row: {
           attempt_id: string
@@ -4905,6 +5140,12 @@ export type Database = {
           topic_title: string
         }[]
       }
+      _topic_homework_course_staff: {
+        Args: { p_course_id: string }
+        Returns: {
+          profile_id: string
+        }[]
+      }
       accept_student_invite: {
         Args: { p_token: string }
         Returns: {
@@ -5106,6 +5347,35 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_topic_homework_ai_jobs: {
+        Args: { batch_size?: number }
+        Returns: {
+          accepted_at: string | null
+          attempt_id: string
+          attempts: number
+          completed_at: string | null
+          confidence: string | null
+          created_at: string
+          id: string
+          input_tokens: number | null
+          last_error: string | null
+          model: string | null
+          output_tokens: number | null
+          provider: string | null
+          readable: boolean | null
+          requested_by: string | null
+          started_at: string | null
+          status: string
+          suggested_score: number | null
+          summary: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "topic_homework_ai_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       cleanup_telegram_tokens: { Args: never; Returns: undefined }
       course_default_module: { Args: { p_course_id: string }; Returns: string }
       course_is_admin: { Args: never; Returns: boolean }
@@ -5114,6 +5384,44 @@ export type Database = {
         Returns: boolean
       }
       course_is_staff: { Args: { p_course_id: string }; Returns: boolean }
+      course_join_accept: {
+        Args: { p_value: string }
+        Returns: {
+          course_id: string
+          course_title: string
+          group_id: string
+          joined_as: string
+        }[]
+      }
+      course_join_gen_code: { Args: never; Returns: string }
+      course_join_gen_token: { Args: never; Returns: string }
+      course_join_info: {
+        Args: { p_value: string }
+        Returns: {
+          course_title: string
+          is_active: boolean
+        }[]
+      }
+      course_join_link_get: {
+        Args: { p_course_id: string; p_role?: string }
+        Returns: {
+          is_active: boolean
+          short_code: string
+          token: string
+        }[]
+      }
+      course_join_link_rotate: {
+        Args: { p_course_id: string; p_role?: string }
+        Returns: {
+          is_active: boolean
+          short_code: string
+          token: string
+        }[]
+      }
+      course_join_link_set_active: {
+        Args: { p_active: boolean; p_course_id: string; p_role?: string }
+        Returns: undefined
+      }
       course_lesson_view: {
         Args: { p_lesson_id: string }
         Returns: {
@@ -5130,6 +5438,14 @@ export type Database = {
           title: string
           url: string
         }[]
+      }
+      course_member_remove: {
+        Args: { p_course_id: string; p_student_id: string }
+        Returns: undefined
+      }
+      course_member_rename: {
+        Args: { p_full_name: string; p_student_id: string }
+        Returns: undefined
       }
       course_of_topic: { Args: { p_topic_id: string }; Returns: string }
       course_student_can_see_lesson: {
@@ -5316,6 +5632,19 @@ export type Database = {
           task_count: number
         }[]
       }
+      get_catalog_section_topic_tree: {
+        Args: { p_section_id: string }
+        Returns: {
+          completed_count: number
+          external_id: number
+          id: string
+          parent_id: string
+          position: number
+          slug: string
+          task_count: number
+          title: string
+        }[]
+      }
       get_catalog_topic_counts: {
         Args: { p_section_id: string }
         Returns: {
@@ -5418,14 +5747,14 @@ export type Database = {
       get_my_students: {
         Args: never
         Returns: {
-          created_at: string
-          email: string
+          added_at: string
+          class_grade: string
+          courses: Json
           full_name: string
-          phone: string
-          source_invite_id: string
-          status: string
+          groups: Json
+          profile_id: string
+          relation_status: string
           student_id: string
-          teacher_student_id: string
         }[]
       }
       get_my_variant_assignments: {
@@ -5741,6 +6070,7 @@ export type Database = {
         }
         Returns: string
       }
+      realtime_review_topic_course: { Args: { topic: string }; Returns: string }
       reissue_student_invite: {
         Args: { p_invite_id: string }
         Returns: {
@@ -5924,6 +6254,14 @@ export type Database = {
         Args: { p_assignment_id: string }
         Returns: Json
       }
+      topic_homework_ai_mark_accepted: {
+        Args: { p_job_id: string }
+        Returns: undefined
+      }
+      topic_homework_ai_request_check: {
+        Args: { p_attempt_id: string }
+        Returns: string
+      }
       topic_homework_attempt_can_review: {
         Args: { p_attempt_id: string }
         Returns: boolean
@@ -5935,6 +6273,14 @@ export type Database = {
       topic_homework_can_manage: {
         Args: { p_homework_id: string }
         Returns: boolean
+      }
+      topic_homework_enqueue_reviewed: {
+        Args: { p_review_id: string }
+        Returns: number
+      }
+      topic_homework_enqueue_submitted: {
+        Args: { p_attempt_id: string }
+        Returns: number
       }
       topic_homework_notify_students: {
         Args: { p_homework_id: string }
@@ -5969,6 +6315,10 @@ export type Database = {
       topic_test_add_item: {
         Args: { p_task_id: string; p_test_id: string }
         Returns: string
+      }
+      topic_test_assignment_can_view: {
+        Args: { p_assignment_id: string }
+        Returns: boolean
       }
       topic_test_assignment_items: {
         Args: { p_assignment_id: string }

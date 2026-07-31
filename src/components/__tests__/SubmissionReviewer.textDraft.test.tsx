@@ -94,7 +94,7 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
 Element.prototype.setPointerCapture = vi.fn()
 Element.prototype.scrollIntoView = scrollIntoViewSpy
 
-async function renderReady(props: Partial<React.ComponentProps<typeof SubmissionReviewer>> = {}) {
+async function renderReady(props: Partial<Extract<React.ComponentProps<typeof SubmissionReviewer>, { submissionId: string }>> = {}) {
   render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" {...props} />)
   await waitFor(() => expect(screen.getByText('Комментарии')).toBeInTheDocument())
   await waitFor(() => expect(screen.getByTestId('review-overlay-1')).toBeInTheDocument())

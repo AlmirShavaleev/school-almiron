@@ -55,7 +55,7 @@ describe('SubmissionReviewer.publish() — onPublishComplete on every exit path'
     fromSpy.mockImplementation((table: string) => table === 'annotation_sets' ? makeAnnotationTable() : makeAnnotationTable())
   })
 
-  async function renderAndWaitReady(props: Partial<React.ComponentProps<typeof SubmissionReviewer>> = {}) {
+  async function renderAndWaitReady(props: Partial<Extract<React.ComponentProps<typeof SubmissionReviewer>, { submissionId: string }>> = {}) {
     render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" {...props} />)
     await waitFor(() => expect(screen.getByText('Опубликовать проверку')).toBeInTheDocument())
   }

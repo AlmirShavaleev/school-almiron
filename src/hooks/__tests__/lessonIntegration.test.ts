@@ -226,10 +226,12 @@ describe('App.tsx — /lessons/:id now includes student', () => {
 describe('LessonDetailPage — Etap 5 sections wired without touching legacy blocks', () => {
   const src = read('src/pages/LessonDetailPage.tsx')
 
-  it('renders LessonSummaryCard, LessonMaterialsCard, LessonHomeworkCard', () => {
+  it('renders LessonSummaryCard, LessonMaterialsCard', () => {
     expect(src).toContain('<LessonSummaryCard')
     expect(src).toContain('<LessonMaterialsCard')
-    expect(src).toContain('<LessonHomeworkV2Card')
+    // Карточка Homework V2 удалена вместе с мёртвым контуром: её запрос шёл
+    // в несуществующую колонку homework_templates.lesson_id.
+    expect(src).not.toContain('<LessonHomeworkV2Card')
   })
 
   // Блок материалов переведён на новый контур (ЧАТ Б): topic_materials больше
