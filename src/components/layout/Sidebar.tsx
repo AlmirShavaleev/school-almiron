@@ -9,7 +9,7 @@ import {
   GraduationCap, BarChart3, Calendar, CheckSquare, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
   Send, ClipboardEdit,
-  LibraryBig,
+  LibraryBig, Shield,
 } from 'lucide-react'
 
 interface NavItem {
@@ -49,15 +49,15 @@ const navItems: NavItem[] = [
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
   // Other roles (flat)
-  { label: 'Кабинет учителя',   path: '/teacher',        icon: <BookOpen size={18} />,      roles: ['teacher'] },
+  { label: 'Кабинет учителя',   path: '/teacher',        icon: <GraduationCap size={18} />, roles: ['teacher'] },
   { label: 'Кабинет куратора',  path: '/curator',        icon: <CheckSquare size={18} />,   roles: ['curator'] },
-  { label: 'Панель админа',     path: '/admin',          icon: <Settings size={18} />,      roles: ['admin', 'owner'] },
+  { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Школа',             path: '/owner',          icon: <BarChart3 size={18} />,     roles: ['owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Тесты',             path: '/tests', icon: <BarChart3 size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Тесты',             path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
@@ -176,7 +176,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {studentSections.map(sec => (
                 <div key={sec.title}>
                   {sec.title && (
-                    <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-500 select-none">
+                    <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-primary-300/80 select-none">
                       {sec.title}
                     </div>
                   )}

@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   DndContext,
@@ -1160,7 +1160,6 @@ export function CourseProgramPage() {
   })
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
-  const [homeworkCountsByTopic, setHomeworkCountsByTopic] = useState<Record<string, number>>({})
   const [editMode,      setEditMode]      = useState(false)
   const [groups,          setGroups]          = useState<{ id: string; name: string }[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
@@ -1183,17 +1182,37 @@ export function CourseProgramPage() {
     setMatTopic({ topic, moduleTitle })
   }
 
-  const homeworkByTopic = templates.reduce<Record<string, TopicHomeworkV2Summary>>((acc, template) => {
-    if (!template.topic_id) return acc
-    const current = acc[template.topic_id] ?? { templateCount: 0, assignmentCount: 0, lastAssignedAt: null }
-    current.templateCount += 1
-    current.assignmentCount += template.assignments_count
-    if (!current.lastAssignedAt || (template.last_assigned_at && template.last_assigned_at > current.lastAssignedAt)) {
-      current.lastAssignedAt = template.last_assigned_at
-    }
-    acc[template.topic_id] = current
-    return acc
-  }, {})
+  // ВАЖНО: без useMemo этот объект создаётся заново на каждый рендер.
+  // Он стоит в зависимостях эффектов и уходит в пропсы дочерних компонентов,
+  // поэтому «новый объект каждый раз» превращался в бесконечный цикл
+  // перерисовки: эффект -> setState -> рендер -> новый объект -> эффект.
+  // React обрывал такой цикл ошибкой «Maximum update depth exceeded» и
+  // ВЫБРАСЫВАЛ вместе с ним отложенное обновление — в том числе переход на
+  // другую страницу. Снаружи это выглядело так: адрес в браузере сменился,
+  // а страница осталась прежней, и помогала только перезагрузка.
+  const homeworkByTopic = useMemo(
+    () => templates.reduce<Record<string, TopicHomeworkV2Summary>>((acc, template) => {
+      if (!template.topic_id) return acc
+      const current = acc[template.topic_id] ?? { templateCount: 0, assignmentCount: 0, lastAssignedAt: null }
+      current.templateCount += 1
+      current.assignmentCount += template.assignments_count
+      if (!current.lastAssignedAt || (template.last_assigned_at && template.last_assigned_at > current.lastAssignedAt)) {
+        current.lastAssignedAt = template.last_assigned_at
+      }
+      acc[template.topic_id] = current
+      return acc
+    }, {}),
+    [templates],
+  )
+
+  // Производная величина, а не состояние: считаем на месте. Раньше её клали
+  // в useState через useEffect — это и был источник цикла выше.
+  const homeworkCountsByTopic = useMemo<Record<string, number>>(
+    () => Object.fromEntries(
+      Object.entries(homeworkByTopic).map(([topicId, summary]) => [topicId, summary.templateCount + summary.assignmentCount]),
+    ),
+    [homeworkByTopic],
+  )
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
@@ -1249,12 +1268,6 @@ export function CourseProgramPage() {
 
   // Clean up toast timer on unmount
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
-
-  useEffect(() => {
-    setHomeworkCountsByTopic(
-      Object.fromEntries(Object.entries(homeworkByTopic).map(([topicId, summary]) => [topicId, summary.templateCount + summary.assignmentCount])),
-    )
-  }, [homeworkByTopic])
 
   async function refreshModules() {
     if (!selectedId) return

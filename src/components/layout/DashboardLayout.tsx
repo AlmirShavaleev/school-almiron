@@ -5,7 +5,7 @@ import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { Menu, Search } from 'lucide-react'
+import { Menu } from 'lucide-react'
 
 const ROLE_LABELS: Record<string, string> = {
   student:  'Ученик',
@@ -15,7 +15,17 @@ const ROLE_LABELS: Record<string, string> = {
   owner:    'Владелец',
 }
 
+/**
+ * Заголовок в шапке. Порядок важен: берётся ПЕРВОЕ совпадение, поэтому
+ * частные маршруты стоят выше общих (`/students/:id` до `/students`).
+ *
+ * Список обязан покрывать все живые маршруты из AppRoutes. Пропущенный
+ * маршрут не ломается, но показывает в шапке «School OS» — так было
+ * с «Программой курса», «Тестами» и всеми ученическими страницами.
+ */
 const PAGE_TITLES: Array<[RegExp, string]> = [
+  [/^\/dashboard$/, 'Главная'],
+  [/^\/student\/variants/, 'Тренировочные варианты'],
   [/^\/student$/, 'Мой кабинет'],
   [/^\/teacher$/, 'Кабинет учителя'],
   [/^\/curator$/, 'Кабинет куратора'],
@@ -23,16 +33,34 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/owner$/, 'Школа'],
   [/^\/groups\/[^/]+$/, 'Панель группы'],
   [/^\/groups$/, 'Группы'],
+  [/^\/students\/[^/]+\/journal/, 'Журнал ученика'],
   [/^\/students\/[^/]+/, 'Профиль ученика'],
+  [/^\/students$/, 'Ученики'],
+  [/^\/teachers\/[^/]+/, 'Преподаватель'],
   [/^\/inbox$/, 'Очередь задач'],
   [/^\/schedule$/, 'Расписание'],
   [/^\/attendance$/, 'Посещаемость'],
   [/^\/lessons/, 'Занятия'],
+  [/^\/lesson-library/, 'Библиотека уроков'],
+  [/^\/course-program/, 'Программа курса'],
   [/^\/homework-queue$/, 'Проверка ДЗ'],
+  [/^\/homework-review/, 'Проверка ДЗ'],
+  [/^\/homework-templates/, 'Шаблоны ДЗ'],
+  [/^\/assign-homework/, 'Назначение работ'],
   [/^\/homeworks/, 'Домашние задания'],
   [/^\/review-submissions/, 'Проверка работ'],
+  [/^\/tests/, 'Тесты'],
   [/^\/catalog/, 'Каталог заданий'],
+  [/^\/collections\//, 'Подборка'],
+  [/^\/cart$/, 'Подборка'],
+  [/^\/mock-exams$/, 'Пробники'],
+  [/^\/variant-builder/, 'Конструктор вариантов'],
   [/^\/variants/, 'Варианты'],
+  [/^\/my-course/, 'Мой курс'],
+  [/^\/my-homeworks$/, 'Домашние задания'],
+  [/^\/my-homework/, 'Домашние задания'],
+  [/^\/my-assignments/, 'Мои задания'],
+  [/^\/my-progress$/, 'Прогресс'],
   [/^\/payments$/, 'Платежи'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],
@@ -75,7 +103,7 @@ export function DashboardLayout() {
     ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('')
     : '?'
   const isFullscreenReviewRoute = /^\/homeworks\/[^/]+\/review(?:\/|$)/.test(location.pathname)
-  const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'School OS'
+  const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'Школа Almiron'
 
   return (
     <div className="flex min-h-screen bg-transparent text-graphite-900">
@@ -96,11 +124,12 @@ export function DashboardLayout() {
             <Menu size={20} />
           </button>
 
+          {/* Одна строка вместо двух. Подпись «Быстрый доступ через навигацию
+              слева» ничего не сообщала, а иконка лупы рядом читалась как поиск,
+              которого здесь нет. Освободившаяся высота отдана содержимому. */}
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-graphite-950 truncate">{pageTitle}</div>
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              <Search size={12} />
-              <span>Быстрый доступ через навигацию слева</span>
+            <div className="text-[15px] font-semibold text-graphite-950 truncate leading-tight">
+              {pageTitle}
             </div>
           </div>
 
@@ -127,7 +156,7 @@ export function DashboardLayout() {
           {/* Adaptive padding: 16px mobile → 24px sm → 32px md+ */}
           <div className={isFullscreenReviewRoute
             ? 'min-w-0 h-[calc(100dvh-3.5rem)] px-0 py-0'
-            : 'min-w-0 p-4 sm:p-6 md:p-8 max-w-[1420px] mx-auto'}>
+            : 'min-w-0 px-4 sm:px-6 md:px-8 py-3 sm:py-4 md:py-5 max-w-[1420px] mx-auto'}>
             <Outlet />
           </div>
         </main>
