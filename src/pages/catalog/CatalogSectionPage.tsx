@@ -31,7 +31,10 @@ export function CatalogSectionPage() {
 
   const isStaff = profile && STAFF_ROLES.has(profile.role)
 
-  if (loading || (view === 'physics-topics' && aiSectionsLoading)) return <SectionSkeleton />
+  // Скелет только на месте списка тем. Хлебные крошки, заголовок раздела и
+  // поиск не зависят от загрузки — сносить их вместе со списком значит
+  // показывать пустой экран там, где половина содержимого уже известна.
+  const listLoading = loading || (view === 'physics-topics' && aiSectionsLoading)
   if (error || (view === 'physics-topics' && aiSectionsError)) return <ErrorState message={(error || aiSectionsError)!} onRetry={() => setRetryKey(key => key + 1)} />
 
   // Build topic tree (root topics + their children)
@@ -131,6 +134,8 @@ export function CatalogSectionPage() {
             </Link>
           ))}
         </div>
+      ) : listLoading ? (
+        <TopicListSkeleton />
       ) : topics.length === 0 ? (
         <EmptyState />
       ) : (
@@ -218,13 +223,12 @@ function TopicGroup({
   )
 }
 
-function SectionSkeleton() {
+/** Заглушка на месте списка тем: шапка раздела остаётся на экране. */
+function TopicListSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-4 animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-32" />
-      <div className="h-8 bg-gray-200 rounded w-64" />
+    <div className="space-y-4 animate-pulse" aria-hidden>
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="bg-gray-100 rounded-xl h-16" />
+        <div key={i} className="h-16 rounded-xl bg-slate-100" />
       ))}
     </div>
   )

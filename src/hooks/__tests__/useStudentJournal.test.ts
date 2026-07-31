@@ -6,8 +6,13 @@ let rpcResult: { data: unknown; error: { message: string } | null } = { data: nu
 vi.mock('@/lib/supabase', () => ({
   supabase: { rpc: () => Promise.resolve(rpcResult) },
 }))
+// Состояние стора — ОДИН объект на весь файл. Если создавать его на каждый
+// вызов селектора, хук получает новую ссылку на профиль в каждом рендере, и
+// тест начинает крутить бесконечный цикл обновлений: в выводе это выглядело
+// как поток «Maximum update depth exceeded», хотя проверки при этом проходили.
+const authState = { profile: { id: 'p1' } }
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (sel: (s: { profile: { id: string } }) => unknown) => sel({ profile: { id: 'p1' } }),
+  useAuthStore: (sel: (s: { profile: { id: string } }) => unknown) => sel(authState),
 }))
 
 function baseJournal(overrides: Record<string, unknown> = {}) {

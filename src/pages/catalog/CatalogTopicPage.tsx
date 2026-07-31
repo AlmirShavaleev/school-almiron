@@ -71,8 +71,11 @@ export function CatalogTopicPage() {
   const totalCount = tasks.length
   const pct = totalCount ? Math.round(doneCount / totalCount * 100) : 0
 
-  if (loading) return <TopicSkeleton />
-  if (error)   return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
+  // Скелет накрывает ТОЛЬКО список задач, а не всю страницу. Раньше при
+  // переключении темы серым закрывалось всё: хлебные крошки, левый список тем
+  // и фильтры — то есть ровно то, что не менялось. На четыре секунды это
+  // выглядело как поломка, хотя менялся один блок.
+  if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -90,9 +93,6 @@ export function CatalogTopicPage() {
               <div className="xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                   Темы раздела
-                </div>
-                <div className="mb-2 hidden px-1 text-xs text-slate-400 xl:block">
-                  Наведи курсор сюда, чтобы крутить каталог
                 </div>
                 <TopicSidebar
                   topics={topics}
@@ -200,7 +200,9 @@ export function CatalogTopicPage() {
           )}
 
           <div>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <TaskListSkeleton />
+            ) : filtered.length === 0 ? (
               <EmptyState filter={filter} hasDifficultyFilter={difficultyFilter.size > 0} />
             ) : (
               <div className="space-y-4">
@@ -523,14 +525,12 @@ function EmptyState({ filter, hasDifficultyFilter }: { filter: Filter; hasDiffic
   )
 }
 
-function TopicSkeleton() {
+/** Заглушка на месте карточек задач: остальная страница остаётся на экране. */
+function TaskListSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-4 animate-pulse">
-      <div className="h-5 bg-gray-200 rounded w-32" />
-      <div className="h-7 bg-gray-200 rounded w-64" />
-      <div className="h-8 bg-gray-100 rounded-full w-48" />
+    <div className="space-y-4 animate-pulse" aria-hidden>
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="bg-gray-100 rounded-xl h-32" />
+        <div key={i} className="h-32 rounded-[28px] bg-slate-100" />
       ))}
     </div>
   )

@@ -282,10 +282,15 @@ describe('Empty states', () => {
     expect(read('src/pages/catalog/CatalogPage.tsx')).toContain('Разделы не найдены')
   })
 
-  it('loading shows skeleton (animate-pulse, not blank)', () => {
+  it('во время загрузки скелет накрывает только список задач, а не всю страницу', () => {
+    // Раньше здесь стоял TopicSkeleton на всю страницу: при переключении темы
+    // серым закрывались и хлебные крошки, и левый список тем, и фильтры — то
+    // есть ровно то, что не менялось. Четыре секунды такого экрана читаются
+    // как поломка, поэтому заглушка осталась только на месте карточек задач.
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
     expect(src).toContain('animate-pulse')
-    expect(src).toContain('TopicSkeleton')
+    expect(src).toContain('TaskListSkeleton')
+    expect(src).not.toMatch(/if \(loading\)\s+return </)
   })
 
   it('network error shows ErrorState with message', () => {

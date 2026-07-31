@@ -37,6 +37,12 @@ export function useStudentJournal(
   subject?: string | null,
 ) {
   const profile = useAuthStore(s => s.profile)
+  // В зависимостях эффекта ниже стоит profileId, а не сам profile. Объект
+  // профиля пересоздаётся при каждом обновлении токена (и в любом моке, где
+  // селектор возвращает новый объект), а «новая ссылка каждый рендер» в
+  // зависимостях — это бесконечный цикл: эффект -> setState -> рендер ->
+  // новая ссылка -> эффект. Идентификатор — примитив, он от этого защищён.
+  const profileId = profile?.id ?? null
   const [journal, setJournal] = useState<StudentJournal | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
@@ -44,7 +50,7 @@ export function useStudentJournal(
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    if (!profile || !studentId) return
+    if (!profileId || !studentId) return
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -64,7 +70,7 @@ export function useStudentJournal(
     })
 
     return () => { cancelled = true }
-  }, [profile, studentId, period, customFrom, customTo, subject, tick])
+  }, [profileId, studentId, period, customFrom, customTo, subject, tick])
 
   return { journal, loading, error, reload }
 }
