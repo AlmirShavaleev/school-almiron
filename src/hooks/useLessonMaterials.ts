@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import type { LessonMaterial, MaterialType } from '@/types/lessons'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,13 +17,16 @@ export function lessonMaterialPath(lessonId: string, uploaderProfileId: string, 
 export async function uploadLessonMaterialFile(
   lessonId: string, uploaderProfileId: string, file: File,
 ): Promise<string | null> {
-  const ext = file.name.split('.').pop()
+  // Пережимаем ДО построения пути: расширение в имени объекта должно
+  // совпадать с тем, что реально ляжет в Storage.
+  const upload = await compressImageFile(file, MATERIAL_IMAGE_PRESET)
+  const ext = upload.name.split('.').pop()
   const path = lessonMaterialPath(lessonId, uploaderProfileId, `${Date.now()}.${ext}`)
   // cacheControl: '0' — Supabase defaults to max-age=3600, which lets a
   // signed URL keep serving a stale (already-deleted) file from CDN cache
   // for up to an hour. These are private per-lesson materials, not static
   // assets — disable caching so deletion takes effect immediately.
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type, upsert: true, cacheControl: '0' })
+  const { error } = await supabase.storage.from(BUCKET).upload(path, upload, { contentType: upload.type, upsert: true, cacheControl: '0' })
   if (error) return null
   return path
 }

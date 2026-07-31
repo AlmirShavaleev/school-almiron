@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { HOMEWORK_PHOTO_PRESET, MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
   TOPIC_HOMEWORK_BUCKET,
@@ -49,6 +50,12 @@ export function useTopicHomework(topicId: string | null) {
     filesRef.current = rows
     setFiles(rows)
   }, [])
+
+  // Файлы попыток нужны обработчику загрузки только для одного: продолжить
+  // нумерацию страниц, а не начать её заново. Держим в ref, чтобы не
+  // пересоздавать колбэк на каждую пришедшую строку.
+  const attemptFilesRef = useRef<TopicHomeworkAttemptFileRow[]>([])
+  useEffect(() => { attemptFilesRef.current = attemptFiles }, [attemptFiles])
 
   useEffect(() => {
     if (!topicId) {
@@ -189,7 +196,10 @@ export function useTopicHomework(topicId: string | null) {
       const current = homeworkRef.current
       if (!current) throw new Error('Сначала создайте ДЗ')
 
-      const path = buildHomeworkFilePath(topicId, file.name)
+      // Пережимаем ДО построения пути: имя и расширение должны описывать то,
+      // что реально ляжет в Storage. PDF проходит насквозь нетронутым.
+      const upload = await compressImageFile(file, MATERIAL_IMAGE_PRESET)
+      const path = buildHomeworkFilePath(topicId, upload.name)
 
       const { data: signed, error: signErr } = await supabase.storage
         .from(TOPIC_HOMEWORK_BUCKET)
@@ -199,13 +209,13 @@ export function useTopicHomework(topicId: string | null) {
         // Фолбэк: обычная загрузка без прогресса
         const up = await supabase.storage
           .from(TOPIC_HOMEWORK_BUCKET)
-          .upload(path, file, { contentType: file.type, upsert: false })
+          .upload(path, upload, { contentType: upload.type, upsert: false })
         if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
       } else {
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           xhr.open('PUT', signed.signedUrl)
-          xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+          xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
           xhr.setRequestHeader('x-upsert', 'false')
           xhr.upload.onprogress = e => {
             if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
@@ -214,7 +224,7 @@ export function useTopicHomework(topicId: string | null) {
             ? resolve()
             : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
           xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-          xhr.send(file)
+          xhr.send(upload)
         })
         onProgress?.(100)
       }
@@ -224,9 +234,9 @@ export function useTopicHomework(topicId: string | null) {
         .insert({
           homework_id: current.id,
           storage_path: path,
-          original_filename: file.name,
-          mime_type: file.type,
-          size_bytes: file.size,
+          original_filename: upload.name,
+          mime_type: upload.type,
+          size_bytes: upload.size,
           position: filesRef.current.length,
         })
         .select('*')
@@ -267,29 +277,95 @@ export function useTopicHomework(topicId: string | null) {
     return data as string
   }, [homework, reload])
 
-  const uploadAttemptFile = useCallback(async (attemptId: string, file: File) => {
-    const path = buildAttemptFilePath(attemptId, file.name)
-    const up = await supabase.storage
-      .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false })
-    if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
+  /**
+   * Сдача работы: несколько файлов за раз, с процентами по каждому.
+   *
+   * Файлы идут по очереди, а не параллельно. Ученик обычно сдаёт с телефона,
+   * и пять одновременных отправок на слабом канале мешают друг другу и врут
+   * в прогрессе; последовательная очередь честнее и предсказуемее.
+   *
+   * `onProgress(index, percent)` — индекс в переданном массиве, чтобы
+   * интерфейс мог показать имя файла рядом с его процентом.
+   */
+  const uploadAttemptFiles = useCallback(
+    async (
+      attemptId: string,
+      incoming: File[],
+      onProgress?: (index: number, percent: number) => void,
+    ): Promise<TopicHomeworkAttemptFileRow[]> => {
+      if (incoming.length === 0) return []
 
-    const { data, error: err } = await supabase
-      .from('topic_homework_attempt_files')
-      .insert({
-        attempt_id: attemptId,
-        storage_path: path,
-        file_name: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        position: 0,
-      })
-      .select('*')
-      .single()
+      // Позиции продолжают уже приложенные страницы этой попытки. Раньше
+      // здесь стоял жёсткий 0: при доклад­ывании файлов порядок в проверке
+      // разъезжался, и рамки ИИ ложились не на ту страницу.
+      const basePosition = attemptFilesRef.current.filter(f => f.attempt_id === attemptId).length
+      const inserted: TopicHomeworkAttemptFileRow[] = []
 
-    if (err) throw err
-    setAttemptFiles(prev => [...prev, data as TopicHomeworkAttemptFileRow])
-  }, [])
+      for (let i = 0; i < incoming.length; i++) {
+        onProgress?.(i, 0)
+
+        // Пережимаем ДО построения пути: имя и расширение должны описывать
+        // то, что реально ляжет в Storage.
+        const upload = await compressImageFile(incoming[i], HOMEWORK_PHOTO_PRESET)
+        const path = buildAttemptFilePath(attemptId, upload.name)
+
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
+          .createSignedUploadUrl(path)
+
+        if (signErr || !signed) {
+          // Фолбэк: обычная загрузка, но уже без процентов.
+          const up = await supabase.storage
+            .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
+            .upload(path, upload, { contentType: upload.type, upsert: false })
+          if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
+        } else {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.open('PUT', signed.signedUrl)
+            xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
+            xhr.setRequestHeader('x-upsert', 'false')
+            xhr.upload.onprogress = e => {
+              if (e.lengthComputable && onProgress) onProgress(i, Math.round((e.loaded / e.total) * 100))
+            }
+            xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+              ? resolve()
+              : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
+            xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
+            xhr.send(upload)
+          })
+        }
+        onProgress?.(i, 100)
+
+        const { data, error: err } = await supabase
+          .from('topic_homework_attempt_files')
+          .insert({
+            attempt_id: attemptId,
+            storage_path: path,
+            file_name: upload.name,
+            mime_type: upload.type,
+            size_bytes: upload.size,
+            position: basePosition + i,
+          })
+          .select('*')
+          .single()
+
+        if (err) throw err
+        const row = data as TopicHomeworkAttemptFileRow
+        inserted.push(row)
+        setAttemptFiles(prev => [...prev, row])
+      }
+
+      return inserted
+    },
+    [],
+  )
+
+  /** Один файл — тот же путь, что и у нескольких. Оставлен для старых вызовов. */
+  const uploadAttemptFile = useCallback(
+    async (attemptId: string, file: File) => { await uploadAttemptFiles(attemptId, [file]) },
+    [uploadAttemptFiles],
+  )
 
   const removeAttemptFile = useCallback(async (fileId: string, storagePath: string) => {
     const { error: err } = await supabase.from('topic_homework_attempt_files').delete().eq('id', fileId)
@@ -342,7 +418,7 @@ export function useTopicHomework(topicId: string | null) {
     homework, files, attempts, attemptFiles, reviews, studentNames,
     loading, error, reload,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
-    startAttempt, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, submitAttempt,
     reviewAttempt, notifyStudents,
   }
 }

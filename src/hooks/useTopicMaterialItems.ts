@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import {
   TOPIC_MATERIALS_BUCKET,
   buildMaterialInsert,
@@ -63,7 +64,10 @@ export function useTopicMaterialItems(topicId: string | null) {
   const uploadMaterialFile = useCallback(
     async (file: File, onProgress?: (percent: number) => void): Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }> => {
       if (!topicId) throw new Error('Тема не выбрана')
-      const storagePath = buildMaterialStoragePath(topicId, file.name)
+      // Пережимаем ДО построения пути: имя и расширение должны описывать
+      // то, что реально ляжет в Storage.
+      const upload = await compressImageFile(file, MATERIAL_IMAGE_PRESET)
+      const storagePath = buildMaterialStoragePath(topicId, upload.name)
 
       const { data: signed, error: signErr } = await supabase.storage
         .from(TOPIC_MATERIALS_BUCKET)
@@ -73,15 +77,15 @@ export function useTopicMaterialItems(topicId: string | null) {
         // Фолбэк: обычная загрузка без прогресса
         const { error: err } = await supabase.storage
           .from(TOPIC_MATERIALS_BUCKET)
-          .upload(storagePath, file, { contentType: file.type, upsert: false })
+          .upload(storagePath, upload, { contentType: upload.type, upsert: false })
         if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
-        return { storagePath, fileName: file.name, mimeType: file.type, sizeBytes: file.size }
+        return { storagePath, fileName: upload.name, mimeType: upload.type, sizeBytes: upload.size }
       }
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('PUT', signed.signedUrl)
-        xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+        xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
         xhr.setRequestHeader('x-upsert', 'false')
         xhr.upload.onprogress = e => {
           if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
@@ -90,10 +94,10 @@ export function useTopicMaterialItems(topicId: string | null) {
           ? resolve()
           : reject(new Error('Ошибка загрузки файла: HTTP ' + xhr.status))
         xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-        xhr.send(file)
+        xhr.send(upload)
       })
       onProgress?.(100)
-      return { storagePath, fileName: file.name, mimeType: file.type, sizeBytes: file.size }
+      return { storagePath, fileName: upload.name, mimeType: upload.type, sizeBytes: upload.size }
     },
     [topicId],
   )
