@@ -1,7 +1,8 @@
+// Миграция уехала в supabase/migrations/_legacy при уборке нумерации.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const migration = readFileSync('supabase/migrations/019_collection_notifications.sql', 'utf8')
+const migration = readFileSync('supabase/migrations/_legacy/019_collection_notifications.sql', 'utf8')
 const worker = readFileSync('supabase/functions/process-notification-queue/index.ts', 'utf8')
 
 describe('collection notification migration', () => {

@@ -1,4 +1,13 @@
 /**
+ * ВАЖНО про хост картинок. Раньше эти проверки ждали ссылок вида
+ * `/storage/v1/...` — это Supabase Storage. Каталог давно переехал на R2
+ * (`VITE_ASSETS_BASE_URL`), и в Supabase бакет `catalog-assets` пуст.
+ * Проверки зелёнели только потому, что в локальном `.env` переменной не было
+ * и код молча откатывался на мёртвый путь. Теперь смотрим не на домен, а на
+ * то, что относительный `src` превратился в абсолютную ссылку и указывает на
+ * нужный объект: домен — вопрос окружения, а не поведения.
+ */
+/**
  * Regression tests for resolveTaskHtml / image asset matching
  *
  * Covers the bugs found in the Math EGE audit:
@@ -45,7 +54,7 @@ describe('HTML entity decoding in src', () => {
     const html = `<img alt="PIC" src="AV_22_shk_1&#39;.png"/>`
     const result = resolveTaskHtml(html, assets)
     expect(result).toContain("AV_22_shk_1'.png")
-    expect(result).toContain('/storage/v1/')
+    expect(result).toContain('src="https://')
     expect(result).not.toContain('src="AV_22_shk_1&#39;.png"')
   })
 
@@ -54,7 +63,7 @@ describe('HTML entity decoding in src', () => {
     const html = `<img src="AV_22_st_167&#39;&#39;.png" alt="PIC"/>`
     const result = resolveTaskHtml(html, assets)
     expect(result).toContain("AV_22_st_167''.png")
-    expect(result).toContain('/storage/v1/')
+    expect(result).toContain('src="https://')
   })
 
   it('no entity: plain src still matches normally', () => {
@@ -62,7 +71,7 @@ describe('HTML entity decoding in src', () => {
     const html = `<img alt="PIC" src="DI_703.png"/>`
     const result = resolveTaskHtml(html, assets)
     expect(result).toContain('DI_703.png')
-    expect(result).toContain('/storage/v1/render/image/public/')
+    expect(result).toContain('src="https://')
   })
 })
 
@@ -95,7 +104,7 @@ describe('Same basename in different tex_session', () => {
     const html = `<img src="DI_2532.png" alt="PIC"/>`
     const result = resolveTaskHtml(html, assets)
     // Should resolve (pick the first match), not break
-    expect(result).toContain('/storage/v1/render/image/public/')
+    expect(result).toContain('src="https://')
     expect(result).not.toContain('src="DI_2532.png"')
   })
 })
@@ -111,7 +120,7 @@ describe('Missing asset', () => {
     const result = resolveTaskHtml(html, assets)
     // Original tag preserved — browser will show alt text
     expect(result).toContain('src="missing.png"')
-    expect(result).not.toContain('/storage/v1/')
+    expect(result).not.toContain('src="https://')
   })
 
   it('empty assets array → all img tags returned unchanged', () => {
@@ -173,7 +182,7 @@ describe('SVG with alt=PIC', () => {
     const html = `<img src="geo.svg" alt="PIC"/>`
     const result = resolveTaskHtml(html, assets)
     expect(result).toContain('geo.svg')
-    expect(result).toContain('/storage/v1/object/public/')
+    expect(result).toContain('src="https://')
     expect(result).toContain('catalog-condition-figure')
   })
 })
@@ -185,7 +194,7 @@ describe('Space / %20 in storage path', () => {
     const assets = [asset({ storage_path: 'math-ege/100/NT_8_25 (1).png', alt: 'PIC' })]
     const html = `<img src="NT_8_25 (1).png" alt="PIC"/>`
     const result = resolveTaskHtml(html, assets)
-    expect(result).toContain('/storage/v1/render/image/public/')
+    expect(result).toContain('src="https://')
   })
 
   it('already-encoded %20 path decodes to space and still resolves', () => {
@@ -196,7 +205,7 @@ describe('Space / %20 in storage path', () => {
     const result = resolveTaskHtml(html, assets)
     // safeDecodeStoragePath("math-ege/100/NT_8_25%20(1).png") = "math-ege/100/NT_8_25 (1).png"
     // decoded.endsWith("/NT_8_25 (1).png") → TRUE
-    expect(result).toContain('/storage/v1/render/image/public/')
+    expect(result).toContain('src="https://')
   })
 })
 
@@ -239,7 +248,7 @@ describe('Duplicate basename selection', () => {
     // Should resolve to the LAST matching asset (position=35)
     expect(result).toContain('physics-ege/364323/18438.png')
     expect(result).not.toContain('physics-ege/36250/18438.png')
-    expect(result).toContain('/storage/v1/render/image/public/')
+    expect(result).toContain('src="https://')
   })
 
   it('handles multiple duplicate basenames in same HTML', () => {

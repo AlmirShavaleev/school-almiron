@@ -1,9 +1,10 @@
+// Миграция уехала в supabase/migrations/_legacy при уборке нумерации.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = process.cwd()
-const migration = readFileSync(join(root, 'supabase/migrations/010_homework_assignments.sql'), 'utf8')
+const migration = readFileSync(join(root, 'supabase/migrations/_legacy/010_homework_assignments.sql'), 'utf8')
 const createModal = readFileSync(join(root, 'src/components/modals/CreateHomeworkModal.tsx'), 'utf8')
 const assignModal = readFileSync(join(root, 'src/components/modals/AssignHomeworkModal.tsx'), 'utf8')
 

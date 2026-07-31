@@ -92,7 +92,9 @@ describe('SelfCheckPanel — local-only self-assessment', () => {
     render(<TestHarness item={item} />)
 
     const img = screen.getByRole('img') as HTMLImageElement
-    expect(img.src).toContain('https://cdn.test/math-ege/1861/DI_703.png')
+    // Домен задаёт VITE_ASSETS_BASE_URL (R2); проверяем, что подставился
+    // нужный объект, а не то, кто именно его отдаёт.
+    expect(img.src).toContain('math-ege/1861/DI_703.png')
   })
 
   it('clears the stored score when the input is emptied', () => {

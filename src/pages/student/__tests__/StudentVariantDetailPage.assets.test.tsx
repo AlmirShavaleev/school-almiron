@@ -192,7 +192,8 @@ describe('StudentVariantDetailPage asset rendering', () => {
     renderPage()
 
     const imgsBefore = screen.getAllByRole('img') as HTMLImageElement[]
-    expect(imgsBefore[0].src).toContain('https://cdn.test/math-ege/1861/DI_703.png')
+    // Домен задаёт VITE_ASSETS_BASE_URL (R2), см. комментарий в SelfCheckPanel.test.
+    expect(imgsBefore[0].src).toContain('math-ege/1861/DI_703.png')
     expect(screen.getByText('Самопроверка второй части')).toBeInTheDocument()
     expect(screen.queryByTestId('auto-results-table')).not.toBeInTheDocument()
     expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
@@ -218,7 +219,7 @@ describe('StudentVariantDetailPage asset rendering', () => {
     expect(screen.getByTestId('result-task-card-item-1').className).toContain('border-primary-400')
 
     const imgsAfter = screen.getAllByRole('img') as HTMLImageElement[]
-    expect(imgsAfter[1].src).toContain('https://cdn.test/math-ege/1861/sol.png')
+    expect(imgsAfter[1].src).toContain('math-ege/1861/sol.png')
   })
 
   it('shows results on re-entry when submitted_at exists even if raw status is not_started', () => {
