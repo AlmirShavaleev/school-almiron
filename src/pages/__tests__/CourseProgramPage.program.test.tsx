@@ -83,7 +83,8 @@ function renderPage() {
 
 async function openProgramForCourse() {
   renderPage()
-  fireEvent.click(screen.getByRole('button', { name: /10А/i }))
+  // Карточка курса теперь ссылка, а не кнопка (см. CourseCard).
+  fireEvent.click(screen.getByRole('link', { name: /10А/i }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
 }
 

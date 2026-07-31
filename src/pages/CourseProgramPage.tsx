@@ -1,5 +1,5 @@
-import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   DndContext,
   DragOverlay,
@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
-  Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3,
+  Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3, ChevronLeft,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -1132,6 +1132,37 @@ function MaterialsMatrix({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+/** Вкладки курса. Значение живёт в адресе, поэтому список нужен и для разбора. */
+const COURSE_TABS = ['program', 'materials', 'homework', 'testresults', 'students', 'settings'] as const
+type CourseTab = typeof COURSE_TABS[number]
+
+/**
+ * Карточка курса в списке. Именно ссылка, а не кнопка: браузер сам умеет
+ * открывать ссылки в новой вкладке, показывать адрес в статусной строке и
+ * копировать его по правому клику. Кнопка всё это ломает.
+ */
+function CourseCard({ course }: { course: Course }) {
+  return (
+    <Link
+      to={`/course-program?courseId=${course.id}`}
+      className="group flex min-h-[92px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-semibold leading-snug text-gray-900 group-hover:text-primary-700">
+          {course.title}
+        </span>
+        {!course.is_active && (
+          <span className="mt-0.5 shrink-0 text-xs text-gray-400">архив</span>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Badge variant="info" className="text-xs">{SUBJECT_LABELS[course.subject] || course.subject}</Badge>
+        <Badge variant="default" className="text-xs">{EXAM_LABELS[course.exam_type] || course.exam_type}</Badge>
+      </div>
+    </Link>
+  )
+}
+
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
@@ -1146,18 +1177,37 @@ export function CourseProgramPage() {
   } = useCourseProgram()
 
   const [searchParams, setSearchParams] = useSearchParams()
-  // Курс и вкладка живут в адресе: F5 и «назад» не выкидывают к списку курсов.
-  const [selectedId,  setSelectedId]  = useState<string | null>(() => searchParams.get('courseId'))
-  const appliedCourseParam = useRef(false)
+
+  // Курс и вкладка живут ТОЛЬКО в адресе, без копии в useState. Так карточка
+  // курса может быть обычной ссылкой: Ctrl+клик открывает курс в новой вкладке,
+  // «назад» возвращает к списку, F5 остаётся на месте. Раньше выбор дублировался
+  // в состоянии и синхронизировался с адресом двумя эффектами — именно в этой
+  // паре и жил бесконечный цикл перерисовки, который ломал переходы.
+  const selectedId = searchParams.get('courseId')
+
+  const selectCourse = useCallback((id: string | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (id) next.set('courseId', id)
+      else next.delete('courseId')
+      next.delete('tab')   // новый курс всегда открываем на «Программе курса»
+      return next
+    })
+  }, [setSearchParams])
   const [modules,     setModules]     = useState<Module[]>([])
   const [loadingMods, setLoadingMods] = useState(false)
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
-  const [tab,         setTab]         = useState<'program' | 'materials' | 'homework' | 'testresults' | 'students' | 'settings'>(() => {
-    const t = searchParams.get('tab')
-    const allowed = ['program', 'materials', 'homework', 'testresults', 'students', 'settings']
-    return (allowed.includes(t ?? '') ? t : 'program') as 'program' | 'materials' | 'homework' | 'testresults' | 'students' | 'settings'
-  })
+  const tabParam = searchParams.get('tab')
+  const tab = ((COURSE_TABS as readonly string[]).includes(tabParam ?? '') ? tabParam : 'program') as CourseTab
+  const setTab = useCallback((t: CourseTab) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (t === 'program') next.delete('tab')
+      else next.set('tab', t)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
   const [editMode,      setEditMode]      = useState(false)
@@ -1214,30 +1264,14 @@ export function CourseProgramPage() {
     [homeworkByTopic],
   )
 
+  // Рабочие курсы наверх, архивные — под спойлер. Раньше три технических
+  // «[E2E] Цикл ДЗ …» с пометкой «архив» стояли первыми и оттесняли живые
+  // курсы за пределы первого экрана.
+  const activeCourses = useMemo(() => courses.filter(c => c.is_active), [courses])
+  const archivedCourses = useMemo(() => courses.filter(c => !c.is_active), [courses])
+
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
-  // Состояние -> адрес: перезагрузка страницы возвращает на тот же курс и вкладку.
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams)
-    if (selectedId) next.set('courseId', selectedId)
-    else next.delete('courseId')
-    if (selectedId && tab !== 'program') next.set('tab', tab)
-    else next.delete('tab')
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true })
-    }
-  }, [selectedId, tab, searchParams, setSearchParams])
-
-  // Deep-link: open a specific course passed as ?courseId=... (e.g. the draft just created in the invite wizard)
-  useEffect(() => {
-    if (appliedCourseParam.current) return
-    const wanted = searchParams.get('courseId')
-    if (!wanted) return
-    if (courses.some(c => c.id === wanted)) {
-      appliedCourseParam.current = true
-      setSelectedId(wanted)
-    }
-  }, [courses, searchParams])
 
   // Load modules + groups when course selected
   useEffect(() => {
@@ -1479,7 +1513,7 @@ export function CourseProgramPage() {
     try {
       const id = await createCourse(newCourse as Omit<Course, 'id'>)
       setShowNew(false)
-      setSelectedId(id)
+      selectCourse(id)
       setNewCourse({ title: '', subject: 'physics', exam_type: 'ege', description: '', price: 0, duration_weeks: 36, is_active: true })
     } catch (e: any) {
       setCreateError(e.message)
@@ -1490,113 +1524,107 @@ export function CourseProgramPage() {
 
   return (
     <>
-    <div className="flex flex-col lg:flex-row gap-6 h-full min-w-0">
+    <div className="min-w-0">
 
-      {/* ── Left: Courses list ── */}
-      <div className="w-full lg:w-72 lg:shrink-0 flex flex-col gap-3">
+      {!selectedCourse ? (
+        <div className="space-y-4">
+          {/* Карточка курса — <Link>, а не <button>: обычный клик проваливает
+              в курс на весь экран, Ctrl+клик и клик колёсиком открывают его в
+              новой вкладке браузера, а адрес курса можно скопировать и
+              переслать. С <button> ничего из этого не работает. */}
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-gray-900">Курсы</h2>
+          <h2 className="text-lg font-bold text-gray-900">Курсы</h2>
           {isAdmin && (
             <button
               onClick={() => setShowNew(v => !v)}
-              className="w-11 h-11 flex items-center justify-center text-primary-600 hover:text-primary-800 transition-colors"
-              title="Новый курс"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-800"
             >
               <Plus size={18} />
+              Новый курс
             </button>
           )}
         </div>
 
-        {/* New course form */}
-        {showNew && (
-          <div className="bg-white border border-primary-200 rounded-xl p-4 space-y-3 shadow-sm">
-            <p className="text-xs font-semibold text-primary-700">Новый курс</p>
-            <input
-              placeholder="Название *"
-              value={newCourse.title}
-              onChange={e => setNewCourse(f => ({ ...f, title: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={newCourse.subject}
-                onChange={e => setNewCourse(f => ({ ...f, subject: e.target.value }))}
-                className="min-h-11 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
-              >
-                <option value="physics">Физика</option>
-                <option value="math">Математика</option>
-              </select>
-              <select
-                value={newCourse.exam_type}
-                onChange={e => setNewCourse(f => ({ ...f, exam_type: e.target.value }))}
-                className="min-h-11 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
-              >
-                <option value="ege">ЕГЭ</option>
-                <option value="oge">ОГЭ</option>
-              </select>
-            </div>
-            {createError && <p className="text-xs text-red-500">{createError}</p>}
-            <div className="flex gap-2">
-              <Button size="sm" className="flex-1" onClick={handleCreateCourse} loading={creatingCourse}>
-                Создать
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowNew(false)}>
-                Отмена
-              </Button>
-            </div>
+      {/* New course form */}
+      {showNew && (
+        <div className="bg-white border border-primary-200 rounded-xl p-4 space-y-3 shadow-sm">
+          <p className="text-xs font-semibold text-primary-700">Новый курс</p>
+          <input
+            placeholder="Название *"
+            value={newCourse.title}
+            onChange={e => setNewCourse(f => ({ ...f, title: e.target.value }))}
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={newCourse.subject}
+              onChange={e => setNewCourse(f => ({ ...f, subject: e.target.value }))}
+              className="min-h-11 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+            >
+              <option value="physics">Физика</option>
+              <option value="math">Математика</option>
+            </select>
+            <select
+              value={newCourse.exam_type}
+              onChange={e => setNewCourse(f => ({ ...f, exam_type: e.target.value }))}
+              className="min-h-11 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+            >
+              <option value="ege">ЕГЭ</option>
+              <option value="oge">ОГЭ</option>
+            </select>
           </div>
-        )}
+          {createError && <p className="text-xs text-red-500">{createError}</p>}
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1" onClick={handleCreateCourse} loading={creatingCourse}>
+              Создать
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowNew(false)}>
+              Отмена
+            </Button>
+          </div>
+        </div>
+      )}
 
-        {/* Courses list */}
         {loading ? (
-          <div className="text-gray-400 text-sm flex items-center gap-2 py-4">
+          <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
             <Loader2 size={16} className="animate-spin" />Загрузка…
           </div>
         ) : courses.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4">Нет курсов</p>
+          <p className="py-4 text-sm text-gray-400">Нет курсов</p>
         ) : (
-          <div className="space-y-1.5">
-            {courses.map(c => (
-              <button
-                key={c.id}
-                onClick={() => { setSelectedId(c.id); setTab('program') }}
-                className={cn(
-                  'w-full text-left p-3 rounded-xl border transition-all',
-                  selectedId === c.id
-                    ? 'border-primary-300 bg-primary-50 shadow-sm'
-                    : 'border-gray-100 bg-white hover:border-gray-300 hover:shadow-sm'
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className={cn(
-                    'text-sm font-medium leading-snug',
-                    selectedId === c.id ? 'text-primary-700' : 'text-gray-800'
-                  )}>
-                    {c.title}
-                  </span>
-                  {!c.is_active && (
-                    <span className="text-xs text-gray-400 shrink-0 mt-0.5">архив</span>
-                  )}
+          <>
+            {activeCourses.length > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {activeCourses.map(c => <CourseCard key={c.id} course={c} />)}
+              </div>
+            )}
+
+            {/* Архивные курсы уводим под спойлер: их не открывают каждый день,
+                а в общем списке они оттесняли рабочие курсы вниз. */}
+            {archivedCourses.length > 0 && (
+              <details className="rounded-2xl border border-gray-100 bg-white/60 px-4 py-3">
+                <summary className="cursor-pointer select-none text-sm font-medium text-gray-500 hover:text-gray-700">
+                  Архив · {archivedCourses.length}
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {archivedCourses.map(c => <CourseCard key={c.id} course={c} />)}
                 </div>
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  <Badge variant="info" className="text-xs">{SUBJECT_LABELS[c.subject] || c.subject}</Badge>
-                  <Badge variant="default" className="text-xs">{EXAM_LABELS[c.exam_type] || c.exam_type}</Badge>
-                </div>
-              </button>
-            ))}
-          </div>
+              </details>
+            )}
+          </>
         )}
       </div>
-
-      {/* ── Right: Course detail ── */}
-      <div className="flex-1 min-w-0">
-        {!selectedCourse ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
-            <GraduationCap size={40} className="opacity-30" />
-            <p>Выберите курс слева</p>
-          </div>
-        ) : (
-          <div className="space-y-5">
+      ) : (
+        <div className="space-y-5">
+          {/* Возврат к списку — тоже ссылка: работает «назад» браузера,
+              средняя кнопка мыши и копирование адреса. */}
+          <Link
+            to="/course-program"
+            className="inline-flex min-h-11 items-center gap-1.5 -ml-1 rounded-xl px-2 text-sm text-gray-500 transition-colors hover:text-primary-700"
+          >
+            <ChevronLeft size={16} />
+            Все курсы
+          </Link>
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -1613,8 +1641,10 @@ export function CourseProgramPage() {
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+            {/* Вкладки курса. role=tablist/tab — не украшение: с ними
+                скринридер объявляет «вкладка 3 из 6», а стрелки влево-вправо
+                воспринимаются как переключение, а не как обход кнопок. */}
+            <div role="tablist" aria-label="Разделы курса" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
@@ -1625,7 +1655,9 @@ export function CourseProgramPage() {
               ].map(t => (
                 <button
                   key={t.key}
-                  onClick={() => setTab(t.key as any)}
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  onClick={() => setTab(t.key as CourseTab)}
                   className={cn(
                     'min-h-11 shrink-0 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
                     tab === t.key
@@ -1794,9 +1826,8 @@ export function CourseProgramPage() {
                 onSave={v => saveCourse(selectedCourse.id, v)}
               />
             )}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
 
     <TopicMaterialsModal

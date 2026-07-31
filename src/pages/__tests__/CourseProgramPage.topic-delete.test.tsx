@@ -88,7 +88,8 @@ function renderPage() {
 
 async function openCourseInEditMode() {
   renderPage()
-  fireEvent.click(screen.getByRole('button', { name: /Физика/i }))
+  // Карточка курса теперь ссылка, а не кнопка (см. CourseCard).
+  fireEvent.click(screen.getByRole('link', { name: /Физика/i }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
   fireEvent.click(screen.getByRole('button', { name: /Редактировать программу/i }))

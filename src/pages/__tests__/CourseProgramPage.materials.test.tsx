@@ -96,7 +96,9 @@ function renderPage() {
 
 async function openMaterialsTab() {
   renderPage()
-  fireEvent.click(screen.getByRole('button', { name: /Физика/i }))
+  // Карточка курса теперь ссылка, а не кнопка: обычный клик проваливает в
+  // курс, Ctrl+клик открывает его в новой вкладке браузера.
+  fireEvent.click(screen.getByRole('link', { name: /Физика/i }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
   fireEvent.click(screen.getByRole('tab', { name: /Материалы/i }))
