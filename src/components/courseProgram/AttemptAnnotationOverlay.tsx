@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, type MutableRefObject } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import type { ImportedRegion } from '@/components/SubmissionReviewer'
-import { Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
+import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
 import { cn } from '@/utils/cn'
 import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
 import {
@@ -128,6 +129,7 @@ export function AttemptAnnotationOverlay({
   publishButtonLabel = 'Опубликовать пометки',
   hideToolbarPublish = false,
   importRegionsRef,
+  solutionTopicId,
   onClose,
 }: {
   attemptId: string
@@ -150,6 +152,15 @@ export function AttemptAnnotationOverlay({
   hideToolbarPublish?: boolean
   /** Проброс к аннотатору: через него панель черновика ИИ переносит рамки. */
   importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
+  /**
+   * Тема, из которой брать решение задания для справочной панели.
+   *
+   * Проп передают ТОЛЬКО преподавательские экраны. Ученический
+   * `TopicHomeworkStudent` его не передаёт, поэтому показать решение ученику
+   * нечем даже по ошибке — это защита конструкцией, а не проверкой роли,
+   * про которую легко забыть.
+   */
+  solutionTopicId?: string | null
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -158,6 +169,11 @@ export function AttemptAnnotationOverlay({
   const viewOnly = readOnly || locked
   const { annotatable, other } = useMemo(() => splitAnnotatableFiles(files), [files])
   const paths = useMemo(() => annotatable.map(f => f.storage_path), [annotatable])
+
+  const { materials: solution, loading: solutionLoading } = useTopicSolutionMaterials(solutionTopicId)
+  const hasSolution = solution.length > 0
+  const [solutionOpen, setSolutionOpen] = useState(true)
+  const showSolution = hasSolution && solutionOpen
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -193,15 +209,34 @@ export function AttemptAnnotationOverlay({
           <h2 className="truncate font-bold text-gray-900 leading-tight">{title}</h2>
           {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</p>}
         </div>
-        <button
-          type="button"
-          data-testid="attempt-annotation-close"
-          aria-label="Закрыть разбор"
-          onClick={onClose}
-          className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-        >
-          <X size={20} />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasSolution && (
+            <button
+              type="button"
+              data-testid="attempt-solution-toggle"
+              aria-pressed={solutionOpen}
+              onClick={() => setSolutionOpen(v => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                solutionOpen
+                  ? 'border-primary-300 bg-primary-50 text-primary-800'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900',
+              )}
+            >
+              <BookOpen size={13} />
+              Решение
+            </button>
+          )}
+          <button
+            type="button"
+            data-testid="attempt-annotation-close"
+            aria-label="Закрыть разбор"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       <PresenceBanner viewers={viewers} locked={locked} onForceEdit={onForceEdit} />
@@ -239,7 +274,19 @@ export function AttemptAnnotationOverlay({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4">
+      {/* Решение слева, работа справа: сравнивать удобнее, когда оба на
+          экране, а не в двух вкладках. На узком экране панель уезжает наверх —
+          «сначала решение, потом фото» сохраняется и там. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {showSolution && (
+          <SolutionReferencePanel
+            topicId={solutionTopicId ?? ''}
+            materials={solution}
+            loading={solutionLoading}
+          />
+        )}
+
+        <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4">
         {paths.length === 0 ? (
           // Размечать нечего (только .docx, .zip и т.п. или файлов нет вовсе),
           // но вердикт поставить всё равно нужно — иначе такая работа осталась
@@ -280,6 +327,7 @@ export function AttemptAnnotationOverlay({
             />
           </Suspense>
         )}
+        </div>
       </div>
     </div>
   )

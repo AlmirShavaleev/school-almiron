@@ -332,6 +332,7 @@ export function HomeworkReviewQueuePage() {
             + (isSubmittedLate(reviewing.row) ? ' · сдано с опозданием' : '')
           }
           viewers={viewersOf(reviewing.row.attempt.id)}
+          solutionTopicId={reviewing.row.topicId}
           locked={reviewing.locked}
           onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
