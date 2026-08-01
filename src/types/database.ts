@@ -509,6 +509,84 @@ export type Database = {
           },
         ]
       }
+      course_copy_jobs: {
+        Row: {
+          created_at: string
+          files: Json
+          id: string
+          kind: string
+          requested_by: string
+          source_course_id: string | null
+          source_topic_id: string | null
+          status: string
+          target_course_id: string | null
+          target_topic_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          files?: Json
+          id?: string
+          kind: string
+          requested_by: string
+          source_course_id?: string | null
+          source_topic_id?: string | null
+          status?: string
+          target_course_id?: string | null
+          target_topic_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          files?: Json
+          id?: string
+          kind?: string
+          requested_by?: string
+          source_course_id?: string | null
+          source_topic_id?: string | null
+          status?: string
+          target_course_id?: string | null
+          target_topic_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_copy_jobs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_copy_jobs_source_course_id_fkey"
+            columns: ["source_course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_copy_jobs_source_topic_id_fkey"
+            columns: ["source_topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_copy_jobs_target_course_id_fkey"
+            columns: ["target_course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_copy_jobs_target_topic_id_fkey"
+            columns: ["target_topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_curators: {
         Row: {
           course_id: string
@@ -5377,6 +5455,30 @@ export type Database = {
         }
       }
       cleanup_telegram_tokens: { Args: never; Returns: undefined }
+      course_copy_finalize: { Args: { p_job_id: string }; Returns: Json }
+      course_copy_rollback: { Args: { p_job_id: string }; Returns: Json }
+      course_copy_shift_date: {
+        Args: { p_date: string; p_mode: string; p_shift_days: number }
+        Returns: string
+      }
+      course_copy_stage: {
+        Args: {
+          p_mode?: string
+          p_shift_days?: number
+          p_source_course_id: string
+          p_title?: string
+        }
+        Returns: Json
+      }
+      course_copy_topic_content: {
+        Args: {
+          p_mode: string
+          p_shift_days: number
+          p_source_topic_id: string
+          p_target_topic_id: string
+        }
+        Returns: Json
+      }
       course_default_module: { Args: { p_course_id: string }; Returns: string }
       course_is_admin: { Args: never; Returns: boolean }
       course_is_lesson_staff: {
@@ -6252,6 +6354,15 @@ export type Database = {
       }
       sync_group_assignment: {
         Args: { p_assignment_id: string }
+        Returns: Json
+      }
+      topic_copy_stage: {
+        Args: {
+          p_mode?: string
+          p_shift_days?: number
+          p_source_topic_id: string
+          p_target_module_id: string
+        }
         Returns: Json
       }
       topic_homework_ai_mark_accepted: {

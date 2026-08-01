@@ -22,6 +22,7 @@ import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
   Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3, ChevronLeft,
+  Copy,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -32,6 +33,8 @@ import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTop
 import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
+import { CopyCourseDialog } from '@/components/modals/CopyCourseDialog'
+import { CopyTopicDialog } from '@/components/modals/CopyTopicDialog'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
@@ -416,7 +419,7 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, topicNumber, onSave, onDelete, onOpenMaterials, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
+  topic, topicNumber, onSave, onDelete, onOpenMaterials, onCopyTopic, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
 }: {
   topic: Topic
   topicNumber: string
@@ -427,6 +430,7 @@ function TopicRowEdit({
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  onCopyTopic: (topic: Topic) => void
   dragHandle?: {
     listeners: ReturnType<typeof useSortable>['listeners']
     attributes: ReturnType<typeof useSortable>['attributes']
@@ -494,6 +498,14 @@ function TopicRowEdit({
               Редактировать тему
             </Button>
             <button
+              type="button"
+              onClick={() => onCopyTopic(topic)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition-colors hover:border-primary-300 hover:text-primary-600"
+              title="Скопировать тему в другой курс"
+            >
+              <Copy size={16} />
+            </button>
+            <button
               onClick={async () => { setDeleting(true); try { await onDelete(topic.id) } finally { setDeleting(false) } }}
               disabled={deleting || !!deleteBlockedMessage}
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:opacity-60"
@@ -518,6 +530,7 @@ function SortableTopicRow({
   onSave,
   onDelete,
   onOpenMaterials,
+  onCopyTopic,
   isReordering,
 }: {
   topic: Topic
@@ -529,6 +542,7 @@ function SortableTopicRow({
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  onCopyTopic: (topic: Topic) => void
   isReordering: boolean
 }) {
   const sortable = useSortable({
@@ -556,6 +570,7 @@ function SortableTopicRow({
         onSave={onSave}
         onDelete={onDelete}
         onOpenMaterials={onOpenMaterials}
+        onCopyTopic={onCopyTopic}
         dragHandle={{
           listeners: sortable.listeners,
           attributes: sortable.attributes,
@@ -569,7 +584,7 @@ function SortableTopicRow({
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
+  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCopyTopic, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
 }: {
   module: Module
   moduleNumber: number
@@ -586,6 +601,7 @@ function ModuleCard({
   onDeleteTopic: (id: string) => Promise<void>
   onAddTopic: (moduleId: string) => Promise<void>
   onOpenMaterials: (topic: Topic, moduleTitle: string) => void
+  onCopyTopic: (topic: Topic) => void
   isReordering: boolean
 }) {
   const [open,     setOpen]     = useState(true)
@@ -673,6 +689,7 @@ function ModuleCard({
                 onSave={onSaveTopic}
                 onDelete={onDeleteTopic}
                 onOpenMaterials={onOpenMaterials}
+                onCopyTopic={onCopyTopic}
                 isReordering={isReordering}
               />
             ))}
@@ -698,7 +715,7 @@ function ModuleCard({
 
 
 // ─── Course settings form ─────────────────────────────────────────────────────
-function CourseSettings({ course, onSave }: { course: Course; onSave: (v: Partial<Course>) => Promise<void> }) {
+function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSave: (v: Partial<Course>) => Promise<void>; onCopyCourse: () => void }) {
   const [form, setForm]   = useState({ ...course })
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
@@ -883,12 +900,18 @@ function CourseSettings({ course, onSave }: { course: Course; onSave: (v: Partia
         </span>
       </div>
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         <Button onClick={handleSave} loading={saving}>
           <Save size={15} className="mr-1.5" />Сохранить
         </Button>
         {saved && <span className="text-sm text-green-600 font-medium">Сохранено ✓</span>}
+        <Button variant="secondary" onClick={onCopyCourse} className="ml-auto">
+          <Copy size={15} className="mr-1.5" />Скопировать курс
+        </Button>
       </div>
+      <p className="text-xs text-gray-500">
+        Копия получит все модули, темы и материалы. Ученики и ссылка-приглашение не переносятся.
+      </p>
     </div>
   )
 }
@@ -1170,7 +1193,7 @@ export function CourseProgramPage() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const {
-    courses, loading,
+    courses, loading, reload: reloadCourses,
     loadModules, saveCourse, createCourse,
     saveModule, createModule, deleteModule,
     saveTopic, createTopic, deleteTopic,
@@ -1220,6 +1243,10 @@ export function CourseProgramPage() {
   const [activeDragTopicId, setActiveDragTopicId] = useState<string | null>(null)
   const dragStartModulesRef = useRef<Module[] | null>(null)
   const { templates } = useCourseHomeworkTemplates(selectedId)
+
+  // Копирование: курса целиком и отдельной темы в другой курс.
+  const [copyCourseOpen, setCopyCourseOpen] = useState(false)
+  const [copyTopicSource, setCopyTopicSource] = useState<Topic | null>(null)
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
@@ -1759,6 +1786,7 @@ export function CourseProgramPage() {
                             onDeleteTopic={handleDeleteTopic}
                             onAddTopic={handleAddTopic}
                             onOpenMaterials={openMaterials}
+                            onCopyTopic={setCopyTopicSource}
                             isReordering={isReordering}
                           />
                         ))}
@@ -1824,6 +1852,7 @@ export function CourseProgramPage() {
               <CourseSettings
                 course={selectedCourse}
                 onSave={v => saveCourse(selectedCourse.id, v)}
+                onCopyCourse={() => setCopyCourseOpen(true)}
               />
             )}
         </div>
@@ -1841,6 +1870,35 @@ export function CourseProgramPage() {
         if (!matTopic?.topic.id) return
         await handleSaveTopic(matTopic.topic.id, values)
         setMatTopic(prev => prev ? { ...prev, topic: { ...prev.topic, ...values } } : prev)
+      }}
+    />
+
+    {selectedCourse && (
+      <CopyCourseDialog
+        open={copyCourseOpen}
+        onClose={() => { setCopyCourseOpen(false); void reloadCourses() }}
+        course={selectedCourse}
+        onCopied={newCourseId => {
+          setCopyCourseOpen(false)
+          void reloadCourses()
+          selectCourse(newCourseId)
+        }}
+      />
+    )}
+
+    <CopyTopicDialog
+      open={!!copyTopicSource}
+      onClose={() => setCopyTopicSource(null)}
+      topic={copyTopicSource}
+      sourceCourseId={selectedId}
+      courses={courses}
+      loadModules={loadModules}
+      onCopied={(targetCourseId, _targetModuleId) => {
+        setCopyTopicSource(null)
+        // Копия в текущем курсе не меняет адрес — перечитываем модули вручную,
+        // иначе новая тема появится только после F5.
+        if (targetCourseId === selectedId) void refreshModules()
+        else selectCourse(targetCourseId)
       }}
     />
 
