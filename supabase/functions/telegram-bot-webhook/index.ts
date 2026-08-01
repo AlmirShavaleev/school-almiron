@@ -22,6 +22,20 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const TG_API = 'https://api.telegram.org'
 
+/**
+ * ⚠️ ВРЕМЕННЫЙ ТЕСТОВЫЙ РЕЖИМ (см. PROJECT_STATE.md §41).
+ *
+ * true  — один Telegram-аккаунт можно привязать к нескольким профилям сразу.
+ *         Нужно владельцу: аккаунт в Telegram у него один, а проверять надо
+ *         все роли (ученик / преподаватель / куратор / админ).
+ * false — прод-поведение: один Telegram = один профиль.
+ *
+ * Перед выкладкой на реальных учеников вернуть в false И вернуть
+ * UNIQUE (telegram_chat_id) миграцией — сама по себе константа базу не чинит.
+ * Порядок отката описан в §41.
+ */
+const ALLOW_MULTI_PROFILE_LINK = true
+
 interface TelegramUpdate {
   update_id: number
   message?: {
@@ -156,18 +170,26 @@ Deno.serve(async (req: Request) => {
     const profileId = tokenRow.profile_id
 
     // ── 2. Проверяем, не занят ли уже этот chat_id ──────────────────────
-    const { data: existingByChat } = await supabase
-      .from('telegram_connections')
-      .select('id, profile_id')
-      .eq('telegram_chat_id', chatId)
-      .single()
+    // ВРЕМЕННО отключаемо (§41): в тестовом режиме один Telegram разрешено
+    // держать на нескольких профилях, поэтому проверку занятости пропускаем.
+    if (!ALLOW_MULTI_PROFILE_LINK) {
+      // .limit(1) вместо .single(): если в базе уже накопились дубли chat_id
+      // (наследие тестового режима), .single() падал бы с ошибкой вместо
+      // осмысленного ответа пользователю.
+      const { data: takenByOther } = await supabase
+        .from('telegram_connections')
+        .select('id, profile_id')
+        .eq('telegram_chat_id', chatId)
+        .neq('profile_id', profileId)
+        .limit(1)
 
-    if (existingByChat && existingByChat.profile_id !== profileId) {
-      await sendTelegramMessage(chatId,
-        '⚠️ Этот Telegram уже привязан к другому аккаунту. Обратись в поддержку.',
-        botToken,
-      )
-      return new Response('ok')
+      if (takenByOther && takenByOther.length > 0) {
+        await sendTelegramMessage(chatId,
+          '⚠️ Этот Telegram уже привязан к другому аккаунту. Обратись в поддержку.',
+          botToken,
+        )
+        return new Response('ok')
+      }
     }
 
     // ── 3. Upsert подключения ────────────────────────────────────────────
@@ -197,8 +219,25 @@ Deno.serve(async (req: Request) => {
 
     // ── 6. Подтверждаем пользователю ────────────────────────────────────
     const greeting = username ? `@${username}` : name
+
+    // В тестовом режиме в один чат сыплются уведомления сразу нескольких
+    // профилей, поэтому подписываем, какой именно аккаунт сейчас подключён,
+    // иначе разобрать, от чьего лица пришло сообщение, невозможно.
+    let accountLine = ''
+    if (ALLOW_MULTI_PROFILE_LINK) {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', profileId)
+        .maybeSingle()
+
+      if (profileRow) {
+        accountLine = `\n\n🧪 Тестовый режим. Подключён аккаунт: <b>${profileRow.full_name ?? '—'}</b> (${profileRow.role ?? '—'}).\nОдин Telegram сейчас можно держать на нескольких аккаунтах.`
+      }
+    }
+
     await sendTelegramMessage(chatId,
-      `✅ <b>Telegram подключён!</b>\n\nПривет, ${greeting}!\nТеперь ты будешь получать уведомления о занятиях, домашних заданиях и их проверке прямо здесь.\n\nНастроить уведомления можно в разделе «Настройки» на платформе.`,
+      `✅ <b>Telegram подключён!</b>\n\nПривет, ${greeting}!\nТеперь ты будешь получать уведомления о занятиях, домашних заданиях и их проверке прямо здесь.\n\nНастроить уведомления можно в разделе «Настройки» на платформе.${accountLine}`,
       botToken,
     )
 
