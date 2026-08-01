@@ -42,7 +42,7 @@ export function CatalogSectionPage() {
   const childrenOf = (parentId: string) => topics.filter(t => t.parent_id === parentId)
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-gray-500">
         <Link to={`/catalog?subject=${backSlug}&exam=${examSlug}${view === 'physics-topics' ? '&view=physics-topics' : ''}`} className="flex items-center gap-1 hover:text-primary-600">

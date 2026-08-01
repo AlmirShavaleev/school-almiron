@@ -156,9 +156,7 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
                 value={grade.points}
                 onChange={e => onPointsChange(e.target.value)}
                 disabled={disabled || grade.saving}
-                className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-sm
-                           focus:outline-none focus:ring-2 focus:ring-primary-500
-                           disabled:bg-gray-50"
+                className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
                 data-testid={`grade-points-${item.item_id}`}
               />
             </div>
@@ -170,9 +168,7 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
                 disabled={disabled || grade.saving}
                 rows={2}
                 placeholder="Объяснение оценки..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm resize-none
-                           focus:outline-none focus:ring-2 focus:ring-primary-500
-                           disabled:bg-gray-50"
+                className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
                 data-testid={`grade-comment-${item.item_id}`}
               />
             </div>
@@ -181,9 +177,7 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
           <button
             onClick={onSave}
             disabled={disabled || grade.saving || grade.points === ''}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm
-                       bg-primary-600 text-white hover:bg-primary-700
-                       disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
             data-testid={`grade-save-${item.item_id}`}
           >
             {grade.saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -239,7 +233,7 @@ export function VariantStudentWorkPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <Loader2 size={28} className="animate-spin text-primary-500 mx-auto" />
       </div>
     )
@@ -247,7 +241,7 @@ export function VariantStudentWorkPage() {
 
   if (error || !work) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <AlertTriangle size={40} className="text-red-400 mx-auto mb-3" />
         <p className="text-red-600 font-medium">{error ?? 'Работа не найдена'}</p>
         <button onClick={() => navigate(-1)} className="mt-3 text-sm text-primary-600 hover:underline">
@@ -383,9 +377,7 @@ export function VariantStudentWorkPage() {
               <button
                 onClick={finalizeGrading}
                 disabled={!canFinalize || finalizing}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
-                           bg-green-600 text-white font-medium hover:bg-green-700
-                           disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
                 data-testid="finalize-grading-btn"
               >
                 {finalizing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}

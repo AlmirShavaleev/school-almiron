@@ -67,7 +67,7 @@ export function VariantDetailPage() {
 
   if (error || !variant) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <AlertTriangle size={40} className="text-red-400 mx-auto mb-3" />
         <p className="text-red-600 font-medium">{error ?? 'Вариант не найден'}</p>
         <Link to="/variants" className="mt-3 text-sm text-primary-600 hover:underline block">

@@ -38,7 +38,7 @@ export function CatalogTaskPage() {
   const showNoTopicBadge = isStaff && !task.hasTopicAssigned
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}`} className="hover:text-primary-600">
@@ -89,7 +89,7 @@ export function CatalogTaskPage() {
 
 function TaskSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-4 animate-pulse">
+    <div className="max-w-3xl mx-auto space-y-4 animate-pulse">
       <div className="h-5 bg-gray-200 rounded w-48" />
       <div className="bg-gray-100 rounded-xl h-48" />
     </div>
@@ -98,7 +98,7 @@ function TaskSkeleton() {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+    <div className="max-w-3xl mx-auto py-10 text-center">
       <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
       <p className="text-red-600 font-medium">Ошибка загрузки</p>
       <p className="text-gray-500 text-sm mt-1">{message}</p>

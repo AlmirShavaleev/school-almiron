@@ -65,7 +65,7 @@ function DirectionPicker() {
   // DIRECTIONS. Раньше лендинг ждал RPC get_catalog_direction_counts — 2645 мс
   // на проде, и до её ответа карточки стояли без чисел.
   return (
-    <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-[1100px] mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Каталог заданий</h1>
         <p className="text-gray-500 mt-1">Выберите предмет и формат экзамена</p>
@@ -201,7 +201,7 @@ function SectionsView({ subjectSlug, examSlug, view }: { subjectSlug: string; ex
     `/catalog/${s.id}?subject=${subjectSlug}&exam=${examSlug}&view=physics-topics`
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-[1100px] mx-auto space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm text-gray-500" aria-label="breadcrumb">
         <Link to="/catalog" className="hover:text-primary-600 transition-colors">

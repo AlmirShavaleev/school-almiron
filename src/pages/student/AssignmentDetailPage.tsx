@@ -112,7 +112,7 @@ export function AssignmentDetailPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <Link to="/my-assignments" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
         <ArrowLeft size={14} /> Мои задания
       </Link>
@@ -218,7 +218,7 @@ export function AssignmentDetailPage() {
 
 function PageSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-4 animate-pulse">
+    <div className="max-w-3xl mx-auto space-y-4 animate-pulse">
       <div className="h-4 bg-gray-200 rounded w-32" />
       <div className="h-8 bg-gray-200 rounded w-64" />
       {[1, 2, 3].map(n => <div key={n} className="h-24 bg-gray-100 rounded-xl" />)}

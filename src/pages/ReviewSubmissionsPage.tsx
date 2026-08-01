@@ -33,7 +33,7 @@ export function ReviewSubmissionsPage() {
   const filteredSubmissions = useMemo(() => filtered.filter(hasRenderableSubmissionStatus), [filtered])
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <ClipboardCheck size={22} /> Проверка работ

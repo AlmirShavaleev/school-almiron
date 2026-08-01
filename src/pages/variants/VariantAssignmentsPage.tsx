@@ -201,7 +201,7 @@ export function VariantAssignmentsPage() {
 
   if (variantLoading || loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <Loader2 size={28} className="animate-spin text-primary-500 mx-auto" />
       </div>
     )

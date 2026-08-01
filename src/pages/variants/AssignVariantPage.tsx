@@ -217,7 +217,7 @@ export function AssignVariantPage() {
   }
   if (variantLoading || groupsLoading) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-3xl mx-auto py-10 text-center">
         <Loader2 size={28} className="animate-spin text-primary-500 mx-auto" />
       </div>
     )

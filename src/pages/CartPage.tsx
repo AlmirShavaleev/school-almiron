@@ -41,7 +41,7 @@ export function CartPage() {
 
   if (items.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
+      <div className="max-w-2xl mx-auto py-10 text-center space-y-4">
         <BookOpen className="w-12 h-12 text-gray-300 mx-auto" />
         <h1 className="text-xl font-bold text-gray-900">Подборка пуста</h1>
         <p className="text-gray-500">Добавьте задания из каталога</p>
@@ -161,7 +161,7 @@ export function CartPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -269,9 +269,7 @@ export function CartPage() {
             <button
               onClick={handleSave}
               disabled={!title.trim() || saving}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
-                bg-blue-600 text-white text-sm font-medium
-                hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Save size={16} />
               {saving ? 'Сохраняем…' : 'Сохранить подборку'}
@@ -314,9 +312,7 @@ export function CartPage() {
             <button
               onClick={handleCreateTest}
               disabled={!testTitle.trim() || creating}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg
-                bg-blue-600 text-white text-sm font-medium
-                hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Zap size={16} />
               {creating ? 'Создаём тест…' : 'Создать тест'}

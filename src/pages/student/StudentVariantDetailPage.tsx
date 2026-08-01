@@ -184,8 +184,7 @@ function ConfirmDialog({ answeredCount, totalCount, onConfirm, onCancel, loading
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm bg-primary-600 text-white hover:bg-primary-700 transition-colors
-                       disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 rounded-lg text-sm bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
             Завершить
@@ -431,7 +430,7 @@ export function StudentVariantDetailPage() {
 
   if (detailLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <Loader2 size={28} className="animate-spin text-primary-500 mx-auto" />
       </div>
     )
@@ -439,7 +438,7 @@ export function StudentVariantDetailPage() {
 
   if (detailError || !assignment || !assignment.variant) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-10 text-center">
         <AlertTriangle size={40} className="text-red-400 mx-auto mb-3" />
         <p className="text-red-600 font-medium">{detailError ?? 'Вариант недоступен'}</p>
         <Link to="/student/variants" className="mt-3 text-sm text-primary-600 hover:underline block">
@@ -610,8 +609,7 @@ export function StudentVariantDetailPage() {
               <button
                 onClick={startAttempt}
                 disabled={attemptLoading || autoStarting}
-                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
-                           transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
               >
                 {(attemptLoading || autoStarting) && <Loader2 size={16} className="animate-spin" />}
                 Открыть вручную
@@ -632,8 +630,7 @@ export function StudentVariantDetailPage() {
               <button
                 onClick={startAttempt}
                 disabled={attemptLoading}
-                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
-                           transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+                className="px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
               >
                 {attemptLoading && <Loader2 size={16} className="animate-spin" />}
                 Начать вариант
@@ -1032,8 +1029,7 @@ export function StudentVariantDetailPage() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={() => setShowConfirm(true)}
-              className="px-5 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700
-                         transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors flex items-center gap-2"
             >
               <Send size={15} />
               Завершить вариант

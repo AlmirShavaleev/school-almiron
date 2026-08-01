@@ -94,7 +94,7 @@ export function AssignHomeworkPage() {
   const canAssign = !!collectionId && targetValid && !creating
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Назначение работ</h1>
         <p className="text-sm text-gray-500 mt-1">Выдайте подборку задач ученику или группе</p>

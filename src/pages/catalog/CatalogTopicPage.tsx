@@ -78,7 +78,7 @@ export function CatalogTopicPage() {
   if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="mx-auto max-w-7xl">
       {/* Breadcrumb */}
       <nav className="mb-4 flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">Каталог</Link>
@@ -538,7 +538,7 @@ function TaskListSkeleton() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+    <div className="max-w-3xl mx-auto py-10 text-center">
       <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
       <p className="text-red-600 font-medium">Не удалось загрузить каталог</p>
       <p className="text-gray-500 text-sm mt-1 mb-4">{message}</p>
