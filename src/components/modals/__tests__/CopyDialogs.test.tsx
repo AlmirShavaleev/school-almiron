@@ -104,7 +104,7 @@ describe('CopyCourseDialog', () => {
     const titleInput = fieldByLabel('Название копии') as HTMLInputElement
     fireEvent.change(titleInput, { target: { value: '' } })
 
-    const copyButton = screen.getByRole('button', { name: /Скопировать курс/ })
+    const copyButton = screen.getByRole('button', { name: /Создать копию/ })
     expect(copyButton).toBeDisabled()
     expect(mockCopyCourse).not.toHaveBeenCalled()
   })
@@ -123,7 +123,7 @@ describe('CopyCourseDialog', () => {
       />
     )
 
-    const copyButton = screen.getByRole('button', { name: /Скопировать курс/ })
+    const copyButton = screen.getByRole('button', { name: /Создать копию/ })
     fireEvent.click(copyButton)
 
     await waitFor(() => {
@@ -158,7 +158,7 @@ describe('CopyCourseDialog', () => {
     fireEvent.change(dateInput, { target: { value: '2026-09-01' } })
 
     // Скопировать
-    const copyButton = screen.getByRole('button', { name: /Скопировать курс/ })
+    const copyButton = screen.getByRole('button', { name: /Создать копию/ })
     fireEvent.click(copyButton)
 
     await waitFor(() => {
@@ -184,7 +184,7 @@ describe('CopyCourseDialog', () => {
       />
     )
 
-    const copyButton = screen.getByRole('button', { name: /Скопировать курс/ })
+    const copyButton = screen.getByRole('button', { name: /Создать копию/ })
     fireEvent.click(copyButton)
 
     await waitFor(() => {
@@ -213,7 +213,7 @@ describe('CopyCourseDialog', () => {
       />
     )
 
-    const copyButton = screen.getByRole('button', { name: /Скопировать курс/ })
+    const copyButton = screen.getByRole('button', { name: /Создать копию/ })
     fireEvent.click(copyButton)
 
     await waitFor(() => {

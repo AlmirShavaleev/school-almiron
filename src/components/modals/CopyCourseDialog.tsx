@@ -85,7 +85,7 @@ export function CopyCourseDialog({ open, onClose, course, onCopied }: {
               disabled={busy || !title.trim()}
             >
               <Copy size={15} />
-              Скопировать курс
+              Создать копию
             </Button>
           </div>
         ) : (

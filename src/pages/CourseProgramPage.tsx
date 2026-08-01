@@ -905,8 +905,11 @@ function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSa
           <Save size={15} className="mr-1.5" />Сохранить
         </Button>
         {saved && <span className="text-sm text-green-600 font-medium">Сохранено ✓</span>}
+        {/* Многоточие — не украшение: оно отличает кнопку, открывающую окно, от
+            кнопки внутри окна, которая действительно создаёт копию. Пока обе
+            назывались одинаково, было непонятно, сработало нажатие или нет. */}
         <Button variant="secondary" onClick={onCopyCourse} className="ml-auto">
-          <Copy size={15} className="mr-1.5" />Скопировать курс
+          <Copy size={15} className="mr-1.5" />Скопировать курс…
         </Button>
       </div>
       <p className="text-xs text-gray-500">
