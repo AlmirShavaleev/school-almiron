@@ -7,9 +7,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
-import { useTopicHomework } from '@/hooks/useTopicHomework'
-import { acceptedAttempt, activeAttempt } from '@/lib/topicHomework'
-import { TopicMaterialItems, type SolutionLock } from '@/components/courseProgram/TopicMaterialItems'
+import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
+import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 
@@ -67,9 +66,10 @@ export function TopicPage() {
   // здесь больше не читается.
   const { materials } = useTopicMaterialItems(topicId ?? null)
 
-  // ДЗ темы нужно здесь только ради замка на рубрике «Решение ДЗ»: пока работа
-  // не сдана и не принята, разбор ученику не показываем.
-  const { homework, attempts, loading: hwLoading } = useTopicHomework(topicId ?? null)
+  // Существует ли решение и открыто ли оно этому ученику. Сами материалы
+  // решения до проверки не приходят вовсе — здесь только три флага, без путей
+  // к файлам.
+  const solutionState = useTopicSolutionState(topicId ?? null)
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -124,28 +124,6 @@ export function TopicPage() {
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
   const embedUrl   = ytEmbed || vimeoEmbed
-  // ── Замок на «Решение ДЗ» ────────────────────────────────────────────────
-  // Правило: разбор открывается, когда преподаватель принял работу
-  // (статус попытки 'accepted'). Если к теме вообще не привязано ДЗ, сдавать
-  // нечего — иначе рубрика осталась бы закрытой навсегда.
-  //
-  // Замок косметический: файл лежит в общем бакете и достаётся подписанной
-  // ссылкой. От умысла защищает только RLS, см. PROJECT_STATE §42.
-  const solutionLock: SolutionLock = (() => {
-    if (hwLoading) return { reason: 'Проверяем статус вашего ДЗ…' }
-    if (!homework) return null
-    if (acceptedAttempt(attempts)) return null
-
-    const active = activeAttempt(attempts)
-    if (active?.status === 'submitted') {
-      return { reason: 'Работа на проверке. Разбор откроется, когда преподаватель её примет.' }
-    }
-    if (attempts.some(a => a.status === 'returned_for_revision')) {
-      return { reason: 'Работа вернулась на доработку. Разбор откроется после того, как её примут.' }
-    }
-    return { reason: 'Сначала сдайте ДЗ. Разбор откроется после проверки преподавателем.' }
-  })()
-
   // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
   const isLocked   = topic?.available_from
     ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
@@ -235,8 +213,10 @@ export function TopicPage() {
 
       {/* ── МАТЕРИАЛЫ ТЕМЫ ──
           Скрытые материалы и закрытые темы сюда не доезжают: отсекает RLS
-          вместе с topics.available_from. */}
-      <TopicMaterialItems topicId={topic.id} canManage={false} solutionLock={solutionLock} />
+          вместе с topics.available_from. Раздел «Решение ДЗ» — тоже: до
+          проверки работы его не отдаёт политика, а вкладка честно говорит,
+          что решение появится позже (миграция 20260802000000). */}
+      <TopicMaterialItems topicId={topic.id} canManage={false} tabs solution={solutionState} />
 
       {/* ── PDF-ДЗ ТЕМЫ ──
           Неопубликованное ДЗ сюда не доезжает: отсекает RLS.

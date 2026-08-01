@@ -6426,6 +6426,11 @@ export type Database = {
         Args: { p_topic_id: string }
         Returns: boolean
       }
+      topic_solution_state: { Args: { p_topic_id: string }; Returns: Json }
+      topic_solution_unlocked: {
+        Args: { p_topic_id: string }
+        Returns: boolean
+      }
       topic_test_add_item: {
         Args: { p_task_id: string; p_test_id: string }
         Returns: string

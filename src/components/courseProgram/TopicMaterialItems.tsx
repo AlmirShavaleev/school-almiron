@@ -1,18 +1,16 @@
 import { useRef, useState } from 'react'
 import {
-  ArrowDown, ArrowUp, BookMarked, BookOpen, Check, ClipboardList, Eye, EyeOff,
-  FileText, Link2, Loader2, Lock, Paperclip, Plus, Trash2, Upload, Video, X,
+  ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Lock, Loader2,
+  Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import {
-  STUDENT_SECTION_ORDER,
   TOPIC_MATERIAL_LABELS,
   TOPIC_MATERIAL_SECTION_LABELS,
   bucketForMaterialPath,
   getVideoEmbedUrl,
-  materialDisplayTitle,
   type MaterialDraft,
   type TopicMaterial,
   type TopicMaterialKind,
@@ -27,27 +25,6 @@ const KIND_ICON: Record<TopicMaterialKind, typeof FileText> = {
   file: Paperclip,
 }
 
-/**
- * Оформление заголовков рубрик у ученика. Иконки и цвета намеренно те же, что
- * в плашках на StudentCoursePage: ученик видит на карточке темы оранжевые
- * «Задачи» — и внутри темы находит ровно такой же оранжевый заголовок.
- */
-const SECTION_HEADING: Record<TopicMaterialSection, { icon: typeof FileText; tone: string }> = {
-  theory:   { icon: BookOpen,      tone: 'bg-purple-50 text-purple-600 border-purple-100' },
-  notes:    { icon: BookMarked,    tone: 'bg-blue-50 text-blue-600 border-blue-100' },
-  tasks:    { icon: ClipboardList, tone: 'bg-orange-50 text-orange-600 border-orange-100' },
-  solution: { icon: Check,         tone: 'bg-green-50 text-green-600 border-green-100' },
-}
-
-/**
- * Причина, по которой рубрика «Решение ДЗ» закрыта. null — открыта.
- *
- * ВАЖНО: это только UI. Файл лежит в том же бакете и доступен по подписанной
- * ссылке, поэтому замок защищает от случайного подглядывания, а не от умысла.
- * Настоящее ограничение — RLS/политика бакета, см. PROJECT_STATE §42.
- */
-export type SolutionLock = { reason: string } | null
-
 function formatBytes(bytes: number | null): string | null {
   if (bytes == null) return null
   if (bytes < 1024) return `${bytes} Б`
@@ -58,7 +35,7 @@ function formatBytes(bytes: number | null): string | null {
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, isFirst, isLast, lock,
+  material, topicId, canManage, isFirst, isLast,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
@@ -66,13 +43,11 @@ function MaterialCard({
   canManage: boolean
   isFirst: boolean
   isLast: boolean
-  /** Задан — карточка показана, но открыть её нельзя (рубрика «Решение ДЗ»). */
-  lock?: SolutionLock
   onDelete: (id: string) => void
   onToggleVisibility: (id: string, next: boolean) => void
   onMove: (id: string, direction: 'up' | 'down') => void
 }) {
-  const Icon = lock ? Lock : KIND_ICON[material.kind]
+  const Icon = KIND_ICON[material.kind]
   const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
 
   return (
@@ -80,16 +55,12 @@ function MaterialCard({
       className={cn(
         'rounded-2xl border border-gray-200 bg-white p-4',
         canManage && !material.isVisible && 'border-dashed opacity-70',
-        lock && 'border-dashed bg-gray-50',
       )}
     >
       <div className="mb-2 flex items-center gap-2">
-        <Icon size={15} className={cn('shrink-0', lock ? 'text-gray-400' : 'text-primary-600')} />
-        <span className={cn(
-          'min-w-0 flex-1 truncate text-sm font-semibold',
-          lock ? 'text-gray-500' : 'text-gray-900',
-        )}>
-          {materialDisplayTitle(material)}
+        <Icon size={15} className="shrink-0 text-primary-600" />
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
+          {material.title || TOPIC_MATERIAL_LABELS[material.kind]}
         </span>
 
         {canManage && (
@@ -140,15 +111,11 @@ function MaterialCard({
         )}
       </div>
 
-      {lock && (
-        <p className="text-xs leading-relaxed text-gray-500">{lock.reason}</p>
-      )}
-
-      {!lock && material.kind === 'text' && (
+      {material.kind === 'text' && (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
       )}
 
-      {!lock && material.kind === 'video' &&
+      {material.kind === 'video' &&
         (embed ? (
           <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
             <iframe src={embed} title={material.title || 'Видео темы'} allowFullScreen className="h-full w-full" />
@@ -160,14 +127,14 @@ function MaterialCard({
           </a>
         ))}
 
-      {!lock && material.kind === 'link' && (
+      {material.kind === 'link' && (
         <a href={material.url} target="_blank" rel="noopener noreferrer"
           className="break-all text-sm text-primary-600 hover:underline">
           {material.url}
         </a>
       )}
 
-      {!lock && material.kind === 'file' && (
+      {material.kind === 'file' && (
         <SignedFileLink
           bucket={bucketForMaterialPath(material.storagePath, topicId)}
           url={material.storagePath}
@@ -482,10 +449,8 @@ function VideoAddForm({
  * section — фильтр по рубрике или 'video'. Если задана, показываются только материалы
  * из этой рубрики/вида, и форма добавления подменяется.
  *
- * Без section и с canManage=false включается режим страницы ученика: материалы
- * группируются по рубрикам с заголовками. До 2026-08-01 они шли одним плоским
- * списком, а рубрика в UI не показывалась вовсе — ученик видел столбец
- * одинаковых «Файл» и не мог отличить конспект от задач (PROJECT_STATE §42).
+ * tabs — показывать материалы вкладками по рубрикам вместо сплошного списка.
+ * solution — состояние раздела «Решение ДЗ»: признак существования, наличие задания, статус раскрытия.
  */
 export function TopicMaterialItems({
   topicId,
@@ -493,35 +458,29 @@ export function TopicMaterialItems({
   className,
   section,
   hideAddForm,
-  solutionLock,
+  tabs,
+  solution,
 }: {
   topicId: string
   canManage: boolean
   className?: string
   section?: TopicMaterialSection | 'video'
   hideAddForm?: boolean
-  /** Закрыть рубрику «Решение ДЗ» с объяснением. Работает только у ученика. */
-  solutionLock?: SolutionLock
+  tabs?: boolean
+  solution?: { hasSolution: boolean; hasHomework: boolean; unlocked: boolean }
 }) {
   const {
     materials, loading, error,
     uploadMaterialFile, addMaterial, deleteMaterial, toggleVisibility, moveMaterial,
   } = useTopicMaterialItems(topicId)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [chosenTab, setChosenTab] = useState<TopicMaterialSection | 'video' | 'other' | null>(null)
 
   function guard<T extends unknown[]>(fn: (...args: T) => Promise<unknown>) {
     return (...args: T) => {
       setActionError(null)
       fn(...args).catch((e: any) => setActionError(e?.message ?? 'Не удалось выполнить действие'))
     }
-  }
-
-  // Фильтруем материалы по section
-  let filtered = materials
-  if (section && section !== 'video') {
-    filtered = materials.filter(m => m.section === section)
-  } else if (section === 'video') {
-    filtered = materials.filter(m => m.kind === 'video')
   }
 
   if (loading) {
@@ -533,106 +492,140 @@ export function TopicMaterialItems({
     )
   }
 
-  const emptyMessage = section
-    ? 'В этой рубрике пока пусто'
-    : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
+  // ─── Режим БЕЗ ВКЛАДОК (исходное поведение) ───────────────────────────────────────
+  if (!tabs) {
+    // Фильтруем материалы по section
+    let filtered = materials
+    if (section && section !== 'video') {
+      filtered = materials.filter(m => m.section === section)
+    } else if (section === 'video') {
+      filtered = materials.filter(m => m.kind === 'video')
+    }
 
-  // ── Режим страницы ученика: группировка по рубрикам ──────────────────────
-  // Видео сюда не берём: плеер темы уже стоит выше на TopicPage, и карточка
-  // со ссылкой дублировала бы его.
-  const isStudentOverview = !canManage && !section
-
-  if (isStudentOverview) {
-    const visible = materials.filter(m => m.kind !== 'video')
-    const groups = STUDENT_SECTION_ORDER
-      .map(key => ({ key, items: visible.filter(m => m.section === key) }))
-      .filter(g => g.items.length > 0)
-    const ungrouped = visible.filter(m => m.section === null)
+    const emptyMessage = section
+      ? 'В этой рубрике пока пусто'
+      : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
 
     return (
-      <div className={cn('space-y-6', className)}>
+      <div className={cn('space-y-3', className)}>
         {(error || actionError) && (
           <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
         )}
 
-        {groups.map(({ key, items }) => {
-          const Icon = SECTION_HEADING[key].icon
-          // Замок вешаем только на «Решение ДЗ» и только если он передан.
-          const lock = key === 'solution' ? solutionLock ?? null : null
-
-          return (
-            <section key={key} className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold',
-                  SECTION_HEADING[key].tone,
-                )}>
-                  <Icon size={13} />
-                  {TOPIC_MATERIAL_SECTION_LABELS[key]}
-                </span>
-                <span className="text-xs text-gray-400">{items.length}</span>
-                {lock && (
-                  <span className="inline-flex items-center gap-1 text-xs text-gray-400">
-                    <Lock size={11} />
-                    закрыто
-                  </span>
-                )}
-                <span className="h-px flex-1 bg-gray-100" />
-              </div>
-
-              {items.map((m, i) => (
-                <MaterialCard
-                  key={m.id}
-                  material={m}
-                  topicId={topicId}
-                  canManage={false}
-                  isFirst={i === 0}
-                  isLast={i === items.length - 1}
-                  lock={lock}
-                  onDelete={guard(deleteMaterial)}
-                  onToggleVisibility={guard(toggleVisibility)}
-                  onMove={guard(moveMaterial)}
-                />
-              ))}
-            </section>
-          )
-        })}
-
-        {ungrouped.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-500">
-                <Paperclip size={13} />
-                Другие материалы
-              </span>
-              <span className="text-xs text-gray-400">{ungrouped.length}</span>
-              <span className="h-px flex-1 bg-gray-100" />
-            </div>
-
-            {ungrouped.map((m, i) => (
-              <MaterialCard
-                key={m.id}
-                material={m}
-                topicId={topicId}
-                canManage={false}
-                isFirst={i === 0}
-                isLast={i === ungrouped.length - 1}
-                onDelete={guard(deleteMaterial)}
-                onToggleVisibility={guard(toggleVisibility)}
-                onMove={guard(moveMaterial)}
-              />
-            ))}
-          </section>
+        {canManage && section === 'video' && (
+          <VideoAddForm onAdd={addMaterial} loading={loading} />
         )}
 
-        {visible.length === 0 && (
+        {canManage && section && section !== 'video' && (
+          <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
+        )}
+
+        {canManage && !section && (
+          <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
+        )}
+
+        {filtered.map((m, i) => (
+          <MaterialCard
+            key={m.id}
+            material={m}
+            topicId={topicId}
+            canManage={canManage}
+            isFirst={i === 0}
+            isLast={i === filtered.length - 1}
+            onDelete={guard(deleteMaterial)}
+            onToggleVisibility={guard(toggleVisibility)}
+            onMove={guard(moveMaterial)}
+          />
+        ))}
+
+        {filtered.length === 0 && (
           <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
             {emptyMessage}
           </p>
         )}
+
+        {canManage && !hideAddForm && !section && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
       </div>
     )
   }
+
+  // ─── РЕЖИМ С ВКЛАДКАМИ ───────────────────────────────────────────────────────────────
+
+  // Группируем материалы по рубрикам и типам
+  const bySection: Record<TopicMaterialSection | 'video' | 'other', TopicMaterial[]> = {
+    notes: [],
+    theory: [],
+    tasks: [],
+    solution: [],
+    video: [],
+    other: [],
+  }
+
+  materials.forEach(m => {
+    if (m.section && ['notes', 'theory', 'tasks', 'solution'].includes(m.section)) {
+      // Материалы в рубриках (включая видео в рубриках)
+      bySection[m.section as TopicMaterialSection].push(m)
+    } else if (m.section === null && m.kind === 'video') {
+      // Видео без рубрики — отдельная вкладка
+      bySection.video.push(m)
+    } else if (m.section === null && m.kind !== 'video') {
+      // Прочее (ссылки, тексты, файлы без рубрики)
+      bySection.other.push(m)
+    }
+  })
+
+  // Определяем доступные вкладки в фиксированном порядке
+  const availableTabs: (TopicMaterialSection | 'video' | 'other')[] = []
+
+  // Рубрики в порядке: notes, theory, tasks, solution
+  for (const sectionKey of ['notes', 'theory', 'tasks'] as const) {
+    if (bySection[sectionKey].length > 0) {
+      availableTabs.push(sectionKey)
+    }
+  }
+
+  // Решение показывается, если оно существует (даже без материалов из-за прав)
+  if (solution?.hasSolution) {
+    availableTabs.push('solution')
+  } else if (bySection.solution.length > 0) {
+    availableTabs.push('solution')
+  }
+
+  // Видео без рубрики
+  if (bySection.video.length > 0) {
+    availableTabs.push('video')
+  }
+
+  // Прочее
+  if (bySection.other.length > 0) {
+    availableTabs.push('other')
+  }
+
+  // Вычисляем активную вкладку БЕЗ useEffect, чтобы избежать циклов:
+  // если выбранная вкладка перестала быть доступной, переходим на первую.
+  const active = availableTabs.includes(chosenTab!) ? chosenTab : availableTabs[0] ?? null
+
+  const emptyMessage = canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
+
+  // Если вкладок совсем нет
+  if (availableTabs.length === 0) {
+    return (
+      <div className={cn('space-y-3', className)}>
+        {(error || actionError) && (
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
+        )}
+        <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+          {emptyMessage}
+        </p>
+      </div>
+    )
+  }
+
+  // Материалы активной вкладки
+  const activeTabMaterials = active ? bySection[active as keyof typeof bySection] : []
+
+  // Закрыта ли вкладка решения
+  const isSolutionLocked = active === 'solution' && solution?.hasSolution && !solution.unlocked
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -640,39 +633,73 @@ export function TopicMaterialItems({
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
       )}
 
-      {canManage && section === 'video' && (
-        <VideoAddForm onAdd={addMaterial} loading={loading} />
-      )}
+      {/* Панель вкладок */}
+      <div role="tablist" aria-label="Разделы материалов" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+        {availableTabs.map(tabKey => {
+          // Получаем подпись вкладки
+          let label: string
+          if (tabKey === 'video') {
+            label = 'Видео'
+          } else if (tabKey === 'other') {
+            label = 'Прочее'
+          } else {
+            label = TOPIC_MATERIAL_SECTION_LABELS[tabKey as TopicMaterialSection]
+          }
 
-      {canManage && section && section !== 'video' && (
-        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
-      )}
+          const count = bySection[tabKey as keyof typeof bySection].length
+          const isActive = active === tabKey
+          const isLocked = tabKey === 'solution' && solution?.hasSolution && !solution.unlocked
 
-      {canManage && !section && (
-        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
-      )}
+          return (
+            <button
+              key={tabKey}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setChosenTab(tabKey)}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                isActive
+                  ? 'border-primary-500 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800',
+              )}
+            >
+              {label}
+              {isLocked && <Lock size={12} />}
+              {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
+            </button>
+          )
+        })}
+      </div>
 
-      {filtered.map((m, i) => (
-        <MaterialCard
-          key={m.id}
-          material={m}
-          topicId={topicId}
-          canManage={canManage}
-          isFirst={i === 0}
-          isLast={i === filtered.length - 1}
-          onDelete={guard(deleteMaterial)}
-          onToggleVisibility={guard(toggleVisibility)}
-          onMove={guard(moveMaterial)}
-        />
-      ))}
-
-      {filtered.length === 0 && (
+      {/* Содержимое активной вкладки */}
+      {isSolutionLocked ? (
+        <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
+          <Lock size={20} className="mx-auto text-amber-500" />
+          <p className="mt-2 text-sm font-medium text-amber-900">Решение пока закрыто</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Оно откроется, когда преподаватель проверит вашу работу. Так задание остаётся заданием.
+          </p>
+        </div>
+      ) : activeTabMaterials.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
           {emptyMessage}
         </p>
+      ) : (
+        activeTabMaterials.map((m, i) => (
+          <MaterialCard
+            key={m.id}
+            material={m}
+            topicId={topicId}
+            canManage={canManage}
+            isFirst={i === 0}
+            isLast={i === activeTabMaterials.length - 1}
+            onDelete={guard(deleteMaterial)}
+            onToggleVisibility={guard(toggleVisibility)}
+            onMove={guard(moveMaterial)}
+          />
+        ))
       )}
-
-      {canManage && !hideAddForm && !section && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
     </div>
   )
 }

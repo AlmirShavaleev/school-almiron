@@ -23,8 +23,18 @@ const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const text = (id: string, title: string, position = 0, isVisible = true): TopicMaterial =>
   ({ kind: 'text', id, title, position, isVisible, section: null, content: 'Текст ' + title })
 
-function renderItems(canManage: boolean) {
-  return render(<TopicMaterialItems topicId={TOPIC} canManage={canManage} />)
+function renderItems(
+  canManage: boolean,
+  opts?: { tabs?: boolean; solution?: { hasSolution: boolean; hasHomework: boolean; unlocked: boolean } }
+) {
+  return render(
+    <TopicMaterialItems
+      topicId={TOPIC}
+      canManage={canManage}
+      tabs={opts?.tabs}
+      solution={opts?.solution}
+    />
+  )
 }
 
 beforeEach(() => {
@@ -161,108 +171,105 @@ describe('Материалы темы — ученик', () => {
   })
 })
 
-// ─── Группировка по рубрикам на странице ученика (§42) ───────────────────────
-//
-// До правки ученик получал плоский список, где каждый файл был подписан словом
-// «Файл»: рубрика в БД была, но до UI не доезжала. Тесты закрепляют оба
-// исправления — заголовок по имени файла и порядок рубрик.
+describe('Режим вкладок', () => {
+  // Фабрики материалов с section
+  const materialWithSection = (
+    id: string,
+    title: string,
+    section: 'notes' | 'theory' | 'tasks' | 'solution',
+    position = 0,
+    isVisible = true
+  ): TopicMaterial =>
+    ({ kind: 'text', id, title, position, isVisible, section, content: `Контент ${title}` })
 
-const fileItem = (
-  id: string,
-  fileName: string,
-  section: TopicMaterial['section'],
-  position = 0,
-): TopicMaterial => ({
-  kind: 'file',
-  id,
-  title: null,
-  position,
-  isVisible: true,
-  section,
-  storagePath: `topics/${TOPIC}/${id}.pdf`,
-  fileName,
-  sizeBytes: 1024,
-})
+  it('без пропса tabs список остаётся сплошным', () => {
+    materials = [materialWithSection('m1', 'Конспект', 'notes')]
+    renderItems(false, { tabs: false })
 
-function renderStudent(solutionLock?: { reason: string } | null) {
-  return render(
-    <TopicMaterialItems topicId={TOPIC} canManage={false} solutionLock={solutionLock} />,
-  )
-}
-
-describe('Материалы темы — рубрики у ученика', () => {
-  it('файл без заголовка подписан именем файла без расширения', () => {
-    materials = [fileItem('m1', 'КОНСПЕКТ ЗСИ.pdf', 'notes')]
-    renderStudent()
-
-    expect(screen.getByText('КОНСПЕКТ ЗСИ')).toBeInTheDocument()
-    // Раньше в шапке стояло родовое слово «Файл» — и так у всех карточек сразу.
-    expect(screen.queryByText('Файл')).not.toBeInTheDocument()
+    expect(screen.getByText('Конспект')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 
-  it('рубрики идут учебным маршрутом, а не порядком строк из БД', () => {
+  it('пустые рубрики не превращаются во вкладки', () => {
+    materials = [materialWithSection('m1', 'Мой конспект', 'notes')]
+    renderItems(false, { tabs: true })
+
+    // Есть вкладка «Конспект» (notes) — на ней один материал
+    expect(screen.getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
+    // Нет вкладки «Теория» — нет материалов в theory
+    expect(screen.queryByRole('tab', { name: /Теория/ })).not.toBeInTheDocument()
+  })
+
+  it('вкладки переключаются и показывают свои материалы', () => {
     materials = [
-      fileItem('m1', 'Решение.pdf', 'solution', 0),
-      fileItem('m2', 'Задачи.pdf', 'tasks', 1),
-      fileItem('m3', 'Теория.pdf', 'theory', 2),
-      fileItem('m4', 'Конспект.pdf', 'notes', 3),
+      materialWithSection('m1', 'Конспект номер 1', 'notes', 0),
+      materialWithSection('m2', 'Задача номер 1', 'tasks', 1),
     ]
-    const { container } = renderStudent()
+    renderItems(false, { tabs: true })
 
-    const headings = Array.from(container.querySelectorAll('section'))
-      .map(s => s.querySelector('span')?.textContent?.trim())
-    expect(headings).toEqual(['Теория', 'Конспект', 'Задачи', 'Решение ДЗ'])
+    // Изначально должен быть виден материал конспекта
+    expect(screen.getByText('Конспект номер 1')).toBeInTheDocument()
+    expect(screen.queryByText('Задача номер 1')).not.toBeInTheDocument()
+
+    // Клик на вкладку «Задачи»
+    fireEvent.click(screen.getByRole('tab', { name: /Задачи/ }))
+
+    // Теперь видна задача, конспект скрыт
+    expect(screen.getByText('Задача номер 1')).toBeInTheDocument()
+    expect(screen.queryByText('Конспект номер 1')).not.toBeInTheDocument()
   })
 
-  it('материал без рубрики уезжает в «Другие материалы», а не теряется', () => {
-    materials = [fileItem('m1', 'Без рубрики.pdf', null)]
-    renderStudent()
+  it('закрытое решение показывает вкладку без материалов', () => {
+    materials = [materialWithSection('m1', 'Конспект', 'notes', 0)]
+    renderItems(false, {
+      tabs: true,
+      solution: { hasSolution: true, hasHomework: true, unlocked: false },
+    })
 
-    expect(screen.getByText('Другие материалы')).toBeInTheDocument()
-    expect(screen.getByText('Без рубрики')).toBeInTheDocument()
+    // Вкладка «Решение ДЗ» присутствует
+    expect(screen.getByRole('tab', { name: /Решение ДЗ/ })).toBeInTheDocument()
+
+    // Клик на неё
+    fireEvent.click(screen.getByRole('tab', { name: /Решение ДЗ/ }))
+
+    // Видна стена с замком
+    expect(screen.getByText('Решение пока закрыто')).toBeInTheDocument()
+    // Не видно содержимого материалов (контента конспекта)
+    expect(screen.queryByText('Контент Конспект')).not.toBeInTheDocument()
   })
 
-  it('видео не дублируется списком: плеер темы уже стоит выше на странице', () => {
+  it('открытое решение показывает материалы, а не замок', () => {
     materials = [
-      { kind: 'video', id: 'v1', title: 'Урок', position: 0, isVisible: true, section: null,
-        url: 'https://youtu.be/abc' },
-      fileItem('m1', 'Кинематика.pdf', 'notes', 1),
+      materialWithSection('m1', 'Конспект', 'notes', 0),
+      materialWithSection('m2', 'Ответ на задачу', 'solution', 1),
     ]
-    renderStudent()
+    renderItems(false, {
+      tabs: true,
+      solution: { hasSolution: true, hasHomework: true, unlocked: true },
+    })
 
-    expect(screen.queryByText('Урок')).not.toBeInTheDocument()
-    // Имя файла, а не слово «Конспект»: иначе матчился бы и заголовок рубрики.
-    expect(screen.getByText('Кинематика')).toBeInTheDocument()
+    // Вкладка «Решение ДЗ» присутствует
+    expect(screen.getByRole('tab', { name: /Решение ДЗ/ })).toBeInTheDocument()
+
+    // Клик на неё
+    fireEvent.click(screen.getByRole('tab', { name: /Решение ДЗ/ }))
+
+    // Видна содержимое материала решения
+    expect(screen.getByText('Ответ на задачу')).toBeInTheDocument()
+    // Нет стены с замком
+    expect(screen.queryByText('Решение пока закрыто')).not.toBeInTheDocument()
   })
 
-  it('закрытое «Решение ДЗ» показывает причину и не даёт ссылки на файл', () => {
-    materials = [fileItem('m1', 'Разбор.pdf', 'solution')]
-    const { container } = renderStudent({ reason: 'Сначала сдайте ДЗ.' })
+  it('когда решения нет вовсе, вкладки «Решение ДЗ» нет', () => {
+    materials = [materialWithSection('m1', 'Конспект', 'notes', 0)]
+    renderItems(false, {
+      tabs: true,
+      solution: { hasSolution: false, hasHomework: true, unlocked: false },
+    })
 
-    expect(screen.getByText('Сначала сдайте ДЗ.')).toBeInTheDocument()
-    expect(screen.getByText('закрыто')).toBeInTheDocument()
-    // Имя файла остаётся видно — ученик знает, что разбор существует…
-    expect(screen.getByText('Разбор')).toBeInTheDocument()
-    // …но открыть его нечем.
-    expect(container.querySelector('a')).toBeNull()
-  })
-
-  it('без замка решение открывается ссылкой', () => {
-    materials = [fileItem('m1', 'Разбор.pdf', 'solution')]
-    const { container } = renderStudent(null)
-
-    expect(screen.queryByText('закрыто')).not.toBeInTheDocument()
-    expect(container.querySelector('a')).not.toBeNull()
-  })
-
-  it('замок не трогает остальные рубрики', () => {
-    materials = [
-      fileItem('m1', 'Задачи.pdf', 'tasks', 0),
-      fileItem('m2', 'Разбор.pdf', 'solution', 1),
-    ]
-    const { container } = renderStudent({ reason: 'Сначала сдайте ДЗ.' })
-
-    // Ровно одна ссылка — на задачи; разбор закрыт.
-    expect(container.querySelectorAll('a')).toHaveLength(1)
+    // Вкладка «Решение ДЗ» не должна быть
+    expect(screen.queryByRole('tab', { name: /Решение ДЗ/ })).not.toBeInTheDocument()
+    // Видна только вкладка конспекта
+    expect(screen.getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
   })
 })
