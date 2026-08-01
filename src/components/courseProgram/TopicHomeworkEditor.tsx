@@ -180,6 +180,26 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           {saved && <span className="text-xs text-emerald-600">Сохранено</span>}
         </div>
 
+        {/*
+          Неопубликованное задание ученику не приходит вовсе — его отсекает RLS
+          (`topic_homework_student_select` требует is_published). Снаружи это
+          выглядит так, будто задания нет: ни блока, ни строки, ни подсказки.
+          Маленькой плашки «Скрыто» рядом с заголовком оказалось мало — по ней
+          не видно последствия, и задание месяцами лежит невидимым. Поэтому
+          прямой текст: что именно сейчас видит ученик и чего не хватает, чтобы
+          это исправить.
+        */}
+        {homework && !published && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            <p className="font-semibold">Ученики этого задания не видят</p>
+            <p className="mt-1 text-amber-800">
+              {canPublish
+                ? 'Оно останется скрытым, пока вы не нажмёте «Опубликовать» внизу.'
+                : 'Чтобы опубликовать, прикрепите файл с заданием — без него кнопка публикации недоступна.'}
+            </p>
+          </div>
+        )}
+
         {/* 1. Зона загрузки: несколько файлов подряд, с прогрессом */}
         <input
           ref={inputRef}
