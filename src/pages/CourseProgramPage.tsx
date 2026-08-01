@@ -719,6 +719,7 @@ function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSa
   const [form, setForm]   = useState({ ...course })
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
+  const [publishing, setPublishing] = useState(false)
 
   const [dateErr, setDateErr] = useState<string | null>(null)
 
@@ -768,6 +769,36 @@ function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSa
 
   return (
     <div className="space-y-5 max-w-lg">
+      {/* Черновик снимается отдельной кнопкой, а не переключателем «активен».
+          Это разные вещи: неактивный курс просто закрыт, черновик же ещё и
+          недоступен для записи — сняв только переключатель, преподаватель
+          получил бы курс, на который никто не может записаться, и не понял бы
+          почему. */}
+      {form.is_draft && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">Это черновик</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Ученики курс не видят и записаться на него не могут. Проверьте программу и материалы,
+            затем опубликуйте.
+          </p>
+          <Button
+            className="mt-3"
+            loading={publishing}
+            onClick={async () => {
+              setPublishing(true)
+              try {
+                await onSave({ is_draft: false, is_active: true })
+                setForm(f => ({ ...f, is_draft: false, is_active: true }))
+              } finally {
+                setPublishing(false)
+              }
+            }}
+          >
+            Опубликовать курс
+          </Button>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Название курса</label>
         <input
@@ -1177,9 +1208,13 @@ function CourseCard({ course }: { course: Course }) {
         <span className="text-sm font-semibold leading-snug text-gray-900 group-hover:text-primary-700">
           {course.title}
         </span>
-        {!course.is_active && (
+        {course.is_draft ? (
+          <span className="mt-0.5 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+            черновик
+          </span>
+        ) : !course.is_active ? (
           <span className="mt-0.5 shrink-0 text-xs text-gray-400">архив</span>
-        )}
+        ) : null}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <Badge variant="info" className="text-xs">{SUBJECT_LABELS[course.subject] || course.subject}</Badge>
@@ -1297,8 +1332,12 @@ export function CourseProgramPage() {
   // Рабочие курсы наверх, архивные — под спойлер. Раньше три технических
   // «[E2E] Цикл ДЗ …» с пометкой «архив» стояли первыми и оттесняли живые
   // курсы за пределы первого экрана.
-  const activeCourses = useMemo(() => courses.filter(c => c.is_active), [courses])
-  const archivedCourses = useMemo(() => courses.filter(c => !c.is_active), [courses])
+  // Черновики идут отдельной группой и НЕ попадают в архив. Свежая копия курса
+  // создаётся черновиком, и первое, что с ней делают, — открывают. В свёрнутом
+  // «Архиве» её принимали за пропавшую.
+  const draftCourses = useMemo(() => courses.filter(c => c.is_draft), [courses])
+  const activeCourses = useMemo(() => courses.filter(c => c.is_active && !c.is_draft), [courses])
+  const archivedCourses = useMemo(() => courses.filter(c => !c.is_active && !c.is_draft), [courses])
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
@@ -1623,6 +1662,19 @@ export function CourseProgramPage() {
           <p className="py-4 text-sm text-gray-400">Нет курсов</p>
         ) : (
           <>
+            {/* Черновики — наверху и раскрытыми: сюда попадает свежая копия
+                курса, и её ищут сразу после создания. */}
+            {draftCourses.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-600">
+                  Черновики · {draftCourses.length}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {draftCourses.map(c => <CourseCard key={c.id} course={c} />)}
+                </div>
+              </div>
+            )}
+
             {activeCourses.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {activeCourses.map(c => <CourseCard key={c.id} course={c} />)}

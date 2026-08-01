@@ -29,6 +29,8 @@ export interface Course {
   price: number
   duration_weeks: number
   is_active: boolean
+  /** Черновик: ученики курс не видят и записаться не могут. */
+  is_draft: boolean
   start_date: string | null
   end_date: string | null
   enrollment_open_until: string | null

@@ -38,6 +38,7 @@ const createCourse = (overrides?: Partial<Course>): Course => ({
   title: 'Физика 9 класс',
   start_date: '2025-09-01',
   is_active: true,
+  is_draft: false,
   owner_id: null,
   subject: 'physics',
   exam_type: 'oge',
