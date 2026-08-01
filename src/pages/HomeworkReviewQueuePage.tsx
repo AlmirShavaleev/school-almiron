@@ -36,13 +36,15 @@ function formatTime(value: string | null): string | null {
  * то же место, так что попасть мимо невозможно.
  */
 function QueueRowItem({
-  row, files, studentName, viewers, onOpen,
+  row, files, studentName, viewers, showCourse, onOpen,
 }: {
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
   studentName: string
   /** Коллеги, открывшие эту работу прямо сейчас. */
   viewers: PresenceMeta[]
+  /** Показывать курс в строке: нужно, только когда в списке их несколько. */
+  showCourse: boolean
   onOpen: () => void
 }) {
   const { attempt } = row
@@ -66,6 +68,9 @@ function QueueRowItem({
         <span className="font-medium">{studentName}</span>
         <span className="text-gray-400"> — </span>
         <span className="text-gray-600">{row.topicTitle}</span>
+        {showCourse && (
+          <span className="ml-2 text-xs text-gray-400">{row.courseTitle}</span>
+        )}
         {attempt.attempt_number > 1 && (
           <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">
             попытка №{attempt.attempt_number}
@@ -81,18 +86,10 @@ function QueueRowItem({
 
       {time && <span className="hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline">{time}</span>}
 
-      {late && (
-        <span
-          data-testid="queue-late-badge"
-          className="hidden shrink-0 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 sm:inline-flex"
-        >
-          <AlertTriangle size={11} />
-          Просрочено
-        </span>
-      )}
-
-      {/* Синяя плашка означает «за работу уже взялись» — это не статус работы,
-          а присутствие коллеги. Различить их важнее, чем сэкономить цвет. */}
+      {/* Плашка ровно одна. Раньше «Просрочено» и «Ожидает проверки» стояли
+          рядом и спорили за внимание, хотя сообщали одно и то же состояние с
+          разной срочностью. Порядок важности: за работу уже взялись → работа
+          просрочена → обычное ожидание. */}
       {busy ? (
         <span
           data-testid="queue-viewer-badge"
@@ -101,6 +98,14 @@ function QueueRowItem({
         >
           <Eye size={11} />
           Проверяется
+        </span>
+      ) : late ? (
+        <span
+          data-testid="queue-late-badge"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800"
+        >
+          <AlertTriangle size={11} />
+          Просрочено
         </span>
       ) : (
         <span className="hidden shrink-0 rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 sm:inline-flex">
@@ -149,6 +154,10 @@ export function HomeworkReviewQueuePage() {
   }, [rows, courseFilter, onlyLate, order])
 
   const groups = useMemo(() => groupByDay(visibleRows), [visibleRows])
+
+  // Курс в строке нужен, только когда их в списке несколько: при выбранном
+  // курсе повторять его название в каждой строке — шум.
+  const showCourseInRow = courseFilter === 'all' && courseOptions.length > 1
   const lateCount = rows.filter(isSubmittedLate).length
 
   // Фильтр по курсу мог отсечь всё — это не то же самое, что пустая очередь,
@@ -303,6 +312,7 @@ export function HomeworkReviewQueuePage() {
                     files={filesOf(row.attempt.id)}
                     studentName={studentNames[row.attempt.student_id] ?? 'Ученик'}
                     viewers={viewersOf(row.attempt.id)}
+                    showCourse={showCourseInRow}
                     onOpen={() => setReviewing({ row, locked: viewersOf(row.attempt.id).length > 0 })}
                   />
                 ))}
