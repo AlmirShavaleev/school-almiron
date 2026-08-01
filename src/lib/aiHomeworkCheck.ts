@@ -108,10 +108,10 @@ export function findingsToRegions(
 export function aiErrorMessage(raw: string | null | undefined): string {
   const text = String(raw ?? '').trim()
   if (!text) return 'ИИ-проверка не удалась'
-  if (text.includes('GEMINI_API_KEY') || text.includes('не настроена')) {
+  if (text.includes('AI_API_KEY') || text.includes('GEMINI_API_KEY') || text.includes('не настроена')) {
     return 'ИИ-проверка ещё не подключена — нужен ключ модели в настройках проекта'
   }
-  if (text.includes('нет файлов') || text.includes('слишком большие')) return text
+  if (text.includes('нет файлов') || text.includes('нет фотографий') || text.includes('слишком большие')) return text
   if (/\b(429|quota|RESOURCE_EXHAUSTED)\b/i.test(text)) {
     return 'Лимит запросов к модели исчерпан — попробуйте позже'
   }
