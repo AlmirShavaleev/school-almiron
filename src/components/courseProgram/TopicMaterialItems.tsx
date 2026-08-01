@@ -1,15 +1,18 @@
 import { useRef, useState } from 'react'
 import {
-  ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Loader2,
-  Paperclip, Plus, Trash2, Upload, Video, X,
+  ArrowDown, ArrowUp, BookMarked, BookOpen, Check, ClipboardList, Eye, EyeOff,
+  FileText, Link2, Loader2, Lock, Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import {
+  STUDENT_SECTION_ORDER,
   TOPIC_MATERIAL_LABELS,
+  TOPIC_MATERIAL_SECTION_LABELS,
   bucketForMaterialPath,
   getVideoEmbedUrl,
+  materialDisplayTitle,
   type MaterialDraft,
   type TopicMaterial,
   type TopicMaterialKind,
@@ -24,6 +27,27 @@ const KIND_ICON: Record<TopicMaterialKind, typeof FileText> = {
   file: Paperclip,
 }
 
+/**
+ * Оформление заголовков рубрик у ученика. Иконки и цвета намеренно те же, что
+ * в плашках на StudentCoursePage: ученик видит на карточке темы оранжевые
+ * «Задачи» — и внутри темы находит ровно такой же оранжевый заголовок.
+ */
+const SECTION_HEADING: Record<TopicMaterialSection, { icon: typeof FileText; tone: string }> = {
+  theory:   { icon: BookOpen,      tone: 'bg-purple-50 text-purple-600 border-purple-100' },
+  notes:    { icon: BookMarked,    tone: 'bg-blue-50 text-blue-600 border-blue-100' },
+  tasks:    { icon: ClipboardList, tone: 'bg-orange-50 text-orange-600 border-orange-100' },
+  solution: { icon: Check,         tone: 'bg-green-50 text-green-600 border-green-100' },
+}
+
+/**
+ * Причина, по которой рубрика «Решение ДЗ» закрыта. null — открыта.
+ *
+ * ВАЖНО: это только UI. Файл лежит в том же бакете и доступен по подписанной
+ * ссылке, поэтому замок защищает от случайного подглядывания, а не от умысла.
+ * Настоящее ограничение — RLS/политика бакета, см. PROJECT_STATE §42.
+ */
+export type SolutionLock = { reason: string } | null
+
 function formatBytes(bytes: number | null): string | null {
   if (bytes == null) return null
   if (bytes < 1024) return `${bytes} Б`
@@ -34,7 +58,7 @@ function formatBytes(bytes: number | null): string | null {
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, isFirst, isLast,
+  material, topicId, canManage, isFirst, isLast, lock,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
@@ -42,11 +66,13 @@ function MaterialCard({
   canManage: boolean
   isFirst: boolean
   isLast: boolean
+  /** Задан — карточка показана, но открыть её нельзя (рубрика «Решение ДЗ»). */
+  lock?: SolutionLock
   onDelete: (id: string) => void
   onToggleVisibility: (id: string, next: boolean) => void
   onMove: (id: string, direction: 'up' | 'down') => void
 }) {
-  const Icon = KIND_ICON[material.kind]
+  const Icon = lock ? Lock : KIND_ICON[material.kind]
   const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
 
   return (
@@ -54,12 +80,16 @@ function MaterialCard({
       className={cn(
         'rounded-2xl border border-gray-200 bg-white p-4',
         canManage && !material.isVisible && 'border-dashed opacity-70',
+        lock && 'border-dashed bg-gray-50',
       )}
     >
       <div className="mb-2 flex items-center gap-2">
-        <Icon size={15} className="shrink-0 text-primary-600" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
-          {material.title || TOPIC_MATERIAL_LABELS[material.kind]}
+        <Icon size={15} className={cn('shrink-0', lock ? 'text-gray-400' : 'text-primary-600')} />
+        <span className={cn(
+          'min-w-0 flex-1 truncate text-sm font-semibold',
+          lock ? 'text-gray-500' : 'text-gray-900',
+        )}>
+          {materialDisplayTitle(material)}
         </span>
 
         {canManage && (
@@ -110,11 +140,15 @@ function MaterialCard({
         )}
       </div>
 
-      {material.kind === 'text' && (
+      {lock && (
+        <p className="text-xs leading-relaxed text-gray-500">{lock.reason}</p>
+      )}
+
+      {!lock && material.kind === 'text' && (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
       )}
 
-      {material.kind === 'video' &&
+      {!lock && material.kind === 'video' &&
         (embed ? (
           <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
             <iframe src={embed} title={material.title || 'Видео темы'} allowFullScreen className="h-full w-full" />
@@ -126,14 +160,14 @@ function MaterialCard({
           </a>
         ))}
 
-      {material.kind === 'link' && (
+      {!lock && material.kind === 'link' && (
         <a href={material.url} target="_blank" rel="noopener noreferrer"
           className="break-all text-sm text-primary-600 hover:underline">
           {material.url}
         </a>
       )}
 
-      {material.kind === 'file' && (
+      {!lock && material.kind === 'file' && (
         <SignedFileLink
           bucket={bucketForMaterialPath(material.storagePath, topicId)}
           url={material.storagePath}
@@ -447,6 +481,11 @@ function VideoAddForm({
  *
  * section — фильтр по рубрике или 'video'. Если задана, показываются только материалы
  * из этой рубрики/вида, и форма добавления подменяется.
+ *
+ * Без section и с canManage=false включается режим страницы ученика: материалы
+ * группируются по рубрикам с заголовками. До 2026-08-01 они шли одним плоским
+ * списком, а рубрика в UI не показывалась вовсе — ученик видел столбец
+ * одинаковых «Файл» и не мог отличить конспект от задач (PROJECT_STATE §42).
  */
 export function TopicMaterialItems({
   topicId,
@@ -454,12 +493,15 @@ export function TopicMaterialItems({
   className,
   section,
   hideAddForm,
+  solutionLock,
 }: {
   topicId: string
   canManage: boolean
   className?: string
   section?: TopicMaterialSection | 'video'
   hideAddForm?: boolean
+  /** Закрыть рубрику «Решение ДЗ» с объяснением. Работает только у ученика. */
+  solutionLock?: SolutionLock
 }) {
   const {
     materials, loading, error,
@@ -494,6 +536,103 @@ export function TopicMaterialItems({
   const emptyMessage = section
     ? 'В этой рубрике пока пусто'
     : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
+
+  // ── Режим страницы ученика: группировка по рубрикам ──────────────────────
+  // Видео сюда не берём: плеер темы уже стоит выше на TopicPage, и карточка
+  // со ссылкой дублировала бы его.
+  const isStudentOverview = !canManage && !section
+
+  if (isStudentOverview) {
+    const visible = materials.filter(m => m.kind !== 'video')
+    const groups = STUDENT_SECTION_ORDER
+      .map(key => ({ key, items: visible.filter(m => m.section === key) }))
+      .filter(g => g.items.length > 0)
+    const ungrouped = visible.filter(m => m.section === null)
+
+    return (
+      <div className={cn('space-y-6', className)}>
+        {(error || actionError) && (
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
+        )}
+
+        {groups.map(({ key, items }) => {
+          const Icon = SECTION_HEADING[key].icon
+          // Замок вешаем только на «Решение ДЗ» и только если он передан.
+          const lock = key === 'solution' ? solutionLock ?? null : null
+
+          return (
+            <section key={key} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold',
+                  SECTION_HEADING[key].tone,
+                )}>
+                  <Icon size={13} />
+                  {TOPIC_MATERIAL_SECTION_LABELS[key]}
+                </span>
+                <span className="text-xs text-gray-400">{items.length}</span>
+                {lock && (
+                  <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                    <Lock size={11} />
+                    закрыто
+                  </span>
+                )}
+                <span className="h-px flex-1 bg-gray-100" />
+              </div>
+
+              {items.map((m, i) => (
+                <MaterialCard
+                  key={m.id}
+                  material={m}
+                  topicId={topicId}
+                  canManage={false}
+                  isFirst={i === 0}
+                  isLast={i === items.length - 1}
+                  lock={lock}
+                  onDelete={guard(deleteMaterial)}
+                  onToggleVisibility={guard(toggleVisibility)}
+                  onMove={guard(moveMaterial)}
+                />
+              ))}
+            </section>
+          )
+        })}
+
+        {ungrouped.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-500">
+                <Paperclip size={13} />
+                Другие материалы
+              </span>
+              <span className="text-xs text-gray-400">{ungrouped.length}</span>
+              <span className="h-px flex-1 bg-gray-100" />
+            </div>
+
+            {ungrouped.map((m, i) => (
+              <MaterialCard
+                key={m.id}
+                material={m}
+                topicId={topicId}
+                canManage={false}
+                isFirst={i === 0}
+                isLast={i === ungrouped.length - 1}
+                onDelete={guard(deleteMaterial)}
+                onToggleVisibility={guard(toggleVisibility)}
+                onMove={guard(moveMaterial)}
+              />
+            ))}
+          </section>
+        )}
+
+        {visible.length === 0 && (
+          <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+            {emptyMessage}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={cn('space-y-3', className)}>

@@ -160,3 +160,109 @@ describe('Материалы темы — ученик', () => {
     expect(screen.queryByText('Скрыт')).not.toBeInTheDocument()
   })
 })
+
+// ─── Группировка по рубрикам на странице ученика (§42) ───────────────────────
+//
+// До правки ученик получал плоский список, где каждый файл был подписан словом
+// «Файл»: рубрика в БД была, но до UI не доезжала. Тесты закрепляют оба
+// исправления — заголовок по имени файла и порядок рубрик.
+
+const fileItem = (
+  id: string,
+  fileName: string,
+  section: TopicMaterial['section'],
+  position = 0,
+): TopicMaterial => ({
+  kind: 'file',
+  id,
+  title: null,
+  position,
+  isVisible: true,
+  section,
+  storagePath: `topics/${TOPIC}/${id}.pdf`,
+  fileName,
+  sizeBytes: 1024,
+})
+
+function renderStudent(solutionLock?: { reason: string } | null) {
+  return render(
+    <TopicMaterialItems topicId={TOPIC} canManage={false} solutionLock={solutionLock} />,
+  )
+}
+
+describe('Материалы темы — рубрики у ученика', () => {
+  it('файл без заголовка подписан именем файла без расширения', () => {
+    materials = [fileItem('m1', 'КОНСПЕКТ ЗСИ.pdf', 'notes')]
+    renderStudent()
+
+    expect(screen.getByText('КОНСПЕКТ ЗСИ')).toBeInTheDocument()
+    // Раньше в шапке стояло родовое слово «Файл» — и так у всех карточек сразу.
+    expect(screen.queryByText('Файл')).not.toBeInTheDocument()
+  })
+
+  it('рубрики идут учебным маршрутом, а не порядком строк из БД', () => {
+    materials = [
+      fileItem('m1', 'Решение.pdf', 'solution', 0),
+      fileItem('m2', 'Задачи.pdf', 'tasks', 1),
+      fileItem('m3', 'Теория.pdf', 'theory', 2),
+      fileItem('m4', 'Конспект.pdf', 'notes', 3),
+    ]
+    const { container } = renderStudent()
+
+    const headings = Array.from(container.querySelectorAll('section'))
+      .map(s => s.querySelector('span')?.textContent?.trim())
+    expect(headings).toEqual(['Теория', 'Конспект', 'Задачи', 'Решение ДЗ'])
+  })
+
+  it('материал без рубрики уезжает в «Другие материалы», а не теряется', () => {
+    materials = [fileItem('m1', 'Без рубрики.pdf', null)]
+    renderStudent()
+
+    expect(screen.getByText('Другие материалы')).toBeInTheDocument()
+    expect(screen.getByText('Без рубрики')).toBeInTheDocument()
+  })
+
+  it('видео не дублируется списком: плеер темы уже стоит выше на странице', () => {
+    materials = [
+      { kind: 'video', id: 'v1', title: 'Урок', position: 0, isVisible: true, section: null,
+        url: 'https://youtu.be/abc' },
+      fileItem('m1', 'Кинематика.pdf', 'notes', 1),
+    ]
+    renderStudent()
+
+    expect(screen.queryByText('Урок')).not.toBeInTheDocument()
+    // Имя файла, а не слово «Конспект»: иначе матчился бы и заголовок рубрики.
+    expect(screen.getByText('Кинематика')).toBeInTheDocument()
+  })
+
+  it('закрытое «Решение ДЗ» показывает причину и не даёт ссылки на файл', () => {
+    materials = [fileItem('m1', 'Разбор.pdf', 'solution')]
+    const { container } = renderStudent({ reason: 'Сначала сдайте ДЗ.' })
+
+    expect(screen.getByText('Сначала сдайте ДЗ.')).toBeInTheDocument()
+    expect(screen.getByText('закрыто')).toBeInTheDocument()
+    // Имя файла остаётся видно — ученик знает, что разбор существует…
+    expect(screen.getByText('Разбор')).toBeInTheDocument()
+    // …но открыть его нечем.
+    expect(container.querySelector('a')).toBeNull()
+  })
+
+  it('без замка решение открывается ссылкой', () => {
+    materials = [fileItem('m1', 'Разбор.pdf', 'solution')]
+    const { container } = renderStudent(null)
+
+    expect(screen.queryByText('закрыто')).not.toBeInTheDocument()
+    expect(container.querySelector('a')).not.toBeNull()
+  })
+
+  it('замок не трогает остальные рубрики', () => {
+    materials = [
+      fileItem('m1', 'Задачи.pdf', 'tasks', 0),
+      fileItem('m2', 'Разбор.pdf', 'solution', 1),
+    ]
+    const { container } = renderStudent({ reason: 'Сначала сдайте ДЗ.' })
+
+    // Ровно одна ссылка — на задачи; разбор закрыт.
+    expect(container.querySelectorAll('a')).toHaveLength(1)
+  })
+})

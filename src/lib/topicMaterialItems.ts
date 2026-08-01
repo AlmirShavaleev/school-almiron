@@ -39,6 +39,14 @@ export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string>
   solution: 'Решение ДЗ',
 }
 
+/**
+ * Порядок рубрик на странице ученика: сначала разбираемся в теме, потом решаем,
+ * в конце сверяемся с решением. Отличается от TOPIC_MATERIAL_SECTIONS намеренно —
+ * там порядок кнопок у преподавателя, здесь учебный маршрут.
+ */
+export const STUDENT_SECTION_ORDER: readonly TopicMaterialSection[] =
+  ['theory', 'notes', 'tasks', 'solution'] as const
+
 export const TOPIC_MATERIAL_KINDS: readonly TopicMaterialKind[] = ['text', 'video', 'link', 'file'] as const
 
 export const TOPIC_MATERIAL_LABELS: Record<TopicMaterialKind, string> = {
@@ -117,6 +125,34 @@ export function toTopicMaterial(row: TopicMaterialItemRow): TopicMaterial | null
     default:
       return null
   }
+}
+
+/**
+ * Что писать в шапке карточки материала.
+ *
+ * Быстрая загрузка (QuickAttach) кладёт файлы с пустым title, поэтому раньше
+ * ученик видел столбец одинаковых «Файл» и не мог отличить конспект от задач.
+ * Имя файла преподаватель задаёт осмысленно («КОНСПЕКТ Баллистика…»), так что
+ * оно и есть лучший заголовок. Расширение убираем: `.pdf` в шапке — шум,
+ * тип файла и так виден по иконке и подписи со ссылкой.
+ */
+export function materialDisplayTitle(material: TopicMaterial): string {
+  const explicit = material.title?.trim()
+  if (explicit) return explicit
+
+  if (material.kind === 'file') {
+    const name = material.fileName?.trim()
+    if (name) return stripFileExtension(name)
+  }
+
+  return TOPIC_MATERIAL_LABELS[material.kind]
+}
+
+/** «Конспект ЗСИ.pdf» → «Конспект ЗСИ». Файл без расширения остаётся как есть. */
+export function stripFileExtension(fileName: string): string {
+  const dot = fileName.lastIndexOf('.')
+  // dot > 0, чтобы не съесть имя вида «.gitignore» целиком.
+  return dot > 0 ? fileName.slice(0, dot) : fileName
 }
 
 /**
