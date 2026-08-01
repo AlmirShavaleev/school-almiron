@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupByCourse, isAlreadyReviewedError, isSubmittedLate, sortQueue, toQueueRows } from './homeworkQueue'
+import { courseFilterOptions, groupByDay, groupByCourse, sortQueue, toQueueRows } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
   return {
@@ -71,62 +71,142 @@ describe('groupByCourse', () => {
   })
 })
 
-describe('isSubmittedLate', () => {
-  function row(dueAt: string | null, submittedAt: string | null) {
-    return toQueueRows([
-      rawRow({
-        submitted_at: submittedAt,
-        homework: {
-          id: 'hw1', title: 'ДЗ', grade_scale: 'five', due_at: dueAt,
-          topic: { id: 't1', title: 'Тема', module: { id: 'm1', course: { id: 'c1', title: 'Курс' } } },
-        },
-      }),
-    ])[0]
-  }
-
-  it('сдано позже срока — просрочено', () => {
-    expect(isSubmittedLate(row('2026-07-20T00:00:00Z', '2026-07-21T10:00:00Z'))).toBe(true)
+describe('groupByDay', () => {
+  it('работы одного дня попадают в одну группу', () => {
+    const rows = toQueueRows([
+      rawRow({ id: 'a1', submitted_at: '2025-11-18T09:00:00Z' }),
+      rawRow({ id: 'a2', submitted_at: '2025-11-18T12:30:00Z' }),
+      rawRow({ id: 'a3', submitted_at: '2025-11-18T21:00:00Z' }),
+    ])
+    const groups = groupByDay(rows)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].rows).toHaveLength(3)
+    expect(groups[0].rows.map(r => r.attempt.id)).toEqual(['a1', 'a2', 'a3'])
   })
 
-  it('сдано до срока — не просрочено', () => {
-    expect(isSubmittedLate(row('2026-07-25T00:00:00Z', '2026-07-21T10:00:00Z'))).toBe(false)
+  it('разные дни — разные группы, порядок исходного списка сохраняется', () => {
+    const rows = toQueueRows([
+      rawRow({ id: 'a1', submitted_at: '2025-11-18T09:00:00Z' }),
+      rawRow({ id: 'a2', submitted_at: '2025-11-17T12:30:00Z' }),
+      rawRow({ id: 'a3', submitted_at: '2025-11-18T21:00:00Z' }),
+    ])
+    const groups = groupByDay(rows)
+    expect(groups).toHaveLength(2)
+    expect(groups[0].dayKey).toBe('2025-11-18')
+    expect(groups[0].rows.map(r => r.attempt.id)).toEqual(['a1', 'a3'])
+    expect(groups[1].dayKey).toBe('2025-11-17')
+    expect(groups[1].rows.map(r => r.attempt.id)).toEqual(['a2'])
   })
 
-  it('срока нет — просрочки быть не может', () => {
-    expect(isSubmittedLate(row(null, '2026-07-21T10:00:00Z'))).toBe(false)
+  it('день считается по локальному времени, а не по UTC', () => {
+    const testIso = '2025-11-18T00:30:00Z'
+    const testDate = new Date(testIso)
+    const expectedLocalYear = testDate.getFullYear()
+    const expectedLocalMonth = (testDate.getMonth() + 1).toString().padStart(2, '0')
+    const expectedLocalDay = testDate.getDate().toString().padStart(2, '0')
+    const expectedKey = `${expectedLocalYear}-${expectedLocalMonth}-${expectedLocalDay}`
+
+    const rows = toQueueRows([rawRow({ id: 'a1', submitted_at: testIso })])
+    const groups = groupByDay(rows)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].dayKey).toBe(expectedKey)
   })
 
-  it('даты сдачи нет — не угадываем, считаем «не просрочено»', () => {
-    expect(isSubmittedLate(row('2026-07-20T00:00:00Z', null))).toBe(false)
+  it('подпись группы — русская дата', () => {
+    const rows = toQueueRows([
+      rawRow({ id: 'a1', submitted_at: '2025-11-18T10:00:00Z' }),
+    ])
+    const groups = groupByDay(rows)
+    expect(groups).toHaveLength(1)
+    // Русская локаль в этом окружении есть — проверяем месяц словом, иначе
+    // подпись могла бы молча съехать на «11/18/2025» и никто бы не заметил.
+    expect(groups[0].label).toMatch(/ноября 2025/)
   })
 
-  it('сравнивается момент СДАЧИ с дедлайном, а не «сейчас»: работа, сданная вовремя, не станет просроченной со временем', () => {
-    // Дедлайн давно прошёл, но сдали до него — значит ученик не опоздал.
-    const long_ago = row('2020-01-10T00:00:00Z', '2020-01-05T00:00:00Z')
-    expect(isSubmittedLate(long_ago)).toBe(false)
-  })
-
-  it('due_at пробрасывается в строку очереди', () => {
-    expect(row('2026-07-20T00:00:00Z', '2026-07-21T10:00:00Z').dueAt).toBe('2026-07-20T00:00:00Z')
+  it('работа без даты сдачи не теряется', () => {
+    const rows = toQueueRows([
+      rawRow({ id: 'a1', submitted_at: '2025-11-18T10:00:00Z' }),
+      rawRow({ id: 'a2', submitted_at: null }),
+    ])
+    const groups = groupByDay(rows)
+    expect(groups).toHaveLength(2)
+    const unknownGroup = groups.find(g => g.dayKey === 'unknown')
+    expect(unknownGroup).toBeDefined()
+    expect(unknownGroup?.label).toBe('Без даты сдачи')
+    expect(unknownGroup?.rows.map(r => r.attempt.id)).toEqual(['a2'])
   })
 })
 
-describe('isAlreadyReviewedError — работу успел проверить кто-то другой', () => {
-  it('узнаёт отказ RPC при повторном вердикте', () => {
-    // topic_homework_review_attempt меняет статус только where status='submitted'
-    // и иначе падает этим текстом — своего кода ошибки у него нет.
-    expect(isAlreadyReviewedError({ message: 'Попытка не в статусе «сдано»' })).toBe(true)
+describe('courseFilterOptions', () => {
+  it('считает работы по каждому курсу', () => {
+    const algebra = rawRow({
+      id: 'a1',
+      homework: {
+        id: 'hw1',
+        title: 'ДЗ 1',
+        grade_scale: null,
+        topic: { id: 't1', title: 'Тема 1', module: { id: 'm1', course: { id: 'c1', title: 'Алгебра' } } },
+      },
+    })
+    const algebra2 = rawRow({
+      id: 'a2',
+      homework: {
+        id: 'hw2',
+        title: 'ДЗ 2',
+        grade_scale: null,
+        topic: { id: 't2', title: 'Тема 2', module: { id: 'm1', course: { id: 'c1', title: 'Алгебра' } } },
+      },
+    })
+    const physics = rawRow({
+      id: 'a3',
+      homework: {
+        id: 'hw3',
+        title: 'ДЗ 3',
+        grade_scale: null,
+        topic: { id: 't3', title: 'Тема 3', module: { id: 'm2', course: { id: 'c2', title: 'Физика' } } },
+      },
+    })
+
+    const rows = toQueueRows([algebra, algebra2, physics])
+    const options = courseFilterOptions(rows)
+
+    expect(options).toHaveLength(2)
+    const algebraOption = options.find(o => o.id === 'c1')
+    expect(algebraOption?.count).toBe(2)
+    const physicsOption = options.find(o => o.id === 'c2')
+    expect(physicsOption?.count).toBe(1)
   })
 
-  it('не путает с другими ошибками того же RPC', () => {
-    expect(isAlreadyReviewedError({ message: 'Балл должен быть от 0 до 5' })).toBe(false)
-    expect(isAlreadyReviewedError({ message: 'У этого ДЗ есть шкала баллов — укажите балл (0–5)' })).toBe(false)
-    expect(isAlreadyReviewedError({ message: 'Нет прав' })).toBe(false)
+  it('курсы отсортированы по названию', () => {
+    const physics = rawRow({
+      id: 'a1',
+      homework: {
+        id: 'hw1',
+        title: 'ДЗ 1',
+        grade_scale: null,
+        topic: { id: 't1', title: 'Тема 1', module: { id: 'm1', course: { id: 'c1', title: 'Физика' } } },
+      },
+    })
+    const algebra = rawRow({
+      id: 'a2',
+      homework: {
+        id: 'hw2',
+        title: 'ДЗ 2',
+        grade_scale: null,
+        topic: { id: 't2', title: 'Тема 2', module: { id: 'm2', course: { id: 'c2', title: 'Алгебра' } } },
+      },
+    })
+
+    const rows = toQueueRows([physics, algebra])
+    const options = courseFilterOptions(rows)
+
+    expect(options).toHaveLength(2)
+    expect(options[0].title).toBe('Алгебра')
+    expect(options[1].title).toBe('Физика')
   })
 
-  it('не падает на пустом и не-объекте', () => {
-    expect(isAlreadyReviewedError(null)).toBe(false)
-    expect(isAlreadyReviewedError(undefined)).toBe(false)
-    expect(isAlreadyReviewedError('Попытка не в статусе «сдано»')).toBe(true)
+  it('пустая очередь — пустой список', () => {
+    const options = courseFilterOptions([])
+    expect(options).toEqual([])
   })
 })
