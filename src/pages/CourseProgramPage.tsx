@@ -35,6 +35,7 @@ import { CourseStudentsSection } from '@/components/courseProgram/CourseStudents
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { CopyCourseDialog } from '@/components/modals/CopyCourseDialog'
 import { CopyTopicDialog } from '@/components/modals/CopyTopicDialog'
+import { DeleteCourseDialog } from '@/components/modals/DeleteCourseDialog'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
@@ -715,7 +716,7 @@ function ModuleCard({
 
 
 // ─── Course settings form ─────────────────────────────────────────────────────
-function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSave: (v: Partial<Course>) => Promise<void>; onCopyCourse: () => void }) {
+function CourseSettings({ course, onSave, onCopyCourse, onDeleteCourse }: { course: Course; onSave: (v: Partial<Course>) => Promise<void>; onCopyCourse: () => void; onDeleteCourse: () => void }) {
   const [form, setForm]   = useState({ ...course })
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
@@ -946,6 +947,22 @@ function CourseSettings({ course, onSave, onCopyCourse }: { course: Course; onSa
       <p className="text-xs text-gray-500">
         Копия получит все модули, темы и материалы. Ученики и ссылка-приглашение не переносятся.
       </p>
+
+      {/* Удаление доступно только для архива и черновиков. Действующий курс
+          придётся сначала убрать в архив — лишний шаг стоит дёшево, а промах
+          по рабочему курсу не стоит ничего вернуть. */}
+      {(!form.is_active || form.is_draft) && (
+        <div className="mt-8 rounded-xl border border-red-200 bg-red-50/50 px-4 py-3">
+          <p className="text-sm font-semibold text-red-900">Удалить курс</p>
+          <p className="mt-1 text-sm text-red-800">
+            Вместе с курсом исчезнут его темы, материалы, домашние задания и сданные работы.
+            Перед удалением покажем, что именно потеряется.
+          </p>
+          <Button variant="danger" className="mt-3" onClick={onDeleteCourse}>
+            <Trash2 size={15} className="mr-1.5" />Удалить курс…
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1285,6 +1302,7 @@ export function CourseProgramPage() {
   // Копирование: курса целиком и отдельной темы в другой курс.
   const [copyCourseOpen, setCopyCourseOpen] = useState(false)
   const [copyTopicSource, setCopyTopicSource] = useState<Topic | null>(null)
+  const [deleteCourseOpen, setDeleteCourseOpen] = useState(false)
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
@@ -1908,6 +1926,7 @@ export function CourseProgramPage() {
                 course={selectedCourse}
                 onSave={v => saveCourse(selectedCourse.id, v)}
                 onCopyCourse={() => setCopyCourseOpen(true)}
+                onDeleteCourse={() => setDeleteCourseOpen(true)}
               />
             )}
         </div>
@@ -1927,6 +1946,22 @@ export function CourseProgramPage() {
         setMatTopic(prev => prev ? { ...prev, topic: { ...prev.topic, ...values } } : prev)
       }}
     />
+
+    {selectedCourse && (
+      <DeleteCourseDialog
+        open={deleteCourseOpen}
+        onClose={() => setDeleteCourseOpen(false)}
+        courseId={selectedCourse.id}
+        courseTitle={selectedCourse.title}
+        onDeleted={() => {
+          setDeleteCourseOpen(false)
+          // Курса больше нет: уводим с его страницы, иначе останемся на
+          // адресе с несуществующим courseId и получим пустой экран.
+          selectCourse(null)
+          void reloadCourses()
+        }}
+      />
+    )}
 
     {selectedCourse && (
       <CopyCourseDialog

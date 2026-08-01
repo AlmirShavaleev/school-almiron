@@ -5480,6 +5480,8 @@ export type Database = {
         Returns: Json
       }
       course_default_module: { Args: { p_course_id: string }; Returns: string }
+      course_delete_execute: { Args: { p_course_id: string }; Returns: Json }
+      course_delete_preview: { Args: { p_course_id: string }; Returns: Json }
       course_is_admin: { Args: never; Returns: boolean }
       course_is_lesson_staff: {
         Args: { p_lesson_id: string }
@@ -5550,6 +5552,7 @@ export type Database = {
         Returns: undefined
       }
       course_of_topic: { Args: { p_topic_id: string }; Returns: string }
+      course_storage_files: { Args: { p_course_id: string }; Returns: Json }
       course_student_can_see_lesson: {
         Args: { p_lesson_id: string }
         Returns: boolean
