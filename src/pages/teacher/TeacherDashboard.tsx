@@ -14,7 +14,14 @@ export function TeacherDashboard() {
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
 
-  const { courses, pendingReviews, recentTests, stats, loading } = useTeacherDashboard(profile?.id, profile?.role)
+  const dashboard = useTeacherDashboard(profile?.id, profile?.role)
+  const { loading } = dashboard
+  // Та же подстраховка, что и в кабинете ученика: неполный ответ хука не
+  // должен ронять первый экран после входа.
+  const courses = dashboard.courses ?? []
+  const pendingReviews = dashboard.pendingReviews ?? []
+  const recentTests = dashboard.recentTests ?? []
+  const stats = dashboard.stats ?? { courses: 0, students: 0, pendingReviews: 0, bankTests: 0 }
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {

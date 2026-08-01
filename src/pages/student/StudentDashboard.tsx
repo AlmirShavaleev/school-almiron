@@ -12,7 +12,19 @@ import { formatScore, scorePercent } from '@/lib/topicTest'
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
   const navigate = useNavigate()
-  const { courses, hwItems, testItems, stats, loading } = useStudentDashboard(profile?.id)
+  const dashboard = useStudentDashboard(profile?.id)
+  const { loading } = dashboard
+  // Подстраховка от «белого экрана»: если хук по любой причине вернул неполный
+  // набор (ошибка запроса, обрезанный ответ), страница должна показать нули,
+  // а не рухнуть на `stats.hwRevision` с TypeError. Кабинет — первый экран
+  // после входа, падать ему нельзя.
+  const courses = dashboard.courses ?? []
+  const hwItems = dashboard.hwItems ?? []
+  const testItems = dashboard.testItems ?? []
+  const stats = dashboard.stats ?? {
+    courses: 0, hwTotal: 0, hwAccepted: 0, hwWaiting: 0, hwRevision: 0,
+    testsAvailable: 0, testsCompleted: 0,
+  }
 
   if (loading) {
     return (
