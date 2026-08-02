@@ -730,8 +730,13 @@ export function SubmissionReviewer({
         </div>}
       </div>
     </div>
-    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <div ref={frameRef} data-testid="review-document-scroll-area" className="overflow-auto p-3 sm:p-4">
+    {/* Строки задаём явно: у элементов грида min-height по умолчанию auto,
+          и длинный список комментариев растягивал строку, а overflow-hidden
+          снаружи просто обрезал её — прокрутка внутри становилась недостижимой.
+          minmax(0,…) разрешает строке сжиматься, и внутренний overflow-auto
+          снова работает. На узком экране колонка комментариев занимает нижние 45%. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]">
+      <div ref={frameRef} data-testid="review-document-scroll-area" className="min-h-0 overflow-auto p-3 sm:p-4">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
         <div className="mx-auto flex min-h-full w-full flex-col gap-4">
           {surfaces.map(surface => {
@@ -789,8 +794,8 @@ export function SubmissionReviewer({
           {documentFooter}
         </div>}
       </div>
-      <aside className="flex min-h-64 flex-col border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
-        <div data-testid="review-rail-scroll-zone" className="min-h-0 flex-1 overflow-hidden">
+      <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
+        <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
         </div>
       </aside>
