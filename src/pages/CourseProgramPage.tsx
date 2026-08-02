@@ -22,7 +22,7 @@ import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
   Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3, ChevronLeft,
-  Copy,
+  Copy, Eye,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -36,6 +36,7 @@ import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTem
 import { CopyCourseDialog } from '@/components/modals/CopyCourseDialog'
 import { CopyTopicDialog } from '@/components/modals/CopyTopicDialog'
 import { DeleteCourseDialog } from '@/components/modals/DeleteCourseDialog'
+import { impersonate } from '@/lib/demo'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
@@ -1245,6 +1246,7 @@ export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
   const isAdmin = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
+  const isPlatformAdmin = !!profile?.role && ['admin', 'owner'].includes(profile.role)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const {
@@ -1298,6 +1300,25 @@ export function CourseProgramPage() {
   const [activeDragTopicId, setActiveDragTopicId] = useState<string | null>(null)
   const dragStartModulesRef = useRef<Module[] | null>(null)
   const { templates } = useCourseHomeworkTemplates(selectedId)
+
+  // Чей это курс. Нужно только чтобы показать админу «это курс такого-то» и
+  // дать кнопку «Посмотреть его глазами» — сам доступ решает RLS, не эта плашка.
+  const [courseOwner, setCourseOwner] = useState<{ id: string; name: string } | null>(null)
+  const [impersonating, setImpersonating] = useState(false)
+  const selectedOwnerId = (courses.find(c => c.id === searchParams.get('courseId')) ?? null)?.owner_id ?? null
+
+  useEffect(() => {
+    if (!selectedOwnerId || selectedOwnerId === profile?.id) {
+      setCourseOwner(null)
+      return
+    }
+    let cancelled = false
+    supabase.from('profiles').select('id, full_name').eq('id', selectedOwnerId).single()
+      .then(({ data }) => {
+        if (!cancelled) setCourseOwner(data ? { id: data.id, name: data.full_name ?? 'Без имени' } : null)
+      })
+    return () => { cancelled = true }
+  }, [selectedOwnerId, profile?.id])
 
   // Копирование: курса целиком и отдельной темы в другой курс.
   const [copyCourseOpen, setCopyCourseOpen] = useState(false)
@@ -1740,6 +1761,42 @@ export function CourseProgramPage() {
                 </div>
               </div>
             </div>
+
+            {/* Чужой курс: админ должен видеть, в чьём хозяйстве он находится,
+                ДО того как начнёт править. Кнопка рядом — вход под владельцем
+                (та же механика, что «Быстрый вход» у демо; сервер не пустит
+                под другого админа). */}
+            {courseOwner && (
+              <div
+                data-testid="course-owner-banner"
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5"
+              >
+                <GraduationCap size={16} className="shrink-0 text-violet-600" />
+                <span className="text-sm text-violet-900">
+                  Это курс преподавателя <strong>{courseOwner.name}</strong> — вы здесь как администратор
+                </span>
+                {isPlatformAdmin && (
+                  <button
+                    type="button"
+                    disabled={impersonating}
+                    onClick={async () => {
+                      setImpersonating(true)
+                      try {
+                        await impersonate(courseOwner.id, courseOwner.name)
+                        window.location.href = '/dashboard'
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Не удалось войти')
+                        setImpersonating(false)
+                      }
+                    }}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    {impersonating ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />}
+                    Посмотреть его глазами
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Вкладки курса. role=tablist/tab — не украшение: с ними
                 скринридер объявляет «вкладка 3 из 6», а стрелки влево-вправо

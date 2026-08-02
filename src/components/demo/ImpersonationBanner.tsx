@@ -35,7 +35,7 @@ export function ImpersonationBanner() {
     <div className="bg-amber-500 text-white px-4 md:px-8 py-2 flex items-center justify-between gap-3 text-sm">
       <div className="flex items-center gap-2 min-w-0">
         <Eye size={15} className="shrink-0" />
-        <span className="truncate">Вы работаете как <strong>{label}</strong> (демо-режим)</span>
+        <span className="truncate">Вы работаете как <strong>{label}</strong> — все действия идут от его имени</span>
       </div>
       <button
         onClick={back}
