@@ -50,6 +50,11 @@ function MaterialCard({
   const Icon = KIND_ICON[material.kind]
   const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
 
+  // У файла без своего названия шапка «Файл» дублирует плитку с именем файла —
+  // ученику её не показываем. Преподавателю показываем всегда: в ней живут
+  // кнопки порядка, скрытия и удаления.
+  const showHeader = canManage || material.kind !== 'file' || !!material.title
+
   return (
     <div
       className={cn(
@@ -57,6 +62,7 @@ function MaterialCard({
         canManage && !material.isVisible && 'border-dashed opacity-70',
       )}
     >
+      {showHeader && (
       <div className="mb-2 flex items-center gap-2">
         <Icon size={15} className="shrink-0 text-primary-600" />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
@@ -110,6 +116,7 @@ function MaterialCard({
           </>
         )}
       </div>
+      )}
 
       {material.kind === 'text' && (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
@@ -135,19 +142,56 @@ function MaterialCard({
       )}
 
       {material.kind === 'file' && (
-        <SignedFileLink
-          bucket={bucketForMaterialPath(material.storagePath, topicId)}
-          url={material.storagePath}
-          className="inline-flex items-center gap-2 text-sm text-primary-600 hover:underline"
-        >
-          <Paperclip size={14} />
-          {material.fileName || 'Скачать файл'}
-          {formatBytes(material.sizeBytes) && (
-            <span className="text-xs text-gray-400">({formatBytes(material.sizeBytes)})</span>
-          )}
-        </SignedFileLink>
+        <FileTile
+          storagePath={material.storagePath}
+          fileName={material.fileName}
+          sizeBytes={material.sizeBytes}
+          topicId={topicId}
+        />
       )}
     </div>
+  )
+}
+
+/**
+ * Файл — плиткой с крупной иконкой, а не строчкой со скрепкой (образец —
+ * скриншот владельца, 2026-08-02). Строка терялась среди текста, плитку видно
+ * и на телефоне; кликается вся плитка, а не только слово.
+ */
+function FileTile({
+  storagePath, fileName, sizeBytes, topicId,
+}: {
+  storagePath: string
+  fileName: string | null
+  sizeBytes: number | null
+  topicId: string
+}) {
+  const name = fileName || 'Скачать файл'
+  const ext = (name.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
+  const isPdf = ext === 'PDF'
+  const isImage = /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
+
+  return (
+    <SignedFileLink
+      bucket={bucketForMaterialPath(storagePath, topicId)}
+      url={storagePath}
+      className="group flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40"
+    >
+      <span
+        className={cn(
+          'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white',
+          isPdf ? 'bg-red-500' : isImage ? 'bg-blue-500' : 'bg-gray-400',
+        )}
+      >
+        <FileText size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-gray-900 group-hover:text-primary-700">{name}</span>
+        <span className="mt-0.5 block text-xs text-gray-400">
+          {ext && `${ext} · `}{formatBytes(sizeBytes) ?? 'файл'}
+        </span>
+      </span>
+    </SignedFileLink>
   )
 }
 

@@ -174,7 +174,10 @@ export function TopicPage() {
 
   const availableTabs: TabKey[] = []
 
-  if (embedUrl || videoUrl) availableTabs.push('video')
+  // «Видео» стоит всегда, даже без видео: до перестройки на вкладки этот блок
+  // с заглушкой «Видеоурок ещё не добавлен» был на странице постоянно, и его
+  // исчезновение владелец прочитал как пропажу раздела.
+  availableTabs.push('video')
 
   // Count materials by section
   const notesCount = materials.filter(m => m.section === 'notes').length
