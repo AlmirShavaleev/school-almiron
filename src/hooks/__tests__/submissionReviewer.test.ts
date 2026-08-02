@@ -21,6 +21,23 @@ describe('submission annotation reviewer', () => {
     expect(reviewer).toContain("bucket = 'homeworks'")
   })
 
+  it('lets the teacher nudge and resize an existing region — the AI misses by a few pixels, not by a page', () => {
+    expect(reviewer).toContain('function beginRegionEdit(')
+    expect(reviewer).toContain('async function commitRegionRect(')
+    // Выделение отдельно от подсветки: ручки не должны появляться под курсором.
+    expect(reviewer).toContain('const [selectedId, setSelectedId] = useState<string | null>(null)')
+    expect(reviewer).toContain('selected={!readOnly && mark.id === selectedId}')
+    expect(reviewer).toContain('data-testid={`region-handle-${item.handle}`}')
+    expect(reviewer).toContain('HANDLE_CURSOR[item.handle]')
+    // Стрелками — «чуть-чуть», Shift+стрелки меняют размер.
+    expect(reviewer).toContain('NUDGE_STEP = 0.003')
+    expect(reviewer).toContain('ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]')
+    expect(reviewer).toContain('event.shiftKey')
+    // Правка стрелками уходит в базу на отпускании клавиши, а не по таймеру.
+    expect(reviewer).toContain('async function flushNudge()')
+    expect(reviewer).toContain("window.addEventListener('keyup', onKeyUp)")
+  })
+
   it('targets exactly one contour — legacy submission or topic-homework attempt', () => {
     // Взаимоисключимость целей держится на этапе компиляции (?: never),
     // как CHECK annotation_sets_one_target_chk в базе.

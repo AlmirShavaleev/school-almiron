@@ -5,6 +5,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { extractStoragePath, getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
+import { HANDLE_CURSOR, moveRect, rectsEqual, resizeRect, type ResizeHandle } from '@/lib/annotationGeometry'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import type { MutableRefObject, ReactNode } from 'react'
@@ -27,6 +28,19 @@ type Row = { page: number; file_path: string; data: unknown; status: 'draft' | '
 type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string }
 type PageMetrics = { width: number; height: number; ratio: number }
 type DragState = { surfaceKey: string; rect: Rect } | null
+/** Правка существующей рамки: перенос целиком или растягивание за одну ручку. */
+type RegionEdit = {
+  id: string
+  surfaceKey: string
+  filePath: string
+  page: number
+  mode: 'move' | 'resize'
+  handle: ResizeHandle | null
+  startPoint: Point
+  startRect: Rect
+}
+/** Что показываем поверх сохранённой рамки, пока её тянут. */
+type EditPreview = { id: string; surfaceKey: string; rect: Rect } | null
 type SourceFile = { filePath: string; url: string; ext: string; kind: 'pdf' | 'image' }
 type DocumentSurface = {
   surfaceKey: string
@@ -113,6 +127,15 @@ export interface ImportedRegion {
 type Props = BaseProps & AnnotationTarget
 
 const MIN_REGION_SIZE = 0.015
+/**
+ * Размер ручки — доля ШИРИНЫ страницы. По высоте домножаем на соотношение
+ * сторон: viewBox 0 0 1 1 с preserveAspectRatio="none" растягивает оси
+ * по-разному, и одинаковые числа дали бы вытянутые прямоугольники вместо
+ * квадратиков.
+ */
+const HANDLE_UNIT = 0.013
+/** Шаг стрелок на клавиатуре — «чуть-чуть», примерно 2-3 пикселя на листе A4. */
+const NUDGE_STEP = 0.003
 const EMPTY: PageData = { version: 2, objects: [] }
 const CATEGORIES: Record<Category, { label: string; short: string; color: string; bg: string; ring: string; phrases: string[] }> = {
   comment: { label: 'Комментарий', short: 'K', color: '#2563eb', bg: 'bg-blue-50', ring: 'ring-blue-500/35', phrases: [] },
@@ -216,6 +239,15 @@ export function SubmissionReviewer({
   const frameRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const dragStartRef = useRef<{ surfaceKey: string; filePath: string; fileIndex: number; page: number; globalPage: number; point: Point } | null>(null)
+  const editRef = useRef<RegionEdit | null>(null)
+  /**
+   * Правка стрелками применяется к состоянию сразу, а в базу уходит на отпускании
+   * клавиши: автоповтор даёт до полусотни нажатий, и писать страницу целиком на
+   * каждое — лишний трафик. Ждём не таймер, а конец жеста, поэтому «нажал и ушёл»
+   * ничего не теряет: флаш стоит и на смене выделения, и на размонтировании, а
+   * публикация всё равно пересохраняет страницы из состояния.
+   */
+  const pendingNudgeRef = useRef<{ filePath: string; page: number; data: PageData } | null>(null)
 
   const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([])
   const [loading, setLoading] = useState(true)
@@ -232,7 +264,12 @@ export function SubmissionReviewer({
   const [publishing, setPublishing] = useState(false)
   const [published, setPublished] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Подсветка (activeId) живёт на наведении, выделение (selectedId) — на клике.
+  // Разные вещи: ручки правки не должны появляться под курсором сами собой, а
+  // стрелки на клавиатуре обязаны двигать ровно ту рамку, которую выбрали.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState>(null)
+  const [editPreview, setEditPreview] = useState<EditPreview>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [visiblePages, setVisiblePages] = useState<Set<string>>(new Set())
   const [hasOtherAuthor, setHasOtherAuthor] = useState(false)
@@ -504,37 +541,119 @@ export function SubmissionReviewer({
     }
   }, [persistenceKey, readOnly, targetColumn, targetId])
 
+  const pointOn = (element: SVGGraphicsElement, event: { clientX: number; clientY: number }): Point => {
+    const bounds = element.getBoundingClientRect()
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    }
+  }
+
+  /** Рамка под курсором в текущем жесте — с учётом режима (перенос/растягивание). */
+  const editedRect = (edit: RegionEdit, point: Point): Rect => {
+    const dx = point.x - edit.startPoint.x
+    const dy = point.y - edit.startPoint.y
+    return edit.mode === 'move' || !edit.handle
+      ? moveRect(edit.startRect, dx, dy)
+      : resizeRect(edit.startRect, edit.handle, dx, dy, MIN_REGION_SIZE)
+  }
+
+  /**
+   * Начало правки готовой рамки. Событие приходит с самой рамки или с ручки,
+   * поэтому: захватываем указатель на этом элементе (движение продолжит
+   * приходить, даже если курсор ушёл со страницы) и глушим всплытие — иначе
+   * тот же pointerdown начал бы рисовать поверх новую рамку.
+   */
+  function beginRegionEdit(
+    surface: DocumentSurface,
+    region: Region,
+    mode: 'move' | 'resize',
+    handle: ResizeHandle | null,
+    event: React.PointerEvent<SVGElement>,
+  ) {
+    if (readOnly || draft) return
+    event.stopPropagation()
+    const target = event.currentTarget as SVGGraphicsElement
+    target.setPointerCapture(event.pointerId)
+    const svg = target.ownerSVGElement ?? target
+    editRef.current = {
+      id: region.id,
+      surfaceKey: surface.surfaceKey,
+      filePath: surface.filePath,
+      page: surface.page,
+      mode,
+      handle,
+      startPoint: pointOn(svg, event),
+      startRect: region.rect,
+    }
+    void flushNudge()
+    setActiveId(region.id)
+    setSelectedId(region.id)
+    setCurrentPage(surface.globalPage)
+    setEditPreview({ id: region.id, surfaceKey: surface.surfaceKey, rect: region.rect })
+  }
+
+  /** Новая геометрия рамки: сразу в состояние, следом — в базу. */
+  async function commitRegionRect(filePath: string, page: number, regionId: string, rect: Rect) {
+    const key = pageKey(filePath, page)
+    const pageData = pages[key] ?? EMPTY
+    const nextData = pageWithVersion(pageData.objects.map(mark => (
+      mark.id === regionId && isRegion(mark) ? { ...mark, rect } : mark
+    )))
+    // Оптимистично: иначе рамка на время запроса прыгала бы обратно на старое
+    // место. При отказе возвращаем прежнюю страницу — savePage уже показал тост.
+    setPages(value => ({ ...value, [key]: nextData }))
+    const ok = await savePage(filePath, page, nextData)
+    if (!ok) setPages(value => ({ ...value, [key]: pageData }))
+  }
+
+  async function flushNudge() {
+    const pending = pendingNudgeRef.current
+    if (!pending) return
+    pendingNudgeRef.current = null
+    await savePageRef.current(pending.filePath, pending.page, pending.data)
+  }
+
   function pointerDown(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
     if (readOnly || draft) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    const rect = event.currentTarget.getBoundingClientRect()
-    const point = {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
-    }
+    const point = pointOn(event.currentTarget, event)
+    // Клик по пустому месту снимает выделение: стрелки после этого не должны
+    // двигать рамку, о которой преподаватель уже забыл.
+    setSelectedId(null)
+    void flushNudge()
     dragStartRef.current = { surfaceKey: surface.surfaceKey, filePath: surface.filePath, fileIndex: surface.fileIndex, page: surface.page, globalPage: surface.globalPage, point }
     setDragState({ surfaceKey: surface.surfaceKey, rect: { x: point.x, y: point.y, w: 0, h: 0 } })
   }
 
   function pointerMove(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
-    if (readOnly || !dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const point = {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    if (readOnly) return
+    const edit = editRef.current
+    if (edit) {
+      if (edit.surfaceKey !== surface.surfaceKey) return
+      setEditPreview({ id: edit.id, surfaceKey: edit.surfaceKey, rect: editedRect(edit, pointOn(event.currentTarget, event)) })
+      return
     }
+    if (!dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
     const start = dragStartRef.current.point
-    setDragState({ surfaceKey: surface.surfaceKey, rect: normalizeRect(start, point) })
+    setDragState({ surfaceKey: surface.surfaceKey, rect: normalizeRect(start, pointOn(event.currentTarget, event)) })
   }
 
   function pointerUp(surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) {
-    if (readOnly || !dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const point = {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    if (readOnly) return
+    const edit = editRef.current
+    if (edit) {
+      if (edit.surfaceKey !== surface.surfaceKey) return
+      editRef.current = null
+      setEditPreview(null)
+      const nextRect = editedRect(edit, pointOn(event.currentTarget, event))
+      // Просто клик по рамке (выделить) — не правка, писать нечего.
+      if (rectsEqual(nextRect, edit.startRect)) return
+      void commitRegionRect(edit.filePath, edit.page, edit.id, nextRect)
+      return
     }
-    const nextRect = normalizeRect(dragStartRef.current.point, point)
+    if (!dragStartRef.current || dragStartRef.current.surfaceKey !== surface.surfaceKey) return
+    const nextRect = normalizeRect(dragStartRef.current.point, pointOn(event.currentTarget, event))
     dragStartRef.current = null
     setDragState(null)
     if (nextRect.w < MIN_REGION_SIZE || nextRect.h < MIN_REGION_SIZE) return
@@ -573,13 +692,82 @@ export function SubmissionReviewer({
     if (!ok) return
     setPages(value => ({ ...value, [key]: nextData }))
     if (activeId === item.id) setActiveId(null)
+    if (selectedId === item.id) setSelectedId(null)
   }
 
   function activateRegion(item: RegionItem) {
     setCurrentPage(item.globalPage)
     setActiveId(item.id)
+    // Клик по комментарию выделяет рамку: дальше её можно подвинуть стрелками,
+    // не выцеливая мышью маленький прямоугольник на странице.
+    if (!readOnly) setSelectedId(item.id)
     pageRefs.current[item.surfaceKey]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
+
+  // Свежие значения для оконных слушателей: подписка не должна пересоздаваться
+  // на каждый рендер, а замыкание с первого рендера устарело бы. Пишем в
+  // эффекте, а не в теле — во время рендера ref трогать нельзя.
+  const savePageRef = useRef(savePage)
+  const keyboardRef = useRef({ selectedId, regions })
+  useEffect(() => {
+    savePageRef.current = savePage
+    keyboardRef.current = { selectedId, regions }
+  })
+
+  /**
+   * Стрелки двигают выделенную рамку, Shift+стрелки меняют её размер. Мышью
+   * попасть «на пару пикселей левее» тяжело, а ИИ промахивается ровно на столько.
+   */
+  useEffect(() => {
+    if (readOnly) return
+    const ARROWS: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      const delta = ARROWS[event.key]
+      if (!delta || event.metaKey || event.ctrlKey || event.altKey) return
+      const { selectedId: id, regions: items } = keyboardRef.current
+      if (!id) return
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      const item = items.find(region => region.id === id)
+      if (!item) return
+      event.preventDefault()
+      const [dx, dy] = delta
+      const key = pageKey(item.filePath, item.page)
+      // Функциональное обновление, а не чтение из замыкания: автоповтор шлёт
+      // события чаще, чем React успевает перерисовать, и шаги должны
+      // складываться, а не перезаписывать друг друга одним и тем же сдвигом.
+      setPages(value => {
+        const pageData = value[key] ?? EMPTY
+        const current = pageData.objects.find(mark => mark.id === id)
+        if (!current || !isRegion(current)) return value
+        const nextRect = event.shiftKey
+          ? resizeRect(current.rect, dx !== 0 ? 'e' : 's', dx * NUDGE_STEP, dy * NUDGE_STEP, MIN_REGION_SIZE)
+          : moveRect(current.rect, dx * NUDGE_STEP, dy * NUDGE_STEP)
+        if (rectsEqual(nextRect, current.rect)) return value
+        const nextData = pageWithVersion(pageData.objects.map(mark => (
+          mark.id === id && isRegion(mark) ? { ...mark, rect: nextRect } : mark
+        )))
+        pendingNudgeRef.current = { filePath: item.filePath, page: item.page, data: nextData }
+        return { ...value, [key]: nextData }
+      })
+    }
+    function onKeyUp(event: KeyboardEvent) {
+      if (ARROWS[event.key]) void flushNudge()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      void flushNudge()
+    }
+  }, [readOnly])
+
+  // Смена выделения дописывает предыдущую рамку: уйти со страницы, не сохранив
+  // сдвиг стрелками, нельзя.
+  useEffect(() => () => { void flushNudge() }, [selectedId])
 
   async function publish(targetStatus: 'checked' | 'revision' = 'checked'): Promise<boolean> {
     setPublishing(true)
@@ -744,6 +932,7 @@ export function SubmissionReviewer({
             const pageData = pages[key] ?? EMPTY
             const shouldRender = visiblePages.has(surface.surfaceKey) || currentPage === surface.globalPage || draft?.filePath === surface.filePath && draft.page === surface.page
             const dragRect = dragState?.surfaceKey === surface.surfaceKey ? dragState.rect : null
+            const edit = editPreview?.surfaceKey === surface.surfaceKey ? editPreview : null
             return <div
               key={surface.surfaceKey}
               ref={node => { pageRefs.current[surface.surfaceKey] = node }}
@@ -758,6 +947,9 @@ export function SubmissionReviewer({
                     pdf={pdfRefs.current[surface.filePath] ?? null}
                     pageData={pageData}
                     activeId={activeId}
+                    selectedId={selectedId}
+                    edit={edit}
+                    onBeginRegionEdit={beginRegionEdit}
                     dragRect={dragRect}
                     shouldRender={shouldRender}
                     zoom={zoom}
@@ -772,6 +964,9 @@ export function SubmissionReviewer({
                     surface={surface}
                     pageData={pageData}
                     activeId={activeId}
+                    selectedId={selectedId}
+                    edit={edit}
+                    onBeginRegionEdit={beginRegionEdit}
                     dragRect={dragRect}
                     zoom={zoom}
                     frameWidth={baseWidth}
@@ -809,11 +1004,43 @@ function ToolButton({ disabled, title, onClick, children }: { disabled?: boolean
   return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-[transform,background-color,color] hover:bg-white active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30">{children}</button>
 }
 
+/** Общие пропсы разметки: у PDF-страницы и картинки слой рамок одинаковый. */
+type RegionLayerProps = {
+  activeId: string | null
+  selectedId: string | null
+  edit: { id: string; rect: Rect } | null
+  onBeginRegionEdit: (surface: DocumentSurface, region: Region, mode: 'move' | 'resize', handle: ResizeHandle | null, event: React.PointerEvent<SVGElement>) => void
+  onActivate: (id: string | null) => void
+}
+
+function RegionLayer({ surface, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate }: RegionLayerProps & {
+  surface: DocumentSurface
+  pageData: PageData
+  readOnly: boolean
+}) {
+  const aspect = surface.metrics?.ratio ?? 1 / 1.414
+  return <>{pageData.objects.map(mark => <Shape
+    key={mark.id}
+    mark={mark}
+    active={mark.id === activeId}
+    selected={!readOnly && mark.id === selectedId}
+    aspect={aspect}
+    rectOverride={edit?.id === mark.id ? edit.rect : null}
+    onActivate={() => isRegion(mark) && onActivate(mark.id)}
+    onBeginEdit={readOnly ? undefined : (mode, handle, event) => {
+      if (isRegion(mark)) onBeginRegionEdit(surface, mark, mode, handle, event)
+    }}
+  />)}</>
+}
+
 function PdfPageSurface({
   surface,
   pdf,
   pageData,
   activeId,
+  selectedId,
+  edit,
+  onBeginRegionEdit,
   dragRect,
   shouldRender,
   zoom,
@@ -823,11 +1050,10 @@ function PdfPageSurface({
   onPointerMove,
   onPointerUp,
   onActivate,
-}: {
+}: RegionLayerProps & {
   surface: DocumentSurface
   pdf: pdfjs.PDFDocumentProxy | null
   pageData: PageData
-  activeId: string | null
   dragRect: Rect | null
   shouldRender: boolean
   zoom: number
@@ -884,7 +1110,7 @@ function PdfPageSurface({
         onPointerUp={event => onPointerUp(surface, event)}
         onPointerCancel={event => onPointerUp(surface, event)}
       >
-        {pageData.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && onActivate(mark.id)}/>)}
+        <RegionLayer surface={surface} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
         {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
       </svg>
     </div>
@@ -895,6 +1121,9 @@ function ImagePageSurface({
   surface,
   pageData,
   activeId,
+  selectedId,
+  edit,
+  onBeginRegionEdit,
   dragRect,
   zoom,
   frameWidth,
@@ -906,10 +1135,9 @@ function ImagePageSurface({
   onPointerMove,
   onPointerUp,
   onActivate,
-}: {
+}: RegionLayerProps & {
   surface: DocumentSurface
   pageData: PageData
-  activeId: string | null
   dragRect: Rect | null
   zoom: number
   frameWidth: number
@@ -943,7 +1171,7 @@ function ImagePageSurface({
           onPointerUp={event => onPointerUp(surface, event)}
           onPointerCancel={event => onPointerUp(surface, event)}
         >
-          {pageData.objects.map(mark => <Shape key={mark.id} mark={mark} active={mark.id === activeId} onActivate={() => isRegion(mark) && onActivate(mark.id)} />)}
+          <RegionLayer surface={surface} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
           {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008" />}
         </svg>
         {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
@@ -952,10 +1180,63 @@ function ImagePageSurface({
   )
 }
 
-function Shape({ mark, active, onActivate }: { mark: Mark; active: boolean; onActivate: () => void }) {
+function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverride = null, onActivate, onBeginEdit }: {
+  mark: Mark
+  active: boolean
+  selected?: boolean
+  /** Отношение ширины страницы к высоте — нужно, чтобы ручки были квадратными. */
+  aspect?: number
+  /** Положение рамки прямо сейчас, пока её тянут (в объекте лежит ещё старое). */
+  rectOverride?: Rect | null
+  onActivate: () => void
+  onBeginEdit?: (mode: 'move' | 'resize', handle: ResizeHandle | null, event: React.PointerEvent<SVGElement>) => void
+}) {
   if (mark.type === 'region') {
     const category = CATEGORIES[mark.category]
-    return <rect x={mark.rect.x} y={mark.rect.y} width={mark.rect.w} height={mark.rect.h} fill={category.color} fillOpacity={active ? 0.24 : 0.14} stroke={category.color} strokeWidth={active ? 0.005 : 0.003} className="cursor-pointer transition-opacity" onPointerEnter={onActivate} onPointerDown={event => { event.stopPropagation(); onActivate() }}/>
+    const rect = rectOverride ?? mark.rect
+    const handleW = HANDLE_UNIT
+    const handleH = HANDLE_UNIT * aspect
+    // На узкой рамке серединные ручки слипаются с угловыми — тогда оставляем
+    // только углы: восемь квадратиков на полоске в палец шириной не поймать.
+    const showMidX = rect.w > handleW * 3.5
+    const showMidY = rect.h > handleH * 3.5
+    const handles: { handle: ResizeHandle; x: number; y: number }[] = [
+      { handle: 'nw', x: rect.x, y: rect.y },
+      { handle: 'ne', x: rect.x + rect.w, y: rect.y },
+      { handle: 'se', x: rect.x + rect.w, y: rect.y + rect.h },
+      { handle: 'sw', x: rect.x, y: rect.y + rect.h },
+      ...(showMidX ? [
+        { handle: 'n' as ResizeHandle, x: rect.x + rect.w / 2, y: rect.y },
+        { handle: 's' as ResizeHandle, x: rect.x + rect.w / 2, y: rect.y + rect.h },
+      ] : []),
+      ...(showMidY ? [
+        { handle: 'w' as ResizeHandle, x: rect.x, y: rect.y + rect.h / 2 },
+        { handle: 'e' as ResizeHandle, x: rect.x + rect.w, y: rect.y + rect.h / 2 },
+      ] : []),
+    ]
+    return <g>
+      <rect
+        x={rect.x} y={rect.y} width={rect.w} height={rect.h}
+        fill={category.color} fillOpacity={active || selected ? 0.24 : 0.14}
+        stroke={category.color} strokeWidth={active || selected ? 0.005 : 0.003}
+        strokeDasharray={selected ? '0.012 0.008' : undefined}
+        className={cn('transition-opacity', selected ? 'cursor-move' : 'cursor-pointer')}
+        onPointerEnter={onActivate}
+        onPointerDown={event => {
+          if (onBeginEdit) onBeginEdit('move', null, event)
+          else { event.stopPropagation(); onActivate() }
+        }}
+      />
+      {selected && handles.map(item => <rect
+        key={item.handle}
+        data-testid={`region-handle-${item.handle}`}
+        x={item.x - handleW / 2} y={item.y - handleH / 2}
+        width={handleW} height={handleH}
+        fill="#ffffff" stroke={category.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke"
+        className={HANDLE_CURSOR[item.handle]}
+        onPointerDown={event => onBeginEdit?.('resize', item.handle, event)}
+      />)}
+    </g>
   }
   if ('points' in mark) return <polyline points={mark.points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke={mark.color} strokeWidth={mark.width} strokeLinecap="round" strokeLinejoin="round" opacity={mark.type === 'highlight' ? .38 : 1}/>
   if (mark.type === 'stamp') return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} textAnchor="middle" dominantBaseline="middle" fontWeight="700">{mark.value}</text>
@@ -1003,7 +1284,7 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { re
           <MessageSquare size={15} className="text-slate-400" />
           Комментарии
         </div>
-        <div className="mt-0.5 text-xs text-slate-400">{readOnly ? 'Только просмотр' : 'Клик по комментарию откроет нужное место в работе'}</div>
+        <div className="mt-0.5 text-xs text-slate-400">{readOnly ? 'Только просмотр' : 'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками'}</div>
       </div>
       <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{regions.length}</div>
     </div>

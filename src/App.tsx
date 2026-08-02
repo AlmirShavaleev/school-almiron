@@ -61,13 +61,16 @@ import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 
-// Auth pages
-import { LoginPage } from '@/pages/auth/LoginPage'
-import { RegisterPage } from '@/pages/auth/RegisterPage'
-import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
-import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
-import { JoinPage } from '@/pages/JoinPage'
-import { JoinTeacherPage } from '@/pages/JoinTeacherPage'
+// Auth pages — тоже ленивые. Они тянут react-hook-form + zod + resolvers, а
+// вошедший пользователь не видит ни одной из них: держать их во входном чанке
+// значит заставлять КАЖДУЮ загрузку ждать код формы логина. Suspense-граница
+// для них уже есть — та же, что у публичных страниц.
+const LoginPage          = lazyPage('LoginPage', () => import('@/pages/auth/LoginPage').then(m => ({ default: m.LoginPage })))
+const RegisterPage       = lazyPage('RegisterPage', () => import('@/pages/auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
+const ForgotPasswordPage = lazyPage('ForgotPasswordPage', () => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
+const ResetPasswordPage  = lazyPage('ResetPasswordPage', () => import('@/pages/auth/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })))
+const JoinPage           = lazyPage('JoinPage', () => import('@/pages/JoinPage').then(m => ({ default: m.JoinPage })))
+const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/JoinTeacherPage').then(m => ({ default: m.JoinTeacherPage })))
 
 // Public — lazy-loaded so framer-motion + landing components stay out of the main chunk.
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
@@ -137,6 +140,24 @@ export function AppAuth() {
 
   useEffect(() => {
     let cancelled = false
+    /**
+     * На старте профиль грузился ДВАЖДЫ: `getSession()` вызывает loadProfile
+     * сам, и почти одновременно приходит событие INITIAL_SESSION — с тем же
+     * пользователем. Два одинаковых запроса к `profiles` в самом начале
+     * загрузки, а следом и две попытки вставить строку профиля новичку.
+     * Схлопываем совпадающие вызовы: второй ждёт результат первого. Запись
+     * убирается по завершении, поэтому обновление токена позже так же
+     * перечитает профиль, как и раньше.
+     */
+    const inflight = new Map<string, Promise<void>>()
+
+    function loadProfileOnce(user: { id: string; email?: string; user_metadata?: any }) {
+      const running = inflight.get(user.id)
+      if (running) return running
+      const promise = loadProfile(user).finally(() => { inflight.delete(user.id) })
+      inflight.set(user.id, promise)
+      return promise
+    }
 
     async function loadProfile(user: { id: string; email?: string; user_metadata?: any }) {
       let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
@@ -193,7 +214,7 @@ export function AppAuth() {
       if (cancelled) return
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) loadProfile(session.user)
+      if (session?.user) void loadProfileOnce(session.user)
       else setLoading(false)
     })
 
@@ -203,7 +224,7 @@ export function AppAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        await loadProfile(session.user)
+        await loadProfileOnce(session.user)
       } else if (event === 'SIGNED_OUT') {
         reset()
         setLoading(false)
