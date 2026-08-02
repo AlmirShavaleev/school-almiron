@@ -16,6 +16,7 @@ import {
   gradeScaleMax,
   isOverdue,
   latestReview,
+  dueUrgency,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkAttemptStatus,
   type TopicHomeworkReviewRow,
@@ -307,5 +308,47 @@ describe('nameForPastedImage', () => {
   it('переименовывает русский «Снимок экрана»', () => {
     expect(nameForPastedImage('Снимок экрана 2026-07-27.png', 'image/png', 0, at))
       .toBe('screenshot-2026-07-27-224503.png')
+  })
+})
+
+describe('dueUrgency — категоризация срока', () => {
+  it('null дедлайн → level: none', () => {
+    expect(dueUrgency(null)).toEqual({ level: 'none', days: 0 })
+  })
+
+  it('осталось 5 дней → level: calm', () => {
+    const result = dueUrgency('2026-08-06', '2026-08-01')
+    expect(result.level).toBe('calm')
+    expect(result.days).toBe(5)
+  })
+
+  it('осталось 1 день → level: soon', () => {
+    const result = dueUrgency('2026-08-02', '2026-08-01')
+    expect(result.level).toBe('soon')
+    expect(result.days).toBe(1)
+  })
+
+  it('осталось 0 дней (сегодня) → level: soon, days: 0', () => {
+    const result = dueUrgency('2026-08-01', '2026-08-01')
+    expect(result.level).toBe('soon')
+    expect(result.days).toBe(0)
+  })
+
+  it('просрочено на 2 дня → level: overdue', () => {
+    const result = dueUrgency('2026-07-30', '2026-08-01')
+    expect(result.level).toBe('overdue')
+    expect(result.days).toBe(2)
+  })
+
+  it('граница: ровно 4 дня — still calm', () => {
+    const result = dueUrgency('2026-08-05', '2026-08-01')
+    expect(result.level).toBe('calm')
+    expect(result.days).toBe(4)
+  })
+
+  it('граница: ровно 3 дня — already soon', () => {
+    const result = dueUrgency('2026-08-04', '2026-08-01')
+    expect(result.level).toBe('soon')
+    expect(result.days).toBe(3)
   })
 })

@@ -281,6 +281,42 @@ export function formatDue(dueAt: string | null): string | null {
   return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
 }
 
+export type DueUrgencyLevel = 'none' | 'calm' | 'soon' | 'overdue'
+
+export interface DueUrgency {
+  level: DueUrgencyLevel
+  days: number
+}
+
+/**
+ * Категоризирует срок выполнения для отображения баннера.
+ *
+ * Дни считаются по локальной полуночи: если дедлайн 10 августа,
+ * то сегодня (9 августа) до него остаётся 1 день.
+ *
+ * @param dueAt строка даты в формате YYYY-MM-DD, или null
+ * @param today опциональная текущая дата (для тестов); по умолчанию берётся сегодня
+ * @returns объект с уровнем срочности и количеством дней
+ */
+export function dueUrgency(dueAt: string | null, today?: string): DueUrgency {
+  if (!dueAt) return { level: 'none', days: 0 }
+
+  // Получаем локальную дату сегодня в формате YYYY-MM-DD
+  const todayDate = today ?? new Date().toLocaleDateString('en-CA')
+  const dueDate = dueAt.slice(0, 10)
+
+  // Вычисляем разницу в днях
+  const todayMs = new Date(todayDate).getTime()
+  const dueMs = new Date(dueDate).getTime()
+  const diffMs = dueMs - todayMs
+  const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000))
+
+  // Категоризируем по количеству дней
+  if (days > 3) return { level: 'calm', days }
+  if (days >= 0) return { level: 'soon', days }
+  return { level: 'overdue', days: Math.abs(days) }
+}
+
 /**
  * Имя для картинки, вставленной из буфера обмена.
  *
