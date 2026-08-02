@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
+  AlertTriangle, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
 } from 'lucide-react'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
 import {
@@ -9,6 +9,7 @@ import {
   formatHomeworkScore,
   type TopicJournalHomework,
 } from '@/lib/topicJournal'
+import { dueUrgency } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 
 function formatDue(value: string | null): string | null {
@@ -23,65 +24,125 @@ function formatWhen(value: string | null): string | null {
   })
 }
 
+function pluralizeDays(n: number): string {
+  if (n % 10 === 1 && n % 100 !== 11) return 'день'
+  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'дня'
+  return 'дней'
+}
+
+function getDueText(urgency: ReturnType<typeof dueUrgency>): string {
+  switch (urgency.level) {
+    case 'calm':
+      return `осталось ${urgency.days} ${pluralizeDays(urgency.days)}`
+    case 'soon':
+      if (urgency.days === 0) return 'сдать сегодня'
+      return `осталось ${urgency.days} ${pluralizeDays(urgency.days)}`
+    case 'overdue':
+      if (urgency.days === 0) return 'срок истёк сегодня'
+      return `просрочено на ${urgency.days} ${pluralizeDays(urgency.days)}`
+    default:
+      return ''
+  }
+}
+
+function getDueTone(level: string): string {
+  switch (level) {
+    case 'calm':
+      return 'text-gray-600'
+    case 'soon':
+      return 'text-amber-600'
+    case 'overdue':
+      return 'text-red-600'
+    default:
+      return 'text-gray-500'
+  }
+}
+
 function HomeworkRow({
-  row, href, showScore, showDue,
+  row, href, showScore, showDue, action,
 }: {
   row: TopicJournalHomework
   href: string | null
   showScore?: boolean
   showDue?: boolean
+  action?: 'submit' | 'open'
 }) {
   const score = showScore ? formatHomeworkScore(row) : null
-  const due = formatDue(row.due_at)
+  const urgency = showDue ? dueUrgency(row.due_at) : null
+
+  // Только показывать row.title, если он осмысленный (не равен 'Домашнее задание')
+  const hasCustomTitle = row.title.trim() !== 'Домашнее задание'
 
   const body = (
     <>
       <div className="min-w-0 flex-1">
+        {/* Заголовок с темой */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-gray-900">{row.title}</span>
-          <span className={cn('rounded-md border px-2 py-0.5 text-xs font-medium', JOURNAL_HW_STATUS_TONE[row.status])}>
-            {JOURNAL_HW_STATUS_LABEL[row.status]}
-          </span>
-          {row.is_overdue && (
+          <h3 className="font-semibold text-gray-900">{row.topic_title}</h3>
+          {/* Статус — одна плашка, приоритет на is_overdue */}
+          {row.is_overdue ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
               <AlertTriangle size={11} />
               Просрочено
             </span>
+          ) : (
+            <span className={cn('rounded-md border px-2 py-0.5 text-xs font-medium', JOURNAL_HW_STATUS_TONE[row.status])}>
+              {JOURNAL_HW_STATUS_LABEL[row.status]}
+            </span>
+          )}
+          {/* Оценка справа от заголовка, если есть */}
+          {score && (
+            <span className="ml-auto rounded-lg bg-emerald-50 px-2.5 py-1 text-sm font-bold text-emerald-700">
+              {score}
+            </span>
           )}
         </div>
 
-        <p className="mt-0.5 truncate text-xs text-gray-500">
-          {row.course_title} · {row.topic_title}
+        {/* Курс мелким текстом под заголовком */}
+        <p className="mt-1 truncate text-xs text-gray-500">
+          {row.course_title}
+          {hasCustomTitle && ` · ${row.title}`}
         </p>
 
-        {showDue && due && (
-          <p className={cn('mt-1 inline-flex items-center gap-1 text-xs', row.is_overdue ? 'text-red-600' : 'text-gray-500')}>
+        {/* Срок с цветом по urgency */}
+        {showDue && urgency && urgency.level !== 'none' && (
+          <p className={cn('mt-1 inline-flex items-center gap-1 text-xs', getDueTone(urgency.level))}>
             <Clock size={11} />
-            Срок: {due}
+            {getDueText(urgency)}
           </p>
         )}
 
+        {/* Когда сдано */}
         {row.status === 'submitted' && formatWhen(row.submitted_at) && (
           <p className="mt-1 text-xs text-gray-400">Сдано {formatWhen(row.submitted_at)}</p>
         )}
 
-        {score && (
-          <p className="mt-1.5 inline-block rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-            Оценка: {score}
-          </p>
-        )}
-
+        {/* Комментарий преподавателя с подписью */}
         {row.comment && (
-          <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+          <div className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+            <span className="font-bold">Комментарий преподавателя: </span>
             {row.comment}
-          </p>
+          </div>
         )}
       </div>
-      {href && <ArrowRight size={16} className="mt-1 shrink-0 text-gray-300" />}
+
+      {/* Кнопка действия справа */}
+      {href && action && (
+        <span className={cn(
+          'shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+          action === 'submit'
+            ? row.is_overdue
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-gray-900 text-white hover:bg-gray-950'
+            : 'border border-gray-200 text-gray-600 bg-white hover:border-gray-300'
+        )}>
+          {action === 'submit' ? 'Сдать' : 'Открыть'}
+        </span>
+      )}
     </>
   )
 
-  const shell = 'flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5'
+  const shell = 'flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3.5'
 
   if (!href) {
     return <li data-testid="my-hw-row" data-status={row.status} className={shell}>{body}</li>
@@ -111,6 +172,10 @@ function Section({
   empty: string
   children: React.ReactNode
 }) {
+  if (count === 0) {
+    return null
+  }
+
   return (
     <section>
       <h2 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -118,9 +183,7 @@ function Section({
         {title}
         <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', tone)}>{count}</span>
       </h2>
-      {count === 0
-        ? <p className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-400">{empty}</p>
-        : <ul className="space-y-2">{children}</ul>}
+      <ul className="space-y-2">{children}</ul>
     </section>
   )
 }
@@ -189,6 +252,13 @@ export function MyTopicHomeworkPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Если нужно сделать пусто, но есть другие — зелёная строка */}
+          {buckets.todo.length === 0 && (buckets.awaiting.length > 0 || buckets.done.length > 0) && (
+            <div className="rounded-xl bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+              ✓ Всё сдано — новых заданий нет
+            </div>
+          )}
+
           <Section
             title="Нужно сделать"
             icon={<ClipboardList size={13} />}
@@ -197,7 +267,13 @@ export function MyTopicHomeworkPage() {
             empty="Ничего не ждёт — все работы сданы"
           >
             {buckets.todo.map(row => (
-              <HomeworkRow key={row.homework_id} row={row} href={topicLink(row)} showDue />
+              <HomeworkRow
+                key={row.homework_id}
+                row={row}
+                href={topicLink(row)}
+                showDue
+                action="submit"
+              />
             ))}
           </Section>
 
@@ -209,7 +285,12 @@ export function MyTopicHomeworkPage() {
             empty="Нет работ, ожидающих проверки"
           >
             {buckets.awaiting.map(row => (
-              <HomeworkRow key={row.homework_id} row={row} href={topicLink(row)} />
+              <HomeworkRow
+                key={row.homework_id}
+                row={row}
+                href={topicLink(row)}
+                action="open"
+              />
             ))}
           </Section>
 
@@ -221,7 +302,13 @@ export function MyTopicHomeworkPage() {
             empty="Пока нет проверенных работ"
           >
             {buckets.done.map(row => (
-              <HomeworkRow key={row.homework_id} row={row} href={topicLink(row)} showScore />
+              <HomeworkRow
+                key={row.homework_id}
+                row={row}
+                href={topicLink(row)}
+                showScore
+                action="open"
+              />
             ))}
           </Section>
         </div>
