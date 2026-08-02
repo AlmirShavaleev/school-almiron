@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle2, Eye, Filter, Inbox, Loader2, Paperclip, RefreshCw,
+  AlertTriangle, CheckCircle2, Eye, Filter, Inbox, Loader2, Paperclip, RefreshCw, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -8,13 +8,15 @@ import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
 import type { ImportedRegion } from '@/components/SubmissionReviewer'
-import { findingsToRegions } from '@/lib/aiHomeworkCheck'
+import { CONFIDENCE_LABEL, findingsToRegions } from '@/lib/aiHomeworkCheck'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
+import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { courseFilterOptions, groupByDay, isSubmittedLate, type QueueRow } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
 import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
+import type { QueueAiJob } from '@/hooks/useQueueAiJobs'
 
 /** Дата ушла в заголовок дня, в строке остаётся только время сдачи. */
 function formatTime(value: string | null): string | null {
@@ -22,6 +24,13 @@ function formatTime(value: string | null): string | null {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Склонение слова "замечание" по числу. */
+function findingsDeclension(count: number): string {
+  if (count % 10 === 1 && count % 100 !== 11) return 'замечание'
+  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'замечания'
+  return 'замечаний'
 }
 
 /**
@@ -36,7 +45,7 @@ function formatTime(value: string | null): string | null {
  * то же место, так что попасть мимо невозможно.
  */
 function QueueRowItem({
-  row, files, studentName, viewers, showCourse, onOpen,
+  row, files, studentName, viewers, showCourse, selected, onToggleSelect, ai, aiBusy, onRunAi, onOpen,
 }: {
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
@@ -45,12 +54,23 @@ function QueueRowItem({
   viewers: PresenceMeta[]
   /** Показывать курс в строке: нужно, только когда в списке их несколько. */
   showCourse: boolean
+  /** Выбрана ли работа в списке. */
+  selected: boolean
+  /** Обработчик переключения выделения. */
+  onToggleSelect: () => void
+  /** ИИ-задача для этой работы, если есть. */
+  ai?: QueueAiJob
+  /** Выполняется ли ИИ-проверка. */
+  aiBusy: boolean
+  /** Обработчик запуска проверки для одной работы. */
+  onRunAi: () => void
   onOpen: () => void
 }) {
   const { attempt } = row
   const late = isSubmittedLate(row)
   const busy = viewers.length > 0
   const time = formatTime(attempt.submitted_at)
+  const showAiButton = !ai || ai.status === 'failed'
 
   return (
     <li
@@ -59,6 +79,16 @@ function QueueRowItem({
       data-late={late ? 'true' : 'false'}
       className="flex items-center gap-3 border-b border-gray-100 px-1 py-2.5 transition-colors last:border-b-0 hover:bg-primary-50/40"
     >
+      <input
+        type="checkbox"
+        data-testid="queue-select"
+        checked={selected}
+        onChange={onToggleSelect}
+        onClick={e => e.stopPropagation()}
+        aria-label="Выбрать работу"
+        className="h-4 w-4 shrink-0 accent-primary-600"
+      />
+
       <button
         type="button"
         onClick={onOpen}
@@ -86,6 +116,39 @@ function QueueRowItem({
 
       {time && <span className="hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline">{time}</span>}
 
+      {/* ИИ-статус метка */}
+      {(aiBusy || ai) && (
+        <span
+          className={cn(
+            'hidden shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex',
+            aiBusy || ai?.status === 'pending' || ai?.status === 'processing'
+              ? 'bg-gray-100 text-gray-600'
+              : ai?.status === 'done'
+                ? 'bg-violet-100 text-violet-800'
+                : ai?.status === 'failed'
+                  ? 'bg-red-100 text-red-800'
+                  : 'bg-gray-100 text-gray-600',
+          )}
+          title={ai?.confidence ? CONFIDENCE_LABEL[ai.confidence] : undefined}
+        >
+          {aiBusy || ai?.status === 'pending' || ai?.status === 'processing' ? (
+            <>
+              <Loader2 size={11} className="animate-spin" />
+              ИИ проверяет
+            </>
+          ) : ai?.status === 'done' ? (
+            <>
+              <span>
+                ИИ: {ai.findings === 0 ? 'без замечаний' : `${ai.findings} ${findingsDeclension(ai.findings)}`}
+                {ai.suggestedScore != null && ` · ${ai.suggestedScore} б.`}
+              </span>
+            </>
+          ) : ai?.status === 'failed' ? (
+            <>ИИ не смог</>
+          ) : null}
+        </span>
+      )}
+
       {/* Плашка ровно одна. Раньше «Просрочено» и «Ожидает проверки» стояли
           рядом и спорили за внимание, хотя сообщали одно и то же состояние с
           разной срочностью. Порядок важности: за работу уже взялись → работа
@@ -111,6 +174,18 @@ function QueueRowItem({
         <span className="hidden shrink-0 rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 sm:inline-flex">
           Ожидает проверки
         </span>
+      )}
+
+      {showAiButton && (
+        <button
+          type="button"
+          onClick={() => onRunAi()}
+          disabled={aiBusy}
+          title="Проверить этой работе черновик ИИ"
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50 sm:inline-flex"
+        >
+          {aiBusy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+        </button>
       )}
 
       <Button size="sm" variant={busy ? 'secondary' : 'primary'} onClick={onOpen} className="shrink-0">
@@ -142,6 +217,7 @@ export function HomeworkReviewQueuePage() {
   const [courseFilter, setCourseFilter] = useState<string>('all')
   const [order, setOrder] = useState<'oldest' | 'newest'>('oldest')
   const [onlyLate, setOnlyLate] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const courseOptions = useMemo(() => courseFilterOptions(rows), [rows])
 
@@ -153,7 +229,15 @@ export function HomeworkReviewQueuePage() {
     return out
   }, [rows, courseFilter, onlyLate, order])
 
+  const visibleAttemptIds = useMemo(() => visibleRows.map(r => r.attempt.id), [visibleRows])
+  const { jobs: aiJobs, running: aiRunning, runChecks, reload: reloadAi } = useQueueAiJobs(visibleAttemptIds)
+
   const groups = useMemo(() => groupByDay(visibleRows), [visibleRows])
+
+  const selectedVisible = useMemo(
+    () => visibleAttemptIds.filter(id => selected.has(id)),
+    [selected, visibleAttemptIds],
+  )
 
   // Курс в строке нужен, только когда их в списке несколько: при выбранном
   // курсе повторять его название в каждой строке — шум.
@@ -190,6 +274,50 @@ export function HomeworkReviewQueuePage() {
     return count
   }
 
+  /**
+   * Черновик ИИ переносится в разметку САМ, как только работа открыта.
+   *
+   * Раньше это была вторая кнопка: сначала «Проверить с ИИ», потом «Перенести
+   * рамки». Второе нажатие ничего не решало — отказаться от переноса всё равно
+   * никто не отказывался, а рамки черновые и ученику до публикации не видны.
+   * Поэтому переносим молча и один раз: признак «уже забрали» — accepted_at
+   * у задачи, его же читает список очереди.
+   *
+   * Аннотатор выставляет importRegionsRef после монтирования, а оно ленивое
+   * (pdfjs грузится отдельным чанком). Поэтому не одна попытка, а несколько с
+   * паузой — иначе на медленном канале перенос молча не случался бы.
+   */
+  const autoAppliedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const job = ai.job
+    if (!openAttemptId || !job || job.status !== 'done' || job.accepted_at) return
+    if (ai.findings.length === 0) return
+    if (autoAppliedRef.current === job.id) return
+    if (reviewing?.locked) return
+
+    autoAppliedRef.current = job.id
+    let cancelled = false
+    let tries = 0
+
+    async function attempt() {
+      while (!cancelled && tries < 20) {
+        if (importRegionsRef.current) {
+          try {
+            await applyAiFrames()
+            if (!cancelled) setFillRequest({ comment: job!.summary ?? undefined })
+          } catch { /* причина уже показана панелью разбора */ }
+          return
+        }
+        tries += 1
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+    }
+
+    void attempt()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openAttemptId, ai.job?.id, ai.job?.status, ai.findings.length, reviewing?.locked])
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -225,6 +353,23 @@ export function HomeworkReviewQueuePage() {
           data-testid="queue-filters"
           className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5"
         >
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            <input
+              type="checkbox"
+              checked={selectedVisible.length === visibleAttemptIds.length && visibleAttemptIds.length > 0}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelected(new Set(visibleAttemptIds))
+                } else {
+                  setSelected(new Set())
+                }
+              }}
+              aria-label="Выбрать все видимые работы"
+              className="h-4 w-4 shrink-0 accent-primary-600"
+            />
+            Выбрать все
+          </label>
+
           <label className="flex items-center gap-2 text-xs text-gray-500">
             <Filter size={13} />
             Курс
@@ -282,6 +427,33 @@ export function HomeworkReviewQueuePage() {
         </div>
       )}
 
+      {/* Панель массового действия */}
+      {selectedVisible.length > 0 && (
+        <div
+          data-testid="queue-bulk-bar"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5"
+        >
+          <span className="text-sm font-medium text-primary-900">Выбрано: {selectedVisible.length}</span>
+          <Button
+            size="sm"
+            onClick={() => runChecks(selectedVisible)}
+            loading={aiRunning.size > 0}
+            disabled={aiRunning.size > 0}
+          >
+            <Sparkles size={14} />
+            Проверить с ИИ
+          </Button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-xs text-primary-700 underline-offset-2 hover:underline"
+          >
+            Снять выделение
+          </button>
+          {aiRunning.size > 0 && <span className="text-xs text-primary-700">Осталось: {aiRunning.size}</span>}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 py-10 text-sm text-gray-400">
           <Loader2 size={16} className="animate-spin" />
@@ -313,6 +485,19 @@ export function HomeworkReviewQueuePage() {
                     studentName={studentNames[row.attempt.student_id] ?? 'Ученик'}
                     viewers={viewersOf(row.attempt.id)}
                     showCourse={showCourseInRow}
+                    selected={selected.has(row.attempt.id)}
+                    onToggleSelect={() => {
+                      const next = new Set(selected)
+                      if (next.has(row.attempt.id)) {
+                        next.delete(row.attempt.id)
+                      } else {
+                        next.add(row.attempt.id)
+                      }
+                      setSelected(next)
+                    }}
+                    ai={aiJobs[row.attempt.id]}
+                    aiBusy={aiRunning.has(row.attempt.id)}
+                    onRunAi={() => runChecks([row.attempt.id])}
                     onOpen={() => setReviewing({ row, locked: viewersOf(row.attempt.id).length > 0 })}
                   />
                 ))}
@@ -366,6 +551,7 @@ export function HomeworkReviewQueuePage() {
                 if (!ok) throw new Error('Не удалось опубликовать пометки — вердикт не сохранён')
                 await reviewAttempt(attemptId, decision, comment, score)
                 setReviewing(null)
+                reloadAi()
               }}
             />
           )}
