@@ -23,16 +23,11 @@ const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const text = (id: string, title: string, position = 0, isVisible = true): TopicMaterial =>
   ({ kind: 'text', id, title, position, isVisible, section: null, content: 'Текст ' + title })
 
-function renderItems(
-  canManage: boolean,
-  opts?: { tabs?: boolean; solution?: { hasSolution: boolean; hasHomework: boolean; unlocked: boolean } }
-) {
+function renderItems(canManage: boolean) {
   return render(
     <TopicMaterialItems
       topicId={TOPIC}
       canManage={canManage}
-      tabs={opts?.tabs}
-      solution={opts?.solution}
     />
   )
 }
@@ -171,105 +166,3 @@ describe('Материалы темы — ученик', () => {
   })
 })
 
-describe('Режим вкладок', () => {
-  // Фабрики материалов с section
-  const materialWithSection = (
-    id: string,
-    title: string,
-    section: 'notes' | 'theory' | 'tasks' | 'solution',
-    position = 0,
-    isVisible = true
-  ): TopicMaterial =>
-    ({ kind: 'text', id, title, position, isVisible, section, content: `Контент ${title}` })
-
-  it('без пропса tabs список остаётся сплошным', () => {
-    materials = [materialWithSection('m1', 'Конспект', 'notes')]
-    renderItems(false, { tabs: false })
-
-    expect(screen.getByText('Конспект')).toBeInTheDocument()
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
-  })
-
-  it('пустые рубрики не превращаются во вкладки', () => {
-    materials = [materialWithSection('m1', 'Мой конспект', 'notes')]
-    renderItems(false, { tabs: true })
-
-    // Есть вкладка «Конспект» (notes) — на ней один материал
-    expect(screen.getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
-    // Нет вкладки «Теория» — нет материалов в theory
-    expect(screen.queryByRole('tab', { name: /Теория/ })).not.toBeInTheDocument()
-  })
-
-  it('вкладки переключаются и показывают свои материалы', () => {
-    materials = [
-      materialWithSection('m1', 'Конспект номер 1', 'notes', 0),
-      materialWithSection('m2', 'Задача номер 1', 'tasks', 1),
-    ]
-    renderItems(false, { tabs: true })
-
-    // Изначально должен быть виден материал конспекта
-    expect(screen.getByText('Конспект номер 1')).toBeInTheDocument()
-    expect(screen.queryByText('Задача номер 1')).not.toBeInTheDocument()
-
-    // Клик на вкладку «Задачи»
-    fireEvent.click(screen.getByRole('tab', { name: /Задачи/ }))
-
-    // Теперь видна задача, конспект скрыт
-    expect(screen.getByText('Задача номер 1')).toBeInTheDocument()
-    expect(screen.queryByText('Конспект номер 1')).not.toBeInTheDocument()
-  })
-
-  it('закрытое решение показывает вкладку без материалов', () => {
-    materials = [materialWithSection('m1', 'Конспект', 'notes', 0)]
-    renderItems(false, {
-      tabs: true,
-      solution: { hasSolution: true, hasHomework: true, unlocked: false },
-    })
-
-    // Вкладка «Решение ДЗ» присутствует
-    expect(screen.getByRole('tab', { name: /Решение ДЗ/ })).toBeInTheDocument()
-
-    // Клик на неё
-    fireEvent.click(screen.getByRole('tab', { name: /Решение ДЗ/ }))
-
-    // Видна стена с замком
-    expect(screen.getByText('Решение пока закрыто')).toBeInTheDocument()
-    // Не видно содержимого материалов (контента конспекта)
-    expect(screen.queryByText('Контент Конспект')).not.toBeInTheDocument()
-  })
-
-  it('открытое решение показывает материалы, а не замок', () => {
-    materials = [
-      materialWithSection('m1', 'Конспект', 'notes', 0),
-      materialWithSection('m2', 'Ответ на задачу', 'solution', 1),
-    ]
-    renderItems(false, {
-      tabs: true,
-      solution: { hasSolution: true, hasHomework: true, unlocked: true },
-    })
-
-    // Вкладка «Решение ДЗ» присутствует
-    expect(screen.getByRole('tab', { name: /Решение ДЗ/ })).toBeInTheDocument()
-
-    // Клик на неё
-    fireEvent.click(screen.getByRole('tab', { name: /Решение ДЗ/ }))
-
-    // Видна содержимое материала решения
-    expect(screen.getByText('Ответ на задачу')).toBeInTheDocument()
-    // Нет стены с замком
-    expect(screen.queryByText('Решение пока закрыто')).not.toBeInTheDocument()
-  })
-
-  it('когда решения нет вовсе, вкладки «Решение ДЗ» нет', () => {
-    materials = [materialWithSection('m1', 'Конспект', 'notes', 0)]
-    renderItems(false, {
-      tabs: true,
-      solution: { hasSolution: false, hasHomework: true, unlocked: false },
-    })
-
-    // Вкладка «Решение ДЗ» не должна быть
-    expect(screen.queryByRole('tab', { name: /Решение ДЗ/ })).not.toBeInTheDocument()
-    // Видна только вкладка конспекта
-    expect(screen.getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
-  })
-})

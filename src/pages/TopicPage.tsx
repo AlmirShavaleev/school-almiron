@@ -11,6 +11,8 @@ import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
+import { TOPIC_MATERIAL_SECTION_LABELS, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,9 @@ export function TopicPage() {
 
   const [topic,   setTopic]   = useState<TopicInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hasHomework, setHasHomework] = useState(false)
+  const [hasTest, setHasTest] = useState(false)
+  const [chosen, setChosen] = useState<string | null>(null)
 
   // Видео темы живёт в topic_material_items: плитка «Видео» в модалке
   // преподавателя пишет ссылку туда (kind='video'), старая topic_materials
@@ -85,13 +90,15 @@ export function TopicPage() {
           .from('students').select('id').eq('profile_id', profile!.id).single()
         if (!student || cancelled) return
 
-        // 2. Topic + group info (parallel)
-        const [topicRes, groupRes] = await Promise.all([
+        // 2. Topic + group info + homework + test (parallel)
+        const [topicRes, groupRes, hwRes, testRes] = await Promise.all([
           supabase.from('topics')
             .select('id, title, order_index, available_from, modules(id, title, courses(id, title, subject))')
             .eq('id', topicId!).single(),
           supabase.from('groups')
             .select('id, name').eq('id', groupId!).single(),
+          supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
+          supabase.from('topic_test_assignments').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
         ])
         if (cancelled) return
 
@@ -109,6 +116,8 @@ export function TopicPage() {
           group_id:       groupId!,
           group_name:     gd?.name || '',
         })
+        setHasHomework((hwRes.count ?? 0) > 0)
+        setHasTest((testRes.count ?? 0) > 0)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -158,6 +167,37 @@ export function TopicPage() {
     </div>
   )
 
+  // ── Determine available tabs ─────────────────────────────────────────────
+  // Порядок: Видео, Конспект, Теория, Задачи, Решение ДЗ, Домашнее задание, Тест
+
+  type TabKey = 'video' | TopicMaterialSection | 'homework' | 'test'
+
+  const availableTabs: TabKey[] = []
+
+  if (embedUrl || videoUrl) availableTabs.push('video')
+
+  // Count materials by section
+  const notesCount = materials.filter(m => m.section === 'notes').length
+  const theoryCount = materials.filter(m => m.section === 'theory').length
+  const tasksCount = materials.filter(m => m.section === 'tasks').length
+  const solutionCount = materials.filter(m => m.section === 'solution').length
+
+  if (notesCount > 0) availableTabs.push('notes')
+  if (theoryCount > 0) availableTabs.push('theory')
+  if (tasksCount > 0) availableTabs.push('tasks')
+
+  // Solution tab available if there's a solution OR solution materials
+  if (solutionState.hasSolution || solutionCount > 0) availableTabs.push('solution')
+
+  if (hasHomework) availableTabs.push('homework')
+  if (hasTest) availableTabs.push('test')
+
+  // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
+  // if chosen tab is no longer available, switch to the first one
+  const active: TabKey | null = chosen && availableTabs.includes(chosen as TabKey)
+    ? (chosen as TabKey)
+    : availableTabs[0] ?? null
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -183,52 +223,107 @@ export function TopicPage() {
         </div>
       </div>
 
-      {/* ── VIDEO ── */}
-      <div className="rounded-2xl overflow-hidden bg-black shadow-md">
-        {videoUrl && embedUrl ? (
-          <div className="aspect-video">
-            <iframe src={embedUrl} className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen />
-          </div>
-        ) : videoUrl ? (
-          <a href={videoUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-4 p-6 hover:bg-gray-900 transition-colors">
-            <div className="w-14 h-14 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
-              <Play size={26} className="text-white ml-1" />
+      {/* ── Tab panel ── */}
+      {availableTabs.length > 0 && (
+        <div role="tablist" aria-label="Разделы темы" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+          {availableTabs.map(tabKey => {
+            let label = ''
+            let count = 0
+            let isLocked = false
+
+            if (tabKey === 'video') {
+              label = 'Видео'
+            } else if (tabKey === 'notes') {
+              label = TOPIC_MATERIAL_SECTION_LABELS.notes
+              count = notesCount
+            } else if (tabKey === 'theory') {
+              label = TOPIC_MATERIAL_SECTION_LABELS.theory
+              count = theoryCount
+            } else if (tabKey === 'tasks') {
+              label = TOPIC_MATERIAL_SECTION_LABELS.tasks
+              count = tasksCount
+            } else if (tabKey === 'solution') {
+              label = TOPIC_MATERIAL_SECTION_LABELS.solution
+              count = solutionCount
+              isLocked = solutionState.hasSolution && !solutionState.unlocked
+            } else if (tabKey === 'homework') {
+              label = 'Домашнее задание'
+            } else if (tabKey === 'test') {
+              label = 'Тест'
+            }
+
+            const isActive = active === tabKey
+
+            return (
+              <button
+                key={tabKey}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setChosen(tabKey)}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'border-primary-500 text-primary-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800',
+                )}
+              >
+                {label}
+                {isLocked && <Lock size={12} />}
+                {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Tab content ── */}
+      {availableTabs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+          Преподаватель ещё не добавил материалы
+        </div>
+      ) : active === null ? null : active === 'video' ? (
+        <div className="rounded-2xl overflow-hidden bg-black shadow-md">
+          {embedUrl ? (
+            <div className="aspect-video">
+              <iframe src={embedUrl} className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen />
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold">Смотреть видео</div>
-              <div className="text-gray-400 text-xs mt-0.5 truncate">{videoUrl}</div>
+          ) : videoUrl ? (
+            <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-4 p-6 hover:bg-gray-900 transition-colors">
+              <div className="w-14 h-14 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
+                <Play size={26} className="text-white ml-1" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold">Смотреть видео</div>
+                <div className="text-gray-400 text-xs mt-0.5 truncate">{videoUrl}</div>
+              </div>
+              <ExternalLink size={16} className="text-gray-500" />
+            </a>
+          ) : (
+            <div className="aspect-video flex flex-col items-center justify-center gap-3 bg-gray-900">
+              <Video size={36} className="text-gray-600" />
+              <span className="text-gray-500 text-sm">Видеоурок ещё не добавлен</span>
             </div>
-            <ExternalLink size={16} className="text-gray-500" />
-          </a>
-        ) : (
-          <div className="aspect-video flex flex-col items-center justify-center gap-3 bg-gray-900">
-            <Video size={36} className="text-gray-600" />
-            <span className="text-gray-500 text-sm">Видеоурок ещё не добавлен</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── МАТЕРИАЛЫ ТЕМЫ ──
-          Скрытые материалы и закрытые темы сюда не доезжают: отсекает RLS
-          вместе с topics.available_from. Раздел «Решение ДЗ» — тоже: до
-          проверки работы его не отдаёт политика, а вкладка честно говорит,
-          что решение появится позже (миграция 20260802000000). */}
-      <TopicMaterialItems topicId={topic.id} canManage={false} tabs solution={solutionState} />
-
-      {/* ── PDF-ДЗ ТЕМЫ ──
-          Неопубликованное ДЗ сюда не доезжает: отсекает RLS.
-          Единственная система ДЗ в продукте — topic_homework (решение владельца,
-          PROJECT_STATE §9.3). Легаси-блок Homework V1 (homeworks/
-          homework_submissions) отсюда удалён 2026-07-27: он дублировал ДЗ
-          и путал учеников («Срок не указан» рядом с настоящим дедлайном). */}
-      <TopicHomeworkStudent topicId={topic.id} />
-
-      {/* ── ТЕСТИРОВАНИЕ ТЕМЫ ──
-          Неопубликованный тест сюда не доезжает: отсекает RLS. */}
-      <TopicTestStudent topicId={topic.id} />
+          )}
+        </div>
+      ) : active === 'solution' && solutionState.hasSolution && !solutionState.unlocked ? (
+        <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
+          <Lock size={20} className="mx-auto text-amber-500" />
+          <p className="mt-2 text-sm font-medium text-amber-900">Решение пока закрыто</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Оно откроется, когда преподаватель проверит вашу работу. Так задание остаётся заданием.
+          </p>
+        </div>
+      ) : active === 'notes' || active === 'theory' || active === 'tasks' || active === 'solution' ? (
+        <TopicMaterialItems topicId={topic.id} canManage={false} section={active} />
+      ) : active === 'homework' ? (
+        <TopicHomeworkStudent topicId={topic.id} />
+      ) : active === 'test' ? (
+        <TopicTestStudent topicId={topic.id} />
+      ) : null}
     </div>
   )
 }

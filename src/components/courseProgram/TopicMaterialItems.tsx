@@ -448,9 +448,6 @@ function VideoAddForm({
  *
  * section — фильтр по рубрике или 'video'. Если задана, показываются только материалы
  * из этой рубрики/вида, и форма добавления подменяется.
- *
- * tabs — показывать материалы вкладками по рубрикам вместо сплошного списка.
- * solution — состояние раздела «Решение ДЗ»: признак существования, наличие задания, статус раскрытия.
  */
 export function TopicMaterialItems({
   topicId,
@@ -458,23 +455,18 @@ export function TopicMaterialItems({
   className,
   section,
   hideAddForm,
-  tabs,
-  solution,
 }: {
   topicId: string
   canManage: boolean
   className?: string
   section?: TopicMaterialSection | 'video'
   hideAddForm?: boolean
-  tabs?: boolean
-  solution?: { hasSolution: boolean; hasHomework: boolean; unlocked: boolean }
 }) {
   const {
     materials, loading, error,
     uploadMaterialFile, addMaterial, deleteMaterial, toggleVisibility, moveMaterial,
   } = useTopicMaterialItems(topicId)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [chosenTab, setChosenTab] = useState<TopicMaterialSection | 'video' | 'other' | null>(null)
 
   function guard<T extends unknown[]>(fn: (...args: T) => Promise<unknown>) {
     return (...args: T) => {
@@ -492,140 +484,17 @@ export function TopicMaterialItems({
     )
   }
 
-  // ─── Режим БЕЗ ВКЛАДОК (исходное поведение) ───────────────────────────────────────
-  if (!tabs) {
-    // Фильтруем материалы по section
-    let filtered = materials
-    if (section && section !== 'video') {
-      filtered = materials.filter(m => m.section === section)
-    } else if (section === 'video') {
-      filtered = materials.filter(m => m.kind === 'video')
-    }
-
-    const emptyMessage = section
-      ? 'В этой рубрике пока пусто'
-      : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
-
-    return (
-      <div className={cn('space-y-3', className)}>
-        {(error || actionError) && (
-          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
-        )}
-
-        {canManage && section === 'video' && (
-          <VideoAddForm onAdd={addMaterial} loading={loading} />
-        )}
-
-        {canManage && section && section !== 'video' && (
-          <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
-        )}
-
-        {canManage && !section && (
-          <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
-        )}
-
-        {filtered.map((m, i) => (
-          <MaterialCard
-            key={m.id}
-            material={m}
-            topicId={topicId}
-            canManage={canManage}
-            isFirst={i === 0}
-            isLast={i === filtered.length - 1}
-            onDelete={guard(deleteMaterial)}
-            onToggleVisibility={guard(toggleVisibility)}
-            onMove={guard(moveMaterial)}
-          />
-        ))}
-
-        {filtered.length === 0 && (
-          <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
-            {emptyMessage}
-          </p>
-        )}
-
-        {canManage && !hideAddForm && !section && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
-      </div>
-    )
+  // Фильтруем материалы по section
+  let filtered = materials
+  if (section && section !== 'video') {
+    filtered = materials.filter(m => m.section === section)
+  } else if (section === 'video') {
+    filtered = materials.filter(m => m.kind === 'video')
   }
 
-  // ─── РЕЖИМ С ВКЛАДКАМИ ───────────────────────────────────────────────────────────────
-
-  // Группируем материалы по рубрикам и типам
-  const bySection: Record<TopicMaterialSection | 'video' | 'other', TopicMaterial[]> = {
-    notes: [],
-    theory: [],
-    tasks: [],
-    solution: [],
-    video: [],
-    other: [],
-  }
-
-  materials.forEach(m => {
-    if (m.section && ['notes', 'theory', 'tasks', 'solution'].includes(m.section)) {
-      // Материалы в рубриках (включая видео в рубриках)
-      bySection[m.section as TopicMaterialSection].push(m)
-    } else if (m.section === null && m.kind === 'video') {
-      // Видео без рубрики — отдельная вкладка
-      bySection.video.push(m)
-    } else if (m.section === null && m.kind !== 'video') {
-      // Прочее (ссылки, тексты, файлы без рубрики)
-      bySection.other.push(m)
-    }
-  })
-
-  // Определяем доступные вкладки в фиксированном порядке
-  const availableTabs: (TopicMaterialSection | 'video' | 'other')[] = []
-
-  // Рубрики в порядке: notes, theory, tasks, solution
-  for (const sectionKey of ['notes', 'theory', 'tasks'] as const) {
-    if (bySection[sectionKey].length > 0) {
-      availableTabs.push(sectionKey)
-    }
-  }
-
-  // Решение показывается, если оно существует (даже без материалов из-за прав)
-  if (solution?.hasSolution) {
-    availableTabs.push('solution')
-  } else if (bySection.solution.length > 0) {
-    availableTabs.push('solution')
-  }
-
-  // Видео без рубрики
-  if (bySection.video.length > 0) {
-    availableTabs.push('video')
-  }
-
-  // Прочее
-  if (bySection.other.length > 0) {
-    availableTabs.push('other')
-  }
-
-  // Вычисляем активную вкладку БЕЗ useEffect, чтобы избежать циклов:
-  // если выбранная вкладка перестала быть доступной, переходим на первую.
-  const active = availableTabs.includes(chosenTab!) ? chosenTab : availableTabs[0] ?? null
-
-  const emptyMessage = canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
-
-  // Если вкладок совсем нет
-  if (availableTabs.length === 0) {
-    return (
-      <div className={cn('space-y-3', className)}>
-        {(error || actionError) && (
-          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
-        )}
-        <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
-          {emptyMessage}
-        </p>
-      </div>
-    )
-  }
-
-  // Материалы активной вкладки
-  const activeTabMaterials = active ? bySection[active as keyof typeof bySection] : []
-
-  // Закрыта ли вкладка решения
-  const isSolutionLocked = active === 'solution' && solution?.hasSolution && !solution.unlocked
+  const emptyMessage = section
+    ? 'В этой рубрике пока пусто'
+    : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -633,73 +502,39 @@ export function TopicMaterialItems({
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{actionError || error}</div>
       )}
 
-      {/* Панель вкладок */}
-      <div role="tablist" aria-label="Разделы материалов" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
-        {availableTabs.map(tabKey => {
-          // Получаем подпись вкладки
-          let label: string
-          if (tabKey === 'video') {
-            label = 'Видео'
-          } else if (tabKey === 'other') {
-            label = 'Прочее'
-          } else {
-            label = TOPIC_MATERIAL_SECTION_LABELS[tabKey as TopicMaterialSection]
-          }
+      {canManage && section === 'video' && (
+        <VideoAddForm onAdd={addMaterial} loading={loading} />
+      )}
 
-          const count = bySection[tabKey as keyof typeof bySection].length
-          const isActive = active === tabKey
-          const isLocked = tabKey === 'solution' && solution?.hasSolution && !solution.unlocked
+      {canManage && section && section !== 'video' && (
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
+      )}
 
-          return (
-            <button
-              key={tabKey}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setChosenTab(tabKey)}
-              className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'border-primary-500 text-primary-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-800',
-              )}
-            >
-              {label}
-              {isLocked && <Lock size={12} />}
-              {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
-            </button>
-          )
-        })}
-      </div>
+      {canManage && !section && (
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
+      )}
 
-      {/* Содержимое активной вкладки */}
-      {isSolutionLocked ? (
-        <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
-          <Lock size={20} className="mx-auto text-amber-500" />
-          <p className="mt-2 text-sm font-medium text-amber-900">Решение пока закрыто</p>
-          <p className="mt-1 text-sm text-amber-800">
-            Оно откроется, когда преподаватель проверит вашу работу. Так задание остаётся заданием.
-          </p>
-        </div>
-      ) : activeTabMaterials.length === 0 ? (
+      {filtered.map((m, i) => (
+        <MaterialCard
+          key={m.id}
+          material={m}
+          topicId={topicId}
+          canManage={canManage}
+          isFirst={i === 0}
+          isLast={i === filtered.length - 1}
+          onDelete={guard(deleteMaterial)}
+          onToggleVisibility={guard(toggleVisibility)}
+          onMove={guard(moveMaterial)}
+        />
+      ))}
+
+      {filtered.length === 0 && (
         <p className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
           {emptyMessage}
         </p>
-      ) : (
-        activeTabMaterials.map((m, i) => (
-          <MaterialCard
-            key={m.id}
-            material={m}
-            topicId={topicId}
-            canManage={canManage}
-            isFirst={i === 0}
-            isLast={i === activeTabMaterials.length - 1}
-            onDelete={guard(deleteMaterial)}
-            onToggleVisibility={guard(toggleVisibility)}
-            onMove={guard(moveMaterial)}
-          />
-        ))
       )}
+
+      {canManage && !hideAddForm && !section && <AddMaterialForm onAdd={addMaterial} onUploadFile={uploadMaterialFile} />}
     </div>
   )
 }
