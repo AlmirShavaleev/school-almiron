@@ -1216,7 +1216,7 @@ type CourseTab = typeof COURSE_TABS[number]
  * открывать ссылки в новой вкладке, показывать адрес в статусной строке и
  * копировать его по правому клику. Кнопка всё это ломает.
  */
-function CourseCard({ course }: { course: Course }) {
+function CourseCard({ course, ownerLabel }: { course: Course; ownerLabel?: string | null }) {
   return (
     <Link
       to={`/course-program?courseId=${course.id}`}
@@ -1238,6 +1238,14 @@ function CourseCard({ course }: { course: Course }) {
         <Badge variant="info" className="text-xs">{SUBJECT_LABELS[course.subject] || course.subject}</Badge>
         <Badge variant="default" className="text-xs">{EXAM_LABELS[course.exam_type] || course.exam_type}</Badge>
       </div>
+      {/* Чей курс — тихой строкой внизу. Не плашкой: в списке из десятка
+          карточек громкая метка на каждой превращается в шум. */}
+      {ownerLabel && (
+        <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
+          <GraduationCap size={12} className="shrink-0" />
+          <span className="truncate">{ownerLabel}</span>
+        </span>
+      )}
     </Link>
   )
 }
@@ -1300,6 +1308,35 @@ export function CourseProgramPage() {
   const [activeDragTopicId, setActiveDragTopicId] = useState<string | null>(null)
   const dragStartModulesRef = useRef<Module[] | null>(null)
   const { templates } = useCourseHomeworkTemplates(selectedId)
+
+  // Имена владельцев для карточек курсов — одним запросом на весь список.
+  // У кого профиль не читается (RLS не пускает преподавателя к чужим),
+  // строка просто не показывается — имя здесь подсказка, а не право доступа.
+  const [ownerNames, setOwnerNames] = useState<Record<string, string>>({})
+  const ownerIdsKey = useMemo(
+    () => Array.from(new Set(courses.map(c => c.owner_id).filter((x): x is string => !!x))).sort().join(','),
+    [courses],
+  )
+
+  useEffect(() => {
+    const ids = ownerIdsKey ? ownerIdsKey.split(',') : []
+    if (ids.length === 0) {
+      setOwnerNames({})
+      return
+    }
+    let cancelled = false
+    supabase.from('profiles').select('id, full_name').in('id', ids).then(({ data }) => {
+      if (cancelled) return
+      setOwnerNames(Object.fromEntries((data ?? []).map(p => [p.id, p.full_name ?? ''])))
+    })
+    return () => { cancelled = true }
+  }, [ownerIdsKey])
+
+  const ownerLabelFor = (course: Course): string | null => {
+    if (!course.owner_id) return null
+    if (course.owner_id === profile?.id) return 'Ваш курс'
+    return ownerNames[course.owner_id] || null
+  }
 
   // Чей это курс. Нужно только чтобы показать админу «это курс такого-то» и
   // дать кнопку «Посмотреть его глазами» — сам доступ решает RLS, не эта плашка.
@@ -1709,14 +1746,14 @@ export function CourseProgramPage() {
                   Черновики · {draftCourses.length}
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {draftCourses.map(c => <CourseCard key={c.id} course={c} />)}
+                  {draftCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
                 </div>
               </div>
             )}
 
             {activeCourses.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {activeCourses.map(c => <CourseCard key={c.id} course={c} />)}
+                {activeCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
               </div>
             )}
 
@@ -1728,7 +1765,7 @@ export function CourseProgramPage() {
                   Архив · {archivedCourses.length}
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {archivedCourses.map(c => <CourseCard key={c.id} course={c} />)}
+                  {archivedCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
                 </div>
               </details>
             )}
