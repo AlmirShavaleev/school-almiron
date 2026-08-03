@@ -57,6 +57,7 @@ const createTopic = (overrides?: Partial<Topic>): Topic => ({
   order_index: 0,
   max_score: 100,
   available_from: null,
+  is_open: null,
   ...overrides,
 })
 

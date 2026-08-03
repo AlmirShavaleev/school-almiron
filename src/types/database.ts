@@ -1061,6 +1061,75 @@ export type Database = {
           },
         ]
       }
+      enrollment_invites_cleanup_backup_20260803: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          batch_id: string | null
+          class_grade: string | null
+          client_row_id: string | null
+          created_at: string | null
+          email: string | null
+          email_normalized: string | null
+          expires_at: string | null
+          full_name: string | null
+          group_id: string | null
+          id: string | null
+          invited_by: string | null
+          phone: string | null
+          phone_normalized: string | null
+          revoked_at: string | null
+          short_code_hash: string | null
+          status: string | null
+          token_hash: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          batch_id?: string | null
+          class_grade?: string | null
+          client_row_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          email_normalized?: string | null
+          expires_at?: string | null
+          full_name?: string | null
+          group_id?: string | null
+          id?: string | null
+          invited_by?: string | null
+          phone?: string | null
+          phone_normalized?: string | null
+          revoked_at?: string | null
+          short_code_hash?: string | null
+          status?: string | null
+          token_hash?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          batch_id?: string | null
+          class_grade?: string | null
+          client_row_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          email_normalized?: string | null
+          expires_at?: string | null
+          full_name?: string | null
+          group_id?: string | null
+          id?: string | null
+          invited_by?: string | null
+          phone?: string | null
+          phone_normalized?: string | null
+          revoked_at?: string | null
+          short_code_hash?: string | null
+          status?: string | null
+          token_hash?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       group_students: {
         Row: {
           group_id: string
@@ -1097,9 +1166,30 @@ export type Database = {
           },
         ]
       }
+      group_students_cleanup_backup_20260803: {
+        Row: {
+          group_id: string | null
+          id: string | null
+          joined_at: string | null
+          student_id: string | null
+        }
+        Insert: {
+          group_id?: string | null
+          id?: string | null
+          joined_at?: string | null
+          student_id?: string | null
+        }
+        Update: {
+          group_id?: string | null
+          id?: string | null
+          joined_at?: string | null
+          student_id?: string | null
+        }
+        Relationships: []
+      }
       groups: {
         Row: {
-          course_id: string | null
+          course_id: string
           created_at: string
           curator_id: string | null
           id: string
@@ -1112,7 +1202,7 @@ export type Database = {
           type: Database["public"]["Enums"]["group_type"]
         }
         Insert: {
-          course_id?: string | null
+          course_id: string
           created_at?: string
           curator_id?: string | null
           id?: string
@@ -1125,7 +1215,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["group_type"]
         }
         Update: {
-          course_id?: string | null
+          course_id?: string
           created_at?: string
           curator_id?: string | null
           id?: string
@@ -1160,6 +1250,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      groups_cleanup_backup_20260803: {
+        Row: {
+          course_id: string | null
+          created_at: string | null
+          curator_id: string | null
+          id: string | null
+          is_active: boolean | null
+          max_students: number | null
+          name: string | null
+          schedule_days: string[] | null
+          schedule_time: string | null
+          teacher_id: string | null
+          type: Database["public"]["Enums"]["group_type"] | null
+        }
+        Insert: {
+          course_id?: string | null
+          created_at?: string | null
+          curator_id?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          max_students?: number | null
+          name?: string | null
+          schedule_days?: string[] | null
+          schedule_time?: string | null
+          teacher_id?: string | null
+          type?: Database["public"]["Enums"]["group_type"] | null
+        }
+        Update: {
+          course_id?: string | null
+          created_at?: string | null
+          curator_id?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          max_students?: number | null
+          name?: string | null
+          schedule_days?: string[] | null
+          schedule_time?: string | null
+          teacher_id?: string | null
+          type?: Database["public"]["Enums"]["group_type"] | null
+        }
+        Relationships: []
       }
       homework_action_log: {
         Row: {
@@ -3381,6 +3513,66 @@ export type Database = {
           },
         ]
       }
+      support_requests: {
+        Row: {
+          attachments: string[]
+          author_id: string
+          author_name: string | null
+          author_role: Database["public"]["Enums"]["user_role"] | null
+          created_at: string
+          id: string
+          message: string
+          page_path: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          attachments?: string[]
+          author_id: string
+          author_name?: string | null
+          author_role?: Database["public"]["Enums"]["user_role"] | null
+          created_at?: string
+          id?: string
+          message: string
+          page_path?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Update: {
+          attachments?: string[]
+          author_id?: string
+          author_name?: string | null
+          author_role?: Database["public"]["Enums"]["user_role"] | null
+          created_at?: string
+          id?: string
+          message?: string
+          page_path?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_requests_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_collection_items: {
         Row: {
           catalog_task_id: string
@@ -3955,6 +4147,7 @@ export type Database = {
           show_solutions_after_submit: boolean
           status: string
           student_id: string | null
+          topic_id: string | null
           updated_at: string
           variant_id: string
         }
@@ -3971,6 +4164,7 @@ export type Database = {
           show_solutions_after_submit?: boolean
           status?: string
           student_id?: string | null
+          topic_id?: string | null
           updated_at?: string
           variant_id: string
         }
@@ -3987,6 +4181,7 @@ export type Database = {
           show_solutions_after_submit?: boolean
           status?: string
           student_id?: string | null
+          topic_id?: string | null
           updated_at?: string
           variant_id?: string
         }
@@ -4010,6 +4205,13 @@ export type Database = {
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_variant_assignments_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
             referencedColumns: ["id"]
           },
           {
@@ -5359,6 +5561,15 @@ export type Database = {
         }
         Returns: Json
       }
+      attach_variant_to_topic: {
+        Args: {
+          p_due_at?: string
+          p_group_ids: string[]
+          p_topic_id: string
+          p_variant_id: string
+        }
+        Returns: number
+      }
       auth_can_copy_to_group_course: {
         Args: { p_course_id?: string; p_group_id?: string }
         Returns: boolean
@@ -5719,6 +5930,10 @@ export type Database = {
       delete_my_variant: {
         Args: { p_student_assignment_id: string }
         Returns: undefined
+      }
+      detach_variant_from_topic: {
+        Args: { p_topic_id: string; p_variant_id: string }
+        Returns: number
       }
       disable_teacher_join_link: { Args: never; Returns: undefined }
       distribute_join_request: {
@@ -6430,6 +6645,15 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_support_request: {
+        Args: {
+          p_attachments?: string[]
+          p_message: string
+          p_page_path?: string
+          p_subject: string
+        }
+        Returns: string
+      }
       submit_task_solution: {
         Args: { p_answers: Json; p_assigned_id: string; p_files: string[] }
         Returns: {
@@ -6458,9 +6682,28 @@ export type Database = {
         Args: { p_student_assignment_id: string }
         Returns: Json
       }
+      support_request_recipients: {
+        Args: never
+        Returns: {
+          profile_id: string
+        }[]
+      }
       sync_group_assignment: {
         Args: { p_assignment_id: string }
         Returns: Json
+      }
+      topic_attached_variants: {
+        Args: { p_topic_id: string }
+        Returns: {
+          assigned_count: number
+          exam_type: string
+          group_count: number
+          passed_count: number
+          subject: string
+          tasks_count: number
+          title: string
+          variant_id: string
+        }[]
       }
       topic_copy_stage: {
         Args: {
@@ -6494,6 +6737,10 @@ export type Database = {
       topic_homework_can_manage: {
         Args: { p_homework_id: string }
         Returns: boolean
+      }
+      topic_homework_card_title: {
+        Args: { p_hw_title: string; p_topic_title: string }
+        Returns: string
       }
       topic_homework_enqueue_reviewed: {
         Args: { p_review_id: string }
@@ -6537,6 +6784,23 @@ export type Database = {
       topic_solution_unlocked: {
         Args: { p_topic_id: string }
         Returns: boolean
+      }
+      topic_student_variants: {
+        Args: { p_topic_id: string }
+        Returns: {
+          due_at: string
+          exam_type: string
+          grading_status: string
+          max_score: number
+          percentage: number
+          score: number
+          status: string
+          student_assignment_id: string
+          subject: string
+          tasks_count: number
+          title: string
+          variant_id: string
+        }[]
       }
       topic_test_add_item: {
         Args: { p_task_id: string; p_test_id: string }
@@ -6608,10 +6872,7 @@ export type Database = {
           total_points: number
         }[]
       }
-      topics_open_until: {
-        Args: { p_topic_id: string }
-        Returns: number
-      }
+      topics_open_until: { Args: { p_topic_id: string }; Returns: number }
       update_variant_assignment: {
         Args: {
           p_allow_retry?: boolean
@@ -6625,6 +6886,30 @@ export type Database = {
           p_show_solutions_after_submit?: boolean
         }
         Returns: Json
+      }
+      variant_answer_alternatives: {
+        Args: { p_correct_norm: string }
+        Returns: number[]
+      }
+      variant_answer_can_auto_check: {
+        Args: { p_correct_norm: string }
+        Returns: boolean
+      }
+      variant_answer_is_auto_checkable: {
+        Args: { p_answer_html: string; p_partial_type: string }
+        Returns: boolean
+      }
+      variant_answer_required_set: {
+        Args: { p_correct_norm: string }
+        Returns: number[]
+      }
+      variant_answer_student_set: {
+        Args: { p_student_norm: string }
+        Returns: number[]
+      }
+      variant_answer_verdict: {
+        Args: { p_correct_norm: string; p_student_norm: string }
+        Returns: boolean
       }
       variant_level_scale: {
         Args: { p_exam_type: string; p_subject: string }
@@ -6668,9 +6953,21 @@ export type Database = {
         }
         Returns: {
           available: number
+          exam_number: number
           level: string
+          section_id: string
+          section_position: number
+          section_title: string
           topic_id: string
           topic_title: string
+        }[]
+      }
+      variant_topic_groups: {
+        Args: { p_topic_id: string }
+        Returns: {
+          group_id: string
+          group_name: string
+          student_count: number
         }[]
       }
     }

@@ -195,6 +195,16 @@ export function TopicVariantAttach({ topicId }: { topicId: string }) {
                   <p className="text-sm text-amber-700">
                     У курса нет групп — выдать тестирование некому.
                   </p>
+                ) : groups.length === 1 ? (
+                  /* Один курс = одна группа (§61). Выбор из одного варианта —
+                     лишний клик, поэтому группа подставляется молча, но кому
+                     уйдёт тест, всё равно написано. */
+                  <p className="text-sm text-gray-700">
+                    {groups[0].group_name}
+                    <span className="ml-2 text-xs text-gray-400">
+                      {groups[0].student_count} уч.
+                    </span>
+                  </p>
                 ) : (
                   <div className="space-y-1">
                     {groups.map(g => (
