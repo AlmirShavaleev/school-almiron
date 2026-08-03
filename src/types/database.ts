@@ -379,6 +379,24 @@ export type Database = {
           },
         ]
       }
+      catalog_task_topics_rehang_backup_20260803: {
+        Row: {
+          task_id: string
+          topic_id_new: string
+          topic_id_old: string
+        }
+        Insert: {
+          task_id: string
+          topic_id_new: string
+          topic_id_old: string
+        }
+        Update: {
+          task_id?: string
+          topic_id_new?: string
+          topic_id_old?: string
+        }
+        Relationships: []
+      }
       catalog_tasks: {
         Row: {
           answer_html: string | null
@@ -508,6 +526,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      catalog_topics_title_backup_20260803: {
+        Row: {
+          external_id: number | null
+          id: string | null
+          title: string | null
+        }
+        Insert: {
+          external_id?: number | null
+          id?: string | null
+          title?: string | null
+        }
+        Update: {
+          external_id?: number | null
+          id?: string | null
+          title?: string | null
+        }
+        Relationships: []
       }
       course_copy_jobs: {
         Row: {
@@ -2713,6 +2749,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_dispatch_errors: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          id: string
+          message: string | null
+          source: string
+          sqlstate: string | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          message?: string | null
+          source: string
+          sqlstate?: string | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          message?: string | null
+          source?: string
+          sqlstate?: string | null
+        }
+        Relationships: []
       }
       notification_prefs: {
         Row: {
@@ -5552,6 +5615,12 @@ export type Database = {
         Returns: undefined
       }
       course_of_topic: { Args: { p_topic_id: string }; Returns: string }
+      course_staff_profiles: {
+        Args: { p_course_id: string }
+        Returns: {
+          profile_id: string
+        }[]
+      }
       course_storage_files: { Args: { p_course_id: string }; Returns: Json }
       course_student_can_see_lesson: {
         Args: { p_lesson_id: string }
@@ -5694,6 +5763,22 @@ export type Database = {
           p_sections: Database["public"]["CompositeTypes"]["variant_section_input"][]
         }
         Returns: {
+          out_position: number
+          out_section_id: string
+          out_task_id: string
+          out_topic_id: string
+        }[]
+      }
+      generate_variant_tasks_by_topic: {
+        Args: {
+          p_exam_type: string
+          p_levels: Json
+          p_subject: string
+          p_topic_ids: string[]
+          p_topic_source?: string
+        }
+        Returns: {
+          out_level: string
           out_position: number
           out_section_id: string
           out_task_id: string
@@ -6039,6 +6124,8 @@ export type Database = {
           has_solution: boolean
           item_id: string
           item_position: number
+          max_points: number
+          partial_type: string
           points: number
           solution_html: string
           solution_plan_html: string
@@ -6135,6 +6222,19 @@ export type Database = {
       normalize_phone: { Args: { p: string }; Returns: string }
       normalize_short_code: { Args: { p: string }; Returns: string }
       normalize_variant_answer: { Args: { raw: string }; Returns: string }
+      notification_log_dispatch_error: {
+        Args: {
+          p_entity_id: string
+          p_message: string
+          p_source: string
+          p_sqlstate: string
+        }
+        Returns: undefined
+      }
+      notify_homework_submitted: {
+        Args: { p_attempt_id: string }
+        Returns: undefined
+      }
       pick_replacement_task: {
         Args: {
           p_exclude?: string[]
@@ -6368,6 +6468,10 @@ export type Database = {
         }
         Returns: Json
       }
+      topic_homework_ai_expire_stale_jobs: {
+        Args: { p_attempt_ids?: string[] }
+        Returns: number
+      }
       topic_homework_ai_mark_accepted: {
         Args: { p_job_id: string }
         Returns: undefined
@@ -6390,10 +6494,6 @@ export type Database = {
       }
       topic_homework_enqueue_reviewed: {
         Args: { p_review_id: string }
-        Returns: number
-      }
-      topic_homework_enqueue_submitted: {
-        Args: { p_attempt_id: string }
         Returns: number
       }
       topic_homework_notify_students: {
@@ -6514,6 +6614,53 @@ export type Database = {
           p_show_solutions_after_submit?: boolean
         }
         Returns: Json
+      }
+      variant_level_scale: {
+        Args: { p_exam_type: string; p_subject: string }
+        Returns: string
+      }
+      variant_pass_counts: {
+        Args: { p_variant_ids: string[] }
+        Returns: {
+          assigned_count: number
+          passed_count: number
+          variant_id: string
+        }[]
+      }
+      variant_selection_availability: {
+        Args: {
+          p_exam_type: string
+          p_subject: string
+          p_topic_ids: string[]
+          p_topic_source?: string
+        }
+        Returns: {
+          available: number
+          level: string
+        }[]
+      }
+      variant_task_level: {
+        Args: {
+          p_difficulty: string
+          p_exam_part: number
+          p_exam_type: string
+          p_subject: string
+        }
+        Returns: string
+      }
+      variant_topic_availability: {
+        Args: {
+          p_exam_type: string
+          p_subject: string
+          p_topic_ids?: string[]
+          p_topic_source?: string
+        }
+        Returns: {
+          available: number
+          level: string
+          topic_id: string
+          topic_title: string
+        }[]
       }
     }
     Enums: {
