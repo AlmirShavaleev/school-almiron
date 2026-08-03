@@ -50,7 +50,9 @@ const CatalogSectionPage = lazyPage('CatalogSectionPage', () => import('@/pages/
 const CatalogTopicPage = lazyPage('CatalogTopicPage', () => import('@/pages/catalog/CatalogTopicPage').then(m => ({ default: m.CatalogTopicPage })))
 const CatalogTaskPage = lazyPage('CatalogTaskPage', () => import('@/pages/catalog/CatalogTaskPage').then(m => ({ default: m.CatalogTaskPage })))
 const VariantBuilderPage = lazyPage('VariantBuilderPage', () => import('@/pages/variants/VariantBuilderPage').then(m => ({ default: m.VariantBuilderPage })))
+const VariantsHomePage = lazyPage('VariantsHomePage', () => import('@/pages/variants/VariantsHomePage').then(m => ({ default: m.VariantsHomePage })))
 const VariantsListPage = lazyPage('VariantsListPage', () => import('@/pages/variants/VariantsListPage').then(m => ({ default: m.VariantsListPage })))
+const VariantAutoBuildPage = lazyPage('VariantAutoBuildPage', () => import('@/pages/variants/VariantAutoBuildPage').then(m => ({ default: m.VariantAutoBuildPage })))
 const VariantDetailPage = lazyPage('VariantDetailPage', () => import('@/pages/variants/VariantDetailPage').then(m => ({ default: m.VariantDetailPage })))
 const AssignVariantPage = lazyPage('AssignVariantPage', () => import('@/pages/variants/AssignVariantPage').then(m => ({ default: m.AssignVariantPage })))
 const VariantAssignmentsPage = lazyPage('VariantAssignmentsPage', () => import('@/pages/variants/VariantAssignmentsPage').then(m => ({ default: m.VariantAssignmentsPage })))
@@ -156,7 +158,10 @@ export default function AppRoutes() {
 
         <Route path="/variant-builder" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />
         <Route path="/variant-builder/:variantId" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />
-        <Route path="/variants" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsListPage /></RoleGuard>} />
+        <Route path="/variants" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsHomePage /></RoleGuard>} />
+        <Route path="/variants/exam/:examSubject/:examType" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsListPage /></RoleGuard>} />
+        <Route path="/variants/exam/:examSubject/:examType/auto" element={<RoleGuard allow={['teacher','admin','owner']}><VariantAutoBuildPage /></RoleGuard>} />
+        <Route path="/variants/all" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsListPage /></RoleGuard>} />
         <Route path="/variants/:variantId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantDetailPage /></RoleGuard>} />
         <Route path="/variants/:variantId/assign" element={<RoleGuard allow={['teacher','admin','owner']}><AssignVariantPage /></RoleGuard>} />
         <Route path="/variants/:variantId/assignments" element={<RoleGuard allow={['teacher','admin','owner']}><VariantAssignmentsPage /></RoleGuard>} />

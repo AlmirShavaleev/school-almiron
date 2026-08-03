@@ -333,7 +333,16 @@ async function fetchPhysicsSectionCounts(): Promise<{
   return { bySectionId, totalTaskCount, totalCompletedCount }
 }
 
-async function fetchAllTopicTaskIds(topicId: string, source?: string): Promise<string[]> {
+/**
+ * Задачи темы.
+ *
+ * `primaryOnly` нужен вкладке «Физические темы»: счётчики там считаются по
+ * основной теме задачи (RPC ...by_source, миграция
+ * 20260802233810_catalog_physics_topic_counts_by_primary_link). У задачи до
+ * трёх связей с темами, поэтому без того же фильтра здесь список на странице
+ * оказался бы длиннее числа в боковой панели.
+ */
+async function fetchAllTopicTaskIds(topicId: string, source?: string, primaryOnly = false): Promise<string[]> {
   const rows = await fetchAllPagedRows<{ task_id: string }>((from, to) => {
     let query = db
       .from('catalog_task_topics')
@@ -342,6 +351,7 @@ async function fetchAllTopicTaskIds(topicId: string, source?: string): Promise<s
       .order('task_id')
       .range(from, to)
     if (source) query = query.eq('source', source)
+    if (primaryOnly) query = query.eq('is_primary', true)
     return query
   })
 
@@ -544,7 +554,7 @@ async function loadPhysicsTopicTasks(topicId: string, userId: string): Promise<{
   tasks: CatalogTask[]
   completedIds: Set<string>
 }> {
-  const taskIds = await fetchAllTopicTaskIds(topicId, AI_PHYSICS_SOURCE)
+  const taskIds = await fetchAllTopicTaskIds(topicId, AI_PHYSICS_SOURCE, true)
   if (!taskIds.length) return { tasks: [], completedIds: new Set() }
 
   const tasksData = await fetchTasksByIds(taskIds)

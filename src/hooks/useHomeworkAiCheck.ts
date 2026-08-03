@@ -25,15 +25,30 @@ export function useHomeworkAiCheck(attemptId: string | null) {
   const load = useCallback(async (id: string) => {
     // Последний прогон, а не все: перепроверок может быть несколько, но
     // преподавателю нужен свежий результат, а не история попыток.
-    const { data: jobs, error: jobErr } = await supabase
-      .from('topic_homework_ai_jobs')
-      .select('*')
-      .eq('attempt_id', id)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const fetchLatest = async () => {
+      const { data: jobs, error: jobErr } = await supabase
+        .from('topic_homework_ai_jobs')
+        .select('*')
+        .eq('attempt_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (jobErr) throw new Error(jobErr.message)
+      return (jobs?.[0] ?? null) as AiJobRow | null
+    }
 
-    if (jobErr) throw new Error(jobErr.message)
-    const latest = (jobs?.[0] ?? null) as AiJobRow | null
+    let latest = await fetchLatest()
+
+    // Задача, чей воркер убили по лимиту ресурсов, остаётся в processing
+    // навсегда: писать `failed` уже некому. В панели это спиннер без конца и
+    // без причины, а перезапустить проверку мешает уникальный индекс на
+    // активную задачу. Зовём сторожа и перечитываем — но только когда есть
+    // что чинить, чтобы не ходить в базу лишний раз на каждом открытии.
+    if (latest && (latest.status === 'pending' || latest.status === 'processing')) {
+      const { error: sweepErr } = await supabase
+        .rpc('topic_homework_ai_expire_stale_jobs', { p_attempt_ids: [id] })
+      if (!sweepErr) latest = await fetchLatest()
+    }
+
     setJob(latest)
 
     if (!latest || latest.status !== 'done') {

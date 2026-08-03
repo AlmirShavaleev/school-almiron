@@ -47,7 +47,40 @@ function formatMoscowDateTime(iso: string): string {
   })
 }
 
-function buildAbsoluteUrl(appUrl: string, link: string | null | undefined): string | null {
+/**
+ * Telegram с `parse_mode: 'HTML'` падает на неэкранированных `&`, `<`, `>`
+ * (400 «can't parse entities»), а такая ошибка классифицируется как постоянная
+ * и сообщение теряется навсегда. В текст карточек попадают названия тем и
+ * комментарии проверяющего — там `<` встречается в любом неравенстве.
+ */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * Кнопка-ссылка для карточки. Возвращает `null`, если абсолютный URL собрать
+ * не из чего — тогда карточка уходит просто без кнопки.
+ *
+ * Почему кнопка, а не `<a href>` в тексте: Telegram молча проглатывает якорь с
+ * относительным href и печатает его содержимое обычным текстом. Сообщение при
+ * этом уходит со статусом 200, и поломка не видна ни в очереди, ни в логах.
+ * Кнопка с непригодным URL, наоборот, отбивается ошибкой 400 — отказ становится
+ * заметным. Проверено на проде 2026-08-03.
+ */
+export function buildLinkButton(
+  link: string | null | undefined,
+  appUrl: string,
+  label: string,
+) {
+  const url = buildAbsoluteUrl(appUrl, link)
+  if (!url) return null
+  return { inline_keyboard: [[{ text: label, url }]] }
+}
+
+export function buildAbsoluteUrl(appUrl: string, link: string | null | undefined): string | null {
   if (!link) return null
   if (/^https?:\/\//.test(link)) return link
   if (!appUrl) return null
@@ -175,7 +208,14 @@ export function isTelegramPreferenceEnabled(
     case 'homework_reviewed':
     // Вердикт по ДЗ нового контура — та же настройка «проверено», что у легаси
     case 'topic_homework_reviewed':
+    // Итог варианта — тоже вердикт по работе, галочка та же «проверено»
+    case 'variant_graded':
       return prefs.checked ?? true
+    // Сдача работы адресована персоналу, а галочки «сдачи» у преподавателя в
+    // настройках нет — шлём всегда. Ветка заведена явно, чтобы это решение
+    // было видно здесь, а не проваливалось молча в default.
+    case 'topic_homework_submitted':
+      return true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':
       return prefs.lesson_changed ?? true

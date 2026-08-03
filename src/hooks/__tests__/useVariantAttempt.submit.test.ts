@@ -132,7 +132,11 @@ describe('useVariantAttempt submit flow', () => {
     })
   })
 
-  it('does not request self-check fields before submit', async () => {
+  // Раньше хук добирал max_points, эталон и решение прямым запросом к
+  // catalog_tasks. Это обходило get_variant_items_for_student, который один и
+  // решает, что ученику видно по статусу попытки. Теперь всё приходит из RPC, и
+  // catalog_tasks хук не трогает вовсе (§52).
+  it('does not read catalog_tasks before submit', async () => {
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_variant_items_for_student') {
         return {
@@ -176,10 +180,10 @@ describe('useVariantAttempt submit flow', () => {
 
     await act(async () => {})
 
-    expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points, partial_type')
+    expect(catalogTasksSelectMock).not.toHaveBeenCalled()
   })
 
-  it('loads self-check fields from catalog_tasks only after submit for self-built variants', async () => {
+  it('reveals reference answer and solution from the RPC after submit', async () => {
     vi.useRealTimers()
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_variant_items_for_student') {
@@ -229,17 +233,43 @@ describe('useVariantAttempt submit flow', () => {
       }
       return { data: [], error: null }
     })
-    catalogTasksInMock.mockResolvedValue({
-      data: [{
-        id: 'task-1',
-        max_points: 2,
-        partial_type: null,
-        answer_html: '<p>6</p>',
-        solution_html: '<p>Решение</p>',
-        solution_plan_html: '<p>План</p>',
-        grade_criteria_html: '<p>Критерии</p>',
-      }],
-      error: null,
+    // Первый вызов приходит, пока состояние ещё помнит попытку незавершённой,
+    // и эталон в нём пуст — ровно так ведёт себя сервер. Хук обязан перечитать
+    // задачи тем же RPC и показать эталон с решением: самопроверка после сдачи
+    // часть продукта, пережимать нельзя.
+    let itemsCall = 0
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_variant_items_for_student') {
+        itemsCall += 1
+        const revealed = itemsCall > 1
+        return {
+          data: [{
+            item_id: 'item-1',
+            variant_id: 'variant-1',
+            task_id: 'task-1',
+            item_position: 1,
+            points: 0,
+            max_points: 2,
+            grading_type: 'auto',
+            task_ext_id: revealed ? 13 : null,
+            section_id: null,
+            subject: 'Математика',
+            exam_type: 'ЕГЭ',
+            partial_type: null,
+            statement_html: '<p>...</p>',
+            has_answer: true,
+            has_solution: true,
+            exam_part: 2,
+            source_type: 'student_self_built',
+            solution_html:       revealed ? '<p>Решение</p>' : null,
+            solution_plan_html:  revealed ? '<p>План</p>'    : null,
+            grade_criteria_html: revealed ? '<p>Критерии</p>' : null,
+            answer_html:         revealed ? '<p>6</p>'       : null,
+          }],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
     })
 
     const { result } = renderHook(() => useVariantAttempt(
@@ -251,10 +281,11 @@ describe('useVariantAttempt submit flow', () => {
       null,
     ))
 
-    await waitFor(() => {
-      expect(catalogTasksSelectMock).toHaveBeenCalledWith('id, max_points, partial_type, answer_html, solution_html, solution_plan_html, grade_criteria_html')
-    })
     await waitFor(() => expect(result.current.items[0]?.solution_html).toBe('<p>Решение</p>'))
     expect(result.current.items[0]?.grade_criteria_html).toBe('<p>Критерии</p>')
+    expect(result.current.items[0]?.answer_html).toBe('<p>6</p>')
+    expect(result.current.items[0]?.task_ext_id).toBe(13)
+    // Ответы пришли из RPC, а не из каталога в обход проверки.
+    expect(catalogTasksSelectMock).not.toHaveBeenCalled()
   })
 })

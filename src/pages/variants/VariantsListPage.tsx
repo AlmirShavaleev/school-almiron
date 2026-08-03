@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
   FilePlus2, Search, Filter, Edit2, Eye, Trash2, Copy,
-  FileText, Loader2, BookOpen,
+  FileText, Loader2, BookOpen, Users, ArrowLeft, Wand2,
 } from 'lucide-react'
 import { useVariants, type TestVariant } from '@/hooks/useVariants'
+import { useVariantPassCounts } from '@/hooks/useVariantAutoBuild'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -20,20 +21,34 @@ const STATUS_LABELS:  Record<string, string> = { draft: 'Черновик', read
 export function VariantsListPage() {
   const navigate = useNavigate()
   const { profile } = useAuthStore()
+  // Заходя через карточку экзамена, предмет и экзамен приходят из адреса и
+  // выбором больше не являются — иначе список молча разъезжается с заголовком.
+  const { examSubject, examType: examTypeParam } = useParams<{ examSubject?: string; examType?: string }>()
+  const lockedToExam = !!(examSubject && examTypeParam)
 
   const [search,    setSearch]    = useState('')
   const [subject,   setSubject]   = useState('')
   const [examType,  setExamType]  = useState('')
   const [status,    setStatus]    = useState('')
 
+  const effectiveSubject  = lockedToExam ? examSubject  : subject
+  const effectiveExamType = lockedToExam ? examTypeParam : examType
+
   const filters = useMemo(() => ({
-    subject:   subject   || undefined,
-    exam_type: examType  || undefined,
-    status:    status    || undefined,
-    search:    search    || undefined,
-  }), [subject, examType, status, search])
+    subject:   effectiveSubject  || undefined,
+    exam_type: effectiveExamType || undefined,
+    status:    status            || undefined,
+    search:    search            || undefined,
+  }), [effectiveSubject, effectiveExamType, status, search])
 
   const { variants, loading, error, reload, deleteVariant } = useVariants(filters)
+
+  const variantIds = useMemo(() => variants.map(v => v.id), [variants])
+  const passCounts = useVariantPassCounts(variantIds)
+
+  const examTitle = lockedToExam
+    ? `${SUBJECT_LABELS[examSubject] ?? examSubject} ${EXAM_LABELS[examTypeParam] ?? examTypeParam}`
+    : null
 
   const isStaff = profile && ['admin', 'owner'].includes(profile.role)
 
@@ -65,14 +80,37 @@ export function VariantsListPage() {
     <div className="max-w-6xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <FileText size={22} className="text-primary-600" />
-          <h1 className="text-xl font-bold text-gray-900">Варианты заданий</h1>
+        <div>
+          {lockedToExam && (
+            <Link to="/variants" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-1">
+              <ArrowLeft size={14} /> Ко всем экзаменам
+            </Link>
+          )}
+          <div className="flex items-center gap-2">
+            <FileText size={22} className="text-primary-600" />
+            <h1 className="text-xl font-bold text-gray-900">
+              {examTitle ?? 'Варианты заданий'}
+            </h1>
+          </div>
         </div>
-        <Button variant="primary" onClick={() => navigate('/variant-builder')}>
-          <FilePlus2 size={16} className="mr-1.5" />
-          Новый вариант
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Автосборка дополняет ручную сборку, а не заменяет её. */}
+          <Button
+            variant="primary"
+            onClick={() => navigate(
+              lockedToExam
+                ? `/variants/exam/${examSubject}/${examTypeParam}/auto`
+                : '/variants/exam/math/ege/auto'
+            )}
+          >
+            <Wand2 size={16} className="mr-1.5" />
+            Собрать автоматически
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/variant-builder')}>
+            <FilePlus2 size={16} className="mr-1.5" />
+            Собрать через каталог
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -89,19 +127,23 @@ export function VariantsListPage() {
 
         <Filter size={14} className="text-gray-400 hidden sm:block" />
 
-        <select value={subject} onChange={e => setSubject(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400">
-          <option value="">Все предметы</option>
-          <option value="math">Математика</option>
-          <option value="physics">Физика</option>
-        </select>
+        {!lockedToExam && (
+          <>
+            <select value={subject} onChange={e => setSubject(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400">
+              <option value="">Все предметы</option>
+              <option value="math">Математика</option>
+              <option value="physics">Физика</option>
+            </select>
 
-        <select value={examType} onChange={e => setExamType(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400">
-          <option value="">ЕГЭ / ОГЭ</option>
-          <option value="ege">ЕГЭ</option>
-          <option value="oge">ОГЭ</option>
-        </select>
+            <select value={examType} onChange={e => setExamType(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400">
+              <option value="">ЕГЭ / ОГЭ</option>
+              <option value="ege">ЕГЭ</option>
+              <option value="oge">ОГЭ</option>
+            </select>
+          </>
+        )}
 
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400">
@@ -129,6 +171,7 @@ export function VariantsListPage() {
             <VariantRow
               key={v.id}
               variant={v}
+              passedCount={passCounts[v.id]?.passed ?? 0}
               showAuthor={!!isStaff}
               onOpen={() => navigate(`/variants/${v.id}`)}
               onEdit={() => navigate(`/variant-builder/${v.id}`)}
@@ -145,10 +188,11 @@ export function VariantsListPage() {
 // ── VariantRow ────────────────────────────────────────────────────────────────
 
 function VariantRow({
-  variant, showAuthor,
+  variant, passedCount, showAuthor,
   onOpen, onEdit, onDuplicate, onDelete,
 }: {
   variant: TestVariant
+  passedCount: number
   showAuthor: boolean
   onOpen: () => void
   onEdit: () => void
@@ -170,6 +214,10 @@ function VariantRow({
         <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
           <span className="flex items-center gap-1">
             <BookOpen size={11} /> {variant.tasks_count} задач
+          </span>
+          <span className="flex items-center gap-1">
+            <Users size={11} />
+            {passedCount === 0 ? 'ещё никто не прошёл' : `прошли ${passedCount}`}
           </span>
           {showAuthor && variant.created_by_profile && (
             <span>{variant.created_by_profile.full_name}</span>

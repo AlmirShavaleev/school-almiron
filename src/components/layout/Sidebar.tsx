@@ -57,8 +57,10 @@ const navItems: NavItem[] = [
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Тесты',             path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Конструктор вариантов', path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
+  { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
+  // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
+  // темам курса. Переименована, чтобы два разных раздела не звались одинаково.
+  { label: 'Банк тестов',       path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },

@@ -72,7 +72,17 @@ export function useQueueAiJobs(attemptIds: string[]) {
         applied: !!r.accepted_at,
       }
     }
-    setJobs(next)
+    // Сливаем, а не заменяем. `load` часто зовут для ПОДМНОЖЕСТВА строк — при
+    // запуске проверки по одной работе сюда приходит один идентификатор. Полная
+    // замена стирала статусы у всех остальных строк: преподаватель запускал три
+    // проверки подряд и видел значок только у последней. Записи запрошенных
+    // работ всё равно пересобираем заново, иначе исчезнувшая задача осталась бы
+    // висеть навсегда.
+    setJobs(prev => {
+      const merged = { ...prev }
+      for (const id of ids) delete merged[id]
+      return { ...merged, ...next }
+    })
   }, [])
 
   useEffect(() => {
@@ -85,6 +95,12 @@ export function useQueueAiJobs(attemptIds: string[]) {
   // Пока хоть одна задача в работе — переспрашиваем. Опрос, а не подписка:
   // прогон живёт меньше минуты, и держать канал реального времени ради
   // нескольких строк дороже, чем раз в пять секунд сходить за статусом.
+  //
+  // Здесь же зовём сторожа. Задача, чей воркер убили по лимиту ресурсов,
+  // остаётся в processing навсегда — писать `failed` уже некому, и значок
+  // крутится вечно. Порог у сторожа пять минут, живому прогону он не мешает.
+  // Место выбрано не случайно: этот эффект просыпается ровно тогда, когда
+  // что-то висит, поэтому лишнего вызова на спокойном списке не будет.
   const pollRef = useRef<number | null>(null)
   useEffect(() => {
     const busy = Object.values(jobs).some(j => j.status === 'pending' || j.status === 'processing')
@@ -93,7 +109,11 @@ export function useQueueAiJobs(attemptIds: string[]) {
       return
     }
     pollRef.current = window.setTimeout(() => {
-      void load(idsKey ? idsKey.split(',') : [])
+      const ids = idsKey ? idsKey.split(',') : []
+      void supabase
+        .rpc('topic_homework_ai_expire_stale_jobs', { p_attempt_ids: ids })
+        .then(() => undefined, () => undefined)
+        .then(() => load(ids))
     }, 5000)
     return () => { if (pollRef.current) window.clearTimeout(pollRef.current) }
   }, [jobs, idsKey, load])

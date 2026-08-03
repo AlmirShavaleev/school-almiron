@@ -25,7 +25,23 @@ export interface TestVariant {
 
 export interface VariantSettings {
   sections: VariantSectionConfig[]
-  generation_mode: 'random'
+  generation_mode: 'random' | 'auto_topic'
+  /**
+   * Параметры автосборки по темам (§52). Заполнены только при
+   * generation_mode = 'auto_topic'; `sections` там пустой. Хранятся, чтобы
+   * «пересобрать похожий» знал исходный запрос, а не угадывал его по задачам.
+   */
+  autobuild?: VariantAutoBuildSettings
+}
+
+export interface VariantAutoBuildSettings {
+  /** Значения каталога («Математика»/«Физика», «ЕГЭ»/«ОГЭ»), не слаги. */
+  subject: string
+  exam_type: string
+  topic_ids: string[]
+  /** null — обычные темы, 'ai_physics_v1' — ИИ-дерево физики. */
+  topic_source: string | null
+  levels: Record<string, number>
 }
 
 export interface VariantSectionConfig {

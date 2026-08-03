@@ -217,15 +217,10 @@ export function useVariantAttempt(
         if (!taskIds.length) {
           setItems(itemRows)
         } else {
-          void Promise.all([
-            loadAssetsForTaskIds(taskIds),
-            loadTaskMetaForTaskIds(taskIds),
-          ]).then(([assetsByTask, taskMetaByTask]) => {
+          void loadAssetsForTaskIds(taskIds).then(assetsByTask => {
             if (cancelled) return
             setItems(itemRows.map(item => ({
               ...item,
-              max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
-              partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
               assets: assetsByTask[item.task_id] ?? [],
             })))
           })
@@ -263,31 +258,33 @@ export function useVariantAttempt(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentAssignmentId, initialStatus])
 
+  // После сдачи ученик должен увидеть эталон и решение — самопроверка часть
+  // продукта. Но задачи загружены ещё под статусом in_progress, когда сервер
+  // эталон не отдавал, поэтому перечитываем их тем же RPC: он сам решает, что
+  // показывать, по статусу попытки. Раньше здесь стоял прямой запрос к
+  // catalog_tasks — он обходил эту проверку и тянул ответы мимо неё.
   useEffect(() => {
     if (attempt?.status !== 'submitted' && attempt?.status !== 'completed') return
     if (!items.length) return
     if (submittedMetaLoadedRef.current === `${studentAssignmentId}:${attempt.status}`) return
-    const isSelfBuilt = items.some(item => item.source_type === 'student_self_built')
+    if (items.every(item => item.answer_html !== null)) return
 
     let cancelled = false
-    const taskIds = [...new Set(items.map(item => item.task_id).filter(Boolean))]
+    const stamp = `${studentAssignmentId}:${attempt.status}`
 
-    void loadTaskMetaForTaskIds(taskIds, {
-      includeAnswerHtml: true,
-      includeSelfCheckFields: isSelfBuilt,
-    }).then(taskMetaByTask => {
-      if (cancelled) return
-      submittedMetaLoadedRef.current = `${studentAssignmentId}:${attempt.status}`
-      setItems(prevItems => prevItems.map(item => ({
-        ...item,
-        max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
-        partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
-        answer_html: taskMetaByTask[item.task_id]?.answer_html ?? item.answer_html ?? null,
-        solution_html: taskMetaByTask[item.task_id]?.solution_html ?? item.solution_html ?? null,
-        solution_plan_html: taskMetaByTask[item.task_id]?.solution_plan_html ?? item.solution_plan_html ?? null,
-        grade_criteria_html: taskMetaByTask[item.task_id]?.grade_criteria_html ?? item.grade_criteria_html ?? null,
-      })))
-    })
+    void db
+      .rpc('get_variant_items_for_student', { p_student_assignment_id: studentAssignmentId })
+      .then(({ data, error: err }: { data: VariantItem[] | null; error: { message: string } | null }) => {
+        if (cancelled || err || !data) return
+        submittedMetaLoadedRef.current = stamp
+        const revealed = new Map(data.map(row => [row.item_id, row]))
+        setItems(prevItems => prevItems.map(item => {
+          const fresh = revealed.get(item.item_id)
+          if (!fresh) return item
+          // assets RPC не возвращает — они уже загружены, сохраняем.
+          return { ...fresh, assets: item.assets }
+        }))
+      })
 
     return () => { cancelled = true }
   }, [attempt?.status, items, studentAssignmentId])
@@ -320,14 +317,9 @@ export function useVariantAttempt(
     if (!itemErr) {
       const rows = (itemData as VariantItem[]) ?? []
       const taskIds = [...new Set(rows.map(item => item.task_id).filter(Boolean))]
-      const [assetsByTask, taskMetaByTask] = await Promise.all([
-        loadAssetsForTaskIds(taskIds),
-        loadTaskMetaForTaskIds(taskIds),
-      ])
+      const assetsByTask = await loadAssetsForTaskIds(taskIds)
       setItems(rows.map(item => ({
         ...item,
-        max_points: taskMetaByTask[item.task_id]?.max_points ?? item.max_points ?? null,
-        partial_type: taskMetaByTask[item.task_id]?.partial_type ?? item.partial_type ?? null,
         assets: assetsByTask[item.task_id] ?? [],
       })))
     }
@@ -503,53 +495,6 @@ async function loadAssetsForTaskIds(taskIds: string[]): Promise<Record<string, C
   return assetsByTask
 }
 
-async function loadTaskMetaForTaskIds(
-  taskIds: string[],
-  options?: { includeAnswerHtml?: boolean; includeSelfCheckFields?: boolean },
-): Promise<Record<string, {
-  max_points: number | null
-  partial_type?: 'multi_choice' | 'matching' | null
-  answer_html?: string | null
-  solution_html?: string | null
-  solution_plan_html?: string | null
-  grade_criteria_html?: string | null
-}>> {
-  if (!taskIds.length) return {}
-
-  const taskMetaByTask: Record<string, {
-    max_points: number | null
-    partial_type?: 'multi_choice' | 'matching' | null
-    answer_html?: string | null
-    solution_html?: string | null
-    solution_plan_html?: string | null
-    grade_criteria_html?: string | null
-  }> = {}
-  const CHUNK = 200
-  const fields = ['id', 'max_points', 'partial_type']
-  if (options?.includeAnswerHtml) fields.push('answer_html')
-  if (options?.includeSelfCheckFields) fields.push('solution_html', 'solution_plan_html', 'grade_criteria_html')
-  const select = fields.join(', ')
-
-  for (let i = 0; i < taskIds.length; i += CHUNK) {
-    const chunk = taskIds.slice(i, i + CHUNK)
-    const { data } = await db
-      .from('catalog_tasks')
-      .select(select)
-      .in('id', chunk)
-
-    for (const row of data ?? []) {
-      taskMetaByTask[row.id] = {
-        max_points: row.max_points ?? null,
-        partial_type: row.partial_type ?? null,
-        ...(options?.includeAnswerHtml ? { answer_html: row.answer_html ?? null } : {}),
-        ...(options?.includeSelfCheckFields ? {
-          solution_html: row.solution_html ?? null,
-          solution_plan_html: row.solution_plan_html ?? null,
-          grade_criteria_html: row.grade_criteria_html ?? null,
-        } : {}),
-      }
-    }
-  }
-
-  return taskMetaByTask
-}
+// loadTaskMetaForTaskIds удалён: max_points и partial_type теперь приходят из
+// get_variant_items_for_student, а эталон и решение оттуда же — по статусу
+// попытки. Прямой запрос к catalog_tasks обходил серверную проверку.

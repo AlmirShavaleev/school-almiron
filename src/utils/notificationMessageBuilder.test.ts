@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
+import { buildLinkButton, escapeHtml } from '../../supabase/functions/_shared/variant-telegram'
 
 type Message = { text: string; replyMarkup: unknown }
 type Builder = (item: { event_type: string; payload: Record<string, unknown> }, appUrl: string) => Message
@@ -16,10 +17,17 @@ const js = ts.transpileModule(functionSource, {
 const buildMessage = new Function(
   'buildVariantAssignedTelegramMessage',
   'buildVariantDeadlineTelegramMessage',
+  'buildLinkButton',
+  'escapeHtml',
   `${js}; return buildMessage`,
 )(
   () => ({ text: 'variant assigned', replyMarkup: null }),
   () => ({ text: 'variant deadline', replyMarkup: null }),
+  // Настоящие реализации живут в _shared/variant-telegram.ts и покрыты
+  // отдельно в variantTelegramQueue.test.ts; здесь важно лишь то, что
+  // buildMessage их зовёт и возвращает пригодный объект.
+  buildLinkButton,
+  escapeHtml,
 ) as Builder
 
 const events = [
@@ -43,5 +51,55 @@ describe('process-notification-queue buildMessage', () => {
     expect(result).toEqual(expect.objectContaining({ text: expect.any(String) }))
     expect(result.text.length).toBeGreaterThan(0)
     expect(result).toHaveProperty('replyMarkup')
+  })
+})
+
+// Ссылка кнопкой, а не <a href> в тексте: Telegram молча проглатывает якорь с
+// относительным href и печатает его содержимое обычным текстом — сообщение
+// уходит со статусом 200, и поломка не видна нигде. Прод, 2026-08-03.
+describe('ссылки в карточках', () => {
+  const linkedEvents: Array<[string, Record<string, unknown>]> = [
+    ['new_homework',             { title: 'Тема', due_date: '01.01.2027', link: '/my-course/g/topic/t' }],
+    ['topic_homework_submitted', { title: 'Тема', student_name: 'Ученик', link: '/homework-queue' }],
+    ['topic_homework_reviewed',  { title: 'Тема', decision: 'accepted', link: '/my-course/g/topic/t' }],
+    ['collection_assigned',      { title: 'Сборник', link: '/collections/1' }],
+    ['collection_submitted',     { title: 'Сборник', link: '/collections/1' }],
+    ['collection_reviewed',      { title: 'Сборник', status: 'accepted', link: '/collections/1' }],
+    ['variant_graded',           { title: 'Работа проверена', body: 'Балл: 5', link: '/student/variants/a1' }],
+    ['lesson_reminder',          { title: 'Занятие', reminder_type: '24h', zoom_link: 'https://zoom.us/j/1' }],
+  ]
+
+  it.each(linkedEvents)('%s отдаёт ссылку кнопкой, а не текстом', (event_type, payload) => {
+    const result = buildMessage({ event_type, payload }, 'https://school.example')
+
+    expect(result.replyMarkup).not.toBeNull()
+    const url = (result.replyMarkup as { inline_keyboard: Array<Array<{ url: string }>> })
+      .inline_keyboard[0][0].url
+    expect(url).toMatch(/^https:\/\//)
+    expect(result.text).not.toContain('<a href')
+  })
+
+  it.each(linkedEvents.filter(([e]) => e !== 'lesson_reminder'))(
+    '%s без APP_URL не оставляет мёртвую ссылку', (event_type, payload) => {
+      const result = buildMessage({ event_type, payload }, '')
+
+      expect(result.replyMarkup).toBeNull()
+      expect(result.text).not.toContain('<a href')
+      expect(result.text).not.toContain('→</a>')
+    })
+
+  it('текст от пользователя экранируется, иначе Telegram роняет разбор', () => {
+    const result = buildMessage({
+      event_type: 'topic_homework_reviewed',
+      payload: {
+        title: 'Задача 1 & 2',
+        decision: 'returned_for_revision',
+        comment: 'Условие p < 2 & V > 0 разобрано неверно',
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Задача 1 &amp; 2')
+    expect(result.text).toContain('p &lt; 2 &amp; V &gt; 0')
+    expect(result.text).not.toMatch(/[^&;]< 2/)
   })
 })

@@ -1,8 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
+  buildLinkButton,
   buildVariantAssignedTelegramMessage,
   buildVariantDeadlineTelegramMessage,
   classifyTelegramError,
+  escapeHtml,
   isTelegramPreferenceEnabled,
 } from '../_shared/variant-telegram.ts'
 
@@ -26,21 +28,37 @@ interface QueueItem {
 
 function buildMessage(item: QueueItem, appUrl: string) {
   const p = item.payload
+  const esc = escapeHtml
+
+  // Ссылку во всех карточках отдаём одинаково — кнопкой под сообщением.
+  // Почему кнопка, а не `<a href>` в тексте — см. buildLinkButton в
+  // `_shared/variant-telegram.ts`: битый href Telegram глотает молча.
+  const button = (link: unknown, label: string) => {
+    const raw    = typeof link === 'string' && link ? link : null
+    const markup = buildLinkButton(raw, appUrl, label)
+    if (raw && !markup) {
+      console.warn(
+        `process-notification-queue: кнопка не собрана (event=${item.event_type}). ` +
+        `APP_URL пуст, localhost или не абсолютный — сообщение уйдёт без ссылки.`,
+      )
+    }
+    return markup
+  }
 
   switch (item.event_type) {
     case 'new_homework':
       return {
         text: (
         `📚 <b>Новое домашнее задание</b>\n\n` +
-        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
-        `Тема: ${p.title}\n` +
-        `Дедлайн: ${p.due_date}\n` +
-        // p.link — новый контур (страница темы); entity_id — легаси-фолбэк
-        (p.link
-          ? `\n<a href="${appUrl}${String(p.link)}">Открыть задание →</a>`
-          : p.entity_id ? `\n<a href="${appUrl}/homeworks/${p.entity_id}">Открыть задание →</a>` : '')
+        (p.course_title ? `Курс: ${esc(p.course_title)}\n` : '') +
+        `Тема: ${esc(p.title)}\n` +
+        `Дедлайн: ${esc(p.due_date)}`
         ),
-        replyMarkup: null,
+        // p.link — новый контур (страница темы); entity_id — легаси-фолбэк
+        replyMarkup: button(
+          p.link ?? (p.entity_id ? `/homeworks/${String(p.entity_id)}` : null),
+          'Открыть задание',
+        ),
       }
 
     // ── Новый контур ДЗ (topic_homework) ──────────────────────────────────
@@ -49,13 +67,12 @@ function buildMessage(item: QueueItem, appUrl: string) {
       return {
         text: (
         `📥 <b>Ученик сдал домашнее задание</b>\n\n` +
-        `${String(p.student_name ?? 'Ученик')}` +
-        (Number(p.attempt_number) > 1 ? ` (попытка №${p.attempt_number})` : '') + `\n` +
-        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
-        `Тема: ${p.title}\n` +
-        (p.link ? `\n<a href="${appUrl}${String(p.link)}">Проверить работу →</a>` : '')
+        `${esc(p.student_name ?? 'Ученик')}` +
+        (Number(p.attempt_number) > 1 ? ` (попытка №${esc(p.attempt_number)})` : '') + `\n` +
+        (p.course_title ? `Курс: ${esc(p.course_title)}\n` : '') +
+        `Тема: ${esc(p.title)}`
         ),
-        replyMarkup: null,
+        replyMarkup: button(p.link, 'Проверить работу'),
       }
 
     case 'topic_homework_reviewed': {
@@ -66,23 +83,23 @@ function buildMessage(item: QueueItem, appUrl: string) {
       return {
         text: (
         `📝 <b>Домашнее задание проверено</b>\n\n` +
-        (p.course_title ? `Курс: ${p.course_title}\n` : '') +
-        `Тема: ${p.title}\n` +
-        `Статус: ${accepted ? '✅ Принято' : '🔄 На доработку'}\n` +
-        (accepted && p.score != null && p.max_score != null ? `Оценка: ${p.score} из ${p.max_score}\n` : '') +
-        (comment ? `Комментарий: ${comment}\n` : '') +
-        (p.link ? `\n<a href="${appUrl}${String(p.link)}">Открыть тему →</a>` : '')
+        (p.course_title ? `Курс: ${esc(p.course_title)}\n` : '') +
+        `Тема: ${esc(p.title)}\n` +
+        `Статус: ${accepted ? '✅ Принято' : '🔄 На доработку'}` +
+        (accepted && p.score != null && p.max_score != null ? `\nОценка: ${esc(p.score)} из ${esc(p.max_score)}` : '') +
+        (comment ? `\nКомментарий: ${esc(comment)}` : '')
         ),
-        replyMarkup: null,
+        replyMarkup: button(p.link, 'Открыть тему'),
       }
     }
 
     case 'lesson_reminder': {
       const is24h = p.reminder_type === '24h'
-      const time  = String(p.time_hhmm ?? p.scheduled_at ?? '')
-      const course = p.course_title ? `Курс: ${p.course_title}\n` : ''
-      const teacher = p.teacher_name ? `Преподаватель: ${p.teacher_name}\n` : ''
-      const zoom  = p.zoom_link ? `\n<a href="${p.zoom_link}">Ссылка на занятие →</a>` : ''
+      const time  = esc(p.time_hhmm ?? p.scheduled_at ?? '')
+      const course = p.course_title ? `Курс: ${esc(p.course_title)}\n` : ''
+      const teacher = p.teacher_name ? `Преподаватель: ${esc(p.teacher_name)}\n` : ''
+      // zoom_link — внешний абсолютный URL, appUrl к нему не приклеивается
+      const markup = button(p.zoom_link, 'Ссылка на занятие')
 
       if (is24h) {
         return {
@@ -90,11 +107,10 @@ function buildMessage(item: QueueItem, appUrl: string) {
           `📅 <b>Напоминание о занятии</b>\n\n` +
           `Завтра в ${time} состоится занятие\n` +
           course +
-          `Тема: ${p.title ?? 'Занятие'}\n` +
-          teacher +
-          zoom
+          `Тема: ${esc(p.title ?? 'Занятие')}\n` +
+          teacher
           ),
-          replyMarkup: null,
+          replyMarkup: markup,
         }
       }
       return {
@@ -102,11 +118,10 @@ function buildMessage(item: QueueItem, appUrl: string) {
         `⏰ <b>Занятие через час</b>\n\n` +
         `Начало в ${time}\n` +
         course +
-        `Тема: ${p.title ?? 'Занятие'}\n` +
-        teacher +
-        zoom
+        `Тема: ${esc(p.title ?? 'Занятие')}\n` +
+        teacher
         ),
-        replyMarkup: null,
+        replyMarkup: markup,
       }
     }
 
@@ -114,9 +129,9 @@ function buildMessage(item: QueueItem, appUrl: string) {
       return {
         text: (
         `🔄 <b>Занятие перенесено</b>\n\n` +
-        `Тема: ${p.title ?? 'Занятие'}\n` +
-        `Было: ${p.old_scheduled_at}\n` +
-        `Стало: ${p.new_scheduled_at}`
+        `Тема: ${esc(p.title ?? 'Занятие')}\n` +
+        `Было: ${esc(p.old_scheduled_at)}\n` +
+        `Стало: ${esc(p.new_scheduled_at)}`
         ),
         replyMarkup: null,
       }
@@ -125,9 +140,9 @@ function buildMessage(item: QueueItem, appUrl: string) {
       return {
         text: (
         `❌ <b>Занятие отменено</b>\n\n` +
-        `Тема: ${p.title ?? 'Занятие'}\n` +
-        `Дата: ${p.scheduled_at}\n` +
-        (p.group_name ? `Группа: ${p.group_name}` : '')
+        `Тема: ${esc(p.title ?? 'Занятие')}\n` +
+        `Дата: ${esc(p.scheduled_at)}\n` +
+        (p.group_name ? `Группа: ${esc(p.group_name)}` : '')
         ),
         replyMarkup: null,
       }
@@ -137,10 +152,10 @@ function buildMessage(item: QueueItem, appUrl: string) {
       return {
         text: (
         `📝 <b>Домашнее задание проверено</b>\n\n` +
-        `Тема: ${p.title}\n` +
+        `Тема: ${esc(p.title)}\n` +
         `Статус: ${statusLabel}\n` +
-        (p.score != null ? `Баллы: ${p.score}/${p.max_score}\n` : '') +
-        (p.feedback ? `Комментарий: ${p.feedback}` : '')
+        (p.score != null ? `Баллы: ${esc(p.score)}/${esc(p.max_score)}\n` : '') +
+        (p.feedback ? `Комментарий: ${esc(p.feedback)}` : '')
         ),
         replyMarkup: null,
       }
@@ -148,19 +163,17 @@ function buildMessage(item: QueueItem, appUrl: string) {
 
     case 'collection_assigned':
       return {
-        text: `📚 <b>Новое домашнее задание</b>\n\n«${String(p.title ?? 'Без названия')}»` +
-          (p.due_at ? `\nДедлайн: ${String(p.due_at)}` : '\nБез дедлайна') +
-          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Открыть ДЗ →</a>` : ''),
-        replyMarkup: null,
+        text: `📚 <b>Новое домашнее задание</b>\n\n«${esc(p.title ?? 'Без названия')}»` +
+          (p.due_at ? `\nДедлайн: ${esc(p.due_at)}` : '\nБез дедлайна'),
+        replyMarkup: button(p.link, 'Открыть ДЗ'),
       }
 
     case 'collection_submitted':
     case 'collection_resubmitted':
       return {
         text: `${item.event_type === 'collection_resubmitted' ? '🔄 <b>Повторная сдача ДЗ</b>' : '📥 <b>Новая сдача ДЗ</b>'}\n\n` +
-          `${String(p.student_name ?? 'Ученик')} ${item.event_type === 'collection_resubmitted' ? 'повторно сдал' : 'сдал'} «${String(p.title ?? 'Без названия')}»` +
-          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Проверить работу →</a>` : ''),
-        replyMarkup: null,
+          `${esc(p.student_name ?? 'Ученик')} ${item.event_type === 'collection_resubmitted' ? 'повторно сдал' : 'сдал'} «${esc(p.title ?? 'Без названия')}»`,
+        replyMarkup: button(p.link, 'Проверить работу'),
       }
 
     case 'collection_reviewed': {
@@ -170,13 +183,24 @@ function buildMessage(item: QueueItem, appUrl: string) {
           ? '🔄 Возвращено на доработку'
           : '❌ Отклонено'
       return {
-        text: `📝 <b>Домашнее задание проверено</b>\n\n«${String(p.title ?? 'Без названия')}»\nСтатус: ${statusLabel}` +
-          (p.score != null ? `\nБалл: ${String(p.score)}` : '') +
-          (p.comment ? `\nКомментарий: ${String(p.comment)}` : '') +
-          (p.link ? `\n\n<a href="${appUrl}${String(p.link)}">Открыть ДЗ →</a>` : ''),
-        replyMarkup: null,
+        text: `📝 <b>Домашнее задание проверено</b>\n\n«${esc(p.title ?? 'Без названия')}»\nСтатус: ${statusLabel}` +
+          (p.score != null ? `\nБалл: ${esc(p.score)}` : '') +
+          (p.comment ? `\nКомментарий: ${esc(p.comment)}` : ''),
+        replyMarkup: button(p.link, 'Открыть ДЗ'),
       }
     }
+
+    // Итог варианта. `finalize_grading` кладёт эту строку каналом telegram
+    // (§53); до этого был 'in_app', и доезжала она только потому, что claim не
+    // фильтровал канал.
+    case 'variant_graded':
+      return {
+        text: (
+        `📊 <b>${esc(p.title ?? 'Работа проверена')}</b>\n\n` +
+        `${esc(p.body ?? '')}`
+        ),
+        replyMarkup: button(p.link, 'Открыть работу'),
+      }
 
     case 'variant_assigned': {
       const { text, replyMarkup } = buildVariantAssignedTelegramMessage({
@@ -205,8 +229,8 @@ function buildMessage(item: QueueItem, appUrl: string) {
 
     default:
       return {
-        text: `📬 Новое уведомление: ${String(p.title ?? item.event_type)}`,
-        replyMarkup: null,
+        text: `📬 Новое уведомление: ${esc(p.title ?? item.event_type)}`,
+        replyMarkup: button(p.link, 'Открыть'),
       }
   }
 }

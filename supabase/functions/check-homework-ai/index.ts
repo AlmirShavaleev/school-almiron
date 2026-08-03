@@ -1,26 +1,13 @@
 // Черновик ИИ-проверки домашней работы.
 //
-// Что здесь происходит и почему именно так:
+// См. PROJECT_STATE §§32-33, 45: права проверяет база через
+// topic_homework_ai_request_check, дальше работаем сервисным ключом;
+// результат — ЧЕРНОВИК, ученик его не видит; ошибки кладём в
+// job.last_error, потому что только оттуда преподаватель узнает причину.
 //
-//  1. Права проверяет БАЗА, а не эта функция. Мы вызываем
-//     topic_homework_ai_request_check от имени вызвавшего преподавателя —
-//     внутри стоит topic_homework_attempt_can_review. Своей проверки роли тут
-//     нет специально: две независимые проверки прав неминуемо разъезжаются.
-//  2. Дальше работаем сервисным ключом: писать в topic_homework_ai_* клиенту
-//     нельзя ни политикой, ни грантом, и это правильно — иначе «предложение
-//     ИИ» можно было бы подделать из браузера.
-//  3. Результат — ЧЕРНОВИК. Ни балл, ни рамки, ни текст ученик не видит, пока
-//     преподаватель их не принял. Поэтому функция ничего не пишет ни в
-//     topic_homework_attempts, ни в аннотации.
-//  4. Ошибки не глотаем, а кладём в job.last_error: панель показывает их
-//     преподавателю через aiErrorMessage(), и по тексту видно, чинить ключ,
-//     квоту или файлы.
-//
-// ПРОВАЙДЕР. Запрос идёт в OpenAI-совместимый /chat/completions, а не в
-// собственный формат конкретной компании. Это сознательно: модель здесь
-// расходник. Сменить её — переменная AI_MODEL, сменить поставщика —
-// AI_BASE_URL, и ни то ни другое не требует передеплоя. По умолчанию
-// Qwen3-VL через OpenRouter.
+// ПРОВАЙДЕР. Запрос идёт в OpenAI-совместимый /chat/completions. Модель здесь
+// расходник: сменить её — AI_MODEL, сменить поставщика — AI_BASE_URL, ни то
+// ни другое не требует передеплоя. По умолчанию Qwen3-VL через OpenRouter.
 //
 // Координаты рамок — доли страницы (0..1), начало отсчёта в левом верхнем
 // углу. Так их ждёт и аннотатор (MIN_REGION_SIZE = 0.015), и CHECK-ограничения
@@ -35,10 +22,28 @@ const DEFAULT_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
 const MAX_FINDINGS = 12
 const CATEGORIES = ['comment', 'calc', 'logic', 'format', 'praise'] as const
-// Только картинки: в OpenAI-совместимом протоколе PDF не передашь как
-// image_url, а разбор PDF в текст убил бы координаты — рамку стало бы некуда
-// ставить. Работы с одним лишь PDF отклоняем с внятным текстом.
 const IMAGE_MIME = /^image\/(png|jpe?g|webp|heic|heif)$/i
+const PDF_MIME = /^application\/pdf$/i
+/** Страниц на ВСЮ работу за одну проверку; остаток — текстом в разбор. */
+const MAX_PAGES = 10
+/** 150 DPI: рукописный текст читается уверенно, страница остаётся ~200 кБ. */
+const RENDER_DPI = 150
+const MAX_RENDER_WIDTH = 1600
+const JPEG_QUALITY = 80
+/**
+ * Потолок по ПРОЦЕССОРНОМУ времени, а не по страницам. У edge-функции жёсткий
+ * лимит 2 с CPU на запрос, за ним воркер убивают с кодом 546 — задача осталась
+ * бы висеть в `processing`, а преподаватель смотрел бы на вечный спиннер.
+ * Замер на настоящих работах (машина разработчика): страница A4 при 150 DPI —
+ * около 80 мс на рендер плюс 140 мс на JPEG. В проде дороже: с бюджетом 1500 мс
+ * работа на 41 страницу всё равно ложилась в 546. Отсюда 700 мс — это примерно
+ * три-четыре страницы плотного скана, и остаётся запас на base64, который тоже
+ * считает процессор. Недобранные страницы честно уезжают в приписку к разбору.
+ *
+ * Число подобрано замером, а не из общих соображений: если менять — проверять
+ * на pub_4656538.pdf (41 страница), это самая тяжёлая работа из известных.
+ */
+const RENDER_BUDGET_MS = 1100
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -54,6 +59,20 @@ interface AttemptFile {
   file_name: string | null
   mime_type: string | null
   position: number
+}
+
+/**
+ * Страница, уходящая модели. Ключевое поле — `page`: у фотографии всегда 1, у
+ * PDF это НАСТОЯЩИЙ номер страницы внутри файла. Аннотатор рисует каждую
+ * страницу PDF отдельным слоем и ищет пометки по паре (файл, страница), так что
+ * рамка ложится туда же, где модель её увидела, без пересчёта координат.
+ */
+interface PageImage {
+  file: AttemptFile
+  page: number
+  mime: string
+  bytes: Uint8Array
+  label: string
 }
 
 Deno.serve(async (req) => {
@@ -127,30 +146,31 @@ Deno.serve(async (req) => {
       .order('position', { ascending: true })
 
     const all = (rawFiles ?? []) as AttemptFile[]
-    const images = all.filter(f => IMAGE_MIME.test(f.mime_type ?? guessMime(f)))
-    if (images.length === 0) {
-      throw new Error(all.length === 0
-        ? 'В работе нет файлов'
-        : 'В работе нет фотографий — модель проверяет только изображения, PDF пока не читает')
+    if (all.length === 0) throw new Error('В работе нет файлов')
+
+    const usable = all.filter(f => {
+      const mime = f.mime_type ?? guessMime(f)
+      return IMAGE_MIME.test(mime) || PDF_MIME.test(mime)
+    })
+    if (usable.length === 0) {
+      throw new Error('В работе нет ни фотографий, ни PDF — проверять нечего')
+    }
+
+    const { pages: sent, skipped } = await collectPages(admin, usable)
+    // Причину НЕЛЬЗЯ терять: без неё в панели остаётся «ИИ не смог» без единого
+    // слова о том, что чинить. Один раз уже наступили — три работы упали, а
+    // почему, пришлось выяснять запросами к базе.
+    if (sent.length === 0) {
+      throw new Error(skipped.length > 0
+        ? `Не удалось прочитать ни одной страницы: ${skipped.join('; ')}`
+        : 'Не удалось прочитать ни одной страницы работы')
     }
 
     const content: Record<string, unknown>[] = []
-    const sent: AttemptFile[] = []
-    let total = 0
-
-    for (const file of images) {
-      const { data: blob, error: dlError } = await admin.storage.from(ATTEMPTS_BUCKET).download(file.storage_path)
-      if (dlError || !blob) continue
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      if (total + bytes.length > MAX_INLINE_BYTES) break
-      total += bytes.length
-      sent.push(file)
-      const mime = file.mime_type ?? guessMime(file)
-      content.push({ type: 'text', text: `Страница #${sent.length}: ${file.file_name ?? 'без имени'}` })
-      content.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64(bytes)}` } })
+    for (const [index, item] of sent.entries()) {
+      content.push({ type: 'text', text: `Страница #${index + 1}: ${item.label}` })
+      content.push({ type: 'image_url', image_url: { url: `data:${item.mime};base64,${base64(item.bytes)}` } })
     }
-
-    if (sent.length === 0) throw new Error('Файлы работы слишком большие для проверки')
 
     // Шаг 4. Запрос к модели.
     const prompt = buildPrompt({
@@ -166,7 +186,6 @@ Deno.serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        // OpenRouter показывает их в статистике; другим поставщикам безвредны.
         'HTTP-Referer': 'https://alminion.ru',
         'X-Title': 'School Almiron',
       },
@@ -196,8 +215,8 @@ Deno.serve(async (req) => {
     const rows: Record<string, unknown>[] = []
     for (const raw of findings.slice(0, MAX_FINDINGS)) {
       const index = Number(raw?.page_index ?? raw?.file_index)
-      const file = sent[Number.isFinite(index) ? index - 1 : -1]
-      if (!file) continue
+      const target = sent[Number.isFinite(index) ? index - 1 : -1]
+      if (!target) continue
 
       const rect = raw?.rect ?? {}
       const x = clamp01(rect.x)
@@ -205,7 +224,6 @@ Deno.serve(async (req) => {
       let w = clamp01(rect.w)
       let h = clamp01(rect.h)
       if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) continue
-      // База требует, чтобы рамка не вылезала за страницу.
       w = Math.min(w, 1 - x)
       h = Math.min(h, 1 - y)
       if (w <= 0 || h <= 0) continue
@@ -217,10 +235,10 @@ Deno.serve(async (req) => {
 
       rows.push({
         job_id: jobId,
-        file_id: file.id,
-        // Каждая фотография — одна страница; многостраничных файлов сюда не
-        // попадает, поэтому page всегда 1.
-        page: 1,
+        file_id: target.file.id,
+        // Настоящий номер страницы: у фотографии 1, у PDF — та страница,
+        // картинку которой мы отрисовали и показали модели.
+        page: target.page,
         position: rows.length,
         rect_x: x, rect_y: y, rect_w: w, rect_h: h,
         category,
@@ -241,7 +259,9 @@ Deno.serve(async (req) => {
       readable: parsed.readable !== false,
       suggested_score: numberOrNull(parsed.suggested_score),
       confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : null,
-      summary: String(parsed.summary ?? '').slice(0, 8000) || null,
+      // Пропущенные страницы дописываем в разбор: преподаватель должен видеть,
+      // что модель смотрела не всю работу, иначе «замечаний нет» соврёт.
+      summary: withSkipNote(String(parsed.summary ?? ''), skipped).slice(0, 8000) || null,
       last_error: null,
       completed_at: new Date().toISOString(),
       input_tokens: numberOrNull(usage.prompt_tokens),
@@ -261,6 +281,199 @@ Deno.serve(async (req) => {
     return fail(200, message, jobId)
   }
 })
+
+/**
+ * Страницы работы в том виде, в каком их понимает модель, — картинками.
+ *
+ * Фотография проходит как есть. PDF рендерится здесь же, на сервере: в
+ * OpenAI-совместимом протоколе PDF не передашь как image_url, а разбор его в
+ * текст убил бы координаты — рамку стало бы некуда ставить. Рендерим PDFium
+ * (WASM), кодируем в JPEG.
+ *
+ * Почему на сервере, а не при загрузке учеником: так чинятся и уже сданные
+ * работы, телефон ученика ничего не считает, и — главное — не появляется
+ * второй копии работы, которая может разъехаться с оригиналом.
+ */
+async function collectPages(
+  admin: ReturnType<typeof createClient>,
+  files: AttemptFile[],
+): Promise<{ pages: PageImage[]; skipped: string[] }> {
+  const pages: PageImage[] = []
+  const skipped: string[] = []
+  let total = 0
+
+  const budgetLeft = () => MAX_PAGES - pages.length
+
+  for (const file of files) {
+    if (budgetLeft() <= 0) {
+      skipped.push(`${nameOf(file)} — не поместился в лимит ${MAX_PAGES} страниц`)
+      continue
+    }
+
+    const { data: blob, error: dlError } = await admin.storage.from(ATTEMPTS_BUCKET).download(file.storage_path)
+    if (dlError || !blob) {
+      skipped.push(`${nameOf(file)} — файл не скачался`)
+      continue
+    }
+    const raw = new Uint8Array(await blob.arrayBuffer())
+    const mime = file.mime_type ?? guessMime(file)
+
+    if (!PDF_MIME.test(mime)) {
+      if (total + raw.length > MAX_INLINE_BYTES) {
+        skipped.push(`${nameOf(file)} — слишком большой файл`)
+        continue
+      }
+      total += raw.length
+      pages.push({ file, page: 1, mime, bytes: raw, label: nameOf(file) })
+      continue
+    }
+
+    try {
+      const rendered = await renderPdfPages(raw, budgetLeft())
+      if (rendered.total > rendered.images.length) {
+        skipped.push(`${nameOf(file)} — взяты страницы 1–${rendered.images.length} из ${rendered.total}`)
+      }
+      for (const image of rendered.images) {
+        if (total + image.bytes.length > MAX_INLINE_BYTES) {
+          skipped.push(`${nameOf(file)}, стр. ${image.page} — не поместилась в лимит размера`)
+          break
+        }
+        total += image.bytes.length
+        pages.push({
+          file,
+          page: image.page,
+          mime: 'image/jpeg',
+          bytes: image.bytes,
+          label: `${nameOf(file)}, стр. ${image.page}`,
+        })
+      }
+    } catch (err) {
+      // Один битый PDF не должен отменять проверку остальных страниц.
+      skipped.push(`${nameOf(file)} — ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return { pages, skipped }
+}
+
+/**
+ * PDF → JPEG постранично. PDFium отдаёт сырой BGRA, кодировщик ждёт RGBA —
+ * поэтому байты переставляются на месте, без выделения второго буфера
+ * (страница A4 при 150 DPI — это ~8 МБ пикселей, лишняя копия тут дорога).
+ *
+ * Импорт динамический: работа из одних фотографий не должна платить за
+ * загрузку WASM-движка.
+ */
+async function renderPdfPages(
+  bytes: Uint8Array,
+  limit: number,
+): Promise<{ images: { page: number; bytes: Uint8Array }[]; total: number }> {
+  // Импорт и инициализацию разделяем: «пакет не подтянулся» и «wasm не завёлся»
+  // чинятся по-разному, и в last_error должно быть видно, что именно случилось.
+  //
+  // Специферы ЛИТЕРАЛЬНЫЕ и только такие. Supabase собирает функцию в eszip на
+  // этапе деплоя, статически обходя импорты; import(переменная) он не разбирает,
+  // и пакет просто не попадает в сборку — а в рантайме тянуть его уже неоткуда.
+  // Ровно на этом сгорели три работы: `Module not found` вместо рендера.
+  //
+  // Кодировщик — jpeg-js, и это не вопрос вкуса. imagescript при загрузке
+  // требует нативный аддон (`codecs/node/<arch>-<platform>.node`), а wasm-ветка
+  // у него заглушена `throw new Error('todo!')`. В Deno на машине разработчика
+  // napi есть, и локальная проверка проходит; в Edge Runtime его нет, и работа
+  // падает с «unsupported arch/platform: Not supported». jpeg-js — чистый JS
+  // без зависимостей: платим процессором (см. RENDER_BUDGET_MS), зато он
+  // заведётся везде.
+  let pdfium: { PDFiumLibrary: { init: (o?: Record<string, unknown>) => Promise<any> } }
+  let encodeJpeg: (image: { data: Uint8Array; width: number; height: number }, quality: number)
+    => { data: Uint8Array }
+  try {
+    const [a, b] = await Promise.all([
+      import('npm:@hyzyla/pdfium@2.1.13'),
+      import('npm:jpeg-js@0.4.4'),
+    ])
+    pdfium = a as any
+    encodeJpeg = ((b as any).default ?? b).encode
+  } catch (err) {
+    throw new Error(`не подтянулись пакеты для рендера PDF: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  const library = await initPdfium(pdfium.PDFiumLibrary)
+  let document: Awaited<ReturnType<typeof library.loadDocument>> | null = null
+  try {
+    document = await library.loadDocument(bytes)
+    const total = document.getPageCount()
+    const images: { page: number; bytes: Uint8Array }[] = []
+
+    const startedAt = Date.now()
+    let index = 0
+    for (const page of document.pages()) {
+      if (images.length >= limit) break
+      // Хотя бы одна страница должна уехать модели, даже если бюджет уже вышел:
+      // разбор по первой странице полезнее, чем «ИИ не смог».
+      if (images.length > 0 && Date.now() - startedAt > RENDER_BUDGET_MS) break
+      index += 1
+      const { originalWidth } = page.getOriginalSize()
+      const scale = Math.min(RENDER_DPI / 72, MAX_RENDER_WIDTH / Math.max(1, originalWidth))
+      const result = await page.render({ scale, render: 'bitmap' })
+
+      const data = result.data
+      for (let p = 0; p < data.length; p += 4) {
+        const blue = data[p]
+        data[p] = data[p + 2]
+        data[p + 2] = blue
+      }
+
+      const encoded = encodeJpeg({ data, width: result.width, height: result.height }, JPEG_QUALITY)
+      images.push({ page: index, bytes: new Uint8Array(encoded.data) })
+    }
+
+    return { images, total }
+  } finally {
+    document?.destroy()
+    library.destroy()
+  }
+}
+
+/**
+ * Движок PDFium сам находит свой .wasm рядом с пакетом — это работает, когда в
+ * рантайме файлы npm-пакета лежат на диске. Если сборка функции их не донесла,
+ * тянем бинарник с CDN и держим в памяти инстанса: 4 МБ на холодный старт один
+ * раз, а не на каждую проверку. Порядок именно такой — сначала бесплатный путь.
+ */
+let wasmBinary: Uint8Array | null = null
+const PDFIUM_WASM_URL = 'https://cdn.jsdelivr.net/npm/@hyzyla/pdfium@2.1.13/dist/pdfium.wasm'
+
+async function initPdfium(PDFiumLibrary: { init: (o?: Record<string, unknown>) => Promise<any> }) {
+  let localError = ''
+  if (!wasmBinary) {
+    try {
+      return await PDFiumLibrary.init()
+    } catch (err) {
+      localError = String(err).slice(0, 150)
+      console.log('pdfium: локальный wasm недоступен, беру с CDN —', localError)
+      const response = await fetch(PDFIUM_WASM_URL)
+      if (!response.ok) throw new Error(`движок PDF не скачался (HTTP ${response.status}); локально: ${localError}`)
+      wasmBinary = new Uint8Array(await response.arrayBuffer())
+    }
+  }
+  try {
+    return await PDFiumLibrary.init({ wasmBinary, disableBase64Warning: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`движок PDF не запустился: ${message}${localError ? ` (локально: ${localError})` : ''}`)
+  }
+}
+
+function nameOf(file: AttemptFile): string {
+  return file.file_name ?? file.storage_path.split('/').pop() ?? 'без имени'
+}
+
+/** Приписка о непроверенных страницах — в конец разбора, отдельным абзацем. */
+function withSkipNote(summary: string, skipped: string[]): string {
+  if (skipped.length === 0) return summary
+  const note = ['Проверено не всё:', ...skipped.map(s => `— ${s}`)].join('\n')
+  return summary ? `${summary}\n\n${note}` : note
+}
 
 /**
  * Промпт. Две вещи в нём важнее формулировок:
@@ -283,7 +496,7 @@ function buildPrompt(ctx: {
       : 'Шкала оценки не задана — предложи балл от 0 до 100.'
 
   return [
-    'Ты опытный учитель физики и математики. Проверяешь рукописную работу ученика по фотографиям.',
+    'Ты опытный учитель физики и математики. Проверяешь рукописную работу ученика по фотографиям и сканам.',
     '',
     `ЗАДАНИЕ: ${ctx.title}`,
     ctx.instructions ? `УСЛОВИЕ: ${ctx.instructions}` : '',
@@ -294,7 +507,7 @@ function buildPrompt(ctx: {
     '2. Потом прочитай работу ученика и сравни со своим решением.',
     '3. Отметь конкретные места: ошибки в вычислениях, логике, оформлении — и удачные ходы.',
     '',
-    `Тебе передано страниц: ${ctx.pageCount}. Перед каждой идёт строка «Страница #N: имя».`,
+    `Тебе передано страниц: ${ctx.pageCount}. Перед каждой идёт строка «Страница #N: имя». Многостраничный PDF разложен на страницы, у каждой свой номер.`,
     '',
     'ОТВЕТЬ СТРОГО ОДНИМ JSON-объектом, без пояснений и без markdown:',
     '{',
@@ -310,10 +523,14 @@ function buildPrompt(ctx: {
     '',
     'ПРАВИЛА:',
     `- ${scale}`,
+    // Модель ставила 5/5 и тут же перечисляла две ошибки — балл жил отдельно
+    // от разбора. Требуем согласованности явным правилом.
+    '- Балл должен согласовываться с находками: если перечислил ошибки, высший балл не ставь.',
     '- confidence: "high" — работа читается уверенно и решение однозначно; "medium" — есть сомнения; "low" — почерк плохо разбирается или задание непонятно.',
     '- Если работу невозможно прочитать: "readable": false, "findings": [], "confidence": "low".',
     '- page_index — номер страницы из строки «Страница #N», начиная с 1.',
     '- КООРДИНАТЫ — ДОЛИ СТРАНИЦЫ ОТ 0 ДО 1, начало отсчёта в левом верхнем углу. Не пиксели.',
+    '- Координаты считай относительно ТОЙ страницы, на которую ставишь рамку, а не всей работы.',
     '- x + w не больше 1, y + h не больше 1. Рамка должна плотно охватывать нужные строки, а не всю страницу.',
     `- Не больше ${MAX_FINDINGS} находок. Лучше меньше, но по делу.`,
     '- category: "calc" — арифметика и знаки, "logic" — неверный ход решения, "format" — оформление и единицы измерения, "praise" — удачный ход, "comment" — всё остальное.',

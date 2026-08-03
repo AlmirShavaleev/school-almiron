@@ -1000,16 +1000,19 @@ describe('Catalog role access', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('Empty topic filtering', () => {
-  it('exam-mode сохраняет старое поведение и не фильтрует legacy-связи по source', () => {
+  it('exam-mode учитывает legacy-связи и не пускает к себе ИИ-таксономию физики', () => {
     // Сбор тем раздела переехал из браузера в RPC get_catalog_section_topic_tree
-    // (было ~30 последовательных запросов, стало один). Гарантия та же:
-    // в экзаменационном виде учитываются ВСЕ связи, и legacy (source is null),
-    // и ai_physics_v1 — то есть фильтра по source в запросе быть не должно.
-    const mig = read('supabase/migrations/20260730134546_get_catalog_section_topic_tree.sql')
+    // (было ~30 последовательных запросов, стало один). Legacy-связи
+    // (source is null) в экзаменационном виде обязаны учитываться — сужать
+    // запрос до одного источника нельзя. А вот связи ai_physics_v1 ведут в
+    // отдельное дерево тем вкладки «Физические темы»: в экзаменационном виде
+    // они давали чужие подтемы и завышенные счётчики (раздел «№1 Кинематика»:
+    // 146 задач, сумма по подтемам 377).
+    const mig = read('supabase/migrations/20260802223053_exam_topic_tree_excludes_ai_physics_links.sql')
     const body = mig.slice(mig.indexOf('create or replace function'))
     expect(body).toContain('from catalog_task_topics tt')
     expect(body).toContain('join catalog_tasks t on t.id = tt.task_id')
-    expect(body).not.toMatch(/\bsource\b\s*=/)
+    expect(body).toContain("tt.source is distinct from 'ai_physics_v1'")
     expect(body).not.toMatch(/source is null/)
     // Клиент должен ходить именно в эту RPC, а не собирать связи сам.
     const hookSrc = read('src/hooks/useCatalog.ts')
@@ -1026,7 +1029,7 @@ describe('Empty topic filtering', () => {
   it('непустая тема отображается — task_count считается по catalog_task_topics', () => {
     // Счёт переехал в RPC: task_count — это distinct task_id из связей, а
     // completed_count — только СВОЙ прогресс (иначе ученик увидел бы чужой).
-    const mig = read('supabase/migrations/20260730134546_get_catalog_section_topic_tree.sql')
+    const mig = read('supabase/migrations/20260802223053_exam_topic_tree_excludes_ai_physics_links.sql')
     expect(mig).toContain('count(distinct l.task_id)   as task_count')
     expect(mig).toContain('count(distinct ctp.task_id) as completed_count')
     expect(mig).toContain('ctp.user_id = auth.uid()')
@@ -1055,6 +1058,15 @@ describe('Physics topics mode', () => {
     expect(src).toContain("view === 'physics-topics'")
     expect(src).toContain("fetchAllTopicTaskIds(topicId!, view === 'physics-topics' ? AI_PHYSICS_SOURCE : undefined)")
     expect(src).toContain('difficulty, statement_html')
+  })
+
+  it('список задач физической темы сужен до основной связи, как и счётчики', () => {
+    // Счётчики вкладки считают задачу один раз — по её основной теме
+    // (миграция 20260802233810). Список задач темы обязан фильтроваться так
+    // же, иначе в боковой панели «60 задач», а на странице их 92.
+    const src = read('src/hooks/useCatalog.ts')
+    expect(src).toContain('fetchAllTopicTaskIds(topicId, AI_PHYSICS_SOURCE, true)')
+    expect(src).toContain("if (primaryOnly) query = query.eq('is_primary', true)")
   })
 
   it('old exam mode keeps pre-change task counts by loading all topic links', () => {
