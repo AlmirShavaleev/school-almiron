@@ -87,7 +87,7 @@ function tpl(overrides: Partial<CourseHomeworkTemplate>): CourseHomeworkTemplate
   }
 }
 
-const modules = [{ id: 'm1', course_id: 'c1', title: 'Модуль 1', order_index: 1, topics: [{ id: 'topic-1', module_id: 'm1', title: 'Тема 1', order_index: 1, max_score: 100, available_from: null }] }]
+const modules = [{ id: 'm1', course_id: 'c1', title: 'Модуль 1', order_index: 1, topics: [{ id: 'topic-1', module_id: 'm1', title: 'Тема 1', order_index: 1, max_score: 100, available_from: null, is_open: null }] }]
 
 beforeEach(() => {
   templates = []
