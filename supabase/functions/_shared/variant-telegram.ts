@@ -36,14 +36,49 @@ const EXAM_LABELS: Record<string, string> = {
   oge: 'ОГЭ',
 }
 
-function formatMoscowDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
+/**
+ * Дата для карточки: «7 августа, 19:30». Год в текущем году не пишем —
+ * уведомление живёт часы, а не годы, и лишнее число только удлиняет строку.
+ *
+ * Но если год не наш, он появляется: «12 августа 0020, 03:00». Это не
+ * украшение, а сигнал. В базе нашлись две работы с годом 0020 и 0002 — набран
+ * руками; спрятав год, карточка сделала бы такую дату правдоподобной.
+ *
+ * Если значение не разбирается в дату вовсе, отдаём как есть: врать про дату
+ * хуже, чем показать её кривой, а чинить надо в производителе.
+ */
+export function formatWhen(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw
+  const sameYear = parsed.getUTCFullYear() === new Date().getUTCFullYear()
+  // Дату и время склеиваем сами: toLocaleString с обоими наборами полей
+  // вставляет «в» («12 июля в 19:45»), а утверждён вариант через запятую.
+  const date = parsed.toLocaleDateString('ru-RU', {
     timeZone: 'Europe/Moscow',
     day: 'numeric',
     month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    ...(sameYear ? {} : { year: 'numeric' as const }),
+  })
+  const time = parsed.toLocaleTimeString('ru-RU', {
+    timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit',
+  })
+  return `${date}, ${time}`
+}
+
+/** Дата без времени: у дедлайна ДЗ в базе лежит date, часы там бессмысленны. */
+export function formatDay(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw
+  const sameYear = parsed.getUTCFullYear() === new Date().getUTCFullYear()
+  return parsed.toLocaleDateString('ru-RU', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    ...(sameYear ? {} : { year: 'numeric' as const }),
   })
 }
 
@@ -106,27 +141,24 @@ export function buildVariantAssignedTelegramMessage(
   payload: VariantTelegramPayload,
   appUrl: string,
 ) {
+  // Утверждено владельцем 2026-08-03: заголовок с названием, одна строка
+  // подробностей через «·», срок отдельной строкой. Обращения «Вам» больше
+  // нет — карточка сообщает факт, а не разговаривает. Строка «Откройте
+  // вариант в личном кабинете» убрана: она дублировала кнопку под собой.
+  const facts = [
+    payload.subject ? (SUBJECT_LABELS[payload.subject] ?? payload.subject) : null,
+    payload.exam_type ? (EXAM_LABELS[payload.exam_type] ?? payload.exam_type) : null,
+    payload.group_name ?? null,
+    payload.tasks_count != null ? `${payload.tasks_count} заданий` : null,
+  ].filter(Boolean) as string[]
+
   const lines = [
-    'Новый вариант',
-    '',
-    `Вам назначен вариант «${payload.title ?? 'Без названия'}».`,
+    `📄 <b>Новый вариант — «${escapeHtml(payload.title ?? 'Без названия')}»</b>`,
     '',
   ]
-
-  if (payload.subject) lines.push(`Предмет: ${SUBJECT_LABELS[payload.subject] ?? payload.subject}`)
-  if (payload.exam_type) lines.push(`Экзамен: ${EXAM_LABELS[payload.exam_type] ?? payload.exam_type}`)
-  if (payload.group_name) lines.push(`Группа: ${payload.group_name}`)
-  if (payload.tasks_count != null) lines.push(`Заданий: ${payload.tasks_count}`)
-
-  if (payload.available_from) {
-    lines.push(`Открытие: ${formatMoscowDateTime(payload.available_from)}`)
-  }
-
-  lines.push(
-    `Дедлайн: ${payload.due_at ? formatMoscowDateTime(payload.due_at) : 'Без дедлайна'}`,
-    '',
-    'Откройте вариант в личном кабинете.',
-  )
+  if (facts.length > 0) lines.push(facts.map(escapeHtml).join(' · '))
+  if (payload.available_from) lines.push(`Откроется ${formatWhen(payload.available_from)}`)
+  lines.push(payload.due_at ? `Сдать до ${formatWhen(payload.due_at)}` : 'Без дедлайна')
 
   const url = buildAbsoluteUrl(appUrl, payload.link)
   return {
@@ -143,10 +175,12 @@ export function buildVariantDeadlineTelegramMessage(
   payload: VariantDeadlineTelegramPayload,
   appUrl: string,
 ) {
-  const title = payload.title ?? 'Вариант'
+  // Утверждено владельцем 2026-08-03: новый срок в заголовке — он и есть
+  // новость, ради которой сообщение пришло.
+  const title = escapeHtml(payload.title ?? 'Вариант')
   const text = payload.due_at
-    ? `Изменён дедлайн варианта\n\nДля варианта «${title}» установлен новый дедлайн: ${formatMoscowDateTime(payload.due_at)}.`
-    : `Изменён дедлайн варианта\n\nДля варианта «${title}» дедлайн отменён.`
+    ? `⏳ <b>Новый срок сдачи — ${formatWhen(payload.due_at)}</b>\n\nВариант «${title}»`
+    : `⏳ <b>Дедлайн снят</b>\n\nВариант «${title}» можно сдать в любое время.`
 
   const url = buildAbsoluteUrl(appUrl, payload.link)
   return {
@@ -215,6 +249,9 @@ export function isTelegramPreferenceEnabled(
     // настройках нет — шлём всегда. Ветка заведена явно, чтобы это решение
     // было видно здесь, а не проваливалось молча в default.
     case 'topic_homework_submitted':
+    // Обращение о проблеме — служебный сигнал админу, галочки под него нет.
+    // Общий выключатель telegram выше по функции его всё равно гасит.
+    case 'support_request':
       return true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':

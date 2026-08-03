@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
-import { buildLinkButton, escapeHtml } from '../../supabase/functions/_shared/variant-telegram'
+import { buildLinkButton, escapeHtml, formatDay, formatWhen } from '../../supabase/functions/_shared/variant-telegram'
 
 type Message = { text: string; replyMarkup: unknown }
 type Builder = (item: { event_type: string; payload: Record<string, unknown> }, appUrl: string) => Message
@@ -19,6 +19,8 @@ const buildMessage = new Function(
   'buildVariantDeadlineTelegramMessage',
   'buildLinkButton',
   'escapeHtml',
+  'formatWhen',
+  'formatDay',
   `${js}; return buildMessage`,
 )(
   () => ({ text: 'variant assigned', replyMarkup: null }),
@@ -28,6 +30,8 @@ const buildMessage = new Function(
   // buildMessage их зовёт и возвращает пригодный объект.
   buildLinkButton,
   escapeHtml,
+  formatWhen,
+  formatDay,
 ) as Builder
 
 const events = [
@@ -87,6 +91,73 @@ describe('ссылки в карточках', () => {
       expect(result.text).not.toContain('<a href')
       expect(result.text).not.toContain('→</a>')
     })
+
+  it('support_request: тема, контекст и счётчик скриншотов; кнопки нет', () => {
+    const result = buildMessage({
+      event_type: 'support_request',
+      payload: {
+        subject:     'Рамка не тянется',
+        author_name: 'Альмир Ученик',
+        author_role: 'Ученик',
+        page_path:   '/homework-queue',
+        created_at:  '03.08.2026 11:43',
+        message:     'Рамка не тянется за нижний край, если 1 < k < 2',
+        attachments: ['uid/f/1-shot.png', 'uid/f/2-shot.png'],
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Рамка не тянется')
+    expect(result.text).toContain('Альмир Ученик · Ученик')
+    expect(result.text).toContain('/homework-queue')
+    expect(result.text).toContain('03.08.2026 11:43')
+    expect(result.text).toContain('1 &lt; k &lt; 2')
+    expect(result.text).toContain('Скриншотов: 2')
+    expect(result.replyMarkup).toBeNull()
+  })
+
+  it('support_request без скриншотов не пишет про вложения', () => {
+    const result = buildMessage({
+      event_type: 'support_request',
+      payload: { subject: 'Тема', author_name: 'Кто-то', author_role: 'Ученик', message: 'Текст обращения' },
+    }, 'https://school.example')
+
+    expect(result.text).not.toContain('Скриншотов')
+  })
+
+  // Дедлайн приходит датой без времени либо null. Год печатается только если
+  // он не текущий: в базе нашлись работы с годом 0020 и 0002, и спрятанный
+  // год сделал бы такую дату правдоподобной.
+  it('new_homework: дата без года в текущем году', () => {
+    const year = new Date().getUTCFullYear()
+    const result = buildMessage({
+      event_type: 'new_homework',
+      payload: { title: 'Тема', course_title: 'Курс', due_date: `${year}-08-12` },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Сдать до 12 августа')
+    expect(result.text).not.toContain(String(year))
+  })
+
+  it('new_homework: чужой год печатается, а не прячется', () => {
+    const result = buildMessage({
+      event_type: 'new_homework',
+      payload: { title: 'Тема', course_title: 'Курс', due_date: '0020-08-12' },
+    }, 'https://school.example')
+
+    // Локаль сокращает 0020 до «20 г.» — важно, что год вообще виден:
+    // без него «12 августа» выглядело бы нормальной датой.
+    expect(result.text).toMatch(/12 августа\s+\d+\s*г\./)
+  })
+
+  it('new_homework без дедлайна не печатает «Сдать до»', () => {
+    const result = buildMessage({
+      event_type: 'new_homework',
+      payload: { title: 'Тема', course_title: 'Курс', due_date: null },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Без дедлайна')
+    expect(result.text).not.toContain('Сдать до')
+  })
 
   it('текст от пользователя экранируется, иначе Telegram роняет разбор', () => {
     const result = buildMessage({

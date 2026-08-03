@@ -49,6 +49,10 @@ export function levelScaleFor(subjectDb: string, examTypeDb: string): VariantLev
 export interface TopicAvailabilityRow {
   topic_id: string
   topic_title: string
+  section_id: string
+  section_title: string
+  section_position: number
+  exam_number: number | null
   level: VariantLevel
   available: number
 }
@@ -56,27 +60,44 @@ export interface TopicAvailabilityRow {
 export interface TopicOption {
   id: string
   title: string
-  parentTitle: string | null
   /** Сколько задач с эталоном по каждому уровню. Ключей может не быть вовсе. */
   byLevel: Partial<Record<VariantLevel, number>>
   total: number
 }
 
 /**
- * Список тем экзамена со счётчиками доступных задач.
+ * Номер задания со своими темами.
  *
- * Каталог здесь только читается: справочник тем берём напрямую из
- * `catalog_topics`, счётчики — из `variant_topic_availability`.
+ * Группировка не украшение: имена тем уникальны только внутри своего номера
+ * (§50), и плоским списком физика ЕГЭ давала 22 строки «ЕГЭ прошлых лет»
+ * подряд, а физика ОГЭ — 241 тему на 64 названия. Заголовок раздела в каталоге
+ * уже содержит номер («№1 Кинематика»), поэтому подпись берём как есть.
  */
-export function useVariantTopicOptions(
+export interface SectionGroup {
+  id: string
+  title: string
+  position: number
+  examNumber: number | null
+  topics: TopicOption[]
+  byLevel: Partial<Record<VariantLevel, number>>
+  total: number
+}
+
+/**
+ * Темы экзамена, сгруппированные по номерам заданий, со счётчиками задач,
+ * у которых есть эталонный ответ.
+ *
+ * Каталог только читается — через `variant_topic_availability`.
+ */
+export function useVariantTopicSections(
   subjectDb: string | undefined,
   examTypeDb: string | undefined,
   topicSource: string | null,
 ) {
   const { profile } = useAuthStore()
-  const [topics, setTopics]   = useState<TopicOption[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState<string | null>(null)
+  const [sections, setSections] = useState<SectionGroup[]>([])
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile || !subjectDb || !examTypeDb) return
@@ -84,62 +105,59 @@ export function useVariantTopicOptions(
     setLoading(true)
     setError(null)
 
-    Promise.all([
-      db.rpc('variant_topic_availability', {
-        p_subject:      subjectDb,
-        p_exam_type:    examTypeDb,
-        p_topic_ids:    null,
-        p_topic_source: topicSource,
-      }),
-      db
-        .from('catalog_topics')
-        .select('id, title, parent_id, position')
-        .eq('subject', subjectDb)
-        .eq('exam_type', examTypeDb),
-    ]).then(([availRes, topicRes]: [
-      { data: TopicAvailabilityRow[] | null; error: { message: string } | null },
-      { data: { id: string; title: string; parent_id: string | null; position: number }[] | null; error: { message: string } | null },
-    ]) => {
+    db.rpc('variant_topic_availability', {
+      p_subject:      subjectDb,
+      p_exam_type:    examTypeDb,
+      p_topic_ids:    null,
+      p_topic_source: topicSource,
+    }).then(({ data, error: err }: { data: TopicAvailabilityRow[] | null; error: { message: string } | null }) => {
       if (cancelled) return
-      if (availRes.error) { setError(availRes.error.message); setLoading(false); return }
+      if (err) { setError(err.message); setLoading(false); return }
 
-      const titleById = new Map((topicRes.data ?? []).map(t => [t.id, t.title]))
-      const parentById = new Map((topicRes.data ?? []).map(t => [t.id, t.parent_id]))
-      const positionById = new Map((topicRes.data ?? []).map(t => [t.id, t.position]))
+      const bySection = new Map<string, SectionGroup>()
+      const topicsById = new Map<string, TopicOption>()
 
-      const byTopic = new Map<string, TopicOption>()
-      for (const row of availRes.data ?? []) {
-        let entry = byTopic.get(row.topic_id)
-        if (!entry) {
-          const parentId = parentById.get(row.topic_id) ?? null
-          entry = {
-            id: row.topic_id,
-            title: row.topic_title,
-            parentTitle: parentId ? titleById.get(parentId) ?? null : null,
+      for (const row of data ?? []) {
+        let section = bySection.get(row.section_id)
+        if (!section) {
+          section = {
+            id: row.section_id,
+            title: row.section_title,
+            position: row.section_position,
+            examNumber: row.exam_number,
+            topics: [],
             byLevel: {},
             total: 0,
           }
-          byTopic.set(row.topic_id, entry)
+          bySection.set(row.section_id, section)
         }
-        entry.byLevel[row.level] = (entry.byLevel[row.level] ?? 0) + row.available
-        entry.total += row.available
+
+        let topic = topicsById.get(row.topic_id)
+        if (!topic) {
+          topic = { id: row.topic_id, title: row.topic_title, byLevel: {}, total: 0 }
+          topicsById.set(row.topic_id, topic)
+          section.topics.push(topic)
+        }
+
+        topic.byLevel[row.level]   = (topic.byLevel[row.level] ?? 0) + row.available
+        topic.total               += row.available
+        section.byLevel[row.level] = (section.byLevel[row.level] ?? 0) + row.available
+        section.total             += row.available
       }
 
-      setTopics(
-        [...byTopic.values()].sort((a, b) => {
-          const byParent = (a.parentTitle ?? '').localeCompare(b.parentTitle ?? '', 'ru')
-          if (byParent !== 0) return byParent
-          const posDiff = (positionById.get(a.id) ?? 0) - (positionById.get(b.id) ?? 0)
-          return posDiff !== 0 ? posDiff : a.title.localeCompare(b.title, 'ru')
-        })
-      )
+      const ordered = [...bySection.values()].sort((a, b) => a.position - b.position)
+      for (const section of ordered) {
+        section.topics.sort((a, b) => b.total - a.total || a.title.localeCompare(b.title, 'ru'))
+      }
+
+      setSections(ordered)
       setLoading(false)
     })
 
     return () => { cancelled = true }
   }, [profile, subjectDb, examTypeDb, topicSource])
 
-  return { topics, loading, error }
+  return { sections, loading, error }
 }
 
 // ── Остаток по выбранным темам ───────────────────────────────────────────────

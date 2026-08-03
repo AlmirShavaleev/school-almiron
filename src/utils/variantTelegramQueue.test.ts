@@ -20,12 +20,12 @@ describe('variant telegram queue helpers', () => {
       button_text: 'Открыть вариант',
     }, 'https://app.example.com')
 
-    expect(result.text).toContain('Новый вариант')
-    expect(result.text).toContain('Предмет: Физика')
-    expect(result.text).toContain('Экзамен: ЕГЭ')
-    expect(result.text).toContain('Группа: ЕГЭ Физика 11Б')
-    expect(result.text).toContain('Заданий: 10')
-    expect(result.text).toContain('Дедлайн: 3 июля 2026')
+    // Формулировки утверждены владельцем 2026-08-03 (ТЕКСТЫ_ТГ_КАРТОЧЕК.md):
+    // название в заголовке, подробности одной строкой через «·», срок отдельно.
+    expect(result.text).toContain('Новый вариант — «10Б 18:00»')
+    expect(result.text).toContain('Физика · ЕГЭ · ЕГЭ Физика 11Б · 10 заданий')
+    expect(result.text).toContain('Сдать до 3 июля')
+    expect(result.text).not.toContain('Вам назначен')
     expect(result.replyMarkup).toEqual({
       inline_keyboard: [[{ text: 'Открыть вариант', url: 'https://app.example.com/student/variants/a1' }]],
     })
@@ -37,7 +37,7 @@ describe('variant telegram queue helpers', () => {
       due_at: null,
     }, 'https://app.example.com')
 
-    expect(result.text).toContain('Дедлайн: Без дедлайна')
+    expect(result.text).toContain('Без дедлайна')
   })
 
   it('shows opening date when available_from is in the future', () => {
@@ -46,8 +46,7 @@ describe('variant telegram queue helpers', () => {
       available_from: '2026-07-02T09:00:00.000Z',
     }, 'https://app.example.com')
 
-    expect(result.text).toContain('Открытие:')
-    expect(result.text).toContain('2 июля 2026')
+    expect(result.text).toContain('Откроется 2 июля')
   })
 
   it('keeps absolute links unchanged', () => {
@@ -97,8 +96,8 @@ describe('variant telegram queue helpers', () => {
       button_text: 'Открыть вариант',
     }, 'https://app.example.com')
 
-    expect(result.text).toContain('Изменён дедлайн варианта')
-    expect(result.text).toContain('12 июля 2026')
+    expect(result.text).toContain('Новый срок сдачи — 12 июля')
+    expect(result.text).toContain('Вариант «10Б 18:00»')
     expect(result.replyMarkup?.inline_keyboard[0][0].url).toBe('https://app.example.com/student/variants/a1')
   })
 
@@ -108,7 +107,8 @@ describe('variant telegram queue helpers', () => {
       due_at: null,
     }, 'https://app.example.com')
 
-    expect(result.text).toContain('дедлайн отменён')
+    expect(result.text).toContain('Дедлайн снят')
+    expect(result.text).toContain('можно сдать в любое время')
   })
 
   it('enables variant notifications when telegram and variant pref are on', () => {

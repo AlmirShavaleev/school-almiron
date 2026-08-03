@@ -9,6 +9,8 @@ export interface Topic {
   order_index: number
   max_score: number
   available_from: string | null
+  /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
+  is_open: boolean | null
 }
 
 export interface Module {

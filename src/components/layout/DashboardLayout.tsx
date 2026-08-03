@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 // import { NotificationBell } from './NotificationBell' // скрыто на время MVP
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
+import { SupportWidget } from '@/components/shared/SupportWidget'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
@@ -162,6 +163,9 @@ export function DashboardLayout() {
           </div>
         </main>
       </div>
+
+      {/* Плавающая кнопка обращения — на всех страницах кабинета */}
+      <SupportWidget />
     </div>
   )
 }

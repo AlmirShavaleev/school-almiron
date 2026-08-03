@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, AlertCircle, Trash2 } from 'lucide-react'
 import { useTopicTestAssignment, useTestBank } from '@/hooks/useTopicTest'
+import { TopicVariantAttach } from '@/components/courseProgram/TopicVariantAttach'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 
@@ -10,6 +11,11 @@ import { Badge } from '@/components/ui/Badge'
  *
  * Показывает текущую привязку (если есть) с ссылкой на редактирование в банке.
  * Если привязки нет, показывает список тестов из банка с фильтром по названию.
+ *
+ * Ниже — отдельный блок тестирований из раздела «Тесты» (§58). Это другая
+ * система (test_variants против topic_tests), и раньше её здесь не было вовсе:
+ * собранный в разделе тест в этом списке не находился, потому что искали
+ * только по банку.
  */
 export function TopicTestEditor({ topicId }: { topicId: string }) {
   const { assignment, hasAttempts, loading, error, attach, detach } = useTopicTestAssignment(topicId)
@@ -161,6 +167,11 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
           </div>
         </div>
       )}
+
+      {/* Тестирования из раздела «Тесты» — другая система, отдельный блок. */}
+      <div className="pt-3 border-t border-gray-100">
+        <TopicVariantAttach topicId={topicId} />
+      </div>
     </div>
   )
 }

@@ -110,8 +110,14 @@ describe('Locked topic cannot be opened', () => {
     expect(PAGE_SRC).toMatch(/\{!isLocked && \([\s\S]{0,400}Открыть/)
   })
 
-  it('isLocked derived from available_from > today', () => {
-    expect(PAGE_SRC).toContain('availStr > todayStr')
+  // Раньше здесь проверялась строка `availStr > todayStr` — своя копия правила
+  // прямо в странице. С появлением тумблера (topics.is_open) правило переехало
+  // в src/lib/topicAvailability.ts, зеркало SQL-функции topic_open_now, и
+  // проверять теперь надо не текст условия, а то, что копии больше нет.
+  // Поведение самого правила покрыто src/lib/__tests__/topicAvailability.test.ts.
+  it('страница не считает открытость сама, а зовёт общее правило', () => {
+    expect(PAGE_SRC).toContain('isTopicOpen')
+    expect(PAGE_SRC).not.toContain('availStr > todayStr')
   })
 })
 

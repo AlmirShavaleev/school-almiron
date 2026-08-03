@@ -11,6 +11,7 @@ import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
+import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import { TOPIC_MATERIAL_SECTION_LABELS, type TopicMaterialSection } from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
 
@@ -75,6 +76,11 @@ export function TopicPage() {
   // решения до проверки не приходят вовсе — здесь только три флага, без путей
   // к файлам.
   const solutionState = useTopicSolutionState(topicId ?? null)
+
+  // Тестирования из раздела «Тесты», выданные этому ученику. Отдельным хуком, а
+  // не общим запросом ниже: RPC сама решает, что ученику видно, включая
+  // закрытую тему.
+  const { variants: topicVariants } = useTopicStudentVariants(topicId ?? undefined)
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -193,7 +199,9 @@ export function TopicPage() {
   if (solutionState.hasSolution || solutionCount > 0) availableTabs.push('solution')
 
   if (hasHomework) availableTabs.push('homework')
-  if (hasTest) availableTabs.push('test')
+  // Вкладка нужна и когда теста банка нет, а тестирование выдано.
+  const hasAnyTest = hasTest || topicVariants.length > 0
+  if (hasAnyTest) availableTabs.push('test')
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
   // if chosen tab is no longer available, switch to the first one
@@ -325,7 +333,26 @@ export function TopicPage() {
       ) : active === 'homework' ? (
         <TopicHomeworkStudent topicId={topic.id} />
       ) : active === 'test' ? (
-        <TopicTestStudent topicId={topic.id} />
+        /* Тест банка и тестирования — разные системы. Если есть оба, показываем
+           оба с подписями, а не выбираем один молча. */
+        <div className="space-y-6">
+          {hasTest && (
+            <section>
+              {topicVariants.length > 0 && (
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">Тест по теме</h3>
+              )}
+              <TopicTestStudent topicId={topic.id} />
+            </section>
+          )}
+          {topicVariants.length > 0 && (
+            <section>
+              {hasTest && (
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">Тестирования</h3>
+              )}
+              <TopicVariantStudent topicId={topic.id} />
+            </section>
+          )}
+        </div>
       ) : null}
     </div>
   )

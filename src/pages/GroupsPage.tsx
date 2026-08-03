@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Calendar, Plus, BookOpen, Pencil, ArrowRight, Archive } from 'lucide-react'
+import { Users, Calendar, BookOpen, Pencil, ArrowRight, Archive } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useAuthStore } from '@/store/authStore'
@@ -34,7 +34,6 @@ export function GroupsPage() {
   const [initialTab,  setInitialTab]  = useState<'settings' | 'students'>('settings')
   const [filter,      setFilter]      = useState<'active' | 'archived' | 'all'>('active')
 
-  function openCreate() { setEditTarget(null); setInitialTab('settings'); setModalOpen(true) }
   function openEdit(g: any, initialTab?: 'settings' | 'students') {
     setEditTarget({
       id:            g.id,
@@ -92,14 +91,9 @@ export function GroupsPage() {
             ))}
           </div>
         </div>
-        {canManage && (
-          <button
-            onClick={openCreate}
-            className="flex min-h-11 items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-950 hover:bg-primary-900 text-white text-sm font-bold rounded-lg transition-colors shadow-sm shadow-primary-950/15"
-          >
-            <Plus size={16} />Создать группу
-          </button>
-        )}
+        {/* Кнопки «Создать группу» больше нет: один курс = одна группа, и группа
+            заводится вместе с курсом триггером courses_ensure_group (§61).
+            Руками создать вторую всё равно не даст unique(course_id). */}
       </div>
 
       {(() => {
@@ -112,15 +106,9 @@ export function GroupsPage() {
         if (groups.length === 0) return (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-gray-400">
             <Users size={44} className="opacity-25" />
-            <p className="text-sm">Групп пока нет</p>
-            {canManage && (
-              <button
-                onClick={openCreate}
-                className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-xl hover:bg-primary-700 transition-colors"
-              >
-                <Plus size={14} />Создать первую группу
-              </button>
-            )}
+            <p className="text-sm">Пока нет ни одного курса</p>
+            {/* Группа заводится вместе с курсом, поэтому пусто здесь может быть
+                только когда нет курсов. Звать «создать группу» бессмысленно. */}
           </div>
         )
 
@@ -282,16 +270,7 @@ export function GroupsPage() {
             )
           })}
 
-          {/* Create card */}
-          {canManage && (
-            <button
-              onClick={openCreate}
-              className="flex flex-col items-center justify-center p-8 platform-empty rounded-lg text-slate-400 hover:border-primary-300 hover:text-primary-600 transition-colors gap-3 min-h-48"
-            >
-              <Plus size={32} />
-              <span className="text-sm font-medium">Создать группу</span>
-            </button>
-          )}
+          {/* Карточки «Создать группу» тоже нет — по той же причине. */}
         </div>
         )
       })()}

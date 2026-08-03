@@ -217,6 +217,10 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
   async function handleSave() {
     const errs: Record<string, string> = {}
     if (!name.trim()) errs.name = 'Введите название группы'
+    // Курс обязателен: группа без курса под законом «один курс = одна группа»
+    // существовать не может, и именно эта форма была последним местом, где её
+    // можно было завести. Отсюда же снимается препятствие для NOT NULL.
+    if (!courseId) errs.course = 'Группа не может существовать без курса'
     if (isTeacherOnly && !isEdit && !currentTeacher?.id) errs.teacher = teacherLookupError || 'Не удалось определить преподавателя группы'
     if (isTeacherOnly && isEdit && !group?.teacher_id) errs.teacher = 'У этой группы не указан преподаватель. Обратитесь к администратору.'
     if (Object.keys(errs).length) { setErrors(errs); return }
@@ -228,7 +232,7 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
         : (isEdit ? group?.teacher_id ?? currentTeacher?.id ?? null : currentTeacher?.id ?? null)
       const payload = {
         name:          name.trim(),
-        course_id:     courseId || null,
+        course_id:     courseId,
         teacher_id:    effectiveTeacherId,
         curator_id:    curatorId || null,
         max_students:  maxStudents,
@@ -237,13 +241,14 @@ export function GroupModal({ open, onClose, onSaved, group, initialTab = 'settin
         is_active:     isActive,
       }
 
-      if (isEdit) {
-        const { error } = await supabase.from('groups').update(payload).eq('id', group!.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('groups').insert(payload)
-        if (error) throw error
-      }
+      // Создание групп из интерфейса убрано: один курс = одна группа, и группа
+      // заводится вместе с курсом триггером courses_ensure_group (§61). Вторую
+      // всё равно не пустил бы unique(course_id), а группа без курса ломала бы
+      // NOT NULL на groups.course_id. Осталось только редактирование.
+      if (!isEdit) throw new Error('Группа создаётся вместе с курсом — вручную её заводить не нужно')
+
+      const { error } = await supabase.from('groups').update(payload).eq('id', group!.id)
+      if (error) throw error
 
       onSaved()
       onClose()

@@ -5019,6 +5019,7 @@ export type Database = {
           available_from: string | null
           created_at: string
           id: string
+          is_open: boolean | null
           max_score: number
           module_id: string
           order_index: number
@@ -5029,6 +5030,7 @@ export type Database = {
           available_from?: string | null
           created_at?: string
           id?: string
+          is_open?: boolean | null
           max_score?: number
           module_id: string
           order_index?: number
@@ -5039,6 +5041,7 @@ export type Database = {
           available_from?: string | null
           created_at?: string
           id?: string
+          is_open?: boolean | null
           max_score?: number
           module_id?: string
           order_index?: number
@@ -6526,6 +6529,10 @@ export type Database = {
         Args: { p_topic_id: string }
         Returns: boolean
       }
+      topic_open_now: {
+        Args: { p_available_from: string; p_is_open: boolean }
+        Returns: boolean
+      }
       topic_solution_state: { Args: { p_topic_id: string }; Returns: Json }
       topic_solution_unlocked: {
         Args: { p_topic_id: string }
@@ -6600,6 +6607,10 @@ export type Database = {
           max_points: number
           total_points: number
         }[]
+      }
+      topics_open_until: {
+        Args: { p_topic_id: string }
+        Returns: number
       }
       update_variant_assignment: {
         Args: {

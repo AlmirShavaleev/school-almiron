@@ -10,16 +10,25 @@ export function stripHtmlSimple(html: string): string {
 
 /**
  * Normalise a student-typed answer:
- *   1. trim whitespace
- *   2. replace decimal comma with dot
- *   3. collapse internal whitespace runs to a single space
+ *   1. replace EVERY decimal comma with a dot
+ *   2. collapse whitespace runs to a single space
+ *   3. trim the edges
  *   4. lowercase
+ *
+ * Порядок повторяет SQL и важен в обе стороны:
+ *
+ * - Обрезка идёт ПОСЛЕ схлопывания. Неразрывный пробел не убирается trim'ом,
+ *   но попадает под \s и превращается в обычный — если обрезать раньше, он
+ *   остаётся в начале строки и ответ перестаёт быть числом (§62).
+ * - Заменяются ВСЕ запятые. `String.replace` со строковым образцом меняет
+ *   только первую, из-за чего клиент и сервер расходились на ответах вроде
+ *   «1,2,3»: SQL `replace()` менял все, JS — одну.
  */
 export function normalizeAnswer(raw: string): string {
   return raw
-    .trim()
-    .replace(',', '.')
+    .replace(/,/g, '.')
     .replace(/\s+/g, ' ')
+    .trim()
     .toLowerCase()
 }
 

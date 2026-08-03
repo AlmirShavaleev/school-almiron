@@ -4,9 +4,10 @@ import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import {
   ArrowLeft, Loader2, Search, Wand2, AlertTriangle, Save, RefreshCw, X,
+  ChevronDown, ChevronRight,
 } from 'lucide-react'
 import {
-  useVariantTopicOptions,
+  useVariantTopicSections,
   useVariantSelectionAvailability,
   useVariantAutoBuild,
   levelScaleFor,
@@ -15,6 +16,7 @@ import {
   SCALE_HINTS,
   type VariantLevel,
   type AutoBuiltTask,
+  type SectionGroup,
 } from '@/hooks/useVariantAutoBuild'
 import { useVariantBuilder } from '@/hooks/useVariants'
 import { useCatalogTasksBatch, SUBJECT_FROM_SLUG, EXAM_FROM_SLUG } from '@/hooks/useCatalog'
@@ -57,20 +59,41 @@ export function VariantAutoBuildPage() {
   const [counts, setCounts] = useState<Partial<Record<VariantLevel, number>>>({})
   const [built, setBuilt] = useState<AutoBuiltTask[] | null>(null)
 
-  const { topics, loading: topicsLoading, error: topicsError } =
-    useVariantTopicOptions(subjectDb, examTypeDb, topicSource)
+  const { sections, loading: topicsLoading, error: topicsError } =
+    useVariantTopicSections(subjectDb, examTypeDb, topicSource)
   const { byLevel, loading: availLoading } =
     useVariantSelectionAvailability(subjectDb, examTypeDb, selectedTopics, topicSource)
   const { generate, generating, error: buildError, setError: setBuildError } = useVariantAutoBuild()
   const { saveVariant, saving } = useVariantBuilder()
 
-  const filteredTopics = useMemo(() => {
+  // Поиск идёт и по заголовку номера, и по теме. Совпал номер — показываем его
+  // целиком; совпала тема — показываем номер только с подходящими темами.
+  const filteredSections = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return topics
-    return topics.filter(t =>
-      t.title.toLowerCase().includes(q) || (t.parentTitle ?? '').toLowerCase().includes(q)
-    )
-  }, [topics, search])
+    if (!q) return sections
+    const result: SectionGroup[] = []
+    for (const section of sections) {
+      if (section.title.toLowerCase().includes(q)) { result.push(section); continue }
+      const topics = section.topics.filter(t => t.title.toLowerCase().includes(q))
+      if (topics.length) result.push({ ...section, topics })
+    }
+    return result
+  }, [sections, search])
+
+  const searching = search.trim().length > 0
+  const [expanded, setExpanded] = useState<string[]>([])
+
+  const toggleExpanded = (id: string) =>
+    setExpanded(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
+
+  const toggleSection = (section: SectionGroup) => {
+    setBuilt(null)
+    const ids = section.topics.map(t => t.id)
+    const allOn = ids.every(id => selectedTopics.includes(id))
+    setSelectedTopics(prev => allOn
+      ? prev.filter(id => !ids.includes(id))
+      : [...new Set([...prev, ...ids])])
+  }
 
   const totalRequested = useMemo(
     () => levels.reduce((sum, lvl) => sum + (counts[lvl] ?? 0), 0),
@@ -104,6 +127,7 @@ export function VariantAutoBuildPage() {
   const switchSource = (next: string | null) => {
     setTopicSource(next)
     setSelectedTopics([])
+    setExpanded([])
     setBuilt(null)
   }
 
@@ -193,15 +217,18 @@ export function VariantAutoBuildPage() {
           </div>
         )}
 
-        <div className="relative mb-3">
+        <div className="relative mb-2">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск по темам..."
+            placeholder="Поиск по номеру или теме..."
             className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
         </div>
+        <p className="text-xs text-gray-400 mb-3">
+          Галочка на номере берёт все его темы разом — так быстрее, чем выбирать поштучно.
+        </p>
 
         {topicsLoading ? (
           <div className="flex justify-center py-8">
@@ -209,37 +236,77 @@ export function VariantAutoBuildPage() {
           </div>
         ) : topicsError ? (
           <p className="text-sm text-red-600 py-2">{topicsError}</p>
-        ) : filteredTopics.length === 0 ? (
+        ) : filteredSections.length === 0 ? (
           <p className="text-sm text-gray-500 py-4 text-center">
-            {topics.length === 0
+            {sections.length === 0
               ? 'По этому экзамену нет тем с задачами, у которых есть эталонный ответ.'
-              : 'Темы не найдены.'}
+              : 'Ничего не найдено.'}
           </p>
         ) : (
-          <div className="max-h-72 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
-            {filteredTopics.map(topic => (
-              <label
-                key={topic.id}
-                className="flex items-start gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedTopics.includes(topic.id)}
-                  onChange={() => toggleTopic(topic.id)}
-                  className="mt-1 flex-shrink-0"
-                />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm text-gray-800">{topic.title}</span>
-                  <span className="block text-xs text-gray-400">
-                    {topic.parentTitle ? `${topic.parentTitle} · ` : ''}
-                    {levels
-                      .filter(l => (topic.byLevel[l] ?? 0) > 0)
-                      .map(l => `${LEVEL_LABELS[l].toLowerCase()}: ${topic.byLevel[l]}`)
-                      .join(' · ') || 'нет задач с эталоном'}
-                  </span>
-                </span>
-              </label>
-            ))}
+          <div className="max-h-96 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
+            {filteredSections.map(section => {
+              const ids      = section.topics.map(t => t.id)
+              const picked   = ids.filter(id => selectedTopics.includes(id)).length
+              const isOpen   = searching || expanded.includes(section.id)
+
+              return (
+                <div key={section.id}>
+                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={picked === ids.length && ids.length > 0}
+                      ref={el => { if (el) el.indeterminate = picked > 0 && picked < ids.length }}
+                      onChange={() => toggleSection(section)}
+                      className="flex-shrink-0"
+                      aria-label={`Выбрать все темы: ${section.title}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(section.id)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                    >
+                      {isOpen
+                        ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
+                        : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm text-gray-800 truncate">{section.title}</span>
+                        <span className="block text-xs text-gray-400">
+                          {section.topics.length} {plural(section.topics.length, 'тема', 'темы', 'тем')}
+                          {picked > 0 && ` · выбрано ${picked}`}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+
+                  {isOpen && (
+                    <div className="bg-gray-50/60 border-t border-gray-100">
+                      {section.topics.map(topic => (
+                        <label
+                          key={topic.id}
+                          className="flex items-start gap-3 pl-9 pr-3 py-2 hover:bg-gray-100/60 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTopics.includes(topic.id)}
+                            onChange={() => toggleTopic(topic.id)}
+                            className="mt-1 flex-shrink-0"
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm text-gray-700">{topic.title}</span>
+                            <span className="block text-xs text-gray-400">
+                              {levels
+                                .filter(l => (topic.byLevel[l] ?? 0) > 0)
+                                .map(l => `${LEVEL_LABELS[l].toLowerCase()}: ${topic.byLevel[l]}`)
+                                .join(' · ') || 'нет задач с эталоном'}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </Section>
@@ -410,6 +477,15 @@ function Section({ step, title, hint, children }: {
       {children}
     </div>
   )
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return many
+  const mod10 = n % 10
+  if (mod10 === 1) return one
+  if (mod10 >= 2 && mod10 <= 4) return few
+  return many
 }
 
 function SourceTab({ active, onClick, children }: {

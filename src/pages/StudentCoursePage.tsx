@@ -12,6 +12,7 @@ import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
 import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
 import { testPercent, type TopicSection } from '@/lib/studentProgram'
+import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 
 // ─── Section pills config ─────────────────────────────────────────────────────
 // Те же 7 рубрик, что в плиточной модалке преподавателя (§10.1): «зелёная точка»
@@ -216,11 +217,10 @@ function TopicCard({
   onOpenTopic: (t: TopicProgress) => void
   onOpenHomework: (t: TopicProgress) => void
 }) {
-  // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
-  const todayStr   = new Date().toLocaleDateString('en-CA')
-  const availStr   = topic.available_from ? topic.available_from.slice(0, 10) : null
-  const availDate  = availStr ? new Date(availStr + 'T00:00:00') : null
-  const isLocked   = !!availStr && availStr > todayStr
+  // Правило открытости общее с базой и со второй карточкой ниже —
+  // src/lib/topicAvailability.ts. Своей копии условия здесь быть не должно.
+  const isLocked    = !isTopicOpen(topic)
+  const closedLabel = topicClosedLabel(topic)
   const hasMaterials = topic.sections.size > 0
   const isDone     = topic.hw_status === 'accepted'
 
@@ -299,9 +299,9 @@ function TopicCard({
           </div>
         )}
 
-        {isLocked && availDate && (
+        {isLocked && (
           <div className="text-[10px] text-gray-400 mt-1">
-            Откроется {availDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+            {closedLabel}
           </div>
         )}
       </div>
@@ -405,10 +405,9 @@ function TopicListRow({
   onOpen: () => void
   onOpenHomework: () => void
 }) {
-  const todayStr  = new Date().toLocaleDateString('en-CA')
-  const availStr  = topic.available_from ? topic.available_from.slice(0, 10) : null
-  const availDate = availStr ? new Date(availStr + 'T00:00:00') : null
-  const isLocked  = !!availStr && availStr > todayStr
+  // То же общее правило, что и у карточки выше — src/lib/topicAvailability.ts
+  const isLocked    = !isTopicOpen(topic)
+  const closedLabel = topicClosedLabel(topic)
 
   const stateKey = isLocked ? 'locked'
     : topic.hw_status === 'accepted'      ? 'accepted'
@@ -508,9 +507,9 @@ function TopicListRow({
           </div>
         )}
 
-        {isLocked && availDate && (
+        {isLocked && (
           <p className="text-[10px] text-gray-400 mt-0.5">
-            Откроется {availDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+            {closedLabel}
           </p>
         )}
       </div>

@@ -41,6 +41,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
+import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
@@ -377,9 +378,9 @@ function HwTable({
                             {topic.title}
                           </span>
                         </button>
-                        {topic.available_from && topic.available_from > new Date().toLocaleDateString('en-CA') && (
-                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
-                            Откроется позже
+                        {!isTopicOpen(topic) && (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+                            {topicClosedLabel(topic)}
                           </span>
                         )}
                         {hw && (
@@ -2034,10 +2035,19 @@ export function CourseProgramPage() {
       topicTitle={matTopic?.topic.title ?? ''}
       moduleTitle={matTopic?.moduleTitle ?? ''}
       availableFrom={matTopic?.topic.available_from ?? null}
+      isOpen={matTopic?.topic.is_open ?? null}
       onSaveTopicMeta={async values => {
         if (!matTopic?.topic.id) return
         await handleSaveTopic(matTopic.topic.id, values)
         setMatTopic(prev => prev ? { ...prev, topic: { ...prev.topic, ...values } } : prev)
+      }}
+      onOpenUntilHere={async () => {
+        if (!matTopic?.topic.id) return 0
+        const { data, error } = await supabase.rpc('topics_open_until', { p_topic_id: matTopic.topic.id })
+        if (error) throw new Error(error.message)
+        // Список перечитываем целиком: открылась не только эта тема.
+        reloadCourses()
+        return data ?? 0
       }}
     />
 

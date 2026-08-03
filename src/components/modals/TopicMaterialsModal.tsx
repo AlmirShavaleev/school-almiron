@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
+import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvailability'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
@@ -445,7 +446,11 @@ interface Props {
   topicTitle: string
   moduleTitle: string
   availableFrom?: string | null
-  onSaveTopicMeta?: (values: { available_from: string | null }) => Promise<void>
+  /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
+  isOpen?: boolean | null
+  onSaveTopicMeta?: (values: { available_from?: string | null; is_open?: boolean | null }) => Promise<void>
+  /** Открыть все темы курса до этой включительно. Возвращает, сколько открылось. */
+  onOpenUntilHere?: () => Promise<number>
   lessonDate?: string | null
   hwDeadline?: string | null
   hwStatus?: string | null
@@ -453,12 +458,14 @@ interface Props {
   hwMax?: number | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, onSaveTopicMeta, lessonDate, hwDeadline, hwStatus, hwScore, hwMax }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
   const [dateVal, setDateVal] = useState(availableFrom || '')
   const [savingDate, setSavingDate] = useState(false)
+  const [savingOpen, setSavingOpen] = useState(false)
+  const [bulkNote, setBulkNote] = useState<string | null>(null)
   const [activeTile, setActiveTile] = useState<string | null>(null)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
 
@@ -473,6 +480,17 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
   if (!open || !topicId) return null
 
+  // Состояние считаем тем же правилом, что и база (topic_open_now).
+  const openState     = { is_open: isOpen, available_from: availableFrom }
+  const topicOpen     = isTopicOpen(openState)
+  const dateAutomation = isDateAutomation(openState)
+  const willOpen      = willOpenByDate(openState)
+  const scheduleNote  = willOpen
+    ? `Откроется сама ${new Date(willOpen + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
+    : dateAutomation
+      ? 'Открытием управляет дата'
+      : 'Решает тумблер, дата не действует'
+
   const activeSection = SECTIONS.find(s => s.type === activeTab)!
 
   async function handleDateBlur() {
@@ -483,6 +501,45 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
       await onSaveTopicMeta({ available_from: dateVal || null })
     } finally {
       setSavingDate(false)
+    }
+  }
+
+  /**
+   * Тумблер пишет true/false явно, а не «переворачивает» вычисленное значение:
+   * тема на автоматике по дате не имеет своего true/false, и без явной записи
+   * первое нажатие могло бы ничего не изменить.
+   */
+  async function handleToggleOpen(next: boolean) {
+    if (!canEdit || !onSaveTopicMeta) return
+    setSavingOpen(true)
+    setBulkNote(null)
+    try {
+      await onSaveTopicMeta({ is_open: next })
+    } finally {
+      setSavingOpen(false)
+    }
+  }
+
+  /** Вернуть теме автоматику по дате: is_open снова null. */
+  async function handleBackToSchedule() {
+    if (!canEdit || !onSaveTopicMeta) return
+    setSavingOpen(true)
+    setBulkNote(null)
+    try {
+      await onSaveTopicMeta({ is_open: null })
+    } finally {
+      setSavingOpen(false)
+    }
+  }
+
+  async function handleOpenUntilHere() {
+    if (!canEdit || !onOpenUntilHere) return
+    setSavingOpen(true)
+    try {
+      const n = await onOpenUntilHere()
+      setBulkNote(n === 0 ? 'Всё до этой темы уже открыто' : `Открыто тем: ${n}`)
+    } finally {
+      setSavingOpen(false)
     }
   }
 
@@ -528,7 +585,58 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
             {moduleTitle && <div className="flex items-center gap-1.5 mt-0.5"><GraduationCap size={12} className="text-gray-400" /><span className="text-xs text-gray-400">{moduleTitle}</span></div>}
           </div>
           {canEdit && (
-            <div className="flex items-center gap-3 ml-3 shrink-0">
+            <div className="flex items-start gap-4 ml-3 shrink-0">
+              {/* Тумблер — главный способ управления; дата ниже осталась автоматикой. */}
+              <div className="flex flex-col items-end gap-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Тема</label>
+                <button
+                  type="button"
+                  data-testid="topic-open-toggle"
+                  role="switch"
+                  aria-checked={topicOpen}
+                  aria-label={topicOpen ? 'Тема открыта' : 'Тема закрыта'}
+                  disabled={savingOpen}
+                  onClick={() => { void handleToggleOpen(!topicOpen) }}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors disabled:opacity-60',
+                    topicOpen
+                      ? 'border-primary-200 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 bg-gray-100 text-gray-500',
+                  )}
+                >
+                  <span className={cn('h-2 w-2 rounded-full', topicOpen ? 'bg-primary-500' : 'bg-gray-400')} />
+                  {topicOpen ? 'Открыта' : 'Закрыта'}
+                  {savingOpen && <Loader2 size={12} className="animate-spin" />}
+                </button>
+                <div className="text-[10px] leading-tight text-gray-400 text-right max-w-[190px]">
+                  {scheduleNote}
+                  {!dateAutomation && (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        data-testid="topic-back-to-schedule"
+                        onClick={() => { void handleBackToSchedule() }}
+                        className="underline underline-offset-2 hover:text-primary-600"
+                      >
+                        вернуть автоматику
+                      </button>
+                    </>
+                  )}
+                </div>
+                {onOpenUntilHere && (
+                  <button
+                    type="button"
+                    data-testid="topic-open-until-here"
+                    disabled={savingOpen}
+                    onClick={() => { void handleOpenUntilHere() }}
+                    className="text-[10px] text-gray-500 underline underline-offset-2 hover:text-primary-600 disabled:opacity-60"
+                  >
+                    Открыть всё до этой темы
+                  </button>
+                )}
+                {bulkNote && <div className="text-[10px] text-primary-600">{bulkNote}</div>}
+              </div>
               <div className="flex flex-col items-end gap-1.5">
                 <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Открывается</label>
                 <div className="relative">
