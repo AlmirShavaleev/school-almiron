@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { CheckCircle2, ImagePlus, LifeBuoy, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -35,10 +35,73 @@ function humanError(raw: string): string {
   return 'Не удалось отправить. Попробуйте ещё раз.'
 }
 
-/** Имя файла в пути: кириллица и пробелы в ключе объекта только мешают. */
-function safeName(name: string): string {
-  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '.png'
-  return `shot${ext}`
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png':  '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+}
+
+/**
+ * Имя файла в пути хранилища: кириллица и пробелы в ключе объекта только
+ * мешают. Расширение берём из MIME, а не из имени — у вставленного из буфера
+ * скриншота имени может не быть вовсе.
+ */
+function safeName(file: File): string {
+  const fromName = file.name.includes('.')
+    ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    : null
+  return `shot${EXT_BY_MIME[file.type] ?? fromName ?? '.png'}`
+}
+
+/**
+ * Одна проверка на три входа: выбор файла, вставка из буфера, перетаскивание.
+ * Копий быть не должно — разъехавшиеся правила потом ловятся только жалобой.
+ *
+ * Возвращает новый список и первую внятную причину отказа: показывать пять
+ * ошибок подряд бессмысленно, человеку хватает одной.
+ */
+export function acceptFiles(
+  current: File[],
+  incoming: File[],
+): { files: File[]; error: string | null } {
+  const next = [...current]
+  let error: string | null = null
+
+  for (const f of incoming) {
+    if (next.length >= FILES_MAX) { error ??= `Не больше ${FILES_MAX} скриншотов.`; break }
+    if (!MIME_ALLOWED.includes(f.type)) { error ??= 'Только изображения: PNG, JPEG или WebP.'; continue }
+    if (f.size > FILE_SIZE_MAX) { error ??= 'Файл больше 5 МБ.'; continue }
+    next.push(f)
+  }
+
+  return { files: next, error }
+}
+
+/**
+ * Картинки из буфера обмена или перетаскивания. У скриншота из буфера имени
+ * нет («image.png» или пусто) — даём своё, чтобы в списке вложений было видно,
+ * что это и какое по счёту.
+ */
+export function imagesFromTransfer(dt: DataTransfer | null, startIndex = 0): File[] {
+  if (!dt) return []
+
+  const raw: File[] = []
+  if (dt.items && dt.items.length > 0) {
+    for (const item of Array.from(dt.items)) {
+      if (item.kind !== 'file') continue
+      const f = item.getAsFile()
+      if (f) raw.push(f)
+    }
+  } else if (dt.files && dt.files.length > 0) {
+    raw.push(...Array.from(dt.files))
+  }
+
+  return raw.map((f, i) => {
+    const unnamed = !f.name || /^image\.(png|jpe?g|webp)$/i.test(f.name)
+    if (!unnamed) return f
+    const ext = EXT_BY_MIME[f.type] ?? '.png'
+    return new File([f], `скриншот-${startIndex + i + 1}${ext}`, { type: f.type })
+  })
 }
 
 export function SupportWidget() {
@@ -50,10 +113,16 @@ export function SupportWidget() {
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [files,   setFiles]   = useState<File[]>([])
-  const [sending, setSending] = useState(false)
-  const [sent,    setSent]    = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
+  const [sending,  setSending]  = useState(false)
+  const [sent,     setSent]     = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // Ссылки на превью держим рядом с файлами и отзываем при смене: создавать их
+  // прямо в разметке — течь, новый blob-URL на каждый рендер.
+  const previews = useMemo(() => files.map(f => URL.createObjectURL(f)), [files])
+  useEffect(() => () => { previews.forEach(URL.revokeObjectURL) }, [previews])
 
   // Панель монтируется скрытой и разворачивается на следующем кадре — иначе
   // переход не проигрывается, элемент появляется сразу в конечном состоянии.
@@ -83,18 +152,40 @@ export function SupportWidget() {
     window.setTimeout(() => setOpen(false), 160)
   }
 
-  function addFiles(picked: FileList | null) {
-    if (!picked) return
-    setError(null)
-    const next = [...files]
-    for (const f of Array.from(picked)) {
-      if (next.length >= FILES_MAX) { setError(`Не больше ${FILES_MAX} скриншотов.`); break }
-      if (!MIME_ALLOWED.includes(f.type)) { setError('Только изображения: PNG, JPEG или WebP.'); continue }
-      if (f.size > FILE_SIZE_MAX) { setError('Файл больше 5 МБ.'); continue }
-      next.push(f)
-    }
+  function addFiles(incoming: File[]) {
+    if (incoming.length === 0) return
+    const { files: next, error: why } = acceptFiles(files, incoming)
     setFiles(next)
+    setError(why)
     if (fileInput.current) fileInput.current.value = ''
+  }
+
+  /**
+   * Скриншот почти всегда в буфере, а не в файле, поэтому Ctrl+V — основной
+   * путь, а выбор файла запасной. Обработчик висит на всей панели: курсор в
+   * момент вставки может стоять где угодно.
+   */
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const dt = e.clipboardData
+    addFiles(imagesFromTransfer(dt, files.length))
+
+    // Некоторые приложения кладут в буфер картинку И текст сразу. Текст отдаём
+    // тому полю, где стоит курсор, — браузер вставит его сам. Если курсор не в
+    // поле, вставлять некому, и текст пропал бы: дописываем в описание руками.
+    // Срабатывает ровно один из путей, поэтому текст не теряется и не двоится.
+    const text = dt.getData('text/plain')
+    const el = e.target as HTMLElement | null
+    const inField = !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')
+    if (text && !inField) {
+      e.preventDefault()
+      setMessage(prev => (prev ? `${prev}\n${text}` : text).slice(0, MESSAGE_MAX))
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragOver(false)
+    addFiles(imagesFromTransfer(e.dataTransfer, files.length))
   }
 
   const subjectOk = subject.trim().length >= SUBJECT_MIN && subject.trim().length <= SUBJECT_MAX
@@ -109,7 +200,7 @@ export function SupportWidget() {
       const folder = crypto.randomUUID()
       const paths: string[] = []
       for (const f of files) {
-        const path = `${profile!.id}/${folder}/${paths.length + 1}-${safeName(f.name)}`
+        const path = `${profile!.id}/${folder}/${paths.length + 1}-${safeName(f)}`
         const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f, {
           contentType: f.type, upsert: false,
         })
@@ -159,9 +250,14 @@ export function SupportWidget() {
 
           <div
             data-testid="support-widget-panel"
+            onPaste={handlePaste}
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
             className={`fixed bottom-5 right-5 z-50 w-[min(92vw,380px)] bg-white rounded-2xl
-                        shadow-2xl border border-slate-200 origin-bottom-right
+                        shadow-2xl border origin-bottom-right
                         transition-all duration-200 ease-out
+                        ${dragOver ? 'border-primary-400 ring-2 ring-primary-500/30' : 'border-slate-200'}
                         ${shown ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'}`}
           >
             <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100">
@@ -219,8 +315,8 @@ export function SupportWidget() {
                   {files.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {files.map((f, i) => (
-                        <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 group">
-                          <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                        <div key={`${f.name}-${i}`} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 group">
+                          <img src={previews[i]} alt={f.name} className="w-full h-full object-cover" />
                           <button
                             onClick={() => setFiles(files.filter((_, j) => j !== i))}
                             className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white
@@ -234,17 +330,23 @@ export function SupportWidget() {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => fileInput.current?.click()}
-                      disabled={files.length >= FILES_MAX}
-                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-700
-                                 disabled:opacity-40 transition-colors"
-                    >
-                      <ImagePlus size={15} />
-                      Прикрепить скриншот
-                    </button>
-                    <span className="text-xs text-slate-400">{message.length} / {MESSAGE_MAX}</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <button
+                        onClick={() => fileInput.current?.click()}
+                        disabled={files.length >= FILES_MAX}
+                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-700
+                                   disabled:opacity-40 transition-colors"
+                      >
+                        <ImagePlus size={15} />
+                        Прикрепить скриншот
+                      </button>
+                      {/* Ctrl+V — основной путь: скриншот почти всегда в буфере */}
+                      <p className="text-[11px] text-slate-400 mt-1 leading-tight">
+                        или вставьте из буфера (Ctrl+V), можно перетащить файл
+                      </p>
+                    </div>
+                    <span className="text-xs text-slate-400 shrink-0">{message.length} / {MESSAGE_MAX}</span>
                   </div>
 
                   <input
@@ -253,7 +355,7 @@ export function SupportWidget() {
                     accept={MIME_ALLOWED.join(',')}
                     multiple
                     hidden
-                    onChange={e => addFiles(e.target.files)}
+                    onChange={e => addFiles(Array.from(e.target.files ?? []))}
                   />
 
                   {error && (

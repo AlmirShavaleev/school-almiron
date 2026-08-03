@@ -4,6 +4,7 @@ import {
   isDateAutomation,
   willOpenByDate,
   topicClosedLabel,
+  topicToggleLabel,
 } from '../topicAvailability'
 
 const TODAY = '2026-08-03'
@@ -75,5 +76,28 @@ describe('подпись под закрытой темой', () => {
 
   it('без даты — неопределённая подпись', () => {
     expect(topicClosedLabel({ is_open: false, available_from: null }, TODAY)).toBe('Откроется позже')
+  })
+})
+
+describe('подпись тумблера в строке списка', () => {
+  it('открытая тема', () => {
+    expect(topicToggleLabel({ is_open: true, available_from: null }, TODAY)).toBe('Открыта')
+    expect(topicToggleLabel({ is_open: null, available_from: PAST }, TODAY)).toBe('Открыта')
+  })
+
+  it('закрытая тумблером — без даты, даже если дата задана', () => {
+    expect(topicToggleLabel({ is_open: false, available_from: FUTURE }, TODAY)).toBe('Закрыта')
+  })
+
+  it('на автоматике показывает короткую дату', () => {
+    expect(topicToggleLabel({ is_open: null, available_from: FUTURE }, TODAY)).toBe('Откроется 1.09')
+  })
+
+  it('день без ведущего нуля, месяц с ним', () => {
+    expect(topicToggleLabel({ is_open: null, available_from: '2026-12-05' }, TODAY)).toBe('Откроется 5.12')
+  })
+
+  it('включённый тумблер при будущей дате — просто «Открыта»', () => {
+    expect(topicToggleLabel({ is_open: true, available_from: FUTURE }, TODAY)).toBe('Открыта')
   })
 })

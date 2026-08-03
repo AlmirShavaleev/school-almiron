@@ -65,6 +65,22 @@ export function willOpenByDate(topic: TopicOpenState, today: string = todayLocal
  * остальных случаях честнее неопределённое «откроется позже», чем число,
  * которое ничего не значит.
  */
+/**
+ * Короткая подпись для тумблера в строке списка: «Открыта» / «Закрыта» /
+ * «Откроется 1.09».
+ *
+ * Дату показываем только когда она действительно откроет тему сама — то же
+ * условие, что и в `topicClosedLabel`, просто формат компактнее: в строке
+ * таблицы «1 сентября» не помещается.
+ */
+export function topicToggleLabel(topic: TopicOpenState, today: string = todayLocal()): string {
+  if (isTopicOpen(topic, today)) return 'Открыта'
+  const day = willOpenByDate(topic, today)
+  if (!day) return 'Закрыта'
+  const [, m, d] = day.split('-')
+  return `Откроется ${Number(d)}.${m}`
+}
+
 export function topicClosedLabel(topic: TopicOpenState, today: string = todayLocal()): string {
   const day = willOpenByDate(topic, today)
   if (!day) return 'Откроется позже'

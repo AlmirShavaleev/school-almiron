@@ -106,6 +106,9 @@ describe('ссылки в карточках', () => {
       },
     }, 'https://school.example')
 
+    // Заголовок постоянный, тема — строкой ниже: «🛠 ыфвыф» не сообщало, что
+    // это вообще за событие.
+    expect(result.text.startsWith('🛠 <b>Сообщение о проблеме</b>')).toBe(true)
     expect(result.text).toContain('Рамка не тянется')
     expect(result.text).toContain('Альмир Ученик · Ученик')
     expect(result.text).toContain('/homework-queue')
@@ -122,6 +125,17 @@ describe('ссылки в карточках', () => {
     }, 'https://school.example')
 
     expect(result.text).not.toContain('Скриншотов')
+  })
+
+  it('support_request без темы всё равно читается', () => {
+    const result = buildMessage({
+      event_type: 'support_request',
+      payload: { author_name: 'Кто-то', author_role: 'Ученик', message: 'Текст обращения' },
+    }, 'https://school.example')
+
+    expect(result.text.startsWith('🛠 <b>Сообщение о проблеме</b>')).toBe(true)
+    expect(result.text).toContain('Кто-то · Ученик')
+    expect(result.text).toContain('Текст обращения')
   })
 
   // Дедлайн приходит датой без времени либо null. Год печатается только если
@@ -157,6 +171,52 @@ describe('ссылки в карточках', () => {
 
     expect(result.text).toContain('Без дедлайна')
     expect(result.text).not.toContain('Сдать до')
+  })
+
+  // Производитель (§67) присылает данные, а не готовый текст. Балл приезжает
+  // из numeric как «18.00» — в карточке должно быть «18».
+  it('variant_graded собирается из данных, а не из готовой строки', () => {
+    const result = buildMessage({
+      event_type: 'variant_graded',
+      payload: {
+        variant_title: '10Б 18:00',
+        score: '18.00', max_score: '22.00', percentage: '81.82',
+        link: '/student/variants/a1', button_text: 'Посмотреть разбор',
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Вариант проверен — 18 из 22')
+    expect(result.text).toContain('Это 82% от максимума.')
+    expect(result.text).not.toContain('18.00')
+    const markup = result.replyMarkup as { inline_keyboard: Array<Array<{ text: string; url: string }>> }
+    expect(markup.inline_keyboard[0][0].text).toBe('Посмотреть разбор')
+    expect(markup.inline_keyboard[0][0].url).toBe('https://school.example/student/variants/a1')
+  })
+
+  it('variant_graded со старым payload всё ещё доходит', () => {
+    const result = buildMessage({
+      event_type: 'variant_graded',
+      payload: { title: 'Работа проверена', body: 'Итоговый балл: 18.00 / 22.00' },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Работа проверена')
+    expect(result.text).toContain('Итоговый балл')
+  })
+
+  it('даты занятий приходят ISO и печатаются по-русски', () => {
+    const year = new Date().getUTCFullYear()
+    const result = buildMessage({
+      event_type: 'lesson_rescheduled',
+      payload: {
+        title: 'Разноускоренное движение',
+        old_scheduled_at: `${year}-08-05T15:00:00.000Z`,
+        new_scheduled_at: `${year}-08-07T16:30:00.000Z`,
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('5 августа')
+    expect(result.text).toContain('7 августа')
+    expect(result.text).not.toContain('T15:00')
   })
 
   it('текст от пользователя экранируется, иначе Telegram роняет разбор', () => {

@@ -86,6 +86,14 @@ function buildMessage(item: QueueItem, appUrl: string) {
   const headline = (course: string, subject: string) =>
     [course, subject].filter(s => s && s.length > 0).join(' · ')
 
+  // numeric из Postgres приезжает как «18.00» — человеку нужно «18».
+  const num = (v: unknown): string | null => {
+    if (v == null || v === '') return null
+    const n = Number(v)
+    if (Number.isNaN(n)) return null
+    return Number.isInteger(n) ? String(n) : String(n)
+  }
+
   // Ссылку во всех карточках отдаём одинаково — кнопкой под сообщением.
   // Почему кнопка, а не `<a href>` в тексте — см. buildLinkButton в
   // `_shared/variant-telegram.ts`: битый href Telegram глотает молча.
@@ -247,25 +255,45 @@ function buildMessage(item: QueueItem, appUrl: string) {
       }
     }
 
-    // Итог варианта. `finalize_grading` кладёт эту строку каналом telegram
-    // (§53); до этого был 'in_app', и доезжала она только потому, что claim не
-    // фильтровал канал.
-    case 'variant_graded':
+    // Итог варианта. С §67 производитель присылает данные, а не готовый текст:
+    // балл, максимум, процент, название варианта, ссылку и подпись кнопки.
+    // Поля title/body он пока дублирует ради этой ветки — как только она
+    // поехала, их можно убирать у него.
+    //
+    // Фолбэк на title/body оставлен не «на всякий случай», а ради строк,
+    // которые уже лежат в очереди со старым payload: они должны дойти.
+    case 'variant_graded': {
+      const score = num(p.score)
+      const max   = num(p.max_score)
+      const pct   = num(p.percentage)
+      const head  = score && max
+        ? `Вариант проверен — ${score} из ${max}`
+        : String(p.title ?? 'Вариант проверен')
+      const body  = pct
+        ? `Это ${Math.round(Number(pct))}% от максимума.`
+        : String(p.body ?? '')
       return {
-        text: (
-        `📊 <b>${esc(p.title ?? 'Работа проверена')}</b>\n\n` +
-        `${esc(p.body ?? '')}`
+        text: `📊 <b>${esc(head)}</b>` + (body ? `\n\n${esc(body)}` : ''),
+        replyMarkup: button(
+          p.link,
+          typeof p.button_text === 'string' && p.button_text ? p.button_text : 'Посмотреть разбор',
         ),
-        replyMarkup: button(p.link, 'Открыть работу'),
       }
+    }
 
     // Обращение «Сообщить о проблеме» — админам и владельцу. Текст целиком
     // приходит из строки support_requests, здесь только оформление.
     case 'support_request': {
       const shots = Array.isArray(p.attachments) ? p.attachments.length : 0
+      // Заголовок постоянный, тема пользователя — строкой ниже. Раньше тема
+      // стояла заголовком, и карточка «🛠 ыфвыф» не сообщала, что это вообще
+      // такое: тему пишет человек в спешке, полагаться на неё как на название
+      // события нельзя.
+      const subject = typeof p.subject === 'string' && p.subject.trim() ? p.subject.trim() : null
       return {
         text: (
-        `🛠 <b>${esc(p.subject ?? 'Сообщение о проблеме')}</b>\n\n` +
+        `🛠 <b>Сообщение о проблеме</b>\n\n` +
+        (subject ? `${esc(subject)}\n` : '') +
         `${esc(p.author_name ?? 'Пользователь')} · ${esc(p.author_role ?? '—')}\n` +
         (p.page_path ? `Страница: ${esc(p.page_path)}\n` : '') +
         (p.created_at ? `${esc(p.created_at)}\n` : '') +

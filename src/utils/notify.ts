@@ -191,8 +191,11 @@ export async function notifyLessonRescheduled(
       deduplication_key: `lesson_rescheduled:${lessonId}:${pid}:${newScheduledAt}`,
       payload: {
         title:            lessonTitle,
-        old_scheduled_at: fmt(oldScheduledAt),
-        new_scheduled_at: fmt(newScheduledAt),
+        // ISO, а не готовая строка: вид даты собирает воркер (formatWhen).
+        // Раньше сюда клали «05.08.2026, 18:00» — воркер такую строку разобрать
+        // не может и печатал её как есть, машинной.
+        old_scheduled_at: oldScheduledAt,
+        new_scheduled_at: newScheduledAt,
       },
     }))
   )
@@ -240,7 +243,8 @@ export async function notifyLessonCancelled(
       deduplication_key: `lesson_cancelled:${lessonId}:${pid}`,
       payload: {
         title:        lessonTitle,
-        scheduled_at: fmt(scheduledAt),
+        // ISO — см. комментарий в notifyLessonRescheduled
+        scheduled_at: scheduledAt,
         group_name:   groupName,
       },
     }))

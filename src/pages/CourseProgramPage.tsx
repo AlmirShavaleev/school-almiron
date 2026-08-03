@@ -41,7 +41,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
-import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
+import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
@@ -325,12 +325,13 @@ function TopicDragOverlay({ topic, topicNumber }: { topic: Topic; topicNumber: s
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
 function HwTable({
-  modules, homeworkByTopic, onOpenTopic, onOpenHomeworkTab,
+  modules, homeworkByTopic, onOpenTopic, onOpenHomeworkTab, onToggleTopicOpen,
 }: {
   modules: Module[]
   homeworkByTopic: Record<string, TopicHomeworkV2Summary>
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
   onOpenHomeworkTab: () => void
+  onToggleTopicOpen: (topicId: string, isOpen: boolean) => Promise<void>
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -378,11 +379,7 @@ function HwTable({
                             {topic.title}
                           </span>
                         </button>
-                        {!isTopicOpen(topic) && (
-                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
-                            {topicClosedLabel(topic)}
-                          </span>
-                        )}
+                        <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
                         {hw && (
                           <button
                             onClick={onOpenHomeworkTab}
@@ -476,6 +473,7 @@ function TopicRowEdit({
                   onCancelCreate={onCancelCreate}
                 />
               </div>
+              <TopicOpenToggle topic={topic} onToggle={v => onSave(topic.id, { is_open: v })} />
             </div>
           </div>
         </div>
@@ -981,12 +979,13 @@ const MAT_COLS = [
 ]
 
 function MaterialsMatrix({
-  courseId, modules, onOpenTopic, onGoToProgram, refreshKey = 0,
+  courseId, modules, onOpenTopic, onGoToProgram, onToggleTopicOpen, refreshKey = 0,
 }: {
   courseId: string
   modules: Module[]
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
   onGoToProgram: () => void
+  onToggleTopicOpen: (topicId: string, isOpen: boolean) => Promise<void>
   /** Меняется при закрытии модалки темы — матрица перечитывает заполненность. */
   refreshKey?: number
 }) {
@@ -1179,7 +1178,10 @@ function MaterialsMatrix({
                     onClick={() => onOpenTopic(topic, mod.title)}
                   >
                     <td className="px-4 py-2.5">
-                      <span className="text-sm text-gray-800 hover:text-primary-600 transition-colors">{topic.title}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-800 hover:text-primary-600 transition-colors">{topic.title}</span>
+                        <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
+                      </div>
                     </td>
                     {MAT_COLS.map(c => {
                       const has = matMap[topic.id]?.has(c.type)
@@ -1505,6 +1507,15 @@ export function CourseProgramPage() {
       ...m,
       topics: m.topics.map(t => t.id === id ? { ...t, ...values } : t),
     })))
+  }
+
+  /**
+   * Переключение тумблера открытости из строки списка. Пишет is_open явно,
+   * а не «переворачивает» вычисленное: тема на автоматике по дате своего
+   * true/false не имеет, и без явной записи первое нажатие ничего бы не дало.
+   */
+  async function handleToggleTopicOpen(id: string, isOpen: boolean) {
+    await handleSaveTopic(id, { is_open: isOpen })
   }
 
   async function handleDeleteTopic(id: string) {
@@ -1984,6 +1995,7 @@ export function CourseProgramPage() {
                     homeworkByTopic={homeworkByTopic}
                     onOpenTopic={openMaterials}
                     onOpenHomeworkTab={() => setTab('homework')}
+                    onToggleTopicOpen={handleToggleTopicOpen}
                   />
                 )}
               </div>
@@ -1996,13 +2008,14 @@ export function CourseProgramPage() {
                 modules={modules}
                 onOpenTopic={(topic, moduleTitle) => setMatTopic({ topic, moduleTitle })}
                 onGoToProgram={() => setTab('program')}
+                onToggleTopicOpen={handleToggleTopicOpen}
                 refreshKey={matRefreshKey}
               />
             )}
 
             {/* Homework tab */}
             {tab === 'homework' && (
-              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} />
+              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} onToggleTopicOpen={handleToggleTopicOpen} />
             )}
 
             {/* Test Results tab */}

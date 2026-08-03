@@ -3,11 +3,14 @@ import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle } from 'lucide-r
 import { supabase } from '@/lib/supabase'
 import { ATTEMPT_STATUS_TONE, gradeScaleMax, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
+import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
 
 interface Module {
   id: string
   title: string
-  topics: { id: string; title: string }[]
+  // is_open/available_from нужны тумблеру открытости в строке темы; состояние
+  // он считает через общий topicAvailability.ts, своей копии правила тут нет.
+  topics: { id: string; title: string; is_open: boolean | null; available_from: string | null }[]
 }
 
 interface RosterStudent {
@@ -107,7 +110,13 @@ function getStudentAttemptStatus(
   return { status: latest.status, score: null, submittedAt: latest.submitted_at }
 }
 
-export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0 }: { courseId: string; modules: Module[]; refreshKey?: number }) {
+export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, onToggleTopicOpen }: {
+  courseId: string
+  modules: Module[]
+  refreshKey?: number
+  /** Тумблер открытости в строке темы. Без него раздел работает как раньше. */
+  onToggleTopicOpen?: (topicId: string, isOpen: boolean) => Promise<void>
+}) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [homeworks, setHomeworks] = useState<TopicHomework[]>([])
   const [attempts, setAttempts] = useState<TopicHomeworkAttempt[]>([])
@@ -325,20 +334,26 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0 }
 
               if (topicHomeworks.length === 0) {
                 return (
-                  <div key={topic.id} className="px-4 py-3 rounded-lg border border-gray-100 bg-white/50">
+                  <div key={topic.id} className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-100 bg-white/50">
                     <p className="text-sm text-gray-500">
                       {topic.title} — <span className="italic text-gray-400">ДЗ не создано</span>
                     </p>
+                    {onToggleTopicOpen && (
+                      <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
+                    )}
                   </div>
                 )
               }
 
               return (
                 <div key={topic.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                  {/* Topic header (collapsible) */}
+                  {/* Topic header (collapsible). Тумблер — СОСЕД кнопки, а не
+                      её потомок: кнопка внутри кнопки невалидна, и клик по
+                      тумблеру всё равно сворачивал бы тему. */}
+                  <div className="flex items-center gap-2 pr-4">
                   <button
                     onClick={() => toggleTopic(topic.id)}
-                    className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
+                    className="min-w-0 flex-1 px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       {isExpanded ? <ChevronDown size={16} className="text-gray-400 shrink-0" /> : <ChevronRight size={16} className="text-gray-400 shrink-0" />}
@@ -369,6 +384,10 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0 }
                       )}
                     </div>
                   </button>
+                  {onToggleTopicOpen && (
+                    <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
+                  )}
+                  </div>
 
                   {/* Expanded table */}
                   {isExpanded && (
