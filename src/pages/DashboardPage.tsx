@@ -18,7 +18,9 @@ export function DashboardPage() {
       teacher: '/teacher',
       curator: '/curator',
       admin: '/admin',
-      owner: '/owner',
+      // Маршрута /owner больше нет (снесён 2026-08-04: роли owner нет ни у
+      // одного профиля, а внутри был денежный дашборд поверх пустой таблицы).
+      owner: '/admin',
     }
     navigate(routes[effectiveRole ?? profile.role] || '/student', { replace: true })
   }, [profile, effectiveRole, navigate])

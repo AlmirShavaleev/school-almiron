@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { clearStaffModeChoice } from '@/store/staffModeStore'
 import type { UserRole } from '@/types'
 
 /**
@@ -44,6 +45,11 @@ export function useAuth() {
   }
 
   async function signOut() {
+    // Отметку «режим выбран» снимаем ДО reset(): после сброса профиля id уже
+    // не узнать, а без снятия следующий вход в этой же вкладке не спросил бы
+    // режим. Сам выбранный режим в localStorage остаётся — он подставляется
+    // как предложенный по умолчанию.
+    clearStaffModeChoice(profile?.id)
     await supabase.auth.signOut()
     reset()
   }

@@ -6747,8 +6747,17 @@ export type Database = {
         Returns: number
       }
       topic_homework_notify_students: {
-        Args: { p_homework_id: string }
+        Args: { p_homework_id: string; p_profile_ids?: string[] }
         Returns: number
+      }
+      topic_homework_notify_targets: {
+        Args: { p_homework_id: string }
+        Returns: {
+          full_name: string
+          pending: boolean
+          profile_id: string
+          telegram_linked: boolean
+        }[]
       }
       topic_homework_review_attempt: {
         Args: {

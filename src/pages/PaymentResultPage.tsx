@@ -129,27 +129,17 @@ export function PaymentResultPage() {
         <h1 className={cn('text-2xl font-bold', cfg.color)}>{cfg.title}</h1>
         <p className="text-gray-600 leading-relaxed">{cfg.text}</p>
 
+        {/* Кнопка «Перейти к платежам» убрана вместе с разделом платежей
+            (решение владельца 2026-08-04): маршрут /payments снесён, и она
+            вела бы в никуда. Сама страница результата оплаты жива — на неё
+            возвращает платёжный провайдер. */}
         <div className="flex flex-col gap-3 pt-2">
           <button
-            onClick={() => navigate('/payments')}
+            onClick={() => navigate('/dashboard')}
             className="w-full py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2"
           >
-            Перейти к платежам <ArrowRight size={16} />
+            В личный кабинет <ArrowRight size={16} />
           </button>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="w-full py-3 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
-          >
-            В личный кабинет
-          </button>
-          {state === 'cancelled' && (
-            <button
-              onClick={() => navigate('/pricing')}
-              className="w-full py-3 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
-            >
-              Попробовать снова
-            </button>
-          )}
         </div>
       </div>
     </div>

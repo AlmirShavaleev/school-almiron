@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Users, BookOpen, CreditCard, BarChart3, Search, ArrowRight,
-  TrendingUp, CheckCircle, RefreshCw, AlertCircle, Calendar,
-  GraduationCap, Star, Plus, Pencil, Lock,
+  Users, BookOpen, BarChart3, Search, ArrowRight,
+  CheckCircle, RefreshCw, Calendar,
+  GraduationCap, Plus, Pencil, Lock,
   Loader2, ShieldAlert, ClipboardList, Send,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -36,29 +36,18 @@ function RoleBadge({ role }: { role: string }) {
   )
 }
 
-// ─── Sub status badge ─────────────────────────────────────────────────────────
-const SUB_COLORS: Record<string, string> = {
-  active:   'bg-green-100 text-green-700',
-  trial:    'bg-blue-100 text-blue-700',
-  past_due: 'bg-red-100 text-red-700',
-  cancelled:'bg-gray-100 text-gray-500',
-  pending:  'bg-yellow-100 text-yellow-700',
-  expired:  'bg-gray-100 text-gray-500',
-}
-const SUB_LABELS: Record<string, string> = {
-  active: 'Активна', trial: 'Пробная', past_due: 'Просрочена',
-  cancelled: 'Отменена', pending: 'Ожидает', expired: 'Истекла',
-}
-
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
-type Tab = 'overview' | 'users' | 'groups' | 'staff' | 'courses' | 'subscriptions'
+// Вкладки «Группы» и «Подписки» убраны по решению владельца 2026-08-04:
+// группы — потому что действует закон «один курс = одна группа» (§61/§64) и
+// слово «группа» уходит из интерфейса; подписки — потому что денежный контур
+// не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
+// технические: код удалён, данные не тронуты.
+type Tab = 'overview' | 'users' | 'staff' | 'courses'
 const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
   { key: 'overview',      label: 'Обзор' },
   { key: 'users',         label: 'Пользователи' },
-  { key: 'groups',        label: 'Группы' },
   { key: 'staff',         label: 'Команда' },
   { key: 'courses',       label: 'Курсы' },
-  { key: 'subscriptions', label: 'Подписки' },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -74,7 +63,7 @@ export function AdminDashboard() {
   const [roleError,       setRoleError]       = useState<string | null>(null)
   const [createUserOpen,  setCreateUserOpen]  = useState(false)
 
-  const { profiles, groups, courses, subscriptions, stats, loading, reload } = useAdminDashboard()
+  const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
 
   async function changeRole(profileId: string, newRole: string) {
     setSavingRole(profileId)
@@ -102,23 +91,11 @@ export function AdminDashboard() {
     })
   }, [profiles, search, roleFilter])
 
-  // Filtered subscriptions
-  const filteredSubs = useMemo(() => {
-    if (!search || tab !== 'subscriptions') return subscriptions
-    return subscriptions.filter(s =>
-      s.student_name.toLowerCase().includes(search.toLowerCase()) ||
-      s.plan_name.toLowerCase().includes(search.toLowerCase())
-    )
-  }, [subscriptions, search, tab])
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
     </div>
   )
-
-  const fmtRub = (n: number) =>
-    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(n)
 
   return (
     <div className="space-y-6">
@@ -154,13 +131,6 @@ export function AdminDashboard() {
           subtitle={`${stats?.total_students ?? 0} учеников`}
         />
         <StatCard
-          title="Подписок"
-          value={stats?.active_subs ?? 0}
-          icon={<Star size={20} />}
-          color="purple"
-          subtitle={stats?.pending_subs ? `${stats.pending_subs} просроч.` : 'Все активны'}
-        />
-        <StatCard
           title="ДЗ на проверке"
           value={stats?.pending_hw_count ?? 0}
           icon={<ClipboardList size={20} />}
@@ -180,10 +150,6 @@ export function AdminDashboard() {
             )}>
             {t.label}
             {t.key === 'users'  && <span className="ml-1.5 text-xs text-gray-400">({profiles.length})</span>}
-            {t.key === 'groups' && <span className="ml-1.5 text-xs text-gray-400">({groups.length})</span>}
-            {t.key === 'subscriptions' && stats?.pending_subs ? (
-              <span className="ml-1.5 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">{stats.pending_subs}</span>
-            ) : null}
           </button>
         ))}
       </div>
@@ -442,64 +408,6 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {/* ══ ГРУППЫ ══════════════════════════════════════════════ */}
-      {tab === 'groups' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">{groups.length} групп · {groups.reduce((s, g) => s + g.student_count, 0)} учеников</p>
-            <button onClick={() => navigate('/groups')}
-              className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700">
-              <Users size={14} />Управление группами <ArrowRight size={13} />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {groups.map(g => {
-              const fill = g.max_students > 0 ? Math.min(Math.round(g.student_count / g.max_students * 100), 100) : 0
-              return (
-                <button
-                  key={g.id}
-                  onClick={() => navigate(`/groups/${g.id}`)}
-                  className="text-left bg-white rounded-2xl border border-gray-200 p-5 hover:border-primary-300 hover:shadow-md transition-all group cursor-pointer"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-gray-900 truncate">{g.name}</div>
-                      {g.course_title && <div className="text-xs text-primary-600 mt-0.5">{g.course_title}</div>}
-                      {g.teacher_name && <div className="text-xs text-gray-400 mt-0.5">{g.teacher_name}</div>}
-                    </div>
-                    <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0',
-                      g.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
-                      {g.is_active ? 'Активна' : 'Закрыта'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mb-2">
-                    {g.student_count} / {g.max_students} учеников
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className={cn('h-2 rounded-full', fill >= 90 ? 'bg-red-400' : fill >= 70 ? 'bg-orange-400' : 'bg-primary-500')}
-                      style={{ width: `${fill}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between mt-3">
-                    {g.schedule_days && g.schedule_days.length > 0 ? (
-                      <div className="flex items-center gap-1 text-xs text-gray-400 min-w-0">
-                        <Calendar size={11} className="shrink-0" />
-                        <span className="truncate">
-                          {g.schedule_days.join(', ')}
-                          {g.schedule_time && ` · ${g.schedule_time}`}
-                        </span>
-                      </div>
-                    ) : <span />}
-                    <span className="text-xs font-medium text-primary-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 ml-2">
-                      Подробнее <ArrowRight size={11} />
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ══ КОМАНДА ════════════════════════════════════════════ */}
       {tab === 'staff' && (
         <div className="max-w-3xl">
@@ -628,90 +536,6 @@ export function AdminDashboard() {
         onClose={() => setCreateUserOpen(false)}
         onCreated={() => { setCreateUserOpen(false); reload() }}
       />
-
-      {/* ══ ПОДПИСКИ ═════════════════════════════════════════════ */}
-      {tab === 'subscriptions' && (
-        <div className="space-y-4">
-          {/* Search */}
-          <div className="relative max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Поиск по ученику или тарифу..."
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-300"
-            />
-          </div>
-
-          {/* Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Активных',   value: subscriptions.filter(s => s.status === 'active').length,   cls: 'text-green-700 bg-green-50 border-green-200' },
-              { label: 'Пробных',    value: subscriptions.filter(s => s.status === 'trial').length,    cls: 'text-blue-700 bg-blue-50 border-blue-200' },
-              { label: 'Просроч.',   value: subscriptions.filter(s => s.status === 'past_due').length, cls: 'text-red-700 bg-red-50 border-red-200' },
-              { label: 'Отменены',   value: subscriptions.filter(s => s.status === 'cancelled' || s.status === 'expired').length, cls: 'text-gray-600 bg-gray-50 border-gray-200' },
-            ].map(item => (
-              <div key={item.label} className={cn('rounded-2xl border p-4 text-center', item.cls)}>
-                <div className="text-2xl font-bold">{item.value}</div>
-                <div className="text-xs font-medium mt-0.5 opacity-70">{item.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-400 uppercase border-b border-gray-100">
-                    <th className="text-left pb-3 font-medium">Ученик</th>
-                    <th className="text-left pb-3 font-medium">Тариф</th>
-                    <th className="text-left pb-3 font-medium">Статус</th>
-                    <th className="text-left pb-3 font-medium">Период до</th>
-                    <th className="text-right pb-3 font-medium">Сумма</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredSubs.map(s => (
-                    <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3">
-                        <div className="font-medium text-gray-900">{s.student_name}</div>
-                      </td>
-                      <td className="py-3">
-                        <div className="text-gray-700">{s.plan_name}</div>
-                        <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                          {s.auto_renew
-                            ? <><RefreshCw size={10} className="text-green-500" />Автопродление</>
-                            : <><AlertCircle size={10} className="text-orange-400" />Отменяется</>
-                          }
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', SUB_COLORS[s.status] || 'bg-gray-100 text-gray-500')}>
-                          {SUB_LABELS[s.status] || s.status}
-                        </span>
-                      </td>
-                      <td className="py-3 text-xs text-gray-500">
-                        {s.period_end
-                          ? new Date(s.period_end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : '—'
-                        }
-                      </td>
-                      <td className="py-3 text-right font-semibold text-gray-900">
-                        {fmtRub(s.amount)}
-                        <div className="text-[10px] font-normal text-gray-400">
-                          {s.billing_period === 'month' ? '/ мес' : s.billing_period === 'year' ? '/ год' : 'разово'}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filteredSubs.length === 0 && (
-                <p className="text-center py-10 text-gray-400 text-sm">Нет подписок</p>
-              )}
-            </div>
-          </Card>
-          <p className="text-xs text-gray-400">Показано: {filteredSubs.length} из {subscriptions.length}</p>
-        </div>
-      )}
 
     </div>
   )

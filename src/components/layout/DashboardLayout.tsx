@@ -6,6 +6,7 @@ import { SupportWidget } from '@/components/shared/SupportWidget'
 import { useAuthStore } from '@/store/authStore'
 import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { StaffModeSwitch } from './StaffModeSwitch'
+import { StaffModeGate } from './StaffModeGate'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
@@ -24,8 +25,8 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/student$/, 'Мой кабинет'],
   [/^\/teacher$/, 'Кабинет учителя'],
   [/^\/curator$/, 'Кабинет куратора'],
+  [/^\/admin\/telegram/, 'Журнал Telegram'],
   [/^\/admin$/, 'Панель админа'],
-  [/^\/owner$/, 'Школа'],
   [/^\/groups\/[^/]+$/, 'Панель группы'],
   [/^\/groups$/, 'Группы'],
   [/^\/students\/[^/]+\/journal/, 'Журнал ученика'],
@@ -57,14 +58,13 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/my-homework/, 'Домашние задания'],
   [/^\/my-assignments/, 'Мои задания'],
   [/^\/my-progress$/, 'Прогресс'],
-  [/^\/payments$/, 'Платежи'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],
 ]
 
 export function DashboardLayout() {
   const { profile, loading } = useAuthStore()
-  const { effectiveRole } = useStaffMode()
+  const { effectiveRole, needsModeChoice } = useStaffMode()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -95,6 +95,12 @@ export function DashboardLayout() {
   }
 
   if (!profile) return null
+
+  // Экран выбора режима стоит ПЕРЕД кабинетом и покрывает все защищённые
+  // маршруты сразу — он здесь, а не отдельным роутом, чтобы не заводить
+  // редиректы туда-обратно и не гадать, куда возвращать после выбора.
+  // Видят только admin/owner и только пока выбор в этом входе не сделан.
+  if (needsModeChoice) return <StaffModeGate />
 
   const initials = profile.full_name
     ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('')

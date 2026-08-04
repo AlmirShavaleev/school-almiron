@@ -72,27 +72,81 @@ function writeStoredMode(profileId: string, mode: StaffMode): void {
   }
 }
 
+/**
+ * Отметка «в этом входе режим уже выбран» — экран выбора спрашивает при каждом
+ * входе, но не при каждой перезагрузке страницы.
+ *
+ * Почему sessionStorage, а не localStorage и не память:
+ * - localStorage пережил бы выход и вход, и экран не показался бы никогда;
+ * - память в сторе сбрасывается на F5, и экран лез бы при каждом обновлении.
+ * sessionStorage живёт ровно столько, сколько вкладка, и чистится при выходе
+ * (`clearStaffModeChoice` зовёт signOut). Отдельный ключ от самого режима:
+ * режим — долгая настройка, отметка — про текущий вход.
+ */
+const CHOICE_PREFIX = 'almiron:staff-mode-chosen:'
+
+function readChoiceMade(profileId: string): boolean {
+  try {
+    return sessionStorage.getItem(CHOICE_PREFIX + profileId) === '1'
+  } catch {
+    // Хранилище недоступно — считаем, что не выбирали. Экран покажется лишний
+    // раз, это безопаснее молчаливого пропуска.
+    return false
+  }
+}
+
+function writeChoiceMade(profileId: string): void {
+  try {
+    sessionStorage.setItem(CHOICE_PREFIX + profileId, '1')
+  } catch {
+    /* см. readChoiceMade */
+  }
+}
+
+/** Зовётся при выходе: следующий вход снова спросит режим. */
+export function clearStaffModeChoice(profileId: string | null | undefined): void {
+  try {
+    if (profileId) sessionStorage.removeItem(CHOICE_PREFIX + profileId)
+  } catch {
+    /* см. readChoiceMade */
+  }
+}
+
 interface StaffModeState {
-  mode:      StaffMode
-  profileId: string | null
-  setMode:   (mode: StaffMode) => void
+  mode:       StaffMode
+  profileId:  string | null
+  /** Выбран ли режим в текущем входе. Для не-admin/owner смысла не имеет. */
+  choiceMade: boolean
+  setMode:    (mode: StaffMode) => void
+  /** Выбор на входном экране: ставит режим И закрывает экран до конца входа. */
+  chooseMode: (mode: StaffMode) => void
   /** Подхватить сохранённый режим при появлении/смене профиля. */
-  hydrate:   (profileId: string | null) => void
+  hydrate:    (profileId: string | null) => void
 }
 
 export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
-  mode:      'admin',
-  profileId: null,
+  mode:       'admin',
+  profileId:  null,
+  choiceMade: false,
   setMode: (mode) => {
     const { profileId } = get()
     if (profileId) writeStoredMode(profileId, mode)
     set({ mode })
   },
+  chooseMode: (mode) => {
+    const { profileId } = get()
+    if (profileId) {
+      writeStoredMode(profileId, mode)
+      writeChoiceMade(profileId)
+    }
+    set({ mode, choiceMade: true })
+  },
   hydrate: (profileId) => {
     if (get().profileId === profileId) return
     set({
       profileId,
-      mode: profileId ? readStoredMode(profileId) : 'admin',
+      mode:       profileId ? readStoredMode(profileId) : 'admin',
+      choiceMade: profileId ? readChoiceMade(profileId) : false,
     })
   },
 }))
@@ -102,10 +156,12 @@ export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
  * представления.
  */
 export function useStaffMode() {
-  const profile = useAuthStore(s => s.profile)
-  const mode    = useStaffModeStore(s => s.mode)
-  const setMode = useStaffModeStore(s => s.setMode)
-  const hydrate = useStaffModeStore(s => s.hydrate)
+  const profile    = useAuthStore(s => s.profile)
+  const mode       = useStaffModeStore(s => s.mode)
+  const choiceMade = useStaffModeStore(s => s.choiceMade)
+  const setMode    = useStaffModeStore(s => s.setMode)
+  const chooseMode = useStaffModeStore(s => s.chooseMode)
+  const hydrate    = useStaffModeStore(s => s.hydrate)
 
   useEffect(() => {
     hydrate(profile?.id ?? null)
@@ -118,7 +174,13 @@ export function useStaffMode() {
     /** Сырое состояние переключателя. Для не-admin/owner смысла не имеет. */
     mode,
     setMode,
+    chooseMode,
     canSwitch,
+    /**
+     * Показать ли экран выбора режима. Только тем, у кого две сущности, и
+     * только пока выбор в этом входе не сделан.
+     */
+    needsModeChoice: canSwitch && !choiceMade,
     /** Роль, которой рисуется интерфейс. Никогда не используется для прав. */
     effectiveRole: effectiveRoleOf(role, mode),
   }

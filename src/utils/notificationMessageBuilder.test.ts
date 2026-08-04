@@ -219,6 +219,36 @@ describe('ссылки в карточках', () => {
     expect(result.text).not.toContain('T15:00')
   })
 
+  // Приветствие при вступлении в курс: ни ссылок на ДЗ, ни списка заданий —
+  // решение владельца, рассылка по старым ДЗ была бы спамом.
+  it('course_enrolled: курс, преподаватель, кнопка — и ничего про ДЗ', () => {
+    const result = buildMessage({
+      event_type: 'course_enrolled',
+      payload: {
+        course_title: '11А 2026-2027',
+        teacher_name: 'Виктор Андреев',
+        link: '/my-course/32eaf7e1',
+        button_text: 'Открыть курс',
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('11А 2026-2027')
+    expect(result.text).toContain('Преподаватель: Виктор Андреев')
+    expect(result.text).not.toMatch(/ДЗ|домашн/i)
+    const markup = result.replyMarkup as { inline_keyboard: Array<Array<{ text: string; url: string }>> }
+    expect(markup.inline_keyboard[0][0].text).toBe('Открыть курс')
+    expect(markup.inline_keyboard[0][0].url).toBe('https://school.example/my-course/32eaf7e1')
+  })
+
+  it('course_enrolled без преподавателя не оставляет пустую строку', () => {
+    const result = buildMessage({
+      event_type: 'course_enrolled',
+      payload: { course_title: 'Курс без преподавателя', link: '/my-course/x' },
+    }, 'https://school.example')
+
+    expect(result.text).not.toContain('Преподаватель:')
+  })
+
   it('текст от пользователя экранируется, иначе Telegram роняет разбор', () => {
     const result = buildMessage({
       event_type: 'topic_homework_reviewed',

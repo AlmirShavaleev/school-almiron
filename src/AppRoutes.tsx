@@ -15,7 +15,7 @@ const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/stud
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
 const CuratorDashboard = lazyPage('CuratorDashboard', () => import('@/pages/curator/CuratorDashboard').then(m => ({ default: m.CuratorDashboard })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
-const OwnerDashboard = lazyPage('OwnerDashboard', () => import('@/pages/owner/OwnerDashboard').then(m => ({ default: m.OwnerDashboard })))
+const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
 const CollectionDetailPage = lazyPage('CollectionDetailPage', () => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
 
@@ -31,7 +31,6 @@ const StudentReviewPage = lazyPage('StudentReviewPage', () => import('@/pages/St
 const HomeworkQueuePage = lazyPage('HomeworkQueuePage', () => import('@/pages/HomeworkQueuePage').then(m => ({ default: m.HomeworkQueuePage })))
 const LessonsPage = lazyPage('LessonsPage', () => import('@/pages/LessonsPage').then(m => ({ default: m.LessonsPage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
-const PaymentsPage = lazyPage('PaymentsPage', () => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotificationsPage = lazyPage('NotificationsPage', () => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
 const CourseProgramPage = lazyPage('CourseProgramPage', () => import('@/pages/CourseProgramPage').then(m => ({ default: m.CourseProgramPage })))
@@ -110,14 +109,17 @@ export default function AppRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/payments" element={<PaymentsPage />} />
 
         {/* Дашборды по ролям */}
         <Route path="/student" element={<RoleGuard allow={['student']}><StudentDashboard /></RoleGuard>} />
         <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
         <Route path="/curator" element={<RoleGuard allow={['curator','admin','owner']}><CuratorDashboard /></RoleGuard>} />
         <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
-        <Route path="/owner" element={<RoleGuard allow={['owner']}><OwnerDashboard /></RoleGuard>} />
+        {/* Журнал отправок Telegram. Страница существовала с 08.07, но не была
+            подключена ни маршрутом, ни импортом — быстрая ссылка на неё в
+            «Обзоре» панели админа вела в никуда. Содержимое не трогали: это
+            зона уведомлений. */}
+        <Route path="/admin/telegram" element={<RoleGuard allow={['admin','owner']}><TelegramJournalPage /></RoleGuard>} />
 
         {/* Только персонал (teacher/curator/admin/owner) */}
         <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />

@@ -130,6 +130,20 @@ function buildMessage(item: QueueItem, appUrl: string) {
         ),
       }
 
+    // Приветствие при добавлении в курс. Ссылок на ДЗ и списка заданий здесь
+    // намеренно нет — решение владельца: рассылка по старым ДЗ была бы спамом.
+    case 'course_enrolled':
+      return {
+        text: (
+        `🎓 <b>Ты добавлен в курс «${esc(p.course_title ?? 'Курс')}»</b>` +
+        (p.teacher_name ? `\n\nПреподаватель: ${esc(p.teacher_name)}` : '')
+        ),
+        replyMarkup: button(
+          p.link,
+          typeof p.button_text === 'string' && p.button_text ? p.button_text : 'Открыть курс',
+        ),
+      }
+
     // ── Новый контур ДЗ (topic_homework) ──────────────────────────────────
 
     case 'topic_homework_submitted': {

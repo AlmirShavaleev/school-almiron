@@ -76,7 +76,6 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
 // не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
 const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
-const PricingPage       = lazyPage('PricingPage', () => import('@/pages/PricingPage').then(m => ({ default: m.PricingPage })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 
 // Protected app subtree (DashboardLayout + all its child routes) — lazy so its page code stays out of the entry chunk
@@ -256,7 +255,6 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/"               element={<RootRedirect />} />
-        <Route path="/pricing"        element={<PricingPage />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, Eye, EyeOff, FileText, Loader2, Trash2, Upload } from 'lucide-react'
+import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
+import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
-import { TopicHomeworkReview } from '@/components/courseProgram/TopicHomeworkReview'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -18,9 +18,9 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024
  */
 export function TopicHomeworkEditor({ topicId, className }: { topicId: string; className?: string }) {
   const {
-    homework, files, attempts, attemptFiles, reviews, studentNames, loading, error,
+    homework, files, loading, error,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
-    reviewAttempt, notifyStudents,
+    notifyStudents, loadNotifyTargets,
   } = useTopicHomework(topicId)
 
   const [dueAt, setDueAt] = useState('')
@@ -29,9 +29,8 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const [notifyBusy, setNotifyBusy] = useState(false)
-  const [notifiedCount, setNotifiedCount] = useState<number | null>(null)
-  const [notifyError, setNotifyError] = useState<string | null>(null)
+  // Состояние оповещения переехало внутрь TopicHomeworkNotify: там же список
+  // получателей, там же и его загрузка с ошибками.
 
   // Загрузка файлов: последовательная, с прогрессом по текущему файлу.
   const inputRef = useRef<HTMLInputElement>(null)
@@ -79,18 +78,6 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
       setLocalError(e?.message ?? 'Не удалось выполнить действие')
     } finally {
       setBusy(false)
-    }
-  }
-
-  async function handleNotify() {
-    setNotifyBusy(true)
-    setNotifyError(null)
-    try {
-      setNotifiedCount(await notifyStudents())
-    } catch (e: any) {
-      setNotifyError(e?.message ?? 'Не удалось отправить оповещение')
-    } finally {
-      setNotifyBusy(false)
     }
   }
 
@@ -167,15 +154,34 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <FileText size={15} className="text-primary-600" />
           <span className="text-sm font-semibold text-gray-900">Домашнее задание</span>
-          {published && (
-            <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
-              Опубликовано
-            </span>
-          )}
-          {homework && !published && (
-            <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
-              Скрыто
-            </span>
+          {/*
+            Одно управление публикацией вместо двух. Раньше состояние
+            показывал бейдж, а меняла его кнопка «Скрыть от учеников» внизу —
+            владельцу было непонятно, что это одно и то же (это буквально
+            `is_published: !published`, третьего состояния нет). Теперь бейдж
+            сам и есть переключатель.
+          */}
+          {homework && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={published}
+              data-testid="homework-publish-toggle"
+              disabled={busy || (!published && !canPublish)}
+              title={!published && !canPublish
+                ? 'Сначала прикрепите файл задания'
+                : published ? 'Опубликовано. Нажмите, чтобы вернуть в черновик' : 'Черновик. Нажмите, чтобы опубликовать'}
+              onClick={() => run(() => updateHomework({ is_published: !published }))}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                published
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full', published ? 'bg-emerald-500' : 'bg-amber-500')} />
+              {published ? 'Опубликовано' : 'Черновик'}
+            </button>
           )}
           {saved && <span className="text-xs text-emerald-600">Сохранено</span>}
         </div>
@@ -194,8 +200,8 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             <p className="font-semibold">Ученики этого задания не видят</p>
             <p className="mt-1 text-amber-800">
               {canPublish
-                ? 'Оно останется скрытым, пока вы не нажмёте «Опубликовать» внизу.'
-                : 'Чтобы опубликовать, прикрепите файл с заданием — без него кнопка публикации недоступна.'}
+                ? 'Оно останется скрытым, пока вы не переключите «Черновик» вверху на «Опубликовано».'
+                : 'Чтобы опубликовать, прикрепите файл с заданием — без него переключатель недоступен.'}
             </p>
           </div>
         )}
@@ -330,56 +336,22 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           </div>
         </div>
 
-        {/* 4-5. Публикация и оповещение */}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button
-            variant={published ? 'secondary' : 'primary'}
-            size="sm"
-            onClick={() => run(() => updateHomework({ is_published: !published }))}
-            disabled={busy || (!published && !canPublish)}
-            title={!published && !canPublish ? 'Сначала прикрепите файл задания' : undefined}
-          >
-            {published ? <EyeOff size={14} /> : <Eye size={14} />}
-            {published ? 'Скрыть от учеников' : 'Опубликовать'}
-          </Button>
-
-          {published && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleNotify}
-                disabled={notifyBusy}
-                loading={notifyBusy}
-              >
-                <Bell size={14} />
-                {notifiedCount === null
-                  ? 'Оповестить в Telegram'
-                  : `Оповестить в Telegram (${notifiedCount})`}
-              </Button>
-              {notifiedCount === 0 && (
-                <span className="text-xs text-gray-400">Все уже оповещены</span>
-              )}
-            </>
-          )}
-        </div>
-
-        {notifyError && (
-          <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{notifyError}</div>
-        )}
-
-        {/* Локальная проверка работ этой темы. Общей очереди нет. */}
-        {homework && (
-          <TopicHomeworkReview
+        {/* Публикация переехала в переключатель у заголовка — отдельной кнопки
+            «Скрыть от учеников» больше нет: это было второе управление тем же
+            полем is_published. */}
+        {published && (
+          <TopicHomeworkNotify
             className="mt-4"
-            attempts={attempts}
-            attemptFiles={attemptFiles}
-            reviews={reviews}
-            studentNames={studentNames}
-            gradeScale={homework.grade_scale}
-            onReview={reviewAttempt}
+            loadTargets={loadNotifyTargets}
+            onNotify={notifyStudents}
           />
         )}
+
+        {/* Блок «Работы учеников» убран по решению владельца (2026-08-04):
+            работы смотрят в очереди проверки, дублировать их в модалке
+            редактирования ДЗ незачем. Сам компонент TopicHomeworkReview жив —
+            из него очередь берёт ReviewActions, а карточку попытки
+            HomeworkAttemptDetailModal — тип TopicHomeworkReviewRow. */}
       </div>
     </div>
   )

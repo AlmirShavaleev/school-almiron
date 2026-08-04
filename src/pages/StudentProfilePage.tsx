@@ -17,7 +17,6 @@ import { cn } from '@/utils/cn'
 import { HW_STATUS_LABELS, HW_STATUS_COLORS } from '@/utils/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
-import type { Subscription } from '@/hooks/useSubscription'
 import { useAuthStore } from '@/store/authStore'
 import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
 import { Plus, BookOpen, Calendar } from 'lucide-react'
@@ -87,23 +86,6 @@ export function StudentProfilePage() {
     s?.target_subject ?? null,
     s?.target_exam ?? null,
   )
-
-  // Subscription for this student (fetched directly, since we're viewing as teacher/admin)
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [subLoading,   setSubLoading]   = useState(false)
-
-  useEffect(() => {
-    if (!s?.student_id) return
-    setSubLoading(true)
-    supabase
-      .from('subscriptions')
-      .select('*, plans(*)')
-      .eq('student_id', s.student_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => { setSubscription((data || null) as any); setSubLoading(false) })
-  }, [s?.student_id])
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
@@ -382,109 +364,8 @@ export function StudentProfilePage() {
         />
       )}
 
-      {/* Subscription */}
-      <Section title="Подписка">
-        {subLoading ? (
-          <div className="flex items-center gap-2 justify-center py-8 text-gray-400">
-            <Loader2 size={16} className="animate-spin" />Загрузка…
-          </div>
-        ) : !subscription ? (
-          <div className="flex flex-col items-center py-8 gap-3 text-center">
-            <AlertCircle size={28} className="text-gray-300" />
-            <p className="text-sm text-gray-400">Активной подписки нет</p>
-          </div>
-        ) : (
-          <div className="px-5 py-4 space-y-4">
-            {/* Plan header */}
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
-                <CreditCard size={18} className="text-primary-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-900">{subscription.plans?.name || 'Тариф'}</span>
-                  <SubscriptionStatusBadge status={subscription.status} />
-                </div>
-                {subscription.plans?.description && (
-                  <p className="text-xs text-gray-400 mt-0.5">{subscription.plans.description}</p>
-                )}
-              </div>
-              {subscription.plans?.price != null && (
-                <div className="text-right shrink-0">
-                  <div className="font-bold text-gray-900">
-                    {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: subscription.plans.currency || 'RUB', minimumFractionDigits: 0 }).format(subscription.plans.price)}
-                  </div>
-                  <div className="text-xs text-gray-400">
-                    {subscription.plans.billing_period === 'month' ? '/ месяц' : subscription.plans.billing_period === 'year' ? '/ год' : 'разово'}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Period */}
-            {subscription.current_period_start && subscription.current_period_end && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide font-medium mb-0.5">Начало периода</div>
-                  <div className="text-sm font-semibold text-gray-700">
-                    {new Date(subscription.current_period_start).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </div>
-                </div>
-                <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide font-medium mb-0.5">
-                    {subscription.cancel_at_period_end ? 'Истекает' : 'Следующее списание'}
-                  </div>
-                  <div className={cn(
-                    'text-sm font-semibold',
-                    subscription.cancel_at_period_end ? 'text-orange-600' : 'text-gray-700'
-                  )}>
-                    {new Date(subscription.current_period_end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Auto-renewal row */}
-            <div className="flex items-center gap-2 text-sm">
-              <RefreshCw size={14} className={cn(subscription.cancel_at_period_end ? 'text-gray-300' : 'text-green-500')} />
-              <span className={cn(subscription.cancel_at_period_end ? 'text-gray-400 line-through' : 'text-gray-600')}>
-                Автопродление
-              </span>
-              {subscription.cancel_at_period_end && (
-                <span className="text-xs text-orange-500 font-medium ml-1">отключено</span>
-              )}
-            </div>
-
-            {/* Features */}
-            {subscription.plans?.features && subscription.plans.features.length > 0 && (
-              <div className="space-y-1.5 pt-1 border-t border-gray-100">
-                {subscription.plans.features.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
-                    <CheckCircle size={12} className="text-primary-400 shrink-0" />
-                    {f}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </Section>
     </div>
   )
-}
-
-// ─── Subscription status badge ────────────────────────────────────────────────
-function SubscriptionStatusBadge({ status }: { status: Subscription['status'] }) {
-  const MAP: Record<Subscription['status'], { label: string; cls: string }> = {
-    active:    { label: 'Активна',   cls: 'bg-green-100 text-green-700' },
-    trial:     { label: 'Пробная',   cls: 'bg-blue-100 text-blue-700' },
-    past_due:  { label: 'Просрочена', cls: 'bg-red-100 text-red-700' },
-    cancelled: { label: 'Отменена',  cls: 'bg-gray-100 text-gray-500' },
-    expired:   { label: 'Истекла',   cls: 'bg-gray-100 text-gray-500' },
-    pending:   { label: 'Ожидает',   cls: 'bg-yellow-100 text-yellow-700' },
-  }
-  const { label, cls } = MAP[status] || { label: status, cls: 'bg-gray-100 text-gray-500' }
-  return <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', cls)}>{label}</span>
 }
 
 // ── Enrolled courses section ───────────────────────────────────────────────

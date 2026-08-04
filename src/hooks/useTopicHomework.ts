@@ -404,14 +404,35 @@ export function useTopicHomework(topicId: string | null) {
     reload()
   }, [reload])
 
-  const notifyStudents = useCallback(async (): Promise<number> => {
+  /**
+   * Оповещение в Telegram. Без аргумента — всем привязанным, как раньше;
+   * со списком — точечно. Возвращает, сколько строк реально встало в очередь:
+   * ученик без привязки и ученик с ещё не ушедшим оповещением не считаются.
+   */
+  const notifyStudents = useCallback(async (profileIds?: string[]): Promise<number> => {
     const current = homeworkRef.current
     if (!current) throw new Error('ДЗ не найдено')
     const { data, error: err } = await supabase.rpc('topic_homework_notify_students', {
       p_homework_id: current.id,
+      p_profile_ids: profileIds ?? null,
     })
     if (err) throw new Error(err.message)
     return data as number
+  }, [])
+
+  /**
+   * Ученики курса с отметкой о привязке Telegram. Через definer-RPC: политики
+   * telegram_connections пускают преподавателя только к своей строке, и функция
+   * отдаёт ровно boolean, без chat_id.
+   */
+  const loadNotifyTargets = useCallback(async (): Promise<NotifyTarget[]> => {
+    const current = homeworkRef.current
+    if (!current) return []
+    const { data, error: err } = await supabase.rpc('topic_homework_notify_targets', {
+      p_homework_id: current.id,
+    })
+    if (err) throw new Error(err.message)
+    return (data ?? []) as NotifyTarget[]
   }, [])
 
   return {
@@ -419,8 +440,17 @@ export function useTopicHomework(topicId: string | null) {
     loading, error, reload,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
     startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, submitAttempt,
-    reviewAttempt, notifyStudents,
+    reviewAttempt, notifyStudents, loadNotifyTargets,
   }
+}
+
+/** Строка списка получателей оповещения. Никаких данных самой связки с ТГ. */
+export interface NotifyTarget {
+  profile_id: string
+  full_name: string
+  telegram_linked: boolean
+  /** Оповещение уже в очереди и ещё не ушло. */
+  pending: boolean
 }
 
 function prevAppend<T>(list: T[], item: T): T[] {

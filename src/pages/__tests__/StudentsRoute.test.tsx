@@ -19,7 +19,7 @@ vi.mock('@/pages/student/StudentDashboard', () => ({ StudentDashboard: () => nul
 vi.mock('@/pages/teacher/TeacherDashboard', () => ({ TeacherDashboard: () => null }))
 vi.mock('@/pages/curator/CuratorDashboard', () => ({ CuratorDashboard: () => null }))
 vi.mock('@/pages/admin/AdminDashboard', () => ({ AdminDashboard: () => null }))
-vi.mock('@/pages/owner/OwnerDashboard', () => ({ OwnerDashboard: () => null }))
+vi.mock('@/pages/admin/TelegramJournalPage', () => ({ TelegramJournalPage: () => <div>telegram-journal-marker</div> }))
 vi.mock('@/pages/CartPage', () => ({ CartPage: () => null }))
 vi.mock('@/pages/CollectionDetailPage', () => ({ CollectionDetailPage: () => null }))
 vi.mock('@/pages/GroupsPage', () => ({ GroupsPage: () => null }))
@@ -34,7 +34,6 @@ vi.mock('@/pages/HomeworkQueuePage', () => ({ HomeworkQueuePage: () => null }))
 vi.mock('@/pages/LessonsPage', () => ({ LessonsPage: () => null }))
 vi.mock('@/pages/HomeworksPage', () => ({ HomeworksPage: () => null }))
 vi.mock('@/pages/MockExamsPage', () => ({ MockExamsPage: () => null }))
-vi.mock('@/pages/PaymentsPage', () => ({ PaymentsPage: () => null }))
 vi.mock('@/pages/SettingsPage', () => ({ SettingsPage: () => null }))
 vi.mock('@/pages/NotificationsPage', () => ({ NotificationsPage: () => null }))
 vi.mock('@/pages/CourseProgramPage', () => ({ CourseProgramPage: () => null }))
@@ -81,5 +80,17 @@ describe('Students route', () => {
     // React.lazy, поэтому сначала показывается Suspense-заглушка. Это не
     // регрессия, а следствие разбиения бандла (AppRoutes: 3,16 МБ -> 43 КБ).
     expect(await screen.findByText('students-page-marker')).toBeInTheDocument()
+  })
+
+  // Страница журнала Telegram существовала с 08.07, но маршрута к ней не было —
+  // открыть её было нельзя ничем, кроме правки кода. Тест держит маршрут.
+  it('renders /admin/telegram', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/telegram']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('telegram-journal-marker')).toBeInTheDocument()
   })
 })

@@ -12,10 +12,6 @@ vi.mock('@/hooks/useStudentDashboard', () => ({
   useStudentDashboard: (...args: unknown[]) => useStudentDashboardMock(...args),
 }))
 
-vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: () => ({ subscription: null, loading: false }),
-}))
-
 const useMyCourseMembershipsMock = vi.fn()
 vi.mock('@/hooks/useMyCourseMemberships', () => ({
   useMyCourseMemberships: (...args: unknown[]) => useMyCourseMembershipsMock(...args),

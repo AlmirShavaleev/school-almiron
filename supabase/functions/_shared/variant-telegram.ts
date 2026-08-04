@@ -252,6 +252,10 @@ export function isTelegramPreferenceEnabled(
     // Обращение о проблеме — служебный сигнал админу, галочки под него нет.
     // Общий выключатель telegram выше по функции его всё равно гасит.
     case 'support_request':
+    // Приветствие при вступлении в курс — разовое событие на курс, галочки под
+    // него нет и заводить незачем: отключать «сообщите, что меня добавили»
+    // нечему. Общий выключатель telegram выше по функции его гасит.
+    case 'course_enrolled':
       return true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':
