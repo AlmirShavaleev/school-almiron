@@ -242,8 +242,6 @@ export function isTelegramPreferenceEnabled(
     case 'homework_reviewed':
     // Вердикт по ДЗ нового контура — та же настройка «проверено», что у легаси
     case 'topic_homework_reviewed':
-    // Итог варианта — тоже вердикт по работе, галочка та же «проверено»
-    case 'variant_graded':
       return prefs.checked ?? true
     // Сдача работы адресована персоналу, а галочки «сдачи» у преподавателя в
     // настройках нет — шлём всегда. Ветка заведена явно, чтобы это решение

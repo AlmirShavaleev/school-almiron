@@ -69,7 +69,6 @@ describe('ссылки в карточках', () => {
     ['collection_assigned',      { title: 'Сборник', link: '/collections/1' }],
     ['collection_submitted',     { title: 'Сборник', link: '/collections/1' }],
     ['collection_reviewed',      { title: 'Сборник', status: 'accepted', link: '/collections/1' }],
-    ['variant_graded',           { title: 'Работа проверена', body: 'Балл: 5', link: '/student/variants/a1' }],
     ['lesson_reminder',          { title: 'Занятие', reminder_type: '24h', zoom_link: 'https://zoom.us/j/1' }],
   ]
 
@@ -171,36 +170,6 @@ describe('ссылки в карточках', () => {
 
     expect(result.text).toContain('Без дедлайна')
     expect(result.text).not.toContain('Сдать до')
-  })
-
-  // Производитель (§67) присылает данные, а не готовый текст. Балл приезжает
-  // из numeric как «18.00» — в карточке должно быть «18».
-  it('variant_graded собирается из данных, а не из готовой строки', () => {
-    const result = buildMessage({
-      event_type: 'variant_graded',
-      payload: {
-        variant_title: '10Б 18:00',
-        score: '18.00', max_score: '22.00', percentage: '81.82',
-        link: '/student/variants/a1', button_text: 'Посмотреть разбор',
-      },
-    }, 'https://school.example')
-
-    expect(result.text).toContain('Вариант проверен — 18 из 22')
-    expect(result.text).toContain('Это 82% от максимума.')
-    expect(result.text).not.toContain('18.00')
-    const markup = result.replyMarkup as { inline_keyboard: Array<Array<{ text: string; url: string }>> }
-    expect(markup.inline_keyboard[0][0].text).toBe('Посмотреть разбор')
-    expect(markup.inline_keyboard[0][0].url).toBe('https://school.example/student/variants/a1')
-  })
-
-  it('variant_graded со старым payload всё ещё доходит', () => {
-    const result = buildMessage({
-      event_type: 'variant_graded',
-      payload: { title: 'Работа проверена', body: 'Итоговый балл: 18.00 / 22.00' },
-    }, 'https://school.example')
-
-    expect(result.text).toContain('Работа проверена')
-    expect(result.text).toContain('Итоговый балл')
   })
 
   it('даты занятий приходят ISO и печатаются по-русски', () => {
