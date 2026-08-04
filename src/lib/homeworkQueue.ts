@@ -7,6 +7,24 @@
  */
 import type { TopicHomeworkAttemptRow } from '@/lib/topicHomework'
 
+/**
+ * Вкладки страницы проверки. Ровно три состояния попытки, которые видит
+ * преподаватель: `draft` сюда не попадает — работа ещё у ученика.
+ *
+ * Порядок — рабочий: сначала то, что требует действия, потом то, что ждёт
+ * ученика, и в конце закрытое.
+ */
+export type QueueTab = 'submitted' | 'returned_for_revision' | 'accepted'
+
+export const QUEUE_TABS: ReadonlyArray<{ key: QueueTab; label: string }> = [
+  { key: 'submitted', label: 'Ждут проверки' },
+  { key: 'returned_for_revision', label: 'На доработке' },
+  { key: 'accepted', label: 'Принятые' },
+]
+
+/** Статусы, которые страница вообще грузит: одним запросом на все вкладки. */
+export const QUEUE_STATUSES: QueueTab[] = QUEUE_TABS.map(t => t.key)
+
 /** Строка очереди: попытка + контекст (ДЗ → тема → курс), пришедший из join'а. */
 export interface QueueRow {
   attempt: TopicHomeworkAttemptRow
@@ -76,6 +94,27 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
     })
   }
   return rows
+}
+
+/** Строки одной вкладки. Порядок не трогаем — он задан `sortQueue`. */
+export function rowsOfTab(rows: QueueRow[], tab: QueueTab): QueueRow[] {
+  return rows.filter(r => r.attempt.status === tab)
+}
+
+/**
+ * Счётчики вкладок. Считаются по ВСЕМ загруженным строкам, а не по видимым:
+ * число на вкладке должно отвечать на вопрос «сколько там всего», иначе
+ * фильтр по курсу обнулял бы соседнюю вкладку и она выглядела бы пустой.
+ */
+export function countByTab(rows: QueueRow[]): Record<QueueTab, number> {
+  const counts: Record<QueueTab, number> = {
+    submitted: 0, returned_for_revision: 0, accepted: 0,
+  }
+  for (const row of rows) {
+    const status = row.attempt.status
+    if (status in counts) counts[status as QueueTab] += 1
+  }
+  return counts
 }
 
 /**

@@ -6,7 +6,9 @@ import {
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { SignedImage } from '@/components/ui/SignedImage'
 import {
+  MATERIAL_FILE_ACCEPT,
   TOPIC_MATERIAL_LABELS,
   TOPIC_MATERIAL_SECTION_LABELS,
   bucketForMaterialPath,
@@ -170,10 +172,38 @@ function FileTile({
   const ext = (name.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
   const isPdf = ext === 'PDF'
   const isImage = /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
+  const bucket = bucketForMaterialPath(storagePath, topicId)
+
+  // Картинку показываем прямо в теме, а не предлагаем скачать «как документ»:
+  // раньше она приезжала такой же серой плиткой, что и PDF, и ученику надо
+  // было открыть файл, чтобы понять, что там (решение владельца 2026-08-04).
+  // Клик по превью по-прежнему открывает оригинал в новой вкладке.
+  if (isImage) {
+    return (
+      <figure className="space-y-1.5">
+        <SignedFileLink
+          bucket={bucket}
+          url={storagePath}
+          title="Открыть изображение в полном размере"
+          className="block overflow-hidden rounded-xl border border-gray-200 transition-colors hover:border-primary-300"
+        >
+          <SignedImage
+            bucket={bucket}
+            path={storagePath}
+            alt={fileName || 'Материал темы'}
+            className="max-h-[420px] w-full bg-gray-50 object-contain"
+          />
+        </SignedFileLink>
+        <figcaption className="truncate text-xs text-gray-400">
+          {name}{ext && ` · ${ext}`}{formatBytes(sizeBytes) ? ` · ${formatBytes(sizeBytes)}` : ''}
+        </figcaption>
+      </figure>
+    )
+  }
 
   return (
     <SignedFileLink
-      bucket={bucketForMaterialPath(storagePath, topicId)}
+      bucket={bucket}
       url={storagePath}
       className="group flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40"
     >
@@ -261,7 +291,7 @@ function QuickAttach({
         ref={inputRef}
         type="file"
         multiple
-        accept=".pdf,.png,.jpg,.jpeg,.webp"
+        accept={MATERIAL_FILE_ACCEPT}
         onChange={(e) => {
           if (e.target.files) {
             handleFilesSelected(e.target.files)

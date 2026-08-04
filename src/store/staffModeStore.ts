@@ -177,6 +177,34 @@ export function useEffectiveRole(): UserRole | null {
 }
 
 /**
+ * true, когда выдачу обязан сузить КЛИЕНТ.
+ *
+ * У настоящего учителя данные сужает RLS: `courses_select_scoped`,
+ * `course_is_staff` и соседи отдают только своё. У admin/owner RLS не сужает
+ * НИЧЕГО — политики построены на `is_admin_or_owner()`, и в режиме учителя
+ * такой человек видит всю школу. Разница и есть ответ на вопрос «фильтровать
+ * ли руками»: фильтруем ровно тогда, когда роль представления учительская, а
+ * настоящая — нет.
+ *
+ * Почему не фильтровать всегда, когда режим учительский: настоящий учитель
+ * может быть куратором курса (`course_curators`) или куратором группы — RLS
+ * такие курсы ему отдаёт, а наивный клиентский фильтр «только мои группы» их
+ * бы отнял. Сужать поверх правильной RLS — это ломать, а не чинить.
+ */
+export function useNeedsOwnDataFilter(): boolean {
+  const profile = useAuthStore(s => s.profile)
+  const mode    = useStaffModeStore(s => s.mode)
+  const hydrate = useStaffModeStore(s => s.hydrate)
+
+  useEffect(() => {
+    hydrate(profile?.id ?? null)
+  }, [profile?.id, hydrate])
+
+  const role = profile?.role ?? null
+  return canSwitchStaffMode(role) && mode === 'teacher'
+}
+
+/**
  * Единственная точка, из которой шапка и сайдбар берут режим и роль
  * представления.
  */

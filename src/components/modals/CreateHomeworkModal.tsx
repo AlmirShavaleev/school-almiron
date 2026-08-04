@@ -273,8 +273,10 @@ export function CreateHomeworkModal({ open, onClose, onCreated, defaultGroupId, 
                     <Paperclip size={16} />Прикрепить PDF / изображение
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={handleFileChange} />
-                <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG — до 10 МБ</p>
+                {/* `image/*`, а не перечень расширений: телефонные heic иначе
+                    отсекались молча — снимает их любой айфон (§82). */}
+                <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={handleFileChange} />
+                <p className="text-xs text-gray-400 mt-1">PDF или картинка — до 10 МБ</p>
               </div>
 
               {submitError && <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">{submitError}</p>}

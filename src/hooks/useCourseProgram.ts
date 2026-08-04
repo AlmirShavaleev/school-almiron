@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 
 export interface Topic {
   id: string
@@ -46,6 +47,7 @@ function compareByOrderIndexThenId<T extends { order_index?: number | null; id: 
 
 export function useCourseProgram() {
   const profile = useAuthStore(s => s.profile)
+  const scope = useMyTeachingScope()
   const [courses,  setCourses]  = useState<Course[]>([])
   const [loading,  setLoading]  = useState(true)
   const [tick,     setTick]     = useState(0)
@@ -53,22 +55,28 @@ export function useCourseProgram() {
 
   useEffect(() => {
     if (!profile) return
+    // Пока набор «что моё» не приехал, фильтровать нечем — ждём, иначе на
+    // мгновение показали бы всю школу и тут же схлопнули список.
+    if (scope.active && scope.loading) return
     setLoading(true)
     async function load() {
       try {
-        if (profile!.role === 'teacher') {
-          const { data } = await supabase.from('courses').select('*').order('title')
-          setCourses((data || []) as any)
-        } else {
-          const { data } = await supabase.from('courses').select('*').order('title')
-          setCourses((data || []) as any)
-        }
+        // Ветки «учитель» и «остальные» здесь исторически были ОДИНАКОВЫЕ —
+        // обе тянули все курсы. Настоящего учителя спасала RLS
+        // (`courses_select_scoped` отдаёт свои и те, где он персонал), а
+        // владельца-админа не спасало ничто: `is_admin_or_owner()` отдаёт всю
+        // школу, и в режиме учителя он видел все 8 курсов чужими именами.
+        const { data } = await supabase.from('courses').select('*').order('title')
+        const all = (data || []) as any[]
+        setCourses((scope.active
+          ? all.filter(c => c.owner_id === profile!.id || scope.courseIds.includes(c.id))
+          : all) as any)
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [profile, tick])
+  }, [profile, scope.active, scope.loading, scope.courseIds, tick])
 
   async function loadModules(courseId: string): Promise<Module[]> {
     const { data: mods, error: modsErr } = await supabase

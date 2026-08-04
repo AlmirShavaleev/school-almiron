@@ -24,6 +24,21 @@ export const LEGACY_LESSON_MATERIALS_BUCKET = 'course-lesson-materials'
  */
 export const LEGACY_TOPIC_MATERIALS_BUCKET = 'course-materials'
 
+/**
+ * Что можно прикрепить материалом темы.
+ *
+ * Одна строка на все места загрузки материалов: раньше их было несколько и все
+ * разные — где-то не было `webp`, где-то не было `docx`/`pptx`, и набор
+ * зависел от того, через какое окно преподаватель открыл тему. Формат тот же,
+ * что у ДЗ (`HOMEWORK_FILE_ACCEPT`): `image/*` вместо перечня расширений,
+ * иначе телефонные `heic` и прочие форматы отсекаются молча.
+ */
+export const MATERIAL_FILE_ACCEPT =
+  'application/pdf,image/*,' +
+  'application/msword,' +
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
 export type TopicMaterialKind = 'text' | 'video' | 'link' | 'file'
 
 /** Рубрика материала (быстрые кнопки в модалке темы). NULL — без рубрики. */

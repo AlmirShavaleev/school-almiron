@@ -17,7 +17,14 @@ import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvaila
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
-import { type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import { MATERIAL_FILE_ACCEPT, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import { SignedImage } from '@/components/ui/SignedImage'
+
+/** Картинка ли это — по расширению имени файла. */
+function isImageName(name: string | null): boolean {
+  const ext = (name?.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
+  return /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
+}
 
 const SECTIONS: {
   type: MaterialType
@@ -135,14 +142,32 @@ function SectionEditor({
           )}
 
           {section.hasFile && material?.file_url && (
-            <SignedFileLink
-              bucket="course-materials"
-              url={material.file_url}
-              className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
-            >
-              {getMaterialFileIcon(material.file_url)}
-              <span className="text-sm text-blue-700 truncate">{fileName || 'Открыть файл'}</span>
-            </SignedFileLink>
+            isImageName(fileName) ? (
+              // Картинку показываем, а не предлагаем открыть файлом — то же
+              // решение, что и в новых материалах темы (TopicMaterialItems).
+              <SignedFileLink
+                bucket="course-materials"
+                url={material.file_url}
+                title="Открыть изображение в полном размере"
+                className="block overflow-hidden rounded-xl border border-gray-200 transition-colors hover:border-primary-300"
+              >
+                <SignedImage
+                  bucket="course-materials"
+                  path={material.file_url}
+                  alt={fileName || 'Материал темы'}
+                  className="max-h-[420px] w-full bg-gray-50 object-contain"
+                />
+              </SignedFileLink>
+            ) : (
+              <SignedFileLink
+                bucket="course-materials"
+                url={material.file_url}
+                className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
+              >
+                {getMaterialFileIcon(material.file_url)}
+                <span className="text-sm text-blue-700 truncate">{fileName || 'Открыть файл'}</span>
+              </SignedFileLink>
+            )
           )}
 
           {!isVideo && !isLink && link && (
@@ -275,7 +300,7 @@ function SectionEditor({
                   )}
                 </button>
               )}
-              <input ref={fileRef} type="file" className="hidden" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" onChange={handleFileChange} />
+              <input ref={fileRef} type="file" className="hidden" accept={MATERIAL_FILE_ACCEPT} onChange={handleFileChange} />
               {fileErr && <p className="text-xs text-red-500 mt-1">{fileErr}</p>}
             </div>
           )}

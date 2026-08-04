@@ -13,9 +13,15 @@ import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
-import { courseFilterOptions, groupByDay, isSubmittedLate, type QueueRow } from '@/lib/homeworkQueue'
+import {
+  QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate,
+  type QueueRow, type QueueTab,
+} from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
-import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
+import {
+  ATTEMPT_STATUS_TONE, TEACHER_ATTEMPT_STATUS_LABEL, latestReview,
+  type TopicHomeworkAttemptFileRow, type TopicHomeworkReviewRow,
+} from '@/lib/topicHomework'
 import type { QueueAiJob } from '@/hooks/useQueueAiJobs'
 
 /** Дата ушла в заголовок дня, в строке остаётся только время сдачи. */
@@ -45,7 +51,7 @@ function findingsDeclension(count: number): string {
  * то же место, так что попасть мимо невозможно.
  */
 function QueueRowItem({
-  row, files, studentName, viewers, showCourse, selected, onToggleSelect, ai, aiBusy, onRunAi, onOpen,
+  row, files, studentName, viewers, showCourse, pending, selected, onToggleSelect, ai, aiBusy, onRunAi, onOpen,
 }: {
   row: QueueRow
   files: TopicHomeworkAttemptFileRow[]
@@ -54,6 +60,11 @@ function QueueRowItem({
   viewers: PresenceMeta[]
   /** Показывать курс в строке: нужно, только когда в списке их несколько. */
   showCourse: boolean
+  /**
+   * Работа ещё ждёт вердикта. У проверенных нечего выбирать и незачем звать
+   * ИИ: вердикт уже стоит, а RPC второй раз его всё равно не примет.
+   */
+  pending: boolean
   /** Выбрана ли работа в списке. */
   selected: boolean
   /** Обработчик переключения выделения. */
@@ -70,24 +81,27 @@ function QueueRowItem({
   const late = isSubmittedLate(row)
   const busy = viewers.length > 0
   const time = formatTime(attempt.submitted_at)
-  const showAiButton = !ai || ai.status === 'failed'
+  const showAiButton = pending && (!ai || ai.status === 'failed')
 
   return (
     <li
       data-testid="queue-attempt-card"
       data-attempt-id={attempt.id}
       data-late={late ? 'true' : 'false'}
+      data-status={attempt.status}
       className="flex items-center gap-3 border-b border-gray-100 px-1 py-2.5 transition-colors last:border-b-0 hover:bg-primary-50/40"
     >
-      <input
-        type="checkbox"
-        data-testid="queue-select"
-        checked={selected}
-        onChange={onToggleSelect}
-        onClick={e => e.stopPropagation()}
-        aria-label="Выбрать работу"
-        className="h-4 w-4 shrink-0 accent-primary-600"
-      />
+      {pending && (
+        <input
+          type="checkbox"
+          data-testid="queue-select"
+          checked={selected}
+          onChange={onToggleSelect}
+          onClick={e => e.stopPropagation()}
+          aria-label="Выбрать работу"
+          className="h-4 w-4 shrink-0 accent-primary-600"
+        />
+      )}
 
       <button
         type="button"
@@ -117,7 +131,7 @@ function QueueRowItem({
       {time && <span className="hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline">{time}</span>}
 
       {/* ИИ-статус метка */}
-      {(aiBusy || ai) && (
+      {pending && (aiBusy || ai) && (
         <span
           className={cn(
             'hidden shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex',
@@ -171,8 +185,14 @@ function QueueRowItem({
           Просрочено
         </span>
       ) : (
-        <span className="hidden shrink-0 rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 sm:inline-flex">
-          Ожидает проверки
+        <span
+          data-testid="queue-status-badge"
+          className={cn(
+            'hidden shrink-0 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex',
+            pending ? 'bg-primary-100 text-primary-800' : ATTEMPT_STATUS_TONE[attempt.status],
+          )}
+        >
+          {pending ? 'Ожидает проверки' : TEACHER_ATTEMPT_STATUS_LABEL[attempt.status]}
         </span>
       )}
 
@@ -188,20 +208,80 @@ function QueueRowItem({
         </button>
       )}
 
-      <Button size="sm" variant={busy ? 'secondary' : 'primary'} onClick={onOpen} className="shrink-0">
-        Проверить
+      <Button
+        size="sm"
+        variant={busy || !pending ? 'secondary' : 'primary'}
+        onClick={onOpen}
+        className="shrink-0"
+      >
+        {pending ? 'Проверить' : 'Открыть'}
       </Button>
     </li>
   )
 }
 
 /**
- * Общая очередь проверки ДЗ: все сданные работы по всем темам и курсам
- * преподавателя, старые сверху. Список — только для выбора работы; проверка
- * (рамки, комментарий, балл, вердикт) открывается по клику на строку.
+ * Уже вынесенный вердикт — вместо формы у проверенных работ.
+ *
+ * Формы здесь быть не может: `topic_homework_review_attempt` меняет статус
+ * только `where status = 'submitted'`, и повторное решение база не примет.
+ * Показать кнопки «Принять» и «Вернуть» значило бы обещать действие, которое
+ * гарантированно закончится ошибкой.
+ */
+function VerdictSummary({
+  review, gradeScale, status,
+}: {
+  review: TopicHomeworkReviewRow | null
+  gradeScale: 'five' | 'hundred' | null
+  status: QueueRow['attempt']['status']
+}) {
+  const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
+  const decided = review?.created_at
+    ? new Date(review.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+    : null
+
+  return (
+    <div data-testid="queue-verdict-summary" className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', ATTEMPT_STATUS_TONE[status])}>
+          {TEACHER_ATTEMPT_STATUS_LABEL[status]}
+        </span>
+        {review?.score != null && scoreMax != null && (
+          <span className="text-xs text-gray-600">Оценка: {review.score}/{scoreMax}</span>
+        )}
+        {decided && <span className="text-xs text-gray-400">{decided}</span>}
+      </div>
+
+      {review?.comment && (
+        <p className="mt-2 whitespace-pre-line rounded-lg bg-white px-2.5 py-1.5 text-xs text-gray-700">
+          {review.comment}
+        </p>
+      )}
+
+      <p className="mt-2 text-xs text-gray-400">
+        Вердикт уже вынесен и здесь не меняется. Пометки можно дополнить и опубликовать заново —
+        ученик увидит обновлённый разбор.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Общая очередь проверки ДЗ: работы по всем темам и курсам преподавателя,
+ * разложенные по состояниям — ждут проверки, на доработке, приняты. Список —
+ * только для выбора работы; проверка (рамки, комментарий, балл, вердикт)
+ * открывается по клику на строку.
  */
 export function HomeworkReviewQueuePage() {
-  const { rows, attemptFiles, studentNames, loading, error, reload, reviewAttempt } = useHomeworkReviewQueue()
+  /**
+   * Вкладка живёт в обычном состоянии страницы, как и остальные фильтры.
+   * По умолчанию «Ждут проверки» — то, ради чего страницу открывают.
+   */
+  const [tab, setTab] = useState<QueueTab>('submitted')
+  const pending = tab === 'submitted'
+  const {
+    rows, all, counts, attemptFiles, reviews, studentNames, loading, error, reload, reviewAttempt,
+  } = useHomeworkReviewQueue(tab)
   /**
    * `locked` снимается один раз — в момент открытия. Дальше кнопка «Всё равно
    * редактировать» его сбрасывает, а приход нового зрителя уже не возвращает:
@@ -230,7 +310,11 @@ export function HomeworkReviewQueuePage() {
   }, [rows, courseFilter, onlyLate, order])
 
   const visibleAttemptIds = useMemo(() => visibleRows.map(r => r.attempt.id), [visibleRows])
-  const { jobs: aiJobs, running: aiRunning, runChecks, reload: reloadAi } = useQueueAiJobs(visibleAttemptIds)
+  // Проверенным работам ИИ-черновик не нужен: вердикт уже стоит. Отдаём пустой
+  // список — так на вкладках «На доработке» и «Принятые» не будет ни запроса
+  // статусов, ни опроса сторожа.
+  const aiTargets = useMemo(() => (pending ? visibleAttemptIds : []), [pending, visibleAttemptIds])
+  const { jobs: aiJobs, running: aiRunning, runChecks, reload: reloadAi } = useQueueAiJobs(aiTargets)
 
   const groups = useMemo(() => groupByDay(visibleRows), [visibleRows])
 
@@ -243,17 +327,28 @@ export function HomeworkReviewQueuePage() {
   // курсе повторять его название в каждой строке — шум.
   const showCourseInRow = courseFilter === 'all' && courseOptions.length > 1
   const lateCount = rows.filter(isSubmittedLate).length
+  // В шапке — только про ожидающих: это счётчик работы, а не всей истории.
+  // Считаем по всем загруженным строкам, чтобы он не менялся от вкладки.
+  const pendingLateCount = useMemo(
+    () => all.filter(r => r.attempt.status === 'submitted' && isSubmittedLate(r)).length,
+    [all],
+  )
 
   // Фильтр по курсу мог отсечь всё — это не то же самое, что пустая очередь,
   // и говорить про «всё проверено» здесь было бы враньём.
   const hiddenByFilter = rows.length > 0 && visibleRows.length === 0
 
-  const courseIds = useMemo(() => rows.map(r => r.courseId), [rows])
+  // Курсы берём из ВСЕХ строк, а не из строк вкладки: подписка на присутствие
+  // не должна пересобираться каждый раз, когда преподаватель переключил вкладку.
+  const courseIds = useMemo(() => Array.from(new Set(all.map(r => r.courseId))), [all])
   const { viewers } = useReviewPresence({ courseIds, attemptId: reviewing?.row.attempt.id ?? null })
   const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
 
   // ── Черновик ИИ ─────────────────────────────────────────────────────
-  const openAttemptId = reviewing?.row.attempt.id ?? null
+  // Панель черновика поднимается только для работы, которую ещё проверяют:
+  // у проверенной вердикт уже стоит, и подставлять в неё текст некуда.
+  const openAttempt = reviewing?.row.attempt ?? null
+  const openAttemptId = openAttempt?.status === 'submitted' ? openAttempt.id : null
   const ai = useHomeworkAiCheck(openAttemptId)
   // Перенос рамок делает сам аннотатор: он владеет страницами и умеет их
   // сохранять. Отсюда ref вместо проброса данных вниз.
@@ -326,9 +421,9 @@ export function HomeworkReviewQueuePage() {
           <p data-testid="queue-count" className="mt-0.5 text-sm text-gray-500">
             {loading
               ? 'Загрузка…'
-              : rows.length === 0
+              : counts.submitted === 0
                 ? 'Всё проверено'
-                : `Ждут проверки: ${rows.length}${lateCount > 0 ? ` · просрочено: ${lateCount}` : ''}`}
+                : `Ждут проверки: ${counts.submitted}${pendingLateCount > 0 ? ` · просрочено: ${pendingLateCount}` : ''}`}
           </p>
         </div>
         <button
@@ -345,6 +440,37 @@ export function HomeworkReviewQueuePage() {
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       )}
 
+      {/* Вкладки состояний. Раньше страница показывала только ожидающих, и
+          принятые с возвращёнными были невидимы — а их большинство. Счётчик у
+          каждой вкладки считается по всем загруженным работам, поэтому виден
+          ещё до перехода. */}
+      <div data-testid="queue-tabs" role="tablist" aria-label="Состояние работ" className="flex flex-wrap gap-2">
+        {QUEUE_TABS.map(t => {
+          const active = t.key === tab
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`queue-tab-${t.key}`}
+              onClick={() => { setTab(t.key); setSelected(new Set()) }}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                active
+                  ? 'border-primary-300 bg-primary-50 text-primary-900'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900',
+              )}
+            >
+              {t.label}
+              <span className={cn('text-xs tabular-nums', active ? 'text-primary-700' : 'text-gray-400')}>
+                {counts[t.key]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Панель фильтров. Курсов в очереди обычно немного, поэтому список
           строится из самой очереди и рядом с каждым курсом стоит счётчик —
           видно, где скопился хвост, ещё до выбора. */}
@@ -353,6 +479,7 @@ export function HomeworkReviewQueuePage() {
           data-testid="queue-filters"
           className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5"
         >
+          {pending && (
           <label className="flex items-center gap-2 text-xs text-gray-500">
             <input
               type="checkbox"
@@ -369,6 +496,7 @@ export function HomeworkReviewQueuePage() {
             />
             Выбрать все
           </label>
+          )}
 
           <label className="flex items-center gap-2 text-xs text-gray-500">
             <Filter size={13} />
@@ -428,7 +556,7 @@ export function HomeworkReviewQueuePage() {
       )}
 
       {/* Панель массового действия */}
-      {selectedVisible.length > 0 && (
+      {pending && selectedVisible.length > 0 && (
         <div
           data-testid="queue-bulk-bar"
           className="flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5"
@@ -460,16 +588,28 @@ export function HomeworkReviewQueuePage() {
           Собираем сданные работы…
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
-          <CheckCircle2 size={28} className="mx-auto text-emerald-400" />
-          <p className="mt-2 text-sm font-medium text-gray-700">Очередь пуста</p>
-          <p className="mt-1 text-xs text-gray-400">Новые сдачи учеников появятся здесь автоматически</p>
+        <div data-testid="queue-empty" className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
+          {pending
+            ? <CheckCircle2 size={28} className="mx-auto text-emerald-400" />
+            : <Inbox size={26} className="mx-auto text-gray-300" />}
+          <p className="mt-2 text-sm font-medium text-gray-700">
+            {pending
+              ? 'Очередь пуста'
+              : tab === 'returned_for_revision'
+                ? 'Никого не вернули на доработку'
+                : 'Принятых работ пока нет'}
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            {pending
+              ? 'Новые сдачи учеников появятся здесь автоматически'
+              : 'Работы попадут сюда после вашего вердикта'}
+          </p>
         </div>
       ) : hiddenByFilter ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-12 text-center">
           <Inbox size={26} className="mx-auto text-gray-300" />
           <p className="mt-2 text-sm font-medium text-gray-700">Под фильтр ничего не подошло</p>
-          <p className="mt-1 text-xs text-gray-400">В очереди {rows.length} работ — снимите ограничения, чтобы увидеть их</p>
+          <p className="mt-1 text-xs text-gray-400">На этой вкладке {rows.length} работ — снимите ограничения, чтобы увидеть их</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -485,6 +625,7 @@ export function HomeworkReviewQueuePage() {
                     studentName={studentNames[row.attempt.student_id] ?? 'Ученик'}
                     viewers={viewersOf(row.attempt.id)}
                     showCourse={showCourseInRow}
+                    pending={pending}
                     selected={selected.has(row.attempt.id)}
                     onToggleSelect={() => {
                       const next = new Set(selected)
@@ -522,9 +663,17 @@ export function HomeworkReviewQueuePage() {
           onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
           // тулбаре только путала: две зелёные кнопки читались как одно действие.
-          hideToolbarPublish
+          // У проверенной работы формы нет, и кнопка возвращается: дополнить
+          // разбор и опубликовать заново — единственное, что тут ещё можно.
+          hideToolbarPublish={reviewing.row.attempt.status === 'submitted'}
           importRegionsRef={importRegionsRef}
-          footer={({ publishAnnotations }) => (
+          footer={reviewing.row.attempt.status !== 'submitted' ? () => (
+            <VerdictSummary
+              review={latestReview(reviews, reviewing.row.attempt.id)}
+              gradeScale={reviewing.row.gradeScale}
+              status={reviewing.row.attempt.status}
+            />
+          ) : ({ publishAnnotations }) => (
             <ReviewActions
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}

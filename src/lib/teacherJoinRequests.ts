@@ -11,6 +11,11 @@ export interface SubmitJoinRequestResult {
 export interface MyJoinRequest {
   id: string
   studentId: string
+  /**
+   * Кому адресована заявка (`teachers.id`). Нужен, чтобы владелец в режиме
+   * учителя видел только свои: RPC отдаёт администратору заявки всей школы.
+   */
+  teacherId: string | null
   fullName: string
   email: string | null
   status: JoinRequestStatus
@@ -121,6 +126,7 @@ export async function getMyJoinRequests(status?: JoinRequestStatus | null): Prom
     return rows.map((row: any) => ({
       id: String(row.id ?? ''),
       studentId: String(row.student_id ?? ''),
+      teacherId: row.teacher_id ? String(row.teacher_id) : null,
       fullName: String(row.full_name ?? '—'),
       email: row.email ? String(row.email) : null,
       status: (row.status ?? 'pending') as JoinRequestStatus,

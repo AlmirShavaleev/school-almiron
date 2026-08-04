@@ -6149,6 +6149,7 @@ export type Database = {
           reviewed_at: string
           status: string
           student_id: string
+          teacher_id: string
         }[]
       }
       get_my_role: {
@@ -6661,6 +6662,13 @@ export type Database = {
         Returns: Json
       }
       strip_html_simple: { Args: { html: string }; Returns: string }
+      students_telegram_flags: {
+        Args: { p_student_ids: string[] }
+        Returns: {
+          student_id: string
+          telegram_linked: boolean
+        }[]
+      }
       submit_homework_review: {
         Args: {
           p_attempt_id: string

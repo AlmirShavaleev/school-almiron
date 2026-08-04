@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useNeedsOwnDataFilter } from '@/store/staffModeStore'
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,6 +88,7 @@ export function useVariants(filters?: {
   search?: string
 }) {
   const { profile } = useAuthStore()
+  const needsOwnFilter = useNeedsOwnDataFilter()
   const [variants, setVariants]   = useState<TestVariant[]>([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
@@ -101,6 +103,12 @@ export function useVariants(filters?: {
       .select('*, created_by_profile:profiles!created_by(full_name, email)')
       .order('updated_at', { ascending: false })
 
+    // Настоящему учителю выдачу сужает RLS: `tv_select` отдаёт ему только
+    // `created_by = auth.uid()`. Администратору та же политика отвечает `true`
+    // на всё, поэтому в режиме учителя повторяем её правило руками — иначе
+    // владелец видит варианты всей школы.
+    if (needsOwnFilter) q = q.eq('created_by', profile.id)
+
     if (filters?.subject)   q = q.eq('subject',   filters.subject)
     if (filters?.exam_type) q = q.eq('exam_type', filters.exam_type)
     if (filters?.status)    q = q.eq('status',    filters.status)
@@ -110,7 +118,7 @@ export function useVariants(filters?: {
     if (e) { setError(e.message); setLoading(false); return }
     setVariants(data ?? [])
     setLoading(false)
-  }, [profile, filters?.subject, filters?.exam_type, filters?.status, filters?.search]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profile, needsOwnFilter, filters?.subject, filters?.exam_type, filters?.status, filters?.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
 

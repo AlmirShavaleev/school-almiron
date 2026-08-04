@@ -4,6 +4,7 @@ import { Send, Users, User, CalendarClock, CheckCircle2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
+import { useEffectiveRole } from '@/store/staffModeStore'
 import { useCollections } from '@/hooks/useCollections'
 import { useCreateAssignment } from '@/hooks/useAssignments'
 import { supabase } from '@/lib/supabase'
@@ -20,6 +21,7 @@ interface StudentOption {
 
 export function AssignHomeworkPage() {
   const profile = useAuthStore(s => s.profile)
+  const effectiveRole = useEffectiveRole()
   const { collections, loading: collectionsLoading } = useCollections()
   const { create, loading: creating, error: createError } = useCreateAssignment()
 
@@ -39,14 +41,13 @@ export function AssignHomeworkPage() {
 
     async function loadTargets() {
       setLoadingTargets(true)
-      // Сужаем список до своих групп только НАСТОЯЩЕМУ учителю (роль в
-      // профиле). Раньше признаком служило само наличие строки в teachers, и
-      // это сломалось, когда владельцу-админу такую строку завели: у него
-      // групп как преподавателя ноль, и страница показывала пусто вместо всех
-      // групп школы. Остальные 15 мест с выборкой teachers по profile_id
-      // спрашивают именно роль — здесь теперь так же.
-      const isTeacher = profile!.role === 'teacher'
-      const { data: teacher } = isTeacher
+      // Сужаем до своих групп настоящему учителю И владельцу, работающему в
+      // режиме учителя. Признаком НЕ может быть наличие строки в teachers:
+      // у владельца она есть всегда (§73), и в режиме админа страница
+      // показывала бы пусто вместо всех групп школы. Признак — роль
+      // представления.
+      const isTeacherView = effectiveRole === 'teacher'
+      const { data: teacher } = isTeacherView
         ? await supabase.from('teachers').select('id').eq('profile_id', profile!.id).maybeSingle()
         : { data: null }
 
@@ -78,7 +79,7 @@ export function AssignHomeworkPage() {
 
     loadTargets()
     return () => { cancelled = true }
-  }, [profile])
+  }, [profile, effectiveRole])
 
   async function handleAssign() {
     setSuccess(false)

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AlertCircle, Copy, Loader2, RefreshCw, UserPlus, Users, UserCheck, XCircle, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { toast } from '@/store/toastStore'
+import { useAuthStore } from '@/store/authStore'
 import { useGroups } from '@/hooks/useGroups'
+import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
+import { isMyInvite, isMyJoinRequest, isMyStudent } from '@/lib/studentsScope'
+import { fetchLastSubmissions, fetchTelegramFlags, type LastSubmissions, type TelegramFlags } from '@/lib/studentListData'
+import { StudentsTable } from '@/components/students/StudentsTable'
 import {
   buildInviteMessage,
   buildInviteUrl,
@@ -38,7 +42,13 @@ function formatDate(value: string | null): string {
 }
 
 export function StudentsPage() {
+  const profile = useAuthStore(s => s.profile)
   const { groups } = useGroups()
+  // `get_my_students` — definer-RPC, и её первое условие — `is_admin_or_owner()`:
+  // администратору она отдаёт ВСЕХ учеников школы. Трогать общую функцию ради
+  // режима представления нельзя (ей пользуются и настоящие учителя), поэтому
+  // в режиме учителя сужаем на клиенте по своим курсам и группам.
+  const scope = useMyTeachingScope()
   const [tab, setTab] = useState<TabKey>('students')
   const [modalOpen, setModalOpen] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -104,6 +114,10 @@ export function StudentsPage() {
   )
 
   const [distributeTarget, setDistributeTarget] = useState<MyJoinRequest | null>(null)
+  /** Ученик, которому назначаем группу из строки списка. */
+  const [assignGroupFor, setAssignGroupFor] = useState<MyStudent | null>(null)
+  const [telegramFlags, setTelegramFlags] = useState<TelegramFlags>({})
+  const [lastSubmissions, setLastSubmissions] = useState<LastSubmissions>({})
 
   async function loadStudents() {
     setStudentsLoading(true)
@@ -226,13 +240,60 @@ export function StudentsPage() {
   const filteredStudents = useMemo(() => {
     const query = studentQuery.trim().toLowerCase()
     return students.filter(student => {
+      // Правило «мой ученик» — общее с тестом, живёт в lib/studentsScope.
+      const mine = isMyStudent(student, scope)
       const matchesQuery = !query || student.fullName.toLowerCase().includes(query)
       const matchesGroup = !studentGroupFilter || student.groups.some(group => group.id === studentGroupFilter)
-      return matchesQuery && matchesGroup
+      return mine && matchesQuery && matchesGroup
     })
-  }, [students, studentQuery, studentGroupFilter])
+    // Сортировка по алфавиту (решение владельца 04.08). `localeCompare` с
+    // русской локалью, иначе «Ё» уезжает в конец, а регистр начинает значить.
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
+  }, [students, studentQuery, studentGroupFilter, scope])
 
-  const visibleInvites = invites
+  /**
+   * Telegram и последняя сдача грузятся ПОСЛЕ основного списка и отдельно:
+   * список должен появляться сразу, а эти две колонки дорисовываются. Ключ —
+   * состав видимых учеников, а не сам массив: пересортировка или правка
+   * поиска не должна дёргать базу.
+   */
+  const visibleStudentIdsKey = useMemo(
+    () => filteredStudents.map(s => s.studentId).filter(Boolean).sort().join(','),
+    [filteredStudents],
+  )
+
+  useEffect(() => {
+    const ids = visibleStudentIdsKey ? visibleStudentIdsKey.split(',') : []
+    if (ids.length === 0) {
+      setTelegramFlags({})
+      setLastSubmissions({})
+      return
+    }
+    let cancelled = false
+    void fetchTelegramFlags(ids).then(flags => { if (!cancelled) setTelegramFlags(flags) })
+    void fetchLastSubmissions(ids).then(last => { if (!cancelled) setLastSubmissions(last) })
+    return () => { cancelled = true }
+  }, [visibleStudentIdsKey])
+
+  /**
+   * Сужение вкладок «Новые ученики» и «Приглашения».
+   *
+   * Обе RPC устроены одинаково: `X = моё OR is_admin_or_owner()` — то есть
+   * администратору отдают всю школу. В §80 под гребень попала только первая
+   * вкладка, эти две остались с утечкой.
+   *
+   * Пока набор «что моё» не приехал (`scope.loading`), не показываем ничего:
+   * лучше пустой список на мгновение, чем чужие ученики.
+   */
+  const visibleJoinRequests = useMemo(
+    () => joinRequests.filter(request => isMyJoinRequest(request, scope)),
+    [joinRequests, scope],
+  )
+
+  const visibleInvites = useMemo(
+    () => invites.filter(invite => isMyInvite(invite, scope, profile?.id)),
+    [invites, scope, profile?.id],
+  )
   const batchIds = Array.from(new Set(invites.map(invite => invite.batchId).filter(Boolean) as string[]))
 
   async function handleReissueInvite(invite: MyStudentInvite) {
@@ -351,8 +412,8 @@ export function StudentsPage() {
         <TabButton active={tab === 'students'} onClick={() => setTab('students')}>Ученики</TabButton>
         <TabButton active={tab === 'newStudents'} onClick={() => setTab('newStudents')}>
           Новые ученики
-          {joinRequests.length > 0 && newStudentsFilter === 'pending' && (
-            <span className="ml-1.5 rounded-full bg-primary-100 px-1.5 py-0.5 text-xs font-semibold text-primary-700">{joinRequests.length}</span>
+          {visibleJoinRequests.length > 0 && newStudentsFilter === 'pending' && (
+            <span className="ml-1.5 rounded-full bg-primary-100 px-1.5 py-0.5 text-xs font-semibold text-primary-700">{visibleJoinRequests.length}</span>
           )}
         </TabButton>
         <TabButton active={tab === 'invites'} onClick={() => setTab('invites')}>Приглашения</TabButton>
@@ -384,31 +445,12 @@ export function StudentsPage() {
           ) : filteredStudents.length === 0 ? (
             <EmptyState title="Пока нет учеников" body="После приглашения или зачисления ученики появятся в этом списке." />
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {filteredStudents.map(student => (
-                <Card key={`${student.studentId ?? student.profileId ?? student.fullName}`} className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-graphite-950">{student.fullName}</h3>
-                      <p className="text-sm text-slate-500">{student.classGrade || 'Класс не указан'}</p>
-                    </div>
-                    {student.relationStatus && <Badge variant="info">{student.relationStatus}</Badge>}
-                  </div>
-                  <div className="space-y-2 text-sm text-slate-600">
-                    <div><span className="font-medium text-graphite-900">Группы:</span> {student.groups.length ? student.groups.map(group => group.name).join(', ') : '—'}</div>
-                    <div><span className="font-medium text-graphite-900">Курсы:</span> {student.courses.length ? student.courses.map(course => course.title).join(', ') : '—'}</div>
-                    <div><span className="font-medium text-graphite-900">Дата добавления:</span> {formatDate(student.addedAt)}</div>
-                  </div>
-                  {student.studentId && (
-                    <div>
-                      <Link to={`/students/${student.studentId}`} className="text-sm font-medium text-primary-700 hover:text-primary-800">
-                        Открыть профиль
-                      </Link>
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
+            <StudentsTable
+              students={filteredStudents}
+              telegramFlags={telegramFlags}
+              lastSubmissions={lastSubmissions}
+              onAssignGroup={setAssignGroupFor}
+            />
           )}
         </div>
       )}
@@ -438,7 +480,7 @@ export function StudentsPage() {
             <LoadingState label="Загружаем заявки…" />
           ) : joinRequestsError ? (
             <ErrorState label={joinRequestsError} onRetry={loadJoinRequests} />
-          ) : joinRequests.length === 0 ? (
+          ) : visibleJoinRequests.length === 0 ? (
             <EmptyState
               title={newStudentsFilter === 'pending' ? 'Новых заявок нет' : 'Отклонённых заявок нет'}
               body={newStudentsFilter === 'pending'
@@ -447,7 +489,7 @@ export function StudentsPage() {
             />
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
-              {joinRequests.map(request => (
+              {visibleJoinRequests.map(request => (
                 <Card key={request.id} className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -617,6 +659,20 @@ export function StudentsPage() {
           loadInvites()
         }}
       />
+
+      {assignGroupFor && (
+        <DistributeJoinRequestWizard
+          open={Boolean(assignGroupFor)}
+          onClose={() => setAssignGroupFor(null)}
+          studentId={assignGroupFor.studentId ?? ''}
+          studentFullName={assignGroupFor.fullName}
+          groups={distributeGroups}
+          onDistributed={() => {
+            setAssignGroupFor(null)
+            loadStudents()
+          }}
+        />
+      )}
 
       {distributeTarget && (
         <DistributeJoinRequestWizard

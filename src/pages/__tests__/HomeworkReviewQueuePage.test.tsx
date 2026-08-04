@@ -1,26 +1,42 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { QueueRow } from '@/lib/homeworkQueue'
+import { countByTab, rowsOfTab, type QueueRow, type QueueTab } from '@/lib/homeworkQueue'
 
 const state = {
-  rows: [] as QueueRow[],
+  all: [] as QueueRow[],
   attemptFiles: [] as any[],
+  reviews: [] as any[],
   studentNames: {} as Record<string, string>,
   loading: false,
   error: null as string | null,
 }
 const reviewAttempt = vi.fn()
 
+// Хук отдаёт странице строки ВКЛАДКИ и счётчики по всем состояниям — здесь
+// это воспроизводится теми же чистыми функциями, чтобы тест проверял разбор
+// по вкладкам, а не мок.
 vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
-  useHomeworkReviewQueue: () => ({ ...state, reload: vi.fn(), reviewAttempt }),
+  useHomeworkReviewQueue: (tab: QueueTab = 'submitted') => ({
+    rows: rowsOfTab(state.all, tab),
+    all: state.all,
+    counts: countByTab(state.all),
+    attemptFiles: state.attemptFiles,
+    reviews: state.reviews,
+    studentNames: state.studentNames,
+    loading: state.loading,
+    error: state.error,
+    reload: vi.fn(),
+    reviewAttempt,
+  }),
 }))
 
 // Аннотатор тянет pdfjs — в этом тесте нас интересует только то, ЧТО открылось.
 vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
-  AttemptAnnotationOverlay: ({ title, subtitle }: { title: string; subtitle?: string }) => (
+  AttemptAnnotationOverlay: ({ title, subtitle, footer }: { title: string; subtitle?: string; footer?: any }) => (
     <div data-testid="attempt-annotation-overlay">
       <span>{title}</span>
       <span>{subtitle}</span>
+      {footer?.({ publishing: false, published: false, publishAnnotations: async () => true })}
     </div>
   ),
   splitAnnotatableFiles: (files: any[]) => ({ annotatable: files, other: [] }),
@@ -48,10 +64,16 @@ function queueRow(over: Partial<QueueRow> = {}, attemptOver: Record<string, unkn
   }
 }
 
+/** Клик по строке: обработчик висит на кнопке с именем ученика, не на `<li>`. */
+function openRow(studentName = 'Ученик') {
+  fireEvent.click(screen.getByText(studentName))
+}
+
 describe('HomeworkReviewQueuePage — список только для выбора работы', () => {
   beforeEach(() => {
-    state.rows = []
+    state.all = []
     state.attemptFiles = []
+    state.reviews = []
     state.studentNames = { s1: 'Ученик' }
     state.loading = false
     state.error = null
@@ -62,7 +84,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     // Владелец: «зачем вот здесь столько ненужного. Я должен видеть кто сдал
     // ДЗ, когда, просрочил ли он его — то есть только действительно важные
     // моменты, а потом проваливаясь внутрь я уже отмечаю ошибки».
-    state.rows = [queueRow()]
+    state.all = [queueRow()]
     render(<HomeworkReviewQueuePage />)
 
     expect(screen.queryByTestId('review-comment-input')).not.toBeInTheDocument()
@@ -72,16 +94,17 @@ describe('HomeworkReviewQueuePage — список только для выбо�
   })
 
   it('показывает кто сдал, что и когда', () => {
-    state.rows = [queueRow()]
+    state.all = [queueRow()]
     render(<HomeworkReviewQueuePage />)
 
     expect(screen.getByText('Ученик')).toBeInTheDocument()
-    expect(screen.getByText('Новая тема1 · Домашнее задание')).toBeInTheDocument()
-    expect(screen.getByText(/Сдано 28 июля/)).toBeInTheDocument()
+    expect(screen.getByText('Новая тема1')).toBeInTheDocument()
+    // День сдачи вынесен в заголовок группы, в строке остаётся только время.
+    expect(screen.getByText(/28 июля 2026/)).toBeInTheDocument()
   })
 
   it('отмечает просроченную сдачу и выносит счёт в подзаголовок', () => {
-    state.rows = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
+    state.all = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
     render(<HomeworkReviewQueuePage />)
 
     expect(screen.getByTestId('queue-late-badge')).toBeInTheDocument()
@@ -90,7 +113,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
   })
 
   it('сданное в срок не помечается просроченным', () => {
-    state.rows = [queueRow({ dueAt: '2026-08-10T00:00:00Z' })]
+    state.all = [queueRow({ dueAt: '2026-08-10T00:00:00Z' })]
     render(<HomeworkReviewQueuePage />)
 
     expect(screen.queryByTestId('queue-late-badge')).not.toBeInTheDocument()
@@ -98,11 +121,11 @@ describe('HomeworkReviewQueuePage — список только для выбо�
   })
 
   it('клик по строке открывает разбор этой работы', () => {
-    state.rows = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
+    state.all = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
     render(<HomeworkReviewQueuePage />)
 
     expect(screen.queryByTestId('attempt-annotation-overlay')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('queue-attempt-card'))
+    openRow()
 
     const overlay = screen.getByTestId('attempt-annotation-overlay')
     expect(overlay).toBeInTheDocument()
@@ -112,8 +135,96 @@ describe('HomeworkReviewQueuePage — список только для выбо�
   })
 
   it('повторную попытку помечает номером, первую — нет', () => {
-    state.rows = [queueRow({}, { attempt_number: 2 })]
+    state.all = [queueRow({}, { attempt_number: 2 })]
     render(<HomeworkReviewQueuePage />)
     expect(screen.getByText('попытка №2')).toBeInTheDocument()
+  })
+})
+
+/**
+ * Вкладки состояний. Повод: страница показывала только ожидающих, и владелец
+ * не видел ни того, что вернули на доработку, ни того, что уже принято, —
+ * а таких работ на проде большинство.
+ */
+describe('HomeworkReviewQueuePage — вкладки состояний', () => {
+  beforeEach(() => {
+    state.all = [
+      queueRow({}, { id: 'a1', status: 'submitted' }),
+      queueRow({}, { id: 'a2', status: 'returned_for_revision' }),
+      queueRow({}, { id: 'a3', status: 'accepted' }),
+      queueRow({}, { id: 'a4', status: 'accepted' }),
+    ]
+    state.attemptFiles = []
+    state.reviews = []
+    state.studentNames = { s1: 'Ученик' }
+    state.loading = false
+    state.error = null
+    reviewAttempt.mockReset()
+  })
+
+  it('у каждой вкладки свой счётчик по всем загруженным работам', () => {
+    render(<HomeworkReviewQueuePage />)
+
+    expect(screen.getByTestId('queue-tab-submitted')).toHaveTextContent('Ждут проверки1')
+    expect(screen.getByTestId('queue-tab-returned_for_revision')).toHaveTextContent('На доработке1')
+    expect(screen.getByTestId('queue-tab-accepted')).toHaveTextContent('Принятые2')
+  })
+
+  it('по умолчанию открыта «Ждут проверки» — в списке только ожидающие', () => {
+    render(<HomeworkReviewQueuePage />)
+
+    expect(screen.getByTestId('queue-tab-submitted')).toHaveAttribute('aria-selected', 'true')
+    const cards = screen.getAllByTestId('queue-attempt-card')
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toHaveAttribute('data-status', 'submitted')
+  })
+
+  it('на «Принятых» — только принятые, кнопка «Открыть», без выбора и ИИ', () => {
+    render(<HomeworkReviewQueuePage />)
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+
+    const cards = screen.getAllByTestId('queue-attempt-card')
+    expect(cards).toHaveLength(2)
+    expect(cards.every(c => c.getAttribute('data-status') === 'accepted')).toBe(true)
+
+    expect(screen.getAllByRole('button', { name: 'Открыть' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Проверить' })).not.toBeInTheDocument()
+    // Ни выбора работ, ни массовой ИИ-проверки: вердикт уже стоит.
+    expect(screen.queryByTestId('queue-select')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('queue-bulk-bar')).not.toBeInTheDocument()
+  })
+
+  it('счётчик в шапке остаётся про ожидающих на любой вкладке', () => {
+    render(<HomeworkReviewQueuePage />)
+    expect(screen.getByTestId('queue-count')).toHaveTextContent('Ждут проверки: 1')
+
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+    expect(screen.getByTestId('queue-count')).toHaveTextContent('Ждут проверки: 1')
+  })
+
+  it('на пустой вкладке — свой текст, а не «Очередь пуста»', () => {
+    state.all = [queueRow({}, { id: 'a1', status: 'submitted' })]
+    render(<HomeworkReviewQueuePage />)
+
+    fireEvent.click(screen.getByTestId('queue-tab-returned_for_revision'))
+    expect(screen.getByTestId('queue-empty')).toHaveTextContent('Никого не вернули на доработку')
+  })
+
+  it('у проверенной работы в разборе вердикт, а не форма', () => {
+    // Второй вердикт база не примет (RPC меняет статус только у submitted),
+    // поэтому вместо кнопок показываем принятое решение.
+    state.reviews = [{
+      id: 'r1', attempt_id: 'a3', reviewer_id: 'p1', decision: 'accepted',
+      comment: 'Хорошая работа', score: 5, created_at: '2026-07-29T10:00:00Z',
+    }]
+    render(<HomeworkReviewQueuePage />)
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Открыть' })[0])
+
+    const verdict = screen.getByTestId('queue-verdict-summary')
+    expect(verdict).toHaveTextContent('Принято')
+    expect(verdict).toHaveTextContent('Оценка: 5/5')
+    expect(verdict).toHaveTextContent('Хорошая работа')
+    expect(screen.queryByTestId('review-accept-button')).not.toBeInTheDocument()
   })
 })

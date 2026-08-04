@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { courseFilterOptions, groupByDay, groupByCourse, sortQueue, toQueueRows } from './homeworkQueue'
+import {
+  countByTab, courseFilterOptions, groupByDay, groupByCourse, rowsOfTab, sortQueue, toQueueRows,
+} from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
   return {
@@ -52,6 +54,31 @@ describe('sortQueue', () => {
   })
 })
 
+describe('вкладки состояний', () => {
+  const rows = toQueueRows([
+    rawRow({ id: 'a1', status: 'submitted' }),
+    rawRow({ id: 'a2', status: 'returned_for_revision' }),
+    rawRow({ id: 'a3', status: 'accepted' }),
+    rawRow({ id: 'a4', status: 'accepted' }),
+  ])
+
+  it('rowsOfTab отдаёт работы только своего состояния', () => {
+    expect(rowsOfTab(rows, 'submitted').map(r => r.attempt.id)).toEqual(['a1'])
+    expect(rowsOfTab(rows, 'returned_for_revision').map(r => r.attempt.id)).toEqual(['a2'])
+    expect(rowsOfTab(rows, 'accepted').map(r => r.attempt.id)).toEqual(['a3', 'a4'])
+  })
+
+  it('countByTab считает все три состояния, включая нулевые', () => {
+    expect(countByTab(rows)).toEqual({ submitted: 1, returned_for_revision: 1, accepted: 2 })
+    expect(countByTab([])).toEqual({ submitted: 0, returned_for_revision: 0, accepted: 0 })
+  })
+
+  it('черновики в счётчики не попадают — их преподаватель не видит', () => {
+    const withDraft = toQueueRows([rawRow({ id: 'd1', status: 'draft' }), ...[]])
+    expect(countByTab(withDraft)).toEqual({ submitted: 0, returned_for_revision: 0, accepted: 0 })
+  })
+})
+
 describe('groupByCourse', () => {
   it('группирует по курсу, сохраняя порядок очереди', () => {
     const other = rawRow({
@@ -72,11 +99,20 @@ describe('groupByCourse', () => {
 })
 
 describe('groupByDay', () => {
+  /**
+   * Моменты задаём ЛОКАЛЬНЫМ временем и переводим в ISO, а не пишем «...Z»
+   * руками: группировка идёт по дню преподавателя, и жёстко зашитый UTC делал
+   * тест зависимым от часового пояса машины — на московской он падал, хотя
+   * функция работала правильно.
+   */
+  const local = (y: number, m: number, d: number, h: number, min = 0) =>
+    new Date(y, m - 1, d, h, min).toISOString()
+
   it('работы одного дня попадают в одну группу', () => {
     const rows = toQueueRows([
-      rawRow({ id: 'a1', submitted_at: '2025-11-18T09:00:00Z' }),
-      rawRow({ id: 'a2', submitted_at: '2025-11-18T12:30:00Z' }),
-      rawRow({ id: 'a3', submitted_at: '2025-11-18T21:00:00Z' }),
+      rawRow({ id: 'a1', submitted_at: local(2025, 11, 18, 9) }),
+      rawRow({ id: 'a2', submitted_at: local(2025, 11, 18, 12, 30) }),
+      rawRow({ id: 'a3', submitted_at: local(2025, 11, 18, 21) }),
     ])
     const groups = groupByDay(rows)
     expect(groups).toHaveLength(1)
@@ -86,9 +122,9 @@ describe('groupByDay', () => {
 
   it('разные дни — разные группы, порядок исходного списка сохраняется', () => {
     const rows = toQueueRows([
-      rawRow({ id: 'a1', submitted_at: '2025-11-18T09:00:00Z' }),
-      rawRow({ id: 'a2', submitted_at: '2025-11-17T12:30:00Z' }),
-      rawRow({ id: 'a3', submitted_at: '2025-11-18T21:00:00Z' }),
+      rawRow({ id: 'a1', submitted_at: local(2025, 11, 18, 9) }),
+      rawRow({ id: 'a2', submitted_at: local(2025, 11, 17, 12, 30) }),
+      rawRow({ id: 'a3', submitted_at: local(2025, 11, 18, 21) }),
     ])
     const groups = groupByDay(rows)
     expect(groups).toHaveLength(2)

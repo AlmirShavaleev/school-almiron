@@ -69,6 +69,12 @@ export interface MyStudent {
 
 export interface MyStudentInvite {
   inviteId: string
+  /**
+   * Кто выписал приглашение (`profiles.id`). RPC его возвращала всегда, но
+   * маппер терял. Нужен, чтобы владелец в режиме учителя видел только свои:
+   * `get_my_student_invites` отдаёт администратору приглашения всей школы.
+   */
+  invitedBy: string | null
   groupId: string | null
   groupName: string | null
   batchId: string | null
@@ -421,9 +427,14 @@ export async function getMyStudentInvites(params: GetMyStudentInvitesParams = {}
     if (error) throw error
     const rows = Array.isArray(data) ? data : []
     return rows.map((row: any) => ({
-      inviteId: String(row.invite_id ?? ''),
+      // RPC возвращает колонку `id`, а не `invite_id`, и `group_name` не
+      // возвращает вовсе — маппер читал несуществующие поля, поэтому у каждого
+      // приглашения был пустой идентификатор и группа «—». Имя группы
+      // подставляет страница по своему списку групп.
+      inviteId: String(row.id ?? ''),
+      invitedBy: row.invited_by ? String(row.invited_by) : null,
       groupId: row.group_id ? String(row.group_id) : null,
-      groupName: row.group_name ? String(row.group_name) : null,
+      groupName: null,
       batchId: row.batch_id ? String(row.batch_id) : null,
       fullName: String(row.full_name ?? '—'),
       classGrade: row.class_grade ? String(row.class_grade) : null,

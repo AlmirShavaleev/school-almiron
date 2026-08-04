@@ -8,7 +8,12 @@ import { getOrderedSubmissionFiles } from '@/lib/homeworkSubmissionFiles'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_TOTAL_SIZE = 40 * 1024 * 1024
-const ACCEPTED_EXTS = ['pdf', 'png', 'jpg', 'jpeg']
+// heic/heif здесь раньше отвергались отдельной веткой с текстом «Сохраните как
+// JPG или PDF». Живой контур ДЗ (TopicHomeworkStudent) их принимает — у него
+// accept="application/pdf,image/*", и SubmissionReviewer держит heic в списке
+// картинок сознательно. Расхождение убрано (§82): один и тот же файл не должен
+// приниматься в одном окне и отвергаться в другом.
+const ACCEPTED_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif']
 const isImageFile = (file: File) => file.type.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes(file.name.split('.').pop()?.toLowerCase() || '')
 const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`
 
@@ -70,12 +75,8 @@ export function SubmitHomeworkModal({
   function validateFiles(nextFiles: File[]): string | null {
     for (const file of nextFiles) {
       const ext = file.name.split('.').pop()?.toLowerCase() || ''
-      const mime = file.type.toLowerCase()
-      if (ext === 'heic' || ext === 'heif' || mime.includes('heic') || mime.includes('heif')) {
-        return 'Сохраните как JPG или PDF'
-      }
       if (!ACCEPTED_EXTS.includes(ext)) {
-        return 'Поддерживаются только PDF, JPG и PNG'
+        return 'Поддерживаются PDF и картинки'
       }
       if (file.size > MAX_FILE_SIZE) {
         return 'Файл слишком большой. Максимум 10 МБ.'
@@ -361,7 +362,7 @@ export function SubmitHomeworkModal({
               data-testid="submit-homework-file-input"
               ref={fileRef}
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
+              accept="application/pdf,image/*"
               multiple
               className="hidden"
               onChange={handleFileChange}

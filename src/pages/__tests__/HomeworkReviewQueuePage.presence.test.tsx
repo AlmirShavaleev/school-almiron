@@ -24,7 +24,14 @@ const presence = { viewers: [] as PresenceMeta[] }
 const presenceArgs = vi.fn()
 
 vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
-  useHomeworkReviewQueue: () => ({ ...state, reload: vi.fn(), reviewAttempt: vi.fn() }),
+  useHomeworkReviewQueue: () => ({
+    ...state,
+    all: state.rows,
+    counts: { submitted: state.rows.length, returned_for_revision: 0, accepted: 0 },
+    reviews: [],
+    reload: vi.fn(),
+    reviewAttempt: vi.fn(),
+  }),
 }))
 
 vi.mock('@/hooks/useReviewPresence', () => ({
@@ -77,6 +84,11 @@ function queueRow(attemptId: string, courseId = 'c1'): QueueRow {
 
 const ANNA: PresenceMeta = { profileId: 'p-anna', name: 'Аня', attemptId: 'a1' }
 
+/** Разбор открывает кнопка с именем ученика внутри строки, а не сама `<li>`. */
+function openRow(index = 0) {
+  fireEvent.click(screen.getAllByText('Ученик')[index])
+}
+
 describe('Очередь проверок — кто сейчас смотрит работу', () => {
   beforeEach(() => {
     state.rows = []
@@ -95,7 +107,10 @@ describe('Очередь проверок — кто сейчас смотрит
 
     const badges = screen.getAllByTestId('queue-viewer-badge')
     expect(badges).toHaveLength(1)
-    expect(badges[0]).toHaveTextContent('Смотрит: Аня')
+    // На плашке — «Проверяется», имя коллеги в подсказке: в строке место одно,
+    // и длинный список имён её ломал.
+    expect(badges[0]).toHaveTextContent('Проверяется')
+    expect(badges[0]).toHaveAttribute('title', 'Смотрит: Аня')
   })
 
   it('без присутствующих бейджа нет', () => {
@@ -110,7 +125,7 @@ describe('Очередь проверок — кто сейчас смотрит
 
     expect(presenceArgs).toHaveBeenCalledWith({ courseIds: ['c1', 'c2'], attemptId: null })
 
-    fireEvent.click(screen.getAllByTestId('queue-attempt-card')[0])
+    openRow(0)
     expect(presenceArgs).toHaveBeenLastCalledWith({ courseIds: ['c1', 'c2'], attemptId: 'a1' })
   })
 
@@ -119,7 +134,7 @@ describe('Очередь проверок — кто сейчас смотрит
     presence.viewers = [ANNA]
     render(<HomeworkReviewQueuePage />)
 
-    fireEvent.click(screen.getByTestId('queue-attempt-card'))
+    openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'true')
   })
 
@@ -128,7 +143,7 @@ describe('Очередь проверок — кто сейчас смотрит
     presence.viewers = [{ ...ANNA, attemptId: 'a2' }]
     render(<HomeworkReviewQueuePage />)
 
-    fireEvent.click(screen.getByTestId('queue-attempt-card'))
+    openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
   })
 
@@ -137,7 +152,7 @@ describe('Очередь проверок — кто сейчас смотрит
     presence.viewers = [ANNA]
     render(<HomeworkReviewQueuePage />)
 
-    fireEvent.click(screen.getByTestId('queue-attempt-card'))
+    openRow()
     fireEvent.click(screen.getByTestId('presence-force-edit'))
 
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
@@ -149,7 +164,7 @@ describe('Очередь проверок — кто сейчас смотрит
     state.rows = [queueRow('a1')]
     const { rerender } = render(<HomeworkReviewQueuePage />)
 
-    fireEvent.click(screen.getByTestId('queue-attempt-card'))
+    openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
 
     presence.viewers = [ANNA]

@@ -10,6 +10,7 @@ import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { MATERIAL_FILE_ACCEPT } from '@/lib/topicMaterialItems'
 import type { LessonTemplate, LessonTemplateExam, LessonTemplateMaterialType, LessonTemplateSubject } from '@/types/lessonLibrary'
 
 const SECTIONS: Array<{
@@ -436,7 +437,7 @@ function TemplateMaterialEditor({
           ref={fileRef}
           type="file"
           className="hidden"
-          accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg"
+          accept={MATERIAL_FILE_ACCEPT}
           onChange={e => {
             const file = e.target.files?.[0]
             if (file) void handleUpload(file)
