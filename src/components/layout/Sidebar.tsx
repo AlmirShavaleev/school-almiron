@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
+import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import type { UserRole } from '@/types'
@@ -89,14 +90,19 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const profile = useAuthStore(s => s.profile)
+  const { effectiveRole } = useStaffMode()
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const badges = useSidebarBadges()
 
   if (!profile) return null
 
-  const isStudent    = profile.role === 'student'
-  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(profile.role))
+  // Меню рисуется РОЛЬЮ ПРЕДСТАВЛЕНИЯ, а не ролью из профиля: у владельца в
+  // режиме учителя пропадают админские пункты. Пропали только из меню —
+  // маршруты по прямой ссылке живы, их сторожит RoleGuard по настоящей роли.
+  const menuRole     = effectiveRole ?? profile.role
+  const isStudent    = menuRole === 'student'
+  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
 
   async function handleSignOut() {
     await signOut()
@@ -166,7 +172,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-white text-sm font-semibold truncate leading-tight">{profile.full_name}</div>
-              <div className="text-primary-200 text-xs mt-0.5">{getRoleLabel(profile.role)}</div>
+              <div className="text-primary-200 text-xs mt-0.5">{ROLE_LABELS[menuRole] || menuRole}</div>
             </div>
           </div>
         </div>
@@ -271,12 +277,4 @@ function SidebarNavItem({ item, badge, onClose }: { item: NavItem; badge?: numbe
       <ChevronRight size={14} className="opacity-0 group-hover:opacity-50 transition-opacity" />
     </NavLink>
   )
-}
-
-function getRoleLabel(role: string): string {
-  const labels: Record<string, string> = {
-    student: 'Ученик', teacher: 'Преподаватель',
-    curator: 'Куратор', admin: 'Администратор', owner: 'Владелец',
-  }
-  return labels[role] || role
 }

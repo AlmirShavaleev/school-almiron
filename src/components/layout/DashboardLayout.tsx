@@ -4,17 +4,11 @@ import { Sidebar } from './Sidebar'
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { SupportWidget } from '@/components/shared/SupportWidget'
 import { useAuthStore } from '@/store/authStore'
+import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
+import { StaffModeSwitch } from './StaffModeSwitch'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
-
-const ROLE_LABELS: Record<string, string> = {
-  student:  'Ученик',
-  teacher:  'Учитель',
-  curator:  'Куратор',
-  admin:    'Администратор',
-  owner:    'Владелец',
-}
 
 /**
  * Заголовок в шапке. Порядок важен: берётся ПЕРВОЕ совпадение, поэтому
@@ -70,6 +64,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
 
 export function DashboardLayout() {
   const { profile, loading } = useAuthStore()
+  const { effectiveRole } = useStaffMode()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -139,6 +134,9 @@ export function DashboardLayout() {
               (PROJECT_STATE §5.5). Вернуть — раскомментировать. */}
           {/* <NotificationBell /> */}
 
+          {/* Режим представления — только у admin/owner, права не трогает */}
+          <StaffModeSwitch />
+
           {/* Avatar + name */}
           <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
             <div className="w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15">
@@ -149,7 +147,9 @@ export function DashboardLayout() {
             </div>
             <div className="hidden sm:block">
               <div className="text-sm font-semibold text-graphite-950 leading-tight">{profile.full_name || 'Профиль'}</div>
-              <div className="text-xs text-slate-500 leading-tight">{ROLE_LABELS[profile.role] || profile.role}</div>
+              <div className="text-xs text-slate-500 leading-tight">
+                {ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
+              </div>
             </div>
           </div>
         </header>

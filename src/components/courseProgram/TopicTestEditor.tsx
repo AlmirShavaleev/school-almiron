@@ -1,41 +1,58 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, AlertCircle, Trash2 } from 'lucide-react'
+import { Loader2, AlertCircle, Trash2, Plus, Search, X, Users } from 'lucide-react'
 import { useTopicTestAssignment, useTestBank } from '@/hooks/useTopicTest'
-import { TopicVariantAttach } from '@/components/courseProgram/TopicVariantAttach'
+import { useTopicVariantAttachment } from '@/hooks/useVariantTopicAttach'
+import { useVariants } from '@/hooks/useVariants'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 
+const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
+const EXAM_LABELS:    Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
+
 /**
- * Привязка теста из банка к теме.
+ * Секция «Тестирование» на теме курса.
  *
- * Показывает текущую привязку (если есть) с ссылкой на редактирование в банке.
- * Если привязки нет, показывает список тестов из банка с фильтром по названию.
+ * К теме можно привязать два разных зверя: тестирование из раздела «Тесты»
+ * (`test_variants`, выдаётся группам) и тест из банка (`topic_tests`, привязан
+ * самой темой). Раньше они жили двумя блоками, и каждый показывал развёрнутый
+ * каталог своих кандидатов — страница читалась как склад, а не как тема.
  *
- * Ниже — отдельный блок тестирований из раздела «Тесты» (§58). Это другая
- * система (test_variants против topic_tests), и раньше её здесь не было вовсе:
- * собранный в разделе тест в этом списке не находился, потому что искали
- * только по банку.
+ * Теперь секция одна и показывает только то, что УЖЕ привязано, строками в
+ * едином стиле. Тип различает бейдж «банк»: отдельный заголовок ради этого
+ * держать дорого. Выбор кандидатов открывается по кнопке.
+ *
+ * Правка чисто представления: привязка, выдача и счётчики не менялись.
  */
 export function TopicTestEditor({ topicId }: { topicId: string }) {
-  const { assignment, hasAttempts, loading, error, attach, detach } = useTopicTestAssignment(topicId)
+  const { assignment, hasAttempts, loading: bankLoading, error: bankError, attach: attachBank, detach: detachBank } =
+    useTopicTestAssignment(topicId)
   const { tests, loading: testsLoading } = useTestBank()
+  const {
+    attached, groups, loading: variantsLoading, error: variantError,
+    busy: variantBusy, attach: attachVariant, detach: detachVariant,
+  } = useTopicVariantAttachment(topicId)
+  const { variants, loading: candidatesLoading } = useVariants()
 
+  const [openPicker, setOpenPicker] = useState<'variant' | 'bank' | null>(null)
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [filterText, setFilterText] = useState('')
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true)
     setLocalError(null)
     try {
       await fn()
-    } catch (e: any) {
-      setLocalError(e?.message ?? 'Не удалось выполнить действие')
+    } catch (e: unknown) {
+      setLocalError(e instanceof Error ? e.message : 'Не удалось выполнить действие')
     } finally {
       setBusy(false)
     }
   }
+
+  const loading = bankLoading || variantsLoading
+  const error = localError || variantError || bankError
+  const nothingAttached = !assignment?.test && attached.length === 0
 
   if (loading) {
     return (
@@ -48,130 +65,369 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
 
   return (
     <div className="space-y-3">
-      {(error || localError) && (
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setOpenPicker(openPicker === 'variant' ? null : 'variant')}
+          disabled={busy || variantBusy}
+        >
+          <Plus size={14} className="mr-1" />
+          Привязать тестирование
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setOpenPicker(openPicker === 'bank' ? null : 'bank')}
+          disabled={busy || variantBusy}
+        >
+          <Plus size={14} className="mr-1" />
+          Прикрепить тест из банка
+        </Button>
+      </div>
+
+      {error && (
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 flex items-start gap-2">
           <AlertCircle size={14} className="shrink-0 mt-0.5" />
-          <span>{localError || error}</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {assignment?.test ? (
-        /* Assigned test card */
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-gray-900 mb-1">
-                {assignment.test.title}
-              </div>
-              {assignment.test.description && (
-                <p className="text-xs text-gray-500 line-clamp-2">
-                  {assignment.test.description}
-                </p>
-              )}
-            </div>
-            {hasAttempts && (
-              <Badge variant="info" className="shrink-0">
-                есть попытки
-              </Badge>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to={`/tests/${assignment.test_id}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 px-3 py-1.5 text-xs text-primary-600 hover:border-primary-300 hover:bg-primary-50 transition-colors"
-            >
-              Открыть в банке →
-            </Link>
-            {!hasAttempts && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm('Открепить тест? По нему ещё нет попыток.')) {
-                    void run(() => detach())
-                  }
-                }}
-                disabled={busy}
-              >
-                <Trash2 size={14} />
-                Открепить
-              </Button>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* No assignment: show test picker */
-        <div className="rounded-2xl border border-dashed border-gray-200 p-4">
-          <div className="mb-2 text-sm font-semibold text-gray-900">Тест по теме</div>
-          <p className="mb-4 text-xs text-gray-500">
-            Прикрепите тест из банка. Тесты могут быть созданы и отредактированы в конструкторе.
-          </p>
-
-          {/* Filter */}
-          <input
-            value={filterText}
-            onChange={e => setFilterText(e.target.value)}
-            placeholder="Поиск теста по названию…"
-            className="w-full h-9 rounded-lg border border-gray-200 px-3 text-xs mb-3 focus:outline-none focus:ring-2 focus:ring-primary-400"
-          />
-
-          {testsLoading ? (
-            <div className="flex items-center gap-2 py-4 text-xs text-gray-400">
-              <Loader2 size={12} className="animate-spin" />
-              Загрузка тестов…
-            </div>
-          ) : tests.length === 0 ? (
-            <p className="text-xs text-gray-500 py-3 italic">Тестов в банке ещё нет</p>
-          ) : (
-            <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
-              {tests
-                .filter(t => t.title.toLowerCase().includes(filterText.toLowerCase()))
-                .map(test => (
-                  <div key={test.id} className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <h4 className="text-xs font-semibold text-gray-900 line-clamp-2 flex-1">
-                        {test.title}
-                      </h4>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mb-2">
-                      <span className="font-medium text-gray-700">{test.itemCount}</span> заданий
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => void run(() => attach(test.id))}
-                      loading={busy}
-                      disabled={test.itemCount === 0}
-                      title={test.itemCount === 0 ? 'В тесте нет заданий' : undefined}
-                    >
-                      Прикрепить
-                    </Button>
-                  </div>
-                ))}
-
-              {tests.filter(t => t.title.toLowerCase().includes(filterText.toLowerCase())).length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-3">
-                  Тесты не найдены
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="text-center">
-            <Link
-              to="/tests"
-              className="inline-text text-xs text-primary-600 hover:text-primary-700 hover:underline"
-            >
-              Создать новый тест в банке →
-            </Link>
-          </div>
-        </div>
+      {openPicker === 'variant' && (
+        <VariantPicker
+          variants={variants}
+          loading={candidatesLoading}
+          attachedIds={new Set(attached.map(a => a.variant_id))}
+          groups={groups}
+          busy={variantBusy}
+          onClose={() => setOpenPicker(null)}
+          onAttach={async (variantId, groupIds, dueAt) => {
+            await attachVariant(variantId, groupIds, dueAt)
+            setOpenPicker(null)
+          }}
+        />
       )}
 
-      {/* Тестирования из раздела «Тесты» — другая система, отдельный блок. */}
-      <div className="pt-3 border-t border-gray-100">
-        <TopicVariantAttach topicId={topicId} />
+      {openPicker === 'bank' && (
+        <BankPicker
+          tests={tests}
+          loading={testsLoading}
+          busy={busy}
+          alreadyAttachedId={assignment?.test_id ?? null}
+          onClose={() => setOpenPicker(null)}
+          onAttach={async testId => {
+            await run(() => attachBank(testId))
+            setOpenPicker(null)
+          }}
+        />
+      )}
+
+      {nothingAttached && !openPicker && (
+        <p className="text-sm text-gray-400 py-1">К теме пока ничего не привязано.</p>
+      )}
+
+      {attached.map(item => (
+        <AttachedRow
+          key={item.variant_id}
+          title={item.title}
+          to={`/variants/${item.variant_id}`}
+          meta={[
+            `${SUBJECT_LABELS[item.subject] ?? item.subject} ${EXAM_LABELS[item.exam_type] ?? item.exam_type}`,
+            `${item.tasks_count} задач`,
+          ]}
+          stats={`выдано ${item.assigned_count} · прошли ${item.passed_count}`}
+          disabled={variantBusy}
+          onDelete={() => {
+            if (!confirm(`Открепить «${item.title}» от темы? Выдача ученикам будет снята.`)) return
+            void detachVariant(item.variant_id).catch(() => { /* текст ошибки в error хука */ })
+          }}
+        />
+      ))}
+
+      {assignment?.test && (
+        <AttachedRow
+          title={assignment.test.title}
+          to={`/tests/${assignment.test_id}`}
+          badge="банк"
+          meta={[`${assignment.test.description ? assignment.test.description : 'Тест из банка'}`]}
+          stats={hasAttempts ? 'есть попытки' : 'попыток пока нет'}
+          disabled={busy || hasAttempts}
+          deleteTitle={hasAttempts ? 'По тесту уже есть попытки' : 'Открепить'}
+          onDelete={() => {
+            if (!confirm('Открепить тест? По нему ещё нет попыток.')) return
+            void run(() => detachBank())
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Строка привязанного ──────────────────────────────────────────────────────
+
+function AttachedRow({
+  title, to, badge, meta, stats, disabled, deleteTitle, onDelete,
+}: {
+  title: string
+  to: string
+  badge?: string
+  meta: string[]
+  stats: string
+  disabled?: boolean
+  deleteTitle?: string
+  onDelete: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 px-3 py-2 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Link to={to} className="text-sm font-medium text-gray-800 hover:text-primary-600 truncate">
+            {title}
+          </Link>
+          {badge && <Badge variant="default">{badge}</Badge>}
+        </div>
+        <div className="mt-0.5 text-xs text-gray-400 flex items-center gap-2 flex-wrap">
+          <span>{meta.filter(Boolean).join(' · ')}</span>
+          <span className="flex items-center gap-1">
+            <Users size={11} />
+            {stats}
+          </span>
+        </div>
       </div>
+      <button
+        type="button"
+        title={deleteTitle ?? 'Открепить'}
+        disabled={disabled}
+        onClick={onDelete}
+        className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  )
+}
+
+// ── Выбор тестирования ───────────────────────────────────────────────────────
+
+function VariantPicker({
+  variants, loading, attachedIds, groups, busy, onClose, onAttach,
+}: {
+  variants: { id: string; title: string; subject: string; exam_type: string; tasks_count: number }[]
+  loading: boolean
+  attachedIds: Set<string>
+  groups: { group_id: string; group_name: string; student_count: number }[]
+  busy: boolean
+  onClose: () => void
+  onAttach: (variantId: string, groupIds: string[], dueAt: string | null) => Promise<void>
+}) {
+  const [search, setSearch] = useState('')
+  const [chosen, setChosen] = useState<string | null>(null)
+  const [chosenGroups, setChosenGroups] = useState<string[] | null>(null)
+  const [dueAt, setDueAt] = useState('')
+
+  const effectiveGroups = chosenGroups ?? groups.map(g => g.group_id)
+
+  const candidates = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return variants
+      .filter(v => !attachedIds.has(v.id))
+      .filter(v => !q || v.title.toLowerCase().includes(q))
+  }, [variants, attachedIds, search])
+
+  return (
+    <PickerShell title="Какое тестирование привязать" onClose={onClose}>
+      <SearchInput value={search} onChange={setSearch} placeholder="Поиск по названию…" />
+
+      {loading ? (
+        <PickerLoading />
+      ) : candidates.length === 0 ? (
+        <p className="text-sm text-gray-500 py-2">Нет доступных тестирований.</p>
+      ) : (
+        <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
+          {candidates.map(v => (
+            <label key={v.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="radio"
+                name="variant-pick"
+                checked={chosen === v.id}
+                onChange={() => setChosen(v.id)}
+                className="flex-shrink-0"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm text-gray-800 truncate">{v.title}</span>
+                <span className="block text-xs text-gray-400">
+                  {SUBJECT_LABELS[v.subject] ?? v.subject} {EXAM_LABELS[v.exam_type] ?? v.exam_type} · {v.tasks_count} задач
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {chosen && (
+        <>
+          <div>
+            <span className="block text-xs text-gray-500 mb-1.5">
+              Кому выдать — привязка к теме означает выдачу
+            </span>
+            {groups.length === 0 ? (
+              <p className="text-sm text-amber-700">У курса нет групп — выдать тестирование некому.</p>
+            ) : groups.length === 1 ? (
+              /* Один курс = одна группа (§61). Выбор из одного варианта — лишний
+                 клик, но кому уйдёт тест, всё равно написано. */
+              <p className="text-sm text-gray-700">
+                {groups[0].group_name}
+                <span className="ml-2 text-xs text-gray-400">{groups[0].student_count} уч.</span>
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {groups.map(g => (
+                  <label key={g.group_id} className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={effectiveGroups.includes(g.group_id)}
+                      onChange={() => setChosenGroups(
+                        effectiveGroups.includes(g.group_id)
+                          ? effectiveGroups.filter(id => id !== g.group_id)
+                          : [...effectiveGroups, g.group_id]
+                      )}
+                    />
+                    {g.group_name}
+                    <span className="text-xs text-gray-400">{g.student_count} уч.</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">Срок сдачи — не обязателен</label>
+            <input
+              type="datetime-local"
+              value={dueAt}
+              onChange={e => setDueAt(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+            />
+          </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={busy || effectiveGroups.length === 0}
+            onClick={() => {
+              void onAttach(chosen, effectiveGroups, dueAt ? new Date(dueAt).toISOString() : null)
+                .catch(() => { /* текст ошибки в error хука */ })
+            }}
+          >
+            {busy && <Loader2 size={14} className="mr-1 animate-spin" />}
+            Привязать и выдать
+          </Button>
+        </>
+      )}
+    </PickerShell>
+  )
+}
+
+// ── Выбор теста из банка ─────────────────────────────────────────────────────
+
+function BankPicker({
+  tests, loading, busy, alreadyAttachedId, onClose, onAttach,
+}: {
+  tests: { id: string; title: string; itemCount: number }[]
+  loading: boolean
+  busy: boolean
+  alreadyAttachedId: string | null
+  onClose: () => void
+  onAttach: (testId: string) => Promise<void>
+}) {
+  const [search, setSearch] = useState('')
+
+  // Пустой тест прикреплять бессмысленно, а строка «0 заданий» — мусор,
+  // который и создавал ощущение перегруза. Такие тесты не показываем вовсе.
+  const candidates = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return tests
+      .filter(t => t.itemCount > 0)
+      .filter(t => t.id !== alreadyAttachedId)
+      .filter(t => !q || t.title.toLowerCase().includes(q))
+  }, [tests, alreadyAttachedId, search])
+
+  return (
+    <PickerShell title="Какой тест прикрепить" onClose={onClose}>
+      <SearchInput value={search} onChange={setSearch} placeholder="Поиск теста по названию…" />
+
+      {loading ? (
+        <PickerLoading />
+      ) : candidates.length === 0 ? (
+        <p className="text-sm text-gray-500 py-2">
+          {tests.length === 0 ? 'Тестов в банке ещё нет.' : 'Подходящих тестов нет.'}
+        </p>
+      ) : (
+        <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
+          {candidates.map(test => (
+            <button
+              key={test.id}
+              type="button"
+              disabled={busy}
+              onClick={() => { void onAttach(test.id) }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <span className="block text-sm text-gray-800 truncate">{test.title}</span>
+              <span className="block text-xs text-gray-400">{test.itemCount} заданий</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Link to="/tests" className="block text-xs text-primary-600 hover:underline">
+        Создать новый тест в банке →
+      </Link>
+    </PickerShell>
+  )
+}
+
+// ── Оболочка выбора ──────────────────────────────────────────────────────────
+
+function PickerShell({ title, onClose, children }: {
+  title: string
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-800">{title}</span>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X size={15} />
+        </button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function SearchInput({ value, onChange, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+}) {
+  return (
+    <div className="relative">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+      />
+    </div>
+  )
+}
+
+function PickerLoading() {
+  return (
+    <div className="flex items-center gap-2 py-3 text-sm text-gray-400">
+      <Loader2 size={14} className="animate-spin" /> Загрузка…
     </div>
   )
 }

@@ -39,8 +39,16 @@ export function AssignHomeworkPage() {
 
     async function loadTargets() {
       setLoadingTargets(true)
-      const { data: teacher } = await supabase
-        .from('teachers').select('id').eq('profile_id', profile!.id).maybeSingle()
+      // Сужаем список до своих групп только НАСТОЯЩЕМУ учителю (роль в
+      // профиле). Раньше признаком служило само наличие строки в teachers, и
+      // это сломалось, когда владельцу-админу такую строку завели: у него
+      // групп как преподавателя ноль, и страница показывала пусто вместо всех
+      // групп школы. Остальные 15 мест с выборкой teachers по profile_id
+      // спрашивают именно роль — здесь теперь так же.
+      const isTeacher = profile!.role === 'teacher'
+      const { data: teacher } = isTeacher
+        ? await supabase.from('teachers').select('id').eq('profile_id', profile!.id).maybeSingle()
+        : { data: null }
 
       let groupQuery = supabase.from('groups').select('id, name').eq('is_active', true).order('name')
       if (teacher) groupQuery = groupQuery.eq('teacher_id', teacher.id)

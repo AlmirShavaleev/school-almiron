@@ -1,10 +1,14 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { useStaffMode } from '@/store/staffModeStore'
 
 // Redirects to the role-specific dashboard
 export function DashboardPage() {
   const profile = useAuthStore(s => s.profile)
+  // Владелец в режиме учителя попадает в кабинет учителя, а не в панель
+  // админа. Это представление: сам маршрут /admin остаётся ему доступен.
+  const { effectiveRole } = useStaffMode()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -16,8 +20,8 @@ export function DashboardPage() {
       admin: '/admin',
       owner: '/owner',
     }
-    navigate(routes[profile.role] || '/student', { replace: true })
-  }, [profile, navigate])
+    navigate(routes[effectiveRole ?? profile.role] || '/student', { replace: true })
+  }, [profile, effectiveRole, navigate])
 
   return (
     <div className="flex items-center justify-center h-64">
