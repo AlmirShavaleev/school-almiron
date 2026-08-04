@@ -48,11 +48,21 @@ const fromSpy = vi.fn((table: string) => {
   return makeChain({ data: null, error: null })
 })
 
+/**
+ * `record_app_visit` (§78) — отметка «человек заходил сегодня» для дашборда
+ * школы. AppAuth зовёт её после каждой удачной загрузки профиля, поэтому мок
+ * обязан знать `rpc`: без него весь файл падал с «supabase.rpc is not a
+ * function» на App.tsx. Ошибку вызова App глотает намеренно — счётчик
+ * активности не должен ломать вход, — поэтому мок отвечает успехом.
+ */
+const rpcSpy = vi.fn((_fn: string) => Promise.resolve({ data: null, error: null }))
+
 let authCallback: ((event: string, session: unknown) => void | Promise<void>) | null = null
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (table: string) => fromSpy(table),
+    rpc: (fn: string) => rpcSpy(fn),
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
       onAuthStateChange: (cb: (event: string, session: unknown) => void | Promise<void>) => {
@@ -79,6 +89,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
   beforeEach(() => {
     fromSpy.mockClear()
     insertSpy.mockClear()
+    rpcSpy.mockClear()
     profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'teacher' }
     profileMissing = false
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
@@ -186,5 +197,26 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     await fireAuthEvent()
 
     expect(insertSpy).not.toHaveBeenCalled()
+  })
+
+  // Мок теперь молча принимает любой rpc — без этой проверки пропажа отметки
+  // визита прошла бы незамеченной, и дашборд школы тихо показывал бы нули.
+  it('отмечает визит после загрузки профиля', async () => {
+    render(<AppAuth />)
+    await fireAuthEvent()
+
+    expect(rpcSpy).toHaveBeenCalledWith('record_app_visit')
+  })
+
+  // profileMissing оставляет строку ненайденной и после вставки — это путь
+  // «профиля так и нет». Визит по такому входу не отмечается: в app_visits
+  // ключ на profiles, и запись всё равно упёрлась бы в FK.
+  it('не отмечает визит, когда профиля нет', async () => {
+    profileMissing = true
+
+    render(<AppAuth />)
+    await fireAuthEvent()
+
+    expect(rpcSpy).not.toHaveBeenCalledWith('record_app_visit')
   })
 })

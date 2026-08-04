@@ -202,6 +202,7 @@ export function CollectionDetailPage() {
           subject={collection.subject}
           examType={examType}
           initialTitle={collection.title}
+          fileNamePrefix="Подборка"
         />
       )}
 

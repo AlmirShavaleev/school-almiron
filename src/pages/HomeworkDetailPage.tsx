@@ -304,7 +304,7 @@ export function HomeworkDetailPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText size={17} />Условие</CardTitle>
             {hw.file_url && (
-              <SignedFileLink bucket="homeworks" url={hw.file_url}
+              <SignedFileLink bucket="homeworks" url={hw.file_url} download
                 className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
                 <Download size={13} />Скачать файл
               </SignedFileLink>
@@ -450,6 +450,8 @@ export function HomeworkDetailPage() {
                   {getPrimarySubmissionFilePath(row) && (
                     <SignedFileLink bucket="homeworks" url={getPrimarySubmissionFilePath(row)!}
                       onClick={e => e.stopPropagation()}
+                      download
+                      title="Скачать работу ученика"
                       className="text-gray-400 hover:text-primary-600 shrink-0"
                     >
                       <Download size={14} />

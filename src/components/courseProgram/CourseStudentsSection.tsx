@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, Check, X, Lock, Unlock } from 'lucide-react'
+import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, UserPlus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
 import { formatInviteCode } from '@/lib/studentInviteSession'
 import { toast } from '@/store/toastStore'
+import { ROLE_LABELS } from '@/store/staffModeStore'
 
 interface StudentInfo {
   studentId: string
@@ -38,6 +39,16 @@ interface Curator {
   email: string
 }
 
+interface CuratorCandidate {
+  profileId: string
+  fullName: string
+  email: string
+  role: string
+}
+
+/** Минимум символов, с которого RPC вообще что-то ищет (см. миграцию). */
+const CANDIDATE_MIN_QUERY = 2
+
 function formatDate(value: string | null): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('ru-RU', {
@@ -70,7 +81,7 @@ function JoinLinkCard({
 
   const roleLabel = role === 'student' ? 'Для учеников' : 'Для кураторов'
   const caption = role === 'curator'
-    ? 'Куратор проверяет ДЗ и видит результаты учеников этого курса. Количество кураторов не ограничено.'
+    ? 'Куратор проверяет ДЗ и видит результаты учеников этого курса. Подойдёт любой аккаунт, в том числе ученический: роль профиля не меняется. Количество кураторов не ограничено.'
     : 'Ссылка постоянная и общая для всех учеников. Ученик регистрируется сам и сразу попадает в курс.'
   const invitationButtonLabel = role === 'curator' ? 'Скопировать приглашение куратора' : 'Скопировать приглашение'
   const fieldIdPrefix = role === 'curator' ? 'curator_' : ''
@@ -144,7 +155,10 @@ function JoinLinkCard({
           const formattedCode = formatInviteCode(link.shortCode)
           let message: string
           if (role === 'curator') {
-            message = `Привет! Ты куратор курса «${courseTitle}» в School Almiron. Перейди по ссылке и зарегистрируйся:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
+            // «зарегистрируйся» здесь стояло от отменённой модели, где
+            // кураторство было ролью и требовало отдельного аккаунта. Теперь
+            // это назначение поверх любого аккаунта — у ученика он уже есть.
+            message = `Привет! Ты куратор курса «${courseTitle}» в School Almiron. Перейди по ссылке — войди в свой аккаунт или заведи новый:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
           } else {
             message = `Привет! Присоединяйся к курсу в School Almiron:\n${url}\n\nИли введи код на ${origin}/join: ${formattedCode}`
           }
@@ -216,6 +230,15 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   // Curators
   const [curators, setCurators] = useState<Curator[]>([])
   const [loadingCurators, setLoadingCurators] = useState(false)
+
+  // Назначение куратора: поиск по всей школе через definer-RPC. Куратором
+  // можно сделать ЛЮБОЙ профиль, в том числе ученика чужого курса, — обычные
+  // profiles-политики такого человека вызывающему не покажут.
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignQuery, setAssignQuery] = useState('')
+  const [assignResults, setAssignResults] = useState<CuratorCandidate[]>([])
+  const [assignSearching, setAssignSearching] = useState(false)
+  const [assignBusyId, setAssignBusyId] = useState<string | null>(null)
 
   // Refresh trigger
   const [tick, setTick] = useState(0)
@@ -512,8 +535,63 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     }
   }
 
+  // Поиск кандидатов. Запрос уезжает не на каждую букву: RPC ходит по всей
+  // таблице профилей, и дёргать её посимвольно — лишняя нагрузка на базу
+  // ради строки, которую человек ещё дописывает.
+  useEffect(() => {
+    const needle = assignQuery.trim()
+    if (!assignOpen || needle.length < CANDIDATE_MIN_QUERY) {
+      setAssignResults([])
+      setAssignSearching(false)
+      return
+    }
+
+    let cancelled = false
+    setAssignSearching(true)
+
+    const timer = setTimeout(async () => {
+      const { data, error } = await (supabase.rpc as any)('course_curator_candidates', {
+        p_course_id: courseId,
+        p_query:     needle,
+      })
+      if (cancelled) return
+
+      if (error) {
+        setRpcError(error.message)
+        setAssignResults([])
+      } else {
+        setAssignResults(((data || []) as any[]).map(row => ({
+          profileId: row.profile_id,
+          fullName:  row.full_name || '—',
+          email:     row.email || '',
+          role:      row.role || '',
+        })))
+      }
+      setAssignSearching(false)
+    }, 300)
+
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [assignOpen, assignQuery, courseId])
+
+  // Перечитать список кураторов курса. Нужен и после назначения, и после
+  // снятия: держать локальную копию в согласии с базой руками — способ
+  // однажды показать курс с куратором, которого там уже нет.
+  async function refreshCurators() {
+    const { data } = await (supabase as any)
+      .from('course_curators')
+      .select('id, profile_id, profiles(full_name, email)')
+      .eq('course_id', courseId)
+
+    setCurators((data || []).map((row: any) => ({
+      id:        row.id,
+      profileId: row.profile_id,
+      fullName:  row.profiles?.full_name || 'Куратор',
+      email:     row.profiles?.email || '',
+    })))
+  }
+
   // Remove curator
-  async function handleRemoveCurator(curatorId: string, curatorName: string) {
+  async function handleRemoveCurator(profileId: string, curatorName: string) {
     if (!window.confirm(`Убрать ${curatorName} из кураторов курса?`)) {
       return
     }
@@ -521,20 +599,42 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
     setRpcError(null)
 
     try {
-      const { error } = await (supabase as any)
-        .from('course_curators')
-        .delete()
-        .eq('id', curatorId)
+      // Через RPC, а не голым delete: у отказа должен быть человеческий
+      // текст. Голая правка под RLS удаляет ноль строк и молчит — «ничего не
+      // произошло» неотличимо от «получилось» (уроки §47/§54).
+      const { error } = await (supabase.rpc as any)('course_curator_remove', {
+        p_course_id:  courseId,
+        p_profile_id: profileId,
+      })
+      if (error) throw new Error(error.message)
 
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      // Remove locally
-      setCurators(curators.filter(c => c.id !== curatorId))
-      toast.success('Куратор удален')
+      await refreshCurators()
+      toast.success('Куратор снят с курса')
     } catch (e: any) {
-      setRpcError(e.message || 'Ошибка при удалении куратора')
+      setRpcError(e.message || 'Ошибка при снятии куратора')
+    }
+  }
+
+  // Assign curator
+  async function handleAssignCurator(candidate: CuratorCandidate) {
+    setRpcError(null)
+    setAssignBusyId(candidate.profileId)
+
+    try {
+      const { error } = await (supabase.rpc as any)('course_curator_assign', {
+        p_course_id:  courseId,
+        p_profile_id: candidate.profileId,
+      })
+      if (error) throw new Error(error.message)
+
+      await refreshCurators()
+      setAssignResults(prev => prev.filter(c => c.profileId !== candidate.profileId))
+      setAssignQuery('')
+      toast.success(`${candidate.fullName} — куратор курса`)
+    } catch (e: any) {
+      setRpcError(e.message || 'Ошибка при назначении куратора')
+    } finally {
+      setAssignBusyId(null)
     }
   }
 
@@ -818,9 +918,71 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
 
           {/* Curators list */}
           <div className="border border-gray-200 rounded-lg p-6 bg-white">
-            <h3 className="text-sm font-medium text-gray-900 mb-4">
-              Кураторы курса ({curators.length})
-            </h3>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h3 className="text-sm font-medium text-gray-900">
+                Кураторы курса ({curators.length})
+              </h3>
+              <button
+                data-testid="assign-curator-toggle"
+                onClick={() => { setAssignOpen(!assignOpen); setAssignQuery('') }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors shrink-0"
+              >
+                <UserPlus size={14} />
+                {assignOpen ? 'Отмена' : 'Назначить куратора'}
+              </button>
+            </div>
+
+            {assignOpen && (
+              <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <input
+                  data-testid="assign-curator-search"
+                  autoFocus
+                  value={assignQuery}
+                  onChange={e => setAssignQuery(e.target.value)}
+                  placeholder="Имя или email — куратором можно назначить любого"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                {/* Куратором может стать и ученик — это не ошибка, а замысел:
+                    роль профиля кураторство не меняет. */}
+                <p className="mt-2 text-xs text-gray-500">
+                  Ученик остаётся учеником в своих курсах. Куратор проверяет ДЗ и
+                  видит программу, но не меняет её.
+                </p>
+
+                <div className="mt-3 space-y-1.5">
+                  {assignQuery.trim().length < CANDIDATE_MIN_QUERY ? (
+                    <p className="text-sm text-gray-500">Введите хотя бы два символа</p>
+                  ) : assignSearching ? (
+                    <p className="text-sm text-gray-500 flex items-center gap-2">
+                      <Loader2 size={14} className="animate-spin" /> Ищем…
+                    </p>
+                  ) : assignResults.length === 0 ? (
+                    <p className="text-sm text-gray-500">Никого не нашли</p>
+                  ) : (
+                    assignResults.map(candidate => (
+                      <button
+                        key={candidate.profileId}
+                        onClick={() => handleAssignCurator(candidate)}
+                        disabled={assignBusyId != null}
+                        className="w-full flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white border border-gray-200 hover:border-primary-400 hover:bg-primary-50 transition-colors text-left disabled:opacity-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-gray-900 truncate">
+                            {candidate.fullName}
+                          </span>
+                          <span className="block text-xs text-gray-500 truncate">
+                            {candidate.email} · {ROLE_LABELS[candidate.role] ?? candidate.role}
+                          </span>
+                        </span>
+                        {assignBusyId === candidate.profileId
+                          ? <Loader2 size={14} className="animate-spin shrink-0 text-primary-600" />
+                          : <UserPlus size={14} className="shrink-0 text-primary-600" />}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
 
             {curators.length > 0 ? (
               <div className="space-y-2">
@@ -835,7 +997,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleRemoveCurator(curator.id, curator.fullName)}
+                      onClick={() => handleRemoveCurator(curator.profileId, curator.fullName)}
                       className="ml-2 p-1.5 rounded text-red-600 hover:bg-red-100 hover:text-red-800 transition-colors shrink-0"
                       title="Убрать куратора"
                     >

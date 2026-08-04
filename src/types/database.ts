@@ -5780,6 +5780,27 @@ export type Database = {
         }
         Returns: Json
       }
+      course_can_assign_curator: {
+        Args: { p_course_id: string }
+        Returns: boolean
+      }
+      course_curator_assign: {
+        Args: { p_course_id: string; p_profile_id: string }
+        Returns: string
+      }
+      course_curator_candidates: {
+        Args: { p_course_id: string; p_query: string }
+        Returns: {
+          email: string
+          full_name: string
+          profile_id: string
+          role: string
+        }[]
+      }
+      course_curator_remove: {
+        Args: { p_course_id: string; p_profile_id: string }
+        Returns: undefined
+      }
       course_default_module: { Args: { p_course_id: string }; Returns: string }
       course_delete_execute: { Args: { p_course_id: string }; Returns: Json }
       course_delete_preview: { Args: { p_course_id: string }; Returns: Json }

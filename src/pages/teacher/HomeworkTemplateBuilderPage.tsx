@@ -174,7 +174,7 @@ export function HomeworkTemplateBuilderPage() {
               <button onClick={() => setShowPreview(false)} className="text-gray-500 hover:bg-gray-100 rounded-lg p-2"><X size={18} /></button>
             </div>
             <div className="overflow-auto p-2 sm:p-4">
-              <VariantPrintPanel items={printItems} subject={course.subject} examType={course.exam_type} initialTitle={title || 'Домашнее задание'} />
+              <VariantPrintPanel items={printItems} subject={course.subject} examType={course.exam_type} initialTitle={title || 'Домашнее задание'} fileNamePrefix="Домашнее задание" />
             </div>
           </div>
         </div>

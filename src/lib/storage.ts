@@ -53,13 +53,30 @@ export async function getSignedFileUrl(
   bucket: PrivateBucket,
   path: string | null | undefined,
   expiresIn = 3600,
+  downloadName?: string,
 ): Promise<string | null> {
   const clean = extractStoragePath(path, bucket)
   if (!clean) return null
   // If it's some foreign absolute URL we can't sign, return it untouched.
   if (/^https?:\/\//i.test(clean)) return clean
 
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(clean, expiresIn)
+  // downloadName просит Storage отдать файл с Content-Disposition: attachment
+  // и этим именем. Без него PDF и картинки открываются во встроенном
+  // просмотрщике: атрибута download на ссылке недостаточно, он игнорируется
+  // для чужого origin (файлы отдаёт домен Supabase, а не наш).
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(clean, expiresIn, downloadName ? { download: downloadName } : undefined)
   if (error || !data) throw new Error('Не удалось получить ссылку на файл: ' + (error?.message ?? 'unknown'))
   return data.signedUrl
+}
+
+/**
+ * Имя файла для скачивания: последний сегмент пути в Storage.
+ * Пути вида `submissions/<uuid>/attempt-1.pdf` дают «attempt-1.pdf» —
+ * читаемее, чем весь путь, и не раскрывает структуру бакета.
+ */
+export function fileNameFromStoragePath(path: string | null | undefined, fallback = 'file'): string {
+  const clean = (path ?? '').split('?')[0].split('/').filter(Boolean).pop()
+  return clean ? decodeURIComponent(clean) : fallback
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildVariantFileName,
+  buildHumanPdfFileName,
   resolveSourceLabel,
   resolveSectionLabel,
   buildAnswersList,
@@ -45,6 +46,49 @@ describe('buildVariantFileName', () => {
   it('handles slug subjects directly (math/physics)', () => {
     expect(buildVariantFileName('physics', 'ege', '1'))
       .toBe('school-almiron-physics-ege-variant-1.pdf')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// buildHumanPdfFileName
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('buildHumanPdfFileName', () => {
+  it('склеивает префикс и заголовок', () => {
+    expect(buildHumanPdfFileName('№1 Кинематика', { prefix: 'Подборка' }))
+      .toBe('Подборка — №1 Кинематика.pdf')
+  })
+
+  it('не повторяет префикс, если заголовок уже с него начинается', () => {
+    expect(buildHumanPdfFileName('Подборка из каталога', { prefix: 'Подборка' }))
+      .toBe('Подборка из каталога.pdf')
+  })
+
+  it('добавляет номер варианта, когда он задан', () => {
+    expect(buildHumanPdfFileName('Пробник', { prefix: 'Вариант', variantNumber: '57189903' }))
+      .toBe('Вариант — Пробник №57189903.pdf')
+  })
+
+  it('вычищает символы, запрещённые в именах файлов', () => {
+    expect(buildHumanPdfFileName('Оптика: линзы / зеркала?', { prefix: 'Подборка' }))
+      .toBe('Подборка — Оптика линзы зеркала.pdf')
+  })
+
+  it('сохраняет дефисы внутри названия', () => {
+    expect(buildHumanPdfFileName('RC-цепи', { prefix: 'Подборка' }))
+      .toBe('Подборка — RC-цепи.pdf')
+  })
+
+  it('возвращает null на пустом заголовке — вызывающий берёт слаг', () => {
+    expect(buildHumanPdfFileName('   ')).toBeNull()
+    expect(buildHumanPdfFileName(null)).toBeNull()
+    expect(buildHumanPdfFileName(undefined)).toBeNull()
+  })
+
+  it('обрезает слишком длинный заголовок', () => {
+    const name = buildHumanPdfFileName('А'.repeat(300), { prefix: 'Подборка' })!
+    expect(name.endsWith('.pdf')).toBe(true)
+    expect(name.length).toBeLessThanOrEqual(124)
   })
 })
 

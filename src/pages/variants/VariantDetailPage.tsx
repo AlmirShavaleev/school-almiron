@@ -187,6 +187,8 @@ export function VariantDetailPage() {
             items={printableItems}
             subject={variant.subject}
             examType={variant.exam_type}
+            initialTitle={variant.title}
+            fileNamePrefix="Вариант"
           />
         </div>
       )}

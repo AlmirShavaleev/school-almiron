@@ -8,7 +8,7 @@ import {
   saveVariantPrintSettings,
   type VariantPrintSettings,
 } from '@/types/variantPrint'
-import { buildVariantFileName, marginsToCss, fontSizeToCss, printContentHeightMm, buildKeyTable, type PrintableItem } from '@/utils/variantPrintUtils'
+import { buildVariantFileName, buildHumanPdfFileName, marginsToCss, fontSizeToCss, printContentHeightMm, buildKeyTable, type PrintableItem } from '@/utils/variantPrintUtils'
 
 interface Props {
   items:         PrintableItem[]
@@ -23,6 +23,11 @@ interface Props {
   lockedSettings?: Partial<VariantPrintSettings>
   /** Hide the left settings column entirely (e.g. student direct-download flow). */
   hideSettingsPanel?: boolean
+  /**
+   * Слово перед заголовком в имени файла: «Подборка — №1 Кинематика.pdf».
+   * Не подставляется, если заголовок уже начинается с него.
+   */
+  fileNamePrefix?: string
 }
 
 const DEBOUNCE_MS = 300
@@ -43,6 +48,7 @@ export function VariantPrintPanel({
   initialSettingsOverride,
   lockedSettings,
   hideSettingsPanel = false,
+  fileNamePrefix,
 }: Props) {
   const [settings, setSettings] = useState<VariantPrintSettings>(() => {
     const loaded = loadVariantPrintSettings()
@@ -125,9 +131,17 @@ export function VariantPrintPanel({
   const isLoading = !ready && !timedOut && !confirmedBroken && total > 0
   const hasBroken = broken.length > 0
 
+  // Имя, которое браузер предложит в «Сохранить как PDF»: берётся из
+  // document.title (см. handlePrint). Человеческий заголовок документа
+  // читается лучше слага, поэтому слаг остаётся запасным — на случай, когда
+  // заголовок пуст.
   const fileName = useMemo(
-    () => buildVariantFileName(subject, examType, effectiveSettings.variantNumber),
-    [subject, examType, effectiveSettings.variantNumber],
+    () =>
+      buildHumanPdfFileName(effectiveSettings.title, {
+        prefix: fileNamePrefix,
+        variantNumber: effectiveSettings.variantNumber,
+      }) ?? buildVariantFileName(subject, examType, effectiveSettings.variantNumber),
+    [subject, examType, effectiveSettings.title, effectiveSettings.variantNumber, fileNamePrefix],
   )
 
   const isWorksheet = effectiveSettings.mode === 'worksheet'
@@ -252,6 +266,15 @@ export function VariantPrintPanel({
               )}
             </button>
           </div>
+
+          {/* Диалог печати — не загрузка: файл сохраняет сам браузер, и в
+              списке загрузок он не появляется. Раньше это выглядело как
+              «PDF пропал», поэтому имя файла и место сохранения названы прямо. */}
+          <p className="mb-3 text-xs text-gray-500">
+            Откроется диалог печати браузера — выберите «Сохранить как PDF».
+            Имя файла: <span className="font-medium text-gray-700">{fileName}</span>.
+            Такой файл сохраняется мимо списка загрузок — там его не ищите.
+          </p>
 
           {timedOut && !confirmedBroken ? (
             <TimeoutNotice

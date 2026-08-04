@@ -16,7 +16,7 @@ import { useStaffMode, type StaffMode } from '@/store/staffModeStore'
  * дашборде. Иначе переключение посреди каталога или проверки ДЗ выбрасывало
  * бы со страницы, на которой работаешь.
  */
-const DASHBOARD_ROUTES = ['/dashboard', '/admin', '/teacher', '/curator']
+const DASHBOARD_ROUTES = ['/dashboard', '/admin', '/teacher']
 
 const OPTIONS: Array<{ mode: StaffMode; label: string; icon: React.ReactNode }> = [
   { mode: 'admin',   label: 'Администратор', icon: <Shield size={14} /> },

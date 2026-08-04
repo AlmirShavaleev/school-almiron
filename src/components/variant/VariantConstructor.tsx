@@ -958,7 +958,7 @@ function PreviewStep({
 
       {showPrintPanel && tasks.length > 0 && (
         <div className="mt-6 pt-6 border-t border-gray-200">
-          <VariantPrintPanel items={printItems} subject={subject} examType={examType} initialTitle={title} />
+          <VariantPrintPanel items={printItems} subject={subject} examType={examType} initialTitle={title} fileNamePrefix="Вариант" />
         </div>
       )}
     </>

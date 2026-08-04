@@ -100,6 +100,49 @@ export function buildVariantFileName(
   return `${parts.join('-')}.pdf`
 }
 
+/**
+ * Человеческое имя файла для PDF: «Подборка — №1 Кинематика.pdf».
+ *
+ * Печать идёт через window.print(), а имя, которое браузер подставит в
+ * «Сохранить как PDF», он берёт из document.title. Слаг
+ * buildVariantFileName (school-almiron-physics-ege-…) остаётся запасным
+ * вариантом на случай, когда заголовок документа пуст: пользователю всё
+ * равно нужно хоть какое-то имя.
+ *
+ * Убираются символы, запрещённые в именах файлов Windows (\ / : * ? " < > |)
+ * и управляющие; точки в конце Windows тоже отбрасывает молча, поэтому
+ * срезаются заранее. Длина ограничена 120 символами — это меньше лимита
+ * любой файловой системы, но уже нечитаемо длинно.
+ */
+export function buildHumanPdfFileName(
+  title: string | null | undefined,
+  options: { prefix?: string; variantNumber?: string | null } = {},
+): string | null {
+  const cleanTitle = sanitizeFileNamePart(title)
+  if (!cleanTitle) return null
+
+  const prefix = sanitizeFileNamePart(options.prefix)
+  // «Подборка — Подборка из каталога» читается плохо: если заголовок уже
+  // начинается с того же слова, префикс не добавляем.
+  const needsPrefix = Boolean(prefix) && !cleanTitle.toLowerCase().startsWith(prefix!.toLowerCase())
+  const number = sanitizeFileNamePart(options.variantNumber)
+
+  const parts = [needsPrefix ? `${prefix} — ${cleanTitle}` : cleanTitle]
+  if (number) parts.push(`№${number}`)
+
+  return `${parts.join(' ').slice(0, 120).trim()}.pdf`
+}
+
+function sanitizeFileNamePart(value: string | null | undefined): string | null {
+  if (!value) return null
+  const cleaned = value
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s.]+|[\s.]+$/g, '')
+  return cleaned || null
+}
+
 // ── Metadata filtering ──────────────────────────────────────────────────────
 
 /** Returns a trimmed source URL string, or null when there's nothing to show. */

@@ -129,6 +129,7 @@ export function StudentVariantBuildPage() {
               subject={printSubject}
               examType={printExamType}
               initialTitle="Подборка из каталога"
+              fileNamePrefix="Подборка"
             />
           ) : (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">

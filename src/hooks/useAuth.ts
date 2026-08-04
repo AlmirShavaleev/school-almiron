@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { clearStaffModeChoice } from '@/store/staffModeStore'
+import { resetCuratorshipsCache } from '@/hooks/useMyCuratorships'
 import type { UserRole } from '@/types'
 
 /**
@@ -50,6 +51,10 @@ export function useAuth() {
     // режим. Сам выбранный режим в localStorage остаётся — он подставляется
     // как предложенный по умолчанию.
     clearStaffModeChoice(profile?.id)
+    // Кураторство кэшируется по profile_id на время вкладки. Ключ разный, так
+    // что чужой ответ подставиться не может, — но держать в памяти права
+    // вышедшего человека незачем.
+    resetCuratorshipsCache()
     await supabase.auth.signOut()
     reset()
   }

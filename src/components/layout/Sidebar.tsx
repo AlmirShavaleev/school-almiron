@@ -4,10 +4,11 @@ import { useAuthStore } from '@/store/authStore'
 import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
+import { useMyCuratorships } from '@/hooks/useMyCuratorships'
 import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
-  GraduationCap, BarChart3, Calendar, CheckSquare, Bell, LogOut,
+  GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
   Send, ClipboardEdit,
   LibraryBig, Shield,
@@ -50,7 +51,6 @@ const navItems: NavItem[] = [
 
   // Other roles (flat)
   { label: 'Кабинет учителя',   path: '/teacher',        icon: <GraduationCap size={18} />, roles: ['teacher'] },
-  { label: 'Кабинет куратора',  path: '/curator',        icon: <CheckSquare size={18} />,   roles: ['curator'] },
   { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
@@ -74,8 +74,25 @@ const navItems: NavItem[] = [
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
 ]
 
+/**
+ * Вход в кураторство для того, кто по профилю остаётся учеником.
+ *
+ * Кураторство с 2026-08-05 — назначение поверх аккаунта, а не роль, поэтому
+ * пункты нельзя раздать через `roles`: у человека там `student`. Это и НЕ
+ * учительский кабинет — куратор проверяет ДЗ и смотрит, а не ведёт курс
+ * (решение владельца: без правки программы, открытия тем и выдачи тестов).
+ *
+ * Пути те же, что у преподавателя: страницы общие, разное на них показывает
+ * RLS и сужение `useMyTeachingScope`.
+ */
+const CURATOR_ITEMS: NavItem[] = [
+  { label: 'Проверка ДЗ',     path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
+  { label: 'Программа курса', path: '/course-program', icon: <BookOpen size={18} />,       roles: [], section: 'Курирую' },
+  { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
+]
+
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/curator', '/admin', '/admin/telegram', '/inbox'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/inbox'] },
   { title: 'Учебный процесс', paths: ['/groups', '/students', '/lessons', '/schedule', '/attendance', '/course-program', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/homework-queue', '/tests', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
@@ -92,6 +109,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const badges = useSidebarBadges()
+  const curatorships = useMyCuratorships()
 
   if (!profile) return null
 
@@ -115,6 +133,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       const sec = item.section ?? ''
       if (!seen.has(sec)) { seen.add(sec); studentSections.push({ title: sec, items: [] }) }
       studentSections.find(s => s.title === sec)!.items.push(item)
+    }
+    // «Курирую» — перед «Аккаунтом»: это учебный раздел, а не настройки.
+    if (curatorships.isCurator) {
+      const before = studentSections.findIndex(s => s.title === 'Аккаунт')
+      const section = { title: 'Курирую', items: CURATOR_ITEMS }
+      if (before === -1) studentSections.push(section)
+      else studentSections.splice(before, 0, section)
     }
   }
 

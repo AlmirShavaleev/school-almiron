@@ -64,13 +64,21 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
       if (err) { setError(err.message); setLoading(false); return }
 
       const loaded = sortQueue(toQueueRows(data ?? []))
-      setAll(scope.active ? loaded.filter(r => scope.courseIds.includes(r.courseId)) : loaded)
+      // Куратор курса — это может быть ученик другого курса, и RLS отдаёт ему
+      // ЕЩЁ И его собственные сдачи (`student_id = auth_student_id()`).
+      // Сам себя человек не проверяет: свои работы из очереди убираем.
+      // У владельца строки `students` нет, `ownStudentId` там null — фильтр
+      // вырождается в тождество и вкладки считаются как раньше.
+      setAll(scope.active
+        ? loaded.filter(r => scope.courseIds.includes(r.courseId)
+                          && r.attempt.student_id !== scope.ownStudentId)
+        : loaded)
       setLoading(false)
     }
 
     load()
     return () => { cancelled = true }
-  }, [tick, scope.active, scope.loading, scope.courseIds])
+  }, [tick, scope.active, scope.loading, scope.courseIds, scope.ownStudentId])
 
   /**
    * Подробности — только для строк ОТКРЫТОЙ вкладки: файлы, имена учеников и

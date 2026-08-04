@@ -336,13 +336,20 @@ export function StudentEnrollmentModal({ open, onClose, groups, defaultGroupId =
         ].join(',')
       }),
     ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+    // BOM: без него Excel читает кириллицу в CSV как «ÐÐ¸Ð°Ð½Ð°».
+    const blob = new Blob(['﻿', lines.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `student-invites-${batchResult.batchId}.csv`
+    anchor.download = `Приглашения учеников — ${batchResult.batchId}.csv`
+    anchor.style.display = 'none'
+    // Якорь должен быть в DOM: Safari игнорирует click() по неприсоединённому.
+    document.body.appendChild(anchor)
     anchor.click()
-    URL.revokeObjectURL(url)
+    anchor.remove()
+    // Освобождать blob сразу после click() рано: Safari успевает отменить
+    // ещё не начавшуюся загрузку. Отпускаем на следующем такте.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   async function copyAllInvites() {

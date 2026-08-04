@@ -13,7 +13,6 @@ const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardP
 // Role dashboards
 const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })))
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
-const CuratorDashboard = lazyPage('CuratorDashboard', () => import('@/pages/curator/CuratorDashboard').then(m => ({ default: m.CuratorDashboard })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
@@ -113,7 +112,15 @@ export default function AppRoutes() {
         {/* Дашборды по ролям */}
         <Route path="/student" element={<RoleGuard allow={['student']}><StudentDashboard /></RoleGuard>} />
         <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
-        <Route path="/curator" element={<RoleGuard allow={['curator','admin','owner']}><CuratorDashboard /></RoleGuard>} />
+        {/* Маршрута /curator больше нет (снесён 2026-08-05 по решению
+            владельца). «Кабинет куратора» стоял на легаси-механике —
+            таблице `curators`, слоте `groups.curator_id` и мёртвом контуре
+            `homeworks`/`homework_submissions` (0 строк), — то есть не мог
+            показать ничего даже единственному профилю с ролью curator.
+            Новое кураторство живёт в `course_curators` и входа в отдельный
+            кабинет не имеет: куратор работает на общих страницах проверки
+            ДЗ, программы и учеников. Страница CuratorDashboard.tsx оставлена
+            на диске до общей зачистки перед запуском. */}
         <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
         {/* Журнал отправок Telegram. Страница существовала с 08.07, но не была
             подключена ни маршрутом, ни импортом — быстрая ссылка на неё в
@@ -124,11 +131,11 @@ export default function AppRoutes() {
         {/* Только персонал (teacher/curator/admin/owner) */}
         <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
         <Route path="/groups/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupControlPanel /></RoleGuard>} />
-        <Route path="/students" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentsPage /></RoleGuard>} />
+        <Route path="/students" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><StudentsPage /></RoleGuard>} />
         <Route path="/teachers/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TeacherDetailPage /></RoleGuard>} />
         <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />
-        <Route path="/course-program" element={<RoleGuard allow={['teacher','curator','admin','owner']}><CourseProgramPage /></RoleGuard>} />
+        <Route path="/course-program" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><CourseProgramPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
         <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
@@ -175,7 +182,7 @@ export default function AppRoutes() {
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Общая очередь проверки PDF-ДЗ нового контура */}
-        <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewQueuePage /></RoleGuard>} />
+        <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><HomeworkReviewQueuePage /></RoleGuard>} />
 
         {/* Банк тестов */}
         <Route path="/tests" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankPage /></RoleGuard>} />

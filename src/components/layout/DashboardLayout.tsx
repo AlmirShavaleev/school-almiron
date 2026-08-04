@@ -24,7 +24,6 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/student\/variants/, 'Тренировочные варианты'],
   [/^\/student$/, 'Мой кабинет'],
   [/^\/teacher$/, 'Кабинет учителя'],
-  [/^\/curator$/, 'Кабинет куратора'],
   [/^\/admin\/telegram/, 'Журнал Telegram'],
   [/^\/admin$/, 'Панель админа'],
   [/^\/groups\/[^/]+$/, 'Панель группы'],

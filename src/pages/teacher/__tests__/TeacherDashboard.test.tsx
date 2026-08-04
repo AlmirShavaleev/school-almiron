@@ -3,8 +3,26 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'
 
+/**
+ * Тест переписан 2026-08-04 под нынешний кабинет.
+ *
+ * Прежняя версия описывала кабинет двух переделок назад: кормила
+ * `useTeacherHomeworkSummary` и ждала «Ожидают проверки», «На доработке у
+ * учеников», «Все работы проверены». Ни одного из этих текстов в компоненте
+ * давно нет, и хука он больше не зовёт — страница живёт на одном
+ * `useTeacherDashboard`. Пять красных висели бесхозными и ничего не сторожили.
+ *
+ * Замысел прежнего теста сохранён: кабинет показывает очередь по живому
+ * контуру `topic_homework_*`, а не по легаси. Сам запрет на легаси держится в
+ * хуке; здесь проверяется, что кабинет рисует именно из него.
+ */
+
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector: any) => selector({ profile: { id: 'profile-1', full_name: 'Виктор Андреев' } }),
+  useAuthStore: (selector: any) => selector({ profile: { id: 'profile-1', full_name: 'Виктор Андреев', role: 'teacher' } }),
+}))
+
+vi.mock('@/store/staffModeStore', () => ({
+  useEffectiveRole: () => 'teacher',
 }))
 
 const useTeacherDashboardMock = vi.fn()
@@ -12,66 +30,71 @@ vi.mock('@/hooks/useTeacherDashboard', () => ({
   useTeacherDashboard: (...args: unknown[]) => useTeacherDashboardMock(...args),
 }))
 
-const useTeacherHomeworkSummaryMock = vi.fn()
-vi.mock('@/hooks/useTeacherHomeworkSummary', () => ({
-  useTeacherHomeworkSummary: (...args: unknown[]) => useTeacherHomeworkSummaryMock(...args),
-}))
-
 const baseDashboard = {
-  groups: [], lessons: [], stats: { total_groups: 0, total_students: 0, today_lessons: 0 },
-  todayLessons: [], loading: false, reload: vi.fn(),
-}
-
-const emptySummary = {
-  active_assignments: 0, scheduled_assignments: 0, attempts_awaiting_review: 0,
-  returned_for_revision: 0, overdue_recipients: 0, accepted_today: 0, accepted_this_week: 0,
-  groups_with_overdue_homework: 0, recently_assigned: [],
+  courses: [],
+  pendingReviews: [],
+  recentTests: [],
+  stats: { courses: 0, students: 0, pendingReviews: 0, bankTests: 0 },
+  loading: false,
+  reload: vi.fn(),
 }
 
 function renderDashboard() {
   return render(<MemoryRouter><TeacherDashboard /></MemoryRouter>)
 }
 
-beforeEach(() => {
-  useTeacherDashboardMock.mockReturnValue(baseDashboard)
+const attempt = (attemptId: string, studentName: string, hwTitle: string) => ({
+  attemptId, studentName, hwTitle, submittedAt: '2026-08-01T10:00:00Z',
 })
 
-describe('TeacherDashboard — Homework V2 (не читает legacy homeworks/homework_submissions)', () => {
-  it('показывает попытки, ожидающие проверки (pending)', () => {
-    useTeacherHomeworkSummaryMock.mockReturnValue({ summary: { ...emptySummary, attempts_awaiting_review: 3 }, loading: false, error: null })
-    renderDashboard()
-    expect(screen.getByText('Ожидают проверки')).toBeInTheDocument()
-    expect(screen.getByText('(3)')).toBeInTheDocument()
+describe('TeacherDashboard — очередь по живому контуру topic_homework', () => {
+  beforeEach(() => {
+    useTeacherDashboardMock.mockReturnValue(baseDashboard)
   })
 
-  it('показывает returned_for_revision отдельной строкой от pending', () => {
-    useTeacherHomeworkSummaryMock.mockReturnValue({ summary: { ...emptySummary, attempts_awaiting_review: 1, returned_for_revision: 2 }, loading: false, error: null })
+  it('кабинет спрашивает данные по своему профилю и роли представления', () => {
     renderDashboard()
-    expect(screen.getByText('Ожидают проверки')).toBeInTheDocument()
-    expect(screen.getByText('На доработке у учеников')).toBeInTheDocument()
+    expect(useTeacherDashboardMock).toHaveBeenCalledWith('profile-1', 'teacher')
   })
 
-  it('пустая сводка -> "Все работы проверены"', () => {
-    useTeacherHomeworkSummaryMock.mockReturnValue({ summary: emptySummary, loading: false, error: null })
-    renderDashboard()
-    expect(screen.getByText('Все работы проверены')).toBeInTheDocument()
-  })
-
-  it('недавно назначенные ДЗ отображаются со сроком', () => {
-    useTeacherHomeworkSummaryMock.mockReturnValue({
-      summary: {
-        ...emptySummary, attempts_awaiting_review: 1,
-        recently_assigned: [{ assignment_id: 'a1', template_title: 'Матан ДЗ', group_name: '11А', publish_at: '2026-01-01', due_at: '2026-02-01' }],
-      },
-      loading: false, error: null,
+  it('показывает работы, ждущие проверки, с числом в заголовке', () => {
+    useTeacherDashboardMock.mockReturnValue({
+      ...baseDashboard,
+      pendingReviews: [attempt('a1', 'Иван Петров', 'Матан ДЗ')],
+      stats: { ...baseDashboard.stats, pendingReviews: 3 },
     })
     renderDashboard()
+
+    expect(screen.getByText('Ждут проверки: 3 работ')).toBeInTheDocument()
     expect(screen.getByText(/Матан ДЗ/)).toBeInTheDocument()
+    expect(screen.getByText(/Иван Петров/)).toBeInTheDocument()
   })
 
-  it('карточка "На проверке" использует V2-сводку, не legacy pendingSubs', () => {
-    useTeacherHomeworkSummaryMock.mockReturnValue({ summary: { ...emptySummary, attempts_awaiting_review: 7 }, loading: false, error: null })
+  it('без ожидающих работ блок очереди не рисуется вовсе', () => {
     renderDashboard()
+    expect(screen.queryByText(/Ждут проверки/)).not.toBeInTheDocument()
+  })
+
+  it('в очереди показывает не больше пяти работ', () => {
+    useTeacherDashboardMock.mockReturnValue({
+      ...baseDashboard,
+      pendingReviews: Array.from({ length: 7 }, (_, i) => attempt(`a${i}`, `Ученик ${i}`, `ДЗ ${i}`)),
+      stats: { ...baseDashboard.stats, pendingReviews: 7 },
+    })
+    renderDashboard()
+
+    expect(screen.getByText(/ДЗ 4/)).toBeInTheDocument()
+    expect(screen.queryByText(/ДЗ 5/)).not.toBeInTheDocument()
+  })
+
+  it('счётчик «на проверке» берётся из статистики, а не из длины списка', () => {
+    useTeacherDashboardMock.mockReturnValue({
+      ...baseDashboard,
+      pendingReviews: [attempt('a1', 'Иван Петров', 'Матан ДЗ')],
+      stats: { ...baseDashboard.stats, pendingReviews: 7 },
+    })
+    renderDashboard()
+
     expect(screen.getAllByText('7').length).toBeGreaterThan(0)
   })
 })
