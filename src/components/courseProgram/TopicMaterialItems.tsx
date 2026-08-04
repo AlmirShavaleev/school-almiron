@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { usePasteFiles } from '@/hooks/usePasteFiles'
 import {
   ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Lock, Loader2,
   Paperclip, Plus, Trash2, Upload, Video, X,
@@ -241,7 +242,11 @@ function QuickAttach({
   const [errors, setErrors] = useState<string[]>([])
   const [current, setCurrent] = useState<{ name: string; percent: number } | null>(null)
 
-  async function handleFilesSelected(files: FileList) {
+  // Скриншот из буфера (Ctrl+V) идёт тем же путём, что и выбранный файл:
+  // проверка размера, прогресс, те же сообщения об ошибках.
+  usePasteFiles(files => { void handleFilesSelected(files) }, !loading)
+
+  async function handleFilesSelected(files: FileList | File[]) {
     const fileArray = Array.from(files)
     setTotalFiles(fileArray.length)
     setErrors([])
@@ -331,6 +336,7 @@ function QuickAttach({
             <Upload size={20} />
             <div className="flex flex-col items-center gap-1">
               <span className="text-sm font-medium">Прикрепить PDF или картинки</span>
+                <span className="text-xs text-gray-400">или вставьте скриншот через Ctrl+V</span>
               <span className="text-xs">Можно выбрать несколько файлов · до 50 МБ каждый</span>
             </div>
           </>

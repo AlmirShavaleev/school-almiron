@@ -8,7 +8,7 @@ import {
   saveVariantPrintSettings,
   type VariantPrintSettings,
 } from '@/types/variantPrint'
-import { buildVariantFileName, buildHumanPdfFileName, marginsToCss, fontSizeToCss, printContentHeightMm, buildKeyTable, type PrintableItem } from '@/utils/variantPrintUtils'
+import { buildVariantFileName, buildHumanPdfFileName, buildPageRule, marginsToCss, fontSizeToCss, printContentHeightMm, buildKeyTable, type PrintableItem } from '@/utils/variantPrintUtils'
 
 interface Props {
   items:         PrintableItem[]
@@ -109,6 +109,17 @@ export function VariantPrintPanel({
     return () => window.removeEventListener('afterprint', onAfterPrint)
   }, [])
 
+  // Страховка на случай, когда afterprint не приходит. Он не приходит, если
+  // окно печати закрыли способом, который Chrome не считает завершением
+  // печати (переключение вкладки во время диалога, закрытие превью вместе с
+  // окном). Тогда кнопка навсегда остаётся «Подготовка PDF…» и выключенной —
+  // снаружи это выглядит как «печать не работает», хотя диалог открывался.
+  useEffect(() => {
+    if (!printing) return
+    const t = setTimeout(() => setPrinting(false), 20000)
+    return () => clearTimeout(t)
+  }, [printing])
+
   // Keep --print-margins/--print-font-size in sync with settings at all
   // times, not just inside handlePrint() right before printing. Previously
   // these were only set on click, so any PDF generated without first
@@ -195,18 +206,19 @@ export function VariantPrintPanel({
     // --print-margins/--print-font-size are kept in sync continuously by
     // the effect above — no need to set them here too.
 
-    // @page size cannot be scoped by a class selector, so orientation is
-    // switched by injecting/removing a dedicated <style> tag right before
-    // printing instead.
-    const ORIENTATION_STYLE_ID = 'print-orientation-override'
-    document.getElementById(ORIENTATION_STYLE_ID)?.remove()
-    if (effectiveSettings.orientation === 'landscape') {
-      const style = document.createElement('style')
-      style.id = ORIENTATION_STYLE_ID
-      style.media = 'print'
-      style.textContent = '@page { size: A4 landscape; }'
-      document.head.appendChild(style)
-    }
+    // @page нельзя ограничить селектором, поэтому размер и поля страницы
+    // задаются отдельным <style media="print">, который живёт только на время
+    // печати. Значения подставляются буквально, без var(): базовое правило в
+    // index.css написано как `margin: var(--print-margins, …)`, а Chromium
+    // пользовательские свойства внутри @page не раскрывает — «Широкие поля»
+    // меняли превью, но не сам PDF.
+    const PAGE_STYLE_ID = 'print-page-override'
+    document.getElementById(PAGE_STYLE_ID)?.remove()
+    const style = document.createElement('style')
+    style.id = PAGE_STYLE_ID
+    style.media = 'print'
+    style.textContent = buildPageRule(effectiveSettings.orientation, effectiveSettings.margins)
+    document.head.appendChild(style)
 
     const prevTitle = document.title
     document.title = fileName.replace(/\.pdf$/, '')

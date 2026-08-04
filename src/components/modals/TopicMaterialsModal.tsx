@@ -19,6 +19,7 @@ import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEdi
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import { MATERIAL_FILE_ACCEPT, type TopicMaterialSection } from '@/lib/topicMaterialItems'
 import { SignedImage } from '@/components/ui/SignedImage'
+import { usePasteFiles } from '@/hooks/usePasteFiles'
 
 /** Картинка ли это — по расширению имени файла. */
 function isImageName(name: string | null): boolean {
@@ -103,9 +104,18 @@ function SectionEditor({
     }
   }
 
+  // Скриншот из буфера (Ctrl+V). Материал здесь один на рубрику, поэтому из
+  // вставки берём первую картинку — как и при выборе файла через диалог.
+  usePasteFiles(files => { if (files[0]) void uploadOne(files[0]) }, canEdit && !uploading)
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    await uploadOne(file)
+  }
+
+  async function uploadOne(file: File) {
+    if (!canEdit) return
     if (file.size > 50 * 1024 * 1024) {
       setFileErr('Файл слишком большой (макс. 50 МБ)')
       return

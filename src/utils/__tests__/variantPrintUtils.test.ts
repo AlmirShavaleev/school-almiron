@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildVariantFileName,
   buildHumanPdfFileName,
+  buildPageRule,
   resolveSourceLabel,
   resolveSectionLabel,
   buildAnswersList,
@@ -89,6 +90,22 @@ describe('buildHumanPdfFileName', () => {
     const name = buildHumanPdfFileName('А'.repeat(300), { prefix: 'Подборка' })!
     expect(name.endsWith('.pdf')).toBe(true)
     expect(name.length).toBeLessThanOrEqual(124)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// buildPageRule
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('buildPageRule', () => {
+  it('подставляет поля буквально, без var() — Chromium не раскрывает их в @page', () => {
+    expect(buildPageRule('portrait', 'normal')).toBe('@page { size: A4 portrait; margin: 15mm 12mm; }')
+    expect(buildPageRule('portrait', 'wide')).toBe('@page { size: A4 portrait; margin: 25mm 20mm; }')
+    expect(buildPageRule('landscape', 'wide')).toBe('@page { size: A4 landscape; margin: 25mm 20mm; }')
+  })
+
+  it('не содержит var(', () => {
+    expect(buildPageRule('landscape', 'normal')).not.toContain('var(')
   })
 })
 

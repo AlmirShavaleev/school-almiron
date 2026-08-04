@@ -48,12 +48,27 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
   it('показывает предстоящее ДЗ, которое ученик ещё не начинал', () => {
     // Именно этого не было видно нигде: дашборд читает только начатые попытки,
     // поэтому не начатое ДЗ для ученика не существовало.
-    state.buckets.todo = [hw({ homework_id: 'a', status: 'not_started', due_at: '2026-08-05T00:00:00Z' })]
+    // Срок задаём ОТНОСИТЕЛЬНО сегодняшнего дня. Раньше здесь стояла жёсткая
+    // дата и ожидание «Срок: 5 августа»; теперь карточка печатает остаток
+    // словами («осталось N дней»), и с жёсткой датой тест протух бы сам —
+    // сначала стал бы «просрочено», а потом менял бы число каждый день.
+    // Дата без времени и по ЛОКАЛЬНОМУ календарю: dueUrgency сравнивает
+    // строки YYYY-MM-DD, и ISO с временем даёт сдвиг на день в минусовых зонах.
+    const due = new Date()
+    due.setDate(due.getDate() + 10)
+    const inTenDays = due.toLocaleDateString('en-CA')
+    state.buckets.todo = [hw({ homework_id: 'a', status: 'not_started', due_at: inTenDays })]
     renderPage()
 
-    expect(screen.getByText('ДЗ по кинематике')).toBeInTheDocument()
+    // Заголовком карточки стала ТЕМА, а своё название ДЗ ушло в строку с
+    // курсом: «Физика ЕГЭ · ДЗ по кинематике». Поэтому тему ищем целой
+    // строкой, а название — по вхождению.
+    expect(screen.getByText('Кинематика')).toBeInTheDocument()
+    expect(screen.getByText(/ДЗ по кинематике/)).toBeInTheDocument()
     expect(screen.getByText('Не сдано')).toBeInTheDocument()
-    expect(screen.getByText(/Срок: 5 августа/)).toBeInTheDocument()
+    // Строка срока собрана из иконки и текста, поэтому getByText по подстроке
+    // её не находит — сверяем текст всей карточки.
+    expect(screen.getByTestId('my-hw-row').textContent).toContain('осталось 10 дней')
     expect(screen.getByTestId('my-hw-count')).toHaveTextContent('Нужно сделать: 1')
   })
 
@@ -65,7 +80,9 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
     renderPage()
 
     expect(screen.getByText('Принято')).toBeInTheDocument()
-    expect(screen.getByText('Оценка: 4 / 5')).toBeInTheDocument()
+    // Слово «Оценка:» из карточки убрано — балл стоит отдельной плашкой
+    // справа от заголовка и печатается через formatHomeworkScore.
+    expect(screen.getByText('4 / 5')).toBeInTheDocument()
     expect(screen.getByText('Проверь знаки в третьем действии')).toBeInTheDocument()
   })
 

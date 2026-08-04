@@ -28,6 +28,16 @@ export const QUEUE_STATUSES: QueueTab[] = QUEUE_TABS.map(t => t.key)
 /** Строка очереди: попытка + контекст (ДЗ → тема → курс), пришедший из join'а. */
 export interface QueueRow {
   attempt: TopicHomeworkAttemptRow
+  /**
+   * Предыдущие попытки той же работы, от новой к старой.
+   *
+   * Строка очереди — это РАБОТА (пара «ДЗ + ученик»), а не попытка. Цикл
+   * «сдал → вернули → пересдал → приняли» даёт две строки в
+   * `topic_homework_attempts`, и до §83 работа висела на двух вкладках разом:
+   * на «На доработке» — первой попыткой, на «Принятых» — второй. Старые
+   * попытки живут здесь как история, а не как отдельные строки списка.
+   */
+  history: TopicHomeworkAttemptRow[]
   homeworkId: string
   homeworkTitle: string
   gradeScale: 'five' | 'hundred' | null
@@ -83,6 +93,7 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
     const { homework: _hw, ...attempt } = item
     rows.push({
       attempt: attempt as TopicHomeworkAttemptRow,
+      history: [],
       homeworkId: hw.id,
       homeworkTitle: hw.title ?? 'Домашнее задание',
       gradeScale: hw.grade_scale ?? null,
@@ -94,6 +105,43 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
     })
   }
   return rows
+}
+
+/** Ключ работы: одна и та же пара «ДЗ + ученик» — одна строка списка. */
+export function workKey(row: QueueRow): string {
+  return `${row.homeworkId}:${row.attempt.student_id}`
+}
+
+/**
+ * Схлопывает попытки в РАБОТЫ: одна строка на пару «ДЗ + ученик», состояние —
+ * состояние ПОСЛЕДНЕЙ попытки, остальные уходят в `history`.
+ *
+ * Это единственное место, где решается «в каком состоянии работа». Вкладки и
+ * счётчики считают уже по схлопнутому списку — второй копии правила нет
+ * сознательно: ровно рассинхрон копий породил §21 и §29, а до §83 счётчики
+ * вкладок показывали 3/6/9 по попыткам, хотя работ было 12 и шесть из них
+ * висели сразу на двух вкладках.
+ *
+ * Последняя — по `attempt_number`: его ведёт база (частичные UNIQUE-индексы
+ * и триггер `topic_homework_attempts_guard`), а `submitted_at` у черновика
+ * может быть пустым и на роль порядка не годится.
+ */
+export function collapseToWorks(rows: QueueRow[]): QueueRow[] {
+  const byWork = new Map<string, QueueRow[]>()
+  for (const row of rows) {
+    const key = workKey(row)
+    const list = byWork.get(key)
+    if (list) list.push(row)
+    else byWork.set(key, [row])
+  }
+
+  const out: QueueRow[] = []
+  for (const list of byWork.values()) {
+    const sorted = [...list].sort((a, b) => b.attempt.attempt_number - a.attempt.attempt_number)
+    const [latest, ...older] = sorted
+    out.push({ ...latest, history: older.map(r => r.attempt) })
+  }
+  return out
 }
 
 /** Строки одной вкладки. Порядок не трогаем — он задан `sortQueue`. */

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ExternalLink, FileText, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
+import { SignedImage } from '@/components/ui/SignedImage'
 import {
   bucketForMaterialPath,
   toTopicMaterial,
@@ -165,13 +166,20 @@ function SolutionFile({
 
   return (
     <div className="space-y-1.5">
+      {/*
+        Картинку показывает SignedImage, а не голый <img src={url}>: подписанная
+        ссылка живёт час, а панель эталона открыта столько, сколько идёт
+        проверка работы — на долгой проверке картинка молча превращалась в
+        сломанную. SignedImage при ошибке загрузки переподписывает ссылку
+        один раз (§81).
+      */}
       {isImage && (
         <a href={url} target="_blank" rel="noreferrer" className="block">
-          <img
-            src={url}
+          <SignedImage
+            bucket={bucketForMaterialPath(storagePath, topicId)}
+            path={storagePath}
             alt={name}
             className="w-full rounded-lg border border-gray-200 bg-white"
-            loading="lazy"
           />
         </a>
       )}

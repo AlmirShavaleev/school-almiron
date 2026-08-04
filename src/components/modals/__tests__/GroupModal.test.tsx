@@ -72,24 +72,39 @@ describe('GroupModal teacher assignment', () => {
     )
   }
 
-  async function submitCreate() {
-    fireEvent.change(screen.getByPlaceholderText('Например: ЕГЭ Физика 11А'), { target: { value: 'Новая группа' } })
-    fireEvent.click(screen.getByText('Создать группу'))
-    await waitFor(() => expect(groupsInsertPayload).not.toBeNull())
+  /** Существующая группа: единственный режим модалки после §64. */
+  const EXISTING_GROUP = {
+    id: 'group-1',
+    name: 'Существующая',
+    course_id: 'course-1',
+    teacher_id: 'teacher-9',
+    curator_id: null,
+    max_students: 20,
+    schedule_days: [] as string[],
+    schedule_time: null,
+    is_active: true,
   }
 
-  it('teacher-created group gets current teachers.id', async () => {
+  // Создание групп из интерфейса убрано в §64: один курс = одна группа, и
+  // группа заводится вместе с курсом триггером courses_ensure_group. Тесты,
+  // проверявшие teacher_id на ВСТАВКЕ, переписаны на сохранение существующей
+  // группы — сама проверка (teachers.id, а не profiles.id) осталась той же.
+  it('создание группы из интерфейса не доходит до вставки', async () => {
     renderModal()
     await screen.findByText('Преподаватель группы: Вы')
-    await submitCreate()
-    expect(groupsInsertPayload.teacher_id).toBe('teacher-9')
+    fireEvent.change(screen.getByPlaceholderText('Например: ЕГЭ Физика 11А'), { target: { value: 'Новая группа' } })
+    fireEvent.click(screen.getByText('Создать группу'))
+    await waitFor(() => expect(screen.getByText('Создать группу')).toBeInTheDocument())
+    expect(groupsInsertPayload).toBeNull()
   })
 
-  it('does not send profiles.id as teacher_id for teacher-created group', async () => {
-    renderModal()
+  it('у группы преподавателя сохраняется teachers.id, а не profiles.id', async () => {
+    renderModal({ group: EXISTING_GROUP })
     await screen.findByText('Преподаватель группы: Вы')
-    await submitCreate()
-    expect(groupsInsertPayload.teacher_id).not.toBe('profile-1')
+    fireEvent.click(screen.getByText('Сохранить изменения'))
+    await waitFor(() => expect(groupsUpdatePayload).not.toBeNull())
+    expect(groupsUpdatePayload.teacher_id).toBe('teacher-9')
+    expect(groupsUpdatePayload.teacher_id).not.toBe('profile-1')
   })
 
   it('teacher does not see dropdown for other teachers and sees read-only self label', async () => {
@@ -150,6 +165,8 @@ describe('GroupModal teacher assignment', () => {
 
   it('admin keeps selected teacher_id on save', async () => {
     profileState = { id: 'admin-1', role: 'admin' }
+    // Список преподавателей нужен именно здесь: у админа он выпадающим, и по
+    // умолчанию в моке пуст.
     fromSpy.mockImplementation((table: string) => {
       if (table === 'courses') return makeChain({ data: [{ id: 'course-1', title: 'Физика', subject: 'physics', exam_type: 'ege' }], error: null })
       if (table === 'teachers') return makeChain({ data: [{ id: 'teacher-9', profiles: { full_name: 'Преподаватель 1', email: 't1@example.com' } }], error: null })
@@ -157,17 +174,18 @@ describe('GroupModal teacher assignment', () => {
       if (table === 'groups') {
         return makeChain(
           { data: null, error: null },
-          { insert: (payload: any) => { groupsInsertPayload = payload; return makeChain({ error: null }) } },
+          { update: (payload: any) => { groupsUpdatePayload = payload; return makeChain({ error: null }) } },
         )
       }
       return makeChain({ data: [], error: null })
     })
-    renderModal()
+    renderModal({ group: { ...EXISTING_GROUP, teacher_id: null } })
     await screen.findByRole('option', { name: /Преподаватель 1/i })
     const selects = screen.getAllByRole('combobox')
     fireEvent.change(selects[1], { target: { value: 'teacher-9' } })
-    await submitCreate()
-    expect(groupsInsertPayload.teacher_id).toBe('teacher-9')
+    fireEvent.click(screen.getByText('Сохранить изменения'))
+    await waitFor(() => expect(groupsUpdatePayload).not.toBeNull())
+    expect(groupsUpdatePayload.teacher_id).toBe('teacher-9')
   })
 
   it('editing existing group as teacher does not null out teacher_id', async () => {

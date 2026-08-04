@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
+import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -81,7 +82,11 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     }
   }
 
-  async function handleFilesSelected(list: FileList) {
+  // Скриншот из буфера (Ctrl+V) — тем же путём, что и выбранный файл.
+  // Пока идёт загрузка, вставку не принимаем: очередь здесь последовательная.
+  usePasteFiles(files => { void handleFilesSelected(files) }, !uploading)
+
+  async function handleFilesSelected(list: FileList | File[]) {
     const selected = Array.from(list)
     setUploadTotal(selected.length)
     setUploadError(null)
@@ -250,6 +255,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
               <Upload size={20} />
               <div className="flex flex-col items-center gap-1">
                 <span className="text-sm font-medium">Прикрепить PDF или картинки</span>
+                <span className="text-xs text-gray-400">или вставьте скриншот через Ctrl+V</span>
                 <span className="text-xs">Можно выбрать несколько файлов · до 50 МБ каждый</span>
               </div>
             </>

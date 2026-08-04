@@ -233,6 +233,24 @@ export function marginsToCss(margins: VariantPrintSettings['margins']): string {
   return margins === 'wide' ? '25mm 20mm' : '15mm 12mm'
 }
 
+/**
+ * Правило @page для печати: размер листа и поля буквальными значениями.
+ *
+ * В index.css базовое правило написано как
+ * `@page { margin: var(--print-margins, 15mm 12mm) }`, но Chromium не
+ * раскрывает пользовательские свойства внутри @page — берётся значение по
+ * умолчанию, и настройка «Широкие поля» меняла превью на экране, но не сам
+ * PDF. Здесь значения подставляются напрямую; правило живёт в отдельном
+ * `<style media="print">` на время печати (ограничить @page селектором
+ * нельзя).
+ */
+export function buildPageRule(
+  orientation: VariantPrintSettings['orientation'],
+  margins: VariantPrintSettings['margins'],
+): string {
+  return `@page { size: A4 ${orientation}; margin: ${marginsToCss(margins)}; }`
+}
+
 export function fontSizeToCss(fontSize: VariantPrintSettings['fontSize']): string {
   // ~30% smaller than the previous 13pt/11.5pt — a literal /2 (6.5pt/5.75pt)
   // was illegible on paper and disproportionate to formula images (SVGs,

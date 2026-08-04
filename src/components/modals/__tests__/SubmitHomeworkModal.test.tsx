@@ -257,7 +257,11 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  it('rejects HEIC files before upload with a friendly message', async () => {
+  // Раньше здесь проверялся ОТКАЗ по heic с подсказкой «Сохраните как JPG или
+  // PDF». Контракт изменился: heic снимает любой айфон, и отказ по нему бил по
+  // самому частому способу сдать работу. Компонент принимает heic/heif наравне
+  // с остальными картинками (ACCEPTED_EXTS), тест переписан под это.
+  it('принимает HEIC — это обычный формат съёмки на телефон', async () => {
     render(
       <SubmitHomeworkModal
         open onClose={vi.fn()} onSubmitted={vi.fn()}
@@ -267,8 +271,8 @@ describe('SubmitHomeworkModal — multi-file submit flow', () => {
 
     fireEvent.change(screen.getByTestId('submit-homework-file-input'), { target: { files: [heicFile] } })
 
-    await waitFor(() => expect(screen.getByText('Сохраните как JPG или PDF')).toBeInTheDocument())
-    expect(insertFilesSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByText(heicFile.name)).toBeInTheDocument())
+    expect(screen.queryByText('Поддерживаются PDF и картинки')).not.toBeInTheDocument()
   })
 
   it('rejects files above 10 MB and total batches above 40 MB', async () => {

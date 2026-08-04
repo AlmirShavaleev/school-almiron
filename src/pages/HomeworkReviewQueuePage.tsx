@@ -20,7 +20,7 @@ import {
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
 import {
   ATTEMPT_STATUS_TONE, TEACHER_ATTEMPT_STATUS_LABEL, latestReview,
-  type TopicHomeworkAttemptFileRow, type TopicHomeworkReviewRow,
+  type TopicHomeworkAttemptFileRow, type TopicHomeworkAttemptRow, type TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
 import type { QueueAiJob } from '@/hooks/useQueueAiJobs'
 
@@ -221,6 +221,58 @@ function QueueRowItem({
 }
 
 /**
+ * Прошлые попытки той же работы.
+ *
+ * Строка списка — работа, а не попытка (§83), поэтому история не исчезает,
+ * а переезжает внутрь разбора. Для пересданной работы это главный контекст:
+ * за что вернули в прошлый раз.
+ */
+function AttemptHistory({
+  history, reviews, gradeScale, className,
+}: {
+  history: TopicHomeworkAttemptRow[]
+  reviews: TopicHomeworkReviewRow[]
+  gradeScale: 'five' | 'hundred' | null
+  className?: string
+}) {
+  if (history.length === 0) return null
+  const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
+
+  return (
+    <div data-testid="queue-attempt-history" className={cn('rounded-xl border border-gray-200 bg-white p-3', className)}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        Прошлые попытки · {history.length}
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {history.map(a => {
+          const review = latestReview(reviews, a.id)
+          const when = a.submitted_at
+            ? new Date(a.submitted_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+            : null
+          return (
+            <li key={a.id} className="rounded-lg bg-gray-50/70 px-2.5 py-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-gray-700">Попытка №{a.attempt_number}</span>
+                <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-medium', ATTEMPT_STATUS_TONE[a.status])}>
+                  {TEACHER_ATTEMPT_STATUS_LABEL[a.status]}
+                </span>
+                {when && <span className="text-[11px] text-gray-400">{when}</span>}
+                {review?.score != null && scoreMax != null && (
+                  <span className="text-[11px] text-gray-500">{review.score}/{scoreMax}</span>
+                )}
+              </div>
+              {review?.comment && (
+                <p className="mt-1 whitespace-pre-line text-[11px] text-gray-600">{review.comment}</p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/**
  * Уже вынесенный вердикт — вместо формы у проверенных работ.
  *
  * Формы здесь быть не может: `topic_homework_review_attempt` меняет статус
@@ -229,11 +281,13 @@ function QueueRowItem({
  * гарантированно закончится ошибкой.
  */
 function VerdictSummary({
-  review, gradeScale, status,
+  review, gradeScale, status, history, reviews,
 }: {
   review: TopicHomeworkReviewRow | null
   gradeScale: 'five' | 'hundred' | null
   status: QueueRow['attempt']['status']
+  history: TopicHomeworkAttemptRow[]
+  reviews: TopicHomeworkReviewRow[]
 }) {
   const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
   const decided = review?.created_at
@@ -242,6 +296,11 @@ function VerdictSummary({
 
   return (
     <div data-testid="queue-verdict-summary" className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+      {history.length > 0 && (
+        <div className="mb-3">
+          <AttemptHistory history={history} reviews={reviews} gradeScale={gradeScale} />
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', ATTEMPT_STATUS_TONE[status])}>
           {TEACHER_ATTEMPT_STATUS_LABEL[status]}
@@ -672,6 +731,8 @@ export function HomeworkReviewQueuePage() {
               review={latestReview(reviews, reviewing.row.attempt.id)}
               gradeScale={reviewing.row.gradeScale}
               status={reviewing.row.attempt.status}
+              history={reviewing.row.history}
+              reviews={reviews}
             />
           ) : ({ publishAnnotations }) => (
             <ReviewActions
@@ -679,6 +740,15 @@ export function HomeworkReviewQueuePage() {
               gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
               above={
+                <>
+                {/* Пересданная работа: прошлый вердикт выше формы — иначе
+                    преподаватель решает, не помня, что сам просил исправить. */}
+                <AttemptHistory
+                  history={reviewing.row.history}
+                  reviews={reviews}
+                  gradeScale={reviewing.row.gradeScale}
+                  className="mb-3"
+                />
                 <AiCheckPanel
                   job={ai.job}
                   findings={ai.findings}
@@ -690,6 +760,7 @@ export function HomeworkReviewQueuePage() {
                   // текст второй раз тоже должно получаться.
                   onUseText={text => setFillRequest({ comment: text })}
                 />
+                </>
               }
               fillRequest={fillRequest}
               onReview={async (attemptId, decision, comment, score) => {

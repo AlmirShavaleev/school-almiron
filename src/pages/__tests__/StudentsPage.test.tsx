@@ -102,8 +102,9 @@ describe('StudentsPage', () => {
 
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
 
-    expect(await screen.findByText('Иван Петров')).toBeInTheDocument()
-    expect(screen.getByText('Открыть профиль')).toHaveAttribute('href', '/students/student-1')
+    // §84: карточки заменены строкой списка, и ссылкой на профиль стало само
+    // ФИО — отдельной надписи «Открыть профиль» больше нет.
+    expect(await screen.findByText('Иван Петров')).toHaveAttribute('href', '/students/student-1')
   })
 
   it('shows empty state for students', async () => {

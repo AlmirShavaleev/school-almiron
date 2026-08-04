@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  countByTab, courseFilterOptions, groupByDay, groupByCourse, rowsOfTab, sortQueue, toQueueRows,
+  collapseToWorks, countByTab, courseFilterOptions, groupByDay, groupByCourse, rowsOfTab,
+  sortQueue, toQueueRows,
 } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
@@ -51,6 +52,74 @@ describe('sortQueue', () => {
       rawRow({ id: 'old', submitted_at: '2026-07-19T10:00:00Z' }),
     ])
     expect(sortQueue(rows).map(r => r.attempt.id)).toEqual(['old', 'new'])
+  })
+})
+
+describe('collapseToWorks — строка списка это работа, а не попытка', () => {
+  /**
+   * Работа = пара «ДЗ + ученик», и ДЗ приезжает вложенным join'ом — подменять
+   * надо именно его, иначе поле `homework_id` попытки ни на что не влияет.
+   */
+  const attemptOf = (homeworkId: string, studentId: string, over: Record<string, unknown>) =>
+    rawRow({
+      student_id: studentId,
+      homework_id: homeworkId,
+      homework: {
+        id: homeworkId,
+        title: 'ДЗ по кинематике',
+        grade_scale: null,
+        topic: { id: 't1', title: 'Кинематика', module: { id: 'm1', course: { id: 'c1', title: 'Физика ОГЭ' } } },
+      },
+      ...over,
+    })
+
+  /** Настоящая пара из прода: ДЗ eff729e1…, ученик 0a68deab…, №1 → №2. */
+  const pair = [
+    attemptOf('eff729e1', '0a68deab', {
+      id: '92c7f235', attempt_number: 1, status: 'returned_for_revision',
+      submitted_at: '2026-08-04T18:57:33Z',
+    }),
+    attemptOf('eff729e1', '0a68deab', {
+      id: '857a7192', attempt_number: 2, status: 'accepted',
+      submitted_at: '2026-08-04T19:06:47Z',
+    }),
+  ]
+
+  it('пересданная работа — одна строка в состоянии последней попытки', () => {
+    const works = collapseToWorks(toQueueRows(pair))
+    expect(works).toHaveLength(1)
+    expect(works[0].attempt.id).toBe('857a7192')
+    expect(works[0].attempt.status).toBe('accepted')
+    expect(works[0].history.map(a => a.id)).toEqual(['92c7f235'])
+  })
+
+  it('порядок попыток на входе не меняет результат', () => {
+    const reversed = collapseToWorks(toQueueRows([pair[1], pair[0]]))
+    expect(reversed).toHaveLength(1)
+    expect(reversed[0].attempt.id).toBe('857a7192')
+    expect(reversed[0].history.map(a => a.id)).toEqual(['92c7f235'])
+  })
+
+  it('разные ученики одного ДЗ — разные работы', () => {
+    const works = collapseToWorks(toQueueRows([
+      ...pair,
+      attemptOf('eff729e1', 's2', { id: 'other', attempt_number: 1 }),
+    ]))
+    expect(works).toHaveLength(2)
+    expect(works.map(w => w.history.length).sort()).toEqual([0, 1])
+  })
+
+  it('счётчики вкладок считают работы: пара не висит на двух сразу', () => {
+    // Слепок прода 04.08: 18 попыток, 12 работ — 3 ждут, 0 на доработке,
+    // 9 приняты. До §83 вкладки показывали 3/6/9 по попыткам.
+    const raw = [
+      ...pair,
+      attemptOf('hw-a', 'st-a', { id: 'p1', attempt_number: 1, status: 'submitted' }),
+      attemptOf('hw-b', 'st-a', { id: 'p2', attempt_number: 1, status: 'accepted' }),
+    ]
+    const works = collapseToWorks(toQueueRows(raw))
+    expect(countByTab(works)).toEqual({ submitted: 1, returned_for_revision: 0, accepted: 2 })
+    expect(rowsOfTab(works, 'returned_for_revision')).toHaveLength(0)
   })
 })
 

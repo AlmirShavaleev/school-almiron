@@ -11,6 +11,7 @@ import { cn } from '@/utils/cn'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { MATERIAL_FILE_ACCEPT } from '@/lib/topicMaterialItems'
+import { usePasteFiles } from '@/hooks/usePasteFiles'
 import type { LessonTemplate, LessonTemplateExam, LessonTemplateMaterialType, LessonTemplateSubject } from '@/types/lessonLibrary'
 
 const SECTIONS: Array<{
@@ -310,6 +311,10 @@ function TemplateMaterialEditor({
       setSaving(false)
     }
   }
+
+  // Скриншот из буфера (Ctrl+V). Материал здесь один на рубрику, поэтому из
+  // вставки берём первую картинку — как и при выборе файла через диалог.
+  usePasteFiles(files => { if (files[0]) void handleUpload(files[0]) }, !uploading)
 
   async function handleUpload(file: File) {
     setUploading(true)

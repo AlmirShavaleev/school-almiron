@@ -49,8 +49,12 @@ vi.mock('@/hooks/useCourseProgram', () => ({
   }),
 }))
 
+// Запрет на удаление темы считается по шаблонам и назначениям ДЗ (Homework V2),
+// а не по легаси-таблице `homeworks`, как было раньше. Поэтому мок стал
+// настраиваемым: тест про запрет кладёт сюда шаблон на нужную тему.
+const templatesState: { rows: Array<{ topic_id: string | null; assignments_count: number; last_assigned_at: string | null }> } = { rows: [] }
 vi.mock('@/hooks/useCourseHomeworkTemplates', () => ({
-  useCourseHomeworkTemplates: () => ({ templates: [] }),
+  useCourseHomeworkTemplates: () => ({ templates: templatesState.rows }),
 }))
 
 vi.mock('@/components/modals/TopicMaterialsModal', () => ({ TopicMaterialsModal: () => null }))
@@ -93,11 +97,12 @@ async function openCourseInEditMode() {
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
   fireEvent.click(screen.getByRole('button', { name: /Редактировать программу/i }))
-  await waitFor(() => expect(screen.getByTitle(/Удалить тему|В теме \d+ домашних/)).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByTitle(/Удалить тему|В теме \d+ шаблона? или назначения? ДЗ/)).toBeInTheDocument())
 }
 
 describe('CourseProgramPage topic deletion', () => {
   beforeEach(() => {
+    templatesState.rows = []
     fromSpy.mockReset()
     deleteTopicSpy.mockReset()
     loadModulesSpy.mockReset()
@@ -108,23 +113,18 @@ describe('CourseProgramPage topic deletion', () => {
   })
 
   it('disables topic deletion in UI when visible homeworks exist', async () => {
+    // Два «домашних задания» на теме — это один шаблон и одно назначение.
+    templatesState.rows = [{ topic_id: 'topic-1', assignments_count: 1, last_assigned_at: null }]
     fromSpy.mockImplementation((table: string) => {
       if (table === 'groups') return makeChain({ data: [], error: null })
-      if (table === 'homeworks') {
-        return makeChain({
-          data: [
-            { id: 'hw-1', topic_id: 'topic-1', title: 'ДЗ 1', max_score: 100 },
-            { id: 'hw-2', topic_id: 'topic-1', title: 'ДЗ 2', max_score: 100 },
-          ],
-          error: null,
-        })
-      }
       return makeChain({ data: [], error: null })
     })
 
     await openCourseInEditMode()
 
-    const deleteButton = screen.getByTitle(/В теме \d+ домашних задания?\. Сначала удалите или перенесите их\./) as HTMLButtonElement
+    // Текст подсказки изменился вместе с источником счёта: теперь он говорит
+    // про шаблоны и назначения и отправляет во вкладку «Домашние задания».
+    const deleteButton = screen.getByTitle(/В теме \d+ шаблона? или назначения? ДЗ\./) as HTMLButtonElement
     expect(deleteButton.disabled).toBe(true)
     fireEvent.click(deleteButton)
     expect(deleteTopicSpy).not.toHaveBeenCalled()

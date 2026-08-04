@@ -77,32 +77,10 @@ export function acceptFiles(
   return { files: next, error }
 }
 
-/**
- * Картинки из буфера обмена или перетаскивания. У скриншота из буфера имени
- * нет («image.png» или пусто) — даём своё, чтобы в списке вложений было видно,
- * что это и какое по счёту.
- */
-export function imagesFromTransfer(dt: DataTransfer | null, startIndex = 0): File[] {
-  if (!dt) return []
-
-  const raw: File[] = []
-  if (dt.items && dt.items.length > 0) {
-    for (const item of Array.from(dt.items)) {
-      if (item.kind !== 'file') continue
-      const f = item.getAsFile()
-      if (f) raw.push(f)
-    }
-  } else if (dt.files && dt.files.length > 0) {
-    raw.push(...Array.from(dt.files))
-  }
-
-  return raw.map((f, i) => {
-    const unnamed = !f.name || /^image\.(png|jpe?g|webp)$/i.test(f.name)
-    if (!unnamed) return f
-    const ext = EXT_BY_MIME[f.type] ?? '.png'
-    return new File([f], `скриншот-${startIndex + i + 1}${ext}`, { type: f.type })
-  })
-}
+// Обработчик буфера переехал в src/lib/clipboardFiles.ts: тем же кодом теперь
+// вставляют скриншоты материалы темы и ДЗ (§82). Реэкспорт оставлен, чтобы не
+// переписывать тесты виджета и его собственные вызовы.
+export { imagesFromTransfer } from '@/lib/clipboardFiles'
 
 export function SupportWidget() {
   const profile  = useAuthStore(s => s.profile)

@@ -393,7 +393,12 @@ body {
     margin: var(--print-margins, 15mm 12mm);
   }
 
-  /* Orientation is switched by injecting a `#print-orientation-override`
+  /* Размер и поля страницы перекрываются на время печати отдельным
+     `<style media="print" id="print-page-override">` с БУКВАЛЬНЫМИ значениями
+     (VariantPrintPanel.handlePrint → buildPageRule). Правило ниже остаётся
+     запасным: var() внутри @page Chromium не раскрывает, поэтому здесь всегда
+     берётся значение по умолчанию 15mm 12mm. */
+  /* Orientation is switched by injecting a `#print-page-override`
      <style> tag with `@page { size: A4 landscape; }` right before printing —
      `@page` cannot be scoped with a class/attribute selector, so JS toggles
      the whole rule instead of just a class (see VariantPrintPanel.handlePrint). */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   QUEUE_STATUSES,
+  collapseToWorks,
   countByTab,
   isAlreadyReviewedError,
   rowsOfTab,
@@ -63,7 +64,9 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
       if (cancelled) return
       if (err) { setError(err.message); setLoading(false); return }
 
-      const loaded = sortQueue(toQueueRows(data ?? []))
+      // Схлопываем попытки в работы ДО всех фильтров и счётчиков: вкладка и
+      // счётчик обязаны говорить об одном и том же — о работах.
+      const loaded = sortQueue(collapseToWorks(toQueueRows(data ?? [])))
       // Куратор курса — это может быть ученик другого курса, и RLS отдаёт ему
       // ЕЩЁ И его собственные сдачи (`student_id = auth_student_id()`).
       // Сам себя человек не проверяет: свои работы из очереди убираем.
@@ -96,12 +99,18 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
 
     let cancelled = false
     const studentIds = Array.from(new Set(rows.map(r => r.attempt.student_id)))
+    // Вердикты берём и по прошлым попыткам: «за что вернули в прошлый раз» —
+    // первое, что нужно знать, открывая пересданную работу.
+    const reviewIds = Array.from(new Set([
+      ...attemptIds,
+      ...rows.flatMap(r => r.history.map(h => h.id)),
+    ]))
 
     async function loadDetails() {
       const [filesRes, studentsRes, reviewsRes] = await Promise.all([
         supabase.from('topic_homework_attempt_files').select('*').in('attempt_id', attemptIds).order('position'),
         supabase.from('students').select('id, profiles!inner(full_name)').in('id', studentIds),
-        supabase.from('topic_homework_reviews').select('*').in('attempt_id', attemptIds).order('created_at'),
+        supabase.from('topic_homework_reviews').select('*').in('attempt_id', reviewIds).order('created_at'),
       ])
       if (cancelled) return
 

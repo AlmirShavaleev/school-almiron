@@ -71,6 +71,7 @@ function queueRow(attemptId: string, courseId = 'c1'): QueueRow {
       status: 'submitted', submitted_at: '2026-07-28T20:40:00Z',
       created_at: '2026-07-28T20:00:00Z', updated_at: '2026-07-28T20:40:00Z',
     } as any,
+    history: [],
     homeworkId: 'hw1',
     homeworkTitle: 'Домашнее задание',
     gradeScale: 'five',

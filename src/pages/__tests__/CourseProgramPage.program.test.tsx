@@ -140,7 +140,13 @@ describe('CourseProgramPage program tab empty states', () => {
     await waitFor(() => expect(createTopicSpy).toHaveBeenCalledWith('module-1', 'Новая тема'))
   })
 
-  it('shows a homework stats hint when the course has topics but no groups', async () => {
+  // Раньше здесь проверялась подсказка «У курса пока нет групп. Сводка по
+  // домашним заданиям показана с нулевыми значениями.». После §61 (один курс =
+  // одна группа: группа заводится вместе с курсом триггером, удаление курса
+  // уносит её каскадом, вторую не даёт unique) курса без группы не существует —
+  // подсказка стала неправдой и убрана со страницы. От теста остаётся то, ради
+  // чего он и писался: программа рисуется и без данных по группам.
+  it('рисует программу курса, даже когда сводка по группам пустая', async () => {
     loadModulesSpy.mockResolvedValue([
       {
         id: 'module-1',
@@ -155,8 +161,9 @@ describe('CourseProgramPage program tab empty states', () => {
 
     await openProgramForCourse()
 
-    await waitFor(() => expect(screen.getByText('У курса пока нет групп. Сводка по домашним заданиям показана с нулевыми значениями.')).toBeInTheDocument())
-    expect(screen.getByText('Тема 1')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Тема 1')).toBeInTheDocument())
+    expect(screen.getByText('Модуль 1')).toBeInTheDocument()
+    expect(screen.queryByText(/У курса пока нет групп/)).not.toBeInTheDocument()
   })
 
   it('shows module and topic numbers from array position in view and edit modes', async () => {

@@ -52,6 +52,7 @@ function queueRow(over: Partial<QueueRow> = {}, attemptOver: Record<string, unkn
       created_at: '2026-07-28T20:00:00Z', updated_at: '2026-07-28T20:40:00Z',
       ...attemptOver,
     } as any,
+    history: [],
     homeworkId: 'hw1',
     homeworkTitle: 'Домашнее задание',
     gradeScale: 'five',
@@ -208,6 +209,55 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
 
     fireEvent.click(screen.getByTestId('queue-tab-returned_for_revision'))
     expect(screen.getByTestId('queue-empty')).toHaveTextContent('Никого не вернули на доработку')
+  })
+
+  it('прошлые попытки — история внутри работы, а не строки вкладок', () => {
+    // Цикл «сдал → вернули → пересдал → приняли» даёт две попытки, но работа
+    // одна: до §83 она висела и на «На доработке», и на «Принятых».
+    const history = [{
+      id: 'a0', homework_id: 'hw1', student_id: 's1', attempt_number: 1,
+      status: 'returned_for_revision', submitted_at: '2026-07-27T10:00:00Z',
+      created_at: '2026-07-27T09:00:00Z', updated_at: '2026-07-27T10:00:00Z',
+    }] as any
+    state.all = [queueRow({ history }, { id: 'a5', attempt_number: 2, status: 'accepted' })]
+    state.reviews = [{
+      id: 'r0', attempt_id: 'a0', reviewer_id: 'p1', decision: 'returned_for_revision',
+      comment: 'Переделай второй пункт', score: null, created_at: '2026-07-27T12:00:00Z',
+    }]
+    render(<HomeworkReviewQueuePage />)
+
+    expect(screen.getByTestId('queue-tab-returned_for_revision')).toHaveTextContent('На доработке0')
+    expect(screen.getByTestId('queue-tab-accepted')).toHaveTextContent('Принятые1')
+
+    fireEvent.click(screen.getByTestId('queue-tab-returned_for_revision'))
+    expect(screen.queryByTestId('queue-attempt-card')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть' }))
+
+    const past = screen.getByTestId('queue-attempt-history')
+    expect(past).toHaveTextContent('Попытка №1')
+    expect(past).toHaveTextContent('На доработке')
+    expect(past).toHaveTextContent('Переделай второй пункт')
+  })
+
+  it('у пересданной работы прошлый вердикт виден над формой проверки', () => {
+    const history = [{
+      id: 'a0', homework_id: 'hw1', student_id: 's1', attempt_number: 1,
+      status: 'returned_for_revision', submitted_at: '2026-07-27T10:00:00Z',
+      created_at: '2026-07-27T09:00:00Z', updated_at: '2026-07-27T10:00:00Z',
+    }] as any
+    state.all = [queueRow({ history }, { id: 'a6', attempt_number: 2, status: 'submitted' })]
+    state.reviews = [{
+      id: 'r0', attempt_id: 'a0', reviewer_id: 'p1', decision: 'returned_for_revision',
+      comment: 'Переделай второй пункт', score: null, created_at: '2026-07-27T12:00:00Z',
+    }]
+    render(<HomeworkReviewQueuePage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+
+    expect(screen.getByTestId('queue-attempt-history')).toHaveTextContent('Переделай второй пункт')
+    // Форма вердикта на месте: работа снова ждёт решения.
+    expect(screen.getByTestId('review-accept-button')).toBeInTheDocument()
   })
 
   it('у проверенной работы в разборе вердикт, а не форма', () => {

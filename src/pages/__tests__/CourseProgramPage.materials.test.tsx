@@ -142,9 +142,13 @@ describe('CourseProgramPage materials tab', () => {
   })
 
   it('shows an error banner when materials query fails but keeps the topics table visible', async () => {
+    // Матрица давно читает `topic_material_items` (плюс topic_homework и
+    // topic_test_assignments), а не легаси-таблицу `topic_materials`. Тест
+    // ронял таблицу, которую матрица больше не запрашивает, — и ошибки,
+    // разумеется, не возникало.
     fromSpy.mockImplementation((table: string) => {
       if (table === 'groups') return makeChain({ data: [], error: null })
-      if (table === 'topic_materials') return makeChain({ data: null, error: { message: 'db failed' } })
+      if (table === 'topic_material_items') return makeChain({ data: null, error: { message: 'db failed' } })
       return makeChain({ data: [], error: null })
     })
 
