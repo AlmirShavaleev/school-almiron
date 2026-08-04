@@ -206,6 +206,14 @@ export function AppAuth() {
       }
       if (!cancelled && !data) setProfile(null)
       if (!cancelled) setLoading(false)
+
+      // Отметка «человек заходил сегодня» для дашборда школы. Одна строка на
+      // человека в сутки, повтор гасит первичный ключ на стороне базы, поэтому
+      // звать можно сколько угодно раз. Ошибку намеренно проглатываем: счётчик
+      // активности не должен ломать вход, если запрос не прошёл.
+      if (!cancelled && data) {
+        void (supabase as any).rpc('record_app_visit').then(() => {}, () => {})
+      }
     }
 
     // Initialise from persisted session

@@ -7,14 +7,19 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
+import { useEffectiveRole } from '@/store/staffModeStore'
 import { useTeacherDashboard } from '@/hooks/useTeacherDashboard'
 import { formatDate } from '@/utils/format'
 
 export function TeacherDashboard() {
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
+  // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя должен
+  // видеть свои курсы, а не всю школу. Под админской RLS база отдаёт ему всё,
+  // поэтому сужение стоит здесь, в запросе клиента. На права не влияет.
+  const effectiveRole = useEffectiveRole()
 
-  const dashboard = useTeacherDashboard(profile?.id, profile?.role)
+  const dashboard = useTeacherDashboard(profile?.id, effectiveRole ?? profile?.role)
   const { loading } = dashboard
   // Та же подстраховка, что и в кабинете ученика: неполный ответ хука не
   // должен ронять первый экран после входа.

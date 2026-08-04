@@ -47,7 +47,6 @@ export interface AdminStats {
   active_groups:      number
   archived_groups:    number
   new_users_week:     number
-  pending_hw_count:   number
 }
 
 export function useAdminDashboard() {
@@ -69,17 +68,16 @@ export function useAdminDashboard() {
     // Подписки отсюда убраны вместе с вкладкой (решение владельца 2026-08-04):
     // таблица пуста, а запрос на 100 строк с джойном планов уходил при каждом
     // открытии панели.
-    const [profilesRes, groupsRes, coursesRes, studentsRes, pendingHwRes] = await Promise.all([
+    // Счётчик «ДЗ на проверке» отсюда тоже ушёл: он считал легаси-таблицу
+    // homework_submissions (0 строк навсегда) и показывал ноль при живой
+    // очереди. Теперь это делает admin_school_stats по topic_homework_*.
+    const [profilesRes, groupsRes, coursesRes, studentsRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role, created_at, avatar_url').order('created_at', { ascending: false }),
       supabase.from('groups')
         .select('id, name, is_active, max_students, schedule_days, schedule_time, group_students(count), teachers(profiles(full_name)), courses(title, subject)')
         .order('name'),
       supabase.from('courses').select('id, title, subject, exam_type, duration_weeks, price, description, start_date, end_date, enrollment_open_until, is_active').order('title'),
       supabase.from('students').select('id, profile_id'),
-      supabase.from('homework_submissions')
-        .select('id, homeworks!inner(id)', { count: 'exact', head: true })
-        .eq('status', 'submitted')
-        .eq('homeworks.is_archived', false),
     ])
 
     // Profiles with student/teacher ids lookup
@@ -140,7 +138,6 @@ export function useAdminDashboard() {
       active_groups:    builtGroups.filter(g => g.is_active).length,
       archived_groups:  builtGroups.filter(g => !g.is_active).length,
       new_users_week:   builtProfiles.filter(p => p.created_at > oneWeekAgo).length,
-      pending_hw_count: pendingHwRes.count ?? 0,
     }
 
     setProfiles(builtProfiles)

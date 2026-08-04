@@ -414,7 +414,9 @@ export function useTopicHomework(topicId: string | null) {
     if (!current) throw new Error('ДЗ не найдено')
     const { data, error: err } = await supabase.rpc('topic_homework_notify_students', {
       p_homework_id: current.id,
-      p_profile_ids: profileIds ?? null,
+      // не null: в сгенерированных типах параметр опционален, а в БД
+      // у него DEFAULT null — семантика та же (см. reviewAttempt выше)
+      p_profile_ids: profileIds ?? undefined,
     })
     if (err) throw new Error(err.message)
     return data as number

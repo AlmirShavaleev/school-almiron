@@ -152,6 +152,31 @@ export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
 }))
 
 /**
+ * Роль, которой СЕЙЧАС работают, — для выборок данных.
+ *
+ * Зачем отдельно от `useStaffMode`: страницам и хукам не нужен весь набор
+ * (переключатель, экран выбора), им нужен один ответ на вопрос «сужать ли
+ * выдачу до своего». Владелец в режиме учителя должен видеть свои курсы и
+ * своих учеников, а не всю школу, — а под админской RLS база отдаёт ему всё,
+ * поэтому сужение обязано стоять в запросе клиента.
+ *
+ * ⚠️ Это НЕ проверка прав. Права проверяют RLS и `RoleGuard` по настоящей роли
+ * из профиля; здесь решается только объём выдачи. Подставлять это значение в
+ * условия доступа нельзя — режим переключается кнопкой в шапке.
+ */
+export function useEffectiveRole(): UserRole | null {
+  const profile = useAuthStore(s => s.profile)
+  const mode    = useStaffModeStore(s => s.mode)
+  const hydrate = useStaffModeStore(s => s.hydrate)
+
+  useEffect(() => {
+    hydrate(profile?.id ?? null)
+  }, [profile?.id, hydrate])
+
+  return effectiveRoleOf(profile?.role ?? null, mode)
+}
+
+/**
  * Единственная точка, из которой шапка и сайдбар берут режим и роль
  * представления.
  */

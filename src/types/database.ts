@@ -75,6 +75,29 @@ export type Database = {
           },
         ]
       }
+      app_visits: {
+        Row: {
+          profile_id: string
+          visited_on: string
+        }
+        Insert: {
+          profile_id: string
+          visited_on: string
+        }
+        Update: {
+          profile_id?: string
+          visited_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_visits_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assigned_collection_members: {
         Row: {
           assigned_id: string
@@ -5508,6 +5531,7 @@ export type Database = {
           student_id: string
         }[]
       }
+      admin_school_stats: { Args: never; Returns: Json }
       assign_homework: {
         Args: {
           p_allow_late: boolean
@@ -6494,6 +6518,7 @@ export type Database = {
         Returns: string
       }
       realtime_review_topic_course: { Args: { topic: string }; Returns: string }
+      record_app_visit: { Args: never; Returns: undefined }
       reissue_student_invite: {
         Args: { p_invite_id: string }
         Returns: {

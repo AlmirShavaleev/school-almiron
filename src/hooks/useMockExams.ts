@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useEffectiveRole } from '@/store/staffModeStore'
 
 export function useMockExams(tick = 0) {
   const profile = useAuthStore(s => s.profile)
+  // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя видит
+  // только своё. Под админской RLS база отдаёт ему всю школу, поэтому
+  // сужение стоит в запросе клиента. На права это не влияет (§77).
+  const effectiveRole = useEffectiveRole()
   const [exams,    setExams]   = useState<any[]>([])
   const [myResults, setMyResults] = useState<any[]>([])
   const [loading,  setLoading] = useState(true)
@@ -14,7 +19,7 @@ export function useMockExams(tick = 0) {
 
     async function load() {
       try {
-        const role = profile!.role
+        const role = effectiveRole ?? profile!.role
 
         if (role === 'student') {
           const { data: st } = await supabase
@@ -54,7 +59,7 @@ export function useMockExams(tick = 0) {
       }
     }
     load()
-  }, [profile, tick])
+  }, [profile, effectiveRole, tick])
 
   return { exams, myResults, loading }
 }

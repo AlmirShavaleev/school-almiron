@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useEffectiveRole } from '@/store/staffModeStore'
 
 export interface Lesson {
   id: string
@@ -22,6 +23,10 @@ export interface Lesson {
 
 export function useLessons() {
   const profile = useAuthStore(s => s.profile)
+  // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя видит
+  // только своё. Под админской RLS база отдаёт ему всю школу, поэтому
+  // сужение стоит в запросе клиента. На права это не влияет (§77).
+  const effectiveRole = useEffectiveRole()
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [loading, setLoading] = useState(true)
   const [tick, setTick] = useState(0)
@@ -35,7 +40,7 @@ export function useLessons() {
       setLoading(true)
 
       try {
-        if (profile!.role === 'student') {
+        if (effectiveRole === 'student') {
           const { data: student } = await supabase
             .from('students').select('id').eq('profile_id', profile!.id).single()
 
@@ -69,7 +74,7 @@ export function useLessons() {
 
           setLessons(combined as Lesson[])
 
-        } else if (profile!.role === 'teacher') {
+        } else if (effectiveRole === 'teacher') {
           const { data: teacher } = await supabase
             .from('teachers').select('id').eq('profile_id', profile!.id).single()
 
@@ -85,7 +90,7 @@ export function useLessons() {
             ...l, student_profile: l.student || null,
           })) as Lesson[])
 
-        } else if (profile!.role === 'curator') {
+        } else if (effectiveRole === 'curator') {
           // Curator sees only lessons for groups they curate
           const { data: curatorRow } = await supabase
             .from('curators').select('id').eq('profile_id', profile!.id).single()
@@ -123,7 +128,7 @@ export function useLessons() {
     }
 
     load()
-  }, [profile, tick])
+  }, [profile, effectiveRole, tick])
 
   return { lessons, loading, reload }
 }

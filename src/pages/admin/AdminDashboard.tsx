@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Users, BookOpen, BarChart3, Search, ArrowRight,
-  CheckCircle, RefreshCw, Calendar,
+  CheckCircle, RefreshCw, Calendar, Activity, Bell, ListChecks,
   GraduationCap, Plus, Pencil, Lock,
   Loader2, ShieldAlert, ClipboardList, Send,
 } from 'lucide-react'
@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAdminDashboard, type AdminProfile, type AdminCourse } from '@/hooks/useAdminDashboard'
+import { useSchoolStats } from '@/hooks/useSchoolStats'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
 import { cn } from '@/utils/cn'
@@ -64,6 +65,7 @@ export function AdminDashboard() {
   const [createUserOpen,  setCreateUserOpen]  = useState(false)
 
   const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
+  const { stats: school, error: schoolError, reload: reloadSchool } = useSchoolStats()
 
   async function changeRole(profileId: string, newRole: string) {
     setSavingRole(profileId)
@@ -106,7 +108,7 @@ export function AdminDashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Панель администратора</h1>
           <p className="text-gray-500 mt-0.5">Управление школой · {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
-        <button onClick={reload} className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <button onClick={() => { reload(); reloadSchool() }} className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           <RefreshCw size={14} />Обновить
         </button>
       </div>
@@ -114,31 +116,83 @@ export function AdminDashboard() {
       {/* ── Быстрый вход (демо impersonation) ─────────────────────── */}
       <QuickLogin />
 
-      {/* ── Stats ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Пользователей"
-          value={stats?.total_users ?? 0}
-          icon={<Users size={20} />}
-          color="blue"
-          subtitle={`+${stats?.new_users_week ?? 0} за неделю`}
-        />
-        <StatCard
-          title="Активных групп"
-          value={stats?.active_groups ?? 0}
-          icon={<BookOpen size={20} />}
-          color="green"
-          subtitle={`${stats?.total_students ?? 0} учеников`}
-        />
-        <StatCard
-          title="ДЗ на проверке"
-          value={stats?.pending_hw_count ?? 0}
-          icon={<ClipboardList size={20} />}
-          color={stats && stats.pending_hw_count > 0 ? 'orange' : 'green'}
-          subtitle={stats?.pending_hw_count ? 'Ждут учителей' : 'Все проверены'}
-          onClick={() => navigate('/homeworks')}
-        />
-      </div>
+      {/* ── Статистика школы ─────────────────────────────────────────
+          Девять плиток, утверждённых владельцем 04.08. Все цифры — живые,
+          считает definer-RPC `admin_school_stats` одним запросом.
+
+          Что было до этого: «ДЗ на проверке» считалось по
+          `homework_submissions` — ЛЕГАСИ-контуру с нулём строк навсегда
+          (CLAUDE.md, «Три контура ДЗ»). Плитка показывала 0 при 16 сдачах и
+          13 разборах в живом `topic_homework_*`. Это была не заглушка, а
+          враньё: цифра выглядела настоящей. */}
+      {schoolError ? (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+          {schoolError}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <StatCard
+            title="Учителей"
+            value={school?.teachers ?? 0}
+            icon={<GraduationCap size={20} />}
+            color="blue"
+          />
+          <StatCard
+            title="Учеников"
+            value={school?.students ?? 0}
+            icon={<Users size={20} />}
+            color="blue"
+            subtitle={`+${stats?.new_users_week ?? 0} новых за неделю`}
+          />
+          <StatCard
+            title="Курсов"
+            value={school?.courses ?? 0}
+            icon={<BookOpen size={20} />}
+            color="green"
+          />
+          <StatCard
+            title="Сдано ДЗ за 7 дней"
+            value={school?.homework_submitted_7d ?? 0}
+            icon={<Send size={20} />}
+            color="indigo"
+            subtitle={`${school?.homework_submitted_total ?? 0} за всё время`}
+          />
+          <StatCard
+            title="Проверено работ"
+            value={school?.homework_reviewed ?? 0}
+            icon={<CheckCircle size={20} />}
+            color="green"
+          />
+          <StatCard
+            title="Ждут проверки"
+            value={school?.homework_pending ?? 0}
+            icon={<ClipboardList size={20} />}
+            color={school && school.homework_pending > 0 ? 'orange' : 'green'}
+            subtitle={school?.homework_pending ? 'Ждут учителей' : 'Все проверены'}
+            onClick={() => navigate('/homework-queue')}
+          />
+          <StatCard
+            title="Пройдено тестирований"
+            value={school?.variants_completed ?? 0}
+            icon={<ListChecks size={20} />}
+            color="purple"
+          />
+          <StatCard
+            title="Привязано Telegram"
+            value={school?.telegram_connected ?? 0}
+            icon={<Bell size={20} />}
+            color="indigo"
+            subtitle={`из ${stats?.total_users ?? 0} профилей`}
+          />
+          <StatCard
+            title="Заходили за неделю"
+            value={school?.visits_7d ?? 0}
+            icon={<Activity size={20} />}
+            color="orange"
+            subtitle={`сегодня — ${school?.visits_today ?? 0}`}
+          />
+        </div>
+      )}
 
       {/* ── Tabs ─────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap">
@@ -160,7 +214,9 @@ export function AdminDashboard() {
 
           {/* Role breakdown */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {(['student','teacher','curator','admin','owner'] as const).map(role => {
+            {/* `owner` из разбивки убран (решение владельца 04.08): роли нет
+                ни у одного профиля, плитка была вечным нулём. */}
+            {(['student','teacher','curator','admin'] as const).map(role => {
               const count = profiles.filter(p => p.role === role).length
               return (
                 <button

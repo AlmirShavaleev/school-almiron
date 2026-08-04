@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useEffectiveRole } from '@/store/staffModeStore'
 
 export interface AttendanceRow {
   student_id:   string
@@ -21,6 +22,10 @@ export interface GroupReport {
 
 export function useAttendanceReport() {
   const profile = useAuthStore(s => s.profile)
+  // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя видит
+  // только своё. Под админской RLS база отдаёт ему всю школу, поэтому
+  // сужение стоит в запросе клиента. На права это не влияет (§77).
+  const effectiveRole = useEffectiveRole()
   const [groups,  setGroups]  = useState<GroupReport[]>([])
   const [loading, setLoading] = useState(true)
   const [tick, setTick] = useState(0)
@@ -29,7 +34,7 @@ export function useAttendanceReport() {
   useEffect(() => {
     if (!profile) return
     load()
-  }, [profile, tick])
+  }, [profile, effectiveRole, tick])
 
   async function load() {
     setLoading(true)
@@ -37,12 +42,12 @@ export function useAttendanceReport() {
       // 1. Get groups scoped to role
       let groupsQuery = supabase.from('groups').select('id, name')
 
-      if (profile!.role === 'teacher') {
+      if (effectiveRole === 'teacher') {
         const { data: teacher } = await supabase
           .from('teachers').select('id').eq('profile_id', profile!.id).single()
         if (!teacher) { setGroups([]); return }
         groupsQuery = groupsQuery.eq('teacher_id', teacher.id)
-      } else if (profile!.role === 'student') {
+      } else if (effectiveRole === 'student') {
         const { data: student } = await supabase
           .from('students').select('id').eq('profile_id', profile!.id).single()
         if (!student) { setGroups([]); return }
