@@ -70,6 +70,7 @@ describe('очередь проверки у куратора курса', () =>
       courseIds: [CURATED_COURSE],
       groupIds: ['g-curated'],
       ownStudentId: OWN_STUDENT,
+      readOnly: true, // куратор: §94
     }
   })
 

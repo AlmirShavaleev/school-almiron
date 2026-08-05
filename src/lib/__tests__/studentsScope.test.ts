@@ -15,11 +15,11 @@ import type { MyJoinRequest } from '@/lib/teacherJoinRequests'
 const ME = 'owner-profile'
 const MY_TEACHER = 'owner-teacher-row'
 
-const adminMode: TeachingScope = { active: false, loading: false, teacherId: null, courseIds: [], groupIds: [], ownStudentId: null }
+const adminMode: TeachingScope = { active: false, loading: false, teacherId: null, courseIds: [], groupIds: [], ownStudentId: null, readOnly: false }
 const teacherMode: TeachingScope = {
   active: true, loading: false,
   teacherId: MY_TEACHER, courseIds: ['c-mine'], groupIds: ['g-mine'],
-  ownStudentId: null,
+  ownStudentId: null, readOnly: false,
 }
 const stillLoading: TeachingScope = { ...teacherMode, loading: true }
 
