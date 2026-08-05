@@ -22,11 +22,16 @@ const SECTIONS: Array<{
   hasFile: boolean
   isSpecial?: 'video' | 'link'
 }> = [
-  { type: 'notes', label: 'Конспект', color: 'text-blue-600 bg-blue-50', hasText: true, hasFile: true },
+  // Порядок и состав — как у рубрик темы (§95): урок из шаблона не должен
+  // отличаться от урока с нуля.
   { type: 'theory', label: 'Теория', color: 'text-violet-600 bg-violet-50', hasText: true, hasFile: true },
+  { type: 'notes', label: 'Конспект', color: 'text-blue-600 bg-blue-50', hasText: true, hasFile: true },
   { type: 'tasks', label: 'Список задач', color: 'text-orange-600 bg-orange-50', hasText: false, hasFile: true },
+  { type: 'task_solution', label: 'Решение задач', color: 'text-teal-600 bg-teal-50', hasText: true, hasFile: true },
+  { type: 'worksheet_tasks', label: 'Рабочий лист задач', color: 'text-sky-600 bg-sky-50', hasText: false, hasFile: true },
   { type: 'homework', label: 'ДЗ', color: 'text-amber-600 bg-amber-50', hasText: true, hasFile: true },
   { type: 'solution', label: 'Решение ДЗ', color: 'text-emerald-600 bg-emerald-50', hasText: false, hasFile: true },
+  { type: 'worksheet_homework', label: 'Рабочий лист ДЗ', color: 'text-cyan-600 bg-cyan-50', hasText: false, hasFile: true },
   { type: 'video', label: 'Видео', color: 'text-rose-600 bg-rose-50', hasText: false, hasFile: false, isSpecial: 'video' },
   { type: 'link', label: 'Ссылка', color: 'text-cyan-700 bg-cyan-50', hasText: false, hasFile: false, isSpecial: 'link' },
 ]

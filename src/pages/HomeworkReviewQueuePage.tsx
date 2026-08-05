@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, CheckCircle2, Eye, Filter, Inbox, Loader2, Paperclip, RefreshCw, Sparkles,
 } from 'lucide-react'
@@ -349,6 +350,35 @@ export function HomeworkReviewQueuePage() {
    */
   const [reviewing, setReviewing] = useState<{ row: QueueRow; locked: boolean } | null>(null)
   const filesOf = (attemptId: string) => attemptFiles.filter(f => f.attempt_id === attemptId)
+
+  /**
+   * Открыть конкретную работу по ссылке `/homework-queue?attempt=<id>` — из
+   * аккордеона «Работы учеников» в теме. Своего роута у оверлея нет, он живёт
+   * состоянием этой страницы, поэтому переход выглядит так.
+   *
+   * Чтение ОДНОРАЗОВОЕ и в одну сторону: параметр читается, работа
+   * открывается, ссылка тут же чистится через `replace`. Синхронизации
+   * «состояние ↔ адрес» через эффект здесь нет и быть не должно — ровно эта
+   * конструкция дала бесконечный цикл в §35.2, о чём предупреждает соседний
+   * комментарий про фильтры.
+   *
+   * Ищем в `all`, а не в `rows`: работа могла быть уже принята или возвращена,
+   * и на открытой вкладке её нет — иначе ссылка молча не сработала бы.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const consumedAttemptRef = useRef<string | null>(null)
+  const wantedAttemptId = searchParams.get('attempt')
+
+  useEffect(() => {
+    if (!wantedAttemptId || consumedAttemptRef.current === wantedAttemptId) return
+    const row = all.find(r => r.attempt.id === wantedAttemptId)
+    if (!row) return
+    consumedAttemptRef.current = wantedAttemptId
+    setReviewing({ row, locked: false })
+    const next = new URLSearchParams(searchParams)
+    next.delete('attempt')
+    setSearchParams(next, { replace: true })
+  }, [wantedAttemptId, all, searchParams, setSearchParams])
 
   // Фильтры живут в обычном useState и никуда не синхронизируются. Связка
   // «состояние ↔ адрес через эффект» — ровно та конструкция, в которой сидел

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
 import {
+  GATED_SECTION,
   MATERIAL_FILE_ACCEPT,
   TOPIC_MATERIAL_LABELS,
   TOPIC_MATERIAL_SECTION_LABELS,
@@ -572,9 +573,23 @@ export function TopicMaterialItems({
     filtered = materials.filter(m => m.kind === 'video')
   }
 
-  const emptyMessage = section
-    ? 'В этой рубрике пока пусто'
-    : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
+  /**
+   * Пустое «Решение ДЗ» у ученика — почти всегда не пустота, а гейт: база
+   * отдаёт ноль строк, пока его работа не принята (§95). Пустая рубрика без
+   * объяснения выглядит как пропавшая, поэтому подписываем.
+   *
+   * Это ТОЛЬКО подпись. Правило «видит/не видит» живёт в базе — в
+   * `topic_solution_unlocked` и двух политиках (на строку и на файл).
+   * Повторять его здесь нельзя: две копии правила разъезжаются (§21, §29), а
+   * клиентская копия ещё и обманчива — она бы «знала» ответ, не спросив.
+   */
+  const gatedAndEmpty = !canManage && section === GATED_SECTION && filtered.length === 0
+
+  const emptyMessage = gatedAndEmpty
+    ? 'Решение откроется после того, как преподаватель примет твою работу'
+    : section
+      ? 'В этой рубрике пока пусто'
+      : canManage ? 'Материалов пока нет' : 'Преподаватель ещё не добавил материалы'
 
   return (
     <div className={cn('space-y-3', className)}>

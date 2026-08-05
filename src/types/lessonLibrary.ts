@@ -1,6 +1,15 @@
 export type LessonTemplateSubject = 'physics' | 'math' | 'algebra' | 'geometry' | 'probability_statistics'
 export type LessonTemplateExam = 'ege' | 'oge' | 'grade_7' | 'grade_8' | 'grade_9' | 'grade_10' | 'grade_11' | null
-export type LessonTemplateMaterialType = 'notes' | 'theory' | 'tasks' | 'homework' | 'solution' | 'video' | 'link'
+/**
+ * Рубрики материала шаблона урока. Три новые (`task_solution`,
+ * `worksheet_tasks`, `worksheet_homework`) добавлены вместе с рубриками темы:
+ * урок, собранный из шаблона, не должен отличаться от урока с нуля (решение
+ * владельца, §95). Совпадает с CHECK на `lesson_template_materials.type`.
+ */
+export type LessonTemplateMaterialType =
+  | 'notes' | 'theory' | 'tasks'
+  | 'task_solution' | 'worksheet_tasks' | 'worksheet_homework'
+  | 'homework' | 'solution' | 'video' | 'link'
 
 export interface LessonTemplate {
   id: string

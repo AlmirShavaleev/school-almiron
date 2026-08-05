@@ -3,12 +3,20 @@ import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
+import { TopicHomeworkSubmissions } from '@/components/courseProgram/TopicHomeworkSubmissions'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { SignedImage } from '@/components/ui/SignedImage'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
+
+/** Картинка ли это — по расширению имени файла. */
+function isImageName(name: string | null): boolean {
+  const ext = (name?.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
+  return /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
+}
 
 /**
  * Преподавательский блок ДЗ темы: прикрепить файлы, задать дедлайн и баллы,
@@ -28,6 +36,8 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
   const [gradeScale, setGradeScale] = useState<'five' | 'hundred' | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Сигнал «раскрой оповещение»: ставится один раз после публикации.
+  const [notifyOpen, setNotifyOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   // Состояние оповещения переехало внутрь TopicHomeworkNotify: там же список
@@ -160,33 +170,24 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           <FileText size={15} className="text-primary-600" />
           <span className="text-sm font-semibold text-gray-900">Домашнее задание</span>
           {/*
-            Одно управление публикацией вместо двух. Раньше состояние
-            показывал бейдж, а меняла его кнопка «Скрыть от учеников» внизу —
-            владельцу было непонятно, что это одно и то же (это буквально
-            `is_published: !published`, третьего состояния нет). Теперь бейдж
-            сам и есть переключатель.
+            Бейдж снова ИНДИКАТОР, а не кнопка. В §75 он стал переключателем —
+            и владельцу это оказалось неудобно: «надо нажать на черновик, и она
+            только потом опубликуется», то есть нажимаешь на текущее состояние,
+            а не на действие. Действие теперь отдельной кнопкой внизу.
           */}
           {homework && (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={published}
-              data-testid="homework-publish-toggle"
-              disabled={busy || (!published && !canPublish)}
-              title={!published && !canPublish
-                ? 'Сначала прикрепите файл задания'
-                : published ? 'Опубликовано. Нажмите, чтобы вернуть в черновик' : 'Черновик. Нажмите, чтобы опубликовать'}
-              onClick={() => run(() => updateHomework({ is_published: !published }))}
+            <span
+              data-testid="homework-publish-state"
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase',
                 published
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-700',
               )}
             >
               <span className={cn('h-1.5 w-1.5 rounded-full', published ? 'bg-emerald-500' : 'bg-amber-500')} />
               {published ? 'Опубликовано' : 'Черновик'}
-            </button>
+            </span>
           )}
           {saved && <span className="text-xs text-emerald-600">Сохранено</span>}
         </div>
@@ -279,7 +280,22 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
                   url={f.storage_path}
                   className="inline-flex min-w-0 flex-1 items-center gap-2 text-sm text-primary-600 hover:underline"
                 >
-                  <FileText size={14} className="shrink-0" />
+                  {/*
+                    У картинки — миниатюра вместо общей иконки: строка
+                    «скриншот-1.png (74 КБ)» не говорит, что внутри, и владелец
+                    жаловался именно на это. PDF остаётся иконкой: его превью
+                    здесь не построить.
+                  */}
+                  {isImageName(f.original_filename) ? (
+                    <SignedImage
+                      bucket={TOPIC_HOMEWORK_BUCKET}
+                      path={f.storage_path}
+                      alt={f.original_filename}
+                      className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 bg-white object-cover"
+                    />
+                  ) : (
+                    <FileText size={14} className="shrink-0" />
+                  )}
                   <span className="truncate">{f.original_filename}</span>
                   {formatBytes(f.size_bytes) && (
                     <span className="shrink-0 text-xs text-gray-400">({formatBytes(f.size_bytes)})</span>
@@ -345,11 +361,46 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
         {/* Публикация переехала в переключатель у заголовка — отдельной кнопки
             «Скрыть от учеников» больше нет: это было второе управление тем же
             полем is_published. */}
+        {/*
+          Явное действие вместо нажатия на состояние. После публикации сразу
+          раскрываем аккордеон оповещения: опубликовал — предложило оповестить,
+          это следующий шаг, а не отдельная модалка.
+        */}
+        {homework && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              variant={published ? 'secondary' : 'primary'}
+              size="sm"
+              data-testid="homework-publish-button"
+              disabled={busy || (!published && !canPublish)}
+              title={!published && !canPublish ? 'Сначала прикрепите файл задания' : undefined}
+              onClick={() => run(async () => {
+                await updateHomework({ is_published: !published })
+                if (!published) setNotifyOpen(true)
+              })}
+            >
+              {published ? 'Снять с публикации' : 'Опубликовать'}
+            </Button>
+            {!published && !canPublish && (
+              <span className="text-xs text-gray-400">Сначала прикрепите файл задания</span>
+            )}
+          </div>
+        )}
+
         {published && (
           <TopicHomeworkNotify
             className="mt-4"
             loadTargets={loadNotifyTargets}
             onNotify={notifyStudents}
+            openSignal={notifyOpen}
+          />
+        )}
+
+        {homework && (
+          <TopicHomeworkSubmissions
+            className="mt-3"
+            homeworkId={homework.id}
+            gradeScale={homework.grade_scale}
           />
         )}
 

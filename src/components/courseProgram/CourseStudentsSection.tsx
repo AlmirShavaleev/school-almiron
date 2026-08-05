@@ -5,6 +5,7 @@ import { cn } from '@/utils/cn'
 import { formatInviteCode } from '@/lib/studentInviteSession'
 import { toast } from '@/store/toastStore'
 import { ROLE_LABELS } from '@/store/staffModeStore'
+import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 
 interface StudentInfo {
   studentId: string
@@ -214,6 +215,10 @@ function JoinLinkCard({
 }
 
 export function CourseStudentsSection({ courseId }: { courseId: string }) {
+  // Куратор набором курса не занимается: ни ученических ссылок, ни
+  // кураторской, ни назначения, ни удаления учеников (решение владельца
+  // 05.08). Список учеников он видит — это его работа.
+  const { readOnly } = useMyTeachingScope()
   const [students, setStudents] = useState<StudentRow[]>([])
   const [telegramSet, setTelegramSet] = useState<Set<string>>(new Set())
   const [showTelegramColumn, setShowTelegramColumn] = useState(true)
@@ -261,7 +266,11 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         setLoading(true)
         setError(null)
 
-        // Load course join link (students)
+        // Load course join link (students).
+        // Куратору обе ссылки теперь отвечают 42501 — не спрашиваем вовсе,
+        // иначе на каждое открытие страницы летели бы два заведомо отказных
+        // запроса и две записи в консоль.
+        if (!readOnly) {
         try {
           const linkResult: any = await (supabase.rpc as any)('course_join_link_get', {
             p_course_id: courseId,
@@ -303,6 +312,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         } catch (e: any) {
           console.error('Ошибка при загрузке ссылки приглашения для кураторов:', e)
           // Don't fail the whole load if link fetch fails
+        }
         }
 
         // Load curators
@@ -435,7 +445,11 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
       cancelled.value = true
       abortController.abort()
     }
-  }, [courseId, tick])
+    // readOnly в зависимостях обязателен: на первом кадре он ещё «true»
+    // (кураторство не проверено), и без перезапуска преподаватель остался бы
+    // без ссылок приглашения навсегда.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, tick, readOnly])
 
 
   // Helper function to copy text
@@ -858,24 +872,29 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                         <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
                       </td>
                       <td className="px-4 py-2">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleStartEdit(student.studentId, student.name)}
-                            disabled={editingId !== null}
-                            className="p-1.5 rounded text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors disabled:opacity-50"
-                            title="Переименовать"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveStudent(student.studentId, student.name)}
-                            disabled={editingId !== null}
-                            className="p-1.5 rounded text-red-600 hover:bg-red-100 hover:text-red-800 transition-colors disabled:opacity-50"
-                            title="Отчислить с курса"
-                          >
-                            <UserMinus size={14} />
-                          </button>
-                        </div>
+                        {/* Куратор состав не меняет: обе RPC ему теперь
+                            отвечают 42501, и кнопка была бы обещанием
+                            гарантированной ошибки. */}
+                        {!readOnly && (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => handleStartEdit(student.studentId, student.name)}
+                              disabled={editingId !== null}
+                              className="p-1.5 rounded text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors disabled:opacity-50"
+                              title="Переименовать"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveStudent(student.studentId, student.name)}
+                              disabled={editingId !== null}
+                              className="p-1.5 rounded text-red-600 hover:bg-red-100 hover:text-red-800 transition-colors disabled:opacity-50"
+                              title="Отчислить с курса"
+                            >
+                              <UserMinus size={14} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -892,8 +911,8 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         </div>
       )}
 
-      {/* Course Join Link Block */}
-      {(studentLink || curatorLink) && (
+      {/* Course Join Link Block — набор на курс ведёт тот, кто курс ведёт. */}
+      {!readOnly && (studentLink || curatorLink) && (
         <div className="space-y-6">
           {/* Student link card */}
           <JoinLinkCard

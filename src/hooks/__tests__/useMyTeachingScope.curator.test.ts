@@ -122,6 +122,19 @@ describe('useMyTeachingScope и кураторство-назначение', ()
     expect(result.current.ownStudentId).toBe(OWN_STUDENT_ROW)
     // Кураторство преподавателем не делает.
     expect(result.current.teacherId).toBeNull()
+    // Куратор читает и проверяет, но ничего не меняет.
+    expect(result.current.readOnly).toBe(true)
+  })
+
+  it('ученику без кураторства режим «только чтение» не приписывается', async () => {
+    setProfile(STUDENT_ID, 'student')
+
+    const { result } = renderHook(() => useMyTeachingScope())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    // readOnly — про «смотрю курс куратором», а не про «мне вообще нельзя».
+    // Обычный ученик на страницы курса не попадает вовсе.
+    expect(result.current.readOnly).toBe(false)
   })
 
   it('преподавателю сужение не включается, даже если он курирует чужой курс', async () => {
@@ -136,6 +149,8 @@ describe('useMyTeachingScope и кураторство-назначение', ()
     // Ему всё сузила RLS. Включи мы фильтр по курируемым — он потерял бы
     // собственные курсы, которых в course_curators нет.
     expect(result.current.active).toBe(false)
+    // И тумблер тем у него остаётся: свои курсы он ведёт.
+    expect(result.current.readOnly).toBe(false)
   })
 
   it('пока неизвестно, куратор ли ученик, сужение считается активным', () => {
@@ -150,5 +165,7 @@ describe('useMyTeachingScope и кураторство-назначение', ()
     // бы на кадр показать чужие работы — поэтому active сразу true.
     expect(result.current.active).toBe(true)
     expect(result.current.loading).toBe(true)
+    // И «менять нельзя» — иначе кнопка успела бы мигнуть куратору.
+    expect(result.current.readOnly).toBe(true)
   })
 })

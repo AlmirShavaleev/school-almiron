@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { isTopicOpen, topicToggleLabel, type TopicOpenState } from '@/lib/topicAvailability'
+import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 
 /**
  * Тумблер открытости темы прямо в строке списка программы.
@@ -15,6 +16,14 @@ import { isTopicOpen, topicToggleLabel, type TopicOpenState } from '@/lib/topicA
  * Переключение оптимистичное: строка перекрашивается сразу, а если запись не
  * прошла — возвращается как была. Ждать ответа базы ради галочки в списке
  * из двадцати тем — значит сделать список неотзывчивым.
+ *
+ * КУРАТОРУ тумблера нет вовсе. Прячем здесь, а не в четырёх списках: скрытие
+ * по месту вызова означало бы четыре копии правила, и пятый список однажды
+ * забыли бы. Причина именно в оптимистичности: UPDATE под RLS, не найдя
+ * подходящих строк, возвращает успех с нулём изменений — куратор жал, плашка
+ * перекрашивалась, тема не открывалась. Владелец принял это за работающее
+ * право (клик-проверка 05.08). База куратора не пускала и до этой правки —
+ * проверено пробой, — но молчаливый отказ хуже видимого запрета.
  */
 export function TopicOpenToggle({
   topic,
@@ -26,6 +35,7 @@ export function TopicOpenToggle({
   onToggle: (isOpen: boolean) => Promise<void>
   className?: string
 }) {
+  const { readOnly } = useMyTeachingScope()
   // null — показываем настоящее состояние; иначе временно своё, до ответа базы.
   const [optimistic, setOptimistic] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -56,6 +66,27 @@ export function TopicOpenToggle({
     } finally {
       setSaving(false)
     }
+  }
+
+  // Куратор состояние темы ВИДИТ — это часть программы, которую ему положено
+  // читать, — но плашка не кнопка: ни клика, ни подсказки «нажмите».
+  if (readOnly) {
+    return (
+      <span
+        data-testid="topic-row-open-state"
+        title={open ? 'Открыта для учеников' : 'Закрыта'}
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+          open
+            ? 'border-green-200 bg-green-50 text-green-700'
+            : 'border-gray-200 bg-gray-100 text-gray-500',
+          className,
+        )}
+      >
+        <span className={cn('h-1.5 w-1.5 rounded-full', open ? 'bg-green-500' : 'bg-gray-400')} />
+        {label}
+      </span>
+    )
   }
 
   return (

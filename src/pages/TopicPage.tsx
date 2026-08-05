@@ -12,7 +12,7 @@ import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItem
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
-import { TOPIC_MATERIAL_SECTION_LABELS, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import { STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, type TopicMaterialSection } from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -185,18 +185,19 @@ export function TopicPage() {
   // исчезновение владелец прочитал как пропажу раздела.
   availableTabs.push('video')
 
-  // Count materials by section
-  const notesCount = materials.filter(m => m.section === 'notes').length
-  const theoryCount = materials.filter(m => m.section === 'theory').length
-  const tasksCount = materials.filter(m => m.section === 'tasks').length
-  const solutionCount = materials.filter(m => m.section === 'solution').length
+  // Счёт и порядок вкладок берём из общего списка рубрик, а не перечисляем
+  // руками: с §95 их семь, и перечень здесь стал бы пятой копией.
+  const sectionCounts = Object.fromEntries(
+    STUDENT_SECTION_ORDER.map(s => [s, materials.filter(m => m.section === s).length]),
+  ) as Record<TopicMaterialSection, number>
 
-  if (notesCount > 0) availableTabs.push('notes')
-  if (theoryCount > 0) availableTabs.push('theory')
-  if (tasksCount > 0) availableTabs.push('tasks')
-
-  // Solution tab available if there's a solution OR solution materials
-  if (solutionState.hasSolution || solutionCount > 0) availableTabs.push('solution')
+  for (const s of STUDENT_SECTION_ORDER) {
+    // «Решение ДЗ» — особый случай: вкладка нужна и тогда, когда материалов не
+    // видно из-за гейта, иначе рубрика выглядит пропавшей.
+    if (s === 'solution') continue
+    if (sectionCounts[s] > 0) availableTabs.push(s)
+  }
+  if (solutionState.hasSolution || sectionCounts.solution > 0) availableTabs.push('solution')
 
   if (hasHomework) availableTabs.push('homework')
   // Вкладка нужна и когда теста банка нет, а тестирование выдано.
@@ -244,19 +245,11 @@ export function TopicPage() {
 
             if (tabKey === 'video') {
               label = 'Видео'
-            } else if (tabKey === 'notes') {
-              label = TOPIC_MATERIAL_SECTION_LABELS.notes
-              count = notesCount
-            } else if (tabKey === 'theory') {
-              label = TOPIC_MATERIAL_SECTION_LABELS.theory
-              count = theoryCount
-            } else if (tabKey === 'tasks') {
-              label = TOPIC_MATERIAL_SECTION_LABELS.tasks
-              count = tasksCount
-            } else if (tabKey === 'solution') {
-              label = TOPIC_MATERIAL_SECTION_LABELS.solution
-              count = solutionCount
-              isLocked = solutionState.hasSolution && !solutionState.unlocked
+            } else if ((STUDENT_SECTION_ORDER as readonly string[]).includes(tabKey)) {
+              const s = tabKey as TopicMaterialSection
+              label = TOPIC_MATERIAL_SECTION_LABELS[s]
+              count = sectionCounts[s]
+              if (s === 'solution') isLocked = solutionState.hasSolution && !solutionState.unlocked
             } else if (tabKey === 'homework') {
               label = 'Домашнее задание'
             } else if (tabKey === 'test') {

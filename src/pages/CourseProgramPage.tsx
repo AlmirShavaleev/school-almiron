@@ -42,6 +42,8 @@ import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
+import { TOPIC_MATERIAL_SECTIONS } from '@/lib/topicMaterialItems'
+import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
@@ -969,13 +971,19 @@ function CourseSettings({ course, onSave, onCopyCourse, onDeleteCourse }: { cour
 
 // ─── Materials matrix ─────────────────────────────────────────────────────────
 const MAT_COLS = [
-  { type: 'notes',    label: 'Конспект',     icon: <BookMarked size={13} />,    color: 'text-blue-500' },
-  { type: 'theory',   label: 'Теория',       icon: <BookOpen size={13} />,      color: 'text-purple-500' },
-  { type: 'tasks',    label: 'Задачи',       icon: <ClipboardList size={13} />, color: 'text-orange-500' },
-  { type: 'hw',       label: 'ДЗ',           icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
-  { type: 'solution', label: 'Решение ДЗ',   icon: <Check size={13} />,         color: 'text-green-500' },
-  { type: 'video',    label: 'Видео',        icon: <Video size={13} />,         color: 'text-red-500' },
-  { type: 'test',     label: 'Тестирование', icon: <BarChart3 size={13} />,     color: 'text-indigo-500' },
+  // Порядок владельца (§95). «Видео» и «Тестирование» — не секции: видео это
+  // kind='video', тестирование отдельная таблица. В матрице они всё равно
+  // колонки: преподавателю это такие же клетки «заполнено / пусто».
+  { type: 'theory',             label: 'Теория',          icon: <BookOpen size={13} />,      color: 'text-purple-500' },
+  { type: 'notes',              label: 'Конспект',        icon: <BookMarked size={13} />,    color: 'text-blue-500' },
+  { type: 'tasks',              label: 'Задачи',          icon: <ClipboardList size={13} />, color: 'text-orange-500' },
+  { type: 'task_solution',      label: 'Решение задач',   icon: <Check size={13} />,         color: 'text-teal-500' },
+  { type: 'worksheet_tasks',    label: 'Раб. лист задач', icon: <FileText size={13} />,      color: 'text-sky-500' },
+  { type: 'hw',                 label: 'ДЗ',              icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
+  { type: 'solution',           label: 'Решение ДЗ',      icon: <Check size={13} />,         color: 'text-green-500' },
+  { type: 'worksheet_homework', label: 'Раб. лист ДЗ',    icon: <FileText size={13} />,      color: 'text-cyan-500' },
+  { type: 'video',              label: 'Видео',           icon: <Video size={13} />,         color: 'text-red-500' },
+  { type: 'test',               label: 'Тестирование',    icon: <BarChart3 size={13} />,     color: 'text-indigo-500' },
 ]
 
 function MaterialsMatrix({
@@ -1049,8 +1057,9 @@ function MaterialsMatrix({
         // Process topic_material_items
         for (const row of materialItems) {
           if (!map[row.topic_id]) map[row.topic_id] = new Set()
-          // If section is one of: notes, theory, tasks, solution -> add(section)
-          if (row.section && ['notes', 'theory', 'tasks', 'solution'].includes(row.section)) {
+          // Список секций берём из общего места, а не переписываем строкой:
+          // с §95 их семь, и третья копия перечня разъехалась бы первой.
+          if (row.section && (TOPIC_MATERIAL_SECTIONS as readonly string[]).includes(row.section)) {
             map[row.topic_id].add(row.section)
           }
           // If kind === 'video' -> add('video')
@@ -1255,7 +1264,15 @@ function CourseCard({ course, ownerLabel }: { course: Course; ownerLabel?: strin
 
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
-  const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
+  const { readOnly } = useMyTeachingScope()
+  // Роль `curator` из списка убрана: с 2026-08-05 куратор программу читает, но
+  // не правит, и база это подтверждает (`course_is_teacher_staff`). Оставлять
+  // её значило бы рисовать легаси-куратору кнопки, каждая из которых кончается
+  // ошибкой 42501. `readOnly` закрывает вторую половину: ученика, которого
+  // назначили куратором, — у него в профиле `student`, и по списку ролей он и
+  // так не проходит, но правило должно быть записано, а не выведено.
+  const canEdit = !readOnly
+    && !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const isAdmin = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const isPlatformAdmin = !!profile?.role && ['admin', 'owner'].includes(profile.role)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))

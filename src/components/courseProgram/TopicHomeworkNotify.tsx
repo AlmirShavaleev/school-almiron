@@ -22,13 +22,24 @@ export function TopicHomeworkNotify({
   loadTargets,
   onNotify,
   className,
+  openSignal,
 }: {
   loadTargets: () => Promise<NotifyTarget[]>
   /** Без списка — всем привязанным. Возвращает, сколько встало в очередь. */
   onNotify: (profileIds?: string[]) => Promise<number>
   className?: string
+  /**
+   * Раскрыть снаружи — после публикации ДЗ (§95). Только раскрывает и никогда
+   * не закрывает: иначе перерисовка родителя схлопывала бы аккордеон под
+   * руками у преподавателя.
+   */
+  openSignal?: boolean
 }) {
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (openSignal) setOpen(true)
+  }, [openSignal])
   const [targets, setTargets] = useState<NotifyTarget[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

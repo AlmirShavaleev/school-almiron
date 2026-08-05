@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { countByTab, rowsOfTab, type QueueRow, type QueueTab } from '@/lib/homeworkQueue'
 
 const state = {
@@ -44,6 +45,22 @@ vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
 
 import { HomeworkReviewQueuePage } from '@/pages/HomeworkReviewQueuePage'
 
+/**
+ * Страница читает `?attempt=<id>`, чтобы открыть работу по ссылке из аккордеона
+ * «Работы учеников» (§93), а `useSearchParams` без <Router> падает целиком —
+ * не одним тестом, а всеми четырнадцатью.
+ *
+ * Рендер идёт через один помощник, а не голым render в каждом тесте: следующий
+ * роутерный хук на этой странице иначе снова уронит весь файл.
+ */
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <HomeworkReviewQueuePage />
+    </MemoryRouter>,
+  )
+}
+
 function queueRow(over: Partial<QueueRow> = {}, attemptOver: Record<string, unknown> = {}): QueueRow {
   return {
     attempt: {
@@ -86,7 +103,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     // ДЗ, когда, просрочил ли он его — то есть только действительно важные
     // моменты, а потом проваливаясь внутрь я уже отмечаю ошибки».
     state.all = [queueRow()]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.queryByTestId('review-comment-input')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-score-input')).not.toBeInTheDocument()
@@ -96,7 +113,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
   it('показывает кто сдал, что и когда', () => {
     state.all = [queueRow()]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.getByText('Ученик')).toBeInTheDocument()
     expect(screen.getByText('Новая тема1')).toBeInTheDocument()
@@ -106,7 +123,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
   it('отмечает просроченную сдачу и выносит счёт в подзаголовок', () => {
     state.all = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.getByTestId('queue-late-badge')).toBeInTheDocument()
     expect(screen.getByTestId('queue-attempt-card')).toHaveAttribute('data-late', 'true')
@@ -115,7 +132,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
   it('сданное в срок не помечается просроченным', () => {
     state.all = [queueRow({ dueAt: '2026-08-10T00:00:00Z' })]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.queryByTestId('queue-late-badge')).not.toBeInTheDocument()
     expect(screen.getByTestId('queue-count')).not.toHaveTextContent('просрочено')
@@ -123,7 +140,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
   it('клик по строке открывает разбор этой работы', () => {
     state.all = [queueRow({ dueAt: '2026-07-25T00:00:00Z' })]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.queryByTestId('attempt-annotation-overlay')).not.toBeInTheDocument()
     openRow()
@@ -137,7 +154,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
   it('повторную попытку помечает номером, первую — нет', () => {
     state.all = [queueRow({}, { attempt_number: 2 })]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     expect(screen.getByText('попытка №2')).toBeInTheDocument()
   })
 })
@@ -164,7 +181,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
   })
 
   it('у каждой вкладки свой счётчик по всем загруженным работам', () => {
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.getByTestId('queue-tab-submitted')).toHaveTextContent('Ждут проверки1')
     expect(screen.getByTestId('queue-tab-returned_for_revision')).toHaveTextContent('На доработке1')
@@ -172,7 +189,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
   })
 
   it('по умолчанию открыта «Ждут проверки» — в списке только ожидающие', () => {
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.getByTestId('queue-tab-submitted')).toHaveAttribute('aria-selected', 'true')
     const cards = screen.getAllByTestId('queue-attempt-card')
@@ -181,7 +198,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
   })
 
   it('на «Принятых» — только принятые, кнопка «Открыть», без выбора и ИИ', () => {
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     fireEvent.click(screen.getByTestId('queue-tab-accepted'))
 
     const cards = screen.getAllByTestId('queue-attempt-card')
@@ -196,7 +213,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
   })
 
   it('счётчик в шапке остаётся про ожидающих на любой вкладке', () => {
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     expect(screen.getByTestId('queue-count')).toHaveTextContent('Ждут проверки: 1')
 
     fireEvent.click(screen.getByTestId('queue-tab-accepted'))
@@ -205,7 +222,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
 
   it('на пустой вкладке — свой текст, а не «Очередь пуста»', () => {
     state.all = [queueRow({}, { id: 'a1', status: 'submitted' })]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     fireEvent.click(screen.getByTestId('queue-tab-returned_for_revision'))
     expect(screen.getByTestId('queue-empty')).toHaveTextContent('Никого не вернули на доработку')
@@ -224,7 +241,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
       id: 'r0', attempt_id: 'a0', reviewer_id: 'p1', decision: 'returned_for_revision',
       comment: 'Переделай второй пункт', score: null, created_at: '2026-07-27T12:00:00Z',
     }]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(screen.getByTestId('queue-tab-returned_for_revision')).toHaveTextContent('На доработке0')
     expect(screen.getByTestId('queue-tab-accepted')).toHaveTextContent('Принятые1')
@@ -252,7 +269,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
       id: 'r0', attempt_id: 'a0', reviewer_id: 'p1', decision: 'returned_for_revision',
       comment: 'Переделай второй пункт', score: null, created_at: '2026-07-27T12:00:00Z',
     }]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
 
     expect(screen.getByTestId('queue-attempt-history')).toHaveTextContent('Переделай второй пункт')
@@ -267,7 +284,7 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
       id: 'r1', attempt_id: 'a3', reviewer_id: 'p1', decision: 'accepted',
       comment: 'Хорошая работа', score: 5, created_at: '2026-07-29T10:00:00Z',
     }]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     fireEvent.click(screen.getByTestId('queue-tab-accepted'))
     fireEvent.click(screen.getAllByRole('button', { name: 'Открыть' })[0])
 

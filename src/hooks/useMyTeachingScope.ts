@@ -40,10 +40,23 @@ export interface TeachingScope {
    * «на проверку» обязан исключить собственные работы куратора.
    */
   ownStudentId: string | null
+  /**
+   * Человек смотрит курс КУРАТОРОМ — читает и проверяет работы, но ничего не
+   * меняет. Зеркало SQL-правила `course_is_teacher_staff` для интерфейса:
+   * прячет то, что база всё равно отобьёт.
+   *
+   * Зачем прятать, если база и так не пустит: клик-проверка владельца 05.08
+   * показала, чем кончается «пусть жмёт». Тумблер тем оптимистичный, а
+   * UPDATE под RLS, не найдя строк, НЕ возвращает ошибку — куратор жал,
+   * плашка перекрашивалась, запись не проходила, и выглядело это как
+   * работающая функция. Молчаливый отказ хуже видимого запрета.
+   */
+  readOnly: boolean
 }
 
 const IDLE: TeachingScope = {
-  active: false, loading: false, teacherId: null, courseIds: [], groupIds: [], ownStudentId: null,
+  active: false, loading: false, teacherId: null, courseIds: [], groupIds: [],
+  ownStudentId: null, readOnly: false,
 }
 
 /** Роли, которым RLS сузила выдачу сама — клиентское сужение им только мешает. */
@@ -71,13 +84,16 @@ export function useMyTeachingScope(): TeachingScope {
   useEffect(() => {
     if (!profile?.id) { setScope(IDLE); return }
     if (pendingCuratorCheck) {
-      setScope({ ...IDLE, active: true, loading: true })
+      // Пока не знаем — считаем, что менять нельзя. Ошибиться в эту сторону
+      // значит на кадр спрятать кнопку у преподавателя; в другую — на кадр
+      // показать её куратору.
+      setScope({ ...IDLE, active: true, loading: true, readOnly: true })
       return
     }
     if (!needsFilter && !curatorMode) { setScope(IDLE); return }
 
     let cancelled = false
-    setScope({ ...IDLE, active: true, loading: true })
+    setScope({ ...IDLE, active: true, loading: true, readOnly: curatorMode })
 
     const curated = curatedKey ? curatedKey.split(',') : []
 
@@ -133,6 +149,7 @@ export function useMyTeachingScope(): TeachingScope {
         courseIds: Array.from(courseIds),
         groupIds:  Array.from(groupIds),
         ownStudentId,
+        readOnly:  curatorMode,
       })
     }
 
@@ -147,7 +164,7 @@ export function useMyTeachingScope(): TeachingScope {
   // на следующем кадре, но чужие имена уже мелькали. Поэтому, когда сужение
   // нужно, отвечаем «активно и грузится» сразу, не дожидаясь эффекта.
   if ((needsFilter || curatorMode || pendingCuratorCheck) && !scope.active) {
-    return { ...IDLE, active: true, loading: true }
+    return { ...IDLE, active: true, loading: true, readOnly: curatorMode || pendingCuratorCheck }
   }
 
   return scope

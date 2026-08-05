@@ -41,17 +41,35 @@ export const MATERIAL_FILE_ACCEPT =
 
 export type TopicMaterialKind = 'text' | 'video' | 'link' | 'file'
 
-/** Рубрика материала (быстрые кнопки в модалке темы). NULL — без рубрики. */
-export type TopicMaterialSection = 'notes' | 'theory' | 'tasks' | 'solution'
+/**
+ * Рубрика материала (быстрые кнопки в модалке темы). NULL — без рубрики.
+ *
+ * Значения обязаны совпадать с CHECK на `topic_material_items.section`: список
+ * живёт в двух местах, и разъехавшись, он даёт не ошибку типов, а отказ базы
+ * при сохранении (§95).
+ *
+ * «Видео» и «Тестирование» сюда НЕ входят, хотя в интерфейсе стоят рубриками:
+ * видео — это `kind = 'video'` в той же таблице, тестирование — отдельная
+ * таблица `topic_test_assignments`. Десять рубрик владельца собираются поверх
+ * трёх хранилищ, секций из них семь.
+ */
+export type TopicMaterialSection =
+  | 'notes' | 'theory' | 'tasks'
+  | 'task_solution' | 'worksheet_tasks' | 'worksheet_homework'
+  | 'solution'
 
+/** Порядок кнопок у преподавателя — как их перечислил владелец. */
 export const TOPIC_MATERIAL_SECTIONS: readonly TopicMaterialSection[] =
-  ['notes', 'theory', 'tasks', 'solution'] as const
+  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework'] as const
 
 export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string> = {
   notes: 'Конспект',
   theory: 'Теория',
   tasks: 'Задачи',
+  task_solution: 'Решение задач',
+  worksheet_tasks: 'Рабочий лист задач',
   solution: 'Решение ДЗ',
+  worksheet_homework: 'Рабочий лист ДЗ',
 }
 
 /**
@@ -60,7 +78,14 @@ export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string>
  * там порядок кнопок у преподавателя, здесь учебный маршрут.
  */
 export const STUDENT_SECTION_ORDER: readonly TopicMaterialSection[] =
-  ['theory', 'notes', 'tasks', 'solution'] as const
+  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework'] as const
+
+/**
+ * Рубрика, закрытая гейтом: ученик видит её, только когда ЕГО работа принята.
+ * Гейт держит база (`topic_solution_unlocked` + политики на строку и на файл);
+ * здесь значение нужно ровно для того, чтобы показать плашку вместо пустоты.
+ */
+export const GATED_SECTION: TopicMaterialSection = 'solution'
 
 export const TOPIC_MATERIAL_KINDS: readonly TopicMaterialKind[] = ['text', 'video', 'link', 'file'] as const
 
