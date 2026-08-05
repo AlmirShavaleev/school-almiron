@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom'
 import { CheckCircle2, ImagePlus, LifeBuoy, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+// re-export ниже (строка ~84) транзитный и имени в файл не вводит — импорт обязателен
+import { imagesFromTransfer } from '@/lib/clipboardFiles'
 
 const SUBJECT_MIN = 3
 const SUBJECT_MAX = 120
