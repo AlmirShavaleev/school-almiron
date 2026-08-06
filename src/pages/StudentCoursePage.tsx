@@ -4,7 +4,7 @@ import {
   BookOpen, Check, Clock, Video, Lightbulb, BookMarked, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
   Upload, ArrowLeft, ChevronRight, Play, MessageSquare, BarChart3,
-  LayoutList, LayoutGrid, FileEdit,
+  LayoutList, LayoutGrid, FileEdit, FileText,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { StatCard } from '@/components/ui/StatCard'
