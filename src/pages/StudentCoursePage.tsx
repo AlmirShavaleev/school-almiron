@@ -11,22 +11,31 @@ import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
 import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
-import { testPercent, type TopicSection } from '@/lib/studentProgram'
+import { testPercent } from '@/lib/studentProgram'
+import { TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 
 // ─── Section pills config ─────────────────────────────────────────────────────
-// Те же 7 рубрик, что в плиточной модалке преподавателя (§10.1): «зелёная точка»
-// у преподавателя и плашка у ученика теперь означают ровно одно и то же.
+/**
+ * Оформление плашки. Список рубрик, порядок и подписи — из общего места
+ * (§100): свой перечень здесь отставал от §95 на три рубрики, и «зелёная
+ * точка» у преподавателя перестала значить то же, что плашка у ученика.
+ */
+const SECTION_STYLE: Record<TopicSection, { icon: React.ReactNode; color: string }> = {
+  theory:             { icon: <BookOpen size={10} />,      color: 'bg-purple-50 text-purple-600 border-purple-100' },
+  notes:              { icon: <BookMarked size={10} />,    color: 'bg-blue-50 text-blue-600 border-blue-100' },
+  tasks:              { icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
+  task_solution:      { icon: <Check size={10} />,         color: 'bg-teal-50 text-teal-600 border-teal-100' },
+  worksheet_tasks:    { icon: <FileText size={10} />,      color: 'bg-sky-50 text-sky-600 border-sky-100' },
+  homework:           { icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
+  solution:           { icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
+  worksheet_homework: { icon: <FileText size={10} />,      color: 'bg-cyan-50 text-cyan-600 border-cyan-100' },
+  video:              { icon: <Video size={10} />,         color: 'bg-red-50 text-red-600 border-red-100' },
+  test:               { icon: <BarChart3 size={10} />,     color: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
+}
 
-const SECTION_CONFIG: { key: TopicSection; label: string; icon: React.ReactNode; color: string }[] = [
-  { key: 'notes',    label: 'Конспект',     icon: <BookMarked size={10} />,    color: 'bg-blue-50 text-blue-600 border-blue-100' },
-  { key: 'theory',   label: 'Теория',       icon: <BookOpen size={10} />,      color: 'bg-purple-50 text-purple-600 border-purple-100' },
-  { key: 'tasks',    label: 'Задачи',       icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
-  { key: 'homework', label: 'ДЗ',           icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
-  { key: 'solution', label: 'Решение ДЗ',   icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
-  { key: 'video',    label: 'Видео',        icon: <Video size={10} />,         color: 'bg-red-50 text-red-600 border-red-100' },
-  { key: 'test',     label: 'Тестирование', icon: <BarChart3 size={10} />,     color: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
-]
+const SECTION_CONFIG: { key: TopicSection; label: string; icon: React.ReactNode; color: string }[] =
+  TOPIC_SECTION_ORDER.map(key => ({ key, label: TOPIC_SECTION_LABELS[key], ...SECTION_STYLE[key] }))
 
 // ─── View preference ─────────────────────────────────────────────────────────
 

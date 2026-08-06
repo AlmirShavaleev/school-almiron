@@ -42,7 +42,10 @@ import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
-import { TOPIC_MATERIAL_SECTIONS } from '@/lib/topicMaterialItems'
+import {
+  TOPIC_MATERIAL_SECTIONS, TOPIC_SECTION_ORDER, TOPIC_SECTION_SHORT_LABELS,
+  type TopicSection,
+} from '@/lib/topicMaterialItems'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
@@ -970,21 +973,42 @@ function CourseSettings({ course, onSave, onCopyCourse, onDeleteCourse }: { cour
 }
 
 // ─── Materials matrix ─────────────────────────────────────────────────────────
-const MAT_COLS = [
-  // Порядок владельца (§95). «Видео» и «Тестирование» — не секции: видео это
-  // kind='video', тестирование отдельная таблица. В матрице они всё равно
-  // колонки: преподавателю это такие же клетки «заполнено / пусто».
-  { type: 'theory',             label: 'Теория',          icon: <BookOpen size={13} />,      color: 'text-purple-500' },
-  { type: 'notes',              label: 'Конспект',        icon: <BookMarked size={13} />,    color: 'text-blue-500' },
-  { type: 'tasks',              label: 'Задачи',          icon: <ClipboardList size={13} />, color: 'text-orange-500' },
-  { type: 'task_solution',      label: 'Решение задач',   icon: <Check size={13} />,         color: 'text-teal-500' },
-  { type: 'worksheet_tasks',    label: 'Раб. лист задач', icon: <FileText size={13} />,      color: 'text-sky-500' },
-  { type: 'hw',                 label: 'ДЗ',              icon: <Lightbulb size={13} />,     color: 'text-yellow-500' },
-  { type: 'solution',           label: 'Решение ДЗ',      icon: <Check size={13} />,         color: 'text-green-500' },
-  { type: 'worksheet_homework', label: 'Раб. лист ДЗ',    icon: <FileText size={13} />,      color: 'text-cyan-500' },
-  { type: 'video',              label: 'Видео',           icon: <Video size={13} />,         color: 'text-red-500' },
-  { type: 'test',               label: 'Тестирование',    icon: <BarChart3 size={13} />,     color: 'text-indigo-500' },
-]
+/**
+ * Цвет колонки. Список рубрик, порядок и подписи — из общего места (§100);
+ * здесь только оформление. Record не даёт забыть новую рубрику.
+ */
+const MAT_COL_COLOR: Record<TopicSection, string> = {
+  theory: 'text-purple-500',
+  notes: 'text-blue-500',
+  tasks: 'text-orange-500',
+  task_solution: 'text-teal-500',
+  worksheet_tasks: 'text-sky-500',
+  homework: 'text-yellow-500',
+  solution: 'text-green-500',
+  worksheet_homework: 'text-cyan-500',
+  video: 'text-red-500',
+  test: 'text-indigo-500',
+}
+
+const MAT_COL_ICON: Record<TopicSection, React.ReactNode> = {
+  theory: <BookOpen size={13} />,
+  notes: <BookMarked size={13} />,
+  tasks: <ClipboardList size={13} />,
+  task_solution: <Check size={13} />,
+  worksheet_tasks: <FileText size={13} />,
+  homework: <Lightbulb size={13} />,
+  solution: <Check size={13} />,
+  worksheet_homework: <FileText size={13} />,
+  video: <Video size={13} />,
+  test: <BarChart3 size={13} />,
+}
+
+const MAT_COLS = TOPIC_SECTION_ORDER.map(type => ({
+  type,
+  label: TOPIC_SECTION_SHORT_LABELS[type],
+  icon: MAT_COL_ICON[type],
+  color: MAT_COL_COLOR[type],
+}))
 
 function MaterialsMatrix({
   courseId, modules, onOpenTopic, onGoToProgram, onToggleTopicOpen, refreshKey = 0,
@@ -1071,7 +1095,7 @@ function MaterialsMatrix({
         // Process topic_homework
         for (const row of homeworkRows) {
           if (!map[row.topic_id]) map[row.topic_id] = new Set()
-          map[row.topic_id].add('hw')
+          map[row.topic_id].add('homework')
         }
 
         // Process topic_tests

@@ -10,16 +10,17 @@
  * на карточке, чтобы это можно было проверить тестами без базы.
  */
 
-import type { TopicMaterialSection } from './topicMaterialItems'
+import { TOPIC_MATERIAL_SECTIONS, type TopicSection } from './topicMaterialItems'
 import type { TopicHomeworkAttemptRow, TopicHomeworkReviewRow, GradeScale } from './topicHomework'
 import { gradeScaleMax } from './topicHomework'
 
-/** Рубрики темы = плитки модалки преподавателя (§10.1), один в один. */
-export type TopicSection = TopicMaterialSection | 'video' | 'homework' | 'test'
-
-export const TOPIC_SECTION_ORDER: readonly TopicSection[] = [
-  'notes', 'theory', 'tasks', 'homework', 'solution', 'video', 'test',
-] as const
+/**
+ * Рубрики темы = карточки модалки преподавателя, один в один. Список,
+ * порядок и подписи переехали в `topicMaterialItems.ts` (§100) — здесь только
+ * ре-экспорт, чтобы не заводить вторую копию перечня.
+ */
+export type { TopicSection } from './topicMaterialItems'
+export { TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS } from './topicMaterialItems'
 
 /**
  * Статус ДЗ темы глазами ученика.
@@ -37,7 +38,9 @@ export interface MaterialSectionRow {
   section: string | null
 }
 
-const MATERIAL_SECTIONS: readonly string[] = ['notes', 'theory', 'tasks', 'solution']
+// Секции — из общего списка. Своим перечнем здесь жили четыре из семи, и три
+// рубрики §95 не давали плашку на карточке ученика вовсе (§100).
+const MATERIAL_SECTIONS: readonly string[] = TOPIC_MATERIAL_SECTIONS
 
 /**
  * Рубрики, заполненные материалами. Видео — по kind, а не по рубрике:

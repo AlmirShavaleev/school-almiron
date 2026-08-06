@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 const fromSpy = vi.fn()
+const rpcSpy = vi.fn()
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: any = new Proxy({}, {
@@ -19,8 +20,19 @@ function makeChain(result: { data: unknown; error: unknown }) {
 
 let profile: { id: string; role: string } = { id: 'profile-1', role: 'teacher' }
 
+/**
+ * `rpc` в моке обязателен, а не «на всякий случай»: страница поднимает очередь
+ * «следующий ученик» через `get_review_queue`, и без заглушки вызов падал на
+ * `db.rpc is not a function` уже ПОСЛЕ прохождения теста — двумя unhandled
+ * rejection. Тест при этом зелёный, а `vitest run` возвращает 1, и в полном
+ * прогоне это выглядит как чужое падение. Та же болезнь, что чинили в §87 у
+ * `appAuth`.
+ */
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: (table: string) => fromSpy(table) },
+  supabase: {
+    from: (table: string) => fromSpy(table),
+    rpc: (fn: string, args?: unknown) => rpcSpy(fn, args),
+  },
 }))
 
 vi.mock('@/store/authStore', () => ({
@@ -57,7 +69,15 @@ function renderPage(initialEntry = '/homeworks/hw-1/review/student/stud-2') {
 describe('StudentReviewPage — no-group review mode', () => {
   beforeEach(() => {
     fromSpy.mockReset()
+    rpcSpy.mockReset()
     profile = { id: 'profile-1', role: 'teacher' }
+
+    // Пустая, но ПРАВИЛЬНОЙ формы страница очереди: `fetchReviewQueuePage`
+    // разбирает payload и на мусоре упал бы так же, как на отсутствующем rpc.
+    rpcSpy.mockResolvedValue({
+      data: { items: [], has_more: false, next_cursor: null },
+      error: null,
+    })
 
     fromSpy.mockImplementation((table: string) => {
       if (table === 'teachers') return makeChain({ data: { id: 'teacher-1' }, error: null })
@@ -88,5 +108,17 @@ describe('StudentReviewPage — no-group review mode', () => {
     expect(screen.queryByLabelText('Предыдущий ученик')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Следующий ученик')).not.toBeInTheDocument()
     expect(screen.queryByText('2 / 3')).not.toBeInTheDocument()
+  })
+
+  it('очередь «дальше» поднимается тем же RPC и в режиме ожидающих', async () => {
+    // Проверка нужна ровно затем, чтобы заглушка `rpc` не стала глушилкой:
+    // мок, отвечающий успехом на что угодно, проглотил бы и пропажу вызова.
+    renderPage()
+
+    await waitFor(() => expect(rpcSpy).toHaveBeenCalled())
+    const call = rpcSpy.mock.calls.find(c => c[0] === 'get_review_queue')
+    // Работа сдана и ещё не проверена — очередь берётся ожидающими, не
+    // возвращёнными.
+    expect(call?.[1]).toMatchObject({ p_mode: 'pending', p_limit: 100 })
   })
 })

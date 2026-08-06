@@ -18,7 +18,11 @@ import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvaila
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
-import { MATERIAL_FILE_ACCEPT, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import {
+  MATERIAL_FILE_ACCEPT, isMaterialSection,
+  TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS,
+  type TopicMaterialSection, type TopicSection,
+} from '@/lib/topicMaterialItems'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 
@@ -26,6 +30,25 @@ import { usePasteFiles } from '@/hooks/usePasteFiles'
 function isImageName(name: string | null): boolean {
   const ext = (name?.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
   return /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
+}
+
+/**
+ * Иконка карточки рубрики. Единственное, что осталось здесь своим: список
+ * рубрик, их порядок и подписи живут в `topicMaterialItems.ts` (§100), а
+ * картинка базе неинтересна. Тип `Record` не даёт забыть новую рубрику —
+ * добавят восьмую секцию, и это место перестанет собираться.
+ */
+const TILE_ICON: Record<TopicSection, typeof BookMarked> = {
+  theory: BookOpen,
+  notes: BookMarked,
+  tasks: ClipboardList,
+  task_solution: Check,
+  worksheet_tasks: FileText,
+  homework: Lightbulb,
+  solution: Check,
+  worksheet_homework: FileText,
+  video: Video,
+  test: BarChart3,
 }
 
 const SECTIONS: {
@@ -507,7 +530,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   const [savingDate, setSavingDate] = useState(false)
   const [savingOpen, setSavingOpen] = useState(false)
   const [bulkNote, setBulkNote] = useState<string | null>(null)
-  const [activeTile, setActiveTile] = useState<string | null>(null)
+  const [activeTile, setActiveTile] = useState<TopicSection | null>(null)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
 
   // Новые хуки для новой системы материалов
@@ -605,30 +628,27 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     }
   }
 
-  // Плитки для новой системы
-  const TILES: Array<{
-    key: string
-    label: string
-    icon: typeof BookMarked
-  }> = [
-    { key: 'notes', label: 'Конспект', icon: BookMarked },
-    { key: 'theory', label: 'Теория', icon: BookOpen },
-    { key: 'tasks', label: 'Задачи', icon: ClipboardList },
-    { key: 'hw', label: 'ДЗ', icon: Lightbulb },
-    { key: 'solution', label: 'Решение ДЗ', icon: Check },
-    { key: 'video', label: 'Видео', icon: Video },
-    { key: 'test', label: 'Тестирование', icon: BarChart3 },
-  ]
+  /*
+    Карточки рубрик собираются из общего списка (§100). Своим перечнем они
+    жили до сих пор — и после §95 в нём не хватало трёх новых рубрик: вкладка
+    «Материалы» показывала десять, окно темы семь. Здесь остаётся только то,
+    что база знать не обязана: иконка.
+  */
+  const TILES = TOPIC_SECTION_ORDER.map(key => ({
+    key,
+    label: TOPIC_SECTION_LABELS[key],
+    icon: TILE_ICON[key],
+  }))
 
   // Определяем, есть ли что-то в каждой рубрике
-  function hasTileContent(tileKey: string): boolean {
-    if (tileKey === 'notes' || tileKey === 'theory' || tileKey === 'tasks' || tileKey === 'solution') {
+  function hasTileContent(tileKey: TopicSection): boolean {
+    if (isMaterialSection(tileKey)) {
       return newMaterials.some(m => m.section === tileKey)
     }
     if (tileKey === 'video') {
       return newMaterials.some(m => m.kind === 'video')
     }
-    if (tileKey === 'hw') {
+    if (tileKey === 'homework') {
       return homework !== null
     }
     if (tileKey === 'test') {
@@ -761,11 +781,16 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                   {TILES.find(t => t.key === activeTile)?.label}
                 </div>
 
-                {(activeTile === 'notes' || activeTile === 'theory' || activeTile === 'tasks' || activeTile === 'solution') && (
+                {/*
+                  Условие по общему списку, а не перечислением: тремя строками
+                  выше рубрик стало десять, и «нет в перечне» здесь означало бы
+                  открытую карточку с пустотой внутри (§100).
+                */}
+                {isMaterialSection(activeTile) && (
                   <TopicMaterialItems
                     topicId={topicId}
                     canManage
-                    section={activeTile as TopicMaterialSection}
+                    section={activeTile}
                     hideAddForm
                   />
                 )}
@@ -779,7 +804,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                   />
                 )}
 
-                {activeTile === 'hw' && (
+                {activeTile === 'homework' && (
                   <TopicHomeworkEditor topicId={topicId} />
                 )}
 

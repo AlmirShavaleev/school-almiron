@@ -12,7 +12,7 @@ import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItem
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
-import { STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import { STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, isMaterialSection, type TopicMaterialSection } from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -321,7 +321,9 @@ export function TopicPage() {
             Оно откроется, когда преподаватель проверит вашу работу. Так задание остаётся заданием.
           </p>
         </div>
-      ) : active === 'notes' || active === 'theory' || active === 'tasks' || active === 'solution' ? (
+      ) : isMaterialSection(active) ? (
+        // По общему списку, а не перечислением: с §95 рубрик семь, и вкладка
+        // «Решение задач» открывалась пустой — её не было в перечне (§100).
         <TopicMaterialItems topicId={topic.id} canManage={false} section={active} />
       ) : active === 'homework' ? (
         <TopicHomeworkStudent topicId={topic.id} />

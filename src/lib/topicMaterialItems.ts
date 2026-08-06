@@ -81,6 +81,49 @@ export const STUDENT_SECTION_ORDER: readonly TopicMaterialSection[] =
   ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework'] as const
 
 /**
+ * Рубрика темы в ИНТЕРФЕЙСЕ — те самые «десять рубрик» владельца.
+ *
+ * Секций в базе семь (`TopicMaterialSection`), но карточкой в модалке,
+ * колонкой в матрице и плашкой у ученика выглядят ещё три: видео
+ * (`kind='video'` в той же таблице), ДЗ и тестирование (свои таблицы).
+ * Для человека это один ряд одинаковых карточек — значит, и список у них один.
+ *
+ * Ключ ДЗ — `homework`, а не `hw`: до §100 модалка и матрица звали его `hw`,
+ * страница ученика — `homework`, и общего списка было не собрать.
+ */
+export type TopicSection = TopicMaterialSection | 'video' | 'homework' | 'test'
+
+/** Порядок карточек у преподавателя — как их перечислил владелец. */
+export const TOPIC_SECTION_ORDER: readonly TopicSection[] = [
+  'theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks',
+  'homework', 'solution', 'worksheet_homework', 'video', 'test',
+] as const
+
+export const TOPIC_SECTION_LABELS: Record<TopicSection, string> = {
+  ...TOPIC_MATERIAL_SECTION_LABELS,
+  homework: 'ДЗ',
+  video: 'Видео',
+  test: 'Тестирование',
+}
+
+/**
+ * Короткие подписи — там, где колонка узкая (матрица заполненности).
+ * Отличаются только два рабочих листа, остальное берётся из полных.
+ */
+export const TOPIC_SECTION_SHORT_LABELS: Record<TopicSection, string> = {
+  ...TOPIC_SECTION_LABELS,
+  worksheet_tasks: 'Раб. лист задач',
+  worksheet_homework: 'Раб. лист ДЗ',
+}
+
+/** Рубрика-секция ли это, то есть значение `topic_material_items.section`. */
+export function isMaterialSection(
+  section: TopicSection | string | null | undefined,
+): section is TopicMaterialSection {
+  return !!section && (TOPIC_MATERIAL_SECTIONS as readonly string[]).includes(section)
+}
+
+/**
  * Рубрика, закрытая гейтом: ученик видит её, только когда ЕГО работа принята.
  * Гейт держит база (`topic_solution_unlocked` + политики на строку и на файл);
  * здесь значение нужно ровно для того, чтобы показать плашку вместо пустоты.
