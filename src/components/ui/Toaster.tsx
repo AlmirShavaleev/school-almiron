@@ -13,7 +13,13 @@ export function Toaster() {
   const { toasts, remove } = useToastStore()
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    /*
+      z-[200] — выше любого окна. Toaster смонтирован в App.tsx до <Routes>,
+      а модалки живут внутри страниц, то есть ниже по DOM: при одинаковом z-50
+      модалка перекрывала тост собой. Подтверждение «Успешно сохранено» нужно
+      именно поверх открытой модалки темы — там его и ждут (§98).
+    */
+    <div data-testid="toaster" className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
       {toasts.map(t => {
         const cfg = CONFIG[t.type]
         return (

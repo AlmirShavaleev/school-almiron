@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
+import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
 import { TopicHomeworkSubmissions } from '@/components/courseProgram/TopicHomeworkSubmissions'
 import { Button } from '@/components/ui/Button'
@@ -9,6 +10,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
+import { toast } from '@/store/toastStore'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -78,13 +80,21 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     await ensuringRef.current
   }
 
-  async function run(fn: () => Promise<unknown>) {
+  /**
+   * `confirmSave` выключается на удалении: «Успешно сохранено» после того, как
+   * файл исчез со страницы, читается как ошибка. Всё остальное — сохранение,
+   * и оно подтверждается тостом, а не только надписью «Сохранено» в шапке:
+   * дедлайн и баллы уходят на сервер по потере фокуса, и владелец этого не
+   * замечал (§98).
+   */
+  async function run(fn: () => Promise<unknown>, confirmSave = true) {
     setBusy(true)
     setLocalError(null)
     try {
       await fn()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+      if (confirmSave) toast.saved()
     } catch (e: any) {
       setLocalError(e?.message ?? 'Не удалось выполнить действие')
     } finally {
@@ -94,7 +104,11 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
 
   // Скриншот из буфера (Ctrl+V) — тем же путём, что и выбранный файл.
   // Пока идёт загрузка, вставку не принимаем: очередь здесь последовательная.
-  usePasteFiles(files => { void handleFilesSelected(files) }, !uploading)
+  usePasteFiles(
+    files => { void handleFilesSelected(files) },
+    !uploading,
+    nextScreenshotIndex(files.map(f => f.original_filename)),
+  )
 
   async function handleFilesSelected(list: FileList | File[]) {
     const selected = Array.from(list)
@@ -141,6 +155,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     if (failed.length > 0) {
       setUploadError(`Не загружено: ${failed.join(', ')} (${firstError})`)
     }
+    if (selected.length - failed.length > 0) toast.saved()
 
     setUploading(false)
     setCurrent(null)
@@ -303,7 +318,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
                 </SignedFileLink>
                 <button
                   type="button"
-                  onClick={() => run(() => deleteHomeworkFile(f.id))}
+                  onClick={() => run(() => deleteHomeworkFile(f.id), false)}
                   disabled={busy}
                   aria-label={`Удалить файл ${f.original_filename}`}
                   title="Удалить файл"

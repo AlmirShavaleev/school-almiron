@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
+import { useToastStore } from '@/store/toastStore'
 
 const addMaterial = vi.fn()
 const deleteMaterial = vi.fn()
@@ -166,3 +167,50 @@ describe('Материалы темы — ученик', () => {
   })
 })
 
+
+/**
+ * §98. Файл уходит на сервер в момент выбора — кнопки «Сохранить» тут нет и
+ * быть не может. Единственное подтверждение для преподавателя — тост, поэтому
+ * он проверяется тестом, а не глазами.
+ */
+describe('Материалы темы — подтверждение сохранения', () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] })
+  })
+
+  function pickFile(container: HTMLElement, file: File) {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  it('после загрузки файла показывает «Успешно сохранено»', async () => {
+    uploadMaterialFile.mockResolvedValue({ filePath: 'p.png', fileName: 'p.png', fileSize: 10 })
+    const { container } = renderItems(true)
+
+    pickFile(container, new File(['x'], 'p.png', { type: 'image/png' }))
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.map(t => t.message)).toContain('Успешно сохранено'))
+  })
+
+  it('провалившаяся загрузка не подтверждается сохранением', async () => {
+    uploadMaterialFile.mockRejectedValue(new Error('нет прав'))
+    const { container } = renderItems(true)
+
+    pickFile(container, new File(['x'], 'p.png', { type: 'image/png' }))
+
+    await waitFor(() => expect(screen.getByText(/Не загружено/)).toBeInTheDocument())
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('добавленный текстовый материал тоже подтверждается', async () => {
+    renderItems(true)
+    fireEvent.click(screen.getByText('Добавить материал'))
+    fireEvent.change(screen.getByLabelText('Заголовок материала'), { target: { value: 'Конспект' } })
+    fireEvent.change(screen.getByLabelText('Текст материала'), { target: { value: 'Текст' } })
+    fireEvent.click(screen.getByText('Добавить'))
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.map(t => t.message)).toContain('Успешно сохранено'))
+  })
+})

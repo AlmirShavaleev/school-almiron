@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
+import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import {
   ArrowDown, ArrowUp, Eye, EyeOff, FileText, Link2, Lock, Loader2,
   Paperclip, Plus, Trash2, Upload, Video, X,
@@ -21,6 +22,7 @@ import {
   type TopicMaterialSection,
 } from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
+import { toast } from '@/store/toastStore'
 
 const KIND_ICON: Record<TopicMaterialKind, typeof FileText> = {
   text: FileText,
@@ -230,11 +232,13 @@ function FileTile({
 // ─── Быстрая загрузка файлов ─────────────────────────────────────────────────
 
 function QuickAttach({
-  onAdd, onUploadFile, section,
+  onAdd, onUploadFile, section, existingNames = [],
 }: {
   onAdd: (draft: MaterialDraft) => Promise<void>
   onUploadFile: (file: File, onProgress?: (percent: number) => void) => Promise<{ storagePath: string; fileName: string; mimeType: string; sizeBytes: number }>
   section?: TopicMaterialSection | null
+  /** Имена уже прикреплённых файлов темы — для сквозной нумерации скриншотов. */
+  existingNames?: Array<string | null>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
@@ -245,7 +249,15 @@ function QuickAttach({
 
   // Скриншот из буфера (Ctrl+V) идёт тем же путём, что и выбранный файл:
   // проверка размера, прогресс, те же сообщения об ошибках.
-  usePasteFiles(files => { void handleFilesSelected(files) }, !loading)
+  //
+  // Нумерация сквозная по ВСЕЙ теме, а не по рубрике: рубрик у темы семь, и
+  // «скриншот-1» в каждой из них — то же самое дублирование, от которого
+  // уходим (§99).
+  usePasteFiles(
+    files => { void handleFilesSelected(files) },
+    !loading,
+    nextScreenshotIndex(existingNames),
+  )
 
   async function handleFilesSelected(files: FileList | File[]) {
     const fileArray = Array.from(files)
@@ -282,6 +294,12 @@ function QuickAttach({
       const errorMsg = `Не загружено: ${failedFiles.join(', ')} (${firstError})`
       setErrors([errorMsg])
     }
+
+    // Подтверждаем сохранение сразу: файл уходит на сервер в момент выбора, и
+    // без явного «сохранено» преподаватель этого не видит (§98). Тост — на
+    // удачные, ошибки живут своим сообщением выше.
+    const savedCount = fileArray.length - failedFiles.length
+    if (savedCount > 0) toast.saved()
 
     setLoading(false)
     setCurrent(null)
@@ -389,6 +407,7 @@ function AddMaterialForm({
       }
       reset()
       setOpen(false)
+      toast.saved()
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось добавить материал')
     } finally {
@@ -487,6 +506,7 @@ function VideoAddForm({
     try {
       await onAdd({ kind: 'video', title: '', url: url.trim() })
       setUrl('')
+      toast.saved()
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось добавить видео')
     } finally {
@@ -565,6 +585,9 @@ export function TopicMaterialItems({
     )
   }
 
+  // Имена всех файлов темы — по ним считается номер следующего скриншота.
+  const attachedNames = materials.map(m => (m.kind === 'file' ? m.fileName : null))
+
   // Фильтруем материалы по section
   let filtered = materials
   if (section && section !== 'video') {
@@ -602,11 +625,11 @@ export function TopicMaterialItems({
       )}
 
       {canManage && section && section !== 'video' && (
-        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} />
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} section={section} existingNames={attachedNames} />
       )}
 
       {canManage && !section && (
-        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} />
+        <QuickAttach onAdd={addMaterial} onUploadFile={uploadMaterialFile} existingNames={attachedNames} />
       )}
 
       {filtered.map((m, i) => (

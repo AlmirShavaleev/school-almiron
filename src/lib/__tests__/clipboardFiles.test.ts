@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { imagesFromTransfer } from '../clipboardFiles'
+import { imagesFromTransfer, nextScreenshotIndex } from '../clipboardFiles'
 
 function png(name: string): File {
   return new File([new Uint8Array(8)], name, { type: 'image/png' })
@@ -42,5 +42,34 @@ describe('imagesFromTransfer', () => {
     const jpeg = new File([new Uint8Array(4)], 'image.png', { type: 'image/jpeg' })
     const dt = transfer([{ kind: 'file', file: jpeg }])
     expect(imagesFromTransfer(dt)[0].name).toBe('скриншот-1.jpg')
+  })
+})
+
+describe('nextScreenshotIndex', () => {
+  it('пустой список — нумерация с первого', () => {
+    expect(nextScreenshotIndex([])).toBe(0)
+  })
+
+  it('считает по именам, а не по длине списка', () => {
+    // Рядом лежат обычные файлы: от files.length номера скакали бы через один.
+    expect(nextScreenshotIndex(['конспект.pdf', 'скриншот-1.png', 'задачи.pdf'])).toBe(1)
+  })
+
+  it('берёт максимальный номер, а не последний', () => {
+    expect(nextScreenshotIndex(['скриншот-3.png', 'скриншот-1.png'])).toBe(3)
+  })
+
+  it('не спотыкается о null и пустые имена', () => {
+    expect(nextScreenshotIndex([null, undefined, '', 'скриншот-2.jpg'])).toBe(2)
+  })
+
+  it('похожие имена за свои не считает', () => {
+    expect(nextScreenshotIndex(['скриншот.png', 'мой-скриншот-7.png', 'скриншот-7-финал.png'])).toBe(0)
+  })
+
+  it('связка со смещением даёт следующий номер', () => {
+    const dt = transfer([{ kind: 'file', file: png('image.png') }])
+    const from = nextScreenshotIndex(['скриншот-1.png', 'скриншот-2.png'])
+    expect(imagesFromTransfer(dt, from)[0].name).toBe('скриншот-3.png')
   })
 })

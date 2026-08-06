@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { imagesFromTransfer } from '@/lib/clipboardFiles'
+import { imagesFromTransfer, nextScreenshotIndex } from '@/lib/clipboardFiles'
 
 /**
  * Вставка картинок из буфера (Ctrl+V) в область загрузки.
@@ -19,11 +19,21 @@ const stack: Array<{ handle: (files: File[]) => void }> = []
 export function usePasteFiles(
   onFiles: (files: File[]) => void,
   enabled = true,
+  startIndex = 0,
 ): void {
   // Через ref, чтобы не перевешивать слушателя на каждый ре-рендер: сам
   // обработчик почти всегда новая функция.
   const ref = useRef(onFiles)
   ref.current = onFiles
+
+  // Сквозная нумерация скриншотов. `startIndex` приходит из списка вложений и
+  // обновляется только ПОСЛЕ загрузки, а вставок подряд бывает несколько за
+  // секунду. Поэтому помним выданное сами: следующий номер — больший из «что
+  // уже в списке» и «что уже выдали». Без этого две быстрые вставки давали
+  // два «скриншот-1» (§99).
+  const startRef = useRef(startIndex)
+  startRef.current = startIndex
+  const issuedRef = useRef(0)
 
   useEffect(() => {
     if (!enabled) return
@@ -33,8 +43,12 @@ export function usePasteFiles(
 
     function onPaste(e: ClipboardEvent) {
       if (stack[stack.length - 1] !== entry) return
-      const files = imagesFromTransfer(e.clipboardData)
+      const from = Math.max(startRef.current, issuedRef.current)
+      const files = imagesFromTransfer(e.clipboardData, from)
       if (files.length === 0) return
+      // Считаем по выданным именам, а не по числу файлов: у картинки со своим
+      // именем номера нет, и от `files.length` в нумерации появлялись дыры.
+      issuedRef.current = Math.max(issuedRef.current, nextScreenshotIndex(files.map(f => f.name)))
       // Текст в буфере не трогаем: если рядом есть поле ввода, пусть вставится
       // как обычно. Забираем только картинки и только если они там есть.
       e.preventDefault()

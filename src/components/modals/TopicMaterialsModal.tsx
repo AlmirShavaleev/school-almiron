@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { cn } from '@/utils/cn'
+import { toast } from '@/store/toastStore'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvailability'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
@@ -106,6 +107,11 @@ function SectionEditor({
 
   // Скриншот из буфера (Ctrl+V). Материал здесь один на рубрику, поэтому из
   // вставки берём первую картинку — как и при выборе файла через диалог.
+  //
+  // Сквозная нумерация (§99) тут не нужна и не заводится: список из одного
+  // места, новая вставка ЗАМЕНЯЕТ прежний файл, а не встаёт рядом — двух
+  // «скриншот-1» в одном списке не бывает. Путь в Storage всё равно с меткой
+  // времени, так что и файлы не перетираются.
   usePasteFiles(files => { if (files[0]) void uploadOne(files[0]) }, canEdit && !uploading)
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -528,12 +534,25 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
   const activeSection = SECTIONS.find(s => s.type === activeTab)!
 
+  /**
+   * Ошибку сохранения показываем тостом, а не роняем обещание: у всех трёх
+   * обработчиков ниже вызов идёт через `void`, и до §98 упавший запрос давал
+   * unhandled rejection — на экране не менялось ничего, преподаватель считал,
+   * что сохранилось.
+   */
+  function saveFailed(e: unknown) {
+    toast.error(e instanceof Error ? e.message : 'Не удалось сохранить')
+  }
+
   async function handleDateBlur() {
     if (!canEdit || !onSaveTopicMeta) return
     if (dateVal === (availableFrom || '')) return
     setSavingDate(true)
     try {
       await onSaveTopicMeta({ available_from: dateVal || null })
+      toast.saved()
+    } catch (e) {
+      saveFailed(e)
     } finally {
       setSavingDate(false)
     }
@@ -550,6 +569,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     setBulkNote(null)
     try {
       await onSaveTopicMeta({ is_open: next })
+      toast.saved()
+    } catch (e) {
+      saveFailed(e)
     } finally {
       setSavingOpen(false)
     }
@@ -562,6 +584,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     setBulkNote(null)
     try {
       await onSaveTopicMeta({ is_open: null })
+      toast.saved()
+    } catch (e) {
+      saveFailed(e)
     } finally {
       setSavingOpen(false)
     }
@@ -573,6 +598,8 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     try {
       const n = await onOpenUntilHere()
       setBulkNote(n === 0 ? 'Всё до этой темы уже открыто' : `Открыто тем: ${n}`)
+    } catch (e) {
+      saveFailed(e)
     } finally {
       setSavingOpen(false)
     }
@@ -762,6 +789,19 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             )}
 
+          </div>
+        )}
+
+        {/*
+          Кнопка «Готово», а не «Сохранить»: файлы и поля сохраняются сразу,
+          в момент действия, и кнопка «Сохранить» врала бы — она бы ничего не
+          сохраняла. Её работа — закрыть окно, а подтверждение сохранения даёт
+          тост toast.saved() (§98).
+        */}
+        {canEdit && (
+          <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-6 py-3 shrink-0">
+            <span className="text-xs text-gray-400">Изменения сохраняются сразу</span>
+            <Button data-testid="topic-modal-done" onClick={onClose}>Готово</Button>
           </div>
         )}
       </div>

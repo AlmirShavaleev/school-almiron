@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import type { QueueRow } from '@/lib/homeworkQueue'
 import type { PresenceMeta } from '@/lib/reviewPresence'
 
@@ -64,6 +65,18 @@ vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
 
 import { HomeworkReviewQueuePage } from '@/pages/HomeworkReviewQueuePage'
 
+/**
+ * Страница читает ?attempt= через useSearchParams (§93) — без роутера она не
+ * рендерится вовсе. Обёртка живёт в хелпере, чтобы её нельзя было забыть.
+ */
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <HomeworkReviewQueuePage />
+    </MemoryRouter>,
+  )
+}
+
 function queueRow(attemptId: string, courseId = 'c1'): QueueRow {
   return {
     attempt: {
@@ -104,7 +117,7 @@ describe('Очередь проверок — кто сейчас смотрит
   it('на занятой строке показывает имя, на свободной — ничего', () => {
     state.rows = [queueRow('a1'), queueRow('a2')]
     presence.viewers = [ANNA]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     const badges = screen.getAllByTestId('queue-viewer-badge')
     expect(badges).toHaveLength(1)
@@ -116,13 +129,13 @@ describe('Очередь проверок — кто сейчас смотрит
 
   it('без присутствующих бейджа нет', () => {
     state.rows = [queueRow('a1')]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
     expect(screen.queryByTestId('queue-viewer-badge')).not.toBeInTheDocument()
   })
 
   it('подписывается на курсы своих строк и сообщает открытую работу', () => {
     state.rows = [queueRow('a1', 'c1'), queueRow('a2', 'c2')]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     expect(presenceArgs).toHaveBeenCalledWith({ courseIds: ['c1', 'c2'], attemptId: null })
 
@@ -133,7 +146,7 @@ describe('Очередь проверок — кто сейчас смотрит
   it('работу, которую уже смотрят, открывает только на чтение', () => {
     state.rows = [queueRow('a1')]
     presence.viewers = [ANNA]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'true')
@@ -142,7 +155,7 @@ describe('Очередь проверок — кто сейчас смотрит
   it('свободную работу открывает сразу на редактирование', () => {
     state.rows = [queueRow('a1')]
     presence.viewers = [{ ...ANNA, attemptId: 'a2' }]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
@@ -151,7 +164,7 @@ describe('Очередь проверок — кто сейчас смотрит
   it('«Всё равно редактировать» снимает режим чтения', () => {
     state.rows = [queueRow('a1')]
     presence.viewers = [ANNA]
-    render(<HomeworkReviewQueuePage />)
+    renderPage()
 
     openRow()
     fireEvent.click(screen.getByTestId('presence-force-edit'))
@@ -163,13 +176,13 @@ describe('Очередь проверок — кто сейчас смотрит
     // Это и есть причина снимать locked один раз: иначе тот, кто уже рисует
     // рамки, терял бы редактирование от чужого любопытства.
     state.rows = [queueRow('a1')]
-    const { rerender } = render(<HomeworkReviewQueuePage />)
+    const { rerender } = renderPage()
 
     openRow()
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
 
     presence.viewers = [ANNA]
-    rerender(<HomeworkReviewQueuePage />)
+    rerender(<MemoryRouter><HomeworkReviewQueuePage /></MemoryRouter>)
 
     expect(screen.getByTestId('attempt-annotation-overlay')).toHaveAttribute('data-locked', 'false')
   })

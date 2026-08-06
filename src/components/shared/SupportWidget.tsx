@@ -4,7 +4,7 @@ import { CheckCircle2, ImagePlus, LifeBuoy, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 // re-export ниже (строка ~84) транзитный и имени в файл не вводит — импорт обязателен
-import { imagesFromTransfer } from '@/lib/clipboardFiles'
+import { imagesFromTransfer, nextScreenshotIndex } from '@/lib/clipboardFiles'
 
 const SUBJECT_MIN = 3
 const SUBJECT_MAX = 120
@@ -147,7 +147,7 @@ export function SupportWidget() {
    */
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
     const dt = e.clipboardData
-    addFiles(imagesFromTransfer(dt, files.length))
+    addFiles(imagesFromTransfer(dt, nextScreenshotIndex(files.map(f => f.name))))
 
     // Некоторые приложения кладут в буфер картинку И текст сразу. Текст отдаём
     // тому полю, где стоит курсор, — браузер вставит его сам. Если курсор не в
@@ -165,7 +165,7 @@ export function SupportWidget() {
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault()
     setDragOver(false)
-    addFiles(imagesFromTransfer(e.dataTransfer, files.length))
+    addFiles(imagesFromTransfer(e.dataTransfer, nextScreenshotIndex(files.map(f => f.name))))
   }
 
   const subjectOk = subject.trim().length >= SUBJECT_MIN && subject.trim().length <= SUBJECT_MAX

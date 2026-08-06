@@ -6,6 +6,7 @@ import { useTopicVariantAttachment } from '@/hooks/useVariantTopicAttach'
 import { useVariants } from '@/hooks/useVariants'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { toast } from '@/store/toastStore'
 
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS:    Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
@@ -38,11 +39,14 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  async function run(fn: () => Promise<unknown>) {
+  /** `confirmSave` выключен на отвязке: подтверждать удаление словом
+   *  «сохранено» — врать. Привязка подтверждается тостом (§98). */
+  async function run(fn: () => Promise<unknown>, confirmSave = true) {
     setBusy(true)
     setLocalError(null)
     try {
       await fn()
+      if (confirmSave) toast.saved()
     } catch (e: unknown) {
       setLocalError(e instanceof Error ? e.message : 'Не удалось выполнить действие')
     } finally {
@@ -155,7 +159,7 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
           deleteTitle={hasAttempts ? 'По тесту уже есть попытки' : 'Открепить'}
           onDelete={() => {
             if (!confirm('Открепить тест? По нему ещё нет попыток.')) return
-            void run(() => detachBank())
+            void run(() => detachBank(), false)
           }}
         />
       )}
