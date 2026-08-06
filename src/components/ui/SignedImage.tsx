@@ -1,18 +1,33 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImageOff, Loader2 } from 'lucide-react'
 import { getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
 import { cn } from '@/utils/cn'
+
+/** Сколько ждём подпись и саму картинку, прежде чем показать заглушку. */
+const SIGN_TIMEOUT_MS = 10_000
+const LOAD_TIMEOUT_MS = 15_000
 
 /**
  * Картинка из ПРИВАТНОГО бакета.
  *
  * `SignedFileLink` рядом получает ссылку по клику — для ссылки это правильно,
- * ссылка не должна протухать в длинном списке. Картинку же показать без ссылки
- * нельзя, поэтому здесь она берётся при появлении на экране.
+ * она не должна протухать в длинном списке. Картинку без ссылки не покажешь,
+ * поэтому здесь она берётся при появлении на экране. Ссылка живёт час, а
+ * вкладку держат открытой дольше, поэтому при ошибке загрузки делается одна
+ * повторная подпись.
  *
- * Ссылка живёт час, а вкладку с темой держат открытой дольше. Поэтому при
- * ошибке загрузки — одна повторная подпись: протухшая ссылка чинится сама,
- * а битый файл честно показывает заглушку, а не вечный спиннер.
+ * ДВА правила, купленные вечным спиннером на проде (§97):
+ *
+ *  1. **Никакого `loading="lazy"`.** С ним браузер не присылает НИ `load`, НИ
+ *     `error` — проверено в браузере: скрытая и видимая картинки с `lazy`
+ *     молчат обе, без `lazy` ошибка приходит сразу. Компонент ждал `onLoad`,
+ *     чтобы показать картинку, а показать её был должен, чтобы `onLoad`
+ *     случился, — и висел вечно.
+ *  2. **Картинка не прячется, пока грузится.** `display:none` — та же ловушка с
+ *     другой стороны; пока не готова, она просто прозрачная, но в потоке.
+ *
+ * И на всё остальное — таймауты: любой исход, включая «сеть молчит», обязан
+ * закончиться картинкой или заглушкой, но не спиннером навсегда.
  */
 export function SignedImage({
   bucket,
@@ -26,60 +41,80 @@ export function SignedImage({
   className?: string
 }) {
   const [url, setUrl] = useState<string | null>(null)
-  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading')
-  const [retried, setRetried] = useState(false)
+  const [state, setState] = useState<'signing' | 'loading' | 'ready' | 'failed'>('signing')
+  const retriedRef = useRef(false)
 
   const sign = useCallback(async () => {
     if (!path) { setState('failed'); return }
     try {
-      const signed = await getSignedFileUrl(bucket, path)
+      const signed = await Promise.race([
+        getSignedFileUrl(bucket, path),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), SIGN_TIMEOUT_MS)),
+      ])
       if (!signed) { setState('failed'); return }
       setUrl(signed)
+      setState('loading')
     } catch {
       setState('failed')
     }
   }, [bucket, path])
 
   useEffect(() => {
-    setState('loading')
-    setRetried(false)
+    retriedRef.current = false
     setUrl(null)
+    setState('signing')
     void sign()
   }, [sign])
 
+  // Сторож на саму загрузку: если картинка не приехала и не упала, всё равно
+  // показываем заглушку. Спиннер без конца — худший из исходов.
+  useEffect(() => {
+    if (state !== 'loading') return
+    const t = setTimeout(() => setState('failed'), LOAD_TIMEOUT_MS)
+    return () => clearTimeout(t)
+  }, [state, url])
+
   function handleError() {
-    if (retried) { setState('failed'); return }
-    setRetried(true)
+    // Одна повторная подпись: протухшая ссылка чинится сама, битый файл
+    // честно показывает заглушку.
+    if (retriedRef.current) { setState('failed'); return }
+    retriedRef.current = true
     setUrl(null)
+    setState('signing')
     void sign()
   }
 
   if (state === 'failed') {
     return (
-      <div className={cn('flex items-center justify-center gap-2 rounded-lg bg-gray-100 py-6 text-xs text-gray-400', className)}>
+      <div
+        data-testid="signed-image-failed"
+        className={cn('flex items-center justify-center gap-2 rounded-lg bg-gray-100 py-6 text-xs text-gray-400', className)}
+      >
         <ImageOff size={14} />
         Не удалось показать изображение
       </div>
     )
   }
 
+  if (state === 'signing' || !url) {
+    return (
+      <div className={cn('flex items-center justify-center rounded-lg bg-gray-50 py-6', className)}>
+        <Loader2 size={16} className="animate-spin text-gray-300" />
+      </div>
+    )
+  }
+
   return (
-    <>
-      {state === 'loading' && (
-        <div className={cn('flex items-center justify-center rounded-lg bg-gray-50 py-6', className)}>
-          <Loader2 size={16} className="animate-spin text-gray-300" />
-        </div>
-      )}
-      {url && (
-        <img
-          src={url}
-          alt={alt}
-          loading="lazy"
-          onLoad={() => setState('ready')}
-          onError={handleError}
-          className={cn(state === 'ready' ? className : 'hidden')}
-        />
-      )}
-    </>
+    <img
+      src={url}
+      alt={alt}
+      data-testid="signed-image"
+      onLoad={() => setState('ready')}
+      onError={handleError}
+      // Прозрачная, но в потоке: скрытая картинка не грузится, а значит и не
+      // сообщает о готовности.
+      className={cn(className, state !== 'ready' && 'opacity-0')}
+    />
   )
 }
