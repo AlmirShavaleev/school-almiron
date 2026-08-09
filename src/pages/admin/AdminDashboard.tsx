@@ -223,6 +223,7 @@ export function AdminDashboard() {
             activity={analytics.activity}
             unopened={analytics.unopened}
             funnel={analytics.funnel}
+            viewHealth={analytics.viewHealth}
             hasViewData={analytics.hasViewData}
             loading={analytics.loading}
             error={analytics.error}

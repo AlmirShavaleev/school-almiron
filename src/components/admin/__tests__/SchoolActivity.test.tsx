@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { SchoolActivity } from '@/components/admin/SchoolActivity'
-import type { ActivityDay, DormantStudent, HomeworkFunnelRow, UnopenedTopic } from '@/hooks/useSchoolAnalytics'
+import type { ActivityDay, DormantStudent, HomeworkFunnelRow, UnopenedTopic, ViewHealth } from '@/hooks/useSchoolAnalytics'
 
 const BASE = {
   dormant: [] as DormantStudent[],
   activity: [] as ActivityDay[],
   unopened: [] as UnopenedTopic[],
   funnel: [] as HomeworkFunnelRow[],
-  viewHealth: { views_7d: 0, views_total: 0, first_day: null },
+  viewHealth: { views_7d: 0, views_total: 0, first_day: null } as ViewHealth,
   hasViewData: false,
   loading: false,
   error: null as string | null,

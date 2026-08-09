@@ -1,14 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 let issued = 0
-const createSignedUrl = vi.fn(async () => {
+const createSignedUrl = vi.fn(async (_path?: string, _ttl?: number, _opts?: unknown) => {
   issued += 1
   // Настоящий Storage каждый раз отдаёт НОВЫЙ адрес: token в query другой.
   return { data: { signedUrl: `https://storage/object/sign/topic-materials/file.pdf?token=${issued}` }, error: null }
 })
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { storage: { from: () => ({ createSignedUrl: (...a: unknown[]) => createSignedUrl(...(a as [])) }) } },
+  supabase: { storage: { from: () => ({ createSignedUrl: (...a: unknown[]) => createSignedUrl(...(a as [string, number, unknown?])) }) } },
 }))
 
 import {

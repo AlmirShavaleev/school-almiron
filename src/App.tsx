@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
+import { LoadingGate } from '@/components/shared/LoadingGate'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }

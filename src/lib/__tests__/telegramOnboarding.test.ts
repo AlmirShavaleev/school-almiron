@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { UserRole } from '@/types'
 import {
   TELEGRAM_PROMPT_ROLES,
   telegramBenefit,
@@ -23,7 +24,9 @@ describe('telegramPromptFor — что показать', () => {
   it('роли без уведомлений не зовём', () => {
     // Родителю в контуре не адресовано ни одно событие: предлагать канал,
     // по которому ничего не придёт, нечестно.
-    expect(telegramPromptFor('parent', false, false)).toBeNull()
+    // 'parent' есть в user_role базы, но не в клиентском UserRole — приведение
+    // намеренное: проверяем именно поведение на роли вне списка.
+    expect(telegramPromptFor('parent' as UserRole, false, false)).toBeNull()
     expect(telegramPromptFor(null, false, false)).toBeNull()
     expect(telegramPromptFor(undefined, false, false)).toBeNull()
   })

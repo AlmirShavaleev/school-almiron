@@ -48,6 +48,15 @@ vi.mock('@/hooks/useStudentNumberStats', () => ({
   useStudentNumberStats: () => ({ rows: [], loading: false, error: null }),
 }))
 
+// Секция анализа ходит в базу своими хуками; здесь проверяется страница, а не
+// она. Заглушка — чтобы её запросы не оседали unhandled rejection'ами и не
+// роняли код выхода всего прогона (урок §88.5).
+vi.mock('@/components/student/StudentInsightSection', () => ({
+  StudentInsightSection: ({ studentId }: { studentId: string }) => (
+    <div data-testid="student-insight-section">{studentId}</div>
+  ),
+}))
+
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector({ profile: { role: 'teacher' } }),
 }))
@@ -115,5 +124,36 @@ describe('StudentProfilePage enrolled courses', () => {
     renderPage()
 
     expect(await screen.findByText(/2 курса · 2 группы/)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Плитки на мёртвых таблицах сняты 2026-08-09 (решение оркестратора).
+ * `attendance`, `homework_submissions` и `mock_exam_results` на проде пусты, и
+ * нули из них читались как факт «ученик ничего не сдал». Тест держит именно
+ * это: не «блок выглядит так-то», а «страница не рисует показатель, под
+ * которым нет источника».
+ */
+describe('StudentProfilePage — снятые мёртвые показатели', () => {
+  it('ни посещаемости, ни легаси-ДЗ, ни пробников на странице нет', () => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+
+    renderPage()
+
+    expect(screen.queryByText(/Посещаемость/)).not.toBeInTheDocument()
+    expect(screen.queryByText('ДЗ сдано')).not.toBeInTheDocument()
+    expect(screen.queryByText('Средний балл ДЗ')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Пробник/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Домашние задания')).not.toBeInTheDocument()
+  })
+
+  it('вместо них — секция анализа на живом контуре', () => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getByTestId('student-insight-section')).toHaveTextContent('student-1')
   })
 })
