@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImageOff, Loader2 } from 'lucide-react'
-import { getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
+import {
+  forgetSignedUrl, getSignedFileUrl,
+  SHORT_SIGNED_URL_TTL_S, SIGNED_URL_TTL_S,
+  type PrivateBucket,
+} from '@/lib/storage'
 import { cn } from '@/utils/cn'
 
 /** Сколько ждём подпись и саму картинку, прежде чем показать заглушку. */
@@ -34,11 +38,18 @@ export function SignedImage({
   path,
   alt,
   className,
+  sensitive = false,
 }: {
   bucket: PrivateBucket
   path: string | null | undefined
   alt: string
   className?: string
+  /**
+   * Файл под гейтом (рубрика «Решения ДЗ», §95). Ссылка на него живёт пять
+   * минут вместо часа: выданный пропуск работает до конца срока, даже если
+   * право уже отобрали (§105).
+   */
+  sensitive?: boolean
 }) {
   const [url, setUrl] = useState<string | null>(null)
   const [state, setState] = useState<'signing' | 'loading' | 'ready' | 'failed'>('signing')
@@ -48,7 +59,7 @@ export function SignedImage({
     if (!path) { setState('failed'); return }
     try {
       const signed = await Promise.race([
-        getSignedFileUrl(bucket, path),
+        getSignedFileUrl(bucket, path, sensitive ? SHORT_SIGNED_URL_TTL_S : SIGNED_URL_TTL_S),
         new Promise<null>((_, reject) =>
           setTimeout(() => reject(new Error('timeout')), SIGN_TIMEOUT_MS)),
       ])
@@ -58,7 +69,7 @@ export function SignedImage({
     } catch {
       setState('failed')
     }
-  }, [bucket, path])
+  }, [bucket, path, sensitive])
 
   useEffect(() => {
     retriedRef.current = false
@@ -80,6 +91,9 @@ export function SignedImage({
     // честно показывает заглушку.
     if (retriedRef.current) { setState('failed'); return }
     retriedRef.current = true
+    // Ссылку из кэша забываем: раз она не сработала, повтор должен идти за
+    // новой подписью, а не доставать ту же самую (§105).
+    forgetSignedUrl(bucket, path)
     setUrl(null)
     setState('signing')
     void sign()

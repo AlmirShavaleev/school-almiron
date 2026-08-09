@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { removeIfOrphan } from '@/lib/storageRefs'
+import { UPLOAD_CACHE_CONTROL_S } from '@/lib/storage'
 import { useAuthStore } from '@/store/authStore'
 import { HOMEWORK_PHOTO_PRESET, MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import {
@@ -209,7 +211,7 @@ export function useTopicHomework(topicId: string | null) {
         // Фолбэк: обычная загрузка без прогресса
         const up = await supabase.storage
           .from(TOPIC_HOMEWORK_BUCKET)
-          .upload(path, upload, { contentType: upload.type, upsert: false })
+          .upload(path, upload, { contentType: upload.type, upsert: false, cacheControl: UPLOAD_CACHE_CONTROL_S })
         if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
       } else {
         await new Promise<void>((resolve, reject) => {
@@ -217,6 +219,9 @@ export function useTopicHomework(topicId: string | null) {
           xhr.open('PUT', signed.signedUrl)
           xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
           xhr.setRequestHeader('x-upsert', 'false')
+        // Без этого заголовка объект приезжает с `no-cache`, и подписанная
+        // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
+        xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
           xhr.upload.onprogress = e => {
             if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
           }
@@ -248,18 +253,26 @@ export function useTopicHomework(topicId: string | null) {
     [topicId, applyFiles],
   )
 
-  /** Убирает файл задания: сначала объект в Storage, затем строку в БД. */
+  /**
+   * Убирает файл задания: сначала СТРОКУ, потом объект — и только если на него
+   * больше никто не ссылается.
+   *
+   * Порядок перевёрнут в §101. Раньше объект удалялся первым, и с общими
+   * файлами копий это выбивало бы файл у шаблона и у всех остальных копий:
+   * один путь теперь живёт в нескольких строках и в двух таблицах.
+   */
   const deleteHomeworkFile = useCallback(
     async (fileId: string) => {
       const target = filesRef.current.find(f => f.id === fileId)
       if (!target) return
 
-      await supabase.storage.from(TOPIC_HOMEWORK_BUCKET).remove([target.storage_path])
-
       const { error: err } = await supabase.from('topic_homework_files').delete().eq('id', fileId)
       if (err) throw err
 
       applyFiles(filesRef.current.filter(f => f.id !== fileId))
+
+      // Наверх не бросаем: строки уже нет, повтор ничего не исправит.
+      await removeIfOrphan(TOPIC_HOMEWORK_BUCKET, target.storage_path)
     },
     [applyFiles],
   )
@@ -317,7 +330,7 @@ export function useTopicHomework(topicId: string | null) {
           // Фолбэк: обычная загрузка, но уже без процентов.
           const up = await supabase.storage
             .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-            .upload(path, upload, { contentType: upload.type, upsert: false })
+            .upload(path, upload, { contentType: upload.type, upsert: false, cacheControl: UPLOAD_CACHE_CONTROL_S })
           if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
         } else {
           await new Promise<void>((resolve, reject) => {
@@ -325,6 +338,9 @@ export function useTopicHomework(topicId: string | null) {
             xhr.open('PUT', signed.signedUrl)
             xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
             xhr.setRequestHeader('x-upsert', 'false')
+        // Без этого заголовка объект приезжает с `no-cache`, и подписанная
+        // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
+        xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
             xhr.upload.onprogress = e => {
               if (e.lengthComputable && onProgress) onProgress(i, Math.round((e.loaded / e.total) * 100))
             }

@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
+import { removeIfOrphan } from '@/lib/storageRefs'
+import { UPLOAD_CACHE_CONTROL_S } from '@/lib/storage'
 import {
   TOPIC_MATERIALS_BUCKET,
+  bucketForMaterialPath,
   buildMaterialInsert,
   buildMaterialStoragePath,
   toTopicMaterial,
@@ -77,7 +80,7 @@ export function useTopicMaterialItems(topicId: string | null) {
         // Фолбэк: обычная загрузка без прогресса
         const { error: err } = await supabase.storage
           .from(TOPIC_MATERIALS_BUCKET)
-          .upload(storagePath, upload, { contentType: upload.type, upsert: false })
+          .upload(storagePath, upload, { contentType: upload.type, upsert: false, cacheControl: UPLOAD_CACHE_CONTROL_S })
         if (err) throw new Error('Ошибка загрузки файла: ' + err.message)
         return { storagePath, fileName: upload.name, mimeType: upload.type, sizeBytes: upload.size }
       }
@@ -87,6 +90,9 @@ export function useTopicMaterialItems(topicId: string | null) {
         xhr.open('PUT', signed.signedUrl)
         xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
         xhr.setRequestHeader('x-upsert', 'false')
+        // Без этого заголовка объект приезжает с `no-cache`, и подписанная
+        // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
+        xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
         xhr.upload.onprogress = e => {
           if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
         }
@@ -125,11 +131,28 @@ export function useTopicMaterialItems(topicId: string | null) {
     [topicId, profile, materials],
   )
 
+  /**
+   * Удаляет материал и, если файл больше никому не нужен, убирает объект.
+   *
+   * До §101 объект не убирался вовсе — файлы копились в хранилище после
+   * каждого удаления. Теперь порядок такой: сначала строка (её удаление и
+   * есть операция, о которой просил человек), потом объект и только при нуле
+   * ссылок: с общими объектами копий «удалил строку — удалил файл» выбило бы
+   * файл у шаблона.
+   */
   const deleteMaterial = useCallback(async (id: string) => {
+    const target = materials.find(m => m.id === id)
+
     const { error: err } = await supabase.from('topic_material_items').delete().eq('id', id)
     if (err) throw err
     setMaterials(prev => prev.filter(m => m.id !== id))
-  }, [])
+
+    if (target?.kind === 'file' && target.storagePath && topicId) {
+      // Ошибка уборки наверх не идёт: строки уже нет, и повторное нажатие
+      // ничего не исправит. Осиротевший объект подберёт скрипт схлопывания.
+      await removeIfOrphan(bucketForMaterialPath(target.storagePath, topicId), target.storagePath)
+    }
+  }, [materials, topicId])
 
   const toggleVisibility = useCallback(async (id: string, isVisible: boolean) => {
     const { error: err } = await supabase

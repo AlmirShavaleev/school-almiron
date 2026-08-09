@@ -95,7 +95,6 @@ export function CuratorDashboard() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/attendance')}
           className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
           <CheckSquare size={15} />Посещаемость
@@ -419,8 +418,6 @@ export function CuratorDashboard() {
       {/* ── Quick links ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Посещаемость', icon: <CheckSquare size={16} />, path: '/attendance', color: 'text-green-600 bg-green-50 border-green-200' },
-          { label: 'Расписание',   icon: <Calendar size={16} />,    path: '/schedule',   color: 'text-blue-600 bg-blue-50 border-blue-200' },
           { label: 'Группы',       icon: <Users size={16} />,       path: '/groups',     color: 'text-purple-600 bg-purple-50 border-purple-200' },
           { label: 'Домашние задания', icon: <BookOpen size={16} />, path: '/homeworks', color: 'text-orange-600 bg-orange-50 border-orange-200' },
         ].map(l => (

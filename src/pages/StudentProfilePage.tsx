@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Users, CheckCircle, Clock, X as XIcon,
-  Star, TrendingUp,
+  ArrowLeft, Users, Star,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
 } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
@@ -10,47 +9,18 @@ import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
 import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
 import { useGroups } from '@/hooks/useGroups'
 import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
-import { StatCard } from '@/components/ui/StatCard'
+import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
-import { HW_STATUS_LABELS, HW_STATUS_COLORS } from '@/utils/format'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
 import { Plus, BookOpen, Calendar } from 'lucide-react'
 
-// ─── Attendance ring ──────────────────────────────────────────────────────────
-function Ring({ value, color, size = 80 }: { value: number; color: string; size?: number }) {
-  const r  = size / 2 - 8
-  const c  = 2 * Math.PI * r
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f3f4f6" strokeWidth="7" />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
-        strokeWidth="7" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} />
-    </svg>
-  )
-}
-
-// ─── HW status badge ──────────────────────────────────────────────────────────
-function HwStatus({ status }: { status: string }) {
-  return (
-    <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', HW_STATUS_COLORS[status] || 'bg-gray-100 text-gray-500')}>
-      {HW_STATUS_LABELS[status] || status}
-    </span>
-  )
-}
-
-// ─── Attendance status icon ───────────────────────────────────────────────────
-function AttStatus({ status }: { status: string }) {
-  if (status === 'present') return <CheckCircle size={14} className="text-green-500 shrink-0" />
-  if (status === 'absent')  return <XIcon size={14} className="text-red-500 shrink-0" />
-  if (status === 'late')    return <Clock size={14} className="text-orange-400 shrink-0" />
-  return null
-}
+// Кольцо посещаемости, бейдж статуса легаси-ДЗ и значок посещения удалены
+// вместе со своими блоками (см. комментарий у секции анализа ниже): все три
+// стояли на таблицах с нулём строк.
 
 // ─── Section toggle ───────────────────────────────────────────────────────────
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
@@ -99,14 +69,6 @@ export function StudentProfilePage() {
       <p>Студент не найден</p>
     </div>
   )
-
-  const attColor = s.attendance_percent >= 80 ? '#22c55e' : s.attendance_percent >= 60 ? '#eab308' : '#ef4444'
-
-  // Chart data for mock exams
-  const chartData = s.mock_results.slice().reverse().map(m => ({
-    name: new Date(m.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
-    score: Math.round(m.score / m.max_score * 100),
-  }))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -185,171 +147,19 @@ export function StudentProfilePage() {
               )}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 lg:w-72">
-            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-              <div className="text-xs text-slate-500">Посещаемость</div>
-              <div className="font-semibold text-graphite-950">{s.attendance_percent}%</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-              <div className="text-xs text-slate-500">ДЗ</div>
-              <div className="font-semibold text-graphite-950">{s.hw_checked}/{s.hw_total}</div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-              <div className="text-xs text-slate-500">Пробники</div>
-              <div className="font-semibold text-graphite-950">{s.mock_count}</div>
-            </div>
-          </div>
         </div>
       </Card>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Attendance ring */}
-        <Card className="flex flex-col items-center justify-center py-4 gap-2">
-          <div className="relative">
-            <Ring value={s.attendance_percent} color={attColor} />
-            <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-800">
-              {s.attendance_percent}%
-            </div>
-          </div>
-          <div className="text-xs text-center text-gray-500 font-medium">Посещаемость</div>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span className="text-green-500">присутствовал: {s.attendance_present}</span>
-            <span className="text-orange-400">опоздал: {s.attendance_late}</span>
-            <span className="text-red-400">нет: {s.attendance_absent}</span>
-          </div>
-        </Card>
-
-        <StatCard
-          title="ДЗ сдано"
-          value={`${s.hw_checked}/${s.hw_total}`}
-          icon={<CheckCircle size={20} />}
-          color="green"
-        />
-        <StatCard
-          title="Средний балл ДЗ"
-          value={s.hw_avg_score != null ? `${s.hw_avg_score}%` : '—'}
-          icon={<TrendingUp size={20} />}
-          color="blue"
-        />
-        <StatCard
-          title="Пробников"
-          value={s.mock_count}
-          icon={<Star size={20} />}
-          color="purple"
-        />
-      </div>
-
-      {/* Mock exam chart */}
-      {chartData.length >= 2 && (
-        <Card>
-          <div className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp size={16} className="text-primary-500" />
-            Динамика пробников
-            {s.mock_avg != null && (
-              <span className="ml-auto text-sm font-normal text-gray-400">
-                Среднее: <span className="font-semibold text-gray-700">{s.mock_avg}%</span>
-              </span>
-            )}
-          </div>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chartData} barSize={24}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
-              <Tooltip formatter={(v: any) => [`${v}%`, 'Балл']} />
-              <Bar dataKey="score" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      )}
-
-      {/* Homeworks */}
-      <Section title="Домашние задания" count={s.hw_total}>
-        {s.homeworks.length === 0 ? (
-          <p className="text-center py-8 text-gray-400 text-sm">Нет заданий</p>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {s.homeworks.map(hw => (
-              <div key={hw.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800 truncate">{hw.title}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    {hw.group_name} · до {new Date(hw.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                  </div>
-                  {hw.feedback && (
-                    <div className="text-xs text-primary-600 mt-1 italic">{hw.feedback}</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {hw.status === 'checked' && hw.score != null && (
-                    <span className={cn(
-                      'text-sm font-bold',
-                      hw.score / hw.max_score >= 0.8 ? 'text-green-600' :
-                      hw.score / hw.max_score >= 0.5 ? 'text-yellow-600' : 'text-red-500'
-                    )}>
-                      {hw.score}/{hw.max_score}
-                    </span>
-                  )}
-                  <HwStatus status={hw.status} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Recent attendance */}
-      <Section title="Посещаемость (последние занятия)" count={s.recent_attendance.length}>
-        {s.recent_attendance.length === 0 ? (
-          <p className="text-center py-8 text-gray-400 text-sm">Нет данных</p>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {s.recent_attendance.map((a, i) => (
-              <div key={i} className="flex items-center gap-3 px-5 py-3">
-                <AttStatus status={a.status} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800 truncate">{a.lesson_title}</div>
-                  {a.note && <div className="text-xs text-gray-400 italic">{a.note}</div>}
-                </div>
-                <span className="text-xs text-gray-400 shrink-0">
-                  {new Date(a.scheduled_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Mock results */}
-      {s.mock_results.length > 0 && (
-        <Section title="Пробные экзамены" count={s.mock_results.length}>
-          <div className="divide-y divide-gray-50">
-            {s.mock_results.map(m => {
-              const pct = Math.round(m.score / m.max_score * 100)
-              return (
-                <div key={m.id} className="flex items-center gap-3 px-5 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-800">{m.title}</div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(m.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-400' : 'bg-red-400')}
-                        style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className={cn('text-sm font-bold', pct >= 80 ? 'text-green-600' : pct >= 60 ? 'text-yellow-600' : 'text-red-500')}>
-                      {m.score}/{m.max_score}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </Section>
-      )}
+      {/*
+        Плитки посещаемости, ДЗ и пробников сняты 2026-08-09 (решение
+        оркестратора к §106): они стояли на мёртвых таблицах — `attendance` 0
+        строк (продукт отказался от посещаемости), `homework_submissions` 0
+        (легаси-контур ДЗ, весь трафик в `topic_homework_*`),
+        `mock_exam_results` 0 (страницы пробников скрыты). Нули там читались как
+        факт «ученик ничего не сдал», хотя данных не было вовсе. Работу
+        честно делает секция ниже — на живом контуре.
+      */}
+      {s.student_id && <StudentInsightSection studentId={s.student_id} />}
 
       {/* Enrolled courses */}
       {s.student_id && (

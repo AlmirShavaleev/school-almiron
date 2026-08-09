@@ -4,6 +4,8 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
+import { useStudentTodo } from '@/hooks/useStudentTodo'
+import { StudentTodoList } from '@/components/student/StudentTodoList'
 import { formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import { ATTEMPT_STATUS_LABEL, ATTEMPT_STATUS_TONE, gradeScaleMax } from '@/lib/topicHomework'
@@ -13,6 +15,9 @@ export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
   const navigate = useNavigate()
   const dashboard = useStudentDashboard(profile?.id)
+  // Список дел — первый экран: ученик заходит с вопросом «что мне сдать»,
+  // а не «сколько у меня курсов». Плитки и курсы остаются ниже.
+  const { todo, loading: todoLoading, error: todoError } = useStudentTodo(profile?.id)
   const { loading } = dashboard
   // Подстраховка от «белого экрана»: если хук по любой причине вернул неполный
   // набор (ошибка запроса, обрезанный ответ), страница должна показать нули,
@@ -54,6 +59,9 @@ export function StudentDashboard() {
           </p>
         </div>
       </div>
+
+      {/* Что сдать — до плиток и курсов */}
+      <StudentTodoList todo={todo} loading={todoLoading} error={todoError} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

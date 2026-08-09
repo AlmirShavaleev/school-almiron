@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { CopyProgressBar } from '@/components/modals/copyDialogParts'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 
@@ -390,5 +391,26 @@ describe('CopyTopicDialog', () => {
     // Проверить, что радио для сдвига отключено
     const shiftRadio = screen.getByRole('radio', { name: /Сдвинуть на новый учебный год/ })
     expect(shiftRadio).toBeDisabled()
+  })
+})
+
+/**
+ * §101. Копия больше не заливает файлы — она ссылается на те же объекты
+ * хранилища. Полоса «Копирую файлы материалов 0 из 0» обещала бы работу,
+ * которой не происходит.
+ */
+describe('CopyProgressBar', () => {
+  it('переносить нечего — счётчика нет, текст про сборку копии', () => {
+    render(<CopyProgressBar progress={{ copied: 0, total: 0 }} />)
+
+    expect(screen.getByText('Собираю копию')).toBeInTheDocument()
+    expect(screen.queryByText('0 из 0')).not.toBeInTheDocument()
+  })
+
+  it('файлы всё же есть — счётчик на месте', () => {
+    render(<CopyProgressBar progress={{ copied: 3, total: 7 }} />)
+
+    expect(screen.getByText('Копирую файлы материалов')).toBeInTheDocument()
+    expect(screen.getByText('3 из 7')).toBeInTheDocument()
   })
 })

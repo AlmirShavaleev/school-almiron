@@ -3,6 +3,8 @@ import { Sidebar } from './Sidebar'
 // import { NotificationBell } from './NotificationBell' // скрыто на время MVP
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { SupportWidget } from '@/components/shared/SupportWidget'
+import { LoadingGate } from '@/components/shared/LoadingGate'
+import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { useAuthStore } from '@/store/authStore'
 import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { StaffModeSwitch } from './StaffModeSwitch'
@@ -33,10 +35,9 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/students$/, 'Ученики'],
   [/^\/teachers\/[^/]+/, 'Преподаватель'],
   [/^\/inbox$/, 'Очередь задач'],
-  [/^\/schedule$/, 'Расписание'],
-  [/^\/attendance$/, 'Посещаемость'],
   [/^\/lessons/, 'Занятия'],
   [/^\/lesson-library/, 'Библиотека уроков'],
+  [/^\/course-program\/[^/]+\/topic-tests/, 'Тесты по темам курса'],
   [/^\/course-program/, 'Программа курса'],
   [/^\/homework-queue$/, 'Проверка ДЗ'],
   [/^\/homework-review/, 'Проверка ДЗ'],
@@ -81,16 +82,12 @@ export function DashboardLayout() {
     if (!loading && !profile) navigate('/login')
   }, [profile, loading, navigate])
 
-  // If profile already loaded from cache — render immediately, don't block on loading
+  // If profile already loaded from cache — render immediately, don't block on loading.
+  // Ждём с пределом по времени: профиль может не приехать вовсе, и тогда
+  // кабинет обязан показать ошибку с кнопкой, а не вечный спиннер
+  // (`LoadingGate`). Именно на этом шаге владелец поймал зависший вход.
   if (!profile && loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-primary-50/30">
-        <div className="platform-surface rounded-lg flex flex-col items-center gap-4 px-8 py-7">
-          <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-800 rounded-full animate-spin" />
-          <span className="text-slate-500 text-sm font-medium">Загрузка платформы...</span>
-        </div>
-      </div>
-    )
+    return <LoadingGate label="профиль пользователя" fullScreen />
   }
 
   if (!profile) return null
@@ -164,6 +161,10 @@ export function DashboardLayout() {
           <div className={isFullscreenReviewRoute
             ? 'min-w-0 h-[calc(100dvh-3.5rem)] px-0 py-0'
             : 'min-w-0 px-4 sm:px-6 md:px-8 py-3 sm:py-4 md:py-5 max-w-[1420px] mx-auto'}>
+            {/* Приглашение привязать Telegram — над содержимым страницы, но не
+                на полноэкранной проверке ДЗ: там рабочая область занимает весь
+                экран, и полоска сверху ломала бы разметку холста. */}
+            {!isFullscreenReviewRoute && <TelegramOnboarding />}
             <Outlet />
           </div>
         </main>

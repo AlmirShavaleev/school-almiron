@@ -26,6 +26,18 @@ vi.mock('@/hooks/useStudentDashboard', () => ({
   useStudentDashboard: (...args: unknown[]) => useStudentDashboardMock(...args),
 }))
 
+// Список дел — отдельный хук со своими запросами; его правила проверяются в
+// `lib/__tests__/studentTodo.test.ts`, здесь он нужен пустым, чтобы не тянуть
+// сеть и не мешать проверкам курсов и статусов.
+const useStudentTodoMock = vi.fn()
+vi.mock('@/hooks/useStudentTodo', () => ({
+  useStudentTodo: (...args: unknown[]) => useStudentTodoMock(...args),
+}))
+
+const emptyTodo = {
+  overdue: [], returned: [], dueSoon: [], tests: [], newlyOpened: [], checked: [], isClear: true,
+}
+
 const baseDashboard = {
   courses: [],
   hwItems: [],
@@ -50,6 +62,7 @@ const hw = (attemptId: string, hwTitle: string, status: string) => ({
 describe('StudentDashboard — живой контур topic_homework', () => {
   beforeEach(() => {
     useStudentDashboardMock.mockReturnValue(baseDashboard)
+    useStudentTodoMock.mockReturnValue({ todo: emptyTodo, loading: false, error: null })
   })
 
   it('кабинет спрашивает данные по своему профилю', () => {

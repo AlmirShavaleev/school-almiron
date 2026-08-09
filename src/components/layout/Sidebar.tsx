@@ -39,7 +39,6 @@ const navItems: NavItem[] = [
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Домашние задания',  path: '/my-homework',    icon: <ClipboardCheck size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
-  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
 
   { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба', hidden: true },
@@ -63,11 +62,8 @@ const navItems: NavItem[] = [
   { label: 'Банк тестов',       path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
-  { label: 'Посещаемость',      path: '/attendance',     icon: <ClipboardCheck size={18} />,roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Занятия',           path: '/lessons',        icon: <Calendar size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
-  { label: 'Расписание',        path: '/schedule',       icon: <Calendar size={18} />,      roles: ['curator', 'admin', 'owner', 'teacher'], hidden: true },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
@@ -93,7 +89,11 @@ const CURATOR_ITEMS: NavItem[] = [
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/inbox'] },
-  { title: 'Учебный процесс', paths: ['/groups', '/students', '/lessons', '/schedule', '/attendance', '/course-program', '/lesson-library'] },
+  // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
+  // занятия вне платформы, `lessons` и `attendance` пусты по построению.
+  // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
+  // вернутся из истории.
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/homework-queue', '/tests', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]

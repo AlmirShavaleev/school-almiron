@@ -12,6 +12,11 @@ const uploadMaterialFile = vi.fn()
 let materials: TopicMaterial[] = []
 let loading = false
 
+const rpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
+vi.mock('@/lib/supabase', () => ({
+  supabase: { rpc: (...args: unknown[]) => rpc(...(args as [])) },
+}))
+
 vi.mock('@/hooks/useTopicMaterialItems', () => ({
   useTopicMaterialItems: () => ({
     materials, loading, error: null, reload: vi.fn(),
@@ -212,5 +217,48 @@ describe('Материалы темы — подтверждение сохра�
 
     await waitFor(() =>
       expect(useToastStore.getState().toasts.map(t => t.message)).toContain('Успешно сохранено'))
+  })
+})
+
+const fileMat = (id: string, section: string | null = 'notes'): TopicMaterial =>
+  ({ kind: 'file', id, title: null, position: 0, isVisible: true, section: section as never,
+     storagePath: `${TOPIC}/1_a.pdf`, fileName: 'конспект.pdf', sizeBytes: 10 })
+
+/**
+ * Врезка §107: открытие файла учеником считается для аналитики. Учёт не имеет
+ * права мешать открытию, поэтому проверяем и вызов, и молчание при отказе.
+ */
+describe('Учёт просмотров материала', () => {
+  beforeEach(() => {
+    rpc.mockReset().mockResolvedValue({ data: null, error: null })
+  })
+
+  it('ученик открывает файл — просмотр засчитывается', async () => {
+    materials = [fileMat('m1')]
+    renderItems(false)
+
+    fireEvent.click(screen.getByText('конспект.pdf'))
+
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('record_material_view', { p_item_id: 'm1' }))
+  })
+
+  it('преподавателю просмотры не считаются', async () => {
+    materials = [fileMat('m1')]
+    renderItems(true)
+
+    fireEvent.click(screen.getByText('конспект.pdf'))
+
+    await waitFor(() => expect(uploadMaterialFile).not.toHaveBeenCalled())
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('отказ RPC не мешает открыть файл', async () => {
+    rpc.mockRejectedValue(new Error('нет такой функции'))
+    materials = [fileMat('m1')]
+    renderItems(false)
+
+    // Клик не должен приводить к необработанному отказу обещания.
+    expect(() => fireEvent.click(screen.getByText('конспект.pdf'))).not.toThrow()
+    await waitFor(() => expect(rpc).toHaveBeenCalled())
   })
 })

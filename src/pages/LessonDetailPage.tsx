@@ -1036,7 +1036,10 @@ export function LessonDetailPage() {
                     return (
                       <SignedFileLink
                         key={m.id}
-                        bucket={bucketForMaterialPath(m.storage_path, lesson.topic!.id)}
+                        // lesson.id третьим: файл того поколения, когда материалы
+                        // висели на уроке, узнаётся теперь только по СВОЕМУ уроку —
+                        // первая папка пути перестала быть признаком (§101).
+                        bucket={bucketForMaterialPath(m.storage_path, lesson.topic!.id, lesson.id)}
                         url={m.storage_path}
                         className="block hover:opacity-80 transition-opacity"
                       >{body}</SignedFileLink>

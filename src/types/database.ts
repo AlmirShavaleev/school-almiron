@@ -500,6 +500,27 @@ export type Database = {
           },
         ]
       }
+      catalog_tasks_multichoice_backup_20260805: {
+        Row: {
+          answer_html: string | null
+          external_id: number | null
+          id: string | null
+          partial_type: string | null
+        }
+        Insert: {
+          answer_html?: string | null
+          external_id?: number | null
+          id?: string | null
+          partial_type?: string | null
+        }
+        Update: {
+          answer_html?: string | null
+          external_id?: number | null
+          id?: string | null
+          partial_type?: string | null
+        }
+        Relationships: []
+      }
       catalog_topics: {
         Row: {
           created_at: string | null
@@ -1084,75 +1105,6 @@ export type Database = {
           },
         ]
       }
-      enrollment_invites_cleanup_backup_20260803: {
-        Row: {
-          accepted_at: string | null
-          accepted_by: string | null
-          batch_id: string | null
-          class_grade: string | null
-          client_row_id: string | null
-          created_at: string | null
-          email: string | null
-          email_normalized: string | null
-          expires_at: string | null
-          full_name: string | null
-          group_id: string | null
-          id: string | null
-          invited_by: string | null
-          phone: string | null
-          phone_normalized: string | null
-          revoked_at: string | null
-          short_code_hash: string | null
-          status: string | null
-          token_hash: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          accepted_at?: string | null
-          accepted_by?: string | null
-          batch_id?: string | null
-          class_grade?: string | null
-          client_row_id?: string | null
-          created_at?: string | null
-          email?: string | null
-          email_normalized?: string | null
-          expires_at?: string | null
-          full_name?: string | null
-          group_id?: string | null
-          id?: string | null
-          invited_by?: string | null
-          phone?: string | null
-          phone_normalized?: string | null
-          revoked_at?: string | null
-          short_code_hash?: string | null
-          status?: string | null
-          token_hash?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          accepted_at?: string | null
-          accepted_by?: string | null
-          batch_id?: string | null
-          class_grade?: string | null
-          client_row_id?: string | null
-          created_at?: string | null
-          email?: string | null
-          email_normalized?: string | null
-          expires_at?: string | null
-          full_name?: string | null
-          group_id?: string | null
-          id?: string | null
-          invited_by?: string | null
-          phone?: string | null
-          phone_normalized?: string | null
-          revoked_at?: string | null
-          short_code_hash?: string | null
-          status?: string | null
-          token_hash?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       group_students: {
         Row: {
           group_id: string
@@ -1188,27 +1140,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      group_students_cleanup_backup_20260803: {
-        Row: {
-          group_id: string | null
-          id: string | null
-          joined_at: string | null
-          student_id: string | null
-        }
-        Insert: {
-          group_id?: string | null
-          id?: string | null
-          joined_at?: string | null
-          student_id?: string | null
-        }
-        Update: {
-          group_id?: string | null
-          id?: string | null
-          joined_at?: string | null
-          student_id?: string | null
-        }
-        Relationships: []
       }
       groups: {
         Row: {
@@ -1273,48 +1204,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      groups_cleanup_backup_20260803: {
-        Row: {
-          course_id: string | null
-          created_at: string | null
-          curator_id: string | null
-          id: string | null
-          is_active: boolean | null
-          max_students: number | null
-          name: string | null
-          schedule_days: string[] | null
-          schedule_time: string | null
-          teacher_id: string | null
-          type: Database["public"]["Enums"]["group_type"] | null
-        }
-        Insert: {
-          course_id?: string | null
-          created_at?: string | null
-          curator_id?: string | null
-          id?: string | null
-          is_active?: boolean | null
-          max_students?: number | null
-          name?: string | null
-          schedule_days?: string[] | null
-          schedule_time?: string | null
-          teacher_id?: string | null
-          type?: Database["public"]["Enums"]["group_type"] | null
-        }
-        Update: {
-          course_id?: string | null
-          created_at?: string | null
-          curator_id?: string | null
-          id?: string | null
-          is_active?: boolean | null
-          max_students?: number | null
-          name?: string | null
-          schedule_days?: string[] | null
-          schedule_time?: string | null
-          teacher_id?: string | null
-          type?: Database["public"]["Enums"]["group_type"] | null
-        }
-        Relationships: []
       }
       homework_action_log: {
         Row: {
@@ -2774,6 +2663,49 @@ export type Database = {
           },
         ]
       }
+      material_views: {
+        Row: {
+          item_id: string
+          profile_id: string
+          topic_id: string
+          viewed_on: string
+        }
+        Insert: {
+          item_id: string
+          profile_id: string
+          topic_id: string
+          viewed_on: string
+        }
+        Update: {
+          item_id?: string
+          profile_id?: string
+          topic_id?: string
+          viewed_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_views_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "topic_material_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_views_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mock_exam_results: {
         Row: {
           created_at: string
@@ -3389,6 +3321,51 @@ export type Database = {
           },
           {
             foreignKeyName: "student_courses_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_feedback_notes: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          kind: string
+          model: string | null
+          student_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          kind: string
+          model?: string | null
+          student_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          model?: string | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_feedback_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_feedback_notes_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
@@ -5756,6 +5733,10 @@ export type Database = {
         }
       }
       cleanup_telegram_tokens: { Args: never; Returns: undefined }
+      course_can_assign_curator: {
+        Args: { p_course_id: string }
+        Returns: boolean
+      }
       course_copy_finalize: { Args: { p_job_id: string }; Returns: Json }
       course_copy_rollback: { Args: { p_job_id: string }; Returns: Json }
       course_copy_shift_date: {
@@ -5779,10 +5760,6 @@ export type Database = {
           p_target_topic_id: string
         }
         Returns: Json
-      }
-      course_can_assign_curator: {
-        Args: { p_course_id: string }
-        Returns: boolean
       }
       course_curator_assign: {
         Args: { p_course_id: string; p_profile_id: string }
@@ -5810,6 +5787,10 @@ export type Database = {
         Returns: boolean
       }
       course_is_staff: { Args: { p_course_id: string }; Returns: boolean }
+      course_is_teacher_staff: {
+        Args: { p_course_id: string }
+        Returns: boolean
+      }
       course_join_accept: {
         Args: { p_value: string }
         Returns: {
@@ -6481,6 +6462,7 @@ export type Database = {
         Returns: Json
       }
       is_admin_or_owner: { Args: never; Returns: boolean }
+      my_staff_course_ids: { Args: never; Returns: string[] }
       normalize_answer_digits: { Args: { p_value: string }; Returns: string }
       normalize_email: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
@@ -6541,6 +6523,7 @@ export type Database = {
       }
       realtime_review_topic_course: { Args: { topic: string }; Returns: string }
       record_app_visit: { Args: never; Returns: undefined }
+      record_material_view: { Args: { p_item_id: string }; Returns: undefined }
       reissue_student_invite: {
         Args: { p_invite_id: string }
         Returns: {
@@ -6647,6 +6630,54 @@ export type Database = {
         }
         Returns: string
       }
+      school_activity_daily: {
+        Args: { p_days?: number }
+        Returns: {
+          day: string
+          people: number
+        }[]
+      }
+      school_dormant_students: {
+        Args: { p_days?: number }
+        Returns: {
+          course_titles: string
+          days_silent: number
+          full_name: string
+          last_active: string
+          never_active: boolean
+          profile_id: string
+          student_id: string
+        }[]
+      }
+      school_homework_funnel: {
+        Args: never
+        Returns: {
+          accepted: number
+          course_id: string
+          course_title: string
+          expected: number
+          submitted: number
+        }[]
+      }
+      school_material_view_health: {
+        Args: never
+        Returns: {
+          first_day: string
+          views_7d: number
+          views_total: number
+        }[]
+      }
+      school_unopened_materials: {
+        Args: { p_limit?: number }
+        Returns: {
+          course_title: string
+          has_data: boolean
+          topic_id: string
+          topic_title: string
+          total_items: number
+          unopened: number
+        }[]
+      }
       score_auto_answer: {
         Args: {
           p_correct_raw: string
@@ -6681,6 +6712,10 @@ export type Database = {
       start_variant_attempt: {
         Args: { p_student_assignment_id: string }
         Returns: Json
+      }
+      storage_path_refs: {
+        Args: { p_bucket: string; p_path: string }
+        Returns: number
       }
       strip_html_simple: { Args: { html: string }; Returns: string }
       students_telegram_flags: {
@@ -6788,6 +6823,10 @@ export type Database = {
         Args: { p_attempt_id: string }
         Returns: boolean
       }
+      topic_homework_can_edit: {
+        Args: { p_homework_id: string }
+        Returns: boolean
+      }
       topic_homework_can_manage: {
         Args: { p_homework_id: string }
         Returns: boolean
@@ -6813,6 +6852,10 @@ export type Database = {
           telegram_linked: boolean
         }[]
       }
+      topic_homework_object_visible: {
+        Args: { p_object_name: string }
+        Returns: boolean
+      }
       topic_homework_review_attempt: {
         Args: {
           p_attempt_id: string
@@ -6835,8 +6878,20 @@ export type Database = {
         Returns: undefined
       }
       topic_homework_topic: { Args: { p_homework_id: string }; Returns: string }
+      topic_material_can_edit: {
+        Args: { p_topic_id: string }
+        Returns: boolean
+      }
       topic_material_can_manage: {
         Args: { p_topic_id: string }
+        Returns: boolean
+      }
+      topic_material_file_locked: {
+        Args: { p_object_name: string }
+        Returns: boolean
+      }
+      topic_material_object_visible: {
+        Args: { p_object_name: string }
         Returns: boolean
       }
       topic_open_now: {
@@ -6968,6 +7023,10 @@ export type Database = {
       }
       variant_answer_student_set: {
         Args: { p_student_norm: string }
+        Returns: number[]
+      }
+      variant_answer_value_error_pair: {
+        Args: { p_correct_norm: string }
         Returns: number[]
       }
       variant_answer_verdict: {

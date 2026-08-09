@@ -56,6 +56,8 @@ physics-oge-broken-images.jsonl
 supabase/.temp/
 shkolkovo-pdfs/
 scripts/.checkpoints/
+# Снимки перед уборкой хранилища: рабочие файлы прохода, в репозиторий не нужны
+scripts/out/
 scripts/analyze_variant_bank.py
 .codex-vite*.log
 vite-*.log

@@ -82,12 +82,12 @@ const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/Pa
 const AppRoutes = lazyPage('AppRoutes', () => import('@/AppRoutes'))
 
 /** Полноэкранный спиннер — общий для loading-состояния и Suspense-фолбэка. */
-function FullScreenSpinner() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+/**
+ * Ожидание загрузки приложения. Через `LoadingGate` — с пределом по времени:
+ * бесконечный спиннер не должен быть достижимым состоянием (см. компонент).
+ */
+function FullScreenSpinner({ label = 'вход в приложение' }: { label?: string }) {
+  return <LoadingGate label={label} fullScreen />
 }
 
 /** `/` → дашборд если залогинен, иначе лендинг */
@@ -259,7 +259,7 @@ export default function App() {
       <Toaster />
       {/* Клик по картинке задачи каталога — полноэкранный просмотр (см. компонент) */}
       <CatalogImageLightbox />
-      <Suspense fallback={<FullScreenSpinner />}>
+      <Suspense fallback={<FullScreenSpinner label="страница" />}>
       <Routes>
         {/* Public */}
         <Route path="/"               element={<RootRedirect />} />

@@ -6,6 +6,7 @@ import {
   Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
@@ -149,10 +150,13 @@ function MaterialCard({
 
       {material.kind === 'file' && (
         <FileTile
+          materialId={material.id}
           storagePath={material.storagePath}
           fileName={material.fileName}
           sizeBytes={material.sizeBytes}
           topicId={topicId}
+          sensitive={material.section === GATED_SECTION}
+          countView={!canManage}
         />
       )}
     </div>
@@ -165,18 +169,34 @@ function MaterialCard({
  * и на телефоне; кликается вся плитка, а не только слово.
  */
 function FileTile({
-  storagePath, fileName, sizeBytes, topicId,
+  materialId, storagePath, fileName, sizeBytes, topicId, sensitive = false, countView = false,
 }: {
+  materialId: string
   storagePath: string
   fileName: string | null
   sizeBytes: number | null
   topicId: string
+  /** Рубрика под гейтом: ссылка на файл живёт пять минут вместо часа (§105). */
+  sensitive?: boolean
+  /** Считать открытие файла: только ученический список, не преподавательский. */
+  countView?: boolean
 }) {
   const name = fileName || 'Скачать файл'
   const ext = (name.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
   const isPdf = ext === 'PDF'
   const isImage = /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
   const bucket = bucketForMaterialPath(storagePath, topicId)
+
+  /**
+   * Учёт просмотров для аналитики (врезка §107). Ошибку глушим намеренно и
+   * молча: подсчёт не должен мешать ученику открыть файл — ни отказом прав, ни
+   * отсутствием самой функции, пока её не завели.
+   */
+  function recordView() {
+    if (!countView) return
+    void supabase.rpc('record_material_view', { p_item_id: materialId } as never)
+      .then(() => undefined, () => undefined)
+  }
 
   // Картинку показываем прямо в теме, а не предлагаем скачать «как документ»:
   // раньше она приезжала такой же серой плиткой, что и PDF, и ученику надо
@@ -188,12 +208,15 @@ function FileTile({
         <SignedFileLink
           bucket={bucket}
           url={storagePath}
+          sensitive={sensitive}
+          onClick={recordView}
           title="Открыть изображение в полном размере"
           className="block overflow-hidden rounded-xl border border-gray-200 transition-colors hover:border-primary-300"
         >
           <SignedImage
             bucket={bucket}
             path={storagePath}
+            sensitive={sensitive}
             alt={fileName || 'Материал темы'}
             className="max-h-[420px] w-full bg-gray-50 object-contain"
           />
@@ -209,6 +232,8 @@ function FileTile({
     <SignedFileLink
       bucket={bucket}
       url={storagePath}
+      sensitive={sensitive}
+      onClick={recordView}
       className="group flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40"
     >
       <span

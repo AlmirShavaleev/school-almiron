@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { getSignedFileUrl, fileNameFromStoragePath, type PrivateBucket } from '@/lib/storage'
+import {
+  fileNameFromStoragePath, getSignedFileUrl,
+  SHORT_SIGNED_URL_TTL_S, SIGNED_URL_TTL_S,
+  type PrivateBucket,
+} from '@/lib/storage'
 
 interface Props {
   bucket: PrivateBucket
@@ -20,13 +24,18 @@ interface Props {
    * сохраняют. Скачивание включается там, где кнопка так и подписана.
    */
   download?: boolean | string
+  /**
+   * Файл под гейтом (рубрика «Решения ДЗ», §95): ссылка живёт пять минут
+   * вместо часа. Пропуск действует до конца срока, даже если право отобрали.
+   */
+  sensitive?: boolean
 }
 
 /**
  * Anchor for files in PRIVATE buckets. Resolves a fresh short-lived signed URL
  * at click time (not at render) so URLs never go stale in long-lived lists.
  */
-export function SignedFileLink({ bucket, url, className, title, children, onClick, download }: Props) {
+export function SignedFileLink({ bucket, url, className, title, children, onClick, download, sensitive = false }: Props) {
   const [busy, setBusy] = useState(false)
 
   async function handleClick(e: React.MouseEvent) {
@@ -39,7 +48,11 @@ export function SignedFileLink({ bucket, url, className, title, children, onClic
       const downloadName = download
         ? (typeof download === 'string' ? download : fileNameFromStoragePath(url))
         : undefined
-      const signed = await getSignedFileUrl(bucket, url, 3600, downloadName)
+      const signed = await getSignedFileUrl(
+        bucket, url,
+        sensitive ? SHORT_SIGNED_URL_TTL_S : SIGNED_URL_TTL_S,
+        downloadName,
+      )
       if (!signed) return
       if (!downloadName) {
         window.open(signed, '_blank', 'noopener,noreferrer')

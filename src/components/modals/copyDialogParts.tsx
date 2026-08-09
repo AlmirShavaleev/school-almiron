@@ -192,11 +192,16 @@ function DateModeOption({
  */
 export function CopyProgressBar({ progress }: { progress: CopyProgress }) {
   const pct = progress.total === 0 ? 100 : Math.round((progress.copied / progress.total) * 100)
+  // С §101 копия ссылается на те же объекты хранилища и файлов к переносу нет
+  // вовсе: счётчик «0 из 0» врал бы о работе, которой не происходит.
+  const nothingToCopy = progress.total === 0
   return (
     <div className="space-y-1.5" data-testid="copy-progress">
       <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>Копирую файлы материалов</span>
-        <span className="tabular-nums">{progress.copied} из {progress.total}</span>
+        <span>{nothingToCopy ? 'Собираю копию' : 'Копирую файлы материалов'}</span>
+        {!nothingToCopy && (
+          <span className="tabular-nums">{progress.copied} из {progress.total}</span>
+        )}
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
         <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${pct}%` }} />

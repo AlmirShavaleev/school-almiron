@@ -119,16 +119,25 @@ describe('buildMaterialStoragePath', () => {
   })
 })
 
-// Материал, загруженный до переезда модели с урока на тему, лежит в старом
-// бакете и начинается с lesson_id. Он должен продолжать открываться.
+// Бакет выводится из пути: в таблице живут материалы трёх поколений.
 describe('bucketForMaterialPath', () => {
   it('новый путь с topic_id — новый бакет', () => {
     expect(bucketForMaterialPath(`${TOPIC}/1_a.pdf`, TOPIC)).toBe('topic-materials')
   })
 
+  /**
+   * §101. Копия курса ссылается на объект ШАБЛОНА, поэтому первый сегмент пути
+   * у неё чужой. Пока признаком нового бакета было совпадение со своим
+   * topic_id, такой файл уезжал в бакет уроков и не открывался вовсе.
+   */
+  it('общий объект копии: первая папка от чужой темы — всё равно новый бакет', () => {
+    const templateTopic = '9e813022-ace7-4f66-95c8-d3511126261f'
+    expect(bucketForMaterialPath(`${templateTopic}/1786140236248_01.pdf`, TOPIC)).toBe('topic-materials')
+  })
+
   it('старый путь с lesson_id — бакет периода уроков, файл не теряется', () => {
-    const legacy = '187d7d1c-ec07-4851-a840-71669aafef7e/1785033049328_a.pdf'
-    expect(bucketForMaterialPath(legacy, TOPIC)).toBe('course-lesson-materials')
+    const lesson = '187d7d1c-ec07-4851-a840-71669aafef7e'
+    expect(bucketForMaterialPath(`${lesson}/1785033049328_a.pdf`, TOPIC, lesson)).toBe('course-lesson-materials')
   })
 
   it('путь перенесённой записи topic_materials — бакет course-materials', () => {

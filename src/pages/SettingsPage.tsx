@@ -8,6 +8,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
+import { disconnectTelegram, requestTelegramLink, sendTelegramTest } from '@/lib/telegramLinkApi'
 import { ROLE_LABELS } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -645,20 +646,9 @@ function TelegramConnectionBlock({
     setGenLoading(true)
     setLinkUrl(null)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-telegram-link`,
-        {
-          method:  'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type':  'application/json',
-          },
-        }
-      )
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error ?? 'Ошибка генерации ссылки')
-      setLinkUrl(body.link)
+      // Обращения к edge-функциям живут в lib/telegramLinkApi: теперь тот же
+      // путь зовёт приглашение при входе, и двух копий fetch быть не должно.
+      setLinkUrl(await requestTelegramLink())
     } catch (e: any) {
       showMsg('err', e.message ?? 'Ошибка')
     } finally {
@@ -669,15 +659,7 @@ function TelegramConnectionBlock({
   async function handleDisconnect() {
     setDiscLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/disconnect-telegram`,
-        {
-          method:  'POST',
-          headers: { 'Authorization': `Bearer ${session?.access_token}` },
-        }
-      )
-      if (!res.ok) throw new Error('Ошибка отключения')
+      await disconnectTelegram()
       setConn(null)
       setLinkUrl(null)
       showMsg('ok', 'Telegram отключён')
@@ -691,15 +673,7 @@ function TelegramConnectionBlock({
   async function handleSendTest() {
     setTestLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-telegram-test`,
-        {
-          method:  'POST',
-          headers: { 'Authorization': `Bearer ${session?.access_token}` },
-        }
-      )
-      if (!res.ok) throw new Error('Не удалось отправить тест')
+      await sendTelegramTest()
       showMsg('ok', 'Тестовое сообщение отправлено в Telegram')
     } catch (e: any) {
       showMsg('err', e.message ?? 'Ошибка')

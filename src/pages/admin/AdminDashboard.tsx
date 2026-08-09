@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAdminDashboard, type AdminProfile, type AdminCourse } from '@/hooks/useAdminDashboard'
 import { useSchoolStats } from '@/hooks/useSchoolStats'
+import { useSchoolAnalytics } from '@/hooks/useSchoolAnalytics'
+import { SchoolActivity } from '@/components/admin/SchoolActivity'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
 import { cn } from '@/utils/cn'
@@ -66,6 +68,7 @@ export function AdminDashboard() {
 
   const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
   const { stats: school, error: schoolError, reload: reloadSchool } = useSchoolStats()
+  const analytics = useSchoolAnalytics()
 
   async function changeRole(profileId: string, newRole: string) {
     setSavingRole(profileId)
@@ -108,7 +111,7 @@ export function AdminDashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Панель администратора</h1>
           <p className="text-gray-500 mt-0.5">Управление школой · {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
-        <button onClick={() => { reload(); reloadSchool() }} className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <button onClick={() => { reload(); reloadSchool(); analytics.reload() }} className="min-h-11 flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           <RefreshCw size={14} />Обновить
         </button>
       </div>
@@ -212,6 +215,19 @@ export function AdminDashboard() {
       {tab === 'overview' && (
         <div className="space-y-6">
 
+          {/* Активность школы. Стоит выше разбивки по ролям: «кто пропал» —
+              единственный блок дашборда, который подсказывает действие, а не
+              описывает состояние. */}
+          <SchoolActivity
+            dormant={analytics.dormant}
+            activity={analytics.activity}
+            unopened={analytics.unopened}
+            funnel={analytics.funnel}
+            hasViewData={analytics.hasViewData}
+            loading={analytics.loading}
+            error={analytics.error}
+          />
+
           {/* Role breakdown */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {/* `owner` из разбивки убран (решение владельца 04.08): роли нет
@@ -312,9 +328,7 @@ export function AdminDashboard() {
           {/* Quick links */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
-              { label: 'Посещаемость',       icon: <CheckCircle size={16} />,    path: '/attendance',       color: 'text-green-600 bg-green-50 border-green-200' },
               { label: 'Пробники',           icon: <BarChart3 size={16} />,      path: '/mock-exams',       color: 'text-purple-600 bg-purple-50 border-purple-200' },
-              { label: 'Расписание',         icon: <Calendar size={16} />,       path: '/schedule',         color: 'text-blue-600 bg-blue-50 border-blue-200' },
               { label: 'Домашние задания',   icon: <ClipboardList size={16} />,  path: '/homeworks',        color: 'text-orange-600 bg-orange-50 border-orange-200' },
               { label: 'Telegram-журнал',    icon: <Send size={16} />,           path: '/admin/telegram',   color: 'text-sky-600 bg-sky-50 border-sky-200' },
             ].map(l => (

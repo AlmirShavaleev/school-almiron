@@ -21,6 +21,10 @@ vi.mock('pdfjs-dist', () => ({
 }))
 
 vi.mock('@/lib/storage', () => ({
+  forgetSignedUrl: () => {},
+  SIGNED_URL_TTL_S: 3600,
+  SHORT_SIGNED_URL_TTL_S: 300,
+  UPLOAD_CACHE_CONTROL_S: '31536000',
   extractStoragePath: (p: string) => p,
   getSignedFileUrl: async () => 'blob://fake.pdf',
 }))

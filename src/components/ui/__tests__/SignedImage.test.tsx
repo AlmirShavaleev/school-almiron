@@ -2,7 +2,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 const getSignedFileUrl = vi.fn()
+const forgetSignedUrl = vi.fn()
 vi.mock('@/lib/storage', () => ({
+  forgetSignedUrl: (...args: unknown[]) => forgetSignedUrl(...args),
+  SIGNED_URL_TTL_S: 3600,
+  SHORT_SIGNED_URL_TTL_S: 300,
+  UPLOAD_CACHE_CONTROL_S: '31536000',
   getSignedFileUrl: (...args: unknown[]) => getSignedFileUrl(...args),
 }))
 
@@ -17,6 +22,7 @@ function renderImage() {
 describe('SignedImage', () => {
   beforeEach(() => {
     getSignedFileUrl.mockReset()
+    forgetSignedUrl.mockReset()
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -83,5 +89,44 @@ describe('SignedImage', () => {
     render(<SignedImage bucket="topic-materials" path={null} alt="картинка" />)
     expect(await screen.findByTestId('signed-image-failed')).toBeInTheDocument()
     expect(getSignedFileUrl).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * §105. Ссылки теперь переиспользуются, поэтому у компонента появились две
+ * обязанности: просить КОРОТКУЮ ссылку для файла под гейтом и выбрасывать
+ * ссылку из кэша, если по ней ничего не открылось.
+ */
+describe('SignedImage и кэш ссылок (§105)', () => {
+  beforeEach(() => {
+    getSignedFileUrl.mockReset()
+    forgetSignedUrl.mockReset()
+  })
+
+  it('обычная картинка подписывается на час', async () => {
+    getSignedFileUrl.mockResolvedValue('https://signed/one.png')
+    render(<SignedImage bucket="topic-materials" path="topic-1/file.png" alt="картинка" />)
+    await screen.findByTestId('signed-image')
+
+    expect(getSignedFileUrl.mock.calls[0][2]).toBe(3600)
+  })
+
+  it('файл под гейтом — на пять минут', async () => {
+    getSignedFileUrl.mockResolvedValue('https://signed/one.png')
+    render(<SignedImage bucket="topic-materials" path="topic-1/file.png" alt="решение" sensitive />)
+    await screen.findByTestId('signed-image')
+
+    expect(getSignedFileUrl.mock.calls[0][2]).toBe(300)
+  })
+
+  it('ошибка загрузки выбрасывает ссылку из кэша, иначе повтор вернул бы ту же', async () => {
+    getSignedFileUrl
+      .mockResolvedValueOnce('https://signed/stale.png')
+      .mockResolvedValueOnce('https://signed/fresh.png')
+    render(<SignedImage bucket="topic-materials" path="topic-1/file.png" alt="картинка" />)
+
+    fireEvent.error(await screen.findByTestId('signed-image'))
+
+    await waitFor(() => expect(forgetSignedUrl).toHaveBeenCalledWith('topic-materials', 'topic-1/file.png'))
   })
 })

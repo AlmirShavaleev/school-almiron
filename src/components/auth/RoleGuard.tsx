@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuthStore } from '@/store/authStore'
+import { LoadingGate } from '@/components/shared/LoadingGate'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
 import type { UserRole } from '@/types'
 
@@ -36,12 +37,11 @@ export function RoleGuard({
   // преподавателю ждать ответа таблицы незачем.
   const waitingForCuratorship = allowCourseCurator && !roleAllowed && curatorships.loading
 
+  // Ждём профиль (или ответ о кураторстве) с пределом по времени: если ответ
+  // не придёт, страница обязана сказать об этом и предложить обновить, а не
+  // крутить кружок бесконечно. См. `LoadingGate`.
   if ((loading && !profile) || waitingForCuratorship) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <LoadingGate label="проверка доступа" />
   }
   if (!profile) return <Navigate to="/login" replace />
   if (!roleAllowed && !(allowCourseCurator && curatorships.isCurator)) {

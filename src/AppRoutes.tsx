@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
 import { lazyPage } from '@/lib/lazyPage'
+import { LoadingGate } from '@/components/shared/LoadingGate'
 
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -28,19 +28,16 @@ const HomeworkDetailPage = lazyPage('HomeworkDetailPage', () => import('@/pages/
 const HomeworkReviewPage = lazyPage('HomeworkReviewPage', () => import('@/pages/HomeworkReviewPage').then(m => ({ default: m.HomeworkReviewPage })))
 const StudentReviewPage = lazyPage('StudentReviewPage', () => import('@/pages/StudentReviewPage').then(m => ({ default: m.StudentReviewPage })))
 const HomeworkQueuePage = lazyPage('HomeworkQueuePage', () => import('@/pages/HomeworkQueuePage').then(m => ({ default: m.HomeworkQueuePage })))
-const LessonsPage = lazyPage('LessonsPage', () => import('@/pages/LessonsPage').then(m => ({ default: m.LessonsPage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotificationsPage = lazyPage('NotificationsPage', () => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
 const CourseProgramPage = lazyPage('CourseProgramPage', () => import('@/pages/CourseProgramPage').then(m => ({ default: m.CourseProgramPage })))
 const LessonLibraryPage = lazyPage('LessonLibraryPage', () => import('@/pages/LessonLibraryPage').then(m => ({ default: m.LessonLibraryPage })))
-const AttendancePage = lazyPage('AttendancePage', () => import('@/pages/AttendancePage').then(m => ({ default: m.AttendancePage })))
 const MyCoursesPage = lazyPage('MyCoursesPage', () => import('@/pages/MyCoursesPage').then(m => ({ default: m.MyCoursesPage })))
 const StudentCoursePage = lazyPage('StudentCoursePage', () => import('@/pages/StudentCoursePage').then(m => ({ default: m.StudentCoursePage })))
 const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
 const StudentProfilePage = lazyPage('StudentProfilePage', () => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
 const StudentsPage = lazyPage('StudentsPage', () => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
-const SchedulePage = lazyPage('SchedulePage', () => import('@/pages/SchedulePage').then(m => ({ default: m.SchedulePage })))
 const MyProgressPage = lazyPage('MyProgressPage', () => import('@/pages/student/MyProgressPage').then(m => ({ default: m.MyProgressPage })))
 const MyTopicHomeworkPage = lazyPage('MyTopicHomeworkPage', () => import('@/pages/student/MyTopicHomeworkPage').then(m => ({ default: m.MyTopicHomeworkPage })))
 const CatalogPage = lazyPage('CatalogPage', () => import('@/pages/catalog/CatalogPage').then(m => ({ default: m.CatalogPage })))
@@ -55,6 +52,7 @@ const VariantDetailPage = lazyPage('VariantDetailPage', () => import('@/pages/va
 const AssignVariantPage = lazyPage('AssignVariantPage', () => import('@/pages/variants/AssignVariantPage').then(m => ({ default: m.AssignVariantPage })))
 const VariantAssignmentsPage = lazyPage('VariantAssignmentsPage', () => import('@/pages/variants/VariantAssignmentsPage').then(m => ({ default: m.VariantAssignmentsPage })))
 const VariantStudentWorkPage = lazyPage('VariantStudentWorkPage', () => import('@/pages/variants/VariantStudentWorkPage').then(m => ({ default: m.VariantStudentWorkPage })))
+const CourseTopicTestsPage = lazyPage('CourseTopicTestsPage', () => import('@/pages/variants/CourseTopicTestsPage').then(m => ({ default: m.CourseTopicTestsPage })))
 const StudentVariantsPage = lazyPage('StudentVariantsPage', () => import('@/pages/student/StudentVariantsPage').then(m => ({ default: m.StudentVariantsPage })))
 const StudentVariantDetailPage = lazyPage('StudentVariantDetailPage', () => import('@/pages/student/StudentVariantDetailPage').then(m => ({ default: m.StudentVariantDetailPage })))
 const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
@@ -79,12 +77,10 @@ const TestBankTestPage = lazyPage('TestBankTestPage', () => import('@/pages/Test
  * DashboardLayout, подменяется только содержимое.
  */
 function RouteFallback() {
-  return (
-    <div className="flex items-center justify-center py-16 text-gray-400" role="status" aria-live="polite">
-      <Loader2 size={20} className="animate-spin" />
-      <span className="ml-2 text-sm">Загрузка…</span>
-    </div>
-  )
+  // С пределом по времени: чанк страницы может не доехать (обрыв связи,
+  // деплой посреди сессии), и тогда пользователь останется со спиннером
+  // навсегда. См. `LoadingGate`.
+  return <LoadingGate label="страница кабинета" />
 }
 
 /**
@@ -136,9 +132,8 @@ export default function AppRoutes() {
         <Route path="/students/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentProfilePage /></RoleGuard>} />
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />
         <Route path="/course-program" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><CourseProgramPage /></RoleGuard>} />
+        <Route path="/course-program/:courseId/topic-tests" element={<RoleGuard allow={['teacher','admin','owner']}><CourseTopicTestsPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
-        <Route path="/attendance" element={<RoleGuard allow={['teacher','curator','admin','owner']}><AttendancePage /></RoleGuard>} />
-        <Route path="/schedule" element={<RoleGuard allow={['teacher','curator','admin','owner']}><SchedulePage /></RoleGuard>} />
         <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
         <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner','student']}><LessonDetailPage /></RoleGuard>} />
         <Route path="/homeworks/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkDetailPage /></RoleGuard>} />
@@ -147,8 +142,14 @@ export default function AppRoutes() {
         <Route path="/homeworks/:id/review/:groupId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewPage /></RoleGuard>} />
         <Route path="/homeworks/:id/review/:groupId/:studentId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentReviewPage /></RoleGuard>} />
 
-        {/* Списки, общие для student (своё) и персонала */}
-        <Route path="/lessons" element={<LessonsPage />} />
+        {/* Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
+            занятия вне платформы, таблицы `lessons` и `attendance` пусты по
+            построению. Маршрут `/lessons/:id` ОСТАВЛЕН — на него ссылаются
+            шесть мест в других зонах (поток занятий группы, журнал ученика,
+            прогресс, карточка ДЗ, страница преподавателя, корзина).
+            Компоненты и данные не тронуты, вернуть можно из истории.
+
+            Списки, общие для student (своё) и персонала */}
         {/* Homework v2 — canonical routes. Role-branched at /homeworks; /my-homeworks and
             /homework-review are direct aliases to the same two pages. */}
         <Route path="/homeworks" element={<HomeworksV2RoleRouter />} />

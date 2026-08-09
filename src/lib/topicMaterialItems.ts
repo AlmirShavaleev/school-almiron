@@ -267,20 +267,28 @@ export function normalizeMaterialUrl(raw: string): string | null {
 /**
  * Из какого бакета читать файл.
  *
- * Storage-политики нового бакета требуют, чтобы первым сегментом пути был
- * topic_id. Но в таблице лежат материалы трёх поколений, и путь — единственный
- * способ отличить их:
- *   `{topic_id}/…` — новый бакет;
+ * В таблице лежат материалы трёх поколений, и путь — единственный способ их
+ * отличить:
  *   `topics/{topic_id}/{type}/…` — записи, перенесённые из старой модели
  *      topic_materials, файлы остались в бакете course-materials;
- *   всё остальное (`{lesson_id}/…`) — короткий период, когда материалы висели
- *      на уроке.
- * Так ни один уже загруженный файл не теряется.
+ *   `{lesson_id}/…` — короткий период, когда материалы висели на уроке;
+ *      узнаётся по СВОЕМУ lesson_id строки, поэтому его и надо передать;
+ *   всё остальное — новый бакет topic-materials.
+ *
+ * Раньше признаком нового бакета было совпадение первого сегмента со СВОИМ
+ * topic_id. С §101 это перестало работать: копия курса ссылается на объект
+ * шаблона, первый сегмент у неё чужой — и файл уезжал в бакет уроков, где его
+ * нет. На проде поколение уроков пусто (0 строк из 2724), поэтому умолчание
+ * безопасно: точность там, где она ещё может понадобиться, даёт lesson_id.
  */
-export function bucketForMaterialPath(storagePath: string, topicId: string) {
-  if (storagePath.startsWith(`${topicId}/`)) return TOPIC_MATERIALS_BUCKET
+export function bucketForMaterialPath(storagePath: string, topicId: string, lessonId?: string | null) {
   if (storagePath.startsWith('topics/')) return LEGACY_TOPIC_MATERIALS_BUCKET
-  return LEGACY_LESSON_MATERIALS_BUCKET
+  if (lessonId && storagePath.startsWith(`${lessonId}/`)) return LEGACY_LESSON_MATERIALS_BUCKET
+  // Совпадение с СВОИМ topic_id больше не признак нового бакета: с §101 копия
+  // курса ссылается на объект шаблона, и первый сегмент пути у неё чужой —
+  // раньше такой путь уезжал в бакет уроков и не открывался вовсе.
+  void topicId
+  return TOPIC_MATERIALS_BUCKET
 }
 
 
