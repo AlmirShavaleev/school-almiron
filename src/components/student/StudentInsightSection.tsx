@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { useStudentInsights } from '@/hooks/useStudentInsights'
 import { useStudentFeedback } from '@/hooks/useStudentFeedback'
+import { useAttentionSignals } from '@/hooks/useAttentionSignals'
 import { insightsForModel, type StudentInsights } from '@/lib/studentInsights'
+import { SIGNAL_DISCLAIMER, signalText, type AttentionSignal } from '@/lib/attentionSignals'
 
 function formatDateTime(value: string | null): string | null {
   if (!value) return null
@@ -133,6 +135,48 @@ function WeakTopics({ insights }: { insights: StudentInsights }) {
 }
 
 /**
+ * Сигналы внимания.
+ *
+ * Формулировки намеренно наблюдательные: «стоит посмотреть», а не «списал».
+ * Каждый сигнал объясняется и обычным образом, поэтому оговорка стоит НАД
+ * списком, а не мелким шрифтом под ним — иначе она не читается.
+ *
+ * Блок виден только персоналу: он смонтирован на преподавательской карточке,
+ * а данные под ним закрыты RLS (ученик к чужим ответам не допущен вовсе).
+ */
+function AttentionSignals({ signals, comparable }: { signals: AttentionSignal[]; comparable: number }) {
+  if (signals.length === 0) return null
+
+  return (
+    <div data-testid="student-attention-signals" className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+        <AlertTriangle size={12} />
+        Сигналы внимания · подозрение, не факт
+      </div>
+
+      <p className="mt-1.5 text-[11px] leading-4 text-amber-900/80">{SIGNAL_DISCLAIMER}</p>
+
+      <ul className="mt-2 space-y-1.5">
+        {signals.map((s, i) => (
+          <li key={`${s.kind}-${i}`} className="rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-gray-800">
+            {signalText(s)}
+          </li>
+        ))}
+      </ul>
+
+      {/*
+        Пустота здесь не равна «ничего не было»: преподаватель видит только свои
+        выдачи, куратор к ответам не допущен. Пишем прямо, с чем сравнивали.
+      */}
+      <p className="mt-2 text-[11px] text-amber-900/60">
+        Сравнение шло по {comparable} доступным вам прохождениям других учеников.
+        Работы, выданные не вами, сюда не попадают.
+      </p>
+    </div>
+  )
+}
+
+/**
  * Карточка ученика: цифры и обратная связь.
  *
  * Видит только персонал — и это держит база (политики
@@ -142,6 +186,14 @@ function WeakTopics({ insights }: { insights: StudentInsights }) {
 export function StudentInsightSection({ studentId }: { studentId: string }) {
   const { insights, loading, error, reload } = useStudentInsights(studentId)
   const feedback = useStudentFeedback(studentId)
+  const attention = useAttentionSignals(studentId)
+
+  // Скачки уровня считаются по тем же оценкам, что и средний балл, поэтому
+  // приезжают вместе с цифрами, а не отдельным запросом.
+  const signals: AttentionSignal[] = [
+    ...attention.signals,
+    ...(insights?.levelJumps ?? []),
+  ]
 
   const [text, setText] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -190,7 +242,7 @@ export function StudentInsightSection({ studentId }: { studentId: string }) {
         <div className="font-semibold text-gray-900">Анализ и обратная связь</div>
         <button
           type="button"
-          onClick={() => { reload(); feedback.reload() }}
+          onClick={() => { reload(); feedback.reload(); attention.reload() }}
           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:border-gray-300 hover:text-gray-900"
         >
           <RefreshCw size={12} />
@@ -212,6 +264,7 @@ export function StudentInsightSection({ studentId }: { studentId: string }) {
       ) : (
         <div className="space-y-3">
           <Numbers insights={insights} />
+          <AttentionSignals signals={signals} comparable={attention.comparable} />
           <WeakTopics insights={insights} />
           {insights.score.recent.length > 0 && (
             <div className="rounded-xl border border-gray-200 bg-white p-3">

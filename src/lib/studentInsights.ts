@@ -8,6 +8,7 @@
  * Здесь всё сводится к одному человеку.
  */
 import { isSubmittedLate, type QueueRow } from '@/lib/homeworkQueue'
+import { levelJumpSignals, type LevelJumpSignal } from '@/lib/attentionSignals'
 import type { TopicHomeworkAttemptStatus, TopicHomeworkReviewRow } from '@/lib/topicHomework'
 
 export interface ScoredWork {
@@ -47,6 +48,12 @@ export interface StudentInsights {
     maxAttempts: number
   }
   weakTopics: WeakTopic[]
+  /**
+   * Резкие скачки уровня между соседними проверенными работами. Это сигнал
+   * «стоит посмотреть», а не вывод: так же выглядит и человек, который
+   * наконец разобрался в теме.
+   */
+  levelJumps: LevelJumpSignal[]
   activity: {
     lastSubmission: string | null
     lastVisit: string | null
@@ -196,6 +203,7 @@ export function buildStudentInsights({
     },
     revisions: { returnedWorks, maxAttempts },
     weakTopics: weakTopics.slice(0, 5),
+    levelJumps: levelJumpSignals(scored),
     activity: {
       lastSubmission,
       lastVisit,
@@ -228,6 +236,14 @@ export function insightsForModel(insights: StudentInsights): Record<string, unkn
       topic: t.topic,
       average_percent: t.avgPercent,
       returns: t.returns,
+    })),
+    // Скачки уровня — для пункта «на что обратить внимание» в черновике.
+    // Только числа и название темы: кто именно так прыгнул, модели знать
+    // незачем и не из чего.
+    level_jumps: insights.levelJumps.map(j => ({
+      from_percent: j.fromPercent,
+      to_percent: j.toPercent,
+      topic: j.topic,
     })),
     days_since_last_trace: insights.activity.silentDays,
   }

@@ -24,6 +24,11 @@ vi.mock('@/hooks/useStudentFeedback', () => ({
   }),
 }))
 
+const attentionState = { signals: [] as any[], comparable: 0, loading: false, error: null as string | null }
+vi.mock('@/hooks/useAttentionSignals', () => ({
+  useAttentionSignals: () => ({ ...attentionState, reload: vi.fn() }),
+}))
+
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 
 function rawAttempt(over: Record<string, unknown> = {}, topic = 'Кинематика', hwId = 'hw1') {
@@ -61,6 +66,8 @@ describe('StudentInsightSection — карточка ученика', () => {
     feedbackState.saved = []
     feedbackState.current = null
     feedbackState.draft = null
+    attentionState.signals = []
+    attentionState.comparable = 0
     save.mockReset()
     generate.mockReset()
   })
@@ -80,6 +87,38 @@ describe('StudentInsightSection — карточка ученика', () => {
     expect(screen.getByText('Работы')).toBeInTheDocument()
     expect(screen.getByText('Возвращали')).toBeInTheDocument()
     expect(screen.getByTestId('student-weak-topics')).toHaveTextContent('Кинематика')
+  })
+
+  it('без сигналов блока внимания нет вовсе', () => {
+    render(<StudentInsightSection studentId="s1" />)
+    expect(screen.queryByTestId('student-attention-signals')).not.toBeInTheDocument()
+  })
+
+  it('сигналы показывает с оговоркой «подозрение, не факт» и без обвинений', () => {
+    attentionState.signals = [
+      { kind: 'speed', variantTitle: 'Пробник №1', minutes: 12, medianMinutes: 55, peers: 6 },
+      { kind: 'overlap', variantTitle: 'Пробник №1', peerName: 'Борис', sharedWrong: 4, myWrong: 6 },
+    ]
+    attentionState.comparable = 6
+    render(<StudentInsightSection studentId="s1" />)
+
+    const block = screen.getByTestId('student-attention-signals')
+    expect(block).toHaveTextContent('подозрение, не факт')
+    expect(block).toHaveTextContent(/стоит посмотреть/i)
+    expect(block.textContent?.toLowerCase()).not.toMatch(/спис|обман|нечестн/)
+    // Честно сказано, с чем сравнивали: пустота тут не равна «ничего не было».
+    expect(block).toHaveTextContent('6 доступным вам прохождениям')
+  })
+
+  it('скачок уровня попадает в тот же блок, а не в отдельный вывод', () => {
+    // В фикстуре одна оценка, скачкам взяться неоткуда — задаём их явно.
+    insightsState.insights = {
+      ...insightsWithData(),
+      levelJumps: [{ kind: 'jump', fromPercent: 30, toPercent: 95, topic: 'Оптика' }],
+    }
+    render(<StudentInsightSection studentId="s1" />)
+
+    expect(screen.getByTestId('student-attention-signals')).toHaveTextContent('30% → 95%')
   })
 
   it('черновик ИИ не подменяет сохранённый текст сам — только по кнопке', async () => {
