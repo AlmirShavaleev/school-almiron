@@ -40,6 +40,9 @@ const createCourse = (overrides?: Partial<Course>): Course => ({
   start_date: '2025-09-01',
   is_active: true,
   is_draft: false,
+  // §113: у курса появились признак шаблона и родословная копии.
+  is_template: false,
+  copied_from_course_id: null,
   owner_id: null,
   subject: 'physics',
   exam_type: 'oge',
