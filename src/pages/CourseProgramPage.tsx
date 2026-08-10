@@ -48,6 +48,7 @@ import {
 } from '@/lib/topicMaterialItems'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 import { groupCoursesByTemplate } from '@/lib/courseGrouping'
+import { copyDisplayTitle } from '@/lib/courseDisplayName'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
@@ -1316,6 +1317,59 @@ function CourseCard({ course, ownerLabel }: { course: Course; ownerLabel?: strin
   )
 }
 
+/**
+ * Ветвь копий под карточкой шаблона: аккордеон с коротким именем каждой копии.
+ *
+ * Копия — не полноразмерная карточка, а строка: имя у неё короткое (общая с
+ * шаблоном часть отброшена, см. `copyDisplayTitle`), а полное название висит
+ * подсказкой. Так три шаблона со своими группами помещаются на один экран, а
+ * не на три — ровно то, на что смотрел владелец 10.08 (§114).
+ *
+ * По умолчанию РАЗВЁРНУТО: сейчас у каждого шаблона по одной копии, и
+ * свёрнутый список прятал бы ровно то, ради чего затевалась группировка.
+ * Состояние живёт в памяти страницы: ни localStorage, ни sessionStorage —
+ * цена ошибки выше пользы (правило §105 про хранилища).
+ */
+function CourseCopiesShelf({ template, copies }: { template: Course; copies: Course[] }) {
+  const [open, setOpen] = useState(true)
+
+  return (
+    <div data-testid={`course-copies-of-${template.id}`} className="ml-3 border-l-2 border-primary-100 pl-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-xs text-gray-500 transition-colors hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+      >
+        <ChevronRight size={12} className={cn('transition-transform', open && 'rotate-90')} />
+        Копии · {copies.length}
+      </button>
+
+      {open && (
+        <div className="mt-1 space-y-1">
+          {copies.map(c => (
+            <Link
+              key={c.id}
+              to={`/course-program?courseId=${c.id}`}
+              // Полное название — подсказкой: короткое имя не должно мешать
+              // убедиться, что это за курс, не открывая его.
+              title={c.title}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-700"
+            >
+              <span className="truncate font-medium">{copyDisplayTitle(c.title, template.title)}</span>
+              {c.is_draft && (
+                <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                  черновик
+                </span>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
   const { readOnly } = useMyTeachingScope()
@@ -1823,33 +1877,24 @@ export function CourseProgramPage() {
           <p className="py-4 text-sm text-gray-400">Нет курсов</p>
         ) : (
           <>
-            {/* Шаблон — главная карточка, его копии рядом под ним (§113).
-                Отдельной секции «Черновики» больше нет: свежая копия — это
-                черновик, и в своей секции она отрывалась бы от шаблона, ради
-                которого группировка и делалась. Черновиковость видна бейджем. */}
-            {grouped.groups.map(group => (
-              <div key={group.template.id} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <CourseCard course={group.template} ownerLabel={ownerLabelFor(group.template)} />
-                </div>
-
-                {group.copies.length > 0 && (
-                  <div
-                    data-testid={`course-copies-of-${group.template.id}`}
-                    className="ml-3 border-l-2 border-primary-100 pl-4"
-                  >
-                    <p className="mb-2 text-xs text-gray-400">
-                      Копии · {group.copies.length}
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {group.copies.map(c => (
-                        <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />
-                      ))}
-                    </div>
+            {/* Шаблоны — сеткой в ряд, ответвления вниз (§114).
+                Раньше каждый шаблон занимал свою строку вместе с полкой копий,
+                и три шаблона растягивались на три экрана. Теперь шаблон —
+                обычная плитка в общей сетке, а копии висят ветвью под своей
+                плиткой, в её же колонке: с короткими именами («11А») они
+                занимают строку, а не карточку, и ряд шаблонов не рвётся. */}
+            {grouped.groups.length > 0 && (
+              <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {grouped.groups.map(group => (
+                  <div key={group.template.id} className="space-y-2">
+                    <CourseCard course={group.template} ownerLabel={ownerLabelFor(group.template)} />
+                    {group.copies.length > 0 && (
+                      <CourseCopiesShelf template={group.template} copies={group.copies} />
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
+            )}
 
             {/* Всё, что живёт само по себе: обычные курсы и копии, потерявшие
                 шаблон. Потерять курс из списка страшнее, чем показать его без

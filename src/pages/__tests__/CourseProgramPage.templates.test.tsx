@@ -84,12 +84,40 @@ describe('Список курсов: шаблон и его копии (§113)',
     saveCourseSpy.mockReset().mockResolvedValue(undefined)
   })
 
-  it('копия рисуется в ряду под своим шаблоном', () => {
+  it('копия рисуется в ветви под своим шаблоном', () => {
     renderPage()
 
     const shelf = screen.getByTestId('course-copies-of-tpl')
-    expect(within(shelf).getByText('Физика ЕГЭ 11А класс')).toBeInTheDocument()
+    // §114: в списке у копии короткое имя — общая с шаблоном часть отброшена.
+    expect(within(shelf).getByText('11А класс')).toBeInTheDocument()
     expect(within(shelf).queryByText('Курс сам по себе')).not.toBeInTheDocument()
+  })
+
+  it('полное название копии остаётся подсказкой — короткое имя только вид', () => {
+    renderPage()
+
+    const shelf = screen.getByTestId('course-copies-of-tpl')
+    expect(within(shelf).getByRole('link', { name: /11А класс/ }))
+      .toHaveAttribute('title', 'Физика ЕГЭ 11А класс')
+  })
+
+  it('ветвь копий сворачивается и разворачивается нажатием', () => {
+    renderPage()
+
+    const toggle = screen.getByRole('button', { name: /Копии · 1/ })
+    // По умолчанию развёрнуто: копия одна, прятать её незачем.
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('11А класс')).toBeInTheDocument()
+
+    fireEvent.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('11А класс')).not.toBeInTheDocument()
+    // Счётчик виден и в свёрнутом виде — иначе не понять, что там что-то есть.
+    expect(screen.getByRole('button', { name: /Копии · 1/ })).toBeInTheDocument()
+
+    fireEvent.click(toggle)
+    expect(screen.getByText('11А класс')).toBeInTheDocument()
   })
 
   it('у шаблона бейдж «шаблон», у копии-черновика — «черновик»', () => {
