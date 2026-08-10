@@ -807,6 +807,7 @@ export type Database = {
       }
       courses: {
         Row: {
+          copied_from_course_id: string | null
           created_at: string
           description: string | null
           duration_weeks: number | null
@@ -817,6 +818,7 @@ export type Database = {
           is_active: boolean
           is_default_for_direction: boolean
           is_draft: boolean
+          is_template: boolean
           owner_id: string | null
           price: number
           start_date: string | null
@@ -824,6 +826,7 @@ export type Database = {
           title: string
         }
         Insert: {
+          copied_from_course_id?: string | null
           created_at?: string
           description?: string | null
           duration_weeks?: number | null
@@ -834,6 +837,7 @@ export type Database = {
           is_active?: boolean
           is_default_for_direction?: boolean
           is_draft?: boolean
+          is_template?: boolean
           owner_id?: string | null
           price?: number
           start_date?: string | null
@@ -841,6 +845,7 @@ export type Database = {
           title: string
         }
         Update: {
+          copied_from_course_id?: string | null
           created_at?: string
           description?: string | null
           duration_weeks?: number | null
@@ -851,6 +856,7 @@ export type Database = {
           is_active?: boolean
           is_default_for_direction?: boolean
           is_draft?: boolean
+          is_template?: boolean
           owner_id?: string | null
           price?: number
           start_date?: string | null
@@ -858,6 +864,13 @@ export type Database = {
           title?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "courses_copied_from_course_id_fkey"
+            columns: ["copied_from_course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "courses_owner_id_fkey"
             columns: ["owner_id"]
@@ -3328,6 +3341,42 @@ export type Database = {
           },
         ]
       }
+      student_curators: {
+        Row: {
+          created_at: string | null
+          curator_id: string
+          id: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          curator_id: string
+          id?: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string | null
+          curator_id?: string
+          id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_curators_curator_id_fkey"
+            columns: ["curator_id"]
+            isOneToOne: false
+            referencedRelation: "curators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_curators_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_feedback_notes: {
         Row: {
           author_id: string | null
@@ -3366,42 +3415,6 @@ export type Database = {
           },
           {
             foreignKeyName: "student_feedback_notes_student_id_fkey"
-            columns: ["student_id"]
-            isOneToOne: false
-            referencedRelation: "students"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      student_curators: {
-        Row: {
-          created_at: string | null
-          curator_id: string
-          id: string
-          student_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          curator_id: string
-          id?: string
-          student_id: string
-        }
-        Update: {
-          created_at?: string | null
-          curator_id?: string
-          id?: string
-          student_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "student_curators_curator_id_fkey"
-            columns: ["curator_id"]
-            isOneToOne: false
-            referencedRelation: "curators"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "student_curators_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
@@ -4440,6 +4453,55 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_catalog_topics: {
+        Row: {
+          catalog_topic_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          source: string | null
+          topic_id: string
+        }
+        Insert: {
+          catalog_topic_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source?: string | null
+          topic_id: string
+        }
+        Update: {
+          catalog_topic_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source?: string | null
+          topic_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_catalog_topics_catalog_topic_id_fkey"
+            columns: ["catalog_topic_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_topics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_catalog_topics_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_catalog_topics_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
             referencedColumns: ["id"]
           },
         ]
@@ -5509,6 +5571,14 @@ export type Database = {
         }[]
       }
       admin_school_stats: { Args: never; Returns: Json }
+      ai_physics_topics_list: {
+        Args: { p_limit?: number; p_search?: string }
+        Returns: {
+          available: number
+          catalog_topic_id: string
+          title: string
+        }[]
+      }
       assign_homework: {
         Args: {
           p_allow_late: boolean
@@ -5671,6 +5741,16 @@ export type Database = {
       auth_teacher_has_student: {
         Args: { p_student_id: string }
         Returns: boolean
+      }
+      build_topic_tests_for_course: {
+        Args: { p_count?: number; p_course_id: string; p_rebuild?: boolean }
+        Returns: {
+          built: number
+          note: string
+          status: string
+          topic_id: string
+          topic_title: string
+        }[]
       }
       cancel_variant_assignment: {
         Args: { p_assignment_id: string }
@@ -5873,6 +5953,21 @@ export type Database = {
       course_student_has_access: {
         Args: { p_course_id: string }
         Returns: boolean
+      }
+      course_topic_match_text: { Args: { p_title: string }; Returns: string }
+      course_topic_test_kind: { Args: { p_title: string }; Returns: string }
+      course_topic_test_overview: {
+        Args: { p_course_id: string }
+        Returns: {
+          available: number
+          has_test: boolean
+          kind: string
+          linked_count: number
+          module_title: string
+          order_key: number
+          topic_id: string
+          topic_title: string
+        }[]
       }
       create_assignment: {
         Args: {
@@ -6792,6 +6887,19 @@ export type Database = {
           tasks_count: number
           title: string
           variant_id: string
+        }[]
+      }
+      topic_catalog_part1_task_count: {
+        Args: { p_catalog_topic_ids: string[]; p_source?: string }
+        Returns: number
+      }
+      topic_catalog_suggestions: {
+        Args: { p_limit?: number; p_topic_id: string }
+        Returns: {
+          available: number
+          catalog_topic_id: string
+          score: number
+          title: string
         }[]
       }
       topic_copy_stage: {

@@ -34,6 +34,10 @@ export interface Course {
   is_active: boolean
   /** Черновик: ученики курс не видят и записаться не могут. */
   is_draft: boolean
+  /** Каркас, из которого копируют курсы групп. Учеников зачисляют в копии (§113). */
+  is_template: boolean
+  /** Откуда скопирован курс; null — сам по себе либо шаблон удалён (§113). */
+  copied_from_course_id: string | null
   start_date: string | null
   end_date: string | null
   enrollment_open_until: string | null

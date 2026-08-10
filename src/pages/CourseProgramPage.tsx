@@ -47,6 +47,7 @@ import {
   type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
+import { groupCoursesByTemplate } from '@/lib/courseGrouping'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
@@ -751,6 +752,7 @@ function CourseSettings({ course, onSave, onCopyCourse, onDeleteCourse }: { cour
         price:                 form.price,
         duration_weeks:        form.duration_weeks,
         is_active:             form.is_active,
+        is_template:           form.is_template,
         start_date:            form.start_date || null,
         end_date:              form.end_date   || null,
         enrollment_open_until: form.enrollment_open_until || null,
@@ -936,6 +938,25 @@ function CourseSettings({ course, onSave, onCopyCourse, onDeleteCourse }: { cour
           Курс <strong>{form.is_active ? 'активен' : 'неактивен'}</strong>
         </span>
       </div>
+
+      {/* Шаблон — не право и не состояние доступа, а роль курса в работе школы:
+          из каркаса копируют курсы групп. Признак ставится руками, чтобы
+          будущие шаблоны размечались без миграций (§113). */}
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          data-testid="course-is-template"
+          checked={form.is_template}
+          onChange={e => setForm(f => ({ ...f, is_template: e.target.checked }))}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+        />
+        <span className="text-sm text-gray-700">
+          Это шаблон (каркас курса)
+          <span className="mt-0.5 block text-xs text-gray-400">
+            Шаблон — каркас. Учеников зачисляют в копии, не в шаблон.
+          </span>
+        </span>
+      </label>
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
         <Button onClick={handleSave} loading={saving}>
@@ -1256,13 +1277,22 @@ function CourseCard({ course, ownerLabel }: { course: Course; ownerLabel?: strin
   return (
     <Link
       to={`/course-program?courseId=${course.id}`}
-      className="group flex min-h-[92px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+      data-testid={course.is_template ? 'course-card-template' : 'course-card'}
+      className={cn(
+        'group flex min-h-[92px] flex-col justify-between rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+        // Шаблон видно ещё до чтения бейджа: рамка заметнее, фон холоднее.
+        course.is_template ? 'border-primary-200 bg-primary-50/40' : 'border-gray-100 bg-white',
+      )}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-semibold leading-snug text-gray-900 group-hover:text-primary-700">
           {course.title}
         </span>
-        {course.is_draft ? (
+        {course.is_template ? (
+          <span className="mt-0.5 shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
+            шаблон
+          </span>
+        ) : course.is_draft ? (
           <span className="mt-0.5 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
             черновик
           </span>
@@ -1452,12 +1482,14 @@ export function CourseProgramPage() {
   // Рабочие курсы наверх, архивные — под спойлер. Раньше три технических
   // «[E2E] Цикл ДЗ …» с пометкой «архив» стояли первыми и оттесняли живые
   // курсы за пределы первого экрана.
-  // Черновики идут отдельной группой и НЕ попадают в архив. Свежая копия курса
-  // создаётся черновиком, и первое, что с ней делают, — открывают. В свёрнутом
-  // «Архиве» её принимали за пропавшую.
-  const draftCourses = useMemo(() => courses.filter(c => c.is_draft), [courses])
-  const activeCourses = useMemo(() => courses.filter(c => c.is_active && !c.is_draft), [courses])
-  const archivedCourses = useMemo(() => courses.filter(c => !c.is_active && !c.is_draft), [courses])
+  /**
+   * Раскладка списка живёт в `lib/courseGrouping` — там же её тесты (§113).
+   *
+   * Архив тут НЕ равен «неактивен»: свежая копия рождается неактивным
+   * черновиком, и по одному `is_active` обе копии уехали бы в архив, оставив
+   * шаблоны с пустыми полками.
+   */
+  const grouped = useMemo(() => groupCoursesByTemplate(courses), [courses])
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
 
@@ -1791,34 +1823,52 @@ export function CourseProgramPage() {
           <p className="py-4 text-sm text-gray-400">Нет курсов</p>
         ) : (
           <>
-            {/* Черновики — наверху и раскрытыми: сюда попадает свежая копия
-                курса, и её ищут сразу после создания. */}
-            {draftCourses.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-600">
-                  Черновики · {draftCourses.length}
-                </p>
+            {/* Шаблон — главная карточка, его копии рядом под ним (§113).
+                Отдельной секции «Черновики» больше нет: свежая копия — это
+                черновик, и в своей секции она отрывалась бы от шаблона, ради
+                которого группировка и делалась. Черновиковость видна бейджем. */}
+            {grouped.groups.map(group => (
+              <div key={group.template.id} className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {draftCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
+                  <CourseCard course={group.template} ownerLabel={ownerLabelFor(group.template)} />
                 </div>
-              </div>
-            )}
 
-            {activeCourses.length > 0 && (
+                {group.copies.length > 0 && (
+                  <div
+                    data-testid={`course-copies-of-${group.template.id}`}
+                    className="ml-3 border-l-2 border-primary-100 pl-4"
+                  >
+                    <p className="mb-2 text-xs text-gray-400">
+                      Копии · {group.copies.length}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {group.copies.map(c => (
+                        <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Всё, что живёт само по себе: обычные курсы и копии, потерявшие
+                шаблон. Потерять курс из списка страшнее, чем показать его без
+                родителя. */}
+            {grouped.loose.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {activeCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
+                {grouped.loose.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
               </div>
             )}
 
             {/* Архивные курсы уводим под спойлер: их не открывают каждый день,
                 а в общем списке они оттесняли рабочие курсы вниз. */}
-            {archivedCourses.length > 0 && (
+            {grouped.archived.length > 0 && (
               <details className="rounded-2xl border border-gray-100 bg-white/60 px-4 py-3">
                 <summary className="cursor-pointer select-none text-sm font-medium text-gray-500 hover:text-gray-700">
-                  Архив · {archivedCourses.length}
+                  Архив · {grouped.archived.length}
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {archivedCourses.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
+                  {grouped.archived.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
                 </div>
               </details>
             )}
