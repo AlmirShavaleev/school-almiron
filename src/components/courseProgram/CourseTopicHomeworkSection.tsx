@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Users, AlertCircle, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ATTEMPT_STATUS_TONE, gradeScaleMax, type TopicHomeworkAttemptStatus } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
+import { toast } from '@/store/toastStore'
+import { describePublishResult, planHomeworkPublish } from '@/lib/homeworkPublish'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
 
 interface Module {
@@ -123,6 +125,10 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+  /** Сколько файлов у каждого ДЗ: без файлов публиковать нельзя (§116). */
+  const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
+  const [publishing, setPublishing] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
@@ -188,16 +194,33 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
 
           const attemptsData = (attemptsResult.data || []) as TopicHomeworkAttempt[]
 
+          // Файлы задания — только их число. Массовая публикация обязана
+          // соблюдать то же условие, что кнопка в модалке темы: у ДЗ без
+          // файлов ученику нечего показывать.
+          const filesResult = (await supabase
+            .from('topic_homework_files')
+            .select('homework_id')
+            .in('homework_id', hwIds)) as any
+
+          if (filesResult.error) throw new Error(filesResult.error.message)
+
+          const counts: Record<string, number> = {}
+          for (const row of (filesResult.data || []) as { homework_id: string }[]) {
+            counts[row.homework_id] = (counts[row.homework_id] ?? 0) + 1
+          }
+
           if (!cancelled.value) {
             setRoster(rosterArray)
             setHomeworks(homeworksData)
             setAttempts(attemptsData)
+            setFileCounts(counts)
           }
         } else {
           if (!cancelled.value) {
             setRoster(rosterArray)
             setHomeworks([])
             setAttempts([])
+            setFileCounts({})
           }
         }
       } catch (e: any) {
@@ -217,7 +240,45 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
       cancelled.value = true
       abortController.abort()
     }
-  }, [courseId, modules, refreshKey])
+  }, [courseId, modules, refreshKey, reloadKey])
+
+  /**
+   * Публикация пачкой. Второго механизма нет: пишем то же поле, что и кнопка
+   * в модалке темы (§58 — публикация это выдача ученикам). Уведомления в этом
+   * контуре ручные, триггеров на публикацию у таблицы нет, поэтому повторных
+   * сообщений по уже опубликованным пачка не рассылает — их и не публикуем.
+   */
+  async function publishTopics(scopeKey: string, topics: Module['topics']) {
+    const plan = planHomeworkPublish(topics, homeworks, fileCounts)
+
+    if (plan.publishIds.length === 0) {
+      toast.info(describePublishResult(0, plan.skipped))
+      return
+    }
+
+    setPublishing(scopeKey)
+    try {
+      // `eq('is_published', false)` — не украшение: между планом и записью
+      // кто-то мог опубликовать тему из модалки, и повторно выдавать её не за
+      // чем. Число берём из ответа базы, а не из длины плана: права могли не
+      // пустить, и рапортовать надо по факту.
+      const { data, error: err } = await supabase
+        .from('topic_homework')
+        .update({ is_published: true })
+        .in('id', plan.publishIds)
+        .eq('is_published', false)
+        .select('id')
+
+      if (err) throw new Error(err.message)
+
+      toast.success(describePublishResult((data ?? []).length, plan.skipped))
+      setReloadKey(k => k + 1)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Не удалось опубликовать ДЗ')
+    } finally {
+      setPublishing(null)
+    }
+  }
 
   const toggleTopic = (topicId: string) => {
     setExpandedTopics(prev => {
@@ -268,6 +329,11 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
     return stats
   }
 
+  /** Сколько ДЗ ещё не выдано ученикам — по курсу и по каждому модулю. */
+  const unpublishedCount = homeworks.filter(h => !h.is_published).length
+  const moduleUnpublished = (module: Module) =>
+    homeworks.filter(h => !h.is_published && module.topics.some(t => t.id === h.topic_id)).length
+
   const totalStats = getTotalStats()
   const totalHomeworks = homeworks.length
   const totalAssignments = totalHomeworks * roster.length
@@ -313,6 +379,28 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
         </div>
       )}
 
+      {/* Неопубликованное ДЗ ученик не видит вовсе — у него просто нет рубрики
+          «Домашнее задание». Импортёр (§101) создаёт ДЗ черновиками, поэтому
+          после импорта курса публиковать приходится сотнями (§116). */}
+      {unpublishedCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm text-amber-900">
+            Не опубликовано ДЗ: <strong>{unpublishedCount}</strong>. Пока задание не опубликовано,
+            ученик не видит рубрику «Домашнее задание».
+          </p>
+          <button
+            type="button"
+            data-testid="publish-course-homework"
+            disabled={publishing !== null}
+            onClick={() => publishTopics('course', modules.flatMap(m => m.topics))}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-sm font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-60"
+          >
+            {publishing === 'course' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            Опубликовать всё ДЗ курса
+          </button>
+        </div>
+      )}
+
       {/* Module sections */}
       {modules.map(module => {
         const moduleTopicsWithHw = module.topics.filter(topic =>
@@ -322,8 +410,20 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
         return (
           <div key={module.id} className="space-y-2">
             {/* Module header */}
-            <div className="bg-primary-50/50 px-4 py-2 rounded-lg">
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-primary-50/50 px-4 py-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-primary-700">{module.title}</h3>
+              {moduleUnpublished(module) > 0 && (
+                <button
+                  type="button"
+                  data-testid={`publish-module-${module.id}`}
+                  disabled={publishing !== null}
+                  onClick={() => publishTopics(module.id, module.topics)}
+                  className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-2.5 text-xs font-medium text-primary-700 transition-colors hover:border-primary-300 hover:bg-primary-50 disabled:opacity-60"
+                >
+                  {publishing === module.id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  Опубликовать ДЗ · {moduleUnpublished(module)}
+                </button>
+              )}
             </div>
 
             {/* Topics in module */}

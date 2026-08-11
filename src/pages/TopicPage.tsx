@@ -235,9 +235,17 @@ export function TopicPage() {
         </div>
       </div>
 
-      {/* ── Tab panel ── */}
+      {/* ── Tab panel ──
+          Вкладки переносятся, а не скроллятся (§116). Лента с горизонтальной
+          прокруткой прятала половину рубрик даже там, где ширины хватало, а
+          активную вкладку приходилось искать пальцем. На узком экране — сетка
+          в два ряда, на широком — обычный перенос строки. */}
       {availableTabs.length > 0 && (
-        <div role="tablist" aria-label="Разделы темы" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+        <div
+          role="tablist"
+          aria-label="Разделы темы"
+          className="grid grid-cols-2 gap-1 border-b border-gray-200 pb-px sm:flex sm:flex-wrap"
+        >
           {availableTabs.map(tabKey => {
             let label = ''
             let count = 0
@@ -266,14 +274,16 @@ export function TopicPage() {
                 aria-selected={isActive}
                 onClick={() => setChosen(tabKey)}
                 className={cn(
-                  'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                  // min-w-0 и truncate: длинная подпись («Домашнее задание»)
+                  // в узкой колонке должна ужиматься, а не распирать сетку.
+                  'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
                   isActive
                     ? 'border-primary-500 text-primary-700'
                     : 'border-transparent text-gray-500 hover:text-gray-800',
                 )}
               >
-                {label}
-                {isLocked && <Lock size={12} />}
+                <span className="truncate">{label}</span>
+                {isLocked && <Lock size={12} className="shrink-0" />}
                 {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
               </button>
             )

@@ -172,4 +172,38 @@ describe('Список курсов: шаблон и его копии (§113)',
     expect(await screen.findByText('Шаблон — каркас. Учеников зачисляют в копии, не в шаблон.'))
       .toBeInTheDocument()
   })
+
+  /**
+   * §115. На живом просмотре владелец не понял, что строка копии кликабельна.
+   * Проверяем не цвета (их ловит глаз, а не тест), а то, что осталось
+   * настоящей ссылкой с клавиатурным фокусом и получило видимый признак
+   * перехода.
+   */
+  it('копия — настоящая ссылка в курс, а не текст с обработчиком', () => {
+    renderPage()
+
+    const shelf = screen.getByTestId('course-copies-of-tpl')
+    const link = within(shelf).getByRole('link', { name: /11А класс/ })
+
+    expect(link).toHaveAttribute('href', expect.stringContaining('courseId=copy'))
+    // Ссылка фокусируется с клавиатуры по умолчанию: tabindex не отбирали.
+    expect(link).not.toHaveAttribute('tabindex', '-1')
+  })
+
+  it('у карточки копии есть стрелка перехода', () => {
+    renderPage()
+
+    const shelf = screen.getByTestId('course-copies-of-tpl')
+    expect(within(shelf).getByTestId('course-copy-arrow')).toBeInTheDocument()
+  })
+
+  it('свёрнутая ветвь не оставляет висящих карточек копий', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Копии · 1/ }))
+
+    const shelf = screen.getByTestId('course-copies-of-tpl')
+    expect(within(shelf).queryByTestId('course-copy-arrow')).not.toBeInTheDocument()
+    expect(within(shelf).queryByRole('link')).not.toBeInTheDocument()
+  })
 })

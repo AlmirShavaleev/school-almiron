@@ -177,6 +177,13 @@ export async function acceptCourseJoin(value: string): Promise<CourseJoinAccepte
       joinedAs: row?.joined_as ?? 'student',
     }
   } catch (error) {
-    throw new Error((error as any)?.message ?? 'Не удалось обработать приглашение')
+    if (error instanceof InvitationAcceptanceError) throw error
+    // course_join_accept поднимает бизнес-ошибки уже по-русски (RAISE EXCEPTION
+    // с человекочитаемым текстом) — их пробрасываем как есть. Всё остальное —
+    // сырые Postgres/PostgREST сообщения на английском — идёт через mapError,
+    // чтобы пользователь не увидел текст вида "permission denied for function".
+    const message = (error as { message?: string })?.message ?? ''
+    if (/[а-яё]/i.test(message)) throw new Error(message)
+    throw mapError(error)
   }
 }

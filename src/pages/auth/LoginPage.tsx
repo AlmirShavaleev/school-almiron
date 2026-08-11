@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/authStore'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -29,6 +30,7 @@ const DEMO_ACCOUNTS = IS_DEV ? [
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const profile = useAuthStore(state => state.profile)
   const [error, setError] = useState('')
 
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
@@ -52,6 +54,17 @@ export function LoginPage() {
   function loginAsDemo(email: string, password: string) {
     setValue('email', email)
     setValue('password', password)
+  }
+
+  // С 12.08 главная отправляет гостя сюда, поэтому форма входа стала местом,
+  // куда можно приехать уже вошедшим: сессия из подтверждения почты приходит
+  // не мгновенно, и `/` успевает решить, что человек гость. Показывать
+  // вошедшему «войдите» — тупик: обратно на `/` его никто не отправит.
+  // Обратной петли не возникает — `/dashboard` вошедшего на вход не гонит.
+  // «Сменить аккаунт» на страницах приглашений сначала делает signOut, так что
+  // до этой проверки доходит уже пустой профиль.
+  if (profile) {
+    return <Navigate to={getPendingInvitePath() || getPendingTeacherJoinLinkPath() || '/dashboard'} replace />
   }
 
   return (

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
 import { LoadingGate } from '@/components/shared/LoadingGate'
@@ -76,6 +76,10 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // Public — lazy-loaded so framer-motion + landing components stay out of the main chunk.
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
 // не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
+//
+// Лендинг живёт на `/about`, а не на `/` (решение владельца 12.08): главная —
+// это вход в платформу, а витрина откладывается, но не удаляется. Страница,
+// стили и секции не тронуты, поменялся только адрес.
 const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 
@@ -91,7 +95,18 @@ function FullScreenSpinner({ label = 'вход в приложение' }: { lab
   return <LoadingGate label={label} fullScreen />
 }
 
-/** `/` → дашборд если залогинен, иначе лендинг */
+/**
+ * `/` → рабочий экран вошедшего, форма входа для гостя.
+ *
+ * Лендинга здесь больше нет — он переехал на `/about`. Главная стала входом в
+ * платформу: по адресу приходят те, кто уже учится, а не те, кого надо
+ * уговаривать.
+ *
+ * Уйти на `/login` можно только УБЕДИВШИСЬ, что сессии нет. Пока `loading` или
+ * пока есть `user` без загруженного профиля — держим спиннер: `/login` назад не
+ * отправляет, и человек с живой сессией застрял бы на «войдите» из-за того, что
+ * профиль приезжает не мгновенно.
+ */
 function RootRedirect() {
   const { profile, user, loading } = useAuthStore()
   const navigate = useNavigate()
@@ -110,10 +125,15 @@ function RootRedirect() {
     if (profile) navigate('/dashboard', { replace: true })
   }, [profile, user, loading, navigate])
 
-  if (loading) return <FullScreenSpinner />
-  if (profile || (user && (getPendingInvitePath() || getPendingTeacherJoinLinkPath()))) return null
+  // `user` без `profile` — тоже ожидание, а не «гость»: сессия уже есть, просто
+  // строка профиля ещё едет. Отправить такого на вход значит выкинуть человека
+  // с живой сессией. Ждём через LoadingGate, у него есть предел по времени
+  // (§108: бесконечный спиннер не должен быть достижимым состоянием).
+  if (loading || profile || user) return <FullScreenSpinner />
 
-  return <LandingPage />
+  // Гость. Именно `replace`: иначе «назад» из формы входа возвращало бы на `/`,
+  // а тот снова редиректил бы на вход — кнопка «назад» переставала бы работать.
+  return <Navigate to="/login" replace />
 }
 
 /**
@@ -262,8 +282,14 @@ export default function App() {
       <CatalogImageLightbox />
       <Suspense fallback={<FullScreenSpinner label="страница" />}>
       <Routes>
-        {/* Public */}
+        {/* Public.
+            ВНИМАНИЕ: этот список — граница «пускаем без входа». Всё, чего в нём
+            нет, уходит в `/*` под DashboardLayout и отправляется на `/login`.
+            По `/join`, `/join/:token` и `/jt/:token` приходят приглашённые
+            ученики и преподаватели — они гости по определению, редирект на вход
+            сломал бы вступление в курс. Трогать список только осознанно. */}
         <Route path="/"               element={<RootRedirect />} />
+        <Route path="/about"          element={<LandingPage />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />

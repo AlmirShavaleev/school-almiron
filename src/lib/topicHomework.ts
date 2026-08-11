@@ -134,6 +134,24 @@ export function attemptsNewestFirst(attempts: TopicHomeworkAttemptRow[]): TopicH
   return [...attempts].sort((a, b) => b.attempt_number - a.attempt_number)
 }
 
+/**
+ * Переставляет элемент списка. Основа обоих способов менять порядок страниц —
+ * и стрелок, и перетаскивания: правило перестановки должно быть одно, иначе
+ * мышь и клавиатура начнут расходиться в мелочах.
+ *
+ * Выход за границы — не ошибка, а «двигать некуда»: список возвращается как
+ * есть. Так стрелке у крайней страницы не нужна отдельная проверка.
+ */
+export function moveItem<T>(items: T[], from: number, to: number): T[] {
+  if (from === to) return items
+  if (from < 0 || from >= items.length) return items
+  if (to < 0 || to >= items.length) return items
+  const next = [...items]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  return next
+}
+
 /** Проверять можно только сданную попытку — черновики преподавателю не показываем. */
 export function isReviewable(attempt: TopicHomeworkAttemptRow): boolean {
   return attempt.status === 'submitted'

@@ -13,6 +13,7 @@ const startAttempt = vi.fn()
 const submitAttempt = vi.fn()
 const uploadAttemptFiles = vi.fn()
 const removeAttemptFile = vi.fn()
+const reorderAttemptFiles = vi.fn()
 
 let homework: TopicHomeworkRow | null = null
 let files: TopicHomeworkFileRow[] = []
@@ -25,7 +26,7 @@ vi.mock('@/hooks/useTopicHomework', () => ({
   useTopicHomework: () => ({
     homework, files, attempts, attemptFiles, reviews, loading, error: null, reload: vi.fn(),
     createHomework: vi.fn(), updateHomework: vi.fn(), uploadHomeworkFile: vi.fn(),
-    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
   }),
 }))
 
@@ -55,6 +56,7 @@ beforeEach(() => {
   submitAttempt.mockReset().mockResolvedValue(undefined)
   uploadAttemptFiles.mockReset().mockResolvedValue([])
   removeAttemptFile.mockReset().mockResolvedValue(undefined)
+  reorderAttemptFiles.mockReset().mockResolvedValue(undefined)
 })
 
 const renderStudent = () => render(<TopicHomeworkStudent topicId={TOPIC} />)
@@ -254,5 +256,148 @@ describe('ДЗ ученику — способы приложить работу
 
     expect(uploadAttemptFiles).not.toHaveBeenCalled()
     field.remove()
+  })
+})
+
+/**
+ * Порядок страниц (§113).
+ *
+ * До этой правки под кнопкой отправки было написано «порядок можно менять
+ * перетаскиванием», а обработчиков перетаскивания не существовало ни одного.
+ * Тесты держат оба способа и, главное, номера страниц: они и есть
+ * подтверждение, что перестановка случилась.
+ */
+describe('ДЗ ученику — порядок страниц', () => {
+  const page = (n: number) => ({
+    id: `af${n}`, attempt_id: 'att-1', storage_path: `att-1/page-${n}.jpg`,
+    file_name: `page-${n}.jpg`, mime_type: 'image/jpeg', size_bytes: 10,
+    position: n - 1, created_at: '',
+  })
+
+  beforeEach(() => {
+    attempts = [attempt(1, 'draft')]
+    attemptFiles = [page(1), page(2), page(3)]
+  })
+
+  /** Прямоугольники в jsdom нулевые — расставляем плитки в ряд руками. */
+  function layOutThumbs() {
+    for (const el of screen.getAllByTestId('hw-page-thumb')) {
+      const index = Number((el as HTMLElement).dataset.pageIndex)
+      ;(el as HTMLElement).getBoundingClientRect = () => ({
+        left: index * 100, right: index * 100 + 80, top: 0, bottom: 112,
+        width: 80, height: 112, x: index * 100, y: 0, toJSON: () => ({}),
+      }) as DOMRect
+    }
+  }
+
+  it('стрелки — настоящие кнопки с понятной подписью', () => {
+    renderStudent()
+
+    expect(screen.getByLabelText('Сдвинуть страницу 2 влево').tagName).toBe('BUTTON')
+    expect(screen.getByLabelText('Сдвинуть страницу 2 вправо').tagName).toBe('BUTTON')
+    // У крайних двигать некуда — кнопка есть, но заблокирована.
+    expect(screen.getByLabelText('Сдвинуть страницу 1 влево')).toBeDisabled()
+    expect(screen.getByLabelText('Сдвинуть страницу 3 вправо')).toBeDisabled()
+  })
+
+  it('стрелка влево переставляет страницу и отдаёт новый порядок', async () => {
+    renderStudent()
+
+    fireEvent.click(screen.getByLabelText('Сдвинуть страницу 2 влево'))
+
+    await waitFor(() => expect(reorderAttemptFiles).toHaveBeenCalledWith('att-1', ['af2', 'af1', 'af3']))
+  })
+
+  it('стрелка вправо двигает в другую сторону', async () => {
+    renderStudent()
+
+    fireEvent.click(screen.getByLabelText('Сдвинуть страницу 1 вправо'))
+
+    await waitFor(() => expect(reorderAttemptFiles).toHaveBeenCalledWith('att-1', ['af2', 'af1', 'af3']))
+  })
+
+  it('перетаскивание пальцем за ручку меняет порядок и номера сразу', async () => {
+    renderStudent()
+    layOutThumbs()
+
+    const handles = screen.getAllByTestId('hw-page-handle')
+    // Тянем третью страницу на место первой.
+    fireEvent.pointerDown(handles[2], { pointerId: 1, pointerType: 'touch', clientX: 200, clientY: 50 })
+    fireEvent.pointerMove(screen.getAllByTestId('hw-page-thumb')[2], {
+      pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 50,
+    })
+
+    // Ещё до отпускания видно будущий порядок: страницы переставлены, а
+    // номера пересчитаны по новому месту — это и есть подтверждение.
+    const thumbs = screen.getAllByTestId('hw-page-thumb') as HTMLElement[]
+    expect(thumbs.map(el => el.dataset.fileId)).toEqual(['af3', 'af1', 'af2'])
+    expect(thumbs.map(el => el.dataset.pageNumber)).toEqual(['1', '2', '3'])
+
+    fireEvent.pointerUp(screen.getAllByTestId('hw-page-thumb')[0], {
+      pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 50,
+    })
+
+    await waitFor(() => expect(reorderAttemptFiles).toHaveBeenCalledWith('att-1', ['af3', 'af1', 'af2']))
+  })
+
+  it('мышью тянется вся плитка, а не только ручка', async () => {
+    renderStudent()
+    layOutThumbs()
+
+    const thumbs = screen.getAllByTestId('hw-page-thumb')
+    fireEvent.pointerDown(thumbs[0], { pointerId: 2, pointerType: 'mouse', clientX: 10, clientY: 50 })
+    fireEvent.pointerMove(thumbs[0], { pointerId: 2, pointerType: 'mouse', clientX: 210, clientY: 50 })
+    fireEvent.pointerUp(thumbs[0], { pointerId: 2, pointerType: 'mouse', clientX: 210, clientY: 50 })
+
+    await waitFor(() => expect(reorderAttemptFiles).toHaveBeenCalledWith('att-1', ['af2', 'af3', 'af1']))
+  })
+
+  it('касание плитки мимо ручки прокрутку не отнимает — перетаскивание не начинается', () => {
+    renderStudent()
+    layOutThumbs()
+
+    const thumbs = screen.getAllByTestId('hw-page-thumb')
+    fireEvent.pointerDown(thumbs[0], { pointerId: 3, pointerType: 'touch', clientX: 10, clientY: 50 })
+    fireEvent.pointerMove(thumbs[0], { pointerId: 3, pointerType: 'touch', clientX: 210, clientY: 50 })
+    fireEvent.pointerUp(thumbs[0], { pointerId: 3, pointerType: 'touch', clientX: 210, clientY: 50 })
+
+    expect(reorderAttemptFiles).not.toHaveBeenCalled()
+  })
+
+  it('крестик удаления перетаскивание не запускает', () => {
+    renderStudent()
+    layOutThumbs()
+
+    fireEvent.pointerDown(screen.getByLabelText('Убрать страницу 1'), {
+      pointerId: 4, pointerType: 'mouse', clientX: 10, clientY: 10,
+    })
+    fireEvent.pointerMove(screen.getAllByTestId('hw-page-thumb')[0], {
+      pointerId: 4, pointerType: 'mouse', clientX: 210, clientY: 50,
+    })
+    fireEvent.pointerUp(screen.getAllByTestId('hw-page-thumb')[0], {
+      pointerId: 4, pointerType: 'mouse', clientX: 210, clientY: 50,
+    })
+
+    expect(reorderAttemptFiles).not.toHaveBeenCalled()
+  })
+
+  it('ошибку записи показывает человеку, а не откатывает молча', async () => {
+    reorderAttemptFiles.mockRejectedValue(new Error('Не удалось сохранить порядок страниц'))
+    renderStudent()
+
+    fireEvent.click(screen.getByLabelText('Сдвинуть страницу 2 влево'))
+
+    expect(await screen.findByText('Не удалось сохранить порядок страниц')).toBeInTheDocument()
+  })
+
+  it('подпись обещает ровно то, что экран умеет', () => {
+    renderStudent()
+    expect(screen.getByText(/порядок меняется стрелками ← → или перетаскиванием/)).toBeInTheDocument()
+  })
+
+  it('на одной странице переставлять нечего — обещания нет', () => {
+    attemptFiles = [page(1)]
+    renderStudent()
+    expect(screen.queryByText(/порядок меняется/)).not.toBeInTheDocument()
   })
 })

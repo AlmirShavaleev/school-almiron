@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FileText, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ChevronLeft, ChevronRight, FileText, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
+} from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +23,7 @@ import {
   gradeScaleMax,
   isOverdue,
   latestReview,
+  moveItem,
   namePastedFile,
   splitHomeworkFiles,
 } from '@/lib/topicHomework'
@@ -38,7 +41,7 @@ import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 export function TopicHomeworkStudent({ topicId, className }: { topicId: string; className?: string }) {
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
-    startAttempt, uploadAttemptFiles, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
   } = useTopicHomework(topicId)
 
   const [busy, setBusy] = useState(false)
@@ -368,19 +371,14 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             Моя работа{draftFiles.length > 0 ? ` · ${draftFiles.length} ${draftFiles.length === 1 ? 'страница' : draftFiles.length <= 4 ? 'страницы' : 'страниц'}` : ''}
           </div>
 
-          {/* Сетка миниатюр */}
+          {/* Сетка миниатюр с перестановкой */}
           {draftFiles.length > 0 && (
-            <div className="flex gap-2.5 flex-wrap mb-4">
-              {draftFiles.map((f, idx) => (
-                <PageThumb
-                  key={f.id}
-                  file={f}
-                  pageNumber={idx + 1}
-                  onDelete={() => run(() => removeAttemptFile(f.id, f.storage_path))}
-                  disabled={busy || uploadingFiles}
-                />
-              ))}
-            </div>
+            <PageGrid
+              files={draftFiles}
+              disabled={busy || uploadingFiles}
+              onReorder={ids => run(() => reorderAttemptFiles(active.id, ids))}
+              onDelete={f => run(() => removeAttemptFile(f.id, f.storage_path))}
+            />
           )}
 
           {/* Прогресс загрузки */}
@@ -462,7 +460,15 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             >
               Отправить на проверку
             </Button>
-            <small className="text-gray-400">{draftFiles.length} {draftFiles.length === 1 ? 'страница' : draftFiles.length <= 4 ? 'страницы' : 'страниц'} · порядок можно менять перетаскиванием</small>
+            {/*
+              Подпись описывает ровно то, что умеет экран. До §113 здесь было
+              обещание перетаскивания, которого не существовало ни в одном
+              обработчике: стрелки называем первыми — они и есть основной способ.
+            */}
+            <small className="text-gray-400">
+              {draftFiles.length} {draftFiles.length === 1 ? 'страница' : draftFiles.length <= 4 ? 'страницы' : 'страниц'}
+              {draftFiles.length > 1 && ' · порядок меняется стрелками ← → или перетаскиванием'}
+            </small>
           </div>
 
           <div className="text-xs text-gray-500 mt-2.5">
@@ -604,6 +610,109 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
 }
 
 /**
+ * Сетка страниц работы с перестановкой ДВУМЯ способами.
+ *
+ * Стрелки — основной: они работают с клавиатуры, на любом экране и не зависят
+ * от точности жеста. Перетаскивание — второй, для тех, кому так быстрее.
+ *
+ * Перетаскивание сделано на Pointer Events, а не на HTML5 drag-and-drop:
+ * html5-перетаскивание на тач-экране не работает вовсе, а подпись под кнопкой
+ * обещает его всем. Один обработчик закрывает и мышь, и палец.
+ *
+ * Мышью можно тащить всю миниатюру, пальцем — только за ручку с номером
+ * страницы: `touch-action: none` на всей плитке отняло бы у пальца прокрутку
+ * страницы, а плитки маленькие и попасть мимо легко.
+ */
+function PageGrid({
+  files, disabled, onReorder, onDelete,
+}: {
+  files: TopicHomeworkAttemptFileRow[]
+  disabled: boolean
+  onReorder: (orderedIds: string[]) => void
+  onDelete: (file: TopicHomeworkAttemptFileRow) => void
+}) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  /** Идёт перетаскивание: откуда взяли и над какой позицией сейчас. */
+  const [drag, setDrag] = useState<{ pointerId: number; from: number; over: number } | null>(null)
+
+  // Пока тащим — показываем БУДУЩИЙ порядок, иначе непонятно, куда упадёт.
+  // Номера страниц пересчитываются здесь же: они и есть подтверждение.
+  const shown = drag ? moveItem(files, drag.from, drag.over) : files
+
+  function indexAtPoint(x: number, y: number): number | null {
+    const grid = gridRef.current
+    if (!grid) return null
+    const thumbs = Array.from(grid.querySelectorAll<HTMLElement>('[data-page-index]'))
+    let nearest: { index: number; distance: number } | null = null
+
+    for (const el of thumbs) {
+      const index = Number(el.dataset.pageIndex)
+      const rect = el.getBoundingClientRect()
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return index
+      // Точное попадание — не всегда: между плитками есть зазоры, а палец
+      // дрожит. Поэтому запасной вариант — ближайшая по центру.
+      const dx = x - (rect.left + rect.width / 2)
+      const dy = y - (rect.top + rect.height / 2)
+      const distance = Math.hypot(dx, dy)
+      if (!nearest || distance < nearest.distance) nearest = { index, distance }
+    }
+    return nearest?.index ?? null
+  }
+
+  function startDrag(e: React.PointerEvent, index: number) {
+    if (disabled || files.length < 2) return
+    const el = e.currentTarget as HTMLElement
+    // Захват указателя — не везде: в jsdom его нет вовсе, а в старых браузерах
+    // он необязателен. Без него перетаскивание просто менее цепкое, ронять
+    // из-за этого весь обработчик нельзя.
+    el.setPointerCapture?.(e.pointerId)
+    setDrag({ pointerId: e.pointerId, from: index, over: index })
+  }
+
+  function moveDrag(e: React.PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointerId) return
+    const over = indexAtPoint(e.clientX, e.clientY)
+    if (over == null || over === drag.over) return
+    setDrag({ ...drag, over })
+  }
+
+  function endDrag(e: React.PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointerId) return
+    const { from, over } = drag
+    setDrag(null)
+    if (from !== over) onReorder(moveItem(files, from, over).map(f => f.id))
+  }
+
+  function move(index: number, delta: number) {
+    const to = index + delta
+    if (to < 0 || to >= files.length) return
+    onReorder(moveItem(files, index, to).map(f => f.id))
+  }
+
+  return (
+    <div ref={gridRef} data-testid="hw-page-grid" className="flex gap-2.5 flex-wrap mb-4">
+      {shown.map((f, idx) => (
+        <PageThumb
+          key={f.id}
+          file={f}
+          index={idx}
+          pageNumber={idx + 1}
+          total={shown.length}
+          dragging={!!drag && shown[drag.over]?.id === f.id}
+          disabled={disabled}
+          onDelete={() => onDelete(f)}
+          onMove={delta => move(idx, delta)}
+          onPointerDownThumb={e => { if (e.pointerType === 'mouse') startDrag(e, idx) }}
+          onPointerDownHandle={e => startDrag(e, idx)}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
  * Миниатюра страницы в сетке сборки.
  *
  * Картинка подписывается один раз при монтировании: бакет приватный, прямых
@@ -612,13 +721,29 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
  */
 function PageThumb({
   file,
+  index,
   pageNumber,
+  total,
+  dragging,
   onDelete,
+  onMove,
+  onPointerDownThumb,
+  onPointerDownHandle,
+  onPointerMove,
+  onPointerUp,
   disabled,
 }: {
   file: TopicHomeworkAttemptFileRow
+  index: number
   pageNumber: number
+  total: number
+  dragging: boolean
   onDelete: () => void
+  onMove: (delta: -1 | 1) => void
+  onPointerDownThumb: (e: React.PointerEvent) => void
+  onPointerDownHandle: (e: React.PointerEvent) => void
+  onPointerMove: (e: React.PointerEvent) => void
+  onPointerUp: (e: React.PointerEvent) => void
   disabled: boolean
 }) {
   const isImage = !!file.mime_type?.startsWith('image/')
@@ -634,14 +759,32 @@ function PageThumb({
   }, [isImage, file.storage_path])
 
   return (
-    <div data-testid="hw-page-thumb" className="relative">
-      <div className="w-20 h-28 rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-slate-100 flex items-center justify-center relative shadow-sm overflow-hidden">
+    <div
+      data-testid="hw-page-thumb"
+      data-page-index={index}
+      data-page-number={pageNumber}
+      data-file-id={file.id}
+      className="relative"
+      onPointerDown={onPointerDownThumb}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <div
+        className={cn(
+          'w-20 h-28 rounded-2xl border bg-gradient-to-b from-white to-slate-100 flex items-center justify-center relative shadow-sm overflow-hidden',
+          dragging ? 'border-primary-400 ring-2 ring-primary-200' : 'border-gray-200',
+        )}
+      >
         {isImage && signedUrl ? (
           <img
             src={signedUrl}
             alt={`Страница ${pageNumber}`}
             loading="lazy"
-            className="w-full h-full object-cover"
+            // Иначе браузер запускает СВОЁ перетаскивание картинки и наш
+            // указатель теряется на первом же движении.
+            draggable={false}
+            className="w-full h-full object-cover select-none"
           />
         ) : (
           <FileText size={32} className="text-gray-400" />
@@ -649,6 +792,7 @@ function PageThumb({
         <button
           type="button"
           onClick={onDelete}
+          onPointerDown={e => e.stopPropagation()}
           disabled={disabled}
           className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-red-600 text-sm font-bold disabled:opacity-40"
           aria-label={`Убрать страницу ${pageNumber}`}
@@ -656,7 +800,51 @@ function PageThumb({
           ×
         </button>
       </div>
-      <div className="text-xs text-gray-400 text-center mt-1">стр. {pageNumber}</div>
+
+      {/*
+        Ряд управления порядком. Кнопки настоящие: их видит скринридер, до них
+        доходит Tab, и подпись говорит, что именно случится. Средняя — ручка
+        для пальца, у неё же номер страницы.
+      */}
+      <div className="mt-1 flex items-center justify-between gap-0.5">
+        <button
+          type="button"
+          data-testid="hw-page-move-left"
+          onClick={() => onMove(-1)}
+          onPointerDown={e => e.stopPropagation()}
+          disabled={disabled || pageNumber === 1}
+          aria-label={`Сдвинуть страницу ${pageNumber} влево`}
+          title="Сдвинуть влево"
+          className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <ChevronLeft size={14} />
+        </button>
+
+        <span
+          data-testid="hw-page-handle"
+          onPointerDown={onPointerDownHandle}
+          role="presentation"
+          title="Потяните, чтобы переставить"
+          // touch-action только здесь: если запретить прокрутку на всей
+          // плитке, палец не сможет пролистнуть страницу с этого места.
+          className="flex-1 cursor-grab touch-none select-none text-center text-xs tabular-nums text-gray-400 active:cursor-grabbing"
+        >
+          стр. {pageNumber}
+        </span>
+
+        <button
+          type="button"
+          data-testid="hw-page-move-right"
+          onClick={() => onMove(1)}
+          onPointerDown={e => e.stopPropagation()}
+          disabled={disabled || pageNumber === total}
+          aria-label={`Сдвинуть страницу ${pageNumber} вправо`}
+          title="Сдвинуть вправо"
+          className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
     </div>
   )
 }

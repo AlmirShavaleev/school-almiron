@@ -383,6 +383,54 @@ export function useTopicHomework(topicId: string | null) {
     [uploadAttemptFiles],
   )
 
+  /**
+   * Новый порядок страниц работы.
+   *
+   * Порядок держит `position`, и он уезжает преподавателю: после отправки
+   * работа читается сверху вниз именно так. Поэтому пишем в базу СРАЗУ, а не
+   * копим в состоянии до отправки.
+   *
+   * Показываем новый порядок оптимистично — ждать сеть на каждом нажатии
+   * стрелки было бы мучением. Но при ошибке записи возвращаем прежний порядок
+   * и отдаём причину наверх: экран, показывающий состояние, которого нет в
+   * базе, — это ровно урок §94. Молчаливый откат тоже не годится, он читается
+   * как «глюк».
+   *
+   * Уникального ограничения на (attempt_id, position) в базе нет, поэтому
+   * промежуточные значения не нужны — переписываем позиции одним заходом.
+   */
+  const reorderAttemptFiles = useCallback(async (attemptId: string, orderedIds: string[]) => {
+    const snapshot = attemptFilesRef.current
+
+    const mine = snapshot.filter(f => f.attempt_id === attemptId)
+    const byId = new Map(mine.map(f => [f.id, f]))
+    const reordered = orderedIds
+      .map(id => byId.get(id))
+      .filter((f): f is TopicHomeworkAttemptFileRow => !!f)
+    // Порядок обязан описывать РОВНО те же файлы: иначе строка потерялась бы
+    // из списка молча.
+    if (reordered.length !== mine.length) throw new Error('Порядок страниц устарел — обновите страницу')
+
+    const withPositions = reordered.map((f, i) => ({ ...f, position: i }))
+    setAttemptFiles(prev => [
+      ...prev.filter(f => f.attempt_id !== attemptId),
+      ...withPositions,
+    ])
+
+    try {
+      for (const file of withPositions) {
+        const { error: err } = await supabase
+          .from('topic_homework_attempt_files')
+          .update({ position: file.position })
+          .eq('id', file.id)
+        if (err) throw err
+      }
+    } catch (e) {
+      setAttemptFiles(snapshot)
+      throw e instanceof Error ? e : new Error('Не удалось сохранить порядок страниц')
+    }
+  }, [])
+
   const removeAttemptFile = useCallback(async (fileId: string, storagePath: string) => {
     const { error: err } = await supabase.from('topic_homework_attempt_files').delete().eq('id', fileId)
     if (err) throw err
@@ -457,7 +505,7 @@ export function useTopicHomework(topicId: string | null) {
     homework, files, attempts, attemptFiles, reviews, studentNames,
     loading, error, reload,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
-    startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, submitAttempt,
+    startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, reorderAttemptFiles, submitAttempt,
     reviewAttempt, notifyStudents, loadNotifyTargets,
   }
 }

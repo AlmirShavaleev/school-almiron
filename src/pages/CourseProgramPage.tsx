@@ -42,6 +42,8 @@ import { Button } from '@/components/ui/Button'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
+import { TopicHomeworkBadge } from '@/components/courseProgram/TopicHomeworkBadge'
+import { groupHomeworkByTopic, type TopicHomeworkRow } from '@/lib/topicHomeworkState'
 import {
   TOPIC_MATERIAL_SECTIONS, TOPIC_SECTION_ORDER, TOPIC_SECTION_SHORT_LABELS,
   type TopicSection,
@@ -332,10 +334,12 @@ function TopicDragOverlay({ topic, topicNumber }: { topic: Topic; topicNumber: s
 
 // ─── HW table (view mode) ────────────────────────────────────────────────────
 function HwTable({
-  modules, homeworkByTopic, onOpenTopic, onOpenHomeworkTab, onToggleTopicOpen,
+  modules, homeworkByTopic, homeworkStateByTopic, onOpenTopic, onOpenHomeworkTab, onToggleTopicOpen,
 }: {
   modules: Module[]
   homeworkByTopic: Record<string, TopicHomeworkV2Summary>
+  /** Состояние ДЗ темы: есть ли задание, выдано ли, до какого числа (§117). */
+  homeworkStateByTopic: Record<string, TopicHomeworkRow[]>
   onOpenTopic: (topic: Topic, moduleTitle: string) => void
   onOpenHomeworkTab: () => void
   onToggleTopicOpen: (topicId: string, isOpen: boolean) => Promise<void>
@@ -387,6 +391,7 @@ function HwTable({
                           </span>
                         </button>
                         <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
+                        <TopicHomeworkBadge rows={homeworkStateByTopic[topic.id] ?? []} />
                         {hw && (
                           <button
                             onClick={onOpenHomeworkTab}
@@ -426,12 +431,14 @@ function HwTable({
 
 // Edit mode: topic row with inline editing controls
 function TopicRowEdit({
-  topic, topicNumber, onSave, onDelete, onOpenMaterials, onCopyTopic, homeworkCount, moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
+  topic, topicNumber, onSave, onDelete, onOpenMaterials, onCopyTopic, homeworkCount, homeworkRows = [], moduleTitle, startEditing = false, onCancelCreate, dragHandle, isDragging,
 }: {
   topic: Topic
   topicNumber: string
   moduleTitle: string
   homeworkCount?: number
+  /** Строки ДЗ темы из общего запроса по курсу (§117). */
+  homeworkRows?: TopicHomeworkRow[]
   startEditing?: boolean
   onCancelCreate?: () => Promise<void>
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
@@ -481,6 +488,7 @@ function TopicRowEdit({
                 />
               </div>
               <TopicOpenToggle topic={topic} onToggle={v => onSave(topic.id, { is_open: v })} />
+              <TopicHomeworkBadge rows={homeworkRows} />
             </div>
           </div>
         </div>
@@ -533,6 +541,7 @@ function SortableTopicRow({
   topicNumber,
   moduleTitle,
   homeworkCount,
+  homeworkRows,
   startEditing,
   onCancelCreate,
   onSave,
@@ -545,6 +554,7 @@ function SortableTopicRow({
   topicNumber: string
   moduleTitle: string
   homeworkCount?: number
+  homeworkRows?: TopicHomeworkRow[]
   startEditing?: boolean
   onCancelCreate?: () => Promise<void>
   onSave: (id: string, v: Partial<Topic>) => Promise<void>
@@ -573,6 +583,7 @@ function SortableTopicRow({
         topicNumber={topicNumber}
         moduleTitle={moduleTitle}
         homeworkCount={homeworkCount}
+        homeworkRows={homeworkRows}
         startEditing={startEditing}
         onCancelCreate={onCancelCreate}
         onSave={onSave}
@@ -592,13 +603,14 @@ function SortableTopicRow({
 
 // ─── Module card ─────────────────────────────────────────────────────────────
 function ModuleCard({
-  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCopyTopic, homeworkCountsByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
+  module, moduleNumber, canEdit, editMode, onSaveModule, onDeleteModule, onSaveTopic, onDeleteTopic, onAddTopic, onOpenMaterials, onCopyTopic, homeworkCountsByTopic, homeworkStateByTopic, creatingTopicId, onCancelCreateTopic, startEditingModule, onCancelCreateModule, isReordering,
 }: {
   module: Module
   moduleNumber: number
   canEdit: boolean
   editMode: boolean
   homeworkCountsByTopic: Record<string, number>
+  homeworkStateByTopic: Record<string, TopicHomeworkRow[]>
   creatingTopicId: string | null
   onCancelCreateTopic: (topicId: string) => Promise<void>
   startEditingModule: boolean
@@ -692,6 +704,7 @@ function ModuleCard({
                 topicNumber={getTopicDisplayNumber(moduleNumber - 1, topicIndex)}
                 moduleTitle={module.title}
                 homeworkCount={homeworkCountsByTopic[t.id] ?? 0}
+                homeworkRows={homeworkStateByTopic[t.id] ?? []}
                 startEditing={creatingTopicId === t.id}
                 onCancelCreate={() => onCancelCreateTopic(t.id)}
                 onSave={onSaveTopic}
@@ -1334,7 +1347,10 @@ function CourseCopiesShelf({ template, copies }: { template: Course; copies: Cou
   const [open, setOpen] = useState(true)
 
   return (
-    <div data-testid={`course-copies-of-${template.id}`} className="ml-3 border-l-2 border-primary-100 pl-3">
+    <div
+      data-testid={`course-copies-of-${template.id}`}
+      className="ml-3 rounded-xl border-l-2 border-primary-100 bg-primary-50/40 py-1.5 pl-3 pr-2"
+    >
       <button
         type="button"
         aria-expanded={open}
@@ -1354,14 +1370,28 @@ function CourseCopiesShelf({ template, copies }: { template: Course; copies: Cou
               // Полное название — подсказкой: короткое имя не должно мешать
               // убедиться, что это за курс, не открывая его.
               title={c.title}
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-700"
+              /*
+                Белая карточка-кнопка на голубоватой полке (§115). Строкой без
+                фона копия не читалась как нажимаемая — владелец на живом
+                просмотре не понял, ссылка это или просто текст. Высота
+                остаётся строчной: полноразмерная плитка сломала бы ряд
+                шаблонов, ради которого делался §114.
+              */
+              className="group/copy flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 transition-all hover:border-primary-300 hover:text-primary-700 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
             >
-              <span className="truncate font-medium">{copyDisplayTitle(c.title, template.title)}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{copyDisplayTitle(c.title, template.title)}</span>
               {c.is_draft && (
                 <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                   черновик
                 </span>
               )}
+              {/* Стрелка — признак перехода: по ней видно, что карточка ведёт
+                  в курс, а не просто подписана. */}
+              <ChevronRight
+                size={14}
+                data-testid="course-copy-arrow"
+                className="shrink-0 text-gray-300 transition-colors group-hover/copy:text-primary-400"
+              />
             </Link>
           ))}
         </div>
@@ -1523,6 +1553,36 @@ export function CourseProgramPage() {
     }, {}),
     [templates],
   )
+
+  /**
+   * Состояние ДЗ по темам курса — ОДНИМ запросом (§117).
+   *
+   * В строке темы видно, есть ли задание и до какого числа. Запрос на строку
+   * здесь означал бы 169 запросов на открытие курса, поэтому берём разом все
+   * темы и раскладываем по id. Источник тот же, что у модалки, — таблица
+   * `topic_homework`; второй механизм не заводим.
+   */
+  const [homeworkStateByTopic, setHomeworkStateByTopic] = useState<Record<string, TopicHomeworkRow[]>>({})
+
+  useEffect(() => {
+    const topicIds = modules.flatMap(m => m.topics.map(t => t.id))
+    if (topicIds.length === 0) {
+      setHomeworkStateByTopic({})
+      return
+    }
+    let cancelled = false
+
+    supabase
+      .from('topic_homework')
+      .select('topic_id, is_published, due_at')
+      .in('topic_id', topicIds)
+      .then(({ data }) => {
+        if (cancelled) return
+        setHomeworkStateByTopic(groupHomeworkByTopic((data ?? []) as unknown as TopicHomeworkRow[]))
+      })
+
+    return () => { cancelled = true }
+  }, [modules, matRefreshKey])
 
   // Производная величина, а не состояние: считаем на месте. Раньше её клали
   // в useState через useEffect — это и был источник цикла выше.
@@ -2091,6 +2151,7 @@ export function CourseProgramPage() {
                             canEdit={canEdit}
                             editMode={editMode}
                             homeworkCountsByTopic={homeworkCountsByTopic}
+                            homeworkStateByTopic={homeworkStateByTopic}
                             creatingTopicId={creatingTopicId}
                             onCancelCreateTopic={handleCancelCreateTopic}
                             startEditingModule={creatingModuleId === mod.id}
@@ -2129,6 +2190,7 @@ export function CourseProgramPage() {
                   <HwTable
                     modules={modules}
                     homeworkByTopic={homeworkByTopic}
+                    homeworkStateByTopic={homeworkStateByTopic}
                     onOpenTopic={openMaterials}
                     onOpenHomeworkTab={() => setTab('homework')}
                     onToggleTopicOpen={handleToggleTopicOpen}

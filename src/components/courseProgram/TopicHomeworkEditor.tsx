@@ -4,7 +4,6 @@ import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
-import { TopicHomeworkSubmissions } from '@/components/courseProgram/TopicHomeworkSubmissions'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
@@ -22,10 +21,15 @@ function isImageName(name: string | null): boolean {
 
 /**
  * Преподавательский блок ДЗ темы: прикрепить файлы, задать дедлайн и баллы,
- * опубликовать, оповестить в Telegram — и тут же проверить работы.
+ * опубликовать, оповестить в Telegram.
  *
  * Названия и инструкции в интерфейсе нет: ДЗ — это прикреплённые файлы.
  * Сама строка ДЗ создаётся лениво, при первом действии преподавателя.
+ *
+ * Работ учеников здесь НЕТ (§117). Аккордеон «Работы учеников» из §93 убран
+ * вместе со своими запросами: проверка живёт в разделе «Проверки ДЗ», а
+ * модалка темы — про настройку задания. Держать разбор работ в двух местах
+ * значило бы чинить его дважды.
  */
 export function TopicHomeworkEditor({ topicId, className }: { topicId: string; className?: string }) {
   const {
@@ -408,14 +412,6 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             loadTargets={loadNotifyTargets}
             onNotify={notifyStudents}
             openSignal={notifyOpen}
-          />
-        )}
-
-        {homework && (
-          <TopicHomeworkSubmissions
-            className="mt-3"
-            homeworkId={homework.id}
-            gradeScale={homework.grade_scale}
           />
         )}
 

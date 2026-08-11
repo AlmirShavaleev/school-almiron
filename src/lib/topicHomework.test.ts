@@ -17,6 +17,7 @@ import {
   isOverdue,
   latestReview,
   dueUrgency,
+  moveItem,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkAttemptStatus,
   type TopicHomeworkReviewRow,
@@ -350,5 +351,30 @@ describe('dueUrgency — категоризация срока', () => {
     const result = dueUrgency('2026-08-04', '2026-08-01')
     expect(result.level).toBe('soon')
     expect(result.days).toBe(3)
+  })
+})
+
+describe('moveItem — одно правило перестановки на стрелки и перетаскивание', () => {
+  it('двигает элемент вперёд и назад', () => {
+    expect(moveItem(['a', 'b', 'c'], 1, 0)).toEqual(['b', 'a', 'c'])
+    expect(moveItem(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('за границы не двигает и список не портит', () => {
+    // Крайняя страница: «двигать некуда» — не ошибка, а тот же список.
+    expect(moveItem(['a', 'b'], 0, -1)).toEqual(['a', 'b'])
+    expect(moveItem(['a', 'b'], 1, 2)).toEqual(['a', 'b'])
+    expect(moveItem(['a', 'b'], 5, 0)).toEqual(['a', 'b'])
+  })
+
+  it('исходный массив не меняет', () => {
+    const source = ['a', 'b', 'c']
+    moveItem(source, 0, 2)
+    expect(source).toEqual(['a', 'b', 'c'])
+  })
+
+  it('перестановка на место самого себя возвращает тот же список', () => {
+    const source = ['a', 'b']
+    expect(moveItem(source, 1, 1)).toBe(source)
   })
 })

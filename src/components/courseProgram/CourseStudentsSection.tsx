@@ -337,24 +337,14 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         }
 
         // Load enrolled students
-        let enrolledResult: any = await supabase
+        const enrolledResult: any = await supabase
           .from('group_students')
           .select(
-            'student_id, created_at, groups!inner(id, name, course_id), students!inner(id, profile_id, profiles!inner(id, full_name, email, phone))'
+            'student_id, joined_at, groups!inner(id, name, course_id), students!inner(id, profile_id, profiles!inner(id, full_name, email, phone))'
           )
           .eq('groups.course_id', courseId)
 
-        // If error about created_at column, retry without it
-        if (enrolledResult.error) {
-          enrolledResult = await supabase
-            .from('group_students')
-            .select(
-              'student_id, groups!inner(id, name, course_id), students!inner(id, profile_id, profiles!inner(id, full_name, email, phone))'
-            )
-            .eq('groups.course_id', courseId)
-
-          if (enrolledResult.error) throw new Error(enrolledResult.error.message)
-        }
+        if (enrolledResult.error) throw new Error(enrolledResult.error.message)
 
         const enrolledData = (enrolledResult.data || []) as any[]
 
@@ -369,7 +359,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
           const email = row.students?.profiles?.email || ''
           const phone = row.students?.profiles?.phone || null
           const groupName = row.groups?.name || ''
-          const enrolledAt = (row as any).created_at || null
+          const enrolledAt = (row as any).joined_at || null
 
           if (!studentMap.has(studentId)) {
             studentMap.set(studentId, {
