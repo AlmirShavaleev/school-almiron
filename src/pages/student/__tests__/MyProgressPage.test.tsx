@@ -3,12 +3,20 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MyProgressPage } from '@/pages/student/MyProgressPage'
 
+/**
+ * §122. Страница переписана с двух МЁРТВЫХ контуров на живой.
+ *
+ * Прежний тест описывал Homework V2 (`useStudentHomeworkSummary`,
+ * `useMyHomeworkAssignments`) — контур с нулём строк на проде, из-за которого
+ * ученик с принятой работой видел сплошные нули. Замысел теста сохранён:
+ * страница обязана показывать РЕАЛЬНОЕ состояние работ и не рисовать
+ * показателей, под которыми нет источника.
+ */
+
 const fromSpy = vi.fn()
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: (table: string) => fromSpy(table),
-  },
+  supabase: { from: (table: string) => fromSpy(table) },
 }))
 
 vi.mock('@/store/authStore', () => ({
@@ -18,172 +26,19 @@ vi.mock('@/store/authStore', () => ({
 
 vi.mock('@/hooks/useStudentProfile', () => ({
   useStudentProfile: () => ({
-    data: {
-      attendance_percent: 95,
-      attendance_present: 19,
-      attendance_late: 1,
-      attendance_absent: 0,
-      hw_completion_pct: 80,
-      course_progress_pct: 72,
-      target_score: 85,
-      mock_results: [],
-      mock_avg: null,
-      recent_attendance: [],
-      groups: [],
-    },
+    data: { target_score: 85, groups: [{ id: 'g1', name: '11А', course_title: 'Физика ЕГЭ' }] },
     loading: false,
   }),
 }))
 
-vi.mock('@/hooks/useStudentHomeworkSummary', () => ({
-  useStudentHomeworkSummary: () => ({
-    summary: {
-      new: 1,
-      to_do: 2,
-      under_review: 3,
-      returned_for_revision: 1,
-      checked: 4,
-      overdue: 2,
-      nearest_due_at: '2026-07-24T00:00:00Z',
-      nearest_assignment_id: 'a-nearest',
-    },
-    loading: false,
-    error: null,
-  }),
-}))
+const progress = {
+  topics: { done: 3, total: 5, percent: 60 },
+  homework: { accepted: 4, submitted: 1, returned: 2, pending: 3, total: 10 },
+  averagePercent: 90,
+}
 
-vi.mock('@/hooks/useMyHomeworkAssignments', () => ({
-  useMyHomeworkAssignments: () => ({
-    rows: [
-      {
-        assignment_id: 'a-1',
-        template_id: 't-1',
-        template_version_id: 'tv-1',
-        template_title: 'Просроченное ДЗ',
-        course_id: 'course-1',
-        group_id: 'group-1',
-        group_name: '10А',
-        student_id: 'student-1',
-        student_name: 'Ученик',
-        status: 'published',
-        publish_at: '2026-07-01T00:00:00Z',
-        due_at: '2026-07-20T00:00:00Z',
-        due_at_override: null,
-        effective_due_at: '2026-07-20T00:00:00Z',
-        viewed_at: '2026-07-02T00:00:00Z',
-        is_excused: false,
-        max_attempts: null,
-        allow_late_submission: true,
-        attempts_count: 1,
-        latest_attempt_id: 'att-1',
-        latest_attempt_number: 1,
-        latest_attempt_status: 'returned_for_revision',
-        latest_submitted_at: '2026-07-18T00:00:00Z',
-        latest_score: 60,
-        latest_review_decision: 'returned_for_revision',
-        latest_review_comment: 'Доработать',
-        latest_reviewed_at: '2026-07-19T00:00:00Z',
-        category: 'returned_for_revision',
-        overdue: true,
-      },
-      {
-        assignment_id: 'a-2',
-        template_id: 't-2',
-        template_version_id: 'tv-2',
-        template_title: 'Принято 1',
-        course_id: 'course-1',
-        group_id: 'group-1',
-        group_name: '10А',
-        student_id: 'student-1',
-        student_name: 'Ученик',
-        status: 'published',
-        publish_at: '2026-07-01T00:00:00Z',
-        due_at: '2026-07-22T00:00:00Z',
-        due_at_override: null,
-        effective_due_at: '2026-07-22T00:00:00Z',
-        viewed_at: '2026-07-02T00:00:00Z',
-        is_excused: false,
-        max_attempts: null,
-        allow_late_submission: true,
-        attempts_count: 1,
-        latest_attempt_id: 'att-2',
-        latest_attempt_number: 1,
-        latest_attempt_status: 'accepted',
-        latest_submitted_at: '2026-07-21T00:00:00Z',
-        latest_score: 80,
-        latest_review_decision: 'accepted',
-        latest_review_comment: 'Хорошо',
-        latest_reviewed_at: '2026-07-22T00:00:00Z',
-        category: 'checked',
-        overdue: false,
-      },
-      {
-        assignment_id: 'a-3',
-        template_id: 't-3',
-        template_version_id: 'tv-3',
-        template_title: 'Принято 2',
-        course_id: 'course-1',
-        group_id: 'group-1',
-        group_name: '10А',
-        student_id: 'student-1',
-        student_name: 'Ученик',
-        status: 'published',
-        publish_at: '2026-07-01T00:00:00Z',
-        due_at: '2026-07-22T00:00:00Z',
-        due_at_override: null,
-        effective_due_at: '2026-07-22T00:00:00Z',
-        viewed_at: '2026-07-02T00:00:00Z',
-        is_excused: false,
-        max_attempts: null,
-        allow_late_submission: true,
-        attempts_count: 1,
-        latest_attempt_id: 'att-3',
-        latest_attempt_number: 1,
-        latest_attempt_status: 'accepted',
-        latest_submitted_at: '2026-07-21T00:00:00Z',
-        latest_score: 100,
-        latest_review_decision: 'accepted',
-        latest_review_comment: 'Отлично',
-        latest_reviewed_at: '2026-07-22T00:00:00Z',
-        category: 'checked',
-        overdue: false,
-      },
-      {
-        assignment_id: 'a-4',
-        template_id: 't-4',
-        template_version_id: 'tv-4',
-        template_title: 'Отклонено',
-        course_id: 'course-1',
-        group_id: 'group-1',
-        group_name: '10А',
-        student_id: 'student-1',
-        student_name: 'Ученик',
-        status: 'published',
-        publish_at: '2026-07-01T00:00:00Z',
-        due_at: '2026-07-22T00:00:00Z',
-        due_at_override: null,
-        effective_due_at: '2026-07-22T00:00:00Z',
-        viewed_at: '2026-07-02T00:00:00Z',
-        is_excused: false,
-        max_attempts: null,
-        allow_late_submission: true,
-        attempts_count: 1,
-        latest_attempt_id: 'att-4',
-        latest_attempt_number: 1,
-        latest_attempt_status: 'rejected',
-        latest_submitted_at: '2026-07-21T00:00:00Z',
-        latest_score: 0,
-        latest_review_decision: 'rejected',
-        latest_review_comment: 'Не принято',
-        latest_reviewed_at: '2026-07-22T00:00:00Z',
-        category: 'checked',
-        overdue: false,
-      },
-    ],
-    loading: false,
-    error: null,
-    reload: vi.fn(),
-  }),
+vi.mock('@/hooks/useMyProgress', () => ({
+  useMyProgress: () => ({ progress, loading: false, error: null }),
 }))
 
 vi.mock('@/components/journal/JournalView', () => ({
@@ -203,28 +58,63 @@ function makeChain(result: { data: unknown; error: unknown }) {
   return chain
 }
 
-describe('MyProgressPage — Homework V2', () => {
-  it('shows V2 statuses, overdue alert, and averages only accepted scored work', async () => {
-    fromSpy.mockImplementation((table: string) => {
-      if (table === 'students') return makeChain({ data: { id: 'student-1' }, error: null })
-      return makeChain({ data: null, error: null })
-    })
+function renderPage() {
+  fromSpy.mockImplementation((table: string) => {
+    if (table === 'students') return makeChain({ data: { id: 'student-1' }, error: null })
+    return makeChain({ data: null, error: null })
+  })
+  return render(
+    <MemoryRouter>
+      <MyProgressPage />
+    </MemoryRouter>,
+  )
+}
 
-    render(
-      <MemoryRouter>
-        <MyProgressPage />
-      </MemoryRouter>,
-    )
+describe('MyProgressPage — живой контур', () => {
+  it('главный показатель — завершённые темы, а не доля разделов', async () => {
+    renderPage()
 
-    await waitFor(() => expect(screen.getByText('нужно сдать')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Темы завершены')).toBeInTheDocument())
+    expect(screen.getByTestId('progress-topics')).toHaveTextContent('3 из 5')
+    expect(screen.getByText('60%')).toBeInTheDocument()
+  })
+
+  it('состояние работ показывает из журнала тем', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Домашние задания')).toBeInTheDocument())
     expect(screen.getByText('на проверке')).toBeInTheDocument()
     expect(screen.getByText('на доработке')).toBeInTheDocument()
-    expect(screen.getByText('проверено')).toBeInTheDocument()
-    expect(screen.getByText('просрочено')).toBeInTheDocument()
-    expect(screen.getByText(/Просроченные задания \(1\)/)).toBeInTheDocument()
-    expect(screen.getAllByText('90%').length).toBeGreaterThan(0)
-    expect(screen.getByText('по принятым работам')).toBeInTheDocument()
-    expect(screen.getByText('Просроченное ДЗ')).toBeInTheDocument()
-    expect(screen.queryByText(/Среднее: 60%/)).not.toBeInTheDocument()
+    expect(screen.getByText('принято')).toBeInTheDocument()
+    expect(screen.getByText('ещё не сдано: 3')).toBeInTheDocument()
+  })
+
+  it('мёртвых показателей на странице не осталось', async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Темы завершены')).toBeInTheDocument())
+    // Посещаемость, пробники и легаси-«Сдача ДЗ» снесены вместе с запросами.
+    expect(screen.queryByText('Посещаемость')).not.toBeInTheDocument()
+    expect(screen.queryByText('Сдача ДЗ')).not.toBeInTheDocument()
+    expect(screen.queryByText(/пробник/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Последние занятия')).not.toBeInTheDocument()
+    expect(screen.queryByText('Статусы ДЗ')).not.toBeInTheDocument()
+  })
+
+  it('объясняет, из чего складывается завершённость темы', async () => {
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByText(/отмечены все её разделы и принято домашнее/i)).toBeInTheDocument())
+  })
+})
+
+describe('MyProgressPage — плитка без источника не рисуется', () => {
+  it('без принятых работ с оценкой среднего балла нет', async () => {
+    progress.averagePercent = null as unknown as number
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Темы завершены')).toBeInTheDocument())
+    expect(screen.queryByText('по принятым работам')).not.toBeInTheDocument()
+    progress.averagePercent = 90
   })
 })

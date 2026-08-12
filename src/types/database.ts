@@ -5028,6 +5028,48 @@ export type Database = {
           },
         ]
       }
+      // Дописано руками в формате генератора (§111.6, решение оркестратора
+      // 12.08): MCP-генерация отдаёт этот файл целиком — тысячи строк, и в
+      // контекст сессии он не помещается. СВЕРИТЬ при следующей полной
+      // генерации. Схема сверена по проду запросом, а не по этому файлу:
+      // student_id uuid NOT NULL, topic_id uuid NOT NULL, section text NOT NULL,
+      // marked_at timestamptz NOT NULL, PK (student_id, topic_id, section).
+      topic_section_marks: {
+        Row: {
+          marked_at: string
+          section: string
+          student_id: string
+          topic_id: string
+        }
+        Insert: {
+          marked_at?: string
+          section: string
+          student_id: string
+          topic_id: string
+        }
+        Update: {
+          marked_at?: string
+          section?: string
+          student_id?: string
+          topic_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_section_marks_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_section_marks_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_test_answers: {
         Row: {
           answer_text: string

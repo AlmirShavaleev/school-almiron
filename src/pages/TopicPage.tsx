@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  ArrowLeft, ChevronRight, ExternalLink, GraduationCap,
+  ArrowLeft, Check, ChevronRight, Circle, ExternalLink, GraduationCap,
   Loader2, Lock, Play, Video, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -16,6 +16,8 @@ import {
   STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, groupTopicSections, isMaterialSection,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
+import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
+import { isSelfMarkable } from '@/lib/topicProgress'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,6 +86,12 @@ export function TopicPage() {
   // не общим запросом ниже: RPC сама решает, что ученику видно, включая
   // закрытую тему.
   const { variants: topicVariants } = useTopicStudentVariants(topicId ?? undefined)
+
+  // Самоотметки по разделам. Персонал заходит на эту же страницу; у него своей
+  // строки `students` нет, хук отдаёт пустой набор и кнопки не будет — отмечать
+  // за ученика нельзя (это и есть смысл самоотметки).
+  const sectionMarks = useTopicSectionMarks(topicId ?? null)
+  const [markError, setMarkError] = useState<string | null>(null)
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -314,6 +322,64 @@ export function TopicPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/*
+        ── Отметка раздела ──
+        Кнопка стоит НАД содержимым активной вкладки: отмечают после того, как
+        посмотрели, и искать переключатель под длинным конспектом пришлось бы
+        прокруткой.
+
+        Три случая, и все три — про честность подписи:
+         · ДЗ отметить нельзя вовсе — засчитывает преподаватель, приняв работу;
+         · «Решение ДЗ» под гейтом (§95) не отмечается, пока закрыто;
+         · остальное — самоотметка, и подпись прямо это говорит: «отметил сам»,
+           а не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно
+           и с этим не смешивается.
+      */}
+      {active !== null && (
+        active === 'homework' ? (
+          <div
+            data-testid="topic-section-homework-note"
+            className="rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-2 text-xs text-gray-500"
+          >
+            Этот раздел засчитывается сам — когда преподаватель примет работу.
+          </div>
+        ) : sectionMarks.canMark && !(active === 'solution' && solutionState.hasSolution && !solutionState.unlocked) && isSelfMarkable(active as TopicSection) ? (
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              data-testid="topic-section-mark"
+              aria-pressed={sectionMarks.marks.has(active as TopicSection)}
+              disabled={sectionMarks.loading}
+              onClick={async () => {
+                setMarkError(null)
+                try {
+                  await sectionMarks.toggle(active as TopicSection)
+                } catch (e: any) {
+                  // Откат уже сделал хук; человеку нужна причина, иначе
+                  // возврат галочки читается как «глюк» (§94).
+                  setMarkError(e?.message ?? 'Не удалось сохранить отметку')
+                }
+              }}
+              className={cn(
+                'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50',
+                sectionMarks.marks.has(active as TopicSection)
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900',
+              )}
+            >
+              {sectionMarks.marks.has(active as TopicSection)
+                ? <><Check size={15} />Отметил сам</>
+                : <><Circle size={15} />Отметить как сделанное</>}
+            </button>
+            {markError && (
+              <div data-testid="topic-section-mark-error" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+                {markError}
+              </div>
+            )}
+          </div>
+        ) : null
       )}
 
       {/* ── Tab content ── */}

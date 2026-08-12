@@ -1,23 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  TrendingUp, CheckCircle, Clock, X as XIcon,
-  Target, Loader2, Users, BookOpen, ChevronRight,
-  UserCheck, ClipboardList, BarChart3,
+  Target, Loader2, Users, BookOpen, ChevronRight, ClipboardList, BarChart3,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
-import { useStudentHomeworkSummary } from '@/hooks/useStudentHomeworkSummary'
-import { useMyHomeworkAssignments } from '@/hooks/useMyHomeworkAssignments'
+import { useMyProgress } from '@/hooks/useMyProgress'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, LineChart, Line, Cell,
-} from 'recharts'
 import { JournalView } from '@/components/journal/JournalView'
-import type { JournalAssignment } from '@/types/journal'
 
 function Ring({ value, color, size = 88 }: { value: number; color: string; size?: number }) {
   const r = size / 2 - 9
@@ -34,18 +26,25 @@ function Ring({ value, color, size = 88 }: { value: number; color: string; size?
   )
 }
 
-function AttIcon({ status }: { status: string }) {
-  if (status === 'present') return <CheckCircle size={14} className="text-green-500 shrink-0" />
-  if (status === 'absent')  return <XIcon size={14} className="text-red-500 shrink-0" />
-  if (status === 'late')    return <Clock size={14} className="text-orange-400 shrink-0" />
-  if (status === 'excused') return <CheckCircle size={14} className="text-blue-400 shrink-0" />
-  return null
-}
-
 function pctColor(v: number, thresholds = [80, 50]) {
   return v >= thresholds[0] ? '#22c55e' : v >= thresholds[1] ? '#eab308' : '#ef4444'
 }
 
+/**
+ * «Мой прогресс» ученика.
+ *
+ * До §122 страница стояла на ДВУХ мёртвых контурах сразу и потому врала: у
+ * ученика с принятой работой и оценкой 5 экран показывал «Сдача ДЗ 0%», «0
+ * проверено» и нули в «Статусах ДЗ». Первый источник — легаси
+ * (`useStudentProfile` → `attendance`, `homework_submissions`,
+ * `mock_exam_results`, все пусты), второй — Homework V2
+ * (`get_student_homework_summary` → `_homework_v2_base`, `homework_assignments`
+ * пуст). Оба снесены отсюда целиком: не чинить и не прятать, а удалить вместе
+ * с запросами — как в §111.
+ *
+ * Теперь показатель один и живой: доля ЗАВЕРШЁННЫХ ТЕМ (все разделы отмечены и
+ * ДЗ принято) плюс состояние работ из `get_student_topic_journal`.
+ */
 export function MyProgressPage() {
   const profile = useAuthStore(s => s.profile)
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -57,10 +56,12 @@ export function MyProgressPage() {
       .then(({ data }) => { setStudentId(data?.id || null); setResolving(false) })
   }, [profile?.id])
 
+  // Из профиля осталась ровно одна живая величина — цель по баллам; она лежит
+  // в `students`, а не в мёртвых таблицах.
   const { data: s, loading } = useStudentProfile(studentId)
-  const { summary: hwSummary, loading: hwSummaryLoading } = useStudentHomeworkSummary()
-  const { rows: hwRows, loading: hwRowsLoading } = useMyHomeworkAssignments()
-  if (resolving || loading || hwSummaryLoading || hwRowsLoading) {
+  const { progress, loading: loadingProgress, error } = useMyProgress()
+
+  if (resolving || loading || loadingProgress) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <Loader2 size={28} className="animate-spin text-primary-600" />
@@ -78,61 +79,11 @@ export function MyProgressPage() {
     )
   }
 
-  const overdueHW = hwRows.filter(row => row.overdue && !row.is_excused)
-  const acceptedScoredRows = hwRows.filter(row => row.latest_review_decision === 'accepted' && row.latest_score != null)
-  const hwAverageScore = acceptedScoredRows.length > 0
-    ? Math.round((acceptedScoredRows.reduce((sum, row) => sum + (row.latest_score || 0), 0) / acceptedScoredRows.length) * 10) / 10
-    : null
-
-  const hwScoreData = acceptedScoredRows
-    .slice(0, 10).reverse()
-    .map((row, i) => ({
-      name:  `ДЗ ${i + 1}`,
-      score: Math.round(row.latest_score ?? 0),
-      title: row.template_title,
-    }))
-
-  const mockChartData = s.mock_results.slice().reverse().map(m => ({
-    name:  new Date(m.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
-    score: Math.round(m.score / m.max_score * 100),
-  }))
-
-  const rings = [
-    {
-      label:    'Посещаемость',
-      value:    s.attendance_percent,
-      color:    pctColor(s.attendance_percent),
-      sub:      <span className="text-xs flex gap-2">
-                  <span className="text-green-600 font-medium">{s.attendance_present}✓</span>
-                  <span className="text-orange-500">{s.attendance_late}⏱</span>
-                  <span className="text-red-500">{s.attendance_absent}✗</span>
-                </span>,
-    },
-    {
-      label:    'Сдача ДЗ',
-      value:    s.hw_completion_pct,
-      color:    pctColor(s.hw_completion_pct),
-      sub:      <span className="text-xs text-gray-400">{hwSummary?.checked ?? 0} проверено</span>,
-    },
-    {
-      label:    'Средний балл',
-      value:    hwAverageScore ?? 0,
-      color:    '#6366f1',
-      valueLabel: hwAverageScore != null ? `${hwAverageScore}%` : '—',
-      sub:      <span className="text-xs text-gray-400">по принятым работам</span>,
-    },
-    {
-      label:    'Прогресс курса',
-      value:    s.course_progress_pct,
-      color:    pctColor(s.course_progress_pct, [70, 40]),
-      sub:      <span className="text-xs text-gray-400">тем пройдено</span>,
-    },
-  ]
+  const { topics, homework, averagePercent } = progress
 
   return (
     <div className="space-y-6 max-w-3xl">
 
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Мой прогресс</h1>
         {s.target_score && (
@@ -142,157 +93,74 @@ export function MyProgressPage() {
         )}
       </div>
 
-      {/* 4 metric rings */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {rings.map(ring => (
-          <Card key={ring.label} className="flex flex-col items-center py-5 gap-2">
+      {error && (
+        <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
+
+      {/*
+        Плитки только там, где есть источник. Посещаемость, пробники и
+        легаси-ДЗ убраны вместе с запросами: рисовать ноль там, где данных нет
+        вовсе, — врать увереннее, чем молчать.
+      */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="flex flex-col items-center py-5 gap-2">
+          <div className="relative">
+            <Ring value={topics.percent} color={pctColor(topics.percent, [70, 40])} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-lg font-extrabold" style={{ color: pctColor(topics.percent, [70, 40]) }}>
+                {topics.percent}%
+              </span>
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-gray-700 text-center">Темы завершены</div>
+          <span data-testid="progress-topics" className="text-xs text-gray-400">
+            {topics.done} из {topics.total}
+          </span>
+        </Card>
+
+        <Card className="flex flex-col justify-center py-5 gap-2">
+          <div className="text-xs font-semibold text-gray-700 text-center">Домашние задания</div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-xl font-bold text-yellow-700">{homework.submitted}</div>
+              <div className="text-[11px] text-gray-400">на проверке</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-red-600">{homework.returned}</div>
+              <div className="text-[11px] text-gray-400">на доработке</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-emerald-700">{homework.accepted}</div>
+              <div className="text-[11px] text-gray-400">принято</div>
+            </div>
+          </div>
+          {homework.pending > 0 && (
+            <div className="text-center text-[11px] text-gray-400">ещё не сдано: {homework.pending}</div>
+          )}
+        </Card>
+
+        {/* Средний балл — только когда есть принятые работы с оценкой. */}
+        {averagePercent != null && (
+          <Card className="flex flex-col items-center py-5 gap-2">
             <div className="relative">
-              <Ring value={ring.value} color={ring.color} />
+              <Ring value={averagePercent} color={pctColor(averagePercent)} />
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className={cn('text-lg font-extrabold')} style={{ color: ring.color }}>
-                  {ring.valueLabel ?? `${ring.value}%`}
+                <span className="text-lg font-extrabold" style={{ color: pctColor(averagePercent) }}>
+                  {averagePercent}%
                 </span>
               </div>
             </div>
-            <div className="text-xs font-semibold text-gray-700 text-center">{ring.label}</div>
-            {ring.sub}
+            <div className="text-xs font-semibold text-gray-700 text-center">Средний балл</div>
+            <span className="text-xs text-gray-400">по принятым работам</span>
           </Card>
-        ))}
+        )}
       </div>
 
-      {/* Overdue HW alert */}
-      {overdueHW.length > 0 && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-          <ClipboardList size={18} className="text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <div className="text-sm font-semibold text-red-700">Просроченные задания ({overdueHW.length})</div>
-            <div className="text-xs text-red-500 mt-1">
-              {overdueHW.slice(0, 3).map(row => row.template_title).join(' · ')}
-              {overdueHW.length > 3 && ` +${overdueHW.length - 3}`}
-            </div>
-          </div>
-          <Link to="/my-homeworks" className="ml-auto text-xs text-red-600 font-medium flex items-center gap-0.5 shrink-0">
-            Открыть<ChevronRight size={12} />
-          </Link>
-        </div>
-      )}
+      <div className={cn('rounded-2xl border border-dashed border-gray-200 px-4 py-3 text-xs text-gray-500')}>
+        Тема считается завершённой, когда отмечены все её разделы и принято домашнее
+        задание. Разделы отмечает сам ученик — на странице темы.
+      </div>
 
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-semibold text-gray-900 flex items-center gap-2">
-            <ClipboardList size={16} className="text-primary-500" />
-            Статусы ДЗ
-          </div>
-          <Link to="/my-homeworks" className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
-            Все задания<ChevronRight size={12} />
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="rounded-xl bg-orange-50 p-3 text-center">
-            <div className="text-xl font-bold text-orange-600">{hwSummary?.to_do ?? 0}</div>
-            <div className="text-xs text-orange-500 mt-0.5">нужно сдать</div>
-          </div>
-          <div className="rounded-xl bg-yellow-50 p-3 text-center">
-            <div className="text-xl font-bold text-yellow-700">{hwSummary?.under_review ?? 0}</div>
-            <div className="text-xs text-yellow-600 mt-0.5">на проверке</div>
-          </div>
-          <div className="rounded-xl bg-red-50 p-3 text-center">
-            <div className="text-xl font-bold text-red-600">{hwSummary?.returned_for_revision ?? 0}</div>
-            <div className="text-xs text-red-500 mt-0.5">на доработке</div>
-          </div>
-          <div className="rounded-xl bg-green-50 p-3 text-center">
-            <div className="text-xl font-bold text-green-700">{hwSummary?.checked ?? 0}</div>
-            <div className="text-xs text-green-500 mt-0.5">проверено</div>
-          </div>
-          <div className={cn('rounded-xl p-3 text-center', (hwSummary?.overdue ?? 0) > 0 ? 'bg-red-50' : 'bg-gray-50')}>
-            <div className={cn('text-xl font-bold', (hwSummary?.overdue ?? 0) > 0 ? 'text-red-600' : 'text-gray-400')}>{hwSummary?.overdue ?? 0}</div>
-            <div className={cn('text-xs mt-0.5', (hwSummary?.overdue ?? 0) > 0 ? 'text-red-500' : 'text-gray-400')}>просрочено</div>
-          </div>
-        </div>
-      </Card>
-
-      {/* HW score chart */}
-      {hwScoreData.length >= 3 && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div className="font-semibold text-gray-900 flex items-center gap-2">
-              <ClipboardList size={16} className="text-primary-500" />
-              Баллы за ДЗ
-            </div>
-            {hwAverageScore != null && (
-              <span className="text-sm text-gray-400">
-                Среднее: <span className="font-semibold text-gray-700">{hwAverageScore}%</span>
-              </span>
-            )}
-          </div>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={hwScoreData} barSize={20}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={26} />
-              <Tooltip formatter={(v: any, _: any, p: any) => [`${v}%`, p.payload.title || 'Балл']} />
-              <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                {hwScoreData.map((entry, i) => (
-                  <Cell key={i} fill={pctColor(entry.score)} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      )}
-
-      {/* Mock exams chart */}
-      {mockChartData.length >= 2 && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div className="font-semibold text-gray-900 flex items-center gap-2">
-              <TrendingUp size={16} className="text-purple-500" />
-              Динамика пробников
-            </div>
-            {s.mock_avg != null && (
-              <span className="text-sm text-gray-400">
-                Среднее: <span className="font-semibold text-gray-700">{s.mock_avg}%</span>
-              </span>
-            )}
-          </div>
-          <ResponsiveContainer width="100%" height={150}>
-            <LineChart data={mockChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={26} />
-              <Tooltip formatter={(v: any) => [`${v}%`, 'Балл']} />
-              <Line type="monotone" dataKey="score" stroke="#8b5cf6" strokeWidth={2.5}
-                dot={{ fill: '#8b5cf6', r: 4 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-      )}
-
-      {/* Recent attendance */}
-      {s.recent_attendance.length > 0 && (
-        <Card>
-          <div className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <UserCheck size={16} className="text-green-500" />
-            Последние занятия
-          </div>
-          <div className="space-y-1">
-            {s.recent_attendance.slice(0, 8).map((a, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors">
-                <AttIcon status={a.status} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-800 truncate">{a.lesson_title}</div>
-                  {a.note && <div className="text-xs text-gray-400 italic truncate">{a.note}</div>}
-                </div>
-                <span className="text-xs text-gray-400 shrink-0">
-                  {new Date(a.scheduled_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Groups summary */}
       {s.groups.length > 0 && (
         <Card>
           <div className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -311,6 +179,18 @@ export function MyProgressPage() {
           </div>
         </Card>
       )}
+
+      <Card>
+        <div className="flex items-center justify-between">
+          <div className="font-semibold text-gray-900 flex items-center gap-2">
+            <ClipboardList size={16} className="text-primary-500" />
+            Все домашние задания
+          </div>
+          <Link to="/my-homework" className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
+            Открыть<ChevronRight size={12} />
+          </Link>
+        </div>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="rounded-[24px] bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(99,102,241,0.08))] px-5 py-5">
@@ -336,7 +216,6 @@ export function MyProgressPage() {
         </div>
       </Card>
 
-      {/* Единый журнал (Этап 6) */}
       {studentId && (
         <div className="pt-4 border-t border-gray-100">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Журнал занятий и заданий</h2>
