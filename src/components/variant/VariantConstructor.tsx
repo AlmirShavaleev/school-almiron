@@ -116,10 +116,10 @@ export function VariantConstructor({
   const { sections, loading: loadingSections } = useCatalogSections(subjectDb, examTypeDb)
   const { generateTasks, generating, genError, setGenError } = useVariantBuilder()
 
-  // Сколько задач раздел реально даст сборке. Считает та же функция, что и
-  // выборка (variant_answer_is_auto_checkable), поэтому карточка и генератор
-  // больше не спорят: карточка обещала «4 задач» у №21, а сборка отвечала
-  // «доступно 0» — §94.
+  // Сколько задач раздел реально даст сборке. Считает та же `variant_task_eligible`,
+  // что и выборка, поэтому карточка и генератор больше не спорят: карточка
+  // обещала «4 задач» у №21, а сборка отвечала «доступно 0» — §94.
+  // Правило двойное: часть 1 — автопроверяемые, часть 2 — с критериями.
   const { counts: sectionCounts } = useVariantSectionCounts(subjectDb, examTypeDb)
   const [presetNotice, setPresetNotice] = useState<string | null>(null)
 
@@ -274,9 +274,9 @@ export function VariantConstructor({
     // как «ничего не произошло».
     setPresetNotice(
       picked === 0
-        ? 'По этому экзамену нет разделов с задачами для автопроверки — пресет ничего не проставил.'
+        ? 'По этому экзамену нет разделов с подходящими задачами — пресет ничего не проставил.'
         : skipped > 0
-          ? `Пропущено разделов без задач для автопроверки: ${skipped}.`
+          ? `Пропущено разделов без подходящих задач: ${skipped}.`
           : null
     )
     setGeneratedTasks([])
@@ -689,7 +689,7 @@ function BuildStep({
           <div className="pt-3 border-t border-gray-100 space-y-2">
             <div className="text-xs text-gray-500">
               Пресеты проставят количество по разделам — дальше можно править вручную.
-              Разделы без задач для автопроверки пропускаются.
+              Разделы без подходящих задач пропускаются.
             </div>
             <div className="grid grid-cols-1 gap-1.5">
               <PresetButton testId="variant-preset-standard" onClick={() => onApplyPreset('standard')}>
@@ -793,8 +793,10 @@ function SectionCard({
 
   const total     = counts?.total ?? section.task_count ?? 0
   const available = counts?.available ?? total
-  // Просить задачи из раздела, где их для автопроверки нет, бессмысленно:
-  // раньше это давало ошибку уже на генерации.
+  const p1        = counts?.available_p1 ?? 0
+  const p2        = counts?.available_p2 ?? 0
+  // Просить задачи из раздела, где годных нет, бессмысленно: раньше это давало
+  // ошибку уже на генерации.
   const unusable  = available === 0
 
   return (
@@ -813,12 +815,15 @@ function SectionCard({
             )}
             <span className="text-sm font-medium text-gray-800 leading-tight">{section.title}</span>
             {/* Два числа, когда они расходятся: молчаливое «4 задач» при нуле
-                доступных заставляло интерфейс спорить с генератором (§94). */}
+                доступных заставляло интерфейс спорить с генератором (§94).
+                Разбивка по частям — потому что в №13–19 математики лежит смесь,
+                и общее число не говорит, из чего соберётся вариант. */}
             {available === total ? (
               <span className="text-xs text-gray-400">{total} задач</span>
             ) : (
               <span className={`text-xs ${unusable ? 'text-amber-600' : 'text-gray-400'}`}>
-                {total} задач, из них {available} для автопроверки
+                {total} задач, в вариант годятся {available}
+                {available > 0 && p1 > 0 && p2 > 0 && ` (ч1 ${p1} · ч2 ${p2})`}
               </span>
             )}
           </div>
@@ -841,7 +846,7 @@ function SectionCard({
             min={0}
             max={available}
             disabled={unusable}
-            title={unusable ? 'В разделе нет задач, пригодных для автопроверки' : undefined}
+            title={unusable ? 'В разделе нет задач, годных в вариант' : undefined}
             onChange={e => {
               const v = parseInt(e.target.value, 10)
               onSetCnt(isNaN(v) ? 0 : Math.min(v, available))

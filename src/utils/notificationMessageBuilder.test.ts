@@ -218,6 +218,39 @@ describe('ссылки в карточках', () => {
     expect(result.text).not.toContain('Преподаватель:')
   })
 
+  // Вторая ветка того же зачисления — глазами преподавателя. Почты ученика
+  // в Telegram быть не должно: канал вне нашего контроля.
+  it('course_student_enrolled: имя, курс и группа, кнопка на ученика', () => {
+    const result = buildMessage({
+      event_type: 'course_student_enrolled',
+      payload: {
+        student_name: 'Альмир Ученик',
+        course_title: 'Физика ЕГЭ',
+        group_name:   '11А',
+        link:         '/students/abc',
+        button_text:  'Открыть ученика',
+      },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Новый ученик в курсе')
+    expect(result.text).toContain('Альмир Ученик')
+    expect(result.text).toContain('Физика ЕГЭ · 11А')
+    expect(result.text).not.toMatch(/@/)
+    const markup = result.replyMarkup as { inline_keyboard: Array<Array<{ text: string; url: string }>> }
+    expect(markup.inline_keyboard[0][0].text).toBe('Открыть ученика')
+    expect(markup.inline_keyboard[0][0].url).toBe('https://school.example/students/abc')
+  })
+
+  it('course_student_enrolled: без группы не оставляет висящий разделитель', () => {
+    const result = buildMessage({
+      event_type: 'course_student_enrolled',
+      payload: { student_name: 'Кто-то', course_title: 'Физика ЕГЭ', group_name: null, link: '/students/abc' },
+    }, 'https://school.example')
+
+    expect(result.text).toContain('Физика ЕГЭ')
+    expect(result.text).not.toContain('·')
+  })
+
   it('текст от пользователя экранируется, иначе Telegram роняет разбор', () => {
     const result = buildMessage({
       event_type: 'topic_homework_reviewed',

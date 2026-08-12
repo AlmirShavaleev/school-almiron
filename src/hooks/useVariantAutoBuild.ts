@@ -291,15 +291,22 @@ export function useVariantAutoBuild() {
 export interface SectionCounts {
   /** Всего опубликованных задач в разделе. */
   total: number
-  /** Из них пригодных к автопроверке — столько и возьмёт генератор. */
+  /** Из них годных в вариант — столько и возьмёт генератор. */
   available: number
+  /** Годных из первой части: короткий ответ, проверяется автоматом. */
+  available_p1: number
+  /** Годных из второй части: с критериями, проверяется человеком. */
+  available_p2: number
 }
 
 /**
- * Карточка раздела в конструкторе показывала общее число задач, а выборка берёт
- * только автопроверяемые: у №21 «Качественная задача» было написано «4 задач»,
- * а сборка отвечала «доступно 0». Считает та же функция, что и генератор, —
+ * Карточка раздела показывала общее число задач, а выборка берёт только годные:
+ * у №21 «Качественная задача» было написано «4 задач», а сборка отвечала
+ * «доступно 0». Считает та же `variant_task_eligible`, что и генератор, —
  * второй копии правила не заводим (§62, §66, §96).
+ *
+ * Числа разложены по частям: в разделах №13–19 математики лежит смесь, и одно
+ * общее число снова скрыло бы, из чего соберётся вариант.
  */
 export function useVariantSectionCounts(
   subjectDb: string | undefined,
@@ -316,13 +323,19 @@ export function useVariantSectionCounts(
       p_subject: subjectDb,
       p_exam_type: examTypeDb,
     }).then(({ data, error }: {
-      data: { section_id: string; total: number; available: number }[] | null
+      data: { section_id: string; total: number; available: number
+              available_p1: number; available_p2: number }[] | null
       error: unknown
     }) => {
       if (cancelled || error) return
       const next: Record<string, SectionCounts> = {}
       for (const row of data ?? []) {
-        next[row.section_id] = { total: row.total, available: row.available }
+        next[row.section_id] = {
+          total: row.total,
+          available: row.available,
+          available_p1: row.available_p1,
+          available_p2: row.available_p2,
+        }
       }
       setCounts(next)
     })

@@ -136,6 +136,25 @@ function buildMessage(item: QueueItem, appUrl: string) {
         ),
       }
 
+    // Зачисление глазами преподавателя. Вторая ветка того же триггера, что и
+    // `course_enrolled`, но со своим ключом дедупликации и своим получателем.
+    //
+    // Почты ученика здесь нет и быть не должно: Telegram — канал вне нашего
+    // контроля, персоналу хватает имени и курса. Почта уходит только в
+    // карточку внутри приложения.
+    case 'course_student_enrolled':
+      return {
+        text: (
+        `👤 <b>Новый ученик в курсе</b>\n\n` +
+        `${esc(p.student_name ?? 'Имя не заполнено')}\n` +
+        headline(esc(p.course_title), esc(p.group_name))
+        ),
+        replyMarkup: button(
+          p.link,
+          typeof p.button_text === 'string' && p.button_text ? p.button_text : 'Открыть ученика',
+        ),
+      }
+
     // ── Новый контур ДЗ (topic_homework) ──────────────────────────────────
 
     case 'topic_homework_submitted': {

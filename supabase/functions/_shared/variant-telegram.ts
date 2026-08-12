@@ -254,6 +254,10 @@ export function isTelegramPreferenceEnabled(
     // него нет и заводить незачем: отключать «сообщите, что меня добавили»
     // нечему. Общий выключатель telegram выше по функции его гасит.
     case 'course_enrolled':
+    // Зачисление глазами преподавателя — рабочий сигнал «к тебе записались».
+    // Галочки под него нет: отключать «сообщите, что у меня новый ученик»
+    // нечему. Общий выключатель telegram выше по функции его гасит.
+    case 'course_student_enrolled':
       return true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':
