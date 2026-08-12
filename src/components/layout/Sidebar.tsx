@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
   Send, ClipboardEdit,
-  LibraryBig, Shield,
+  LibraryBig, Shield, Wand2,
 } from 'lucide-react'
 
 interface NavItem {
@@ -41,7 +41,11 @@ const navItems: NavItem[] = [
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
   { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
 
-  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба', hidden: true },
+  // Путь ученика к самостоятельной сборке был достижим только по прямой ссылке:
+  // пункт стоял скрытым, а ссылка на конструктор жила на самой скрытой странице.
+  // Отсюда и ноль самостоятельно собранных вариантов на проде за всё время.
+  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба' },
+  { label: 'Собрать вариант',   path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 

@@ -23,6 +23,9 @@ import { Menu } from 'lucide-react'
  */
 const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/dashboard$/, 'Главная'],
+  [/^\/student\/variants\/generate$/, 'Собрать вариант'],
+  [/^\/student\/variants\/stats$/, 'Статистика по номерам'],
+  [/^\/student\/variants\/build$/, 'PDF из корзины'],
   [/^\/student\/variants/, 'Тренировочные варианты'],
   [/^\/student$/, 'Мой кабинет'],
   [/^\/teacher$/, 'Кабинет учителя'],
