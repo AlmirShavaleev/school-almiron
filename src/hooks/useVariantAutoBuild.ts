@@ -286,6 +286,53 @@ export function useVariantAutoBuild() {
   return { generate, generating, error, setError }
 }
 
+// ── Сколько задач раздел реально даст сборке ─────────────────────────────────
+
+export interface SectionCounts {
+  /** Всего опубликованных задач в разделе. */
+  total: number
+  /** Из них пригодных к автопроверке — столько и возьмёт генератор. */
+  available: number
+}
+
+/**
+ * Карточка раздела в конструкторе показывала общее число задач, а выборка берёт
+ * только автопроверяемые: у №21 «Качественная задача» было написано «4 задач»,
+ * а сборка отвечала «доступно 0». Считает та же функция, что и генератор, —
+ * второй копии правила не заводим (§62, §66, §96).
+ */
+export function useVariantSectionCounts(
+  subjectDb: string | undefined,
+  examTypeDb: string | undefined,
+) {
+  const { profile } = useAuthStore()
+  const [counts, setCounts] = useState<Record<string, SectionCounts>>({})
+
+  useEffect(() => {
+    if (!profile || !subjectDb || !examTypeDb) { setCounts({}); return }
+    let cancelled = false
+
+    db.rpc('variant_section_available_counts', {
+      p_subject: subjectDb,
+      p_exam_type: examTypeDb,
+    }).then(({ data, error }: {
+      data: { section_id: string; total: number; available: number }[] | null
+      error: unknown
+    }) => {
+      if (cancelled || error) return
+      const next: Record<string, SectionCounts> = {}
+      for (const row of data ?? []) {
+        next[row.section_id] = { total: row.total, available: row.available }
+      }
+      setCounts(next)
+    })
+
+    return () => { cancelled = true }
+  }, [profile, subjectDb, examTypeDb])
+
+  return { counts }
+}
+
 // ── Счётчик прохождений ──────────────────────────────────────────────────────
 
 export interface VariantPassCount {

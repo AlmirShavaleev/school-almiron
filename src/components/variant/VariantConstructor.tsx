@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useCatalogSections, useCatalogTopics, SUBJECT_FROM_SLUG, EXAM_FROM_SLUG, type CatalogSection } from '@/hooks/useCatalog'
 import { useVariantBuilder, type GeneratedTask, type VariantSectionConfig, type VariantSettings } from '@/hooks/useVariants'
+import { useVariantSectionCounts, type SectionCounts } from '@/hooks/useVariantAutoBuild'
 import { CatalogTaskContent } from '@/components/catalog/CatalogTaskContent'
 import { VariantPrintPanel } from '@/components/pdf/VariantPrintPanel'
 import type { PrintableItem } from '@/utils/variantPrintUtils'
@@ -114,9 +115,22 @@ export function VariantConstructor({
   const examTypeDb = EXAM_FROM_SLUG[examType] ?? examType
   const { sections, loading: loadingSections } = useCatalogSections(subjectDb, examTypeDb)
   const { generateTasks, generating, genError, setGenError } = useVariantBuilder()
+
+  // Сколько задач раздел реально даст сборке. Считает та же функция, что и
+  // выборка (variant_answer_is_auto_checkable), поэтому карточка и генератор
+  // больше не спорят: карточка обещала «4 задач» у №21, а сборка отвечала
+  // «доступно 0» — §94.
+  const { counts: sectionCounts } = useVariantSectionCounts(subjectDb, examTypeDb)
+  const [presetNotice, setPresetNotice] = useState<string | null>(null)
+
   const filteredSections = useMemo(
-    () => sections.filter(section => section.subject === subjectDb && section.exam_type === examTypeDb),
-    [sections, subjectDb, examTypeDb],
+    () => sections
+      .filter(section => section.subject === subjectDb && section.exam_type === examTypeDb)
+      // Раздел, в котором нет задач вовсе, выбирать не из чего. Общее правило
+      // вместо флага на конкретном разделе: «Задачи старого формата ЕГЭ» —
+      // не единственный случай, а первый попавшийся.
+      .filter(section => (sectionCounts[section.id]?.total ?? section.task_count ?? 0) > 0),
+    [sections, subjectDb, examTypeDb, sectionCounts],
   )
 
   useEffect(() => {
@@ -228,16 +242,25 @@ export function VariantConstructor({
   const totalTopics = enabledSections.reduce((sum, s) => sum + (sectionStates[s.id]?.topicIds.size ?? 0), 0)
 
   const applyPreset = (preset: PresetKind) => {
+    // Раздел без доступных задач пресет обязан пропустить, а не упереться в
+    // него: раньше «Стандартный вариант» ставил по задаче всюду и падал на
+    // первом же пустом разделе.
+    let picked = 0
+    let skipped = 0
     setSectionStates(prev => {
       const next: Record<string, SectionState> = {}
       for (const section of filteredSections) {
         const current = prev[section.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set<string>() }
-        const matches =
+        const available = sectionCounts[section.id]?.available ?? section.task_count ?? 0
+        const wanted =
           preset === 'standard'
             ? true
             : preset === 'part1'
               ? getSectionExamPart(section) === 1
               : getSectionExamPart(section) === 2
+        if (wanted && available === 0) skipped += 1
+        const matches = wanted && available > 0
+        if (matches) picked += 1
         next[section.id] = {
           ...current,
           enabled: matches,
@@ -247,6 +270,15 @@ export function VariantConstructor({
       }
       return next
     })
+    // Пустой пресет — не молчание, а строка на экране: иначе нажатие выглядит
+    // как «ничего не произошло».
+    setPresetNotice(
+      picked === 0
+        ? 'По этому экзамену нет разделов с задачами для автопроверки — пресет ничего не проставил.'
+        : skipped > 0
+          ? `Пропущено разделов без задач для автопроверки: ${skipped}.`
+          : null
+    )
     setGeneratedTasks([])
     setStep('build')
     setIsDirty(true)
@@ -445,6 +477,8 @@ export function VariantConstructor({
           description={description}
           showDescription={showDescription}
           sections={filteredSections}
+          sectionCounts={sectionCounts}
+          presetNotice={presetNotice}
           sectionStates={sectionStates}
           loadingSections={loadingSections}
           enabledSections={enabledSections}
@@ -499,7 +533,7 @@ export function VariantConstructor({
 
 function BuildStep({
   subject, examType, title, description, showDescription,
-  sections, sectionStates, loadingSections,
+  sections, sectionCounts, presetNotice, sectionStates, loadingSections,
   enabledSections, totalTasks, totalTopics,
   generating, genError,
   onSwitchSubject, onSwitchExam,
@@ -514,6 +548,8 @@ function BuildStep({
   description: string
   showDescription: boolean
   sections: CatalogSection[]
+  sectionCounts: Record<string, SectionCounts>
+  presetNotice: string | null
   sectionStates: Record<string, SectionState>
   loadingSections: boolean
   enabledSections: CatalogSection[]
@@ -604,39 +640,6 @@ function BuildStep({
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800">Пресеты</h3>
-            <p className="text-xs text-gray-500 mt-1">Быстро проставляют количество задач по разделам. После этого можно править вручную.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              data-testid="variant-preset-standard"
-              onClick={() => onApplyPreset('standard')}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
-            >
-              Стандартный вариант
-            </button>
-            <button
-              type="button"
-              data-testid="variant-preset-part1"
-              onClick={() => onApplyPreset('part1')}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
-            >
-              Только 1 часть
-            </button>
-            <button
-              type="button"
-              data-testid="variant-preset-part2"
-              onClick={() => onApplyPreset('part2')}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors"
-            >
-              Только 2 часть
-            </button>
-          </div>
-        </div>
-
         <h2 className="font-semibold text-gray-800 px-1">Выберите разделы и темы</h2>
 
         {loadingSections ? (
@@ -651,6 +654,7 @@ function BuildStep({
               <SectionCard
                 key={section.id}
                 section={section}
+                counts={sectionCounts[section.id]}
                 state={sectionStates[section.id] ?? { enabled: false, expanded: false, cnt: 0, topicIds: new Set() }}
                 onToggle={() => onToggleSection(section.id)}
                 onToggleExpand={() => onToggleExpand(section.id)}
@@ -678,6 +682,32 @@ function BuildStep({
             <Row label="Разделов" value={String(enabledSections.length)} />
             <Row label="Тем" value={String(totalTopics)} />
             <Row label="Задач" value={<span className="font-bold text-primary-600 text-base">{totalTasks}</span>} />
+          </div>
+
+          {/* Пресеты стоят рядом с «Сгенерировать»: это подготовка к нажатию,
+              а не отдельный шаг наверху страницы. */}
+          <div className="pt-3 border-t border-gray-100 space-y-2">
+            <div className="text-xs text-gray-500">
+              Пресеты проставят количество по разделам — дальше можно править вручную.
+              Разделы без задач для автопроверки пропускаются.
+            </div>
+            <div className="grid grid-cols-1 gap-1.5">
+              <PresetButton testId="variant-preset-standard" onClick={() => onApplyPreset('standard')}>
+                Стандартный вариант
+              </PresetButton>
+              <PresetButton testId="variant-preset-part1" onClick={() => onApplyPreset('part1')}>
+                Только 1 часть
+              </PresetButton>
+              <PresetButton testId="variant-preset-part2" onClick={() => onApplyPreset('part2')}>
+                Только 2 часть
+              </PresetButton>
+            </div>
+            {presetNotice && (
+              <p className="text-xs text-amber-600 flex gap-1.5 items-start">
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                {presetNotice}
+              </p>
+            )}
           </div>
 
           {!title.trim() && (
@@ -730,10 +760,28 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
+function PresetButton({ testId, onClick, children }: {
+  testId: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:border-primary-300 hover:bg-primary-50 transition-colors text-left"
+    >
+      {children}
+    </button>
+  )
+}
+
 function SectionCard({
-  section, state, onToggle, onToggleExpand, onSetCnt, onToggleTopic,
+  section, counts, state, onToggle, onToggleExpand, onSetCnt, onToggleTopic,
 }: {
   section: CatalogSection
+  counts?: SectionCounts
   state: SectionState
   onToggle: () => void
   onToggleExpand: () => void
@@ -742,6 +790,12 @@ function SectionCard({
 }) {
   const { topics } = useSectionTopics(state.expanded ? section.id : undefined)
   const visibleTopics = topics.filter(t => (t.task_count ?? 0) > 0)
+
+  const total     = counts?.total ?? section.task_count ?? 0
+  const available = counts?.available ?? total
+  // Просить задачи из раздела, где их для автопроверки нет, бессмысленно:
+  // раньше это давало ошибку уже на генерации.
+  const unusable  = available === 0
 
   return (
     <div className={`bg-white rounded-xl border transition-all ${state.enabled ? 'border-primary-300 shadow-sm' : 'border-gray-200'}`}>
@@ -758,7 +812,15 @@ function SectionCard({
               </span>
             )}
             <span className="text-sm font-medium text-gray-800 leading-tight">{section.title}</span>
-            <span className="text-xs text-gray-400">{section.task_count ?? 0} задач</span>
+            {/* Два числа, когда они расходятся: молчаливое «4 задач» при нуле
+                доступных заставляло интерфейс спорить с генератором (§94). */}
+            {available === total ? (
+              <span className="text-xs text-gray-400">{total} задач</span>
+            ) : (
+              <span className={`text-xs ${unusable ? 'text-amber-600' : 'text-gray-400'}`}>
+                {total} задач, из них {available} для автопроверки
+              </span>
+            )}
           </div>
           {state.enabled && state.topicIds.size > 0 && (
             <span className="text-xs text-primary-600 mt-0.5 block">{state.topicIds.size} тем выбрано</span>
@@ -768,7 +830,7 @@ function SectionCard({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => onSetCnt(state.cnt - 1)}
-            disabled={state.cnt === 0}
+            disabled={state.cnt === 0 || unusable}
             className="w-6 h-6 rounded flex items-center justify-center bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Minus size={12} />
@@ -777,17 +839,20 @@ function SectionCard({
             type="number"
             value={state.cnt}
             min={0}
-            max={section.task_count ?? 999}
+            max={available}
+            disabled={unusable}
+            title={unusable ? 'В разделе нет задач, пригодных для автопроверки' : undefined}
             onChange={e => {
               const v = parseInt(e.target.value, 10)
-              onSetCnt(isNaN(v) ? 0 : v)
+              onSetCnt(isNaN(v) ? 0 : Math.min(v, available))
             }}
-            className="w-10 text-center text-sm border border-gray-200 rounded py-0.5 focus:outline-none focus:ring-1 focus:ring-primary-400"
+            className="w-10 text-center text-sm border border-gray-200 rounded py-0.5 focus:outline-none focus:ring-1 focus:ring-primary-400 disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
-            onClick={() => onSetCnt(state.cnt + 1)}
+            onClick={() => onSetCnt(Math.min(state.cnt + 1, available))}
+            disabled={unusable || state.cnt >= available}
             data-testid={`variant-section-plus-${section.id}`}
-            className="w-6 h-6 rounded flex items-center justify-center bg-gray-100 hover:bg-gray-200 transition-colors"
+            className="w-6 h-6 rounded flex items-center justify-center bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Plus size={12} />
           </button>

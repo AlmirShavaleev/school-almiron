@@ -9,7 +9,7 @@ import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks, FileText,
+  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks,
   Send, ClipboardEdit,
   LibraryBig, Shield, Wand2,
 } from 'lucide-react'
@@ -44,8 +44,11 @@ const navItems: NavItem[] = [
   // Путь ученика к самостоятельной сборке был достижим только по прямой ссылке:
   // пункт стоял скрытым, а ссылка на конструктор жила на самой скрытой странице.
   // Отсюда и ноль самостоятельно собранных вариантов на проде за всё время.
-  { label: 'Тренировочные варианты', path: '/student/variants', icon: <FileText size={18} />, roles: ['student'], section: 'Учёба' },
-  { label: 'Собрать вариант',   path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['student'], section: 'Учёба' },
+  //
+  // Пункт один: вход — конструктор, список собранных вариантов открывается
+  // изнутри него по ссылке «К вариантам». Два пункта на один раздел только
+  // множили выбор там, где его нет.
+  { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
