@@ -3,7 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentTopicJournal } from '@/hooks/useStudentTopicJournal'
 import { useMyCourseMemberships } from '@/hooks/useMyCourseMemberships'
-import { splitHomeworkBuckets, type HomeworkBuckets, type TopicJournalHomework } from '@/lib/topicJournal'
+import {
+  splitHomeworkBuckets, homeworkCourseOptions, filterHomeworkByCourse,
+  type HomeworkBuckets, type HomeworkCourseOption, type TopicJournalHomework,
+} from '@/lib/topicJournal'
 
 /**
  * students.id текущего пользователя. Тот же однострочный резолв, что руками
@@ -43,8 +46,21 @@ export function useMyStudentId() {
  *
  * groupId по курсу подтягивается отдельно (useMyCourseMemberships): журнал
  * отдаёт course_id, а ссылка на тему у ученика — /my-course/:groupId/topic/:topicId.
+ * Оттуда же берётся полный список курсов ученика для ряда переключателей: курс
+ * без заданий тоже должен быть виден.
+ *
+ * Предмет для цветной метки читается ОТДЕЛЬНЫМ запросом по `courses`, а не
+ * берётся из зачислений: `useMyCourseMemberships` выбрасывает курсы с
+ * `is_active = false`, а на проде оба курса единственного ученика с двумя
+ * курсами именно такие — метка тогда красилась бы запасным цветом у обоих, то
+ * есть ровно там, где она нужна. Политика чтения `courses` про `is_active`
+ * ничего не знает, сужение держит членство в группе.
+ *
+ * `courseId` — выбранный курс (null = все). Отбор идёт ДО раскладки по
+ * корзинам, поэтому порядок «сначала срочное» одинаков в любом режиме, а
+ * счётчики в переключателях считаются по неотфильтрованным строкам.
  */
-export function useMyTopicHomework() {
+export function useMyTopicHomework(courseId: string | null = null) {
   const { studentId, loading: resolvingStudent } = useMyStudentId()
   const { journal, loading: loadingJournal, error, reload } = useStudentTopicJournal(studentId)
   const { courses, loading: loadingCourses } = useMyCourseMemberships()
@@ -55,9 +71,51 @@ export function useMyTopicHomework() {
     return map
   }, [courses])
 
+  // Через useMemo, а не выражением: `?? []` каждый раз даёт новый массив, и
+  // зависящие от него useMemo пересчитывались бы на каждый рендер.
+  const rows = useMemo(() => journal?.homework ?? [], [journal])
+
+  const courseIdsKey = useMemo(
+    () => Array.from(new Set(rows.map(r => r.course_id))).sort().join(','),
+    [rows],
+  )
+
+  const [subjectByCourseId, setSubjectByCourseId] = useState<Map<string, string | null>>(new Map())
+
+  useEffect(() => {
+    const ids = courseIdsKey ? courseIdsKey.split(',') : []
+    if (ids.length === 0) { setSubjectByCourseId(new Map()); return }
+    let cancelled = false
+    supabase.from('courses').select('id, subject').in('id', ids)
+      .then(({ data }) => {
+        if (cancelled) return
+        const map = new Map<string, string | null>()
+        for (const row of data ?? []) map.set(row.id, row.subject ?? null)
+        setSubjectByCourseId(map)
+      })
+    return () => { cancelled = true }
+  }, [courseIdsKey])
+
+  const courseOptions = useMemo<HomeworkCourseOption[]>(
+    // Предмет из прямого чтения перекрывает предмет из зачислений: цвет в
+    // кнопке и в карточке обязан считаться одним источником.
+    () => homeworkCourseOptions(rows, courses)
+      .map(o => ({ ...o, subject: subjectByCourseId.get(o.id) ?? o.subject })),
+    [rows, courses, subjectByCourseId],
+  )
+
+  // Курс из адреса, которого у ученика нет (выбыл из группы, ссылка со
+  // стороны), считается «Все»: иначе страница навсегда застряла бы в отборе,
+  // который ничего не может показать. Решение принимается здесь, а не на
+  // странице, чтобы отбор и подсветка кнопки не могли разойтись.
+  const activeCourseId = useMemo(
+    () => (courseId && courseOptions.some(o => o.id === courseId) ? courseId : null),
+    [courseId, courseOptions],
+  )
+
   const buckets = useMemo<HomeworkBuckets>(
-    () => splitHomeworkBuckets(journal?.homework ?? []),
-    [journal],
+    () => splitHomeworkBuckets(filterHomeworkByCourse(rows, activeCourseId)),
+    [rows, activeCourseId],
   )
 
   /** Ссылка на тему с этим ДЗ, если группа курса известна. */
@@ -66,10 +124,20 @@ export function useMyTopicHomework() {
     return groupId ? `/my-course/${groupId}/topic/${row.topic_id}` : null
   }
 
+  /** Предмет курса этой работы — для цвета метки. */
+  const courseSubject = (row: TopicJournalHomework): string | null =>
+    subjectByCourseId.get(row.course_id) ?? null
+
   return {
     buckets,
+    /** Всего заданий у ученика, без учёта отбора: отличает «нет заданий вовсе» от «нет по этому курсу». */
+    totalRows: rows.length,
+    courseOptions,
+    /** Курс, по которому реально идёт отбор (null = все). */
+    activeCourseId,
     summary: journal?.summary ?? null,
     topicLink,
+    courseSubject,
     loading: resolvingStudent || loadingJournal || loadingCourses,
     error,
     reload,

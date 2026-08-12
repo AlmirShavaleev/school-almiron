@@ -19,7 +19,7 @@ import {
  */
 
 const EMPTY: StudentTodo = {
-  overdue: [], returned: [], dueSoon: [], tests: [], newlyOpened: [], checked: [], isClear: true,
+  overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true,
 }
 
 export function useStudentTodo(profileId: string | undefined) {
@@ -67,7 +67,7 @@ export function useStudentTodo(profileId: string | undefined) {
         // available_from, а не только факт существования темы.
         supabase
           .from('topic_homework')
-          .select('id, title, due_at, topic:topics!inner(id, title, is_open, available_from, module:modules!inner(id, course:courses!inner(id, title)))')
+          .select('id, title, due_at, topic:topics!inner(id, title, is_open, available_from, module:modules!inner(id, course:courses!inner(id, title, subject)))')
           .eq('is_published', true),
         // Тот же select, что у очереди проверки, — чтобы переиспользовать
         // `toQueueRows` + `collapseToWorks` (§88) без второй копии правила.
@@ -102,6 +102,7 @@ export function useStudentTodo(profileId: string | undefined) {
           topicTitle:    topic.title ?? 'Тема',
           courseId:      course.id,
           courseTitle:   course.title ?? 'Курс',
+          courseSubject: course.subject ?? null,
           groupId:       groupByCourse.get(course.id) ?? null,
           dueAt:         row.due_at ?? null,
           topic:         { is_open: topic.is_open ?? null, available_from: topic.available_from ?? null },

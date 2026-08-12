@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
 } from 'lucide-react'
@@ -7,9 +7,11 @@ import {
   JOURNAL_HW_STATUS_LABEL,
   JOURNAL_HW_STATUS_TONE,
   formatHomeworkScore,
+  type HomeworkCourseOption,
   type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { dueUrgency } from '@/lib/topicHomework'
+import { getSubjectColor } from '@/lib/subjectColors'
 import { cn } from '@/utils/cn'
 
 function formatDue(value: string | null): string | null {
@@ -58,17 +60,79 @@ function getDueTone(level: string): string {
   }
 }
 
+/**
+ * Ряд переключателей по курсам. Курсов у ученика единицы, поэтому ряд, а не
+ * выпадающий список: выбор виден целиком, попасть пальцем проще. При одном
+ * курсе ряда нет вовсе — выбирать не из чего.
+ */
+function CourseFilter({
+  options, active, onPick, total,
+}: {
+  options: HomeworkCourseOption[]
+  active:  string | null
+  onPick:  (courseId: string | null) => void
+  total:   number
+}) {
+  if (options.length < 2) return null
+
+  return (
+    <div data-testid="my-hw-course-filter" className="flex flex-wrap gap-2">
+      <Chip label="Все" count={total} active={active === null} onClick={() => onPick(null)} />
+      {options.map(option => (
+        <Chip
+          key={option.id}
+          label={option.title}
+          count={option.count}
+          dot={getSubjectColor(option.subject).dot}
+          active={active === option.id}
+          onClick={() => onPick(option.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function Chip({
+  label, count, active, onClick, dot,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+  dot?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors',
+        active
+          ? 'border-gray-900 bg-gray-900 text-white'
+          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300',
+      )}
+    >
+      {dot && <span className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />}
+      <span className="max-w-[12rem] truncate">{label}</span>
+      <span className={cn('text-xs font-semibold', active ? 'text-white/70' : 'text-gray-400')}>{count}</span>
+    </button>
+  )
+}
+
 function HomeworkRow({
-  row, href, showScore, showDue, action,
+  row, href, subject, showScore, showDue, action,
 }: {
   row: TopicJournalHomework
   href: string | null
+  subject: string | null
   showScore?: boolean
   showDue?: boolean
   action?: 'submit' | 'open'
 }) {
   const score = showScore ? formatHomeworkScore(row) : null
   const urgency = showDue ? dueUrgency(row.due_at) : null
+  const color = getSubjectColor(subject)
 
   // Только показывать row.title, если он осмысленный (не равен 'Домашнее задание')
   const hasCustomTitle = row.title.trim() !== 'Домашнее задание'
@@ -98,10 +162,12 @@ function HomeworkRow({
           )}
         </div>
 
-        {/* Курс мелким текстом под заголовком */}
-        <p className="mt-1 truncate text-xs text-gray-500">
-          {row.course_title}
-          {hasCustomTitle && ` · ${row.title}`}
+        {/* Курс — метка, а не бледная подпись: цвет от предмета, начертание
+            заметнее названия работы. Своё название ДЗ остаётся серым хвостом. */}
+        <p className="mt-1 flex items-center gap-1.5 truncate text-xs">
+          <span className={cn('h-2 w-2 shrink-0 rounded-full', color.dot)} aria-hidden />
+          <span className="font-medium text-gray-700">{row.course_title}</span>
+          {hasCustomTitle && <span className="truncate text-gray-500">· {row.title}</span>}
         </p>
 
         {/* Срок с цветом по urgency */}
@@ -142,7 +208,12 @@ function HomeworkRow({
     </>
   )
 
-  const shell = 'flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3.5'
+  // Полоса слева цветом предмета: в смешанном списке двух курсов карточки
+  // различаются краем, ещё до чтения подписи.
+  const shell = cn(
+    'flex items-center gap-3 rounded-xl border border-gray-200 border-l-4 bg-white p-3.5',
+    color.bar,
+  )
 
   if (!href) {
     return <li data-testid="my-hw-row" data-status={row.status} className={shell}>{body}</li>
@@ -198,7 +269,24 @@ function Section({
  * отдающая и ещё не начатое ДЗ.
  */
 export function MyTopicHomeworkPage() {
-  const { buckets, summary, topicLink, loading, error, reload, noStudentRecord } = useMyTopicHomework()
+  // Выбранный курс живёт в адресе: ученик уходит в тему сдавать работу и
+  // возвращается «назад» — состояние страницы должно вернуться вместе с ней.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requested = searchParams.get('course')
+
+  const {
+    buckets, totalRows, courseOptions, activeCourseId, topicLink, courseSubject,
+    loading, error, reload, noStudentRecord,
+  } = useMyTopicHomework(requested)
+
+  const pickCourse = (courseId: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (courseId) next.set('course', courseId)
+    else next.delete('course')
+    // replace, а не push: иначе «назад» отматывало бы переключения фильтра по
+    // одному, вместо возврата на предыдущую страницу.
+    setSearchParams(next, { replace: true })
+  }
 
   if (loading) {
     return (
@@ -218,6 +306,9 @@ export function MyTopicHomeworkPage() {
   }
 
   const total = buckets.todo.length + buckets.awaiting.length + buckets.done.length
+  // Просрочки считаем по видимым строкам, а не по summary журнала: под отбором
+  // «просрочено: 3» из другого курса было бы прямой ложью.
+  const overdue = buckets.todo.filter(row => row.is_overdue).length
 
   return (
     <div className="space-y-5">
@@ -228,7 +319,7 @@ export function MyTopicHomeworkPage() {
             {total === 0
               ? 'Заданий пока нет'
               : buckets.todo.length > 0
-                ? `Нужно сделать: ${buckets.todo.length}${summary && summary.hw_overdue > 0 ? ` · просрочено: ${summary.hw_overdue}` : ''}`
+                ? `Нужно сделать: ${buckets.todo.length}${overdue > 0 ? ` · просрочено: ${overdue}` : ''}`
                 : 'Всё сдано — новых заданий нет'}
           </p>
         </div>
@@ -244,11 +335,37 @@ export function MyTopicHomeworkPage() {
 
       {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
+      <CourseFilter
+        options={courseOptions}
+        active={activeCourseId}
+        onPick={pickCourse}
+        total={totalRows}
+      />
+
       {total === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
           <ClipboardList size={28} className="mx-auto text-gray-300" />
-          <p className="mt-2 text-sm font-medium text-gray-700">Домашних заданий пока нет</p>
-          <p className="mt-1 text-xs text-gray-400">Они появятся здесь, как только преподаватель их выдаст</p>
+          {activeCourseId ? (
+            <>
+              {/* Отбор ничего не нашёл — это надо сказать словами, иначе пустой
+                  экран читается как «задания пропали». */}
+              <p data-testid="my-hw-empty-filter" className="mt-2 text-sm font-medium text-gray-700">
+                По этому курсу заданий нет
+              </p>
+              <button
+                type="button"
+                onClick={() => pickCourse(null)}
+                className="mt-2 text-xs font-medium text-primary-600 hover:text-primary-700"
+              >
+                Показать все курсы
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-sm font-medium text-gray-700">Домашних заданий пока нет</p>
+              <p className="mt-1 text-xs text-gray-400">Они появятся здесь, как только преподаватель их выдаст</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -271,6 +388,7 @@ export function MyTopicHomeworkPage() {
                 key={row.homework_id}
                 row={row}
                 href={topicLink(row)}
+                subject={courseSubject(row)}
                 showDue
                 action="submit"
               />
@@ -289,6 +407,7 @@ export function MyTopicHomeworkPage() {
                 key={row.homework_id}
                 row={row}
                 href={topicLink(row)}
+                subject={courseSubject(row)}
                 action="open"
               />
             ))}
@@ -306,6 +425,7 @@ export function MyTopicHomeworkPage() {
                 key={row.homework_id}
                 row={row}
                 href={topicLink(row)}
+                subject={courseSubject(row)}
                 showScore
                 action="open"
               />

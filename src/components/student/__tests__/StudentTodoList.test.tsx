@@ -5,13 +5,13 @@ import { StudentTodoList } from '@/components/student/StudentTodoList'
 import type { StudentTodo, TodoItem } from '@/lib/studentTodo'
 
 const EMPTY: StudentTodo = {
-  overdue: [], returned: [], dueSoon: [], tests: [], newlyOpened: [], checked: [], isClear: true,
+  overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true,
 }
 
 function item(over: Partial<TodoItem> & { key: string }): TodoItem {
   return {
     homeworkId: over.key, title: `ДЗ ${over.key}`, topicTitle: 'Кинематика',
-    courseTitle: 'Физика ЕГЭ', groupId: 'g1', topicId: 't1',
+    courseTitle: 'Физика ЕГЭ', courseSubject: 'physics', groupId: 'g1', topicId: 't1',
     dueAt: '2026-08-10', days: 2, comment: null,
     ...over,
   }
@@ -36,17 +36,29 @@ describe('StudentTodoList', () => {
     expect(screen.queryByText('Тестирования')).not.toBeInTheDocument()
   })
 
-  it('порядок разделов — по срочности, просрочка первой', () => {
+  it('порядок разделов — по срочности, просрочка первой, «без срока» после срочных', () => {
     renderList({
       ...EMPTY,
       isClear: false,
       overdue:  [item({ key: 'h1', days: -3 })],
       returned: [item({ key: 'h2' })],
       dueSoon:  [item({ key: 'h3' })],
+      noDue:    [item({ key: 'h4', dueAt: null, days: 0 })],
     })
 
     const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
-    expect(headings).toEqual(['Просрочено', 'Вернули на доработку', 'Сдать до'])
+    expect(headings).toEqual(['Просрочено', 'Вернули на доработку', 'Сдать до', 'Без срока'])
+  })
+
+  it('работа без срока показывается, но без плашки срока', () => {
+    // Раньше такая работа не попадала на дашборд вовсе, хотя на странице ДЗ
+    // стояла в «Нужно сделать»: 4 работы из 6 на проде.
+    renderList({ ...EMPTY, isClear: false, noDue: [item({ key: 'h1', dueAt: null, days: 0 })] })
+
+    const row = screen.getByText('ДЗ h1').closest('a')!
+    expect(row).toHaveAttribute('href', '/my-course/g1/topic/t1')
+    expect(row.textContent).not.toContain('сегодня')
+    expect(row.textContent).not.toContain('просрочено')
   })
 
   it('срок пишется словами, просрочка — со знаком', () => {
@@ -69,6 +81,28 @@ describe('StudentTodoList', () => {
   it('без группы строка не ссылка, а не битая ссылка', () => {
     renderList({ ...EMPTY, isClear: false, overdue: [item({ key: 'h1', groupId: null })] })
     expect(screen.getByText('ДЗ h1').closest('a')).toBeNull()
+  })
+
+  it('курс помечен цветом предмета — той же палитрой, что на странице ДЗ', () => {
+    // Два курса в одном списке должны различаться глазом. Цвет берётся от
+    // предмета, а не от названия: переименование курса цвет не двигает.
+    renderList({
+      ...EMPTY,
+      isClear: false,
+      overdue: [item({ key: 'h1', courseSubject: 'physics' })],
+      dueSoon: [item({ key: 'h2', courseTitle: 'Математика ЕГЭ', courseSubject: 'math' })],
+    })
+
+    const physics = screen.getByText('ДЗ h1').closest('a')!.querySelector('span[aria-hidden]')
+    const math = screen.getByText('ДЗ h2').closest('a')!.querySelector('span[aria-hidden]')
+    expect(physics?.className).toContain('bg-violet-500')
+    expect(math?.className).toContain('bg-blue-500')
+  })
+
+  it('курс без предмета получает запасной цвет, а не пропадает', () => {
+    renderList({ ...EMPTY, isClear: false, overdue: [item({ key: 'h1', courseSubject: null })] })
+    const dot = screen.getByText('ДЗ h1').closest('a')!.querySelector('span[aria-hidden]')
+    expect(dot?.className).toContain('bg-primary-500')
   })
 
   it('«проверено» показывает балл, а «всё сдано» остаётся при пустых делах', () => {

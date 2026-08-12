@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { AlertTriangle, RotateCcw, CalendarClock, ListChecks, Sparkles, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, RotateCcw, CalendarClock, Inbox, ListChecks, Sparkles, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { formatDueIn, type StudentTodo, type TodoItem } from '@/lib/studentTodo'
 import { gradeScaleMax } from '@/lib/topicHomework'
+import { getSubjectColor } from '@/lib/subjectColors'
 
 /**
  * «Что мне сдать» — первый экран кабинета ученика.
@@ -12,7 +13,9 @@ import { gradeScaleMax } from '@/lib/topicHomework'
  * единственное, что меняется, — ученики заходят с телефона.
  *
  * Порядок разделов — по срочности, он же задан вводной: просрочено → вернули
- * → сдать до → тестирования → открылось → проверено. Ссылок на решения здесь
+ * → сдать до → без срока → тестирования → открылось → проверено. «Без срока»
+ * добавлено §123.6: такие работы не попадали никуда, хотя на странице ДЗ
+ * стояли в «Нужно сделать». Ссылок на решения здесь
  * нет вовсе: гейт §95 живёт на странице темы, и дублировать его показом
  * «посмотреть решение» в списке дел нельзя.
  */
@@ -75,6 +78,17 @@ export function StudentTodoList({ todo, loading, error }: StudentTodoListProps) 
         {todo.dueSoon.map(item => <HomeworkRow key={item.key} item={item} tone="neutral" />)}
       </Section>
 
+      {/* «Без срока» после срочных: сдать это надо, но оно не горит — выше
+          просроченного и близкого дедлайна ему стоять не за что. */}
+      <Section
+        title="Без срока"
+        icon={<Inbox size={16} />}
+        tone="neutral"
+        count={todo.noDue.length}
+      >
+        {todo.noDue.map(item => <HomeworkRow key={item.key} item={item} tone="neutral" />)}
+      </Section>
+
       <Section
         title="Тестирования"
         icon={<ListChecks size={16} />}
@@ -101,7 +115,10 @@ export function StudentTodoList({ todo, loading, error }: StudentTodoListProps) 
             to={topic.groupId ? `/my-course/${topic.groupId}/topic/${topic.topicId}` : null}
           >
             <div className="font-medium text-graphite-950">{topic.topicTitle}</div>
-            <div className="mt-0.5 text-xs text-slate-500">{topic.courseTitle}</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+              <CourseDot subject={topic.courseSubject} />
+              <span className="truncate">{topic.courseTitle}</span>
+            </div>
           </RowShell>
         ))}
       </Section>
@@ -196,6 +213,16 @@ function Section({
   )
 }
 
+/** Точка цвета предмета. Цвет берётся из общей палитры, своей здесь нет. */
+function CourseDot({ subject }: { subject: string | null }) {
+  return (
+    <span
+      aria-hidden
+      className={cn('h-2 w-2 shrink-0 rounded-full', getSubjectColor(subject).dot)}
+    />
+  )
+}
+
 function RowShell({ to, children }: { to: string | null; children: React.ReactNode }) {
   const className = 'block rounded-xl border border-slate-100 px-3 py-3 transition-colors hover:border-slate-200 hover:bg-slate-50/70'
   if (!to) return <div className={className}>{children}</div>
@@ -217,8 +244,11 @@ function HomeworkRow({
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <div className="font-medium text-graphite-950">{item.title}</div>
-          <div className="mt-0.5 truncate text-xs text-slate-500">
-            {item.topicTitle} · {item.courseTitle}
+          {/* Курс — с цветной точкой предмета, той же палитрой, что на странице
+              «Домашние задания»: два курса в одном списке различаются глазом. */}
+          <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-slate-500">
+            <CourseDot subject={item.courseSubject} />
+            <span className="truncate">{item.topicTitle} · {item.courseTitle}</span>
           </div>
         </div>
         {item.dueAt && (

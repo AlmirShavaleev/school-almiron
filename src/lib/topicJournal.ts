@@ -172,6 +172,60 @@ export function splitHomeworkBuckets(rows: TopicJournalHomework[]): HomeworkBuck
   }
 }
 
+/** Курс в ряду переключателей над списком ДЗ. */
+export interface HomeworkCourseOption {
+  id:      string
+  title:   string
+  /** Предмет курса — им красится метка; название курса цвет не задаёт. */
+  subject: string | null
+  /** Сколько заданий этого курса в списке (все три корзины вместе). */
+  count:   number
+}
+
+/**
+ * Курсы для отбора списка ДЗ.
+ *
+ * Считаются от КУРСОВ УЧЕНИКА, а не от строк журнала: курс, где заданий пока
+ * нет, обязан быть в ряду с нулём — иначе ученик решит, что курс потерялся.
+ * Курс, встретившийся в журнале, но не в списке зачислений (выбыл из группы,
+ * пока работа висит проверенной), дописывается в конец: иначе его строки
+ * оказались бы недостижимы ни одним переключателем.
+ *
+ * Порядок зачислений сохраняется как есть — он же порядок в остальном кабинете.
+ */
+export function homeworkCourseOptions(
+  rows: TopicJournalHomework[],
+  enrolled: Array<{ courseId: string; title: string; subject: string | null }>,
+): HomeworkCourseOption[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) counts.set(row.course_id, (counts.get(row.course_id) ?? 0) + 1)
+
+  const options: HomeworkCourseOption[] = enrolled.map(c => ({
+    id: c.courseId, title: c.title, subject: c.subject, count: counts.get(c.courseId) ?? 0,
+  }))
+
+  const known = new Set(options.map(o => o.id))
+  for (const row of rows) {
+    if (known.has(row.course_id)) continue
+    known.add(row.course_id)
+    options.push({ id: row.course_id, title: row.course_title, subject: null, count: counts.get(row.course_id) ?? 0 })
+  }
+
+  return options
+}
+
+/**
+ * Отбор строк по курсу. Именно отбор: порядок и раскладку по корзинам делает
+ * `splitHomeworkBuckets` уже после него — фильтр не имеет права пересортировать
+ * список, иначе «сначала срочное» держалось бы только в режиме «Все».
+ */
+export function filterHomeworkByCourse(
+  rows: TopicJournalHomework[], courseId: string | null,
+): TopicJournalHomework[] {
+  if (!courseId) return rows
+  return rows.filter(r => r.course_id === courseId)
+}
+
 export function filterByCourse(journal: TopicJournal, courseId: string | null): TopicJournal {
   if (!courseId) return journal
   return {

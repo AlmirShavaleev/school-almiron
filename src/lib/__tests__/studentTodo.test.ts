@@ -162,6 +162,87 @@ describe('buildStudentTodo', () => {
     expect(todo.newlyOpened.map(t => t.topicId)).toEqual(['tp-fresh'])
   })
 
+  it('ДЗ без срока попадает в «без срока», а не пропадает с дашборда', () => {
+    // Расхождение §123.4: «сдать до» требовало срока, поэтому работа без
+    // дедлайна не попадала никуда — на странице ДЗ она при этом стояла в
+    // «Нужно сделать». Ученик должен видеть всё, что надо сдать.
+    const todo = buildStudentTodo({ ...base, homework: [hw({ homeworkId: 'h1' })] })
+    expect(todo.noDue.map(i => i.homeworkId)).toEqual(['h1'])
+    expect(todo.dueSoon).toHaveLength(0)
+    expect(todo.overdue).toHaveLength(0)
+    // И «всё сдано» больше не врёт поверх списка дел.
+    expect(todo.isClear).toBe(false)
+  })
+
+  it('без срока не забирает работы у срочных корзин', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [
+        hw({ homeworkId: 'late', dueAt: '2026-08-04' }),
+        hw({ homeworkId: 'soon', dueAt: '2026-08-08' }),
+        hw({ homeworkId: 'none' }),
+      ],
+    })
+    expect(todo.overdue.map(i => i.homeworkId)).toEqual(['late'])
+    expect(todo.dueSoon.map(i => i.homeworkId)).toEqual(['soon'])
+    expect(todo.noDue.map(i => i.homeworkId)).toEqual(['none'])
+  })
+
+  it('без срока: сданное и принятое туда не попадает — правило состава общее', () => {
+    // Отбор «чьё это дело» остаётся один на все корзины: отправленная работа —
+    // не дело ученика, принятая закрыта, закрытая тема не считается.
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [
+        hw({ homeworkId: 'sent' }),
+        hw({ homeworkId: 'ok' }),
+        hw({ homeworkId: 'closed', topic: { is_open: false, available_from: '2026-01-01' } }),
+      ],
+      rawAttempts: [attempt('sent', 'submitted'), attempt('ok', 'accepted')],
+    })
+    expect(todo.noDue).toHaveLength(0)
+    expect(todo.isClear).toBe(true)
+  })
+
+  it('без срока: возврат на доработку остаётся в «вернули», а не уходит в «без срока»', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 'h1' })],
+      rawAttempts: [attempt('h1', 'returned_for_revision')],
+    })
+    expect(todo.returned.map(i => i.homeworkId)).toEqual(['h1'])
+    expect(todo.noDue).toHaveLength(0)
+  })
+
+  it('без срока: порядок устойчивый — по курсу, затем по названию', () => {
+    // Сортировать по дате нечем, а порядок ответа базы не гарантирован.
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [
+        hw({ homeworkId: 'b', homeworkTitle: 'Ядро', courseTitle: 'Физика' }),
+        hw({ homeworkId: 'a', homeworkTitle: 'Алгебра', courseTitle: 'Математика' }),
+        hw({ homeworkId: 'c', homeworkTitle: 'Векторы', courseTitle: 'Физика' }),
+      ],
+    })
+    expect(todo.noDue.map(i => i.homeworkId)).toEqual(['a', 'c', 'b'])
+  })
+
+  it('предмет курса доходит до строки — метку курса красит он, а не название', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 'h1', dueAt: '2026-08-10', courseSubject: 'physics' })],
+    })
+    expect(todo.dueSoon[0].courseSubject).toBe('physics')
+  })
+
+  it('курс без предмета доходит как null, а не как строка «null»', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 'h1', dueAt: '2026-08-10' })],
+    })
+    expect(todo.dueSoon[0].courseSubject).toBeNull()
+  })
+
   it('«проверено» — последние пять вердиктов, от свежих', () => {
     const verdicts = Array.from({ length: 7 }, (_, i) => ({
       attemptId: `a${i}`, homeworkTitle: `ДЗ ${i}`, decision: 'accepted' as const,

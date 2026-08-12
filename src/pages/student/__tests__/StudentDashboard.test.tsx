@@ -35,7 +35,7 @@ vi.mock('@/hooks/useStudentTodo', () => ({
 }))
 
 const emptyTodo = {
-  overdue: [], returned: [], dueSoon: [], tests: [], newlyOpened: [], checked: [], isClear: true,
+  overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true,
 }
 
 const baseDashboard = {

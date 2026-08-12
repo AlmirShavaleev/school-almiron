@@ -21,6 +21,8 @@ export interface TodoHomework {
   topicTitle:   string
   courseId:     string
   courseTitle:  string
+  /** Предмет курса: им красится метка курса в строке. Не название — §123. */
+  courseSubject?: string | null
   groupId:      string | null
   dueAt:        string | null
   topic:        TopicOpenState
@@ -64,6 +66,7 @@ export interface TodoItem {
   title:         string
   topicTitle:    string
   courseTitle:   string
+  courseSubject: string | null
   groupId:       string | null
   topicId:       string
   dueAt:         string | null
@@ -76,6 +79,8 @@ export interface StudentTodo {
   overdue:     TodoItem[]
   returned:    TodoItem[]
   dueSoon:     TodoItem[]
+  /** Сдать надо, а срока нет. Отдельно от «сдать до»: сортировать нечем. */
+  noDue:       TodoItem[]
   tests:       TodoTest[]
   newlyOpened: TodoTopic[]
   checked:     TodoVerdict[]
@@ -87,6 +92,7 @@ export interface TodoTopic {
   topicId:     string
   topicTitle:  string
   courseTitle: string
+  courseSubject: string | null
   groupId:     string | null
   openedOn:    string | null
 }
@@ -116,6 +122,7 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
   const overdue:  TodoItem[] = []
   const returned: TodoItem[] = []
   const dueSoon:  TodoItem[] = []
+  const noDue:    TodoItem[] = []
 
   for (const hw of input.homework) {
     // Закрытая тема — не дело ученика: сдать он туда всё равно не может.
@@ -135,6 +142,7 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
       title:       hw.homeworkTitle,
       topicTitle:  hw.topicTitle,
       courseTitle: hw.courseTitle,
+      courseSubject: hw.courseSubject ?? null,
       groupId:     hw.groupId,
       topicId:     hw.topicId,
       dueAt:       hw.dueAt,
@@ -156,12 +164,20 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
 
     if (urgency.level === 'overdue') overdue.push(item)
     else if (hw.dueAt) dueSoon.push(item)
+    // Работа без срока — тоже дело ученика. Раньше она не попадала никуда:
+    // «сдать до» требует срока, и на дашборде такие работы не существовали,
+    // хотя на странице ДЗ стояли в «Нужно сделать» (на проде их было 4 из 6).
+    else noDue.push(item)
   }
 
   // Просроченные — от самых давних; «сдать до» — ближайшие сверху.
   overdue.sort((a, b) => a.days - b.days)
   dueSoon.sort((a, b) => a.days - b.days)
   returned.sort((a, b) => a.days - b.days)
+  // Без срока сортировать нечем — берём курс и название, чтобы порядок был
+  // устойчивым, а не зависел от того, как строки легли в ответе базы.
+  noDue.sort((a, b) =>
+    a.courseTitle.localeCompare(b.courseTitle, 'ru') || a.title.localeCompare(b.title, 'ru'))
 
   // Комментарий преподавателя к возвращённой работе — по последнему вердикту.
   const lastComment = new Map<string, string | null>()
@@ -193,6 +209,7 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
       topicId:     hw.topicId,
       topicTitle:  hw.topicTitle,
       courseTitle: hw.courseTitle,
+      courseSubject: hw.courseSubject ?? null,
       groupId:     hw.groupId,
       openedOn,
     })
@@ -206,11 +223,14 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
     overdue,
     returned,
     dueSoon,
+    noDue,
     tests,
     newlyOpened,
     checked,
+    // «Всё сдано» обязано учитывать и работы без срока: иначе экран говорил бы
+    // «ничего не ждёт» поверх списка того, что надо сдать.
     isClear: overdue.length === 0 && returned.length === 0
-          && dueSoon.length === 0 && tests.length === 0,
+          && dueSoon.length === 0 && noDue.length === 0 && tests.length === 0,
   }
 }
 

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { getSubjectColor } from '@/lib/subjectColors'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,24 +25,8 @@ interface CourseCard {
   doneTopics:  number
 }
 
-// ─── Subject color mapping ────────────────────────────────────────────────────
-
-const SUBJECT_COLORS: Record<string, { from: string; to: string; icon: string }> = {
-  math:     { from: 'from-blue-500',    to: 'to-indigo-600',  icon: '📐' },
-  russian:  { from: 'from-rose-500',    to: 'to-pink-600',    icon: '📝' },
-  physics:  { from: 'from-violet-500',  to: 'to-purple-600',  icon: '⚡' },
-  chemistry:{ from: 'from-emerald-500', to: 'to-teal-600',    icon: '🧪' },
-  biology:  { from: 'from-green-500',   to: 'to-lime-600',    icon: '🌿' },
-  history:  { from: 'from-amber-500',   to: 'to-orange-600',  icon: '📜' },
-  geography:{ from: 'from-cyan-500',    to: 'to-blue-600',    icon: '🌍' },
-  english:  { from: 'from-sky-500',     to: 'to-blue-500',    icon: '🇬🇧' },
-  social:   { from: 'from-orange-500',  to: 'to-amber-600',   icon: '🏛️' },
-  informatics: { from: 'from-gray-600', to: 'to-slate-700',   icon: '💻' },
-}
-
-function getSubjectColor(subject: string) {
-  return SUBJECT_COLORS[subject] || { from: 'from-primary-500', to: 'to-primary-700', icon: '📚' }
-}
+// Цвет предмета переехал в `lib/subjectColors` — той же палитрой красится
+// метка курса в списке ДЗ. Значения не менялись.
 
 function formatDate(d: string | null) {
   if (!d) return null

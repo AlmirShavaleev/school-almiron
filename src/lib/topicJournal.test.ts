@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   normalizeTopicJournal, formatHomeworkScore, journalCourses, filterByCourse,
+  homeworkCourseOptions, filterHomeworkByCourse, splitHomeworkBuckets,
   EMPTY_SUMMARY, type TopicJournal,
 } from './topicJournal'
 
@@ -99,5 +100,68 @@ describe('journalCourses / filterByCourse', () => {
   it('сводка при фильтре не пересчитывается — она общая по ученику', () => {
     const j = journal({ summary: { ...EMPTY_SUMMARY, hw_total: 5 } })
     expect(filterByCourse(j, 'c1').summary.hw_total).toBe(5)
+  })
+})
+
+describe('homeworkCourseOptions — ряд переключателей списка ДЗ', () => {
+  const enrolled = [
+    { courseId: 'c1', title: 'Физика ЕГЭ', subject: 'physics' },
+    { courseId: 'c2', title: 'Математика ЕГЭ', subject: 'math' },
+  ]
+
+  it('курс без заданий остаётся в ряду с нулём', () => {
+    // Считать от строк журнала было бы проще, но курс, куда ещё не выдали ДЗ,
+    // тогда исчезал бы из ряда — и выглядел бы потерянным.
+    const options = homeworkCourseOptions([hw('1', 'c1', 'Физика ЕГЭ')], enrolled)
+    expect(options).toEqual([
+      { id: 'c1', title: 'Физика ЕГЭ', subject: 'physics', count: 1 },
+      { id: 'c2', title: 'Математика ЕГЭ', subject: 'math', count: 0 },
+    ])
+  })
+
+  it('счётчик считает все корзины, а не только «нужно сделать»', () => {
+    const rows = [
+      { ...hw('1', 'c1', 'Физика ЕГЭ'), status: 'accepted' as const },
+      { ...hw('2', 'c1', 'Физика ЕГЭ'), status: 'submitted' as const },
+      hw('3', 'c1', 'Физика ЕГЭ'),
+    ]
+    expect(homeworkCourseOptions(rows, enrolled)[0].count).toBe(3)
+  })
+
+  it('курс из журнала, которого нет в зачислениях, дописывается в конец', () => {
+    // Иначе его строки видны в режиме «Все», но недостижимы ни одной кнопкой.
+    const options = homeworkCourseOptions([hw('1', 'c9', 'Старый курс')], enrolled)
+    expect(options.map(o => o.id)).toEqual(['c1', 'c2', 'c9'])
+    expect(options[2]).toEqual({ id: 'c9', title: 'Старый курс', subject: null, count: 1 })
+  })
+
+  it('порядок зачислений сохраняется как есть', () => {
+    const options = homeworkCourseOptions([], [enrolled[1], enrolled[0]])
+    expect(options.map(o => o.id)).toEqual(['c2', 'c1'])
+  })
+})
+
+describe('filterHomeworkByCourse', () => {
+  it('без курса список возвращается тем же массивом', () => {
+    const rows = [hw('1', 'c1', 'Физика')]
+    expect(filterHomeworkByCourse(rows, null)).toBe(rows)
+  })
+
+  it('отбирает строки одного курса', () => {
+    const rows = [hw('1', 'c1', 'Физика'), hw('2', 'c2', 'Математика')]
+    expect(filterHomeworkByCourse(rows, 'c2').map(r => r.homework_id)).toEqual(['2'])
+  })
+
+  it('отбор не пересортировывает: порядок задаёт splitHomeworkBuckets после него', () => {
+    // Главное свойство: фильтр отбирает, а не меняет «сначала срочное».
+    const rows = [
+      { ...hw('soon', 'c1', 'Физика'), due_at: '2026-08-20' },
+      { ...hw('late', 'c1', 'Физика'), due_at: '2026-07-01', is_overdue: true },
+      { ...hw('other', 'c2', 'Математика'), due_at: '2026-08-01' },
+    ]
+    const all = splitHomeworkBuckets(rows).todo.map(r => r.homework_id)
+    const filtered = splitHomeworkBuckets(filterHomeworkByCourse(rows, 'c1')).todo.map(r => r.homework_id)
+    expect(all).toEqual(['late', 'other', 'soon'])
+    expect(filtered).toEqual(['late', 'soon'])
   })
 })
