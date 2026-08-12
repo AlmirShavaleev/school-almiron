@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
@@ -15,6 +15,10 @@ import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const GROUP = 'g0000000-0000-0000-0000-000000000001'
+
+/** Управляемые «нет ДЗ» и «нет решения» — для проверки пустой группы (§121). */
+const noHomework = { value: false }
+const noSolution = { value: false }
 
 const materials: TopicMaterial[] = [
   { kind: 'file', id: 'm1', title: null, position: 0, isVisible: true, section: 'theory', storagePath: `${TOPIC}/a.pdf`, fileName: 'a.pdf', sizeBytes: 1 },
@@ -43,7 +47,7 @@ vi.mock('@/lib/supabase', () => ({
         modules: { id: 'mod-1', title: 'Механика', courses: { id: 'c1', title: 'Физика', subject: 'physics' } },
       })
       if (table === 'groups') return chain({ id: GROUP, name: '11А' })
-      if (table === 'topic_homework') return chain(null, 1)
+      if (table === 'topic_homework') return chain(null, noHomework.value ? 0 : 1)
       if (table === 'topic_test_assignments') return chain(null, 0)
       return chain(null, 0)
     },
@@ -60,7 +64,7 @@ vi.mock('@/hooks/useTopicMaterialItems', () => ({
 
 // Решение есть, но ещё не открыто — вкладка обязана быть, с замком (§95).
 vi.mock('@/hooks/useTopicSolutionState', () => ({
-  useTopicSolutionState: () => ({ hasSolution: true, unlocked: false, loading: false }),
+  useTopicSolutionState: () => ({ hasSolution: !noSolution.value, unlocked: false, loading: false }),
 }))
 
 vi.mock('@/components/courseProgram/TopicVariantStudent', () => ({
@@ -83,16 +87,29 @@ function renderPage() {
   )
 }
 
+const FULL_MATERIALS: TopicMaterial[] = [...materials]
+
+function resetMaterials(list: TopicMaterial[] = FULL_MATERIALS) {
+  materials.length = 0
+  materials.push(...list)
+}
+
 describe('Вкладки рубрик темы (§116)', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetMaterials()
+    noHomework.value = false
+    noSolution.value = false
+  })
 
   it('лента больше не скроллится: вкладки переносятся', async () => {
     renderPage()
 
     const tablist = await screen.findByRole('tablist', { name: 'Разделы темы' })
     expect(tablist.className).not.toContain('overflow-x-auto')
-    // Перенос — либо сеткой (узкий экран), либо flex-wrap (широкий).
-    expect(tablist.className).toMatch(/flex-wrap|grid/)
+    // Перенос живёт внутри ряда группы: сетка на узком, flex-wrap на широком.
+    const row = screen.getByTestId('topic-tab-group-theory')
+    expect(row.querySelector('.grid, .sm\:flex-wrap')).not.toBeNull()
   })
 
   it('все рубрики отрисованы разом, а не «где-то правее»', async () => {
@@ -122,5 +139,72 @@ describe('Вкладки рубрик темы (§116)', () => {
 
     const tab = await screen.findByRole('tab', { name: /Решение ДЗ/ })
     expect(tab.querySelector('svg.lucide-lock')).not.toBeNull()
+  })
+
+  /**
+   * §121. Вкладки шли сплошной лентой и читались как куча. Теперь три
+   * смысловые группы; составы живут в общем перечне рубрик, и тест сторожит
+   * именно то, что видно на экране.
+   */
+  it('вкладки разложены по группам «Теория», «Урок», «Домашнее задание»', async () => {
+    renderPage()
+
+    await screen.findByRole('tablist', { name: 'Разделы темы' })
+
+    expect(screen.getByTestId('topic-tab-group-theory')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-tab-group-lesson')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-tab-group-homework')).toBeInTheDocument()
+  })
+
+  it('в группе ДЗ задание идёт первым, решение последним', async () => {
+    renderPage()
+
+    const group = await screen.findByTestId('topic-tab-group-homework')
+    const labels = within(group).getAllByRole('tab').map(t => t.textContent?.trim())
+
+    expect(labels?.[0]).toContain('Домашнее задание')
+    expect(labels?.at(-1)).toContain('Решение ДЗ')
+  })
+
+  it('каждая вкладка стоит в своей группе, а не где придётся', async () => {
+    renderPage()
+
+    const lesson = await screen.findByTestId('topic-tab-group-lesson')
+    expect(within(lesson).getByRole('tab', { name: /Задачи/ })).toBeInTheDocument()
+    expect(within(lesson).queryByRole('tab', { name: /Конспект/ })).not.toBeInTheDocument()
+
+    const theory = screen.getByTestId('topic-tab-group-theory')
+    expect(within(theory).getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
+  })
+
+  it('замок §95 остаётся видимым в своей группе', async () => {
+    renderPage()
+
+    const group = await screen.findByTestId('topic-tab-group-homework')
+    const tab = within(group).getByRole('tab', { name: /Решение ДЗ/ })
+
+    expect(tab.querySelector('svg.lucide-lock')).not.toBeNull()
+  })
+})
+
+/**
+ * §121, пункт 4: у темы без ДЗ не должно быть ни подписи «Домашнее задание»,
+ * ни пустого места под ней.
+ */
+describe('Пустая группа вкладок не рисуется (§121)', () => {
+  it('нет ДЗ и решения — нет и группы «Домашнее задание»', async () => {
+    resetMaterials([
+      { kind: 'file', id: 'm1', title: null, position: 0, isVisible: true, section: 'notes', storagePath: `${TOPIC}/b.pdf`, fileName: 'b.pdf', sizeBytes: 1 },
+      { kind: 'file', id: 'm2', title: null, position: 1, isVisible: true, section: 'tasks', storagePath: `${TOPIC}/c.pdf`, fileName: 'c.pdf', sizeBytes: 1 },
+    ])
+    noHomework.value = true
+    noSolution.value = true
+
+    renderPage()
+
+    await screen.findByTestId('topic-tab-group-theory')
+    expect(screen.getByTestId('topic-tab-group-lesson')).toBeInTheDocument()
+    expect(screen.queryByTestId('topic-tab-group-homework')).not.toBeInTheDocument()
+    expect(screen.queryByText('Домашнее задание')).not.toBeInTheDocument()
   })
 })

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  groupTopicSections,
+  TOPIC_SECTION_GROUPS,
+  TOPIC_SECTION_ORDER,
   bucketForMaterialPath,
   buildMaterialInsert,
   buildMaterialStoragePath,
@@ -205,5 +208,80 @@ describe('getVideoEmbedUrl', () => {
   })
   it('мусор не роняет', () => {
     expect(getVideoEmbedUrl('не ссылка')).toBeNull()
+  })
+})
+
+// ─── Группы рубрик (§121) ────────────────────────────────────────────────────
+
+describe('groupTopicSections', () => {
+  it('раскладывает рубрики по трём группам владельца', () => {
+    const rows = groupTopicSections([
+      'video', 'notes', 'tasks', 'task_solution', 'worksheet_tasks',
+      'homework', 'worksheet_homework', 'solution',
+    ])
+
+    expect(rows.map(r => r.group?.label)).toEqual(['Теория', 'Урок', 'Домашнее задание'])
+  })
+
+  /** Требование владельца: сначала само задание, потом лист, потом решение. */
+  it('в группе ДЗ задание идёт первым, решение последним', () => {
+    const rows = groupTopicSections(['solution', 'worksheet_homework', 'homework'])
+
+    expect(rows[0].sections).toEqual(['homework', 'worksheet_homework', 'solution'])
+  })
+
+  it('пустая группа не рисуется вовсе', () => {
+    // У темы нет ни ДЗ, ни рабочего листа ДЗ, ни решения.
+    const rows = groupTopicSections(['video', 'notes', 'tasks'])
+
+    expect(rows.map(r => r.group?.key)).toEqual(['theory', 'lesson'])
+    expect(rows.some(r => r.group?.key === 'homework')).toBe(false)
+  })
+
+  it('группа с одной рубрикой всё-таки рисуется', () => {
+    const rows = groupTopicSections(['homework'])
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].group?.label).toBe('Домашнее задание')
+    expect(rows[0].sections).toEqual(['homework'])
+  })
+
+  it('пустой вход — ни одного ряда, а не ряд с нулём кнопок', () => {
+    expect(groupTopicSections([])).toEqual([])
+  })
+
+  /**
+   * «Тестирование» владелец не отнёс ни к одной группе. Вкладка при этом не
+   * имеет права пропасть: остаток идёт последним рядом без подписи.
+   */
+  it('рубрика вне групп не теряется и идёт последней без подписи', () => {
+    const rows = groupTopicSections(['test', 'notes'])
+
+    expect(rows[0].group?.key).toBe('theory')
+    expect(rows.at(-1)).toEqual({ group: null, sections: ['test'] })
+  })
+
+  it('порядок внутри группы задаёт перечень, а не порядок входа', () => {
+    const rows = groupTopicSections(['worksheet_tasks', 'tasks', 'task_solution'])
+
+    expect(rows[0].sections).toEqual(['tasks', 'task_solution', 'worksheet_tasks'])
+  })
+
+  it('ни одна рубрика не дублируется между группами', () => {
+    const all = TOPIC_SECTION_GROUPS.flatMap(g => [...g.sections])
+
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  /**
+   * Сторож против расхождения копий (§100): группы и общий перечень обязаны
+   * описывать один и тот же набор рубрик. Забыли новую рубрику в группах —
+   * тест падает здесь, а не всплывает пропавшей вкладкой у ученика.
+   */
+  it('группы плюс остаток покрывают весь перечень рубрик', () => {
+    const rows = groupTopicSections(TOPIC_SECTION_ORDER)
+    const covered = rows.flatMap(r => r.sections)
+
+    expect([...covered].sort()).toEqual([...TOPIC_SECTION_ORDER].sort())
   })
 })

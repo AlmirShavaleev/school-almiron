@@ -12,7 +12,10 @@ import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItem
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
-import { STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, isMaterialSection, type TopicMaterialSection } from '@/lib/topicMaterialItems'
+import {
+  STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, groupTopicSections, isMaterialSection,
+  type TopicMaterialSection, type TopicSection,
+} from '@/lib/topicMaterialItems'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -212,6 +215,50 @@ export function TopicPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  /** Одна вкладка. Вынесена из разметки: рядов теперь несколько (§121). */
+  function renderTab(tabKey: string) {
+    let label = ''
+    let count = 0
+    let isLocked = false
+
+    if (tabKey === 'video') {
+      label = 'Видео'
+    } else if ((STUDENT_SECTION_ORDER as readonly string[]).includes(tabKey)) {
+      const s = tabKey as TopicMaterialSection
+      label = TOPIC_MATERIAL_SECTION_LABELS[s]
+      count = sectionCounts[s]
+      if (s === 'solution') isLocked = solutionState.hasSolution && !solutionState.unlocked
+    } else if (tabKey === 'homework') {
+      label = 'Домашнее задание'
+    } else if (tabKey === 'test') {
+      label = 'Тест'
+    }
+
+    const isActive = active === tabKey
+
+    return (
+      <button
+        key={tabKey}
+        type="button"
+        role="tab"
+        aria-selected={isActive}
+        onClick={() => setChosen(tabKey)}
+        className={cn(
+          // min-w-0 и truncate: длинная подпись («Домашнее задание») в узкой
+          // колонке должна ужиматься, а не распирать сетку.
+          'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
+          isActive
+            ? 'border-primary-500 text-primary-700'
+            : 'border-transparent text-gray-500 hover:text-gray-800',
+        )}
+      >
+        <span className="truncate">{label}</span>
+        {isLocked && <Lock size={12} className="shrink-0" />}
+        {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
+      </button>
+    )
+  }
+
   return (
     <div className="max-w-3xl space-y-6 pb-10">
 
@@ -236,58 +283,36 @@ export function TopicPage() {
       </div>
 
       {/* ── Tab panel ──
-          Вкладки переносятся, а не скроллятся (§116). Лента с горизонтальной
-          прокруткой прятала половину рубрик даже там, где ширины хватало, а
-          активную вкладку приходилось искать пальцем. На узком экране — сетка
-          в два ряда, на широком — обычный перенос строки. */}
+          Вкладки переносятся, а не скроллятся (§116), и сгруппированы по
+          смыслу (§121): «Теория», «Урок», «Домашнее задание». Раньше они шли
+          сплошной лентой и читались как одна куча.
+
+          Подпись группы стоит СЛЕВА в том же ряду, а не над ним. Над вкладками
+          уже заголовок темы, под ними — сам материал; отдельная строка на
+          каждую подпись удвоила бы высоту шапки ровно там, где её и так много.
+          На узком экране подпись встаёт над своими кнопками — как и просил
+          владелец, группировка сохраняется и там.
+
+          Состав групп живёт в общем перечне рубрик (`topicMaterialItems.ts`),
+          второй копии здесь нет: перечень уже однажды разъезжался (§100). */}
       {availableTabs.length > 0 && (
-        <div
-          role="tablist"
-          aria-label="Разделы темы"
-          className="grid grid-cols-2 gap-1 border-b border-gray-200 pb-px sm:flex sm:flex-wrap"
-        >
-          {availableTabs.map(tabKey => {
-            let label = ''
-            let count = 0
-            let isLocked = false
-
-            if (tabKey === 'video') {
-              label = 'Видео'
-            } else if ((STUDENT_SECTION_ORDER as readonly string[]).includes(tabKey)) {
-              const s = tabKey as TopicMaterialSection
-              label = TOPIC_MATERIAL_SECTION_LABELS[s]
-              count = sectionCounts[s]
-              if (s === 'solution') isLocked = solutionState.hasSolution && !solutionState.unlocked
-            } else if (tabKey === 'homework') {
-              label = 'Домашнее задание'
-            } else if (tabKey === 'test') {
-              label = 'Тест'
-            }
-
-            const isActive = active === tabKey
-
-            return (
-              <button
-                key={tabKey}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setChosen(tabKey)}
-                className={cn(
-                  // min-w-0 и truncate: длинная подпись («Домашнее задание»)
-                  // в узкой колонке должна ужиматься, а не распирать сетку.
-                  'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
-                  isActive
-                    ? 'border-primary-500 text-primary-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-800',
-                )}
-              >
-                <span className="truncate">{label}</span>
-                {isLocked && <Lock size={12} className="shrink-0" />}
-                {!isLocked && count > 0 && <span className="text-xs text-gray-400">{count}</span>}
-              </button>
-            )
-          })}
+        <div role="tablist" aria-label="Разделы темы" className="space-y-1.5 border-b border-gray-200 pb-1.5">
+          {groupTopicSections(availableTabs as TopicSection[]).map(row => (
+            <div
+              key={row.group?.key ?? 'other'}
+              data-testid={`topic-tab-group-${row.group?.key ?? 'other'}`}
+              className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3"
+            >
+              {row.group && (
+                <span className="shrink-0 px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:w-32">
+                  {row.group.label}
+                </span>
+              )}
+              <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
+                {row.sections.map(tabKey => renderTab(tabKey))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

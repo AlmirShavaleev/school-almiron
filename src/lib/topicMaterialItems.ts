@@ -107,6 +107,70 @@ export const TOPIC_SECTION_LABELS: Record<TopicSection, string> = {
 }
 
 /**
+ * Смысловые группы рубрик (§121).
+ *
+ * Вкладки темы переносились одной сплошной лентой и читались как куча. Группы
+ * описаны ЗДЕСЬ, рядом с единым перечнем: порядок и состав рубрик уже однажды
+ * разъезжались по копиям (§100), второй раз повторять не будем.
+ *
+ * Состав — как назвал владелец 10.08. Две рубрики он не упомянул, и обе
+ * разложены осознанно:
+ *  - `theory` («Теория» как раздел материалов) — в группу «Теория», к видео и
+ *    конспекту: это буквально её название;
+ *  - `test` («Тестирование») — НИ В ОДНОЙ группе. Владелец назвал ровно три,
+ *    выдумывать четвёртую подпись — не наше дело; вкладка теста при этом не
+ *    пропадает, `groupTopicSections` кладёт остаток последним рядом без
+ *    подписи.
+ *
+ * Порядок внутри «Домашнего задания» — тоже требование владельца: сначала само
+ * задание, потом рабочий лист, потом решение. До §121 задание оказывалось
+ * последним, после решения.
+ */
+export interface TopicSectionGroup {
+  key: 'theory' | 'lesson' | 'homework'
+  label: string
+  sections: readonly TopicSection[]
+}
+
+export const TOPIC_SECTION_GROUPS: readonly TopicSectionGroup[] = [
+  { key: 'theory',   label: 'Теория',            sections: ['video', 'notes', 'theory'] },
+  { key: 'lesson',   label: 'Урок',              sections: ['tasks', 'task_solution', 'worksheet_tasks'] },
+  { key: 'homework', label: 'Домашнее задание',  sections: ['homework', 'worksheet_homework', 'solution'] },
+] as const
+
+/** Ряд вкладок: группа и те её рубрики, которые у темы реально есть. */
+export interface TopicSectionRow {
+  /** null — остаток, не попавший ни в одну группу (сейчас это «Тестирование»). */
+  group: TopicSectionGroup | null
+  sections: TopicSection[]
+}
+
+/**
+ * Раскладывает доступные рубрики по группам, сохраняя порядок групп и порядок
+ * внутри группы.
+ *
+ * Пустые группы не возвращаются вовсе: у темы без ДЗ не должно быть ни
+ * подписи «Домашнее задание», ни пустого места под ней. Остаток (рубрики вне
+ * групп) идёт последним рядом без подписи — так вкладка не может пропасть
+ * из-за того, что её забыли внести в группу.
+ */
+export function groupTopicSections(available: readonly TopicSection[]): TopicSectionRow[] {
+  const rows: TopicSectionRow[] = []
+  const taken = new Set<TopicSection>()
+
+  for (const group of TOPIC_SECTION_GROUPS) {
+    const sections = group.sections.filter(s => available.includes(s))
+    sections.forEach(s => taken.add(s))
+    if (sections.length > 0) rows.push({ group, sections })
+  }
+
+  const rest = available.filter(s => !taken.has(s))
+  if (rest.length > 0) rows.push({ group: null, sections: [...rest] })
+
+  return rows
+}
+
+/**
  * Короткие подписи — там, где колонка узкая (матрица заполненности).
  * Отличаются только два рабочих листа, остальное берётся из полных.
  */
