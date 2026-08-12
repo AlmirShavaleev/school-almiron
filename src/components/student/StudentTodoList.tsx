@@ -4,6 +4,7 @@ import { cn } from '@/utils/cn'
 import { formatDueIn, type StudentTodo, type TodoItem } from '@/lib/studentTodo'
 import { gradeScaleMax } from '@/lib/topicHomework'
 import { getSubjectColor } from '@/lib/subjectColors'
+import { myTopicHref } from '@/lib/studentTopicAccess'
 
 /**
  * «Что мне сдать» — первый экран кабинета ученика.
@@ -112,7 +113,7 @@ export function StudentTodoList({ todo, loading, error }: StudentTodoListProps) 
         {todo.newlyOpened.map(topic => (
           <RowShell
             key={topic.topicId}
-            to={topic.groupId ? `/my-course/${topic.groupId}/topic/${topic.topicId}` : null}
+            to={myTopicHref(topic.groupId, topic.topicId)}
           >
             <div className="font-medium text-graphite-950">{topic.topicTitle}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
@@ -223,10 +224,26 @@ function CourseDot({ subject }: { subject: string | null }) {
   )
 }
 
+/**
+ * Строка списка. Ссылка — настоящий `<Link>` (фокус по Tab, «открыть в новой
+ * вкладке», адрес в статусной строке), а не `div` с `onClick`.
+ *
+ * Без адреса строка не притворяется ссылкой: ни подсветки при наведении, ни
+ * курсора-указателя. Адрес собирает общее правило `myTopicHref`, поэтому
+ * «некуда вести» здесь и на странице ДЗ означает ровно одно и то же.
+ */
 function RowShell({ to, children }: { to: string | null; children: React.ReactNode }) {
-  const className = 'block rounded-xl border border-slate-100 px-3 py-3 transition-colors hover:border-slate-200 hover:bg-slate-50/70'
-  if (!to) return <div className={className}>{children}</div>
-  return <Link to={to} className={className}>{children}</Link>
+  const base = 'block rounded-xl border border-slate-100 px-3 py-3'
+  if (!to) return <div data-testid="todo-row" className={base}>{children}</div>
+  return (
+    <Link
+      to={to}
+      data-testid="todo-row"
+      className={cn(base, 'transition-colors hover:border-slate-200 hover:bg-slate-50/70')}
+    >
+      {children}
+    </Link>
+  )
 }
 
 function HomeworkRow({
@@ -238,7 +255,7 @@ function HomeworkRow({
 }) {
   const styles = TONE_STYLES[tone]
   return (
-    <RowShell to={item.groupId ? `/my-course/${item.groupId}/topic/${item.topicId}` : null}>
+    <RowShell to={myTopicHref(item.groupId, item.topicId)}>
       {/* Колонка на телефоне, строка на планшете и шире: срок под названием
           читается лучше, чем сжатый в угол на 360px. */}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">

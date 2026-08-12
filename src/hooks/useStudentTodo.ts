@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { fetchGroupIdByCourse } from '@/lib/studentTopicAccess'
 import {
   buildStudentTodo,
   type StudentTodo,
@@ -45,18 +46,12 @@ export function useStudentTodo(profileId: string | undefined) {
       if (!student?.id) { setTodo(EMPTY); setLoading(false); return }
 
       // Мои группы → курсы. Через group_students, а не student_courses:
-      // вторая таблица легаси и с настоящим доступом не связана.
-      const { data: memberships } = await supabase
-        .from('group_students')
-        .select('group_id, groups!inner(id, course_id)')
-        .eq('student_id', student.id)
+      // вторая таблица легаси и с настоящим доступом не связана. Запрос и
+      // правило «первая группа курса» вынесены в lib/studentTopicAccess —
+      // страница ДЗ строит адрес темы по той же карте (§123.7).
+      const groupByCourse = await fetchGroupIdByCourse(student.id)
       if (cancelled) return
 
-      const groupByCourse = new Map<string, string>()
-      for (const row of (memberships ?? []) as any[]) {
-        const courseId = row.groups?.course_id
-        if (courseId && !groupByCourse.has(courseId)) groupByCourse.set(courseId, row.groups.id)
-      }
       const courseIds = [...groupByCourse.keys()]
 
       if (courseIds.length === 0) { setTodo(EMPTY); setLoading(false); return }

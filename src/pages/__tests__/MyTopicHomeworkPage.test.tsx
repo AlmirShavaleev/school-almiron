@@ -5,6 +5,7 @@ import {
   filterHomeworkByCourse, homeworkCourseOptions, splitHomeworkBuckets,
   type TopicJournalHomework,
 } from '@/lib/topicJournal'
+import { myTopicHref } from '@/lib/studentTopicAccess'
 
 /**
  * Страница списка ДЗ ученика.
@@ -17,6 +18,8 @@ import {
 const state = {
   rows: [] as TopicJournalHomework[],
   courses: [] as Array<{ courseId: string; title: string; subject: string | null }>,
+  /** Курс → группа: тот же источник адреса, что и в проде (§123.7). */
+  groups: new Map<string, string>([['c1', 'g1'], ['c2', 'g2']]),
   loading: false,
   error: null as string | null,
   noStudentRecord: false,
@@ -32,7 +35,9 @@ vi.mock('@/hooks/useMyTopicHomework', () => ({
       courseOptions,
       activeCourseId,
       summary: null,
-      topicLink: (row: TopicJournalHomework) => `/my-course/g1/topic/${row.topic_id}`,
+      // Адрес собирает то же общее правило, что и хук: подменён источник
+      // групп, а не способ строить путь.
+      topicLink: (row: TopicJournalHomework) => myTopicHref(state.groups.get(row.course_id), row.topic_id),
       courseSubject: (row: TopicJournalHomework) =>
         state.courses.find(c => c.courseId === row.course_id)?.subject ?? null,
       loading: state.loading,
@@ -82,6 +87,7 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
   beforeEach(() => {
     state.rows = []
     state.courses = []
+    state.groups = new Map([['c1', 'g1'], ['c2', 'g2']])
     state.loading = false
     state.error = null
     state.noStudentRecord = false
@@ -142,6 +148,45 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
 
     expect(screen.getByTestId('my-hw-row').closest('a'))
       .toHaveAttribute('href', '/my-course/g1/topic/topic-42')
+  })
+
+  it('карточка — настоящая ссылка целиком: кликается вся и берётся в Tab', () => {
+    // Не `div` с onClick: у ссылки есть фокус с клавиатуры, «открыть в новой
+    // вкладке» и адрес в статусной строке.
+    state.rows = [hw({ homework_id: 'd', status: 'not_started', topic_id: 'topic-7' })]
+    renderPage()
+
+    const row = screen.getByTestId('my-hw-row')
+    expect(row.tagName).toBe('A')
+    expect(row).toHaveAttribute('href', '/my-course/g1/topic/topic-7')
+    // Кнопка действия лежит ВНУТРИ ссылки — кликается любая точка карточки.
+    expect(row.textContent).toContain('Сдать')
+  })
+
+  it('без адреса карточка не притворяется ссылкой', () => {
+    // Достижимо, только если карта групп не доехала: работу в списке ученик
+    // видит через то же членство в группе, что даёт и адрес.
+    state.groups = new Map()
+    state.rows = [hw({ homework_id: 'd', status: 'not_started' })]
+    renderPage()
+
+    const row = screen.getByTestId('my-hw-row')
+    expect(row.closest('a')).toBeNull()
+    expect(row.className).not.toContain('cursor-pointer')
+    expect(row.className).not.toContain('hover:')
+    // И кнопки «Сдать», ведущей в никуда, тоже нет.
+    expect(row.textContent).not.toContain('Сдать')
+  })
+
+  it('курс-черновик (is_active = false) ссылку не отнимает', () => {
+    // §123.3: у ученика 11А оба курса были черновиками, и карточки не вели
+    // никуда. Признак витрины не решает, откроется ли тема; список курсов в
+    // ряду переключателей при этом собирается из строк журнала.
+    state.courses = []
+    state.rows = [hw({ homework_id: 'd', status: 'not_started', topic_id: 'topic-9' })]
+    renderPage()
+
+    expect(screen.getByTestId('my-hw-row')).toHaveAttribute('href', '/my-course/g1/topic/topic-9')
   })
 
   it('когда заданий нет вовсе — понятная заглушка, а не пустой экран', () => {

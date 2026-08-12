@@ -7,6 +7,7 @@ import {
   splitHomeworkBuckets, homeworkCourseOptions, filterHomeworkByCourse,
   type HomeworkBuckets, type HomeworkCourseOption, type TopicJournalHomework,
 } from '@/lib/topicJournal'
+import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
 
 /**
  * students.id текущего пользователя. Тот же однострочный резолв, что руками
@@ -44,10 +45,9 @@ export function useMyStudentId() {
  * topic_homework_attempts, поэтому «предстоящие» там не видны в принципе —
  * из-за этого у ученика и не было списка предстоящих работ.
  *
- * groupId по курсу подтягивается отдельно (useMyCourseMemberships): журнал
- * отдаёт course_id, а ссылка на тему у ученика — /my-course/:groupId/topic/:topicId.
- * Оттуда же берётся полный список курсов ученика для ряда переключателей: курс
- * без заданий тоже должен быть виден.
+ * `useMyCourseMemberships` остался ровно для одного — полного списка курсов
+ * ученика в ряду переключателей: курс без заданий тоже должен быть виден.
+ * Адрес темы он больше не даёт, см. ниже.
  *
  * Предмет для цветной метки читается ОТДЕЛЬНЫМ запросом по `courses`, а не
  * берётся из зачислений: `useMyCourseMemberships` выбрасывает курсы с
@@ -65,11 +65,24 @@ export function useMyTopicHomework(courseId: string | null = null) {
   const { journal, loading: loadingJournal, error, reload } = useStudentTopicJournal(studentId)
   const { courses, loading: loadingCourses } = useMyCourseMemberships()
 
-  const groupByCourseId = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const c of courses) map.set(c.courseId, c.primaryGroupId)
-    return map
-  }, [courses])
+  // Группа для ссылки — из членства, а не из зачислений: `useMyCourseMemberships`
+  // выбрасывает курсы с `is_active = false`, и карточки ДЗ у ученика с
+  // курсом-черновиком переставали быть ссылками (§123.7). Право увидеть работу
+  // дало членство в группе — оно же обязано давать и адрес темы.
+  const [groupByCourseId, setGroupByCourseId] = useState<Map<string, string>>(new Map())
+  const [loadingGroups, setLoadingGroups] = useState(true)
+
+  useEffect(() => {
+    if (!studentId) { setGroupByCourseId(new Map()); setLoadingGroups(false); return }
+    let cancelled = false
+    setLoadingGroups(true)
+    fetchGroupIdByCourse(studentId).then(map => {
+      if (cancelled) return
+      setGroupByCourseId(map)
+      setLoadingGroups(false)
+    })
+    return () => { cancelled = true }
+  }, [studentId])
 
   // Через useMemo, а не выражением: `?? []` каждый раз даёт новый массив, и
   // зависящие от него useMemo пересчитывались бы на каждый рендер.
@@ -118,11 +131,9 @@ export function useMyTopicHomework(courseId: string | null = null) {
     [rows, activeCourseId],
   )
 
-  /** Ссылка на тему с этим ДЗ, если группа курса известна. */
-  const topicLink = (row: TopicJournalHomework): string | null => {
-    const groupId = groupByCourseId.get(row.course_id)
-    return groupId ? `/my-course/${groupId}/topic/${row.topic_id}` : null
-  }
+  /** Ссылка на тему с этим ДЗ. Путь собирает общее правило, не эта страница. */
+  const topicLink = (row: TopicJournalHomework): string | null =>
+    myTopicHref(groupByCourseId.get(row.course_id), row.topic_id)
 
   /** Предмет курса этой работы — для цвета метки. */
   const courseSubject = (row: TopicJournalHomework): string | null =>
@@ -138,7 +149,9 @@ export function useMyTopicHomework(courseId: string | null = null) {
     summary: journal?.summary ?? null,
     topicLink,
     courseSubject,
-    loading: resolvingStudent || loadingJournal || loadingCourses,
+    // Ожидание групп входит в загрузку: иначе карточка успела бы отрисоваться
+    // неактивной, а через мгновение стать ссылкой — мигание вместо перехода.
+    loading: resolvingStudent || loadingJournal || loadingCourses || loadingGroups,
     error,
     reload,
     /** Ученик не найден — например, персонал открыл страницу по прямой ссылке. */

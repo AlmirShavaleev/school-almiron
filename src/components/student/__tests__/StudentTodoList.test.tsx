@@ -83,6 +83,19 @@ describe('StudentTodoList', () => {
     expect(screen.getByText('ДЗ h1').closest('a')).toBeNull()
   })
 
+  it('строка без адреса не притворяется ссылкой — ни подсветки, ни курсора', () => {
+    renderList({ ...EMPTY, isClear: false, overdue: [item({ key: 'h1', groupId: null })] })
+    const shell = screen.getByTestId('todo-row')
+    expect(shell.tagName).toBe('DIV')
+    expect(shell.className).not.toContain('hover:')
+    expect(shell.className).not.toContain('cursor-pointer')
+  })
+
+  it('адрес темы собран общим правилом — тем же, что на странице ДЗ', () => {
+    renderList({ ...EMPTY, isClear: false, overdue: [item({ key: 'h1', groupId: 'g7', topicId: 't9' })] })
+    expect(screen.getByText('ДЗ h1').closest('a')).toHaveAttribute('href', '/my-course/g7/topic/t9')
+  })
+
   it('курс помечен цветом предмета — той же палитрой, что на странице ДЗ', () => {
     // Два курса в одном списке должны различаться глазом. Цвет берётся от
     // предмета, а не от названия: переименование курса цвет не двигает.
