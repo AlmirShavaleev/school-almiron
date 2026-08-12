@@ -17,7 +17,8 @@ import {
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
-import { isSelfMarkable } from '@/lib/topicProgress'
+import { useMyTopicHomeworkState, TOPIC_HOMEWORK_STATE_LABEL } from '@/hooks/useMyTopicHomeworkState'
+import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -87,11 +88,14 @@ export function TopicPage() {
   // закрытую тему.
   const { variants: topicVariants } = useTopicStudentVariants(topicId ?? undefined)
 
-  // Самоотметки по разделам. Персонал заходит на эту же страницу; у него своей
-  // строки `students` нет, хук отдаёт пустой набор и кнопки не будет — отмечать
-  // за ученика нельзя (это и есть смысл самоотметки).
+  // Самоотметки по ГРУППАМ рубрик. Персонал заходит на эту же страницу; у него
+  // своей строки `students` нет, хук отдаёт пустой набор и кнопки не будет —
+  // отмечать за ученика нельзя (это и есть смысл самоотметки).
   const sectionMarks = useTopicSectionMarks(topicId ?? null)
   const [markError, setMarkError] = useState<string | null>(null)
+
+  // Состояние моей работы — словами, для ряда «Домашнее задание».
+  const homeworkState = useMyTopicHomeworkState(topicId ?? null)
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -223,6 +227,68 @@ export function TopicPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  /**
+   * Отметка группы в её же ряду.
+   *
+   * Три случая, и все три — про честность подписи:
+   *  · «Домашнее задание» — кнопки нет ни в одном состоянии, только состояние
+   *    словами: засчитывает преподаватель, приняв работу;
+   *  · у персонала кнопки нет вовсе — за ученика не отмечают;
+   *  · остальное — самоотметка, и подпись прямо это говорит: «Отметил сам», а
+   *    не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно.
+   */
+  function renderGroupMark(groupKey: TopicGroupKey) {
+    if (groupKey === 'homework') {
+      return (
+        <span
+          data-testid="topic-group-homework-state"
+          className={cn(
+            'shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium sm:ml-auto',
+            homeworkState.state === 'accepted' ? 'bg-emerald-50 text-emerald-800'
+              : homeworkState.state === 'returned' ? 'bg-amber-50 text-amber-800'
+                : homeworkState.state === 'submitted' ? 'bg-blue-50 text-blue-700'
+                  : 'bg-gray-100 text-gray-500',
+          )}
+        >
+          {TOPIC_HOMEWORK_STATE_LABEL[homeworkState.state]}
+          {homeworkState.state === 'accepted' && ' ✓'}
+        </span>
+      )
+    }
+
+    if (!sectionMarks.canMark || !isSelfMarkable(groupKey)) return null
+    const marked = sectionMarks.marks.has(groupKey)
+
+    return (
+      <button
+        type="button"
+        data-testid={`topic-group-mark-${groupKey}`}
+        aria-pressed={marked}
+        disabled={sectionMarks.loading}
+        onClick={async () => {
+          setMarkError(null)
+          try {
+            await sectionMarks.toggle(groupKey)
+          } catch (e: any) {
+            // Откат уже сделал хук; человеку нужна причина, иначе возврат
+            // галочки читается как «глюк» (§94).
+            setMarkError(e?.message ?? 'Не удалось сохранить отметку')
+          }
+        }}
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 sm:ml-auto',
+          marked
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-900',
+        )}
+      >
+        {marked
+          ? <><Check size={12} />Отметил сам</>
+          : <><Circle size={12} />Отметить как сделанное</>}
+      </button>
+    )
+  }
+
   /** Одна вкладка. Вынесена из разметки: рядов теперь несколько (§121). */
   function renderTab(tabKey: string) {
     let label = ''
@@ -319,67 +385,27 @@ export function TopicPage() {
               <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
                 {row.sections.map(tabKey => renderTab(tabKey))}
               </div>
+
+              {/*
+                Отметка стоит на ГРУППЕ, а не на каждой вкладке (правка §122 по
+                просмотру владельца): отмечать рубрики по одной оказалось
+                неудобно. Кнопка живёт в конце того же ряда — шапка не растёт.
+
+                «Домашнее задание» кнопки не имеет ни в одном состоянии: его
+                засчитывает преподаватель, приняв работу. Вместо кнопки —
+                состояние словами. Заодно это закрывает вопрос про гейт §95:
+                «Решение ДЗ» лежит в этой же группе, отмечать там нечего.
+              */}
+              {row.group && renderGroupMark(row.group.key)}
             </div>
           ))}
         </div>
       )}
 
-      {/*
-        ── Отметка раздела ──
-        Кнопка стоит НАД содержимым активной вкладки: отмечают после того, как
-        посмотрели, и искать переключатель под длинным конспектом пришлось бы
-        прокруткой.
-
-        Три случая, и все три — про честность подписи:
-         · ДЗ отметить нельзя вовсе — засчитывает преподаватель, приняв работу;
-         · «Решение ДЗ» под гейтом (§95) не отмечается, пока закрыто;
-         · остальное — самоотметка, и подпись прямо это говорит: «отметил сам»,
-           а не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно
-           и с этим не смешивается.
-      */}
-      {active !== null && (
-        active === 'homework' ? (
-          <div
-            data-testid="topic-section-homework-note"
-            className="rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-2 text-xs text-gray-500"
-          >
-            Этот раздел засчитывается сам — когда преподаватель примет работу.
-          </div>
-        ) : sectionMarks.canMark && !(active === 'solution' && solutionState.hasSolution && !solutionState.unlocked) && isSelfMarkable(active as TopicSection) ? (
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              data-testid="topic-section-mark"
-              aria-pressed={sectionMarks.marks.has(active as TopicSection)}
-              disabled={sectionMarks.loading}
-              onClick={async () => {
-                setMarkError(null)
-                try {
-                  await sectionMarks.toggle(active as TopicSection)
-                } catch (e: any) {
-                  // Откат уже сделал хук; человеку нужна причина, иначе
-                  // возврат галочки читается как «глюк» (§94).
-                  setMarkError(e?.message ?? 'Не удалось сохранить отметку')
-                }
-              }}
-              className={cn(
-                'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50',
-                sectionMarks.marks.has(active as TopicSection)
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900',
-              )}
-            >
-              {sectionMarks.marks.has(active as TopicSection)
-                ? <><Check size={15} />Отметил сам</>
-                : <><Circle size={15} />Отметить как сделанное</>}
-            </button>
-            {markError && (
-              <div data-testid="topic-section-mark-error" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
-                {markError}
-              </div>
-            )}
-          </div>
-        ) : null
+      {markError && (
+        <div data-testid="topic-section-mark-error" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+          {markError}
+        </div>
       )}
 
       {/* ── Tab content ── */}

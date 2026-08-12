@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { courseProgress, isSelfMarkable, sectionDone, topicDone, topicSections } from './topicProgress'
-import type { TopicSection } from './topicMaterialItems'
+import {
+  courseProgress, groupDone, isSelfMarkable, topicDone, topicGroups, topicSections,
+  type TopicGroupKey,
+} from './topicProgress'
 
-const progress = (sections: TopicSection[], marks: TopicSection[], homeworkAccepted = false) => ({
-  sections, marks: new Set(marks), homeworkAccepted,
+const progress = (groups: TopicGroupKey[], marks: TopicGroupKey[], homeworkAccepted = false) => ({
+  groups, marks: new Set(marks), homeworkAccepted,
 })
 
 describe('topicSections — считаем только те рубрики, что реально есть', () => {
@@ -22,72 +24,89 @@ describe('topicSections — считаем только те рубрики, ч�
     // не должно: отметить нечего, а тема иначе не завершится никогда.
     expect(topicSections({ hasVideo: false, sectionCounts: {}, hasHomework: true, hasTest: false }))
       .toEqual(['homework'])
-    expect(topicSections({ hasVideo: true, sectionCounts: {}, hasHomework: false, hasTest: false }))
-      .toEqual(['video'])
   })
 
   it('закрытое гейтом «Решение ДЗ» — существующая рубрика', () => {
-    const sections = topicSections({
+    expect(topicSections({
       hasVideo: false, sectionCounts: { solution: 0 }, hasSolution: true,
       hasHomework: false, hasTest: false,
-    })
-    expect(sections).toEqual(['solution'])
+    })).toEqual(['solution'])
   })
 })
 
-describe('sectionDone — ДЗ считает система, остальное отмечает ученик', () => {
-  it('ДЗ засчитывается только принятой работой, отметкой — никогда', () => {
-    // Даже если строка отметки каким-то образом появится, ДЗ она не закроет.
-    const p = progress(['homework'], ['homework' as TopicSection], false)
-    expect(sectionDone('homework', p)).toBe(false)
-    expect(sectionDone('homework', progress(['homework'], [], true))).toBe(true)
+describe('topicGroups — рубрики сворачиваются в группы §121', () => {
+  it('одна рубрика поднимает всю свою группу', () => {
+    expect(topicGroups(['notes'])).toEqual(['theory'])
+    expect(topicGroups(['tasks'])).toEqual(['lesson'])
+    expect(topicGroups(['worksheet_homework'])).toEqual(['homework'])
   })
 
-  it('обычный раздел закрывается самоотметкой', () => {
-    expect(sectionDone('notes', progress(['notes'], ['notes']))).toBe(true)
-    expect(sectionDone('notes', progress(['notes'], []))).toBe(false)
+  it('группы возвращаются в порядке §121, без пустых', () => {
+    expect(topicGroups(['task_solution', 'video', 'homework'])).toEqual(['theory', 'lesson', 'homework'])
   })
 
-  it('ДЗ отмечать самому нельзя, тест — пока можно', () => {
+  it('тестирование ни в какую группу не входит и на завершённость не влияет', () => {
+    expect(topicGroups(['test'])).toEqual([])
+  })
+
+  it('закрытое гейтом решение поднимает группу ДЗ — отмечать там всё равно нечего', () => {
+    expect(topicGroups(['solution'])).toEqual(['homework'])
+  })
+})
+
+describe('groupDone — ДЗ считает система, остальное отмечает ученик', () => {
+  it('группа ДЗ засчитывается только принятой работой', () => {
+    // Даже если строка отметки каким-то образом появится, группу она не закроет.
+    expect(groupDone('homework', progress(['homework'], ['homework' as TopicGroupKey], false))).toBe(false)
+    expect(groupDone('homework', progress(['homework'], [], true))).toBe(true)
+  })
+
+  it('обычная группа закрывается самоотметкой', () => {
+    expect(groupDone('theory', progress(['theory'], ['theory']))).toBe(true)
+    expect(groupDone('theory', progress(['theory'], []))).toBe(false)
+  })
+
+  it('отмечать можно только «Теорию» и «Урок»', () => {
+    expect(isSelfMarkable('theory')).toBe(true)
+    expect(isSelfMarkable('lesson')).toBe(true)
     expect(isSelfMarkable('homework')).toBe(false)
-    expect(isSelfMarkable('test')).toBe(true)
-    expect(isSelfMarkable('video')).toBe(true)
   })
 })
 
 describe('topicDone', () => {
-  it('все разделы отмечены и ДЗ принято — тема завершена', () => {
-    expect(topicDone(progress(['video', 'notes', 'homework'], ['video', 'notes'], true))).toBe(true)
+  it('обе группы отмечены и ДЗ принято — тема завершена', () => {
+    expect(topicDone(progress(['theory', 'lesson', 'homework'], ['theory', 'lesson'], true))).toBe(true)
   })
 
   it('всё отмечено, но ДЗ не принято — не завершена', () => {
-    expect(topicDone(progress(['video', 'notes', 'homework'], ['video', 'notes'], false))).toBe(false)
+    expect(topicDone(progress(['theory', 'lesson', 'homework'], ['theory', 'lesson'], false))).toBe(false)
   })
 
   it('тема без ДЗ закрывается одними отметками', () => {
-    expect(topicDone(progress(['video', 'notes'], ['video', 'notes']))).toBe(true)
+    expect(topicDone(progress(['theory', 'lesson'], ['theory', 'lesson']))).toBe(true)
   })
 
-  it('тема без разделов завершённой не считается', () => {
+  it('одна отметка из двух групп темы не хватает', () => {
+    expect(topicDone(progress(['theory', 'lesson'], ['theory']))).toBe(false)
+  })
+
+  it('тема, где отмечать нечего, завершённой не считается', () => {
     expect(topicDone(progress([], []))).toBe(false)
   })
 })
 
 describe('courseProgress — доля завершённых ТЕМ', () => {
-  it('считает темы, а не разделы', () => {
+  it('считает темы, а не группы', () => {
     // Первая тема почти доделана, но ДЗ не принято — в зачёт не идёт.
     const result = courseProgress([
-      progress(['video', 'notes', 'tasks', 'homework'], ['video', 'notes', 'tasks'], false),
-      progress(['notes'], ['notes']),
+      progress(['theory', 'lesson', 'homework'], ['theory', 'lesson'], false),
+      progress(['theory'], ['theory']),
     ])
     expect(result).toEqual({ done: 1, total: 2, percent: 50 })
   })
 
-  it('пустые темы не портят долю', () => {
-    const result = courseProgress([
-      progress(['notes'], ['notes']),
-      progress([], []),
-    ])
+  it('темы без групп долю не портят', () => {
+    const result = courseProgress([progress(['theory'], ['theory']), progress([], [])])
     expect(result).toEqual({ done: 1, total: 1, percent: 100 })
   })
 

@@ -1,25 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
-import { isSelfMarkable } from '@/lib/topicProgress'
-import type { TopicSection } from '@/lib/topicMaterialItems'
+import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
 
 /**
- * Самоотметки ученика по разделам ОДНОЙ темы.
+ * Самоотметки ученика по ГРУППАМ рубрик одной темы (§121: «Теория», «Урок»).
  *
- * Отметка ставится и снимается сразу, не дожидаясь сети: ученик щёлкает по
- * разделам подряд, и ожидание ответа на каждый щелчок превратило бы это в
- * мучение. Но при отказе базы состояние возвращается назад И причина отдаётся
- * наверх — экран не должен показывать того, чего в базе нет (§94), а
+ * Отметка ставится и снимается сразу, не дожидаясь сети: ждать ответа на каждое
+ * нажатие — мучение. Но при отказе базы состояние возвращается назад И причина
+ * отдаётся наверх: экран не должен показывать того, чего в базе нет (§94), а
  * молчаливый откат читается как «глюк».
  *
- * Раздел `homework` сюда не попадает никогда: его состояние вычисляется из
- * принятой работы (`topicProgress.sectionDone`). Попытку отметить его руками
- * ловит и клиент, и CHECK таблицы.
+ * Группа `homework` сюда не попадает никогда: её засчитывает принятая работа
+ * (`topicProgress.groupDone`). Попытку отметить её руками ловит и клиент, и
+ * CHECK таблицы.
  */
 export function useTopicSectionMarks(topicId: string | null) {
   const { studentId, loading: resolvingStudent } = useMyStudentId()
-  const [marks, setMarks] = useState<Set<TopicSection>>(new Set())
+  const [marks, setMarks] = useState<Set<TopicGroupKey>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,36 +31,36 @@ export function useTopicSectionMarks(topicId: string | null) {
 
     supabase
       .from('topic_section_marks')
-      .select('section')
+      .select('group_key')
       .eq('topic_id', topicId)
       .eq('student_id', studentId)
       .then(({ data, error: err }) => {
         if (cancelled) return
         if (err) { setError(err.message); setLoading(false); return }
-        setMarks(new Set((data ?? []).map(r => r.section as TopicSection)))
+        setMarks(new Set((data ?? []).map(r => r.group_key as TopicGroupKey)))
         setLoading(false)
       })
 
     return () => { cancelled = true }
   }, [topicId, studentId, resolvingStudent])
 
-  const toggle = useCallback(async (section: TopicSection) => {
+  const toggle = useCallback(async (group: TopicGroupKey) => {
     if (!topicId || !studentId) throw new Error('Не удалось определить ученика')
-    if (!isSelfMarkable(section)) throw new Error('Этот раздел засчитывает система, а не отметка')
+    if (!isSelfMarkable(group)) throw new Error('Этот раздел засчитывает система, а не отметка')
 
-    const had = marks.has(section)
+    const had = marks.has(group)
     const snapshot = new Set(marks)
     const next = new Set(marks)
-    if (had) next.delete(section)
-    else next.add(section)
+    if (had) next.delete(group)
+    else next.add(group)
     setMarks(next)
     setError(null)
 
     const query = had
       ? supabase.from('topic_section_marks').delete()
-          .eq('topic_id', topicId).eq('student_id', studentId).eq('section', section)
+          .eq('topic_id', topicId).eq('student_id', studentId).eq('group_key', group)
       : supabase.from('topic_section_marks').insert({
-          topic_id: topicId, student_id: studentId, section,
+          topic_id: topicId, student_id: studentId, group_key: group,
         })
 
     const { error: err } = await query

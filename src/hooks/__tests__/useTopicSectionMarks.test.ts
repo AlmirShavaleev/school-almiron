@@ -11,7 +11,7 @@ const insertResult = { error: null as { message: string } | null }
 const deleteResult = { error: null as { message: string } | null }
 const insertSpy = vi.fn()
 const deleteSpy = vi.fn()
-let existing: Array<{ section: string }> = []
+let existing: Array<{ group_key: string }> = []
 
 function selectChain() {
   const chain: any = {}
@@ -67,11 +67,11 @@ describe('useTopicSectionMarks', () => {
   })
 
   it('поднимает уже поставленные отметки', async () => {
-    existing = [{ section: 'notes' }, { section: 'video' }]
+    existing = [{ group_key: 'theory' }, { group_key: 'lesson' }]
     const { result } = renderHook(() => useTopicSectionMarks(TOPIC))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect([...result.current.marks].sort()).toEqual(['notes', 'video'])
+    expect([...result.current.marks].sort()).toEqual(['lesson', 'theory'])
     expect(result.current.canMark).toBe(true)
   })
 
@@ -79,20 +79,20 @@ describe('useTopicSectionMarks', () => {
     const { result } = renderHook(() => useTopicSectionMarks(TOPIC))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    await act(async () => { await result.current.toggle('notes') })
+    await act(async () => { await result.current.toggle('theory') })
 
-    expect(result.current.marks.has('notes')).toBe(true)
-    expect(insertSpy).toHaveBeenCalledWith({ topic_id: TOPIC, student_id: 'student-1', section: 'notes' })
+    expect(result.current.marks.has('theory')).toBe(true)
+    expect(insertSpy).toHaveBeenCalledWith({ topic_id: TOPIC, student_id: 'student-1', group_key: 'theory' })
   })
 
   it('повторное нажатие снимает отметку', async () => {
-    existing = [{ section: 'notes' }]
+    existing = [{ group_key: 'theory' }]
     const { result } = renderHook(() => useTopicSectionMarks(TOPIC))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    await act(async () => { await result.current.toggle('notes') })
+    await act(async () => { await result.current.toggle('theory') })
 
-    expect(result.current.marks.has('notes')).toBe(false)
+    expect(result.current.marks.has('theory')).toBe(false)
     expect(deleteSpy).toHaveBeenCalled()
     expect(insertSpy).not.toHaveBeenCalled()
   })
@@ -103,14 +103,14 @@ describe('useTopicSectionMarks', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      await expect(result.current.toggle('notes')).rejects.toBeTruthy()
+      await expect(result.current.toggle('theory')).rejects.toBeTruthy()
     })
 
-    expect(result.current.marks.has('notes')).toBe(false)
+    expect(result.current.marks.has('theory')).toBe(false)
     expect(result.current.error).toContain('нет прав')
   })
 
-  it('ДЗ отметить нельзя — в базу такой запрос не уходит', async () => {
+  it('группу ДЗ отметить нельзя — в базу такой запрос не уходит', async () => {
     const { result } = renderHook(() => useTopicSectionMarks(TOPIC))
     await waitFor(() => expect(result.current.loading).toBe(false))
 

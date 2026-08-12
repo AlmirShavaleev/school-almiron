@@ -5032,24 +5032,25 @@ export type Database = {
       // 12.08): MCP-генерация отдаёт этот файл целиком — тысячи строк, и в
       // контекст сессии он не помещается. СВЕРИТЬ при следующей полной
       // генерации. Схема сверена по проду запросом, а не по этому файлу:
-      // student_id uuid NOT NULL, topic_id uuid NOT NULL, section text NOT NULL,
-      // marked_at timestamptz NOT NULL, PK (student_id, topic_id, section).
+      // student_id uuid NOT NULL, topic_id uuid NOT NULL, group_key text NOT NULL
+      // (CHECK theory|lesson), marked_at timestamptz NOT NULL,
+      // PK (student_id, topic_id, group_key).
       topic_section_marks: {
         Row: {
+          group_key: string
           marked_at: string
-          section: string
           student_id: string
           topic_id: string
         }
         Insert: {
+          group_key: string
           marked_at?: string
-          section: string
           student_id: string
           topic_id: string
         }
         Update: {
+          group_key?: string
           marked_at?: string
-          section?: string
           student_id?: string
           topic_id?: string
         }

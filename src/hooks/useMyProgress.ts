@@ -3,7 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
 import { useStudentTopicJournal } from '@/hooks/useStudentTopicJournal'
 import { isTopicOpen } from '@/lib/topicAvailability'
-import { courseProgress, topicSections, type TopicProgress } from '@/lib/topicProgress'
+import {
+  courseProgress, topicGroups, topicSections,
+  type TopicGroupKey, type TopicProgress,
+} from '@/lib/topicProgress'
 import { scorePercent } from '@/lib/studentInsights'
 import type { TopicSection } from '@/lib/topicMaterialItems'
 
@@ -40,8 +43,8 @@ export function useMyProgress() {
   const { journal, loading: loadingJournal, error: journalError } = useStudentTopicJournal(studentId)
 
   const [topics, setTopics] = useState<TopicRow[]>([])
-  const [sectionsByTopic, setSectionsByTopic] = useState<Record<string, TopicSection[]>>({})
-  const [marksByTopic, setMarksByTopic] = useState<Record<string, Set<TopicSection>>>({})
+  const [groupsByTopic, setGroupsByTopic] = useState<Record<string, TopicGroupKey[]>>({})
+  const [marksByTopic, setMarksByTopic] = useState<Record<string, Set<TopicGroupKey>>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,13 +69,13 @@ export function useMyProgress() {
       const open = (topicRows ?? []).filter(t => isTopicOpen(t as TopicRow)) as TopicRow[]
       const ids = open.map(t => t.id)
       if (ids.length === 0) {
-        setTopics([]); setSectionsByTopic({}); setMarksByTopic({}); setLoading(false)
+        setTopics([]); setGroupsByTopic({}); setMarksByTopic({}); setLoading(false)
         return
       }
 
       const [materialsRes, marksRes] = await Promise.all([
         supabase.from('topic_material_items').select('topic_id, section, kind').in('topic_id', ids),
-        supabase.from('topic_section_marks').select('topic_id, section')
+        supabase.from('topic_section_marks').select('topic_id, group_key')
           .eq('student_id', sid).in('topic_id', ids),
       ])
       if (cancelled) return
@@ -92,24 +95,26 @@ export function useMyProgress() {
       const homeworkTopics = new Set((journal?.homework ?? []).map(h => h.topic_id))
       const testTopics = new Set((journal?.tests ?? []).map(t => t.topic_id))
 
-      const sections: Record<string, TopicSection[]> = {}
+      // Рубрики → ГРУППЫ (§121): отметка стоит на группе, и завершённость
+      // считается по ним же. Обе функции — из `lib/topicProgress`.
+      const groups: Record<string, TopicGroupKey[]> = {}
       for (const topic of open) {
-        sections[topic.id] = topicSections({
+        groups[topic.id] = topicGroups(topicSections({
           hasVideo: !!hasVideo[topic.id],
           sectionCounts: counts[topic.id] ?? {},
           hasHomework: homeworkTopics.has(topic.id),
           hasTest: testTopics.has(topic.id),
-        })
+        }))
       }
 
-      const marks: Record<string, Set<TopicSection>> = {}
+      const marks: Record<string, Set<TopicGroupKey>> = {}
       for (const row of (marksRes.data ?? []) as any[]) {
         const bucket = marks[row.topic_id] ?? (marks[row.topic_id] = new Set())
-        bucket.add(row.section as TopicSection)
+        bucket.add(row.group_key as TopicGroupKey)
       }
 
       setTopics(open)
-      setSectionsByTopic(sections)
+      setGroupsByTopic(groups)
       setMarksByTopic(marks)
       setLoading(false)
     }
@@ -124,8 +129,8 @@ export function useMyProgress() {
     )
 
     const perTopic: TopicProgress[] = topics.map(t => ({
-      sections: sectionsByTopic[t.id] ?? [],
-      marks: marksByTopic[t.id] ?? new Set<TopicSection>(),
+      groups: groupsByTopic[t.id] ?? [],
+      marks: marksByTopic[t.id] ?? new Set<TopicGroupKey>(),
       homeworkAccepted: acceptedTopics.has(t.id),
     }))
 
@@ -150,7 +155,7 @@ export function useMyProgress() {
         ? null
         : Math.round(parts.reduce((s, v) => s + v, 0) / parts.length),
     }
-  }, [topics, sectionsByTopic, marksByTopic, journal])
+  }, [topics, groupsByTopic, marksByTopic, journal])
 
   return {
     progress,
