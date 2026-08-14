@@ -46,6 +46,7 @@ import { TopicHomeworkBadge } from '@/components/courseProgram/TopicHomeworkBadg
 import { groupHomeworkByTopic, type TopicHomeworkRow } from '@/lib/topicHomeworkState'
 import {
   TOPIC_MATERIAL_SECTIONS, TOPIC_SECTION_ORDER, TOPIC_SECTION_SHORT_LABELS,
+  isTopicSectionVisible,
   type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
@@ -1038,7 +1039,9 @@ const MAT_COL_ICON: Record<TopicSection, React.ReactNode> = {
   test: <BarChart3 size={13} />,
 }
 
-const MAT_COLS = TOPIC_SECTION_ORDER.map(type => ({
+// Скрытая рубрика не должна занимать колонку в матрице: перечень един, а
+// показ решает `TOPIC_SECTIONS_HIDDEN`.
+const MAT_COLS = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(type => ({
   type,
   label: TOPIC_SECTION_SHORT_LABELS[type],
   icon: MAT_COL_ICON[type],

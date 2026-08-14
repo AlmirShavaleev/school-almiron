@@ -20,7 +20,7 @@ import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEdi
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import {
   MATERIAL_FILE_ACCEPT, isMaterialSection,
-  TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS,
+  TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, isTopicSectionVisible,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { SignedImage } from '@/components/ui/SignedImage'
@@ -634,7 +634,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     «Материалы» показывала десять, окно темы семь. Здесь остаётся только то,
     что база знать не обязана: иконка.
   */
-  const TILES = TOPIC_SECTION_ORDER.map(key => ({
+  // Скрытые рубрики не показываем и персоналу: вход в механизм, которым не
+  // пользуются, копит недоумение при каждом просмотре темы.
+  const TILES = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(key => ({
     key,
     label: TOPIC_SECTION_LABELS[key],
     icon: TILE_ICON[key],

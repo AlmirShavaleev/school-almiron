@@ -49,6 +49,9 @@ const navItems: NavItem[] = [
   // изнутри него по ссылке «К вариантам». Два пункта на один раздел только
   // множили выбор там, где его нет.
   { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['student'], section: 'Учёба' },
+  // Тот же экран у персонала — вход из «Заданий», рядом с «Тестами». Сохраняет
+  // обычный вариант, а не самоназначение (§128).
+  { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
@@ -101,7 +104,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
   { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
-  { title: 'Задания', paths: ['/catalog', '/homework-queue', '/tests', '/variants', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
+  { title: 'Задания', paths: ['/catalog', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
 

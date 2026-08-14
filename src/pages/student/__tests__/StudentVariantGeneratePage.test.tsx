@@ -7,6 +7,8 @@ import { join } from 'path'
 const navigateSpy = vi.hoisted(() => vi.fn())
 const generateTasksSpy = vi.hoisted(() => vi.fn())
 const createSpy = vi.hoisted(() => vi.fn())
+const saveVariantSpy = vi.hoisted(() => vi.fn())
+const roleRef = vi.hoisted(() => ({ role: 'student' }))
 const SECTION_FIXTURES = [
   { id: 'sec-1', title: 'Линейные уравнения', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1, task_count: 20 },
   { id: 'sec-2', title: 'Геометрия', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 2, exam_number: 2, position: 2, task_count: 20 },
@@ -35,7 +37,9 @@ vi.mock('@/hooks/useCatalog', () => ({
 vi.mock('@/hooks/useVariants', () => ({
   useVariantBuilder: () => ({
     generateTasks: generateTasksSpy,
+    saveVariant: saveVariantSpy,
     generating: false,
+    saving: false,
     genError: null,
     setGenError: vi.fn(),
   }),
@@ -44,6 +48,19 @@ vi.mock('@/hooks/useVariants', () => ({
     saving: false,
     error: null,
   }),
+}))
+
+// Экран один на всех, но сохранение зависит от роли (§128): ученик идёт через
+// create_self_built_variant, персонал — через save_variant_atomic.
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (selector?: (s: { profile: { id: string; role: string } }) => unknown) => {
+    const state = { profile: { id: 'p-1', role: roleRef.role } }
+    return selector ? selector(state) : state
+  },
+}))
+
+vi.mock('@/hooks/useVariantAutoBuild', () => ({
+  useVariantSectionCounts: () => ({ counts: {} }),
 }))
 
 import { StudentVariantGeneratePage } from '@/pages/student/StudentVariantGeneratePage'
@@ -139,13 +156,38 @@ describe('StudentVariantGeneratePage', () => {
     expect(screen.queryByText('Предпросмотр')).not.toBeInTheDocument()
   })
 
-  it('student route is protected by student RoleGuard', () => {
+  // Владелец 12.08: конструктор доступен и ученику, и персоналу, экран один.
+  // Раньше тест закреплял обратное — «teacher быть не должно».
+  it('route is open to students and staff alike', () => {
     const src = readFileSync(join(process.cwd(), 'src/AppRoutes.tsx'), 'utf8')
     expect(src).toContain('path="/student/variants/generate"')
     const match = src.match(/path="\/student\/variants\/generate"[^>]*RoleGuard\s+allow=\{([^}]+)\}/)
     expect(match).not.toBeNull()
     const allowList = match ? match[1] : ''
     expect(allowList).toContain('student')
-    expect(allowList).not.toContain('teacher')
+    expect(allowList).toContain('teacher')
+  })
+
+  it('staff save a plain variant instead of a self-assignment', async () => {
+    roleRef.role = 'teacher'
+    saveVariantSpy.mockResolvedValue('variant-9')
+    try {
+      render(
+        <MemoryRouter initialEntries={['/student/variants/generate']}>
+          <Routes>
+            <Route path="/student/variants/generate" element={<StudentVariantGeneratePage />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      fireEvent.click(await screen.findByTestId('variant-section-plus-sec-1'))
+      fireEvent.click(screen.getByTestId('variant-constructor-generate'))
+
+      await waitFor(() => expect(saveVariantSpy).toHaveBeenCalled())
+      // Ученическая ветка не должна срабатывать: RPC откажет по роли.
+      expect(createSpy).not.toHaveBeenCalled()
+      expect(navigateSpy).toHaveBeenCalledWith('/variants/variant-9')
+    } finally {
+      roleRef.role = 'student'
+    }
   })
 })

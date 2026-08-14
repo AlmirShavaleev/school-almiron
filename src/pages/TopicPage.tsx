@@ -14,6 +14,7 @@ import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
   STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, groupTopicSections, isMaterialSection,
+  isTopicSectionVisible,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
@@ -216,7 +217,9 @@ export function TopicPage() {
 
   if (hasHomework) availableTabs.push('homework')
   // Вкладка нужна и когда теста банка нет, а тестирование выдано.
-  const hasAnyTest = hasTest || topicVariants.length > 0
+  // Скрытие рубрики решает один переключатель в перечне (`TOPIC_SECTIONS_HIDDEN`),
+  // а не условие по месту: рубрика уже однажды разъезжалась по копиям (§100).
+  const hasAnyTest = (hasTest || topicVariants.length > 0) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):

@@ -119,6 +119,7 @@ const FLAGS = {
   newCourse:    getArg('--new'),
   apply:        argv.includes('--apply'),
   cleanOrphans: argv.includes('--clean-orphans'),
+  replaceChanged: argv.includes('--replace-changed'),
   limitLessons: getArg('--limit-lessons') ? Number(getArg('--limit-lessons')) : undefined,
   only:         getArg('--only'),
   flat:         argv.includes('--flat'),
@@ -304,7 +305,7 @@ const stats = {
   courseCreated: false,
   modulesCreated: 0, modulesReused: 0, moduleRenamed: false,
   topicsCreated: 0, topicsExisting: 0,
-  materialsCreated: 0, materialsSkipped: 0,
+  materialsCreated: 0, materialsSkipped: 0, materialsReplaced: 0,
   homeworksCreated: 0, homeworksExisting: 0,
   homeworkFilesCreated: 0, homeworkFilesSkipped: 0,
   bytesUploaded: 0,
@@ -318,6 +319,7 @@ const notes = {
   missingFiles: [],    // недостающие файлы урока
   emptyLessons: [],    // папки уроков без единого файла
   orphans: [],         // объекты в Storage, на которые не ссылается ни одна строка
+  keptSharedFiles: [], // старые файлы, оставленные из-за ссылок из других курсов
   skippedDirs: [],
   failures: [],        // что упало и на чём
 }
@@ -606,12 +608,71 @@ async function uploadAndInsert({ bucket, topicId, fileName, diskPath, insert }) 
   return storagePath
 }
 
+/**
+ * Заменяет файл материала на новую версию с диска.
+ *
+ * Обычный режим такого НЕ делает и не должен: замена удаляет объект из
+ * Storage, а на файл могут ссылаться чужие сущности. Для материалов темы это
+ * проверено безопасно — разборы ИИ и рамки аннотаций висят на ПОПЫТКАХ
+ * учеников (`topic_homework_ai_*`, `annotation_sets`), а не на материалах.
+ * Поэтому режим включается только явным `--replace-changed`.
+ *
+ * Порядок: сначала грузим новый объект, потом переводим строку на него, и лишь
+ * затем удаляем старый. При обрыве на любом шаге материал остаётся читаемым —
+ * либо по старому пути, либо уже по новому.
+ */
+async function replaceMaterialFile(topicId, row, material) {
+  const body = readFileSync(material.path)
+  const storagePath = buildStoragePath(topicId, material.fileName)
+
+  await withRetry(`загрузка ${material.fileName}`, async () => {
+    const { error } = await db.storage.from(MATERIALS_BUCKET).upload(storagePath, body, {
+      contentType: 'application/pdf',
+      upsert: false,
+    })
+    if (error) throw error
+  })
+
+  try {
+    await withRetry(`перевод строки на ${material.fileName}`, async () => {
+      const { error } = await db.from('topic_material_items').update({
+        storage_path: storagePath,
+        file_name: material.fileName,
+        mime_type: 'application/pdf',
+        size_bytes: body.length,
+      }).eq('id', row.id)
+      if (error) throw error
+    })
+  } catch (e) {
+    await db.storage.from(MATERIALS_BUCKET).remove([storagePath]).catch(() => {})
+    throw e
+  }
+
+  // Старый объект удаляем ТОЛЬКО если на него больше никто не ссылается.
+  //
+  // Копирование курса в интерфейсе (§59) не дублирует файлы: копия получает
+  // строки, указывающие на ТЕ ЖЕ объекты. Удалив старый файл после замены в
+  // шаблоне, мы рвём ссылку в живом курсе учеников — и узнаём об этом от них.
+  // Так и случилось: 78 «Решений задач» в «Физика ЕГЭ 11А класс» осиротели.
+  // Лишний файл в бакете дешевле мёртвой ссылки у ученика.
+  if (row.storage_path && row.storage_path !== storagePath) {
+    const others = unwrap('поиск ссылок на файл', await db
+      .from('topic_material_items').select('id').eq('storage_path', row.storage_path).neq('id', row.id))
+    if (others.length) {
+      notes.keptSharedFiles.push(`${row.storage_path} — на него ссылаются ещё ${others.length}, не удалён`)
+    } else {
+      await db.storage.from(MATERIALS_BUCKET).remove([row.storage_path]).catch(() => {})
+    }
+  }
+  stats.bytesUploaded += body.length
+}
+
 async function importMaterials(topicId, lesson) {
   let existing = []
   if (topicId) {
     existing = unwrap('чтение материалов', await db
       .from('topic_material_items')
-      .select('id, section, file_name, size_bytes, position')
+      .select('id, section, file_name, size_bytes, position, storage_path')
       .eq('topic_id', topicId))
   }
 
@@ -621,8 +682,21 @@ async function importMaterials(topicId, lesson) {
     const already = existing.find(r =>
       r.section === material.section && fileLabel(r.file_name ?? '') === fileLabel(material.fileName))
     if (already) {
+      const changed = already.size_bytes != null && Number(already.size_bytes) !== material.size
+
+      if (changed && FLAGS.replaceChanged) {
+        stats.materialsReplaced++
+        notes.changedOnDisk.push(
+          `${lesson.dirName} / ${material.fileName}: ${humanBytes(Number(already.size_bytes))} → ` +
+          `${humanBytes(material.size)}${APPLY ? '' : ' (заменится)'}`,
+        )
+        if (APPLY && topicId) await replaceMaterialFile(topicId, already, material)
+        else stats.bytesUploaded += material.size
+        continue
+      }
+
       stats.materialsSkipped++
-      if (already.size_bytes != null && Number(already.size_bytes) !== material.size) {
+      if (changed) {
         notes.changedOnDisk.push(
           `${lesson.dirName} / ${material.fileName}: в базе ${humanBytes(Number(already.size_bytes))}, ` +
           `на диске ${humanBytes(material.size)} — оставлено как есть`,
@@ -839,7 +913,8 @@ async function main() {
     ? `«Основной» ${APPLY ? 'переименован' : 'будет переименован'} в «${section.title}»`
     : stats.modulesCreated ? `${verb} ${stats.modulesCreated}` : `существующий «${section.title}»`}`)
   console.log(`  Темы:        ${verb} ${stats.topicsCreated}, уже было ${stats.topicsExisting}`)
-  console.log(`  Материалы:   ${verb} ${stats.materialsCreated}, пропущено ${stats.materialsSkipped}`)
+  console.log(`  Материалы:   ${verb} ${stats.materialsCreated}, пропущено ${stats.materialsSkipped}` +
+    (stats.materialsReplaced ? `, ${APPLY ? 'заменено' : 'будет заменено'} ${stats.materialsReplaced}` : ''))
   console.log(`  ДЗ:          ${verb} ${stats.homeworksCreated} (черновики), уже было ${stats.homeworksExisting}`)
   console.log(`  Файлы ДЗ:    ${verb} ${stats.homeworkFilesCreated}, пропущено ${stats.homeworkFilesSkipped}`)
   console.log(`  Объём:       ${humanBytes(stats.bytesUploaded)}`)
@@ -856,13 +931,19 @@ async function main() {
 
   block('Названия испорчены чисткой имён — переименовать в интерфейсе', notes.mangledTitles)
   block('Название темы разошлось с диском — оставлено как в базе', notes.titleDrift)
-  block('Файл изменился на диске — НЕ перезалит', notes.changedOnDisk)
+  block(
+    FLAGS.replaceChanged
+      ? `Файл заменён новой версией с диска${APPLY ? '' : ' (будет)'}`
+      : 'Файл изменился на диске — НЕ перезалит',
+    notes.changedOnDisk,
+  )
   block(
     FLAGS.cleanOrphans && APPLY
       ? 'Сироты в Storage — УБРАНЫ (--clean-orphans)'
       : 'Сироты в Storage (обрыв между загрузкой и вставкой) — убрать флагом --clean-orphans',
     notes.orphans,
   )
+  block('Старый файл оставлен — на него ссылается копия курса', notes.keptSharedFiles)
   block('Файлы не по шаблону', notes.unexpectedFiles)
   block('Недостающие файлы урока', notes.missingFiles)
   block('Пустые папки уроков — тема НЕ создана', notes.emptyLessons)

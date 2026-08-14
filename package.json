@@ -14,7 +14,8 @@
     "test:half2": "vitest run --reporter=dot src/pages src/utils src/lib",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "import-course": "node scripts/import-lessons.mjs"
+    "import-course": "node scripts/import-lessons.mjs",
+    "import-videos": "node scripts/import-bunny-videos.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

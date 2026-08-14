@@ -99,6 +99,28 @@ export const TOPIC_SECTION_ORDER: readonly TopicSection[] = [
   'homework', 'solution', 'worksheet_homework', 'video', 'test',
 ] as const
 
+/**
+ * Рубрики, скрытые с темы по решению владельца 12.08.
+ *
+ * Тесты на темах курса он выдавать не будет — ученик собирает варианты сам в
+ * конструкторе. Механизм §110 (экран сопоставления, связи `topic_catalog_topics`,
+ * массовая сборка, привязка варианта к теме) остаётся в коде и базе нетронутым:
+ * вернуться к нему дешевле, чем построить заново.
+ *
+ * Рубрика НЕ убрана из `TOPIC_SECTION_ORDER` намеренно: перечень един (§100), и
+ * сторож «группы плюс остаток покрывают весь перечень» должен продолжать её
+ * видеть. Скрытие — слой поверх перечня, а не дыра в нём.
+ *
+ * ВЕРНУТЬ ВКЛАДКУ: убрать 'test' из этого массива. Одной строкой, больше нигде
+ * править не нужно.
+ */
+export const TOPIC_SECTIONS_HIDDEN: readonly TopicSection[] = ['test'] as const
+
+/** Показывается ли рубрика на теме сейчас. */
+export function isTopicSectionVisible(section: TopicSection): boolean {
+  return !TOPIC_SECTIONS_HIDDEN.includes(section)
+}
+
 export const TOPIC_SECTION_LABELS: Record<TopicSection, string> = {
   ...TOPIC_MATERIAL_SECTION_LABELS,
   homework: 'ДЗ',
