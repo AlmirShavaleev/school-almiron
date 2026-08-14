@@ -75,13 +75,12 @@ describe('Invite-aware auth flow', () => {
     signUp.mockResolvedValue({ error: null, data: { session: { access_token: 'x' } } })
 
     renderRegister()
-    // getByLabelText здесь не годится: общий Input рисует <label> без htmlFor и
-    // не оборачивает поле — прежняя проверка queryByLabelText('ФИО') отдавала
-    // null независимо от того, есть поле на экране или нет, и ничего не
-    // сторожила. Ищем по testid и отдельно проверяем саму подпись.
-    expect(screen.getByText('ФИО')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByTestId('register-full-name'), { target: { value: '  Ахметов Ильдар  ' } })
+    // Поиск по подписи снова честный: §134 связал <label> с полем в самом
+    // Input (htmlFor/useId). До этого queryByLabelText('ФИО') отдавал null
+    // независимо от того, есть поле на экране или нет, — поэтому §130 обходился
+    // testid. Возвращаем запрос по подписи: он сторожит и наличие поля, и
+    // наличие связи, из-за отсутствия которой скринридер поле не называл.
+    fireEvent.change(screen.getByLabelText('ФИО'), { target: { value: '  Ахметов Ильдар  ' } })
     fireEvent.change(screen.getByPlaceholderText('your@email.ru'), { target: { value: 'student@example.com' } })
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'secret12' } })
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'secret12' } })

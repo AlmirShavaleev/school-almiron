@@ -77,13 +77,16 @@ function renderPage() {
 
 describe('StudentProfilePage enrolled courses', () => {
   it('shows real courses from group_students, not a false empty state', async () => {
-    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    // Группы в шапке пустые: проверяем именно блок «Курсы ученика», а плашка
+    // печатает то же название курса и мешала бы поиску по тексту.
+    useStudentProfileMock.mockReturnValue({ data: { ...baseProfile, groups: [] }, loading: false })
     useStudentCourseMembershipsMock.mockReturnValue({
       courses: [{
         courseId: 'course-1',
         courseTitle: 'Физика ЕГЭ',
         courseSubject: 'physics',
         courseExamType: 'ege',
+        courseActive: true,
         groups: [{ groupId: 'group-1', groupName: '10А', groupType: 'individual', isActive: true }],
       }],
       loading: false,
@@ -97,6 +100,38 @@ describe('StudentProfilePage enrolled courses', () => {
     expect(screen.queryByText('Ученик не записан ни на один курс')).not.toBeInTheDocument()
     expect(screen.getByText('Распределить')).toBeInTheDocument()
     expect(screen.queryByText('Добавить курс')).not.toBeInTheDocument()
+  })
+
+  /**
+   * §123. Курс сняли с ведения — зачисление осталось.
+   *
+   * До правки такие строки молча выпадали (хук отбрасывал `is_active = false`),
+   * и страница противоречила себе: плашка сверху показывала курс, блок ниже
+   * писал «не записан ни на один» и предлагал распределить. На проде такими
+   * были ВСЕ шесть зачислений.
+   */
+  it('архивный курс показывается с пометкой, а не исчезает', async () => {
+    useStudentProfileMock.mockReturnValue({ data: { ...baseProfile, groups: [] }, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({
+      courses: [{
+        courseId: 'course-1',
+        courseTitle: 'Физика ЕГЭ 11А класс',
+        courseSubject: 'physics',
+        courseExamType: 'ege',
+        courseActive: false,
+        groups: [{ groupId: 'group-1', groupName: 'Физика ЕГЭ 11А класс', groupType: 'group', isActive: true }],
+      }],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    })
+
+    renderPage()
+
+    // Название печатается и как курс, и как имя группы — ищем по пометке.
+    expect(await screen.findByTestId('course-archived-badge')).toHaveTextContent('курс в архиве')
+    expect(screen.getAllByText('Физика ЕГЭ 11А класс').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Ученик не записан ни на один курс')).not.toBeInTheDocument()
   })
 
   it('shows empty state only when there are truly no course memberships', async () => {
@@ -124,6 +159,42 @@ describe('StudentProfilePage enrolled courses', () => {
     renderPage()
 
     expect(await screen.findByText(/2 курса · 2 группы/)).toBeInTheDocument()
+  })
+
+  /**
+   * §123. При «один курс = одна группа» (§61) имя группы совпадает с названием
+   * курса, и плашка печатала одно и то же дважды.
+   */
+  it('в плашке имя группы печатается, только когда отличается от курса', async () => {
+    useStudentProfileMock.mockReturnValue({
+      data: {
+        ...baseProfile,
+        groups: [{ id: 'group-1', name: 'Физика ЕГЭ 11А класс', course_title: 'Физика ЕГЭ 11А класс' }],
+      },
+      loading: false,
+    })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+
+    renderPage()
+
+    const badge = await screen.findByText('Физика ЕГЭ 11А класс')
+    expect(badge.textContent).not.toMatch(/·/)
+  })
+
+  it('разные имена курса и группы показываются оба', async () => {
+    useStudentProfileMock.mockReturnValue({
+      data: {
+        ...baseProfile,
+        groups: [{ id: 'group-1', name: 'Мини-группа', course_title: 'Физика ЕГЭ' }],
+      },
+      loading: false,
+    })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+
+    renderPage()
+
+    expect(await screen.findByText('Физика ЕГЭ')).toBeInTheDocument()
+    expect(screen.getByText('· Мини-группа')).toBeInTheDocument()
   })
 })
 

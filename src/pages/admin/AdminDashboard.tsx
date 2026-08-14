@@ -18,6 +18,8 @@ import { useAdminDashboard, type AdminProfile, type AdminCourse } from '@/hooks/
 import { useSchoolStats } from '@/hooks/useSchoolStats'
 import { useSchoolAnalytics } from '@/hooks/useSchoolAnalytics'
 import { SchoolActivity } from '@/components/admin/SchoolActivity'
+import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
+import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
 import { cn } from '@/utils/cn'
@@ -45,12 +47,16 @@ function RoleBadge({ role }: { role: string }) {
 // слово «группа» уходит из интерфейса; подписки — потому что денежный контур
 // не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
 // технические: код удалён, данные не тронуты.
-type Tab = 'overview' | 'users' | 'staff' | 'courses'
+type Tab = 'overview' | 'users' | 'staff' | 'courses' | 'site'
 const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
   { key: 'overview',      label: 'Обзор' },
   { key: 'users',         label: 'Пользователи' },
   { key: 'staff',         label: 'Команда' },
   { key: 'courses',       label: 'Курсы' },
+  // «Сайт» отдельной вкладкой, а не блоком в «Обзоре»: рядом живут школьные
+  // срезы §107, и «сколько заходов» там и здесь — разные числа из разных
+  // источников. На одном экране их спутают.
+  { key: 'site',          label: 'Сайт' },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -69,6 +75,7 @@ export function AdminDashboard() {
   const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
   const { stats: school, error: schoolError, reload: reloadSchool } = useSchoolStats()
   const analytics = useSchoolAnalytics()
+  const site = useVercelAnalytics()
 
   async function changeRole(profileId: string, newRole: string) {
     setSavingRole(profileId)
@@ -343,6 +350,8 @@ export function AdminDashboard() {
       )}
 
       {/* ══ ПОЛЬЗОВАТЕЛИ ════════════════════════════════════════ */}
+      {tab === 'site' && <SiteAnalytics {...site} />}
+
       {tab === 'users' && (
         <div className="space-y-4">
           {/* Header row */}
