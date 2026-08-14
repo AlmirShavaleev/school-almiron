@@ -125,6 +125,57 @@ describe('корень: лендинг снят с главной', () => {
     await waitFor(() => expect(pathname()).toBe('/join/abc123'))
   })
 
+  /**
+   * Продовый случай владельца: сохранённое приглашение перехватывало ему
+   * главную НАВСЕГДА. Он открывал `alminion.ru`, корень уводил на
+   * `/join/<token>`, там встречало «приглашение предназначено для аккаунта
+   * ученика» — и по кругу; в свой кабинет с главной было не попасть.
+   */
+  it.each(['owner', 'admin', 'teacher', 'curator'])(
+    'висящее приглашение не перехватывает главную у роли %s — и вычищается',
+    async (role) => {
+      sessionValue = { user: { id: 'u1', email: 'a@a.com' } }
+      profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role }
+      localStorage.setItem('student-invite-pending', JSON.stringify({
+        type: 'token', value: 'abc123', savedAt: Date.now(),
+      }))
+
+      render(<App />)
+
+      await waitFor(() => expect(pathname()).toBe('/dashboard'))
+      // Именно вычищено: иначе ловушка сработала бы при следующем заходе.
+      expect(localStorage.getItem('student-invite-pending')).toBeNull()
+    },
+  )
+
+  it('ссылка преподавателя тоже не перехватывает главную у персонала', async () => {
+    sessionValue = { user: { id: 'u1', email: 'a@a.com' } }
+    profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'owner' }
+    localStorage.setItem('teacher-join-link-pending', JSON.stringify({
+      token: 'tok-1', savedAt: Date.now(),
+    }))
+
+    render(<App />)
+
+    await waitFor(() => expect(pathname()).toBe('/dashboard'))
+    expect(localStorage.getItem('teacher-join-link-pending')).toBeNull()
+  })
+
+  it('приглашение старше суток не перехватывает главную даже у ученика', async () => {
+    sessionValue = { user: { id: 'u1', email: 'a@a.com' } }
+    profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'student' }
+    localStorage.setItem('student-invite-pending', JSON.stringify({
+      type: 'token',
+      value: 'abc123',
+      savedAt: Date.now() - 25 * 60 * 60 * 1000,
+    }))
+
+    render(<App />)
+
+    await waitFor(() => expect(pathname()).toBe('/dashboard'))
+    expect(localStorage.getItem('student-invite-pending')).toBeNull()
+  })
+
   it('пока сессия не разобрана, гостя на вход не отправляют', async () => {
     // `loading` держится true: getSession ещё не ответил. Ранний редирект здесь
     // и есть тот самый тупик — человек с живой сессией уехал бы на «войдите».

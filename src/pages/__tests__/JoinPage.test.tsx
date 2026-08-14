@@ -59,14 +59,14 @@ describe('JoinPage', () => {
     renderJoin('/join/token-123')
     expect(screen.getByText('Войти')).toBeInTheDocument()
     expect(screen.getByText('Зарегистрироваться')).toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'token', value: 'token-123' })
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toMatchObject({ type: 'token', value: 'token-123' })
   })
 
   it('code route is available without auth and stores normalized code in localStorage', async () => {
     renderJoin('/join')
     fireEvent.change(screen.getByLabelText('Код приглашения'), { target: { value: 'ab cd-12' } })
     expect((screen.getByLabelText('Код приглашения') as HTMLInputElement).value).toBe('ABCD-12')
-    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD12' })
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toMatchObject({ type: 'code', value: 'ABCD12' })
   })
 
   it('authenticated student sees confirm button and does not accept automatically', async () => {
@@ -285,16 +285,70 @@ describe('JoinPage', () => {
     })
   })
 
-  it('shows wrong-role state and lets the user switch account', async () => {
+  function loginAsStaff(role = 'teacher') {
     useAuthStore.setState({
       user: { id: 'u2', email: 't@example.com' },
-      profile: { id: 'u2', email: 't@example.com', full_name: 'Teacher', role: 'teacher', created_at: '', updated_at: '' },
+      profile: { id: 'u2', email: 't@example.com', full_name: 'Teacher', role, created_at: '', updated_at: '' },
       loading: false,
     } as any)
+  }
+
+  it('shows wrong-role state and lets the user switch account', async () => {
+    loginAsStaff()
 
     renderJoin('/join/token-123')
-    expect(screen.getByText('Это приглашение предназначено для аккаунта ученика. Выйдите и войдите в ученический аккаунт.')).toBeInTheDocument()
+    expect(screen.getByText(/Это приглашение предназначено для аккаунта ученика/)).toBeInTheDocument()
     fireEvent.click(screen.getByText('Войти в другой аккаунт'))
     await waitFor(() => expect(signOut).toHaveBeenCalled())
+  })
+
+  /**
+   * Продовый случай владельца: сохранённое приглашение уводило его с главной
+   * сюда при каждом заходе, а отсюда предлагался единственный ход — сменить
+   * аккаунт. Менять аккаунт он не хочет, он хочет в свой кабинет.
+   */
+  describe('чужое приглашение: выход из тупика', () => {
+    it('«Это не моё приглашение» вычищает запись и ведёт в кабинет', async () => {
+      localStorage.setItem('student-invite-pending', JSON.stringify({
+        type: 'token', value: 'token-123', savedAt: Date.now(),
+      }))
+      loginAsStaff('owner')
+
+      render(
+        <MemoryRouter initialEntries={['/join/token-123']}>
+          <Routes>
+            <Route path="/join/:token" element={<JoinPage />} />
+            <Route path="/dashboard" element={<div>dashboard-stub</div>} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      fireEvent.click(screen.getByTestId('join-not-mine'))
+
+      expect(await screen.findByText('dashboard-stub')).toBeInTheDocument()
+      expect(localStorage.getItem('student-invite-pending')).toBeNull()
+      // Аккаунт при этом не трогаем: человек остаётся в своём.
+      expect(signOut).not.toHaveBeenCalled()
+    })
+
+    it('персоналу приглашение здесь НЕ сохраняется заново — иначе ловушка взводится снова', () => {
+      loginAsStaff('teacher')
+
+      renderJoin('/join/token-123')
+
+      expect(localStorage.getItem('student-invite-pending')).toBeNull()
+    })
+
+    it('уже сохранённое приглашение остаётся на месте: человек может уйти менять аккаунт', () => {
+      // Вычищать его при одном лишь показе страницы нельзя — после входа
+      // учеником приглашение должно дождаться и сработать.
+      localStorage.setItem('student-invite-pending', JSON.stringify({
+        type: 'token', value: 'token-123', savedAt: Date.now(),
+      }))
+      loginAsStaff('teacher')
+
+      renderJoin('/join/token-123')
+
+      expect(localStorage.getItem('student-invite-pending')).not.toBeNull()
+    })
   })
 })

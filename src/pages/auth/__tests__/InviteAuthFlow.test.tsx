@@ -120,6 +120,6 @@ describe('Invite-aware auth flow', () => {
     expect(await screen.findByText('Подтвердите email. После подтверждения приглашение останется доступным.')).toBeInTheDocument()
     // Именно здесь долгая жизнь записи и нужна: следующим шагом человек уходит
     // в почту и возвращается по ссылке подтверждения — часто в новой вкладке.
-    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD1234' })
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toMatchObject({ type: 'code', value: 'ABCD1234' })
   })
 })

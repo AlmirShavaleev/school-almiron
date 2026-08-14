@@ -33,7 +33,19 @@ export function JoinPage() {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<JoinResult | null>(null)
 
+  const normalizedCode = useMemo(() => normalizeInviteCode(codeInput), [codeInput])
+  const pendingInvite = readPendingInvite()
+  const wrongRole = isStaffRole(profile?.role)
+
+  // Сохраняем намерение только тому, кому оно может пригодиться. Персоналу
+  // сохранять нечего: вступить по ученической ссылке он не может, а запись
+  // потом перехватывала бы ему главную (разбор — в studentInviteSession).
+  // Уже лежащую запись здесь НЕ вычищаем: человек мог прийти сюда именно
+  // затем, чтобы нажать «Войти в другой аккаунт», и после входа учеником
+  // приглашение должно его дождаться. Для «мне это не нужно» есть отдельная
+  // кнопка ниже.
   useEffect(() => {
+    if (wrongRole) return
     if (token) {
       savePendingInvite({ type: 'token', value: token })
       return
@@ -42,16 +54,12 @@ export function JoinPage() {
     if (pending?.type === 'code') {
       setCodeInput(formatInviteCode(pending.value))
     }
-  }, [token])
-
-  const normalizedCode = useMemo(() => normalizeInviteCode(codeInput), [codeInput])
-  const pendingInvite = readPendingInvite()
-  const wrongRole = isStaffRole(profile?.role)
+  }, [token, wrongRole])
 
   useEffect(() => {
-    if (mode !== 'code') return
+    if (mode !== 'code' || wrongRole) return
     if (normalizedCode) savePendingInvite({ type: 'code', value: normalizedCode })
-  }, [mode, normalizedCode])
+  }, [mode, normalizedCode, wrongRole])
 
   async function acceptAny(tokenOrCode: string, isToken: boolean) {
     try {
@@ -134,6 +142,17 @@ export function JoinPage() {
   async function handleSwitchAccount() {
     await signOut()
     navigate('/login')
+  }
+
+  /**
+   * Выход из тупика. Раньше человеку с чужой ролью предлагали ровно одно —
+   * сменить аккаунт, — а он обычно не хочет менять аккаунт: он хочет в свой
+   * кабинет. Без этой кнопки запись оставалась в браузере и уводила его сюда
+   * снова при каждом заходе на главную.
+   */
+  function handleNotMine() {
+    clearPendingInvite()
+    navigate('/dashboard', { replace: true })
   }
 
   function handleCodeContinue() {
@@ -227,8 +246,16 @@ export function JoinPage() {
 
             {wrongRole ? (
               <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50 p-4">
-                <p className="text-sm text-amber-800">Это приглашение предназначено для аккаунта ученика. Выйдите и войдите в ученический аккаунт.</p>
-                <Button variant="secondary" onClick={handleSwitchAccount}>Войти в другой аккаунт</Button>
+                <p className="text-sm text-amber-800">
+                  Это приглашение предназначено для аккаунта ученика. Войдите в ученический аккаунт —
+                  или уберите приглашение, если оно попало к вам случайно.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button variant="secondary" onClick={handleSwitchAccount}>Войти в другой аккаунт</Button>
+                  <Button data-testid="join-not-mine" variant="ghost" onClick={handleNotMine}>
+                    Это не моё приглашение
+                  </Button>
+                </div>
               </div>
             ) : unauthenticated ? (
               <div className="space-y-3">

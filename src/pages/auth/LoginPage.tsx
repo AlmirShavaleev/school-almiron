@@ -63,8 +63,12 @@ export function LoginPage() {
   // Обратной петли не возникает — `/dashboard` вошедшего на вход не гонит.
   // «Сменить аккаунт» на страницах приглашений сначала делает signOut, так что
   // до этой проверки доходит уже пустой профиль.
+  // Роль здесь известна — передаём её. Иначе форма входа стала бы вторым входом
+  // в ту же ловушку, что и главная: персонал с чужим сохранённым приглашением
+  // уезжал бы на `/join` вместо своего кабинета.
   if (profile) {
-    return <Navigate to={getPendingInvitePath() || getPendingTeacherJoinLinkPath() || '/dashboard'} replace />
+    const pendingPath = getPendingInvitePath(profile.role) || getPendingTeacherJoinLinkPath(profile.role)
+    return <Navigate to={pendingPath || '/dashboard'} replace />
   }
 
   return (

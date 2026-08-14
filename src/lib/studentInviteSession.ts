@@ -7,15 +7,32 @@
 // ссылки — см. комментарий в teacherJoinLinkSession; здесь его просто забыли
 // применить ко второму контуру.
 //
-// Плата за долгую жизнь записи — риск, что чужое приглашение всплывёт месяцем
-// позже на том же компьютере. Поэтому запись обязана вычищаться сразу после
-// успешного вступления (clearPendingInvite в JoinPage) и на любом окончательном
-// отказе (использовано / отозвано / истекло).
+// Плата за долгую жизнь записи оказалась выше, чем предполагалось: у владельца
+// на проде запись перехватила главную НАВСЕГДА. Он открывал `alminion.ru`,
+// корень видел сохранённое приглашение и уводил на `/join/<token>`, где его
+// встречало «приглашение предназначено для аккаунта ученика», — и так по кругу,
+// в свой кабинет с главной было не попасть. Поэтому у записи теперь два предела:
+//
+//  1. СРОК. Приглашение живёт сутки. Дольше него не живёт ни один разумный
+//     сценарий «перешёл по ссылке → зарегистрировался → подтвердил почту»;
+//     всё, что старше, — это чужой или забытый след на общем компьютере.
+//  2. АДРЕСАТ. Приглашение ученическое. Тому, у кого роль не ученическая,
+//     оно не может пригодиться в принципе: вступить по нему нельзя, а
+//     навигацию оно ломает. Такому человеку запись не просто игнорируется,
+//     а вычищается — см. `getPendingInvitePath(role)`.
+//
+// Уборка после успешного вступления и на окончательных отказах (использовано /
+// отозвано / истекло) остаётся на месте — сроки и роли её не заменяют.
 const STORAGE_KEY = 'student-invite-pending'
+
+/** Сутки. Дольше «я перешёл по ссылке и сейчас зарегистрируюсь» не длится. */
+export const INVITE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 export type PendingInvite =
   | { type: 'token'; value: string }
   | { type: 'code'; value: string }
+
+type StoredInvite = PendingInvite & { savedAt: number }
 
 function safeStorage(): Storage | null {
   try {
@@ -50,26 +67,40 @@ export function formatInviteCode(value: string): string {
 export function savePendingInvite(invite: PendingInvite): void {
   const storage = safeStorage()
   if (!storage) return
-  storage.setItem(STORAGE_KEY, JSON.stringify(invite))
+  const stored: StoredInvite = { ...invite, savedAt: Date.now() }
+  storage.setItem(STORAGE_KEY, JSON.stringify(stored))
 }
 
-function parseInvite(raw: string | null): PendingInvite | null {
+function parseInvite(raw: string | null): StoredInvite | null {
   if (!raw) return null
   try {
-    const parsed = JSON.parse(raw) as PendingInvite
+    const parsed = JSON.parse(raw) as Partial<StoredInvite>
     if (!parsed || (parsed.type !== 'token' && parsed.type !== 'code') || typeof parsed.value !== 'string') {
       return null
     }
-    return parsed
+    // Записи без отметки времени — те, что легли до этой правки. Считать их
+    // просроченными нельзя: ровно в них сейчас лежит вступление людей,
+    // которые уже нажали «зарегистрироваться» и ждут письма (ради этого случая
+    // хранение и переезжало в localStorage). Поэтому им ставится отметка
+    // «сейчас», и сутки они отсчитывают с первого чтения после деплоя.
+    const savedAt = typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt)
+      ? parsed.savedAt
+      : Date.now()
+    return { type: parsed.type, value: parsed.value, savedAt }
   } catch {
     return null
   }
 }
 
-export function readPendingInvite(): PendingInvite | null {
+function readStoredInvite(): StoredInvite | null {
   const storage = safeStorage()
   const current = parseInvite(storage?.getItem(STORAGE_KEY) ?? null)
-  if (current) return current
+  if (current) {
+    // Отметка могла быть только что проставлена при разборе — записываем её
+    // обратно, иначе «сутки» отсчитывались бы заново при каждом чтении.
+    storage?.setItem(STORAGE_KEY, JSON.stringify(current))
+    return current
+  }
 
   // Хвост прежнего хранения: переносим в localStorage и убираем из старого
   // места, чтобы одна и та же запись не жила в двух хранилищах.
@@ -79,6 +110,18 @@ export function readPendingInvite(): PendingInvite | null {
   legacy?.removeItem(STORAGE_KEY)
   storage?.setItem(STORAGE_KEY, JSON.stringify(migrated))
   return migrated
+}
+
+export function readPendingInvite(): PendingInvite | null {
+  const stored = readStoredInvite()
+  if (!stored) return null
+  if (Date.now() - stored.savedAt > INVITE_MAX_AGE_MS) {
+    // Просрочку убираем сразу, а не просто скрываем: иначе она осталась бы
+    // лежать в чужом браузере и всплыла бы при следующей смене правил.
+    clearPendingInvite()
+    return null
+  }
+  return { type: stored.type, value: stored.value }
 }
 
 export function clearPendingInvite(): void {
@@ -91,9 +134,32 @@ export function hasPendingInvite(): boolean {
   return !!readPendingInvite()
 }
 
-export function getPendingInvitePath(): string | null {
+/**
+ * Роль, которой ученическое приглашение может пригодиться.
+ *
+ * Пустая роль — это НЕ «нельзя»: у только что зарегистрировавшегося профиль
+ * ещё едет, и именно ему приглашение нужнее всего. Отказываем только тогда,
+ * когда роль известна и она не ученическая.
+ */
+export function inviteFitsRole(role?: string | null): boolean {
+  return !role || role === 'student'
+}
+
+/**
+ * Куда вести человека с висящим приглашением — или `null`, если вести некуда.
+ *
+ * `role` передаёт тот, кто знает роль вошедшего (корень приложения, форма
+ * входа). Если роль не ученическая, приглашение здесь же вычищается: оно
+ * бесполезно этому человеку и мешает ему ходить по приложению. Вызовы без
+ * `role` (регистрация — там профиля ещё нет) работают как раньше.
+ */
+export function getPendingInvitePath(role?: string | null): string | null {
   const invite = readPendingInvite()
   if (!invite) return null
+  if (!inviteFitsRole(role)) {
+    clearPendingInvite()
+    return null
+  }
   if (invite.type === 'token') return `/join/${invite.value}`
   return '/join'
 }

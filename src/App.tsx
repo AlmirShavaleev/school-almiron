@@ -55,6 +55,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children
   }
 }
+import { Analytics } from '@vercel/analytics/react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
@@ -117,7 +118,16 @@ function RootRedirect() {
     // A pending teacher-join-link intent must be checked here too, not just on /login --
     // otherwise the confirmation redirect drops the user straight onto /dashboard and the
     // join request never gets submitted until they manually reopen the /jt/:token link.
-    const pendingPath = getPendingInvitePath() || getPendingTeacherJoinLinkPath()
+    // Роль передаётся ОБЯЗАТЕЛЬНО. Без неё корень уводил на приглашение
+    // кого угодно, включая владельца: он открывал главную, попадал на
+    // `/join/<token>`, читал «приглашение предназначено для аккаунта ученика»
+    // и возвращался на главную — в свой кабинет было не войти вовсе. Теперь
+    // неподходящая роль означает, что приглашение здесь же вычищается.
+    // `profile?.role ?? null` — именно null, а не пропуск аргумента: пустая
+    // роль читается как «ещё не знаем» и приглашение не трогает (у только что
+    // зарегистрировавшегося профиль едет позже, а вести его надо как раз туда).
+    const role = profile?.role ?? null
+    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role)
     if (pendingPath && (profile || user)) {
       navigate(pendingPath, { replace: true })
       return
@@ -277,6 +287,28 @@ export default function App() {
     <ErrorBoundary>
     <BrowserRouter>
       <AppAuth />
+      {/* Vercel Web Analytics — счётчик просмотров страниц на всё приложение
+          (решение владельца 14.08, оно же меняет §107 в части «внешние
+          счётчики»: здесь нет кук и межсайтовой слежки).
+
+          Стоит ЗДЕСЬ по трём причинам:
+          • один экземпляр на приложение — два дали бы двойной счёт;
+          • ВЫШЕ <Suspense>, а не внутри: показ страницы от него не зависит
+            вовсе, и не загрузившийся скрипт (блокировщик, нет сети) не может
+            задержать первый экран — компонент рисует null, а сам скрипт грузится
+            с `defer` и своим `onerror`;
+          • внутри роутера: переходы SPA считает сам скрипт, подменяя
+            history.pushState, — своего кода отслеживания мы не пишем.
+
+          `mode` задан явно, а не оставлен на «auto». Авто-определение читает
+          `process.env.NODE_ENV`, которого в браузерном коде Vite может не
+          оказаться вовсе, а в этом случае пакет молча считает режим боевым и
+          шлёт данные с localhost. `import.meta.env.DEV` Vite гарантирует.
+          В режиме development пакет грузит script.debug.js: тот пишет события
+          в консоль и НЕ отправляет их.
+
+          Пользовательских событий нет: `track()` не вызывается нигде. */}
+      <Analytics mode={import.meta.env.DEV ? 'development' : 'production'} />
       <Toaster />
       {/* Клик по картинке задачи каталога — полноэкранный просмотр (см. компонент) */}
       <CatalogImageLightbox />

@@ -38,9 +38,12 @@ export function JoinTeacherPage() {
   // ref instead survives that double-invoke because refs aren't reset by cleanup.
   const activeTokenRef = useRef<string | null>(null)
 
+  // Только тому, кому ссылка может пригодиться: она ведёт к «стать учеником
+  // этого преподавателя». Сохранённая персоналу, она потом перехватывала бы
+  // ему главную — та же ловушка, что и с ученическим приглашением.
   useEffect(() => {
-    if (token) savePendingTeacherJoinLink(token)
-  }, [token])
+    if (token && !wrongRole) savePendingTeacherJoinLink(token)
+  }, [token, wrongRole])
 
   useEffect(() => {
     if (!token || unauthenticated || wrongRole || submittedRef.current) return
@@ -70,6 +73,12 @@ export function JoinTeacherPage() {
   async function handleSwitchAccount() {
     await signOut()
     navigate('/login')
+  }
+
+  /** Выход из тупика — см. тот же приём в JoinPage. */
+  function handleNotMine() {
+    clearPendingTeacherJoinLink()
+    navigate('/dashboard', { replace: true })
   }
 
   function handleRetry() {
@@ -109,8 +118,16 @@ export function JoinTeacherPage() {
 
             {wrongRole ? (
               <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50 p-4">
-                <p className="text-sm text-amber-800">Эта ссылка предназначена для аккаунта ученика. Выйдите и войдите в ученический аккаунт.</p>
-                <Button variant="secondary" onClick={handleSwitchAccount}>Войти в другой аккаунт</Button>
+                <p className="text-sm text-amber-800">
+                  Эта ссылка предназначена для аккаунта ученика. Войдите в ученический аккаунт —
+                  или уберите ссылку, если она попала к вам случайно.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button variant="secondary" onClick={handleSwitchAccount}>Войти в другой аккаунт</Button>
+                  <Button data-testid="join-teacher-not-mine" variant="ghost" onClick={handleNotMine}>
+                    Это не моя ссылка
+                  </Button>
+                </div>
               </div>
             ) : unauthenticated ? (
               <div className="grid gap-3 sm:grid-cols-2">
