@@ -10,8 +10,16 @@ import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath, hasPendingTeacherJoinLink } from '@/lib/teacherJoinLinkSession'
 
+// ФИО обязательно ВСЕГДА, в том числе при переходе по ссылке приглашения.
+// Раньше в режиме приглашения поле пряталось: расчёт был на то, что имя
+// подставит легаси-RPC из списка преподавателя. Для курсовых ссылок такого
+// списка не существует, поэтому имя не приходило ниоткуда — в метаданные
+// регистрации уходило пустое значение, и профиль создавался с запасной
+// подстановкой из почты (`ismailnur2009` вместо ФИО, трое учеников 12–14.08).
+// Пришедший по ссылке от учителя тем более обязан назваться, а сэкономленный
+// шаг формы стоил дороже, чем экономил.
 const schema = z.object({
-  full_name: z.string().optional(),
+  full_name: z.string().refine(v => v.trim().length >= 2, 'Введите ФИО'),
   email: z.string().email('Введите корректный email'),
   password: z.string().min(6, 'Минимум 6 символов'),
   confirm: z.string().min(1, 'Повторите пароль'),
@@ -19,14 +27,6 @@ const schema = z.object({
 }).refine(d => d.password === d.confirm, {
   message: 'Пароли не совпадают',
   path: ['confirm'],
-}).superRefine((data, ctx) => {
-  if (!hasPendingInvite() && (!data.full_name || data.full_name.trim().length < 2)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['full_name'],
-      message: 'Введите ФИО',
-    })
-  }
 })
 
 type FormData = z.infer<typeof schema>
@@ -48,7 +48,7 @@ export function RegisterPage() {
     const { data: authData, error } = await signUp(
       data.email,
       data.password,
-      inviteMode ? '' : (data.full_name || ''),
+      data.full_name.trim(),
       data.role,
       {
         skipProfileInsert: inviteMode,
@@ -112,9 +112,7 @@ export function RegisterPage() {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {!inviteMode && (
-                  <Input label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
-                )}
+                <Input data-testid="register-full-name" label="ФИО" placeholder="Иванов Иван Иванович" icon={<User size={16} />} error={errors.full_name?.message} {...register('full_name')} />
                 <Input data-testid="register-email" label="Email" type="email" placeholder="your@email.ru" icon={<Mail size={16} />} error={errors.email?.message} {...register('email')} />
                 <Input data-testid="register-password" label="Пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.password?.message} {...register('password')} />
                 <Input data-testid="register-password-confirm" label="Повторите пароль" type="password" placeholder="••••••••" icon={<Lock size={16} />} error={errors.confirm?.message} {...register('confirm')} />

@@ -44,11 +44,14 @@ describe('Invite-aware auth flow', () => {
   beforeEach(() => {
     signIn.mockReset()
     signUp.mockReset()
+    // Приглашение переехало из sessionStorage в localStorage — чистим оба:
+    // на переходе читается ещё и старое место.
+    localStorage.clear()
     sessionStorage.clear()
   })
 
   it('login restores pending token flow after successful auth', async () => {
-    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
     signIn.mockResolvedValue({ error: null })
 
     renderLogin()
@@ -61,27 +64,37 @@ describe('Invite-aware auth flow', () => {
     expect(await screen.findByText('join-restored')).toBeInTheDocument()
   })
 
-  it('signup in invite mode hides full name and restores flow when session exists', async () => {
-    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
+  // Прежде этот тест закреплял обратное: «в режиме приглашения поля ФИО быть не
+  // должно», и в signUp уходила пустая строка. Решение изменилось — имя
+  // взять было неоткуда, и три живых ученика получили в профиль начало своей
+  // почты вместо ФИО. Теперь поле обязательно в любом режиме, а проверка
+  // сторожит именно то, ради чего правка делалась: непустое ФИО доезжает до
+  // signUp, откуда попадает в метаданные регистрации.
+  it('signup in invite mode still asks for the full name and passes it to signUp', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
     signUp.mockResolvedValue({ error: null, data: { session: { access_token: 'x' } } })
 
     renderRegister()
-    expect(screen.queryByLabelText('ФИО')).not.toBeInTheDocument()
+    // getByLabelText здесь не годится: общий Input рисует <label> без htmlFor и
+    // не оборачивает поле — прежняя проверка queryByLabelText('ФИО') отдавала
+    // null независимо от того, есть поле на экране или нет, и ничего не
+    // сторожила. Ищем по testid и отдельно проверяем саму подпись.
+    expect(screen.getByText('ФИО')).toBeInTheDocument()
 
+    fireEvent.change(screen.getByTestId('register-full-name'), { target: { value: '  Ахметов Ильдар  ' } })
     fireEvent.change(screen.getByPlaceholderText('your@email.ru'), { target: { value: 'student@example.com' } })
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'secret12' } })
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'secret12' } })
     fireEvent.click(screen.getByText('Зарегистрироваться'))
 
     await waitFor(() => expect(signUp).toHaveBeenCalled())
-    expect(signUp.mock.calls[0][2]).toBe('')
+    expect(signUp.mock.calls[0][2]).toBe('Ахметов Ильдар')
     expect(signUp.mock.calls[0][4]).toMatchObject({ skipProfileInsert: true })
     expect(await screen.findByText('join-restored')).toBeInTheDocument()
   })
 
-  it('signup in invite mode keeps confirmation state when email confirmation is required', async () => {
-    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'code', value: 'ABCD1234' }))
-    signUp.mockResolvedValue({ error: null, data: { session: null } })
+  it('signup in invite mode refuses to proceed without a full name', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
 
     renderRegister()
     fireEvent.change(screen.getByPlaceholderText('your@email.ru'), { target: { value: 'student@example.com' } })
@@ -89,7 +102,24 @@ describe('Invite-aware auth flow', () => {
     fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'secret12' } })
     fireEvent.click(screen.getByText('Зарегистрироваться'))
 
+    expect(await screen.findByText('Введите ФИО')).toBeInTheDocument()
+    expect(signUp).not.toHaveBeenCalled()
+  })
+
+  it('signup in invite mode keeps confirmation state when email confirmation is required', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'code', value: 'ABCD1234' }))
+    signUp.mockResolvedValue({ error: null, data: { session: null } })
+
+    renderRegister()
+    fireEvent.change(screen.getByTestId('register-full-name'), { target: { value: 'Ахметов Ильдар' } })
+    fireEvent.change(screen.getByPlaceholderText('your@email.ru'), { target: { value: 'student@example.com' } })
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[0], { target: { value: 'secret12' } })
+    fireEvent.change(screen.getAllByPlaceholderText('••••••••')[1], { target: { value: 'secret12' } })
+    fireEvent.click(screen.getByText('Зарегистрироваться'))
+
     expect(await screen.findByText('Подтвердите email. После подтверждения приглашение останется доступным.')).toBeInTheDocument()
-    expect(JSON.parse(sessionStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD1234' })
+    // Именно здесь долгая жизнь записи и нужна: следующим шагом человек уходит
+    // в почту и возвращается по ссылке подтверждения — часто в новой вкладке.
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD1234' })
   })
 })

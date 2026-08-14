@@ -94,6 +94,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     profileMissing = false
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
     authCallback = null
+    localStorage.clear()
     sessionStorage.clear()
   })
 
@@ -164,7 +165,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     unsub()
   })
 
-  // Раньше вставка профиля пропускалась, пока в sessionStorage висит
+  // Раньше вставка профиля пропускалась, пока в хранилище висит
   // приглашение (расчёт на то, что легаси-RPC создаст профиль сама и подставит
   // ФИО из приглашения). Курсовым ссылкам это ломало вступление насмерть:
   // course_join_accept читает роль из profiles, получает NULL и отвечает «По
@@ -172,7 +173,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
   // как только есть сессия, — RLS позволяет вставить его только здесь.
   it('создаёт профиль student даже при висящем приглашении (иначе course_join_accept отказывает)', async () => {
     profileMissing = true
-    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
 
     render(<AppAuth />)
     await fireAuthEvent()
@@ -181,8 +182,11 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     expect(insertSpy.mock.calls[0][0]).toMatchObject({ id: 'u1', email: 'a@a.com', role: 'student' })
   })
 
-  // full_name в profiles — NOT NULL, а в invite-режиме ФИО не спрашивают:
-  // пустая строка засоряла бы журнал преподавателя безымянными учениками.
+  // full_name в profiles — NOT NULL, а метаданных регистрации может не быть
+  // вовсе (аккаунт заведён мимо формы, старые записи): пустая строка засоряла бы
+  // журнал преподавателя безымянными учениками. Форма регистрации ФИО теперь
+  // спрашивает всегда, но запасная подстановка остаётся — она про случаи, когда
+  // формы в цепочке не было.
   it('подставляет непустое full_name, если ФИО при регистрации не вводили', async () => {
     profileMissing = true
 

@@ -51,21 +51,22 @@ describe('JoinPage', () => {
     ensureStudentProfile.mockResolvedValue(null)
     signOut.mockReset()
     useAuthStore.setState({ user: null, profile: null, loading: false } as any)
+    localStorage.clear()
     sessionStorage.clear()
   })
 
-  it('token route is available without auth and stores token in sessionStorage', async () => {
+  it('token route is available without auth and stores token in localStorage', async () => {
     renderJoin('/join/token-123')
     expect(screen.getByText('Войти')).toBeInTheDocument()
     expect(screen.getByText('Зарегистрироваться')).toBeInTheDocument()
-    expect(JSON.parse(sessionStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'token', value: 'token-123' })
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'token', value: 'token-123' })
   })
 
-  it('code route is available without auth and stores normalized code in sessionStorage', async () => {
+  it('code route is available without auth and stores normalized code in localStorage', async () => {
     renderJoin('/join')
     fireEvent.change(screen.getByLabelText('Код приглашения'), { target: { value: 'ab cd-12' } })
     expect((screen.getByLabelText('Код приглашения') as HTMLInputElement).value).toBe('ABCD-12')
-    expect(JSON.parse(sessionStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD12' })
+    expect(JSON.parse(localStorage.getItem('student-invite-pending') || '{}')).toEqual({ type: 'code', value: 'ABCD12' })
   })
 
   it('authenticated student sees confirm button and does not accept automatically', async () => {
@@ -80,7 +81,7 @@ describe('JoinPage', () => {
     expect(acceptStudentInvite).not.toHaveBeenCalled()
   })
 
-  it('accepts by token, protects against double submit, shows success and clears sessionStorage', async () => {
+  it('accepts by token, protects against double submit, shows success and clears the stored invite', async () => {
     useAuthStore.setState({
       user: { id: 'u1', email: 's@example.com' },
       profile: { id: 'u1', email: 's@example.com', full_name: 'Student', role: 'student', created_at: '', updated_at: '' },
@@ -96,7 +97,7 @@ describe('JoinPage', () => {
     await waitFor(() => expect(acceptStudentInvite).toHaveBeenCalledTimes(1))
     expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
     expect(screen.getByText('Открыть курс')).toBeInTheDocument()
-    expect(sessionStorage.getItem('student-invite-pending')).toBeNull()
+    expect(localStorage.getItem('student-invite-pending')).toBeNull()
   })
 
   it('accepts by short code', async () => {
@@ -173,7 +174,7 @@ describe('JoinPage', () => {
       await waitFor(() => expect(acceptCourseJoin).toHaveBeenCalledWith('course-token-1'))
       expect(await screen.findByText('Вы присоединились')).toBeInTheDocument()
       expect(screen.getByText(/Физика ЕГЭ/)).toBeInTheDocument()
-      expect(sessionStorage.getItem('student-invite-pending')).toBeNull()
+      expect(localStorage.getItem('student-invite-pending')).toBeNull()
     })
 
     it('нераспознанная ошибка легаси (kind=unknown) тоже доходит до course_join_accept', async () => {

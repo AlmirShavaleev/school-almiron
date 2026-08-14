@@ -78,6 +78,7 @@ describe('корень: лендинг снят с главной', () => {
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
     sessionStorage.clear()
     goTo('/')
   })
@@ -117,7 +118,7 @@ describe('корень: лендинг снят с главной', () => {
   it('вошедший с висящим приглашением возвращается к приглашению, а не в кабинет', async () => {
     sessionValue = { user: { id: 'u1', email: 'a@a.com' } }
     profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'student' }
-    sessionStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123' }))
 
     render(<App />)
 
@@ -148,6 +149,7 @@ describe('лендинг переехал на `/about`, а не удалён', 
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
     sessionStorage.clear()
   })
 
@@ -192,6 +194,7 @@ describe('публичные адреса гостя не перехватыва
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
     sessionStorage.clear()
   })
 
@@ -209,6 +212,7 @@ describe('форма входа не держит вошедшего', () => {
     sessionValue = { user: { id: 'u1', email: 'a@a.com' } }
     profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'student' }
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
     sessionStorage.clear()
   })
 
