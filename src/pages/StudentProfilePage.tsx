@@ -16,6 +16,7 @@ import { cn } from '@/utils/cn'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
+import { enrollableGroups } from '@/lib/enrollmentTargets'
 import { Plus, BookOpen, Calendar } from 'lucide-react'
 
 // Кольцо посещаемости, бейдж статуса легаси-ДЗ и значок посещения удалены
@@ -202,8 +203,10 @@ function EnrolledCoursesSection({ studentId, studentFullName, currentRole }: { s
     group: 'Мини-группа',
   }
 
+  // Тот же фильтр, что и на странице учеников: шаблон в списке распределения
+  // — это приглашение зачислить в каркас.
   const distributeGroups: DistributeGroupOption[] = useMemo(
-    () => teacherGroups.map((group: any) => ({
+    () => enrollableGroups(teacherGroups as any[]).map((group: any) => ({
       id: group.id,
       name: group.name,
       courseId: group.course_id ?? null,

@@ -22,7 +22,7 @@ export function useGroups() {
       try {
         const role = effectiveRole ?? profile!.role
 
-        const baseSelect = '*, courses(title,subject,exam_type), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
+        const baseSelect = '*, courses(title,subject,exam_type,is_template), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
 
         if (role === 'student') {
           const { data: st } = await supabase

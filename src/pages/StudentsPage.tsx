@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useGroups } from '@/hooks/useGroups'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 import { isMyInvite, isMyJoinRequest, isMyStudent } from '@/lib/studentsScope'
+import { enrollableGroups } from '@/lib/enrollmentTargets'
 import { fetchLastSubmissions, fetchTelegramFlags, type LastSubmissions, type TelegramFlags } from '@/lib/studentListData'
 import { StudentsTable } from '@/components/students/StudentsTable'
 import {
@@ -76,8 +77,10 @@ export function StudentsPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [reissuingBatchId, setReissuingBatchId] = useState<string | null>(null)
 
+  // Шаблоны из всех списков выбора курса убраны: зачислять в каркас нельзя.
+  // Правило общее — `enrollableGroups`, чтобы четыре списка не разъехались.
   const groupOptions = useMemo<EnrollmentGroupOption[]>(
-    () => groups.map(group => ({
+    () => enrollableGroups(groups).map(group => ({
       id: group.id,
       name: group.name,
       courseId: group.course_id ?? null,
@@ -89,7 +92,7 @@ export function StudentsPage() {
   )
 
   const wizardGroups = useMemo<WizardGroupOption[]>(
-    () => groups.map(group => ({
+    () => enrollableGroups(groups).map(group => ({
       id: group.id,
       name: group.name,
       courseTitle: group.courses?.title ?? null,
@@ -99,7 +102,7 @@ export function StudentsPage() {
   )
 
   const distributeGroups = useMemo<DistributeGroupOption[]>(
-    () => groups.map(group => ({
+    () => enrollableGroups(groups).map(group => ({
       id: group.id,
       name: group.name,
       courseId: group.course_id ?? null,
