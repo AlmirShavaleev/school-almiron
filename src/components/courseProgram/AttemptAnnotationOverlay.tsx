@@ -6,6 +6,14 @@ import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionRef
 import { cn } from '@/utils/cn'
 import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
 import {
+  MAX_SOLUTION_FRACTION,
+  MIN_SOLUTION_FRACTION,
+  fractionFromPointer,
+  fractionToPercent,
+  readSolutionFraction,
+  writeSolutionFraction,
+} from '@/lib/reviewPaneLayout'
+import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
   type TopicHomeworkAttemptFileRow,
 } from '@/lib/topicHomework'
@@ -175,6 +183,21 @@ export function AttemptAnnotationOverlay({
   const [solutionOpen, setSolutionOpen] = useState(true)
   const showSolution = hasSolution && solutionOpen
 
+  /**
+   * Ширина панели решения — доля рабочей области, запомненная между разборами
+   * (§140). Границу можно тянуть мышью и пальцем; арифметика в
+   * `lib/reviewPaneLayout`, здесь только жест.
+   */
+  const splitRef = useRef<HTMLDivElement>(null)
+  const [solutionFraction, setSolutionFraction] = useState(() => readSolutionFraction())
+  const [dragging, setDragging] = useState(false)
+
+  function moveSplit(clientX: number) {
+    const rect = splitRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setSolutionFraction(fractionFromPointer(clientX, rect))
+  }
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -277,12 +300,60 @@ export function AttemptAnnotationOverlay({
       {/* Решение слева, работа справа: сравнивать удобнее, когда оба на
           экране, а не в двух вкладках. На узком экране панель уезжает наверх —
           «сначала решение, потом фото» сохраняется и там. */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div ref={splitRef} className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {showSolution && (
           <SolutionReferencePanel
             topicId={solutionTopicId ?? ''}
             materials={solution}
             loading={solutionLoading}
+            widthPercent={fractionToPercent(solutionFraction)}
+          />
+        )}
+
+        {/*
+          Граница между эталоном и работой. Живёт только там, где панель
+          занимает долю (с 1536): ниже она фиксированной ширины, тянуть нечего.
+          Pointer Events — один обработчик на мышь и палец (урок §118), с
+          клавиатуры граница двигается стрелками, потому что это ползунок и он
+          обязан быть доступен без мыши.
+        */}
+        {showSolution && (
+          <div
+            data-testid="solution-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Ширина панели решения"
+            aria-valuemin={Math.round(MIN_SOLUTION_FRACTION * 100)}
+            aria-valuemax={Math.round(MAX_SOLUTION_FRACTION * 100)}
+            aria-valuenow={Math.round(solutionFraction * 100)}
+            tabIndex={0}
+            onPointerDown={e => {
+              (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+              setDragging(true)
+            }}
+            onPointerMove={e => { if (dragging) moveSplit(e.clientX) }}
+            onPointerUp={() => {
+              if (!dragging) return
+              setDragging(false)
+              writeSolutionFraction(solutionFraction)
+            }}
+            onPointerCancel={() => setDragging(false)}
+            onKeyDown={e => {
+              const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0
+              if (!step) return
+              e.preventDefault()
+              const next = Math.min(
+                MAX_SOLUTION_FRACTION,
+                Math.max(MIN_SOLUTION_FRACTION, solutionFraction + step),
+              )
+              setSolutionFraction(next)
+              writeSolutionFraction(next)
+            }}
+            className={cn(
+              'hidden w-1.5 shrink-0 cursor-col-resize touch-none bg-slate-200 transition-colors 2xl:block',
+              'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
+              dragging && 'bg-primary-400',
+            )}
           />
         )}
 

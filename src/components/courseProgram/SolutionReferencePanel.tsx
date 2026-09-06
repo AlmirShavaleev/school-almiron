@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { ExternalLink, FileText, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
 import { SignedImage } from '@/components/ui/SignedImage'
+
+/**
+ * Просмотрщик страниц грузится лениво: pdfjs весит ~450 КБ, а панель решения
+ * открывает только персонал и только на разборе работы. Заодно pdfjs не
+ * попадает в модули соседних экранов — в jsdom у него нет `DOMMatrix`, и
+ * обычный импорт ронял их тесты.
+ */
+const SolutionPdfPages = lazy(() => import('@/components/courseProgram/SolutionPdfPages'))
 import {
   bucketForMaterialPath,
   toTopicMaterial,
@@ -59,16 +67,28 @@ export function useTopicSolutionMaterials(topicId: string | null | undefined) {
 }
 
 export function SolutionReferencePanel({
-  topicId, materials, loading,
+  topicId, materials, loading, widthPercent,
 }: {
   topicId: string
   materials: TopicMaterial[]
   loading: boolean
+  /**
+   * Ширина панели на широком экране, в процентах рабочей области (§140).
+   * Ниже `xl` не действует: там панель фиксированной ширины, а на узком —
+   * полоса сверху.
+   */
+  widthPercent?: string
 }) {
   return (
     <aside
       data-testid="solution-reference-panel"
-      className="flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:w-96 lg:border-b-0 lg:border-r"
+      // Раньше здесь было `lg:w-96` (384 px при любой ширине окна), и на 1920
+      // эталон оставался узкой щелью — жалоба владельца 26.08. Теперь доля:
+      // с 1536 панель занимает свои ~40 % и тянется мышью; между 1024 и 1536
+      // остаётся фиксированной (там документ уже делит место с колонкой
+      // комментариев, и доля съела бы его), а ниже 1024 — полоса сверху.
+      style={widthPercent ? { ['--solution-pane-w' as string]: widthPercent } : undefined}
+      className="flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:w-80 lg:border-b-0 lg:border-r 2xl:w-[var(--solution-pane-w,40%)]"
     >
       <div className="shrink-0 border-b border-slate-100 px-4 py-2.5">
         <p className="text-sm font-semibold text-gray-900">Решение задания</p>
@@ -124,9 +144,13 @@ function SolutionItem({ material, topicId }: { material: TopicMaterial; topicId:
 }
 
 /**
- * Картинку показываем сразу, PDF — встроенным просмотрщиком. Ссылку «открыть
- * отдельно» оставляем всегда: встроенный движок PDF в браузере иногда не
- * заводится, и без запасного пути преподаватель остался бы без решения.
+ * Картинку показываем сразу, PDF — СВОИМИ страницами (§139).
+ *
+ * Встроенный просмотрщик браузера отсюда убран: его чёрная панель
+ * инструментов и лента миниатюр съедали половину панели и выглядели
+ * чужеродно рядом с работой ученика. Вместо кнопок просмотрщика — одна своя
+ * маленькая ссылка на исходный файл: без неё исчезли бы и скачивание, и
+ * печать, а запасной путь нужен — движок PDF иногда не заводится вовсе.
  */
 function SolutionFile({
   storagePath, fileName, topicId,
@@ -185,18 +209,28 @@ function SolutionFile({
       )}
 
       {isPdf && (
-        <object data={url} type="application/pdf" className="h-72 w-full rounded-lg border border-gray-200 lg:h-96">
-          <p className="p-3 text-xs text-gray-500">Встроенный просмотр недоступен — откройте файл отдельно.</p>
-        </object>
+        <Suspense fallback={(
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <Loader2 size={12} className="animate-spin" />
+            Готовлю решение…
+          </div>
+        )}>
+          <SolutionPdfPages url={url} name={name} />
+        </Suspense>
       )}
 
+      {/* Ссылка стоит ПОД страницами и мелкая: она запасной путь и способ
+          скачать, а не главное действие панели. Кнопок встроенного
+          просмотрщика больше нет, и без неё файл было бы не достать. */}
       <a
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 text-xs text-primary-600 hover:underline"
+        data-testid="solution-file-link"
+        title="Открыть исходный файл решения"
+        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 transition-colors hover:border-primary-300 hover:text-primary-700"
       >
-        <FileText size={12} />
+        <FileText size={11} />
         {name}
       </a>
     </div>
