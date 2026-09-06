@@ -39,7 +39,11 @@ import SolutionPdfPages from '@/components/courseProgram/SolutionPdfPages'
 /** ResizeObserver в jsdom нет; подменяем управляемым. */
 let notify: ((width: number) => void) | null = null
 class FakeResizeObserver {
-  constructor(private cb: ResizeObserverCallback) {
+  // Поле объявлено явно: сокращение `constructor(private cb)` запрещено
+  // настройкой `erasableSyntaxOnly` в tsconfig.
+  cb: ResizeObserverCallback
+  constructor(cb: ResizeObserverCallback) {
+    this.cb = cb
     notify = (width: number) => {
       this.cb([{ contentRect: { width } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver)
     }

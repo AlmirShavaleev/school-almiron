@@ -56,7 +56,9 @@ function SolutionPdfPages({ url, name }: { url: string; name: string }) {
     const task = pdfjs.getDocument({ url })
     task.promise
       .then(doc => {
-        if (cancelled) { void doc.destroy?.(); return }
+        // Документ не освобождаем вручную: в типах pdfjs у него нет `destroy`,
+        // а память отдаёт `task.destroy()` в уборке эффекта ниже.
+        if (cancelled) return
         setPdf(doc)
         setPages(doc.numPages)
       })
