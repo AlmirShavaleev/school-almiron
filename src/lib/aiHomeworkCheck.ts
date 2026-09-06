@@ -22,6 +22,14 @@ export interface AiJobRow {
   confidence: AiConfidence | null
   summary: string | null
   last_error: string | null
+  /**
+   * Был ли у проверки авторский эталон (§135): used — подставлен, missing — у
+   * темы нет решения, failed — разбор PDF не удался. null — проверка старее
+   * §135, тогда эталона не было гарантированно: условие `kind = 'text'`
+   * отсекало все 844 PDF.
+   */
+  reference_state: 'used' | 'missing' | 'failed' | null
+  reference_chars: number | null
   accepted_at: string | null
   created_at: string
   completed_at: string | null
@@ -39,6 +47,21 @@ export interface AiFindingRow {
   category: AiFindingCategory
   text: string
   position: number
+}
+
+/**
+ * Подпись про эталон для панели преподавателя.
+ *
+ * Молчать нельзя: проверка без авторского решения — другой уровень доверия,
+ * модель там сверяла работу со своим собственным решением. `null` — показывать
+ * нечего (проверка ещё идёт или она старее §135).
+ */
+export function referenceNotice(job: AiJobRow): string | null {
+  if (job.status !== 'done') return null
+  if (job.reference_state === 'used') return null
+  if (job.reference_state === 'failed') return 'Проверено без эталона: решение не удалось прочитать'
+  if (job.reference_state === 'missing') return 'Проверено без эталона: у темы нет авторского решения'
+  return null
 }
 
 /** Насколько модель уверена — словами, а не ярлыком. */

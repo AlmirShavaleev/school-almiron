@@ -4632,6 +4632,12 @@ export type Database = {
           output_tokens: number | null
           provider: string | null
           readable: boolean | null
+          // Дописано руками в формате генератора (§137): MCP-генерация отдаёт
+          // database.ts целиком, тысячи строк, в контекст сессии не влезает.
+          // СВЕРИТЬ при следующей полной генерации. Схема сверена по проду:
+          // reference_state text CHECK (used|missing|failed), reference_chars int.
+          reference_chars: number | null
+          reference_state: string | null
           requested_by: string | null
           started_at: string | null
           status: string
@@ -4652,6 +4658,8 @@ export type Database = {
           output_tokens?: number | null
           provider?: string | null
           readable?: boolean | null
+          reference_chars?: number | null
+          reference_state?: string | null
           requested_by?: string | null
           started_at?: string | null
           status?: string
@@ -4672,6 +4680,8 @@ export type Database = {
           output_tokens?: number | null
           provider?: string | null
           readable?: boolean | null
+          reference_chars?: number | null
+          reference_state?: string | null
           requested_by?: string | null
           started_at?: string | null
           status?: string

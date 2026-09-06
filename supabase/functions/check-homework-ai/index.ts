@@ -15,6 +15,16 @@
 // масштабируются под ширину экрана.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import {
+  MAX_REFERENCE_BYTES,
+  extractAnnotationText,
+  isParseUsable,
+  nextEngine,
+  referencePromptBlock,
+  truncateReference,
+  type ParseEngine,
+  type ReferenceState,
+} from './reference.ts'
 
 const ATTEMPTS_BUCKET = 'topic-homework-attempts'
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -123,20 +133,22 @@ Deno.serve(async (req) => {
     const topicId: string | null = homework?.topic_id ?? null
     const gradeScale: string | null = homework?.grade_scale ?? null
 
-    let solutionText = ''
-    if (topicId) {
-      const { data: solution } = await admin
-        .from('topic_material_items')
-        .select('title, content, kind, section')
-        .eq('topic_id', topicId)
-        .eq('section', 'solution')
-        .eq('kind', 'text')
-        .order('position', { ascending: true })
-      solutionText = (solution ?? [])
-        .map((m: Record<string, any>) => [m.title, m.content].filter(Boolean).join('\n'))
-        .join('\n\n')
-        .slice(0, 8000)
+    // Эталон. До §135 здесь стояло `.eq('kind','text')`, а на проде ВСЕ 844
+    // решения рубрики `solution` — PDF-файлы: эталон не доезжал до модели ни
+    // разу, и она сверяла ученика со своим же решением.
+    // Любой сбой эталона — это «проверим без эталона», а не падение всей
+    // проверки: за всё время было восемь попыток, ещё одна причина падать нам
+    // не нужна (требование владельца 16.08).
+    let reference: ReferenceResult
+    try {
+      reference = await loadReference(admin, topicId, { apiKey, baseUrl })
+    } catch (err) {
+      reference = {
+        text: '', truncated: false, state: 'failed', engine: null, cached: false,
+        error: `Эталон не получен: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+      }
     }
+    const solutionText = reference.text
 
     // Шаг 3. Страницы работы.
     const { data: rawFiles } = await admin
@@ -177,6 +189,7 @@ Deno.serve(async (req) => {
       title: homework?.title ?? 'Домашнее задание',
       instructions: homework?.instructions ?? '',
       solutionText,
+      referenceTruncated: reference.truncated,
       gradeScale,
       pageCount: sent.length,
     })
@@ -258,11 +271,20 @@ Deno.serve(async (req) => {
       model,
       readable: parsed.readable !== false,
       suggested_score: numberOrNull(parsed.suggested_score),
-      confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : null,
+      // Без эталона потолок доверия — medium: модель сверяла работу со своим
+      // собственным решением, а не с авторским.
+      confidence: capConfidence(parsed.confidence, reference.state),
+      reference_state: reference.state,
+      reference_chars: reference.text.length || null,
       // Пропущенные страницы дописываем в разбор: преподаватель должен видеть,
       // что модель смотрела не всю работу, иначе «замечаний нет» соврёт.
-      summary: withSkipNote(String(parsed.summary ?? ''), skipped).slice(0, 8000) || null,
-      last_error: null,
+      summary: withReferenceNote(
+        withSkipNote(String(parsed.summary ?? ''), skipped),
+        reference,
+      ).slice(0, 8000) || null,
+      // Причина «эталона нет» не теряется: преподаватель видит её в разборе,
+      // диагностика — здесь. Проверка при этом прошла, статус done.
+      last_error: reference.error,
       completed_at: new Date().toISOString(),
       input_tokens: numberOrNull(usage.prompt_tokens),
       output_tokens: numberOrNull(usage.completion_tokens),
@@ -468,11 +490,214 @@ function nameOf(file: AttemptFile): string {
   return file.file_name ?? file.storage_path.split('/').pop() ?? 'без имени'
 }
 
+/**
+ * Приписка про эталон. Преподаватель обязан понимать, чему верит: проверка без
+ * авторского решения — другой уровень доверия, и молчать об этом нельзя.
+ */
+function withReferenceNote(summary: string, reference: ReferenceResult): string {
+  if (reference.state === 'used') return summary
+  const note = reference.state === 'failed'
+    ? `Проверено без эталона: ${reference.error ?? 'авторское решение не удалось прочитать'}.`
+    : 'Проверено без эталона: у темы нет авторского решения.'
+  return summary ? `${summary}\n\n${note}` : note
+}
+
 /** Приписка о непроверенных страницах — в конец разбора, отдельным абзацем. */
 function withSkipNote(summary: string, skipped: string[]): string {
   if (skipped.length === 0) return summary
   const note = ['Проверено не всё:', ...skipped.map(s => `— ${s}`)].join('\n')
   return summary ? `${summary}\n\n${note}` : note
+}
+
+/** Материалы решения лежат в приватном бакете тем; у старых — в легаси-бакете. */
+const MATERIAL_BUCKETS = ['topic-materials', 'course-materials'] as const
+
+/**
+ * Модель для РАЗБОРА PDF. Нам от неё не нужно ни слова: текст приходит в
+ * `file_annotations`, поэтому просим `max_tokens: 1`. Отдельная переменная
+ * позволяет владельцу поставить самую дешёвую текстовую модель, не трогая
+ * модель проверки и не передеплоивая функцию.
+ */
+const parseModelOf = () => Deno.env.get('AI_PARSE_MODEL') || Deno.env.get('AI_MODEL') || DEFAULT_MODEL
+
+interface ReferenceResult {
+  text: string
+  truncated: boolean
+  state: ReferenceState
+  /** Причина, по которой эталона нет. Уходит в разбор и в last_error. */
+  error: string | null
+  engine: ParseEngine | null
+  /** Взяли из кэша, а не разбирали заново. */
+  cached: boolean
+}
+
+const NO_REFERENCE = (state: ReferenceState, error: string | null = null): ReferenceResult =>
+  ({ text: '', truncated: false, state, error, engine: null, cached: false })
+
+/**
+ * Авторское решение темы для промпта.
+ *
+ * Берём ТОЛЬКО рубрику `solution` — это решение домашней работы. `task_solution`
+ * (решения задач урока) не трогаем: подсунуть разбор урока вместо разбора ДЗ
+ * хуже, чем не дать ничего.
+ *
+ * Провал разбора НЕ валит проверку: возвращаем `state: 'failed'`, работа
+ * проверяется без эталона. Ещё одна причина падать нам не нужна — за всё время
+ * было восемь попыток проверки.
+ */
+async function loadReference(
+  admin: ReturnType<typeof createClient>,
+  topicId: string | null,
+  ai: { apiKey: string; baseUrl: string },
+): Promise<ReferenceResult> {
+  if (!topicId) return NO_REFERENCE('missing')
+
+  const { data: materials } = await admin
+    .from('topic_material_items')
+    .select('id, title, content, kind, storage_path, size_bytes, mime_type')
+    .eq('topic_id', topicId)
+    .eq('section', 'solution')
+    .order('position', { ascending: true })
+
+  const rows = (materials ?? []) as Record<string, any>[]
+  if (rows.length === 0) return NO_REFERENCE('missing')
+
+  // Текстовые материалы, если они когда-нибудь появятся, — самый дешёвый путь.
+  const textual = rows
+    .filter(m => m.kind === 'text')
+    .map(m => [m.title, m.content].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+  if (textual) {
+    const block = truncateReference(textual)
+    return { ...block, state: 'used', error: null, engine: null, cached: true }
+  }
+
+  const pdf = rows.find(m => m.storage_path && (m.mime_type === 'application/pdf'
+    || String(m.storage_path).toLowerCase().endsWith('.pdf')))
+  if (!pdf) return NO_REFERENCE('missing')
+
+  // 1. Кэш. Файл могли заменить, оставив ту же строку материала, — сверяем
+  // путь и размер.
+  const { data: cached } = await admin
+    .from('topic_material_text_cache')
+    .select('text, storage_path, size_bytes, engine')
+    .eq('material_id', pdf.id)
+    .maybeSingle()
+
+  if (
+    cached
+    && cached.storage_path === pdf.storage_path
+    && Number(cached.size_bytes ?? 0) === Number(pdf.size_bytes ?? 0)
+  ) {
+    const block = truncateReference(String(cached.text ?? ''))
+    return { ...block, state: 'used', error: null, engine: cached.engine as ParseEngine, cached: true }
+  }
+
+  if (Number(pdf.size_bytes ?? 0) > MAX_REFERENCE_BYTES) {
+    return NO_REFERENCE(
+      'failed',
+      `Авторское решение больше ${Math.round(MAX_REFERENCE_BYTES / 1024 / 1024)} МБ — не разбирали`,
+    )
+  }
+
+  // 2. Файл из приватного бакета.
+  let bytes: Uint8Array | null = null
+  for (const bucket of MATERIAL_BUCKETS) {
+    const { data } = await admin.storage.from(bucket).download(pdf.storage_path)
+    if (data) { bytes = new Uint8Array(await data.arrayBuffer()); break }
+  }
+  if (!bytes) return NO_REFERENCE('failed', 'Файл авторского решения не скачался из хранилища')
+
+  // 3. Разбор: сначала бесплатный движок, платный — только если тот не смог.
+  const dataUrl = `data:application/pdf;base64,${base64(bytes)}`
+  const fileName = String(pdf.storage_path).split('/').pop() || 'solution.pdf'
+  let engine = nextEngine(null)
+  let lastReason = 'разбор PDF не дал текста'
+
+  while (engine) {
+    try {
+      const parsed = await parsePdf(ai, { dataUrl, fileName, engine })
+      if (parsed.text && isParseUsable(parsed.text, parsed.pages)) {
+        await admin.from('topic_material_text_cache').upsert({
+          material_id: pdf.id,
+          storage_path: pdf.storage_path,
+          size_bytes: pdf.size_bytes ?? null,
+          engine,
+          text: parsed.text,
+          chars: parsed.text.length,
+          created_at: new Date().toISOString(),
+        })
+        const block = truncateReference(parsed.text)
+        return { ...block, state: 'used', error: null, engine, cached: false }
+      }
+      // Молча принятый мусор — единственный способ этой работой сделать хуже,
+      // чем было: каша легла бы в кэш как эталон, и модель валила бы ученика
+      // за расхождение с ней.
+      lastReason = `движок ${engine} вернул слишком мало текста`
+    } catch (err) {
+      lastReason = `движок ${engine}: ${err instanceof Error ? err.message : String(err)}`
+    }
+    engine = nextEngine(engine)
+  }
+
+  return NO_REFERENCE('failed', `Не удалось распознать авторское решение: ${lastReason}`)
+}
+
+/**
+ * Один запрос к поставщику ради РАЗБОРА файла.
+ *
+ * Текст берём из `file_annotations` ответа — это дословно разобранное
+ * содержимое. Пересказ модели брать нельзя: она сокращает и «поправляет»
+ * формулы, а эталон обязан совпадать с тем, что написал учитель. Аннотации
+ * приходят и в ветке ошибки инференса, поэтому даже отказ модели отдаёт текст.
+ */
+async function parsePdf(
+  ai: { apiKey: string; baseUrl: string },
+  file: { dataUrl: string; fileName: string; engine: ParseEngine },
+): Promise<{ text: string; pages: number }> {
+  const response = await fetch(`${ai.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${ai.apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://alminion.ru',
+      'X-Title': 'School Almiron',
+    },
+    body: JSON.stringify({
+      model: parseModelOf(),
+      // Ответ модели не нужен вовсе — платим только за разбор и вход.
+      max_tokens: 1,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'ok' },
+          { type: 'file', file: { filename: file.fileName, file_data: file.dataUrl } },
+        ],
+      }],
+      // Умолчание у поставщика — ПЛАТНЫЙ mistral-ocr, поэтому движок всегда
+      // указываем явно.
+      plugins: [{ id: 'file-parser', pdf: { engine: file.engine } }],
+    }),
+  })
+
+  const payload = await response.json().catch(() => null)
+  const parsed = extractAnnotationText(payload)
+  if (parsed.text) return parsed
+  if (!response.ok) {
+    const detail = payload?.error?.message ?? `HTTP ${response.status}`
+    throw new Error(String(detail).slice(0, 200))
+  }
+  return parsed
+}
+
+/** Без эталона доверие не может быть высоким — модель сверяла работу с собой. */
+function capConfidence(raw: unknown, state: ReferenceState): string | null {
+  const value = ['high', 'medium', 'low'].includes(raw as string) ? (raw as string) : null
+  if (!value) return null
+  if (state === 'used') return value
+  return value === 'high' ? 'medium' : value
 }
 
 /**
@@ -486,6 +711,8 @@ function buildPrompt(ctx: {
   title: string
   instructions: string
   solutionText: string
+  /** Эталон показан не целиком — модель обязана знать об этом. */
+  referenceTruncated: boolean
   gradeScale: string | null
   pageCount: number
 }): string {
@@ -500,12 +727,19 @@ function buildPrompt(ctx: {
     '',
     `ЗАДАНИЕ: ${ctx.title}`,
     ctx.instructions ? `УСЛОВИЕ: ${ctx.instructions}` : '',
-    ctx.solutionText ? `АВТОРСКОЕ РЕШЕНИЕ УЧИТЕЛЯ (используй как эталон):\n${ctx.solutionText}` : '',
+    ctx.solutionText
+      ? referencePromptBlock({ text: ctx.solutionText, truncated: ctx.referenceTruncated })
+      : 'АВТОРСКОГО РЕШЕНИЯ НЕТ: сверять не с чем, оценивай по существу и не завышай уверенность.',
     '',
     'ПОРЯДОК РАБОТЫ:',
     '1. Сначала реши задачу сам, не подглядывая в ход ученика.',
     '2. Потом прочитай работу ученика и сравни со своим решением.',
-    '3. Отметь конкретные места: ошибки в вычислениях, логике, оформлении — и удачные ходы.',
+    // Ради этой строки всё и затевалось: без неё модель считает эталоном
+    // СВОЁ решение и снижает балл за любое расхождение с ним.
+    ctx.solutionText
+      ? '3. Если твой ответ расходится с авторским решением — прав автор, а не ты. Считай своё решение ошибочным и перепроверь.'
+      : '',
+    '4. Отметь конкретные места: ошибки в вычислениях, логике — и удачные ходы.',
     '',
     `Тебе передано страниц: ${ctx.pageCount}. Перед каждой идёт строка «Страница #N: имя». Многостраничный PDF разложен на страницы, у каждой свой номер.`,
     '',
@@ -523,9 +757,17 @@ function buildPrompt(ctx: {
     '',
     'ПРАВИЛА:',
     `- ${scale}`,
-    // Модель ставила 5/5 и тут же перечисляла две ошибки — балл жил отдельно
-    // от разбора. Требуем согласованности явным правилом.
-    '- Балл должен согласовываться с находками: если перечислил ошибки, высший балл не ставь.',
+    // Балл раньше брался из воздуха: методики в промпте не было вовсе, и
+    // модель ставила 68 там, где сама насчитала 8 верных заданий из 18.
+    // Теперь способ подсчёта задан явно.
+    '- КАК СЧИТАТЬ БАЛЛ: посчитай, сколько заданий решено верно, и раздели на общее число заданий.',
+    '- Эта доля и есть балл: по стобалльной шкале — доля в процентах; по пятибалльной — та же доля, округлённая ВВЕРХ до целого от 2 до 5.',
+    '- Задание с верным результатом и верным ходом засчитывается ПОЛНОСТЬЮ, даже если запись неаккуратна.',
+    '- Замечания по оформлению (category "format") на балл НЕ влияют: это советы. Балл снижают только неверный результат и неверный ход.',
+    '- Если все задания решены верно, а замечания только по оформлению — ставь высший балл.',
+    '- Другой верный способ решения — не ошибка. Пришёл к верному результату верным рассуждением — полный зачёт, а красивый ход отметь как "praise".',
+    '- Не разобрал почерк — не ошибка: дай "comment" и понизь confidence, но не считай решение неверным.',
+    '- В спорном случае решай в пользу ученика: твой разбор — предложение, вердикт всё равно ставит преподаватель.',
     '- confidence: "high" — работа читается уверенно и решение однозначно; "medium" — есть сомнения; "low" — почерк плохо разбирается или задание непонятно.',
     '- Если работу невозможно прочитать: "readable": false, "findings": [], "confidence": "low".',
     '- page_index — номер страницы из строки «Страница #N», начиная с 1.',

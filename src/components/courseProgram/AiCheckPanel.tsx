@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Loader2, Sparkles, SquareDashed } from 'lucide-react'
 import {
   CONFIDENCE_LABEL,
+  referenceNotice,
   aiErrorMessage,
   shouldShowScore,
   type AiFindingRow,
@@ -107,6 +108,20 @@ export function AiCheckPanel({
           {job.readable === false && (
             <p className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs text-amber-900">
               ИИ не смог разобрать работу — балл не предлагается. Причина ниже.
+            </p>
+          )}
+
+          {/*
+            §135. Проверка без авторского эталона — другой уровень доверия:
+            модель сверяла работу со СВОИМ решением. Преподаватель должен
+            понимать, чему верит, поэтому плашка спокойная, но обязательная.
+          */}
+          {referenceNotice(job) && (
+            <p
+              data-testid="ai-check-no-reference"
+              className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
+            >
+              {referenceNotice(job)}
             </p>
           )}
 

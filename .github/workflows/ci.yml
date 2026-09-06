@@ -1,0 +1,48 @@
+# Автопроверка каждой ветки: типы и тесты.
+#
+# Зачем: до этого красная сборка обнаруживалась только после пуша в main —
+# то есть уже на проде. Теперь падение видно на ветке, до слияния.
+#
+# Почему тесты разбиты на половины: в проекте уже есть готовые скрипты
+# test:half1 / test:half2 — полный прогон одним куском упирался в память.
+name: Проверка
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Тесты ходят в моки, но модули читают переменные при импорте —
+      # подставляем заглушки, чтобы импорт не падал. Настоящих ключей
+      # в CI нет и быть не должно.
+      VITE_SUPABASE_URL: http://localhost:54321
+      VITE_SUPABASE_ANON_KEY: ci-dummy-anon-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Типы (tsc -b)
+        run: npm run typecheck
+
+      - name: Тесты, часть 1
+        run: npm run test:half1
+
+      - name: Тесты, часть 2
+        run: npm run test:half2
