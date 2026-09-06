@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { ExternalLink, FileText, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
 import { SignedImage } from '@/components/ui/SignedImage'
+
+/**
+ * Просмотрщик страниц грузится лениво: pdfjs весит ~450 КБ, а панель решения
+ * открывает только персонал и только на разборе работы. Заодно pdfjs не
+ * попадает в модули соседних экранов — в jsdom у него нет `DOMMatrix`, и
+ * обычный импорт ронял их тесты.
+ */
+const SolutionPdfPages = lazy(() => import('@/components/courseProgram/SolutionPdfPages'))
 import {
   bucketForMaterialPath,
   toTopicMaterial,
@@ -136,9 +144,13 @@ function SolutionItem({ material, topicId }: { material: TopicMaterial; topicId:
 }
 
 /**
- * Картинку показываем сразу, PDF — встроенным просмотрщиком. Ссылку «открыть
- * отдельно» оставляем всегда: встроенный движок PDF в браузере иногда не
- * заводится, и без запасного пути преподаватель остался бы без решения.
+ * Картинку показываем сразу, PDF — СВОИМИ страницами (§139).
+ *
+ * Встроенный просмотрщик браузера отсюда убран: его чёрная панель
+ * инструментов и лента миниатюр съедали половину панели и выглядели
+ * чужеродно рядом с работой ученика. Вместо кнопок просмотрщика — одна своя
+ * маленькая ссылка на исходный файл: без неё исчезли бы и скачивание, и
+ * печать, а запасной путь нужен — движок PDF иногда не заводится вовсе.
  */
 function SolutionFile({
   storagePath, fileName, topicId,
@@ -197,18 +209,28 @@ function SolutionFile({
       )}
 
       {isPdf && (
-        <object data={url} type="application/pdf" className="h-72 w-full rounded-lg border border-gray-200 lg:h-96">
-          <p className="p-3 text-xs text-gray-500">Встроенный просмотр недоступен — откройте файл отдельно.</p>
-        </object>
+        <Suspense fallback={(
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <Loader2 size={12} className="animate-spin" />
+            Готовлю решение…
+          </div>
+        )}>
+          <SolutionPdfPages url={url} name={name} />
+        </Suspense>
       )}
 
+      {/* Ссылка стоит ПОД страницами и мелкая: она запасной путь и способ
+          скачать, а не главное действие панели. Кнопок встроенного
+          просмотрщика больше нет, и без неё файл было бы не достать. */}
       <a
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 text-xs text-primary-600 hover:underline"
+        data-testid="solution-file-link"
+        title="Открыть исходный файл решения"
+        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 transition-colors hover:border-primary-300 hover:text-primary-700"
       >
-        <FileText size={12} />
+        <FileText size={11} />
         {name}
       </a>
     </div>
