@@ -22,17 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Тесты ходят в моки, но модули читают переменные при импорте —
-      # подставляем заглушки, чтобы импорт не падал. Настоящих ключей
-      # в CI нет и быть не должно.
-      VITE_SUPABASE_URL: http://localhost:54321
+      # Тесты ходят в моки, но часть из них СТРОИТ адреса файлов из этой
+      # переменной и ждёт https (см. resolveTaskHtml). Поэтому здесь
+      # обязателен https-адрес-заглушка: с http://localhost падают восемь
+      # тестов каталога, к коду отношения не имеющих. Настоящих ключей в CI
+      # нет и быть не должно.
+      VITE_SUPABASE_URL: https://example.supabase.co
       VITE_SUPABASE_ANON_KEY: ci-dummy-anon-key
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Установка зависимостей
