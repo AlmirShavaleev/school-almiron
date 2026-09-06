@@ -59,16 +59,28 @@ export function useTopicSolutionMaterials(topicId: string | null | undefined) {
 }
 
 export function SolutionReferencePanel({
-  topicId, materials, loading,
+  topicId, materials, loading, widthPercent,
 }: {
   topicId: string
   materials: TopicMaterial[]
   loading: boolean
+  /**
+   * Ширина панели на широком экране, в процентах рабочей области (§140).
+   * Ниже `xl` не действует: там панель фиксированной ширины, а на узком —
+   * полоса сверху.
+   */
+  widthPercent?: string
 }) {
   return (
     <aside
       data-testid="solution-reference-panel"
-      className="flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:w-96 lg:border-b-0 lg:border-r"
+      // Раньше здесь было `lg:w-96` (384 px при любой ширине окна), и на 1920
+      // эталон оставался узкой щелью — жалоба владельца 26.08. Теперь доля:
+      // с 1536 панель занимает свои ~40 % и тянется мышью; между 1024 и 1536
+      // остаётся фиксированной (там документ уже делит место с колонкой
+      // комментариев, и доля съела бы его), а ниже 1024 — полоса сверху.
+      style={widthPercent ? { ['--solution-pane-w' as string]: widthPercent } : undefined}
+      className="flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:w-80 lg:border-b-0 lg:border-r 2xl:w-[var(--solution-pane-w,40%)]"
     >
       <div className="shrink-0 border-b border-slate-100 px-4 py-2.5">
         <p className="text-sm font-semibold text-gray-900">Решение задания</p>
