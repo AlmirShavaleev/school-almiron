@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
 import { useAuthStore } from '@/store/authStore'
 import type {
   TopicHomeworkAttemptRow, TopicHomeworkReviewRow, GradeScale,
@@ -62,6 +63,13 @@ export interface ModuleProgress {
   topics:      TopicProgress[]
   done:        number   // выполненные задания (принятое ДЗ + завершённый тест)
   total:       number   // все задания тем модуля
+  /**
+   * Счётчики §141: открытые темы и сданные ДЗ. `done`/`total` оставлены —
+   * на них живут списки заданий внутри раздела, — но главный счётчик и кольцо
+   * считают уже темы: заданий на проде почти нет, и ученик видел «0 из 0» при
+   * двух десятках открытых тем.
+   */
+  counters:    CourseCounters
 }
 
 export interface StaffInfo {
@@ -166,6 +174,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       if (topicIds.length === 0) {
         setModules((mods || []).map((m: any) => ({
           id: m.id, title: m.title, order_index: m.order_index, topics: [], done: 0, total: 0,
+          counters: countTopics([]),
         })))
         return
       }
@@ -314,7 +323,16 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         const done  = topics.reduce((sum, topic) => sum + topic.completed_count, 0)
         const total = topics.reduce((sum, topic) => sum + topic.assignment_count, 0)
 
-        return { id: m.id, title: m.title, order_index: m.order_index, topics, done, total }
+        // Счёт тем идёт по тому же правилу, что и открытость темы на её
+        // странице (§59): `isTopicOpen` внутри `countTopics`, своей копии нет.
+        const counters = countTopics(topics.map(topic => ({
+          is_open: topic.is_open,
+          available_from: topic.available_from,
+          hasHomework: !!topic.hw_id,
+          hwStatus: topic.hw_status,
+        })))
+
+        return { id: m.id, title: m.title, order_index: m.order_index, topics, done, total, counters }
       })
 
       setModules(result)
