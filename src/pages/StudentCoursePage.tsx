@@ -9,6 +9,9 @@ import {
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
+import {
+  homeworkLabel, openPercent, sumCounters, topicsLabel,
+} from '@/lib/studentCourseCounters'
 import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
 import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
 import { testPercent } from '@/lib/studentProgram'
@@ -97,10 +100,12 @@ function ModuleBigCard({
   idx: number
   onClick: () => void
 }) {
-  const checkedCount = mod.done
-  const totalTopics  = mod.total
+  // §141. Считаем ТЕМЫ, а не задания: заданий на проде почти нет
+  // (опубликовано 4 из 164 в физике, ноль в математике), и карточка показывала
+  // «0 из 0» при двух десятках открытых тем. Правило одно на курс и раздел.
+  const counters     = mod.counters
   const submittedCnt = mod.topics.filter(t => t.hw_status === 'submitted').length
-  const pct          = totalTopics > 0 ? Math.round(checkedCount / totalTopics * 100) : 0
+  const pct          = openPercent(counters)
   const gradient     = MODULE_GRADIENTS[idx % MODULE_GRADIENTS.length]
   const isDone       = pct === 100
 
@@ -145,10 +150,15 @@ function ModuleBigCard({
             />
           </div>
           <div className="flex justify-between mt-1.5 text-xs text-white/75">
-            <span>{checkedCount} из {totalTopics} заданий</span>
+            <span data-testid="module-topics-counter">{topicsLabel(counters)}</span>
             <span className="flex items-center gap-1">
               Открыть <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
             </span>
+          </div>
+          {/* Домашние задания — отдельной строкой: смешивать их с темами в
+              одном числе и значило показывать «0 из 0» (§141). */}
+          <div className="mt-1 text-xs text-white/70">
+            <span data-testid="module-homework-counter">{homeworkLabel(counters)}</span>
           </div>
         </div>
       </div>
@@ -868,9 +878,10 @@ export function StudentCoursePage() {
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
 
-  const totalTopics   = modules.reduce((sum, module) => sum + module.total, 0)
-  const checkedTopics = modules.reduce((sum, module) => sum + module.done, 0)
-  const overallPct    = totalTopics > 0 ? Math.round(checkedTopics / totalTopics * 100) : 0
+  // Курс = сумма разделов по тому же правилу, иначе цифры на двух уровнях
+  // разойдутся (§141).
+  const courseCounters = sumCounters(modules.map(module => module.counters))
+  const overallPct     = openPercent(courseCounters)
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
@@ -939,18 +950,16 @@ export function StudentCoursePage() {
 
         {/* Overall progress pill */}
         <div className="w-full sm:w-auto flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 sm:shrink-0">
-          <Ring pct={activeMod
-            ? (activeMod.total > 0 ? Math.round(activeMod.done / activeMod.total * 100) : 0)
-            : overallPct
-          } size={40} stroke={4} />
+          <Ring pct={activeMod ? openPercent(activeMod.counters) : overallPct} size={40} stroke={4} />
           <div>
-            <div className="text-xs font-semibold text-gray-700">
-              {activeMod
-                ? `${activeMod.done} / ${activeMod.total} заданий`
-                : `${checkedTopics} / ${totalTopics} заданий`}
+            <div data-testid="course-topics-counter" className="text-xs font-semibold text-gray-700">
+              {topicsLabel(activeMod ? activeMod.counters : courseCounters)}
             </div>
             <div className="text-[10px] text-gray-400">
               {activeMod ? 'в разделе' : 'всего'}
+            </div>
+            <div data-testid="course-homework-counter" className="mt-0.5 text-[10px] text-gray-500">
+              {homeworkLabel(activeMod ? activeMod.counters : courseCounters)}
             </div>
           </div>
           {!activeMod && (

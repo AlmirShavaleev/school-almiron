@@ -5,6 +5,7 @@ import {
   Clock, ChevronRight, Loader2, Users,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { isTopicOpen, todayLocal, type TopicOpenState } from '@/lib/topicAvailability'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
@@ -98,7 +99,7 @@ function CourseItem({ card }: { card: CourseCard }) {
         <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
           <span className="flex items-center gap-1.5">
             <CheckCircle size={12} className="text-green-500" />
-            {card.doneTopics} / {card.totalTopics} тем
+            <span data-testid="course-card-topics">{card.doneTopics} / {card.totalTopics} тем открыто</span>
           </span>
           {card.startDate && (
             <span className="flex items-center gap-1.5">
@@ -157,41 +158,25 @@ export function MyCoursesPage() {
         const courseIds = groupsWithCourse.map((g: any) => g.courses.id)
         const groupIds  = groupsWithCourse.map((g: any) => g.id)
 
-        const [modsRes, subsRes] = await Promise.all([
-          supabase.from('modules')
-            .select('course_id, topics(id)')
-            .in('course_id', courseIds),
-          supabase.from('homework_submissions')
-            .select('homework_id, status, homeworks(topic_id)')
-            .eq('student_id', student.id)
-            .eq('status', 'checked')
-            .not('homeworks', 'is', null),
-        ])
+        // §141. Вторая цифра карточки считалась по `homework_submissions` +
+        // `homeworks` — это ДЗ первой версии, обе таблицы пусты, и «выполнено»
+        // всегда было нулём независимо от данных. Теперь карточка считает
+        // ОТКРЫТЫЕ ТЕМЫ — тем же правилом, что страница курса.
+        const modsRes = await supabase.from('modules')
+          .select('course_id, topics(id, is_open, available_from)')
+          .in('course_id', courseIds)
 
         if (cancelled) return
 
-        // topics per course + карта topic→course
+        const today = todayLocal()
         const topicsByCourse: Record<string, number> = {}
-        const topicCourse: Record<string, string> = {}
+        const openByCourse: Record<string, number> = {}
         for (const mod of modsRes.data || []) {
           const cid = (mod as any).course_id
-          const tops = (mod as any).topics || []
+          const tops = ((mod as any).topics || []) as TopicOpenState[]
           topicsByCourse[cid] = (topicsByCourse[cid] || 0) + tops.length
-          for (const t of tops) topicCourse[t.id] = cid
-        }
-        // курс → группа ученика (один курс = одна группа ученика)
-        const courseGroup: Record<string, string> = {}
-        for (const g of groupsWithCourse as any[]) courseGroup[g.courses.id] = g.id
-
-        // done topics per group (через тему → курс → группа)
-        const doneByGroup: Record<string, Set<string>> = {}
-        for (const sub of subsRes.data || []) {
-          const tid = (sub as any).homeworks?.topic_id
-          if (!tid) continue
-          const gid = courseGroup[topicCourse[tid]]
-          if (!gid) continue
-          if (!doneByGroup[gid]) doneByGroup[gid] = new Set()
-          doneByGroup[gid].add(tid)
+          openByCourse[cid] = (openByCourse[cid] || 0)
+            + tops.filter(t => isTopicOpen(t, today)).length
         }
 
         const result: CourseCard[] = groupsWithCourse.map((g: any) => ({
@@ -204,7 +189,7 @@ export function MyCoursesPage() {
           startDate:   g.courses.start_date || null,
           endDate:     g.courses.end_date   || null,
           totalTopics: topicsByCourse[g.courses.id] || 0,
-          doneTopics:  doneByGroup[g.id]?.size || 0,
+          doneTopics:  openByCourse[g.courses.id] || 0,
         }))
 
         setCards(result)
