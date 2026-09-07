@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
+import { TOPIC_SECTION_ORDER, isTopicSectionVisible } from '@/lib/topicMaterialItems'
 
 /**
  * §100. Вкладка «Материалы» показывала десять рубрик, а карточки ВНУТРИ окна
@@ -87,9 +88,17 @@ describe('Карточки рубрик в окне темы (§100)', () => {
     useAuthStore.setState({ profile: { id: 'u1', role: 'teacher' } as any })
   })
 
-  it('карточек десять — столько же, сколько колонок во вкладке «Материалы»', () => {
+  /*
+   * Число НЕ зашито. Было `10`, и тест покраснел, когда владелец 12.08 убрал
+   * с темы рубрику тестов (`TOPIC_SECTIONS_HIDDEN`): карточек стало девять.
+   * Проверять надо не «сколько их сегодня», а что окно показывает ровно те
+   * рубрики, которые перечень считает видимыми, — иначе следующая правка
+   * перечня снова уронит тест, ничего не сломав в продукте.
+   */
+  it('карточек столько же, сколько видимых рубрик в перечне', () => {
     renderModal()
-    expect(screen.getAllByTestId(/^topic-tile-/)).toHaveLength(10)
+    const visible = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible)
+    expect(screen.getAllByTestId(/^topic-tile-/)).toHaveLength(visible.length)
   })
 
   it.each(NEW_TILES)('рубрика «$label» на месте', ({ key, label }) => {

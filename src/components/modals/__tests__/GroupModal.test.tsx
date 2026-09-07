@@ -107,6 +107,35 @@ describe('GroupModal teacher assignment', () => {
     expect(groupsUpdatePayload.teacher_id).not.toBe('profile-1')
   })
 
+  /**
+   * §140. Умолчание вместимости в базе поднято с 15 до 30. Здесь проверяется
+   * то, что от кода зависит: значение из поля формы доезжает до базы, а не
+   * подменяется умолчанием состояния (в модалке оно 20).
+   */
+  it('вместимость из поля формы доезжает до базы', async () => {
+    renderModal({ group: EXISTING_GROUP })
+    await screen.findByText('Преподаватель группы: Вы')
+
+    const field = screen.getByDisplayValue('20') as HTMLInputElement
+    fireEvent.change(field, { target: { value: '30' } })
+    fireEvent.click(screen.getByText('Сохранить изменения'))
+
+    await waitFor(() => expect(groupsUpdatePayload).not.toBeNull())
+    expect(groupsUpdatePayload.max_students).toBe(30)
+  })
+
+  it('нетронутое поле сохраняет вместимость группы, а не 20 из состояния', async () => {
+    // Умолчание состояния (20) не должно перетирать значение живой группы:
+    // владелец поднял вместимость руками, и сохранение чужой правки её бы
+    // откатило.
+    renderModal({ group: { ...EXISTING_GROUP, max_students: 30 } })
+    await screen.findByText('Преподаватель группы: Вы')
+    fireEvent.click(screen.getByText('Сохранить изменения'))
+
+    await waitFor(() => expect(groupsUpdatePayload).not.toBeNull())
+    expect(groupsUpdatePayload.max_students).toBe(30)
+  })
+
   it('teacher does not see dropdown for other teachers and sees read-only self label', async () => {
     renderModal()
     expect(await screen.findByText('Преподаватель группы: Вы')).toBeInTheDocument()
