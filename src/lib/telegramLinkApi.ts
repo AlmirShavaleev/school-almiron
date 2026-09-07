@@ -32,6 +32,20 @@ export async function requestTelegramLink(): Promise<string> {
   return body.link as string
 }
 
+/**
+ * Достаёт токен из `?start=...` — нужен для команды `/start <token>`,
+ * которую человек шлёт боту руками, если deep link открыл молчащий чат
+ * (Telegram не показывает «Запустить», когда чат с ботом уже был открыт раньше).
+ */
+export function startCommandFor(link: string): string | null {
+  try {
+    const token = new URL(link).searchParams.get('start')
+    return token ? `/start ${token}` : null
+  } catch {
+    return null
+  }
+}
+
 export async function disconnectTelegram(): Promise<void> {
   const res = await fetch(fnUrl('disconnect-telegram'), {
     method: 'POST', headers: await authHeaders(),

@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   User, Bell, Shield, GraduationCap, Camera, Trash2,
-  Check, AlertCircle, Loader2, Send, Link, Link2Off,
+  Check, AlertCircle, Loader2, Send, Link, Link2Off, Copy, RefreshCw,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
-import { disconnectTelegram, requestTelegramLink, sendTelegramTest } from '@/lib/telegramLinkApi'
+import { disconnectTelegram, requestTelegramLink, sendTelegramTest, startCommandFor } from '@/lib/telegramLinkApi'
+import { QrCode } from '@/components/shared/QrCode'
 import { ROLE_LABELS } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -602,7 +603,7 @@ interface TelegramConn {
   connected_at: string
 }
 
-function TelegramConnectionBlock({
+export function TelegramConnectionBlock({
   profileId,
   telegramEnabled,
   variantTelegramEnabled,
@@ -622,37 +623,97 @@ function TelegramConnectionBlock({
   const [testLoading,  setTestLoading]  = useState(false)
   const [linkUrl,      setLinkUrl]      = useState<string | null>(null)
   const [msg,          setMsg]          = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  // Мастер привязки: idle → waiting (ждём, пока бот подтвердит) → expired,
+  // если за отведённое время подтверждения не случилось.
+  const [phase, setPhase] = useState<'idle' | 'waiting' | 'expired'>('idle')
+  const [copied, setCopied] = useState(false)
+  const pollTimers = useRef<number[]>([])
 
   function showMsg(kind: 'ok' | 'err', text: string) {
     setMsg({ kind, text }); setTimeout(() => setMsg(null), 4000)
   }
 
-  useEffect(() => {
-    let cancelled = false
-    supabase
+  function loadConnection() {
+    return supabase
       .from('telegram_connections')
       .select('telegram_chat_id, telegram_username, is_enabled, connected_at')
       .eq('profile_id', profileId)
       .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return
-        setConn(data ?? null)
-        setLoading(false)
-      })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    loadConnection().then(({ data }) => {
+      if (cancelled) return
+      setConn(data ?? null)
+      setLoading(false)
+    })
     return () => { cancelled = true }
+  }, [profileId])
+
+  useEffect(() => () => { pollTimers.current.forEach(clearTimeout) }, [])
+
+  /**
+   * Экран сам узнаёт об успехе — опрос раз в три секунды, две минуты. Без
+   * этого человек не понимает, получилось ли, и жмёт кнопку ещё раз (ровно
+   * так сорвалась привязка из живого разбора).
+   */
+  const pollUntilLinked = useCallback(() => {
+    const POLL_INTERVAL_MS = 3_000
+    const POLL_TOTAL_MS    = 120_000
+    const deadline = Date.now() + POLL_TOTAL_MS
+
+    const tick = () => {
+      loadConnection().then(
+        ({ data }) => {
+          if (data) {
+            setConn(data)
+            setPhase('idle')
+            setLinkUrl(null)
+            showMsg('ok', 'Telegram подключён')
+            return
+          }
+          if (Date.now() < deadline) {
+            pollTimers.current.push(window.setTimeout(tick, POLL_INTERVAL_MS))
+          } else {
+            setPhase('expired')
+          }
+        },
+        () => setPhase('expired'),
+      )
+    }
+
+    pollTimers.current.push(window.setTimeout(tick, POLL_INTERVAL_MS))
   }, [profileId])
 
   async function handleConnect() {
     setGenLoading(true)
     setLinkUrl(null)
+    setPhase('idle')
     try {
       // Обращения к edge-функциям живут в lib/telegramLinkApi: теперь тот же
       // путь зовёт приглашение при входе, и двух копий fetch быть не должно.
-      setLinkUrl(await requestTelegramLink())
+      const url = await requestTelegramLink()
+      setLinkUrl(url)
+      setPhase('waiting')
+      pollUntilLinked()
     } catch (e: any) {
       showMsg('err', e.message ?? 'Ошибка')
     } finally {
       setGenLoading(false)
+    }
+  }
+
+  async function handleCopyCommand() {
+    if (!linkUrl) return
+    const command = startCommandFor(linkUrl)
+    if (!command) return
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      showMsg('err', 'Не удалось скопировать')
     }
   }
 
@@ -703,31 +764,62 @@ function TelegramConnectionBlock({
       </CardHeader>
 
       {!conn ? (
-        /* ── Не подключён ── */
+        /* ── Не подключён: idle → waiting → expired ── */
         <div className="space-y-3">
           <p className="text-sm text-gray-500">
             Подключите Telegram-бота, чтобы получать уведомления о занятиях, домашних заданиях и их проверке прямо в мессенджере.
           </p>
 
-          {linkUrl ? (
+          {phase === 'expired' ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                <Link size={15} className="text-blue-500 shrink-0" />
-                <a
-                  href={linkUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-blue-700 underline underline-offset-2 break-all"
-                >
-                  {linkUrl}
-                </a>
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-800">
+                <AlertCircle size={15} className="shrink-0" />
+                Время ожидания истекло. Начните заново.
               </div>
-              <p className="text-xs text-gray-400">
-                Ссылка действует 15 минут. Нажмите «Открыть» и отправьте команду боту.
-              </p>
-              <Button size="sm" variant="secondary" onClick={handleConnect} loading={genLoading}>
-                Обновить ссылку
+              <Button onClick={handleConnect} loading={genLoading}>
+                <RefreshCw size={14} className="mr-1.5" />Начать заново
               </Button>
+            </div>
+          ) : phase === 'waiting' && linkUrl ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <QrCode value={linkUrl} />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                    <Link size={15} className="text-blue-500 shrink-0" />
+                    <a
+                      href={linkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-700 underline underline-offset-2 break-all"
+                    >
+                      {linkUrl}
+                    </a>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Ссылка действует час. Откройте её на телефоне или отсканируйте QR — платформа сама заметит подключение.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+                <AlertCircle size={15} className="text-orange-500 shrink-0" />
+                <div className="min-w-0 flex-1 text-sm text-orange-800">
+                  Если бот открылся и молчит — отправьте ему <code className="rounded bg-orange-100 px-1 py-0.5 font-mono text-xs">{startCommandFor(linkUrl)}</code>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyCommand}
+                  title="Скопировать команду"
+                  className="shrink-0 flex items-center gap-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 transition-colors"
+                >
+                  {copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Скопировано' : 'Копировать'}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 size={14} className="animate-spin" />Ждём подтверждения от бота…
+              </div>
             </div>
           ) : (
             <Button onClick={handleConnect} loading={genLoading}>

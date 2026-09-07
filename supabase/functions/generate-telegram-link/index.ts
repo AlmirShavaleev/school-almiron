@@ -7,6 +7,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { deriveToken, sha256Hex, TOKEN_TTL_MS } from '../_shared/telegramLinkToken.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin':  '*',
@@ -36,40 +37,55 @@ Deno.serve(async (req: Request) => {
 
     const profileId = user.id
 
-    // ── 2. Генерируем одноразовый токен ──────────────────────────────────
-    const tokenBytes = new Uint8Array(32)
-    crypto.getRandomValues(tokenBytes)
-    const token = btoa(String.fromCharCode(...tokenBytes))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-
-    // Хешируем для хранения
-    const encoder = new TextEncoder()
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(token))
-    const hashArray  = Array.from(new Uint8Array(hashBuffer))
-    const tokenHash  = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-
-    // ── 3. Сохраняем токен через service role ────────────────────────────
+    // ── 2. Ищем уже живой (неиспользованный, непросроченный) токен ───────
+    // Повторное нажатие кнопки не должно плодить новый токен — иначе первая
+    // открытая ссылка тихо становится нерабочей, а в таблице копится мусор.
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    // Удаляем старые токены этого пользователя
-    await supabaseAdmin
+    const { data: existing, error: selectError } = await supabaseAdmin
       .from('telegram_link_tokens')
-      .delete()
+      .select('id')
       .eq('profile_id', profileId)
       .is('used_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (selectError) throw selectError
 
-    const { error: insertError } = await supabaseAdmin
-      .from('telegram_link_tokens')
-      .insert({
-        profile_id: profileId,
-        token_hash: tokenHash,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      })
+    const secret = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const tokenId = existing?.id ?? crypto.randomUUID()
 
-    if (insertError) throw insertError
+    // ── 3. Если живого токена не было — заводим новую строку ─────────────
+    // Токен — не случайные байты, а HMAC(secret, id): при повторном заходе
+    // сюда с тем же id пересчитывается тот же токен, хотя хранится только
+    // его хэш (см. _shared/telegramLinkToken.ts).
+    if (!existing) {
+      const token     = await deriveToken(secret, tokenId)
+      const tokenHash = await sha256Hex(token)
+
+      // Старые неиспользованные токены этого профиля больше не нужны.
+      await supabaseAdmin
+        .from('telegram_link_tokens')
+        .delete()
+        .eq('profile_id', profileId)
+        .is('used_at', null)
+
+      const { error: insertError } = await supabaseAdmin
+        .from('telegram_link_tokens')
+        .insert({
+          id:         tokenId,
+          profile_id: profileId,
+          token_hash: tokenHash,
+          expires_at: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
+        })
+      if (insertError) throw insertError
+    }
+
+    const token = await deriveToken(secret, tokenId)
 
     const botUsername = Deno.env.get('TELEGRAM_BOT_USERNAME')
     if (!botUsername) throw new Error('TELEGRAM_BOT_USERNAME not set')
