@@ -51,9 +51,15 @@ vi.mock('@/AppRoutes', () => ({ default: () => <div>app-routes-stub</div> }))
 import App from '@/App'
 import { useAuthStore } from '@/store/authStore'
 
+/**
+ * Скрипты именно СЧЁТЧИКА ПРОСМОТРОВ. Speed Insights (замер скорости, §143)
+ * живёт в том же домене `va.vercel-scripts.com` и в том же `/_vercel/`, но это
+ * другой пакет и другой скрипт — если его сюда пустить, проверка «экземпляр
+ * один» начнёт считать два и упадёт на ровном месте.
+ */
 function analyticsScripts(): HTMLScriptElement[] {
   return Array.from(document.head.querySelectorAll<HTMLScriptElement>('script[src]'))
-    .filter(script => /vercel|insights/.test(script.src))
+    .filter(script => /vercel|insights/.test(script.src) && !script.src.includes('speed-insights'))
 }
 
 describe('Vercel Web Analytics', () => {

@@ -56,6 +56,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toaster } from '@/components/ui/Toaster'
@@ -309,6 +310,35 @@ export default function App() {
 
           Пользовательских событий нет: `track()` не вызывается нигде. */}
       <Analytics mode={import.meta.env.DEV ? 'development' : 'production'} />
+      {/* Vercel Speed Insights — замер скорости загрузки страниц у настоящих
+          посетителей (Core Web Vitals). Это ДОПОЛНЕНИЕ к <Analytics/>, а не
+          замена: тот считает просмотры, этот — время. Отдельный пакет и
+          отдельный скрипт, поэтому и компонент отдельный.
+
+          Стоит здесь по тем же трём причинам, что и счётчик просмотров выше:
+          один экземпляр на приложение (два дали бы двойной замер), ВЫШЕ
+          <Suspense> — показ страницы от него не зависит, и не загрузившийся
+          скрипт (блокировщик, слабая сеть) не может задержать первый экран;
+          внутри роутера — переходы SPA скрипт отслеживает сам.
+
+          `scriptSrc` задан явно, и это здесь ЕДИНСТВЕННЫЙ способ. У пакета
+          speed-insights нет свойства `mode` (в отличие от analytics): режим он
+          определяет сам, читая `process.env.NODE_ENV` внутри try/catch. В
+          браузерном коде Vite `process` может не существовать вовсе — тогда
+          catch проглатывает ошибку и пакет считает режим боевым, то есть шлёт
+          замеры с машины разработчика. Поэтому адрес скрипта выбираем сами по
+          `import.meta.env.DEV`, который Vite гарантирует и подставляет
+          константой. Отладочный скрипт печатает замеры в консоль и НЕ
+          отправляет их; боевой `/_vercel/speed-insights/script.js` отдаёт сам
+          Vercel — и только при включённом в настройках проекта Speed Insights.
+
+          Своих событий нет: `beforeSend`, `route` и `dsn` не передаются, в
+          адреса ничего не добавляется — как и договорились в §131. */}
+      <SpeedInsights
+        scriptSrc={import.meta.env.DEV
+          ? 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js'
+          : '/_vercel/speed-insights/script.js'}
+      />
       <Toaster />
       {/* Клик по картинке задачи каталога — полноэкранный просмотр (см. компонент) */}
       <CatalogImageLightbox />
