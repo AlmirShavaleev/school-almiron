@@ -12972,7 +12972,7 @@ Bearer + `is_admin_or_owner()` и сервер-серверу по `X-Cron-Secre
 
 ### Два ключа в `admin_school_stats`
 
-Миграция `20260909174447_school_stats_oldest_pending_and_today.sql`:
+Миграция `20260909174536_school_stats_oldest_pending_and_today.sql`:
 `homework_oldest_pending_days` и `homework_submitted_today`. Старые ключи не
 тронуты — их читает уже работающий дашборд.
 
