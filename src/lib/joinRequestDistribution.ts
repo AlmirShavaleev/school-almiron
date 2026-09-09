@@ -38,7 +38,7 @@ export class DistributionError extends Error {
 }
 
 function mapError(error: unknown): DistributionError {
-  const raw = error as { message?: string; code?: string | null }
+  const raw = error as { message?: string; code?: string | null; hint?: string | null }
   const message = raw?.message ?? ''
   const code = raw?.code ?? null
 
@@ -47,6 +47,9 @@ function mapError(error: unknown): DistributionError {
   }
   if (message.includes('GROUP_ALREADY_FULL')) {
     return new DistributionError('В выбранной группе больше нет свободных мест', code)
+  }
+  if (raw?.hint === 'COURSE_ALREADY_HAS_GROUP' || message.includes('уже есть группа')) {
+    return new DistributionError('У курса уже есть группа — добавьте ученика в неё', code)
   }
   if (message.includes('REQUEST_ALREADY_PROCESSED')) {
     return new DistributionError('Эта заявка уже обработана', code)
