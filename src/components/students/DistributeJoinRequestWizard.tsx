@@ -92,13 +92,29 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
     return ids
   }, [groups, studentId])
 
+  // §61/§64: один курс = одна группа, она заводится вместе с курсом. Значит
+  // «Индивидуально»/«Новая мини-группа» годятся только историческим курсам
+  // без группы — у остальных вторая группа упрётся в groups_one_per_course
+  // на бэкенде. Берём ЛЮБУЮ группу курса (не только активную и не только со
+  // свободными местами) — уникальный индекс не делает для них исключения.
+  const groupByCourse = useMemo(() => {
+    const map = new Map<string, DistributeGroupOption>()
+    for (const g of groups) {
+      if (g.courseId && !map.has(g.courseId)) map.set(g.courseId, g)
+    }
+    return map
+  }, [groups])
+
   function toggleCourse(courseId: string) {
     setSelected(prev => {
       const next = { ...prev }
       if (next[courseId]) {
         delete next[courseId]
       } else {
-        next[courseId] = { courseId, mode: 'individual', groupId: '', title: '', maxStudents: '8' }
+        const forced = groupByCourse.get(courseId)
+        next[courseId] = forced
+          ? { courseId, mode: 'existing_group', groupId: forced.id, title: '', maxStudents: '8' }
+          : { courseId, mode: 'individual', groupId: '', title: '', maxStudents: '8' }
       }
       return next
     })
@@ -109,7 +125,10 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
   }
 
   function groupsForCourse(courseId: string): DistributeGroupOption[] {
-    return groups.filter(g => g.courseId === courseId && g.isActive && g.studentCount < g.maxStudents)
+    const list = groups.filter(g => g.courseId === courseId && g.isActive && g.studentCount < g.maxStudents)
+    const forced = groupByCourse.get(courseId)
+    if (forced && !list.some(g => g.id === forced.id)) return [forced, ...list]
+    return list
   }
 
   const selections = Object.values(selected)
@@ -206,6 +225,7 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
                     const isAssigned = alreadyAssignedCourseIds.has(course.id)
                     const sel = selected[course.id]
                     const availableGroups = groupsForCourse(course.id)
+                    const hasGroup = groupByCourse.has(course.id)
                     return (
                       <div key={course.id} className={`rounded-xl border p-3 ${isAssigned ? 'border-slate-100 bg-slate-50' : 'border-slate-200'}`}>
                         <label className="flex items-center gap-2 text-sm font-medium text-graphite-900">
@@ -222,10 +242,13 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
                         {sel && (
                           <div className="mt-3 space-y-2 pl-6">
                             <div className="flex flex-wrap gap-2">
-                              <RadioChip label="Индивидуально" checked={sel.mode === 'individual'} onClick={() => updateSelection(course.id, { mode: 'individual' })} />
+                              <RadioChip label="Индивидуально" checked={sel.mode === 'individual'} disabled={hasGroup} onClick={() => updateSelection(course.id, { mode: 'individual' })} />
                               <RadioChip label="Существующая группа" checked={sel.mode === 'existing_group'} onClick={() => updateSelection(course.id, { mode: 'existing_group' })} />
-                              <RadioChip label="Новая мини-группа" checked={sel.mode === 'new_group'} onClick={() => updateSelection(course.id, { mode: 'new_group' })} />
+                              <RadioChip label="Новая мини-группа" checked={sel.mode === 'new_group'} disabled={hasGroup} onClick={() => updateSelection(course.id, { mode: 'new_group' })} />
                             </div>
+                            {hasGroup && (
+                              <p className="text-xs text-slate-500">У курса уже есть группа — учеников добавляют в неё.</p>
+                            )}
 
                             {sel.mode === 'existing_group' && (
                               <div>
@@ -289,13 +312,16 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
   )
 }
 
-function RadioChip({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
+function RadioChip({ label, checked, disabled, onClick }: { label: string; checked: boolean; disabled?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-        checked ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:border-primary-200'
+        disabled
+          ? 'cursor-not-allowed border-slate-100 text-slate-300'
+          : checked ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:border-primary-200'
       }`}
     >
       {label}
