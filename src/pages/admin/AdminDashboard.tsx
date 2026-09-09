@@ -19,6 +19,7 @@ import { useSchoolStats } from '@/hooks/useSchoolStats'
 import { useSchoolAnalytics } from '@/hooks/useSchoolAnalytics'
 import { SchoolActivity } from '@/components/admin/SchoolActivity'
 import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
+import { VideoStatsTab } from '@/components/admin/VideoStats'
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
@@ -47,7 +48,7 @@ function RoleBadge({ role }: { role: string }) {
 // слово «группа» уходит из интерфейса; подписки — потому что денежный контур
 // не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
 // технические: код удалён, данные не тронуты.
-type Tab = 'overview' | 'users' | 'staff' | 'courses' | 'site'
+type Tab = 'overview' | 'users' | 'staff' | 'courses' | 'site' | 'video'
 const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
   { key: 'overview',      label: 'Обзор' },
   { key: 'users',         label: 'Пользователи' },
@@ -57,6 +58,9 @@ const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
   // срезы §107, и «сколько заходов» там и здесь — разные числа из разных
   // источников. На одном экране их спутают.
   { key: 'site',          label: 'Сайт' },
+  // «Видео» — по тому же доводу третий независимый источник чисел: просмотры
+  // роликов у Bunny, и с посещениями сайта они не складываются.
+  { key: 'video',         label: 'Видео' },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -351,6 +355,9 @@ export function AdminDashboard() {
 
       {/* ══ ПОЛЬЗОВАТЕЛИ ════════════════════════════════════════ */}
       {tab === 'site' && <SiteAnalytics {...site} />}
+
+      {/* ══ ВИДЕО ═══════════════════════════════════════════════ */}
+      {tab === 'video' && <VideoStatsTab />}
 
       {tab === 'users' && (
         <div className="space-y-4">
