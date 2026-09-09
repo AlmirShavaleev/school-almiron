@@ -50,7 +50,7 @@ export function SiteAnalytics(props: SiteAnalyticsProps) {
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm text-slate-500">
-            Посещения сайта по данным Vercel. Учебная активность — на вкладке «Обзор».
+            Посещения сайта по данным Vercel. Учебная активность — на вкладке «Учёба».
           </p>
           <p className="mt-1 text-xs text-slate-400" data-testid="site-analytics-freshness">
             {fetchedAt ? `Данные на ${formatTime(fetchedAt)}` : 'Время получения неизвестно'}

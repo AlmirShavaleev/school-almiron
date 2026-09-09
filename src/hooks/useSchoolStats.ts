@@ -16,8 +16,16 @@ export interface SchoolStats {
   courses:                  number
   homework_submitted_total: number
   homework_submitted_7d:    number
+  homework_submitted_today: number
   homework_reviewed:        number
   homework_pending:         number
+  /**
+   * Возраст самой старой непроверенной работы в днях. `null` — очередь пуста;
+   * это не то же самое, что «ждёт ноль дней» (сдали сегодня), и склеивать эти
+   * два состояния нельзя. Считает та же RPC, что и `homework_pending`: два
+   * числа об одной очереди обязаны приходить из одного места.
+   */
+  homework_oldest_pending_days: number | null
   variants_completed:       number
   telegram_connected:       number
   visits_today:             number
@@ -26,8 +34,8 @@ export interface SchoolStats {
 
 const EMPTY: SchoolStats = {
   teachers: 0, students: 0, courses: 0,
-  homework_submitted_total: 0, homework_submitted_7d: 0,
-  homework_reviewed: 0, homework_pending: 0,
+  homework_submitted_total: 0, homework_submitted_7d: 0, homework_submitted_today: 0,
+  homework_reviewed: 0, homework_pending: 0, homework_oldest_pending_days: null,
   variants_completed: 0, telegram_connected: 0,
   visits_today: 0, visits_7d: 0,
 }
@@ -36,6 +44,10 @@ export function useSchoolStats() {
   const [stats,   setStats]   = useState<SchoolStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
+  // Момент ответа. Нужен, чтобы каждый блок дашборда мог подписаться временем:
+  // рядом живут числа из Vercel и Bunny, у которых свои кэши и своя свежесть,
+  // и «на когда» у них разное.
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [tick,    setTick]    = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
@@ -58,6 +70,7 @@ export function useSchoolStats() {
           setStats(null)
         } else {
           setStats({ ...EMPTY, ...(data as Partial<SchoolStats> | null) })
+          setFetchedAt(new Date().toISOString())
         }
         setLoading(false)
       },
@@ -72,5 +85,5 @@ export function useSchoolStats() {
     return () => { cancelled = true }
   }, [tick])
 
-  return { stats, loading, error, reload }
+  return { stats, loading, error, fetchedAt, reload }
 }

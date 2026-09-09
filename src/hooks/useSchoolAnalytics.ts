@@ -90,6 +90,10 @@ export function useSchoolAnalytics() {
   const [data, setData] = useState<SchoolAnalytics>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Момент ответа — чтобы блок мог подписаться источником и временем. Рядом на
+  // соседних вкладках висят числа Vercel и Bunny со своими кэшами, и «на
+  // когда» у всех троих разное.
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
@@ -134,6 +138,7 @@ export function useSchoolAnalytics() {
         // данных тем более нет.
         hasViewData: unopened.length > 0 ? Boolean(unopened[0].has_data) : false,
       })
+      setFetchedAt(new Date().toISOString())
       setLoading(false)
     }
 
@@ -146,5 +151,5 @@ export function useSchoolAnalytics() {
     return () => { cancelled = true }
   }, [tick])
 
-  return { ...data, loading, error, reload }
+  return { ...data, loading, error, fetchedAt, reload }
 }

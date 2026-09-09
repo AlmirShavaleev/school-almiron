@@ -14,27 +14,30 @@ import {
 /**
  * Активность школы: кто пропал, заходы по дням, что не открывают, воронка ДЗ.
  *
- * «Кто пропал» стоит первым намеренно — из всех четырёх это единственный
- * экран, который подсказывает действие: кому написать сегодня. Остальное —
- * наблюдение.
+ * Считает всё один хук §107, а показывается это на РАЗНЫХ вкладках, потому
+ * что отвечает на разные вопросы владельца. «Кто пропал» — про людей: кому
+ * написать сегодня; он единственный подсказывает действие, и живёт на вкладке
+ * «Ученики». Заходы, воронка и «что не открывают» — про учебный процесс, и
+ * живут на вкладке «Учёба».
+ *
+ * Отсюда две панели вместо одной. Сами блоки, их тексты и пустые состояния не
+ * тронуты: переехало только то, где они висят.
  *
  * Свёрстано от узкого экрана: одна колонка, две — только с `lg`.
  */
 
-interface SchoolActivityProps {
-  dormant:     DormantStudent[]
-  activity:    ActivityDay[]
-  unopened:    UnopenedTopic[]
-  funnel:      HomeworkFunnelRow[]
-  viewHealth:  ViewHealth
-  hasViewData: boolean
-  loading:     boolean
-  error:       string | null
+/** Загрузка и отказ приходят из одного хука — обе панели показывают их одинаково. */
+interface Gate {
+  loading: boolean
+  error:   string | null
 }
 
-export function SchoolActivity(props: SchoolActivityProps) {
-  const { dormant, activity, unopened, funnel, viewHealth, hasViewData, loading, error } = props
-
+/**
+ * Разбор состояния до содержимого. Пока считаем — говорим об этом, при отказе
+ * показываем причину словами: пустой экран вместо отказа неотличим от «данных
+ * нет» (уроки §47 и §54).
+ */
+function gateContent({ loading, error }: Gate): React.ReactNode | null {
   if (loading) {
     return <Shell><p className="py-6 text-center text-sm text-slate-400">Считаем активность…</p></Shell>
   }
@@ -45,11 +48,36 @@ export function SchoolActivity(props: SchoolActivityProps) {
       </div>
     )
   }
+  return null
+}
+
+/** «Кто пропал» — вкладка «Ученики». */
+export function DormantPanel({ dormant, loading, error }: { dormant: DormantStudent[] } & Gate) {
+  const gate = gateContent({ loading, error })
+  if (gate) return <>{gate}</>
 
   return (
-    <div className="space-y-4" data-testid="school-activity">
+    <div className="space-y-4" data-testid="school-activity-dormant">
       <DormantBlock rows={dormant} />
+    </div>
+  )
+}
 
+/** Заходы, воронка ДЗ и «что не открывают» — вкладка «Учёба». */
+export function LearningPanel({
+  activity, unopened, funnel, viewHealth, hasViewData, loading, error,
+}: {
+  activity:    ActivityDay[]
+  unopened:    UnopenedTopic[]
+  funnel:      HomeworkFunnelRow[]
+  viewHealth:  ViewHealth
+  hasViewData: boolean
+} & Gate) {
+  const gate = gateContent({ loading, error })
+  if (gate) return <>{gate}</>
+
+  return (
+    <div className="space-y-4" data-testid="school-activity-learning">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ActivityBlock days={activity} />
         <FunnelBlock rows={funnel} />

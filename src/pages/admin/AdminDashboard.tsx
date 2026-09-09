@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Users, BookOpen, BarChart3, Search, ArrowRight,
   CheckCircle, RefreshCw, Calendar, Activity, Bell, ListChecks,
-  GraduationCap, Plus, Pencil, Lock,
+  GraduationCap, Plus, Pencil, Lock, UserX, UserPlus,
   Loader2, ShieldAlert, ClipboardList, Send,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -12,19 +12,18 @@ import { StaffTab } from '@/components/admin/StaffTab'
 import { CreateUserModal } from '@/components/modals/CreateUserModal'
 import { QuickLogin } from '@/components/demo/QuickLogin'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
-import { useAdminDashboard, type AdminProfile, type AdminCourse } from '@/hooks/useAdminDashboard'
+import { useAdminDashboard, type AdminCourse } from '@/hooks/useAdminDashboard'
 import { useSchoolStats } from '@/hooks/useSchoolStats'
-import { useSchoolAnalytics } from '@/hooks/useSchoolAnalytics'
-import { SchoolActivity } from '@/components/admin/SchoolActivity'
+import { useSchoolAnalytics, DORMANT_DAYS } from '@/hooks/useSchoolAnalytics'
+import { DormantPanel, LearningPanel } from '@/components/admin/SchoolActivity'
 import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
 import { VideoStatsTab } from '@/components/admin/VideoStats'
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
 import { cn } from '@/utils/cn'
-import { ROLE_LABELS } from '@/utils/format'
+import { ROLE_LABELS, formatTime } from '@/utils/format'
 
 // ─── Role badge ───────────────────────────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
@@ -43,24 +42,37 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
+// Вкладки собраны по вопросам, которые владелец задаёт, а не по таблицам базы.
+// «Обзор» отвечает «что делать сегодня», «Ученики» — «что с людьми», «Учёба» —
+// «как идёт процесс», три последних — три независимых источника чисел.
+//
+// Девять плиток, висевших НАД вкладками, разъехались по ним: общая полка над
+// содержимым заставляла читать все девять чисел на любой вкладке, а отвечали
+// они на разные вопросы. Числа те же и считает их та же RPC — сменилось только
+// место.
+//
 // Вкладки «Группы» и «Подписки» убраны по решению владельца 2026-08-04:
 // группы — потому что действует закон «один курс = одна группа» (§61/§64) и
 // слово «группа» уходит из интерфейса; подписки — потому что денежный контур
 // не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
 // технические: код удалён, данные не тронуты.
-type Tab = 'overview' | 'users' | 'staff' | 'courses' | 'site' | 'video'
-const TABS: { key: Tab; label: string; icon?: React.ReactNode }[] = [
-  { key: 'overview',      label: 'Обзор' },
-  { key: 'users',         label: 'Пользователи' },
-  { key: 'staff',         label: 'Команда' },
-  { key: 'courses',       label: 'Курсы' },
+type Tab = 'now' | 'overview' | 'students' | 'learning' | 'site' | 'video' | 'staff'
+const TABS: { key: Tab; label: string }[] = [
+  // «Сейчас» — место под живую панель школы, её делает отдельная работа. Место
+  // занято намеренно: порядок вкладок утверждён владельцем целиком, и вставлять
+  // первую вкладку позже значило бы двигать все остальные.
+  { key: 'now',      label: 'Сейчас' },
+  { key: 'overview', label: 'Обзор' },
+  { key: 'students', label: 'Ученики' },
+  { key: 'learning', label: 'Учёба' },
   // «Сайт» отдельной вкладкой, а не блоком в «Обзоре»: рядом живут школьные
   // срезы §107, и «сколько заходов» там и здесь — разные числа из разных
   // источников. На одном экране их спутают.
-  { key: 'site',          label: 'Сайт' },
+  { key: 'site',     label: 'Сайт' },
   // «Видео» — по тому же доводу третий независимый источник чисел: просмотры
   // роликов у Bunny, и с посещениями сайта они не складываются.
-  { key: 'video',         label: 'Видео' },
+  { key: 'video',    label: 'Видео' },
+  { key: 'staff',    label: 'Команда' },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -77,7 +89,7 @@ export function AdminDashboard() {
   const [createUserOpen,  setCreateUserOpen]  = useState(false)
 
   const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
-  const { stats: school, error: schoolError, reload: reloadSchool } = useSchoolStats()
+  const { stats: school, error: schoolError, fetchedAt: schoolAt, reload: reloadSchool } = useSchoolStats()
   const analytics = useSchoolAnalytics()
   const site = useVercelAnalytics()
 
@@ -107,6 +119,57 @@ export function AdminDashboard() {
     })
   }, [profiles, search, roleFilter])
 
+  // ── Список дел ────────────────────────────────────────────────────────────
+  // Строка появляется, только когда есть что делать. Ноль — это не «дело на
+  // ноль штук», а отсутствие дела, и рисовать его строкой значило бы выдавать
+  // спокойный день за работу.
+  const todo = useMemo(() => {
+    const rows: { key: string; icon: React.ReactNode; label: string; hint?: string; count: number; go: () => void; tone: string }[] = []
+
+    if (school && school.homework_pending > 0) {
+      rows.push({
+        key: 'pending',
+        icon: <ClipboardList size={18} />,
+        label: 'Проверить работы',
+        // «Ждёт N дней» и «сколько ждут» — два числа об одной очереди, поэтому
+        // приходят из одной RPC. null означает пустую очередь, а не ноль дней,
+        // и до сюда он просто не доходит: строки при пустой очереди нет.
+        hint: school.homework_oldest_pending_days != null
+          ? `самая старая ждёт ${school.homework_oldest_pending_days} дн.`
+          : undefined,
+        count: school.homework_pending,
+        go: () => navigate('/homework-queue'),
+        tone: 'text-orange-600 bg-orange-50 border-orange-200',
+      })
+    }
+
+    if (analytics.dormant.length > 0) {
+      rows.push({
+        key: 'dormant',
+        icon: <UserX size={18} />,
+        label: 'Написать пропавшим',
+        hint: `не заходили ${DORMANT_DAYS}+ дней`,
+        count: analytics.dormant.length,
+        go: () => setTab('students'),
+        tone: 'text-red-600 bg-red-50 border-red-200',
+      })
+    }
+
+    if ((stats?.new_users_week ?? 0) > 0) {
+      rows.push({
+        key: 'newcomers',
+        icon: <UserPlus size={18} />,
+        label: 'Встретить новичков',
+        hint: 'зарегистрировались за неделю',
+        count: stats?.new_users_week ?? 0,
+        go: () => { setTab('students'); setRoleFilter('all') },
+        tone: 'text-primary-600 bg-primary-50 border-primary-200',
+      })
+    }
+
+    return rows
+  }, [school, analytics.dormant.length, stats?.new_users_week, navigate])
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
@@ -130,84 +193,6 @@ export function AdminDashboard() {
       {/* ── Быстрый вход (демо impersonation) ─────────────────────── */}
       <QuickLogin />
 
-      {/* ── Статистика школы ─────────────────────────────────────────
-          Девять плиток, утверждённых владельцем 04.08. Все цифры — живые,
-          считает definer-RPC `admin_school_stats` одним запросом.
-
-          Что было до этого: «ДЗ на проверке» считалось по
-          `homework_submissions` — ЛЕГАСИ-контуру с нулём строк навсегда
-          (CLAUDE.md, «Три контура ДЗ»). Плитка показывала 0 при 16 сдачах и
-          13 разборах в живом `topic_homework_*`. Это была не заглушка, а
-          враньё: цифра выглядела настоящей. */}
-      {schoolError ? (
-        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
-          {schoolError}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          <StatCard
-            title="Учителей"
-            value={school?.teachers ?? 0}
-            icon={<GraduationCap size={20} />}
-            color="blue"
-          />
-          <StatCard
-            title="Учеников"
-            value={school?.students ?? 0}
-            icon={<Users size={20} />}
-            color="blue"
-            subtitle={`+${stats?.new_users_week ?? 0} новых за неделю`}
-          />
-          <StatCard
-            title="Курсов"
-            value={school?.courses ?? 0}
-            icon={<BookOpen size={20} />}
-            color="green"
-          />
-          <StatCard
-            title="Сдано ДЗ за 7 дней"
-            value={school?.homework_submitted_7d ?? 0}
-            icon={<Send size={20} />}
-            color="indigo"
-            subtitle={`${school?.homework_submitted_total ?? 0} за всё время`}
-          />
-          <StatCard
-            title="Проверено работ"
-            value={school?.homework_reviewed ?? 0}
-            icon={<CheckCircle size={20} />}
-            color="green"
-          />
-          <StatCard
-            title="Ждут проверки"
-            value={school?.homework_pending ?? 0}
-            icon={<ClipboardList size={20} />}
-            color={school && school.homework_pending > 0 ? 'orange' : 'green'}
-            subtitle={school?.homework_pending ? 'Ждут учителей' : 'Все проверены'}
-            onClick={() => navigate('/homework-queue')}
-          />
-          <StatCard
-            title="Пройдено тестирований"
-            value={school?.variants_completed ?? 0}
-            icon={<ListChecks size={20} />}
-            color="purple"
-          />
-          <StatCard
-            title="Привязано Telegram"
-            value={school?.telegram_connected ?? 0}
-            icon={<Bell size={20} />}
-            color="indigo"
-            subtitle={`из ${stats?.total_users ?? 0} профилей`}
-          />
-          <StatCard
-            title="Заходили за неделю"
-            value={school?.visits_7d ?? 0}
-            icon={<Activity size={20} />}
-            color="orange"
-            subtitle={`сегодня — ${school?.visits_today ?? 0}`}
-          />
-        </div>
-      )}
-
       {/* ── Tabs ─────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap">
         {TABS.map(t => (
@@ -217,58 +202,130 @@ export function AdminDashboard() {
               tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             )}>
             {t.label}
-            {t.key === 'users'  && <span className="ml-1.5 text-xs text-gray-400">({profiles.length})</span>}
           </button>
         ))}
       </div>
 
-      {/* ══ ОБЗОР ════════════════════════════════════════════════ */}
-      {tab === 'overview' && (
-        <div className="space-y-6">
+      {/* Отказ RPC школьных чисел — один на все вкладки, которые ими живут.
+          Показываем словами, а не нулями: молчащий дашборд неотличим от школы,
+          в которой ничего не происходит (уроки §47 и §54). */}
+      {schoolError && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+          {schoolError}
+        </div>
+      )}
 
-          {/* Активность школы. Стоит выше разбивки по ролям: «кто пропал» —
-              единственный блок дашборда, который подсказывает действие, а не
-              описывает состояние. */}
-          <SchoolActivity
+      {/* ══ СЕЙЧАС ══════════════════════════════════════════════ */}
+      {tab === 'now' && (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center">
+          <p className="text-sm text-gray-500">Живая панель школы готовится отдельной работой.</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Пока смотрите «Обзор» — там список дел на сегодня.
+          </p>
+        </div>
+      )}
+
+      {/* ══ ОБЗОР ════════════════════════════════════════════════
+          Не витрина, а список дел: «что сделать → сколько → куда идти».
+          Все числа читаются из уже существующих источников, ни одно не
+          пересчитывается здесь заново. */}
+      {tab === 'overview' && (
+        <div className="space-y-4">
+
+          {todo.length === 0 ? (
+            <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-8 text-center">
+              <CheckCircle size={26} className="mx-auto mb-2 text-green-600" />
+              <p className="text-sm font-medium text-green-800">На сегодня всё разобрано.</p>
+              <p className="mt-1 text-xs text-green-700">
+                Непроверенных работ нет, пропавших нет, новичков за неделю не появилось.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2" data-testid="admin-todo">
+              {todo.map(row => (
+                <button
+                  key={row.key}
+                  onClick={row.go}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all hover:shadow-sm',
+                    row.tone,
+                  )}
+                >
+                  <span className="shrink-0">{row.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{row.label}</span>
+                    {row.hint && <span className="block text-xs opacity-70">{row.hint}</span>}
+                  </span>
+                  <span className="shrink-0 text-2xl font-bold tabular-nums">{row.count}</span>
+                  <ArrowRight size={16} className="shrink-0 opacity-50" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Пульс дня — не дело, а справка: сколько сдали и сколько зашли
+              сегодня. Ноль здесь ноль и есть, а не «нет данных». */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Сегодня</CardTitle>
+            </CardHeader>
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <span className="text-sm text-gray-600">
+                Сдано работ: <b className="text-lg text-gray-900 tabular-nums">{school?.homework_submitted_today ?? 0}</b>
+              </span>
+              <span className="text-sm text-gray-600">
+                Заходили: <b className="text-lg text-gray-900 tabular-nums">{school?.visits_today ?? 0}</b>
+              </span>
+            </div>
+            <SourceNote at={schoolAt} />
+          </Card>
+        </div>
+      )}
+
+      {/* ══ УЧЕНИКИ ═════════════════════════════════════════════ */}
+      {tab === 'students' && (
+        <div className="space-y-4">
+
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <StatCard
+              title="Учеников"
+              value={school?.students ?? 0}
+              icon={<Users size={20} />}
+              color="blue"
+              subtitle={`+${stats?.new_users_week ?? 0} новых за неделю`}
+            />
+            <StatCard
+              title="Заходили за неделю"
+              value={school?.visits_7d ?? 0}
+              icon={<Activity size={20} />}
+              color="orange"
+              subtitle={`сегодня — ${school?.visits_today ?? 0}`}
+            />
+            <StatCard
+              title="Привязано Telegram"
+              value={school?.telegram_connected ?? 0}
+              icon={<Bell size={20} />}
+              color="indigo"
+              subtitle={`из ${stats?.total_users ?? 0} профилей`}
+            />
+          </div>
+          <SourceNote at={schoolAt} />
+
+          {/* «Кто пропал» — единственный блок, который подсказывает действие:
+              кому написать сегодня. Стоит здесь, а не среди учебных срезов,
+              потому что это вопрос про людей. */}
+          <DormantPanel
             dormant={analytics.dormant}
-            activity={analytics.activity}
-            unopened={analytics.unopened}
-            funnel={analytics.funnel}
-            viewHealth={analytics.viewHealth}
-            hasViewData={analytics.hasViewData}
             loading={analytics.loading}
             error={analytics.error}
           />
+          <SourceNote at={analytics.fetchedAt} />
 
-          {/* Role breakdown */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {/* `owner` из разбивки убран (решение владельца 04.08): роли нет
-                ни у одного профиля, плитка была вечным нулём. */}
-            {(['student','teacher','curator','admin'] as const).map(role => {
-              const count = profiles.filter(p => p.role === role).length
-              return (
-                <button
-                  key={role}
-                  onClick={() => { setTab('users'); setRoleFilter(role) }}
-                  className="bg-white rounded-2xl border border-gray-200 p-4 text-center hover:border-primary-300 hover:shadow-sm transition-all group"
-                >
-                  <div className="text-2xl font-bold text-gray-900 group-hover:text-primary-600 transition-colors">{count}</div>
-                  <RoleBadge role={role} />
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Recent users + groups overview */}
+          {/* Recent registrations + groups overview */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* Recent registrations */}
             <Card>
               <CardHeader>
                 <CardTitle>Новые пользователи</CardTitle>
-                <button onClick={() => setTab('users')} className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
-                  Все <ArrowRight size={12} />
-                </button>
               </CardHeader>
               <div className="space-y-1.5">
                 {profiles.slice(0, 7).map(p => (
@@ -293,10 +350,12 @@ export function AdminDashboard() {
                     <RoleBadge role={p.role} />
                   </div>
                 ))}
+                {profiles.length === 0 && (
+                  <p className="py-4 text-center text-sm text-gray-400">Пользователей пока нет.</p>
+                )}
               </div>
             </Card>
 
-            {/* Groups health */}
             <Card>
               <CardHeader>
                 <CardTitle>Группы</CardTitle>
@@ -337,30 +396,6 @@ export function AdminDashboard() {
             </Card>
           </div>
 
-          {/* Quick links */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              { label: 'Пробники',           icon: <BarChart3 size={16} />,      path: '/mock-exams',       color: 'text-purple-600 bg-purple-50 border-purple-200' },
-              { label: 'Домашние задания',   icon: <ClipboardList size={16} />,  path: '/homeworks',        color: 'text-orange-600 bg-orange-50 border-orange-200' },
-              { label: 'Telegram-журнал',    icon: <Send size={16} />,           path: '/admin/telegram',   color: 'text-sky-600 bg-sky-50 border-sky-200' },
-            ].map(l => (
-              <button key={l.path} onClick={() => navigate(l.path)}
-                className={cn('flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all', l.color)}>
-                {l.icon}{l.label}<ArrowRight size={13} className="ml-auto opacity-50" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ══ ПОЛЬЗОВАТЕЛИ ════════════════════════════════════════ */}
-      {tab === 'site' && <SiteAnalytics {...site} />}
-
-      {/* ══ ВИДЕО ═══════════════════════════════════════════════ */}
-      {tab === 'video' && <VideoStatsTab />}
-
-      {tab === 'users' && (
-        <div className="space-y-4">
           {/* Header row */}
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-gray-500">{profiles.length} пользователей в системе</p>
@@ -370,6 +405,29 @@ export function AdminDashboard() {
             >
               <Plus size={15} />Создать пользователя
             </button>
+          </div>
+
+          {/* Разбивка по ролям. Кнопки не переключают вкладку — они ставят
+              фильтр таблице, которая стоит тут же. `owner` из разбивки убран
+              (решение владельца 04.08): роли нет ни у одного профиля, плитка
+              была вечным нулём. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(['student','teacher','curator','admin'] as const).map(role => {
+              const count = profiles.filter(p => p.role === role).length
+              return (
+                <button
+                  key={role}
+                  onClick={() => setRoleFilter(role)}
+                  className={cn(
+                    'bg-white rounded-2xl border p-4 text-center hover:shadow-sm transition-all group',
+                    roleFilter === role ? 'border-primary-400' : 'border-gray-200 hover:border-primary-300',
+                  )}
+                >
+                  <div className="text-2xl font-bold text-gray-900 group-hover:text-primary-600 transition-colors">{count}</div>
+                  <RoleBadge role={role} />
+                </button>
+              )
+            })}
           </div>
 
           {/* Search + role filter */}
@@ -492,31 +550,70 @@ export function AdminDashboard() {
             </div>
           </Card>
           <p className="text-xs text-gray-400">Показано: {filteredProfiles.length} из {profiles.length}</p>
+
+          <button onClick={() => navigate('/admin/telegram')}
+            className="flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all text-sky-600 bg-sky-50 border-sky-200">
+            <Send size={16} />Telegram-журнал<ArrowRight size={13} className="ml-auto opacity-50" />
+          </button>
         </div>
       )}
 
-      {/* ══ КОМАНДА ════════════════════════════════════════════ */}
-      {tab === 'staff' && (
-        <div className="max-w-3xl">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-500">
-              Преподаватели и кураторы школы. Назначайте их в группы прямо отсюда.
-            </p>
-            <button
-              onClick={() => setCreateUserOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
-            >
-              <Plus size={15} />Добавить сотрудника
-            </button>
-          </div>
-          <StaffTab />
-        </div>
-      )}
-
-      {/* ══ КУРСЫ ═══════════════════════════════════════════════ */}
-      {tab === 'courses' && (
+      {/* ══ УЧЁБА ═══════════════════════════════════════════════ */}
+      {tab === 'learning' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
+
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <StatCard
+              title="Курсов"
+              value={school?.courses ?? 0}
+              icon={<BookOpen size={20} />}
+              color="green"
+            />
+            <StatCard
+              title="Сдано ДЗ за 7 дней"
+              value={school?.homework_submitted_7d ?? 0}
+              icon={<Send size={20} />}
+              color="indigo"
+              subtitle={`${school?.homework_submitted_total ?? 0} за всё время`}
+            />
+            <StatCard
+              title="Проверено работ"
+              value={school?.homework_reviewed ?? 0}
+              icon={<CheckCircle size={20} />}
+              color="green"
+            />
+            <StatCard
+              title="Ждут проверки"
+              value={school?.homework_pending ?? 0}
+              icon={<ClipboardList size={20} />}
+              color={school && school.homework_pending > 0 ? 'orange' : 'green'}
+              subtitle={school?.homework_pending ? 'Ждут учителей' : 'Все проверены'}
+              onClick={() => navigate('/homework-queue')}
+            />
+            <StatCard
+              title="Пройдено тестирований"
+              value={school?.variants_completed ?? 0}
+              icon={<ListChecks size={20} />}
+              color="purple"
+            />
+          </div>
+          <SourceNote at={schoolAt} />
+
+          {/* Заходы по дням, воронка ДЗ и «что не открывают» — наблюдение за
+              учебным процессом. «Кто пропал» уехал на «Учеников»: он про людей
+              и подсказывает действие. */}
+          <LearningPanel
+            activity={analytics.activity}
+            unopened={analytics.unopened}
+            funnel={analytics.funnel}
+            viewHealth={analytics.viewHealth}
+            hasViewData={analytics.hasViewData}
+            loading={analytics.loading}
+            error={analytics.error}
+          />
+          <SourceNote at={analytics.fetchedAt} />
+
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
             <p className="text-sm text-gray-500">{courses.length} курсов</p>
             <div className="flex items-center gap-2">
               <button onClick={() => navigate('/course-program')}
@@ -606,6 +703,54 @@ export function AdminDashboard() {
               </div>
             )}
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              { label: 'Пробники',         icon: <BarChart3 size={16} />,     path: '/mock-exams', color: 'text-purple-600 bg-purple-50 border-purple-200' },
+              { label: 'Домашние задания', icon: <ClipboardList size={16} />, path: '/homeworks',  color: 'text-orange-600 bg-orange-50 border-orange-200' },
+            ].map(l => (
+              <button key={l.path} onClick={() => navigate(l.path)}
+                className={cn('flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all', l.color)}>
+                {l.icon}{l.label}<ArrowRight size={13} className="ml-auto opacity-50" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ САЙТ ════════════════════════════════════════════════ */}
+      {tab === 'site' && <SiteAnalytics {...site} />}
+
+      {/* ══ ВИДЕО ═══════════════════════════════════════════════ */}
+      {tab === 'video' && <VideoStatsTab />}
+
+      {/* ══ КОМАНДА ═════════════════════════════════════════════ */}
+      {tab === 'staff' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <StatCard
+              title="Учителей"
+              value={school?.teachers ?? 0}
+              icon={<GraduationCap size={20} />}
+              color="blue"
+            />
+          </div>
+          <SourceNote at={schoolAt} />
+
+          <div className="max-w-3xl">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500">
+                Преподаватели и кураторы школы. Назначайте их в группы прямо отсюда.
+              </p>
+              <button
+                onClick={() => setCreateUserOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"
+              >
+                <Plus size={15} />Добавить сотрудника
+              </button>
+            </div>
+            <StaffTab />
+          </div>
         </div>
       )}
 
@@ -629,6 +774,28 @@ export function AdminDashboard() {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Подпись под блоком: откуда число и на когда.
+ *
+ * На соседних вкладках живут числа Vercel и Bunny — со своими кэшами и своей
+ * свежестью. Без подписи «сколько заходов» с трёх вкладок читается как одно и
+ * то же число, и разница объясняется поломкой, а не разными источниками.
+ */
+function SourceNote({ at, source = 'Наша база' }: { at: string | null | undefined; source?: string }) {
+  return (
+    <p className="text-xs text-gray-400" data-testid="source-note">
+      {source} · {at ? `данные на ${safeTime(at)}` : 'время получения неизвестно'}
+    </p>
+  )
+}
+
+function safeTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return formatTime(d)
+}
+
 function AvailabilityBadge({ av, active }: { av: ReturnType<typeof getCourseAvailability>; active: boolean }) {
   if (!active) {
     return <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full shrink-0">Скрыт</span>
