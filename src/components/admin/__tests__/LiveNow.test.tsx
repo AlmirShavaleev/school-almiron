@@ -40,10 +40,10 @@ vi.mock('@/hooks/useLivePulse', () => ({
 }))
 
 let online: Array<{ profileId: string; role: string }> = []
-let connected = true
+let presenceOk = true
 
 vi.mock('@/hooks/useSchoolPresence', () => ({
-  useOnlinePeople: () => ({ people: online, connected }),
+  useOnlinePeople: () => ({ people: online, ok: presenceOk }),
   useSchoolPresence: () => {},
 }))
 
@@ -92,7 +92,7 @@ beforeEach(() => {
   loading = false
   error = null
   online = []
-  connected = true
+  presenceOk = true
 })
 
 describe('присутствие', () => {
@@ -108,18 +108,25 @@ describe('присутствие', () => {
 
   it('пустая школа говорит «сейчас никого»', () => {
     online = []
-    connected = true
+    presenceOk = true
     draw()
     expect(screen.getByTestId('live-online-empty')).toHaveTextContent('Сейчас никого')
     expect(screen.queryByTestId('live-online-count')).not.toBeInTheDocument()
   })
 
-  it('оборванный канал — ОТДЕЛЬНОЕ состояние, а не «никого»', () => {
+  it('непрочитанный список — ОТДЕЛЬНОЕ состояние, а не «никого»', () => {
     online = []
-    connected = false
+    presenceOk = false
     draw()
-    expect(screen.getByTestId('live-online-offline')).toHaveTextContent('не подключилось')
+    expect(screen.getByTestId('live-online-offline')).toHaveTextContent('не прочитался')
     expect(screen.queryByTestId('live-online-empty')).not.toBeInTheDocument()
+  })
+
+  it('экран обещает 45 секунд, а не «полминуты»', () => {
+    // Приёмка поправлена сознательно: при отметке раз в 20 честный срок
+    // исчезновения — 45 секунд.
+    draw()
+    expect(screen.getByTestId('live-online').textContent).toContain('45 секунд')
   })
 
   it('на каком экране человек — не показываем вовсе', () => {

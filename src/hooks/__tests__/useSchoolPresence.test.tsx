@@ -1,30 +1,24 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { renderHook } from '@testing-library/react'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { render, renderHook, act, waitFor } from '@testing-library/react'
 
 /**
- * Публикатор присутствия.
+ * Отметка присутствия и чтение списка.
  *
- * Тонкая обёртка над `acquirePresence` — глубокие проверки канала живут в
- * `schoolPresence.test.ts`. Здесь три вещи, которые видны только со стороны
- * React:
+ * Сторожится суть нового механизма (канал снят, см. `@/lib/schoolPresence`):
  *
- * 1. Гость ничего не публикует: не вошёл — не «онлайн в школе».
- * 2. Уход со страницы отпускает канал.
- * 3. Два публикатора дают ОДИН канал: компонент может оказаться смонтирован и
- *    на всё приложение, и на экране панели, и это не должно плодить сокеты.
+ * 1. **Отмечается каждый вошедший**, гость — нет.
+ * 2. **В фоне не отмечаемся и не опрашиваем** — требование вводной, а здесь
+ *    оно ещё и экономит записи в базу.
+ * 3. **Отказ чтения — не «никого нет».** Оба состояния выглядят пустым
+ *    списком, и молчание тут соврало бы.
+ * 4. **Таймеры снимаются при уходе** — иначе вкладка шлёт отметки вечно.
  */
 
-const release = vi.fn()
-const acquire = vi.fn((_profileId: string, _role: string) => release)
+const rpc = vi.fn()
 
-vi.mock('@/lib/schoolPresence', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/schoolPresence')>('@/lib/schoolPresence')
-  return {
-    ...actual,
-    acquirePresence: (profileId: string, role: string) => acquire(profileId, role),
-  }
-})
+vi.mock('@/lib/supabase', () => ({
+  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+}))
 
 let profile: { id: string; role: string } | null = null
 
@@ -32,52 +26,141 @@ vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: (s: any) => unknown) => selector({ profile }),
 }))
 
-import { useSchoolPresence } from '@/hooks/useSchoolPresence'
+import { useSchoolPresence, useOnlinePeople } from '@/hooks/useSchoolPresence'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
+import { PRESENCE_WINDOW_S } from '@/lib/schoolPresence'
+
+let hidden = false
 
 beforeEach(() => {
-  acquire.mockClear()
-  release.mockClear()
+  rpc.mockReset()
+  rpc.mockResolvedValue({ data: [], error: null })
   profile = { id: 'p-1', role: 'student' }
+  hidden = false
+  vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
 })
 
-describe('useSchoolPresence', () => {
-  it('публикует идентификатор и роль вошедшего', () => {
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
+
+describe('отметка присутствия', () => {
+  it('вошедший отмечается сразу при монтировании', async () => {
     renderHook(() => useSchoolPresence())
-    expect(acquire).toHaveBeenCalledWith('p-1', 'student')
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch'))
   })
 
-  it('гость ничего не публикует', () => {
+  it('аргументов у отметки нет: profile_id берётся из auth.uid() в базе', async () => {
+    renderHook(() => useSchoolPresence())
+    await waitFor(() => expect(rpc).toHaveBeenCalled())
+    // Передать профиль аргументом значило бы дать клиенту отметиться за чужого.
+    expect(rpc.mock.calls[0]).toEqual(['school_presence_touch'])
+  })
+
+  it('гость не отмечается', async () => {
     profile = null
     renderHook(() => useSchoolPresence())
-    expect(acquire).not.toHaveBeenCalled()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('уход со страницы отпускает канал', () => {
+  it('в фоне отметки не идут, при возврате — идут сразу', async () => {
+    hidden = true
+    renderHook(() => useSchoolPresence())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(rpc).not.toHaveBeenCalled()
+
+    hidden = false
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(rpc).toHaveBeenCalledWith('school_presence_touch')
+  })
+
+  it('отметки повторяются по такту, а после ухода прекращаются', async () => {
+    vi.useFakeTimers()
     const { unmount } = renderHook(() => useSchoolPresence())
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(rpc).toHaveBeenCalledTimes(2)
+
     unmount()
-    expect(release).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    // Ни одной лишней: иначе закрытая панель слала бы отметки вечно.
+    expect(rpc).toHaveBeenCalledTimes(2)
+  })
+
+  it('отказ отметки не роняет приложение', async () => {
+    rpc.mockRejectedValue(new Error('нет сети'))
+    renderHook(() => useSchoolPresence())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    // Человек просто пропадёт из списка через 45 секунд — это честнее, чем
+    // сломанный экран из-за счётчика присутствия.
+    expect(rpc).toHaveBeenCalled()
+  })
+})
+
+describe('чтение списка онлайн', () => {
+  it('спрашивает окно свежести явно', async () => {
+    renderHook(() => useOnlinePeople())
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith(
+      'school_presence_online', { p_seconds: PRESENCE_WINDOW_S },
+    ))
+  })
+
+  it('раскладывает ответ в людей', async () => {
+    rpc.mockResolvedValue({
+      data: [{ profile_id: 'p-2', role: 'student', seen_at: '2026-09-11T21:00:00Z' }],
+      error: null,
+    })
+    const { result } = renderHook(() => useOnlinePeople())
+
+    await waitFor(() => expect(result.current.people).toHaveLength(1))
+    expect(result.current.people[0]).toEqual({ profileId: 'p-2', role: 'student' })
+    expect(result.current.ok).toBe(true)
+  })
+
+  it('отказ чтения — это НЕ «никого нет»', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'ONLY_ADMIN_SEES_SCHOOL_STATS' } })
+    const { result } = renderHook(() => useOnlinePeople())
+
+    await waitFor(() => expect(rpc).toHaveBeenCalled())
+    expect(result.current.ok).toBe(false)
+    expect(result.current.people).toEqual([])
+  })
+
+  it('в фоне не опрашиваем', async () => {
+    hidden = true
+    renderHook(() => useOnlinePeople())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('опрос прекращается при уходе с экрана', async () => {
+    vi.useFakeTimers()
+    const { unmount } = renderHook(() => useOnlinePeople())
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    const before = rpc.mock.calls.length
+
+    unmount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(rpc).toHaveBeenCalledTimes(before)
+  })
+
+  it('подписки на таблицу не заводим — только опрос', async () => {
+    // При отметке раз в 20 секунд на каждого подписка дала бы поток событий
+    // ради числа, которое и так обновляется опросом. `supabase.channel` в
+    // моке нет вовсе: обращение к нему уронило бы этот тест.
+    const { result } = renderHook(() => useOnlinePeople())
+    await waitFor(() => expect(result.current.ok).toBe(true))
+    expect(rpc.mock.calls.every(c => String(c[0]).startsWith('school_presence'))).toBe(true)
   })
 })
 
 describe('SchoolPresencePublisher', () => {
-  it('ничего не рисует', () => {
+  it('ничего не рисует, но отмечает', async () => {
     const { container } = render(<SchoolPresencePublisher />)
     expect(container).toBeEmptyDOMElement()
-  })
-
-  it('два публикатора — по одному захвату на каждый, канал общий', () => {
-    // Счётчик ссылок внутри `acquirePresence` сводит их к одному сокету
-    // (проверено в schoolPresence.test.ts). Здесь важно, что второй монтаж не
-    // падает и честно берёт и отпускает свою ссылку.
-    const { unmount } = render(
-      <>
-        <SchoolPresencePublisher />
-        <SchoolPresencePublisher />
-      </>,
-    )
-    expect(acquire).toHaveBeenCalledTimes(2)
-    unmount()
-    expect(release).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch'))
   })
 })

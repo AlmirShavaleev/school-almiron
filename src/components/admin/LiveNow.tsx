@@ -36,9 +36,11 @@ import { ROLE_LABELS } from '@/utils/format'
  * пропсами: они уже загружены страницей, и второй счётчик тех же величин
  * развёл бы два ответа на один вопрос.
  *
- * Присутствие панель только ЧИТАЕТ. Публикует его `SchoolPresencePublisher`,
- * смонтированный на всё защищённое поддерево в `AppRoutes`: отметиться должны
- * все вошедшие, иначе «кто сейчас на платформе» покажет одних админов.
+ * Присутствие панель только ЧИТАЕТ, опросом раз в 15 секунд. Отметки ставит
+ * `SchoolPresencePublisher`, смонтированный на всё защищённое поддерево в
+ * `AppRoutes`: отметиться должны все вошедшие, иначе «кто сейчас на
+ * платформе» покажет одних админов. Канала Realtime здесь больше нет — почему,
+ * написано в `@/lib/schoolPresence`.
  */
 
 export interface LiveNowProps {
@@ -85,7 +87,7 @@ export function LiveNow(props: LiveNowProps) {
   const { pendingReview, submittedToday, dormant, profiles, schoolError } = props
   const navigate = useNavigate()
   const { pulse, feed, loading, error, liveFeed, reload } = useLivePulse()
-  const { people, connected } = useOnlinePeople()
+  const { people, ok: presenceOk } = useOnlinePeople()
   const reducedMotion = usePrefersReducedMotion()
 
   // Имя к идентификатору. В канале присутствия имён нет намеренно — подставляем
@@ -120,7 +122,7 @@ export function LiveNow(props: LiveNowProps) {
     <div className="space-y-4" data-testid="live-now">
       <OnlineBlock
         people={people}
-        connected={connected}
+        ok={presenceOk}
         nameById={nameById}
         onRefresh={reload}
       />
@@ -214,10 +216,11 @@ export function LiveNow(props: LiveNowProps) {
 // ── Присутствие ────────────────────────────────────────────────────────────
 
 function OnlineBlock({
-  people, connected, nameById, onRefresh,
+  people, ok, nameById, onRefresh,
 }: {
   people: Array<{ profileId: string; role: string }>
-  connected: boolean
+  /** Список прочитался. Ложь — это НЕ «никого нет», и экран их разводит. */
+  ok: boolean
   nameById: Map<string, { name: string; role: string }>
   onRefresh: () => void
 }) {
@@ -226,13 +229,14 @@ function OnlineBlock({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Radio size={16} className={cn(connected ? 'text-green-600' : 'text-slate-300')} />
+            <Radio size={16} className={cn(ok ? 'text-green-600' : 'text-slate-300')} />
             <h3 className="text-sm font-semibold text-graphite-950">Сейчас в школе</h3>
           </div>
           {/* Оговорка про охват присутствия — до числа, а не после: панель
               видит только тех, у кого приложение открыто прямо сейчас. */}
           <p className="mt-1 text-xs text-slate-400">
-            Кто открыл платформу прямо сейчас. На каком экране человек находится — не показываем.
+            Кто открыл платформу прямо сейчас: отметка свежее 45 секунд. Закрыл вкладку —
+            пропадает за это же время. На каком экране человек находится — не показываем.
           </p>
         </div>
         <button
@@ -244,11 +248,11 @@ function OnlineBlock({
         </button>
       </div>
 
-      {!connected ? (
-        // Отказ канала и пустая школа выглядят одинаково — пустым списком.
+      {!ok ? (
+        // Отказ чтения и пустая школа выглядят одинаково — пустым списком.
         // Поэтому состояния разведены словами.
         <p className="mt-3 text-sm text-slate-400" data-testid="live-online-offline">
-          Присутствие не подключилось. Числа ниже это не затрагивает.
+          Список присутствия не прочитался. Числа ниже это не затрагивает.
         </p>
       ) : people.length === 0 ? (
         <p className="mt-3 text-sm text-slate-400" data-testid="live-online-empty">
