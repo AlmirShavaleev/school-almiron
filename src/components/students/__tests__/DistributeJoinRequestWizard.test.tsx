@@ -3,11 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
 
 /**
- * §61/§64: один курс = одна группа, она заводится вместе с курсом. Значит
- * «Индивидуально»/«Новая мини-группа» ведут ко второй группе на курс и
- * упираются в groups_one_per_course на бэкенде (см. миграцию
- * 20260909072422). Мастер обязан сам не предлагать эти режимы, если у курса
- * уже есть группа — иначе пользователь ловит голую ошибку уникальности.
+ * §150: переключателя режимов больше нет вообще -- ни у курса с группой
+ * (§61/§64: она всегда одна, вторую не завести -- groups_one_per_course), ни
+ * у курса без группы (реальный, но редкий край: жёсткое удаление группы
+ * через «Архивировать группу» — открытый вопрос, не эта задача). Мастер
+ * просто показывает состояние строкой и отправляет ровно один режим сам.
  */
 
 vi.mock('@/store/authStore', () => ({
@@ -53,44 +53,53 @@ function renderWizard(groups: DistributeGroupOption[]) {
   )
 }
 
-describe('DistributeJoinRequestWizard — режимы распределения по наличию группы у курса', () => {
+describe('DistributeJoinRequestWizard — состояние группы вместо переключателя режимов', () => {
   beforeEach(() => {
     getMyActiveCoursesMock.mockReset()
     distributeStudentCoursesMock.mockReset()
+    distributeStudentCoursesMock.mockResolvedValue({
+      studentId: 'student-1', joinRequestId: '', teacherStudentId: '', status: 'ok', assignments: [],
+    })
     getMyActiveCoursesMock.mockResolvedValue([course])
   })
 
-  it('курс с группой: доступна только «Существующая группа», остальные режимы погашены с подписью', async () => {
+  it('курс с группой: нет ни одной кнопки-переключателя, показана строка с готовой группой', async () => {
     renderWizard([groupForCourse])
     const checkbox = await screen.findByRole('checkbox')
     fireEvent.click(checkbox)
 
-    const individualChip = screen.getByRole('button', { name: 'Индивидуально' })
-    const newGroupChip = screen.getByRole('button', { name: 'Новая мини-группа' })
-    const existingChip = screen.getByRole('button', { name: 'Существующая группа' })
+    expect(screen.getByText('Группа «Физика ЕГЭ»: 2/30 — ученик будет добавлен в неё.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Индивидуально' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Существующая группа' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Новая мини-группа' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
 
-    expect(individualChip).toBeDisabled()
-    expect(newGroupChip).toBeDisabled()
-    expect(existingChip).not.toBeDisabled()
-    expect(screen.getByText('У курса уже есть группа — учеников добавляют в неё.')).toBeInTheDocument()
-
-    // группа подставлена сама, без выбора пользователем
-    expect(screen.getByRole('combobox')).toHaveValue('group-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Распределить' }))
+    await Promise.resolve()
+    expect(distributeStudentCoursesMock).toHaveBeenCalledWith(
+      'student-1',
+      [{ courseId: 'course-1', mode: 'existing_group', groupId: 'group-1' }],
+      expect.any(String),
+    )
   })
 
-  it('курс без группы: доступны все три режима, по умолчанию «Индивидуально»', async () => {
+  it('курс без группы: нет переключателя, показана строка «будет создана», уходит mode=new_group с названием курса', async () => {
     renderWizard([])
     const checkbox = await screen.findByRole('checkbox')
     fireEvent.click(checkbox)
 
-    const individualChip = screen.getByRole('button', { name: 'Индивидуально' })
-    const newGroupChip = screen.getByRole('button', { name: 'Новая мини-группа' })
-    const existingChip = screen.getByRole('button', { name: 'Существующая группа' })
+    expect(screen.getByText('У курса нет группы — она будет создана.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Индивидуально' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Новая мини-группа' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Название (необязательно)')).not.toBeInTheDocument()
 
-    expect(individualChip).not.toBeDisabled()
-    expect(newGroupChip).not.toBeDisabled()
-    expect(existingChip).not.toBeDisabled()
-    expect(screen.queryByText('У курса уже есть группа — учеников добавляют в неё.')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Индивидуально' })).toHaveClass('border-primary-500')
+    fireEvent.click(screen.getByRole('button', { name: 'Распределить' }))
+    await Promise.resolve()
+    expect(distributeStudentCoursesMock).toHaveBeenCalledWith(
+      'student-1',
+      [{ courseId: 'course-1', mode: 'new_group', title: 'Физика ЕГЭ', maxStudents: 30 }],
+      expect.any(String),
+    )
   })
 })
