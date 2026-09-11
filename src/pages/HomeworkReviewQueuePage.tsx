@@ -15,7 +15,7 @@ import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import {
-  QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate,
+  QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate, topicFilterOptions,
   type QueueRow, type QueueTab,
 } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
@@ -384,19 +384,36 @@ export function HomeworkReviewQueuePage() {
   // «состояние ↔ адрес через эффект» — ровно та конструкция, в которой сидел
   // бесконечный цикл из §35.2; здесь она не нужна.
   const [courseFilter, setCourseFilter] = useState<string>('all')
+  const [topicFilter, setTopicFilter] = useState<string>('all')
   const [order, setOrder] = useState<'oldest' | 'newest'>('oldest')
   const [onlyLate, setOnlyLate] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const courseOptions = useMemo(() => courseFilterOptions(rows), [rows])
+  // Темы — только из строк очереди и только выбранного курса (§149).
+  const topicOptions = useMemo(() => topicFilterOptions(rows, courseFilter), [rows, courseFilter])
+  // Тема могла пропасть из списка без смены курса — переключили вкладку, и на
+  // ней таких работ нет. Тогда фильтр не применяем и показываем «Все темы», а
+  // не пустую выдачу; эффекта с setState для этого не нужно.
+  const activeTopic = topicOptions.some(t => t.id === topicFilter) ? topicFilter : 'all'
+
+  // Смена курса, при которой выбранная тема больше ему не принадлежит,
+  // сбрасывает тему — иначе преподаватель получит пустой экран без причины.
+  const changeCourse = (courseId: string) => {
+    setCourseFilter(courseId)
+    if (topicFilter !== 'all' && !topicFilterOptions(rows, courseId).some(t => t.id === topicFilter)) {
+      setTopicFilter('all')
+    }
+  }
 
   const visibleRows = useMemo(() => {
     let out = rows
     if (courseFilter !== 'all') out = out.filter(r => r.courseId === courseFilter)
+    if (activeTopic !== 'all') out = out.filter(r => r.topicId === activeTopic)
     if (onlyLate) out = out.filter(isSubmittedLate)
     if (order === 'newest') out = [...out].reverse()
     return out
-  }, [rows, courseFilter, onlyLate, order])
+  }, [rows, courseFilter, activeTopic, onlyLate, order])
 
   const visibleAttemptIds = useMemo(() => visibleRows.map(r => r.attempt.id), [visibleRows])
   // Проверенным работам ИИ-черновик не нужен: вердикт уже стоит. Отдаём пустой
@@ -594,12 +611,33 @@ export function HomeworkReviewQueuePage() {
               data-testid="queue-course-filter"
               aria-label="Курс"
               value={courseFilter}
-              onChange={e => setCourseFilter(e.target.value)}
+              onChange={e => changeCourse(e.target.value)}
               className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
             >
               <option value="all">Все курсы · {rows.length}</option>
               {courseOptions.map(c => (
                 <option key={c.id} value={c.id}>{c.title} · {c.count}</option>
+              ))}
+            </select>
+          </label>
+
+          {/* Тема — третий фильтр (§149). Список из самой очереди: тема без
+              сданных работ здесь не появится, а при выбранном курсе — только
+              его темы. */}
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            Тема
+            <select
+              data-testid="queue-topic-filter"
+              aria-label="Тема"
+              value={activeTopic}
+              onChange={e => setTopicFilter(e.target.value)}
+              className="max-w-[16rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">
+                Все темы · {courseFilter === 'all' ? rows.length : rows.filter(r => r.courseId === courseFilter).length}
+              </option>
+              {topicOptions.map(t => (
+                <option key={t.id} value={t.id}>{t.title} · {t.count}</option>
               ))}
             </select>
           </label>
@@ -632,10 +670,10 @@ export function HomeworkReviewQueuePage() {
             Только просроченные{lateCount > 0 ? ` · ${lateCount}` : ''}
           </button>
 
-          {(courseFilter !== 'all' || onlyLate || order !== 'oldest') && (
+          {(courseFilter !== 'all' || activeTopic !== 'all' || onlyLate || order !== 'oldest') && (
             <button
               type="button"
-              onClick={() => { setCourseFilter('all'); setOnlyLate(false); setOrder('oldest') }}
+              onClick={() => { setCourseFilter('all'); setTopicFilter('all'); setOnlyLate(false); setOrder('oldest') }}
               className="ml-auto text-xs text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
             >
               Сбросить

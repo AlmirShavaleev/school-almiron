@@ -63,6 +63,39 @@ export function nextEngine(current: ParseEngine | null): ParseEngine | null {
   return index >= 0 && index + 1 < ENGINE_ORDER.length ? ENGINE_ORDER[index + 1] : null
 }
 
+/**
+ * Потолок строки с причинами отказа. Она уходит в `last_error`, а его читает
+ * преподаватель в панели: две-три причины с числами быстро превращаются в
+ * простыню. §149.
+ */
+export const MAX_FAILURE_REASON_CHARS = 500
+
+/**
+ * Причина «движок вернул слишком мало текста» — с числом. Без него «мало»
+ * неотличимо от «пусто», а это разные поломки: пусто — движок не увидел
+ * файл, мало — увидел скан и распознал крохи.
+ */
+export function tooLittleTextReason(engine: ParseEngine, text: string, pages: number): string {
+  const meaningful = meaningfulChars(text)
+  const pageCount = Math.max(1, pages)
+  return `движок ${engine} вернул слишком мало текста (${meaningful} знач. симв. на ${pageCount} стр.)`
+}
+
+/**
+ * Одна строка из причин ВСЕХ движков. Раньше в `last_error` уезжала причина
+ * только последнего — пять прогонов подряд читали про баланс `mistral-ocr` и
+ * ни разу про то, что случилось с бесплатным `cloudflare-ai`. Диагностика,
+ * теряющая первую половину причины, уводит в сторону. §149.
+ */
+export function describeParseFailure(reasons: readonly string[]): string {
+  const list = reasons.map(r => r.trim()).filter(Boolean)
+  const joined = list.length > 0 ? list.join('; ') : 'разбор PDF не дал текста'
+  const full = `Не удалось распознать авторское решение: ${joined}`
+  return full.length > MAX_FAILURE_REASON_CHARS
+    ? `${full.slice(0, MAX_FAILURE_REASON_CHARS - 1)}…`
+    : full
+}
+
 export interface ParsedAnnotation {
   text: string
   pages: number

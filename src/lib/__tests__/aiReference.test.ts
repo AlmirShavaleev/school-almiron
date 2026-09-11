@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   ENGINE_ORDER,
   FREE_ENGINE,
+  MAX_FAILURE_REASON_CHARS,
   MAX_REFERENCE_BYTES,
   OCR_ENGINE,
   REFERENCE_CHAR_LIMIT,
+  describeParseFailure,
   extractAnnotationText,
   isParseUsable,
   meaningfulChars,
   nextEngine,
   referencePromptBlock,
+  tooLittleTextReason,
   truncateReference,
 } from '../../../supabase/functions/check-homework-ai/reference.ts'
 
@@ -146,5 +149,49 @@ describe('referencePromptBlock — оговорка о происхождени�
 describe('порог размера', () => {
   it('десять мегабайт', () => {
     expect(MAX_REFERENCE_BYTES).toBe(10 * 1024 * 1024)
+  })
+})
+
+/**
+ * §149. Причины отказа — по ВСЕМ движкам, а не по последнему. Пять прогонов
+ * подряд в last_error лежал только отказ платного mistral-ocr по балансу, и
+ * что случилось с бесплатным cloudflare-ai, который шёл первым, узнать было
+ * неоткуда.
+ */
+describe('describeParseFailure — причины всех движков в одной строке', () => {
+  it('склеивает причины в порядке движков, первую не теряет', () => {
+    const line = describeParseFailure([
+      `движок ${FREE_ENGINE} вернул слишком мало текста (12 знач. симв. на 3 стр.)`,
+      `движок ${OCR_ENGINE}: This request requires at least $0.50 in balance for files`,
+    ])
+    expect(line.startsWith('Не удалось распознать авторское решение: ')).toBe(true)
+    expect(line.indexOf(FREE_ENGINE)).toBeGreaterThan(-1)
+    expect(line.indexOf(FREE_ENGINE)).toBeLessThan(line.indexOf(OCR_ENGINE))
+    expect(line).toContain('; ')
+  })
+
+  it('без причин говорит, что разбор не дал текста', () => {
+    expect(describeParseFailure([])).toContain('разбор PDF не дал текста')
+    expect(describeParseFailure(['', '  '])).toContain('разбор PDF не дал текста')
+  })
+
+  it('режет строку по потолку — её читает преподаватель в панели', () => {
+    const long = describeParseFailure(['x'.repeat(400), 'y'.repeat(400)])
+    expect(long.length).toBeLessThanOrEqual(MAX_FAILURE_REASON_CHARS)
+    expect(long.endsWith('…')).toBe(true)
+    expect(MAX_FAILURE_REASON_CHARS).toBe(500)
+  })
+})
+
+describe('tooLittleTextReason — «мало» с числом, а не на словах', () => {
+  it('называет движок, значимые символы и страницы', () => {
+    const reason = tooLittleTextReason(FREE_ENGINE, '# | |\nabc 12', 3)
+    expect(reason).toContain(FREE_ENGINE)
+    expect(reason).toContain('5 знач. симв.')
+    expect(reason).toContain('3 стр.')
+  })
+
+  it('ноль страниц считает за одну — деления на ноль в причине нет', () => {
+    expect(tooLittleTextReason(OCR_ENGINE, '', 0)).toContain('0 знач. симв. на 1 стр.')
   })
 })
