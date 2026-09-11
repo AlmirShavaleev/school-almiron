@@ -6,6 +6,7 @@ import { LoadingGate } from '@/components/shared/LoadingGate'
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
+import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
 
 // Dashboard
 const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
@@ -96,6 +97,23 @@ function RouteFallback() {
  */
 export default function AppRoutes() {
   return (
+    <>
+    {/* Присутствие в школе. Публикуют ВСЕ вошедшие — ученик, преподаватель,
+        куратор, админ; читает список только админ (политика
+        `school_presence_read`). Смонтировать это на экране панели было бы
+        недостаточно: «кто сейчас на платформе» показывал бы одних админов, то
+        есть отвечал бы не на тот вопрос, ради которого панель открывают.
+
+        В канал уходят только `profileId` и роль: ни имени, ни адреса
+        страницы, ни идентификатора темы — «на каком экране находится
+        ребёнок» владелец запретил показывать, и здесь этого нет в передаче, а
+        не спрятано на экране.
+
+        Стоит ВЫШЕ <Suspense> и рисует null: не загрузившаяся страница не
+        должна задерживать отметку присутствия, а отказ канала не должен
+        задерживать страницу. Тот же довод, что у счётчиков в App.tsx
+        (§131/§143). Гость ничего не публикует — хук молчит без профиля. */}
+    <SchoolPresencePublisher />
     <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Protected — dashboard layout */}
@@ -210,5 +228,6 @@ export default function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
+    </>
   )
 }

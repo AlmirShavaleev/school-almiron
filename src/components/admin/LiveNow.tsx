@@ -10,7 +10,6 @@ import {
 import { cn } from '@/utils/cn'
 import { useLivePulse } from '@/hooks/useLivePulse'
 import { useOnlinePeople } from '@/hooks/useSchoolPresence'
-import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
 import {
   FEED_LABELS, formatAgo, formatDay, formatHour, peakHour, reachShare,
   totalHourEvents, weekChange, weekDirection,
@@ -36,6 +35,10 @@ import { ROLE_LABELS } from '@/utils/format'
  * Числа §107 (очередь проверки, сдано сегодня, пропавшие) приходят СВЕРХУ
  * пропсами: они уже загружены страницей, и второй счётчик тех же величин
  * развёл бы два ответа на один вопрос.
+ *
+ * Присутствие панель только ЧИТАЕТ. Публикует его `SchoolPresencePublisher`,
+ * смонтированный на всё защищённое поддерево в `AppRoutes`: отметиться должны
+ * все вошедшие, иначе «кто сейчас на платформе» покажет одних админов.
  */
 
 export interface LiveNowProps {
@@ -115,11 +118,6 @@ export function LiveNow(props: LiveNowProps) {
 
   return (
     <div className="space-y-4" data-testid="live-now">
-      {/* Публикатор присутствия. Пока он не поднят на всё приложение, панель
-          видит только тех, у кого открыт этот экран, — об этом сказано ниже
-          словами, а не умолчанием. */}
-      <SchoolPresencePublisher />
-
       <OnlineBlock
         people={people}
         connected={connected}
