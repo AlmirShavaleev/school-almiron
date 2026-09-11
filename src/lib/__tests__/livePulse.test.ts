@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatAgo, formatHour, parseFeed, parsePulse, peakHour, reachShare,
-  totalHourEvents, weekChange, weekDirection,
+  changeMood, flowSummary, formatAgo, formatHour, levelSummary, parseFeed,
+  parsePulse, peakHour, reachShare, splitUnfinishedTail, totalHourEvents,
+  weekChange, weekDirection,
 } from '@/lib/livePulse'
 
 /**
@@ -108,6 +109,8 @@ describe('разбор ответа RPC', () => {
     const pulse = parsePulse({
       visits_daily: [{ day: '2026-09-09', people: 24 }],
       submits_daily: [{ day: '2026-09-09', count: 5 }],
+      queue_daily: [{ day: '2026-09-09', count: 23 }],
+      marks_daily: [{ day: '2026-09-09', count: 4 }],
       hourly: [{ hour: 13, events: 9 }],
       week: { visits_this: 110, visits_prev: 23, submits_this: 23, submits_prev: 0 },
       reach: { active_7d: 29, enrolled: 32 },
@@ -118,6 +121,8 @@ describe('разбор ответа RPC', () => {
 
     expect(pulse.visitsDaily).toEqual([{ day: '2026-09-09', value: 24 }])
     expect(pulse.submitsDaily).toEqual([{ day: '2026-09-09', value: 5 }])
+    expect(pulse.queueDaily).toEqual([{ day: '2026-09-09', value: 23 }])
+    expect(pulse.marksDaily).toEqual([{ day: '2026-09-09', value: 4 }])
     expect(pulse.week.visitsThis).toBe(110)
     expect(pulse.reach).toEqual({ active7d: 29, enrolled: 32 })
     expect(pulse.visitDaysPerStudent).toBe(3.4)
@@ -129,6 +134,8 @@ describe('разбор ответа RPC', () => {
   it('пустой и битый ответ дают пустую панель, а не падение', () => {
     const pulse = parsePulse(null)
     expect(pulse.visitsDaily).toEqual([])
+    expect(pulse.queueDaily).toEqual([])
+    expect(pulse.marksDaily).toEqual([])
     expect(pulse.hourly).toEqual([])
     expect(pulse.week).toEqual({ visitsThis: 0, visitsPrev: 0, submitsThis: 0, submitsPrev: 0 })
     expect(pulse.newStudents).toEqual([])
@@ -148,5 +155,77 @@ describe('разбор ответа RPC', () => {
   it('не массив вместо ленты — пустая лента', () => {
     expect(parseFeed(null)).toEqual([])
     expect(parseFeed({} as any)).toEqual([])
+  })
+})
+
+describe('карточки: смысл важнее знака', () => {
+  it('рост хорошего — зелёный, рост плохого — красный', () => {
+    // Очередь проверки растёт — это ухудшение. Зелёная стрелка вверх на ней
+    // была бы прямой дезинформацией.
+    expect(changeMood('up', 'more-is-good')).toBe('good')
+    expect(changeMood('up', 'more-is-bad')).toBe('bad')
+  })
+
+  it('падение плохого — это хорошо', () => {
+    expect(changeMood('down', 'more-is-bad')).toBe('good')
+    expect(changeMood('down', 'more-is-good')).toBe('bad')
+  })
+
+  it('ровно — отдельное состояние, а не «рост на ноль»', () => {
+    expect(changeMood('flat', 'more-is-good')).toBe('flat')
+    expect(changeMood('flat', 'more-is-bad')).toBe('flat')
+  })
+})
+
+describe('поток и уровень — разные величины', () => {
+  const series = (values: number[]) =>
+    values.map((value, i) => ({ day: `2026-08-${String(20 + i).padStart(2, '0')}`, value }))
+
+  it('поток складывается за неделю и сравнивается с предыдущей', () => {
+    const points = series([1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2])
+    expect(flowSummary(points)).toEqual({ current: 14, previous: 7 })
+  })
+
+  it('уровень берётся на сегодня и сравнивается с уровнем недельной давности', () => {
+    // Живой ряд очереди на 11.09. Сумма здесь была бы бессмыслицей: работа,
+    // ждавшая три дня, вошла бы в неё трижды.
+    const queue = series([1, 1, 1, 1, 1, 2, 2, 1, 5, 9, 14, 16, 23, 20])
+    expect(levelSummary(queue)).toEqual({ current: 20, previous: 2 })
+  })
+
+  it('короткий ряд не ломает ни ту, ни другую сводку', () => {
+    expect(flowSummary([])).toEqual({ current: 0, previous: 0 })
+    expect(levelSummary([])).toEqual({ current: 0, previous: 0 })
+    // Нет точки недельной давности — сравниваем сам с собой, а не с нулём:
+    // «вырос с нуля» на пустой истории было бы выдумкой.
+    expect(levelSummary(series([7]))).toEqual({ current: 7, previous: 7 })
+  })
+})
+
+describe('пунктирный хвост', () => {
+  const series = (values: number[]) =>
+    values.map((value, i) => ({ day: `d${i}`, value }))
+
+  it('пунктиром идёт ТОЛЬКО последний отрезок', () => {
+    const out = splitUnfinishedTail(series([1, 2, 3, 4]))
+    expect(out.map(p => p.solid)).toEqual([1, 2, 3, null])
+    // Прошлые дни пунктиром не рисуются никогда — иначе пунктир перестаёт
+    // что-либо значить.
+    expect(out.map(p => p.dashed)).toEqual([null, null, 3, 4])
+  })
+
+  it('предпоследняя точка попадает в оба ряда — иначе линия рвётся', () => {
+    const out = splitUnfinishedTail(series([5, 6, 7]))
+    expect(out[1].solid).toBe(6)
+    expect(out[1].dashed).toBe(6)
+  })
+
+  it('пустой ряд даёт пустой результат', () => {
+    expect(splitUnfinishedTail([])).toEqual([])
+  })
+
+  it('ряд из одной точки целиком незавершённый', () => {
+    const out = splitUnfinishedTail(series([3]))
+    expect(out).toEqual([{ label: 'd0', solid: null, dashed: 3 }])
   })
 })
