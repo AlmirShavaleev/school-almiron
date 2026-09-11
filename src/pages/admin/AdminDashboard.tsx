@@ -20,6 +20,7 @@ import { DormantPanel, LearningPanel } from '@/components/admin/SchoolActivity'
 import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
 import { VideoStatsTab } from '@/components/admin/VideoStats'
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
+import { LiveNow } from '@/components/admin/LiveNow'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
 import { cn } from '@/utils/cn'
@@ -217,12 +218,13 @@ export function AdminDashboard() {
 
       {/* ══ СЕЙЧАС ══════════════════════════════════════════════ */}
       {tab === 'now' && (
-        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center">
-          <p className="text-sm text-gray-500">Живая панель школы готовится отдельной работой.</p>
-          <p className="mt-1 text-xs text-gray-400">
-            Пока смотрите «Обзор» — там список дел на сегодня.
-          </p>
-        </div>
+        <LiveNow
+          pendingReview={school?.homework_pending ?? null}
+          submittedToday={school?.homework_submitted_today ?? null}
+          dormant={analytics.dormant}
+          profiles={profiles}
+          schoolError={schoolError}
+        />
       )}
 
       {/* ══ ОБЗОР ════════════════════════════════════════════════

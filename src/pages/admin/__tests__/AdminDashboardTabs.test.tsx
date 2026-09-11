@@ -87,6 +87,20 @@ vi.mock('@/components/admin/SchoolActivity', () => ({
   DormantPanel: () => <div>dormant-stub</div>,
   LearningPanel: () => <div>learning-stub</div>,
 }))
+// Живая панель проверяется своим файлом (LiveNow.test.tsx). Здесь нужна только
+// проводка: что вкладка её монтирует и передаёт ей уже загруженные страницей
+// числа §107, а не заводит для них второй счётчик.
+vi.mock('@/components/admin/LiveNow', () => ({
+  LiveNow: (p: Record<string, unknown>) => (
+    <div
+      data-testid="live-now-stub"
+      data-pending={String(p.pendingReview)}
+      data-today={String(p.submittedToday)}
+      data-dormant={String((p.dormant as unknown[]).length)}
+      data-profiles={String((p.profiles as unknown[]).length)}
+    />
+  ),
+}))
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
 
@@ -126,13 +140,34 @@ describe('перечень вкладок', () => {
     labels.forEach(l => expect(screen.getByRole('button', { name: l })).toBeInTheDocument())
   })
 
-  it('«Сейчас» — пустое место под живую панель, а не её обещание с цифрами', () => {
-    // Вкладку делает другая работа. Здесь занято только место, и рисовать в
-    // нём числа нельзя: макет с нулями неотличим от сломанной панели.
+  it('«Сейчас» открывает живую панель, а не заглушку', () => {
+    // Место, оставленное §147, занято настоящей панелью.
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
     open('Сейчас')
-    expect(screen.getByText(/Живая панель школы готовится/)).toBeInTheDocument()
-    expect(screen.queryByTestId('admin-todo')).not.toBeInTheDocument()
+    expect(screen.getByTestId('live-now-stub')).toBeInTheDocument()
+    expect(screen.queryByText(/Живая панель школы готовится/)).not.toBeInTheDocument()
+  })
+
+  it('панель получает числа §107 сверху, а не считает их заново', () => {
+    // Второй счётчик тех же величин развёл бы два ответа на один вопрос:
+    // «ждут проверки» на «Обзоре» и на «Сейчас» обязаны совпадать всегда.
+    schoolStats = { ...QUIET_SCHOOL, homework_pending: 9, homework_submitted_today: 4 }
+    dormantRows = [{ student_id: 's-1' }, { student_id: 's-2' }]
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    open('Сейчас')
+
+    const panel = screen.getByTestId('live-now-stub')
+    expect(panel).toHaveAttribute('data-pending', '9')
+    expect(panel).toHaveAttribute('data-today', '4')
+    expect(panel).toHaveAttribute('data-dormant', '2')
+  })
+
+  it('живая панель не монтируется, пока вкладку не открыли', () => {
+    // На ней висят подписка присутствия и подписка на изменения таблиц.
+    // Смонтированная заранее, она держала бы сокеты у того, кто на «Сейчас» не
+    // заглядывает.
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.queryByTestId('live-now-stub')).not.toBeInTheDocument()
   })
 
   it('плитки чисел разъехались по вкладкам, а не висят над всеми сразу', () => {
