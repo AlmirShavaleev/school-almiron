@@ -92,11 +92,16 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
     return ids
   }, [groups, studentId])
 
-  // §61/§64: один курс = одна группа, она заводится вместе с курсом. Значит
-  // «Индивидуально»/«Новая мини-группа» годятся только историческим курсам
-  // без группы — у остальных вторая группа упрётся в groups_one_per_course
-  // на бэкенде. Берём ЛЮБУЮ группу курса (не только активную и не только со
-  // свободными местами) — уникальный индекс не делает для них исключения.
+  // §61/§64: один курс = одна группа, она заводится вместе с курсом
+  // (`courses_ensure_group_trg`) -- на проде сейчас это верно для всех
+  // курсов без исключения. Единственный живой способ оказаться без группы --
+  // жёсткое удаление группы из «Архивировать группу» (см. открытый вопрос
+  // §150: кнопка называется «архивировать», а строка внутри удаляет).
+  // Поэтому здесь нет выбора режима -- есть состояние: группа уже есть
+  // (кладём туда) или её нет (новая создастся автоматически, как при
+  // рождении курса). Берём ЛЮБУЮ группу курса (не только активную и не
+  // только со свободными местами) -- уникальный индекс не делает для них
+  // исключения.
   const groupByCourse = useMemo(() => {
     const map = new Map<string, DistributeGroupOption>()
     for (const g of groups) {
@@ -105,7 +110,7 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
     return map
   }, [groups])
 
-  function toggleCourse(courseId: string) {
+  function toggleCourse(courseId: string, courseTitle: string) {
     setSelected(prev => {
       const next = { ...prev }
       if (next[courseId]) {
@@ -113,26 +118,15 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
       } else {
         const forced = groupByCourse.get(courseId)
         next[courseId] = forced
-          ? { courseId, mode: 'existing_group', groupId: forced.id, title: '', maxStudents: '8' }
-          : { courseId, mode: 'individual', groupId: '', title: '', maxStudents: '8' }
+          ? { courseId, mode: 'existing_group', groupId: forced.id, title: '', maxStudents: '' }
+          : { courseId, mode: 'new_group', groupId: '', title: courseTitle, maxStudents: '30' }
       }
       return next
     })
   }
 
-  function updateSelection(courseId: string, patch: Partial<CourseSelection>) {
-    setSelected(prev => ({ ...prev, [courseId]: { ...prev[courseId], ...patch } }))
-  }
-
-  function groupsForCourse(courseId: string): DistributeGroupOption[] {
-    const list = groups.filter(g => g.courseId === courseId && g.isActive && g.studentCount < g.maxStudents)
-    const forced = groupByCourse.get(courseId)
-    if (forced && !list.some(g => g.id === forced.id)) return [forced, ...list]
-    return list
-  }
-
   const selections = Object.values(selected)
-  const canSubmit = selections.length > 0 && selections.every(s => s.mode !== 'existing_group' || s.groupId)
+  const canSubmit = selections.length > 0
 
   async function handleSubmit() {
     setSaving(true)
@@ -224,8 +218,7 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
                   {courses.map(course => {
                     const isAssigned = alreadyAssignedCourseIds.has(course.id)
                     const sel = selected[course.id]
-                    const availableGroups = groupsForCourse(course.id)
-                    const hasGroup = groupByCourse.has(course.id)
+                    const group = groupByCourse.get(course.id)
                     return (
                       <div key={course.id} className={`rounded-xl border p-3 ${isAssigned ? 'border-slate-100 bg-slate-50' : 'border-slate-200'}`}>
                         <label className="flex items-center gap-2 text-sm font-medium text-graphite-900">
@@ -233,61 +226,20 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
                             type="checkbox"
                             checked={Boolean(sel)}
                             disabled={isAssigned}
-                            onChange={() => toggleCourse(course.id)}
+                            onChange={() => toggleCourse(course.id, course.title)}
                           />
                           {course.title}
                           {isAssigned && <span className="ml-auto rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">Уже назначен</span>}
                         </label>
 
                         {sel && (
-                          <div className="mt-3 space-y-2 pl-6">
-                            <div className="flex flex-wrap gap-2">
-                              <RadioChip label="Индивидуально" checked={sel.mode === 'individual'} disabled={hasGroup} onClick={() => updateSelection(course.id, { mode: 'individual' })} />
-                              <RadioChip label="Существующая группа" checked={sel.mode === 'existing_group'} onClick={() => updateSelection(course.id, { mode: 'existing_group' })} />
-                              <RadioChip label="Новая мини-группа" checked={sel.mode === 'new_group'} disabled={hasGroup} onClick={() => updateSelection(course.id, { mode: 'new_group' })} />
-                            </div>
-                            {hasGroup && (
-                              <p className="text-xs text-slate-500">У курса уже есть группа — учеников добавляют в неё.</p>
-                            )}
-
-                            {sel.mode === 'existing_group' && (
-                              <div>
-                                {availableGroups.length === 0 ? (
-                                  <p className="text-xs text-slate-500">Нет активных групп со свободными местами по этому курсу</p>
-                                ) : (
-                                  <select
-                                    value={sel.groupId}
-                                    onChange={event => updateSelection(course.id, { groupId: event.target.value })}
-                                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                  >
-                                    <option value="">Выберите группу…</option>
-                                    {availableGroups.map(g => (
-                                      <option key={g.id} value={g.id}>
-                                        {g.name} · {g.studentCount}/{g.maxStudents}{g.scheduleTime ? ` · ${g.scheduleTime}` : ''}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
-                            )}
-
-                            {sel.mode === 'new_group' && (
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <input
-                                  placeholder="Название (необязательно)"
-                                  value={sel.title}
-                                  onChange={event => updateSelection(course.id, { title: event.target.value })}
-                                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                />
-                                <input
-                                  type="number"
-                                  min={1}
-                                  placeholder="Макс. учеников"
-                                  value={sel.maxStudents}
-                                  onChange={event => updateSelection(course.id, { maxStudents: event.target.value })}
-                                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                />
-                              </div>
+                          <div className="mt-2 pl-6">
+                            {group ? (
+                              <p className="text-xs text-slate-500">
+                                Группа «{group.name}»: {group.studentCount}/{group.maxStudents} — ученик будет добавлен в неё.
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500">У курса нет группы — она будет создана.</p>
                             )}
                           </div>
                         )}
@@ -309,22 +261,5 @@ export function DistributeJoinRequestWizard({ open, onClose, joinRequestId, stud
         </div>
       </div>
     </div>
-  )
-}
-
-function RadioChip({ label, checked, disabled, onClick }: { label: string; checked: boolean; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-        disabled
-          ? 'cursor-not-allowed border-slate-100 text-slate-300'
-          : checked ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:border-primary-200'
-      }`}
-    >
-      {label}
-    </button>
   )
 }
