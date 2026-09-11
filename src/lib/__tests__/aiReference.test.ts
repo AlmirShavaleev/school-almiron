@@ -6,6 +6,8 @@ import {
   MAX_REFERENCE_BYTES,
   OCR_ENGINE,
   REFERENCE_CHAR_LIMIT,
+  REFERENCE_GAP_MARK,
+  REFERENCE_TAIL_CHARS,
   describeParseFailure,
   extractAnnotationText,
   isParseUsable,
@@ -113,21 +115,43 @@ describe('extractAnnotationText — дословный текст из анно�
   })
 })
 
-describe('truncateReference — режем хвост, начало бережём', () => {
+describe('truncateReference — режем середину, голову и хвост бережём (§149)', () => {
   it('короткое решение не трогает', () => {
     expect(truncateReference('Решение')).toEqual({ text: 'Решение', truncated: false })
   })
 
-  it('длинное режет и сообщает об этом', () => {
-    const long = 'а'.repeat(REFERENCE_CHAR_LIMIT + 500)
+  it('длинное режет посередине: начало и конец на месте, между ними пометка', () => {
+    const head = 'НАЧАЛО '.repeat(3000)
+    const tail = ' ТАБЛИЦА ОТВЕТОВ 19 10'
+    const long = head + 'середина '.repeat(4000) + tail
     const block = truncateReference(long)
     expect(block.truncated).toBe(true)
     expect(block.text.length).toBeLessThanOrEqual(REFERENCE_CHAR_LIMIT)
-    expect(long.startsWith(block.text)).toBe(true)
+    expect(block.text.startsWith('НАЧАЛО НАЧАЛО')).toBe(true)
+    expect(block.text.endsWith('ТАБЛИЦА ОТВЕТОВ 19 10')).toBe(true)
+    expect(block.text).toContain(REFERENCE_GAP_MARK.trim())
   })
 
-  it('лимит поднят с прежних 8000', () => {
-    expect(REFERENCE_CHAR_LIMIT).toBeGreaterThan(8000)
+  it('хвост — ровно REFERENCE_TAIL_CHARS символов конца документа', () => {
+    const long = 'x'.repeat(REFERENCE_CHAR_LIMIT) + 'y'.repeat(REFERENCE_TAIL_CHARS)
+    const block = truncateReference(long)
+    const afterGap = block.text.slice(block.text.indexOf(REFERENCE_GAP_MARK.trim()) + REFERENCE_GAP_MARK.trim().length)
+    expect(afterGap.replace(/\s/g, '')).toBe('y'.repeat(REFERENCE_TAIL_CHARS))
+  })
+
+  it('на эталоне «Первой части» (16 867 символов) при лимите 14 000 таблица ответов не терялась бы', () => {
+    // Воспроизведение прогона 11.09: при старой обрезке с хвоста задачи 17–19 и
+    // таблица ответов на последней странице уходили за лимит.
+    const doc = 'Задача 1 …'.padEnd(16_000, ' решение ') + '\n### Page 22\n1 -2\n2 -2,5\n… 19 10\nЗадача Ответ'
+    const block = truncateReference(doc, 14_000)
+    expect(block.truncated).toBe(true)
+    expect(block.text).toContain('19 10')
+    expect(block.text).toContain('Задача Ответ')
+  })
+
+  it('лимит 40 000 — решение владельца 12.09; 14 000 резало решение в 933 кБ', () => {
+    expect(REFERENCE_CHAR_LIMIT).toBe(40_000)
+    expect(REFERENCE_TAIL_CHARS).toBe(3_000)
   })
 })
 
