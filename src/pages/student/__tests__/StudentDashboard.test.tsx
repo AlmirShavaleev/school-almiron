@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { StudentWeekCourse } from '@/hooks/useStudentWeekPlan'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
@@ -17,7 +18,7 @@ import { StudentDashboard } from '@/pages/student/StudentDashboard'
  * легаси `homeworks`/`homework_submissions`, и различает статусы работ.
  */
 
-const useStudentWeekPlanMock = vi.fn(() => ({ courses: [], loading: false, error: null }))
+const useStudentWeekPlanMock = vi.fn(() => ({ courses: [] as StudentWeekCourse[], loading: false, error: null as string | null }))
 vi.mock('@/hooks/useStudentWeekPlan', () => ({
   useStudentWeekPlan: () => useStudentWeekPlanMock(),
 }))

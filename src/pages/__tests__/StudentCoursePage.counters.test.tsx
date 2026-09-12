@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { StudentWeekCourse } from '@/hooks/useStudentWeekPlan'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { countTopics } from '@/lib/studentCourseCounters'
@@ -51,7 +52,7 @@ vi.mock('@/hooks/useStudentCourseProgram', () => ({
   }),
 }))
 
-const useStudentWeekPlanMock = vi.fn(() => ({ courses: [], loading: false, error: null }))
+const useStudentWeekPlanMock = vi.fn(() => ({ courses: [] as StudentWeekCourse[], loading: false, error: null as string | null }))
 vi.mock('@/hooks/useStudentWeekPlan', () => ({
   useStudentWeekPlan: () => useStudentWeekPlanMock(),
 }))
@@ -98,7 +99,7 @@ describe('StudentCoursePage — счётчики', () => {
   })
 
   it('неделя по учебному плану монтируется на странице курса и фильтруется по нему (§151)', async () => {
-    const week = {
+    const week: StudentWeekCourse = {
       course_id: 'c1', group_id: 'g1', course_title: 'Физика ЕГЭ 11А', subject: 'physics',
       week_no: 1, weeks_total: 10, week_start: '2026-09-07', week_end: '2026-09-13',
       deadline: '2026-09-13T21:00:00+00:00',
