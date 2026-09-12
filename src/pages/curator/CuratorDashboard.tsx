@@ -81,7 +81,7 @@ export function CuratorDashboard() {
 
       {/* ── Toast ─────────────────────────────────────────────────── */}
       {toast && (
-        <div className="fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-auto sm:right-6 z-50 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg animate-fade-in">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto fab-slot-2-sm z-50 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg animate-fade-in">
           {toast}
         </div>
       )}

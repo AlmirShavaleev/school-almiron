@@ -522,3 +522,55 @@ body {
 /* ── Inline live preview area (VariantPrintPanel) — sheet reuses
    .print-preview-page as its base; the panel sets width/minHeight/font-size
    inline based on orientation/fontSize. ──────────────────────────────────── */
+
+/* ── Плавающий стек правого нижнего угла ──────────────────────
+ * Один источник координат для всех плавающих элементов угла:
+ * кнопка помощи (слот 0), «Подборка · N» (слот 1), плашки-уведомления
+ * (слот 2). Раньше каждый элемент подбирал свой bottom/right в своём
+ * файле, и они ложились друг на друга (board/007).
+ *
+ * Классы применяются через FAB_SLOT из src/lib/floatingStack.ts —
+ * добавлять новый плавающий элемент значит взять слот, а не придумать
+ * отступ.
+ */
+:root {
+  --fab-edge: 1.25rem;      /* 20px — исходный отступ кнопки помощи */
+  --fab-gap: 0.75rem;       /* 12px — зазор между элементами стека */
+  --fab-help-size: 3.5rem;  /* 56px — w-14 кнопки помощи */
+  --fab-cart-size: 2.75rem; /* 44px — высота пилюли «Подборка · N» */
+
+  --fab-slot-0: var(--fab-edge);
+  --fab-slot-1: calc(var(--fab-edge) + var(--fab-help-size) + var(--fab-gap));
+  --fab-slot-2: calc(var(--fab-edge) + var(--fab-help-size) + var(--fab-cart-size) + var(--fab-gap) * 2);
+}
+
+.fab-slot {
+  position: fixed;
+  right: var(--fab-right, var(--fab-edge));
+  left: var(--fab-left, auto);
+}
+
+.fab-slot-0 { bottom: var(--fab-slot-0); }
+.fab-slot-1 { bottom: var(--fab-slot-1); }
+.fab-slot-2 { bottom: var(--fab-slot-2); }
+
+/* Плашка-уведомление: на телефоне тянется во всю ширину, на планшете и
+ * шире встаёт в слот 2 общего стека. */
+@media (min-width: 640px) {
+  .fab-slot-2-sm {
+    position: fixed;
+    right: var(--fab-right, var(--fab-edge));
+    left: var(--fab-left, auto);
+    bottom: var(--fab-slot-2);
+  }
+}
+
+/* Уход от элементов управления плеера: пока плеер занимает правый нижний
+ * угол экрана, весь стек переезжает в левый угол одним переключателем
+ * (data-fab-side на <html>, ставит floatingStack.ts). Ученик 09.09:
+ * «кнопка отправки сообщений об ошибке перекрывает… кнопку
+ * полноэкранного режима». */
+:root[data-fab-side='left'] {
+  --fab-right: auto;
+  --fab-left: var(--fab-edge);
+}
