@@ -54,6 +54,7 @@ const AssignVariantPage = lazyPage('AssignVariantPage', () => import('@/pages/va
 const VariantAssignmentsPage = lazyPage('VariantAssignmentsPage', () => import('@/pages/variants/VariantAssignmentsPage').then(m => ({ default: m.VariantAssignmentsPage })))
 const VariantStudentWorkPage = lazyPage('VariantStudentWorkPage', () => import('@/pages/variants/VariantStudentWorkPage').then(m => ({ default: m.VariantStudentWorkPage })))
 const CourseTopicTestsPage = lazyPage('CourseTopicTestsPage', () => import('@/pages/variants/CourseTopicTestsPage').then(m => ({ default: m.CourseTopicTestsPage })))
+const StudyPlanPage = lazyPage('StudyPlanPage', () => import('@/pages/StudyPlanPage').then(m => ({ default: m.StudyPlanPage })))
 const StudentVariantsPage = lazyPage('StudentVariantsPage', () => import('@/pages/student/StudentVariantsPage').then(m => ({ default: m.StudentVariantsPage })))
 const StudentVariantDetailPage = lazyPage('StudentVariantDetailPage', () => import('@/pages/student/StudentVariantDetailPage').then(m => ({ default: m.StudentVariantDetailPage })))
 const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
@@ -151,6 +152,7 @@ export default function AppRoutes() {
         <Route path="/students/:studentId/journal" element={<RoleGuard allow={['teacher','admin','owner']}><StudentJournalPage /></RoleGuard>} />
         <Route path="/course-program" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><CourseProgramPage /></RoleGuard>} />
         <Route path="/course-program/:courseId/topic-tests" element={<RoleGuard allow={['teacher','admin','owner']}><CourseTopicTestsPage /></RoleGuard>} />
+        <Route path="/course-program/:courseId/plan" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><StudyPlanPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
         <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner','student']}><LessonDetailPage /></RoleGuard>} />

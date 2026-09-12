@@ -2005,6 +2005,14 @@ export function CourseProgramPage() {
                     {selectedCourse.is_active ? 'Активен' : 'Архив'}
                   </Badge>
                   <CourseDateBadge course={selectedCourse} />
+                  {/* Учебный план по неделям (§151) — отдельная страница, как тесты по темам */}
+                  <Link
+                    to={`/course-program/${selectedCourse.id}/plan`}
+                    data-testid="course-study-plan-link"
+                    className="inline-flex min-h-8 items-center rounded-full border border-primary-200 bg-primary-50 px-2.5 text-xs font-semibold text-primary-700 hover:bg-primary-100"
+                  >
+                    Учебный план
+                  </Link>
                   <span className="text-xs text-gray-400">{selectedCourse.duration_weeks} нед.</span>
                 </div>
               </div>

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
 import { StudentTodoList } from '@/components/student/StudentTodoList'
+import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import { ATTEMPT_STATUS_LABEL, ATTEMPT_STATUS_TONE, gradeScaleMax } from '@/lib/topicHomework'
@@ -114,6 +115,9 @@ export function StudentDashboard() {
           </button>
         </div>
       )}
+
+      {/* Эта неделя по учебному плану (§151); без плана не рисуется */}
+      <StudentWeekPlan />
 
       {/* Courses section */}
       {courses.length > 0 && (

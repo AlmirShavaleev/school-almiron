@@ -176,4 +176,12 @@ describe('CourseProgramPage materials tab', () => {
 
     await waitFor(() => expect(screen.getByRole('tab', { name: /Программа курса/i })).toHaveClass('border-primary-600'))
   })
+
+  it('в шапке курса есть ссылка на учебный план (§151)', async () => {
+    fromSpy.mockImplementation(() => makeChain({ data: [], error: null }))
+    renderPage()
+    fireEvent.click(screen.getByRole('link', { name: /Физика/i }))
+    await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
+    expect(await screen.findByTestId('course-study-plan-link')).toHaveAttribute('href', '/course-program/course-1/plan')
+  })
 })

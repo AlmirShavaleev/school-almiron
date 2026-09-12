@@ -17,6 +17,11 @@ import { StudentDashboard } from '@/pages/student/StudentDashboard'
  * легаси `homeworks`/`homework_submissions`, и различает статусы работ.
  */
 
+const useStudentWeekPlanMock = vi.fn(() => ({ courses: [], loading: false, error: null }))
+vi.mock('@/hooks/useStudentWeekPlan', () => ({
+  useStudentWeekPlan: () => useStudentWeekPlanMock(),
+}))
+
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector({ profile: { id: 'profile-1', full_name: 'Almir Shavaleev' } }),
 }))
@@ -124,5 +129,19 @@ describe('StudentDashboard — живой контур topic_homework', () => {
   it('пустой список ДЗ говорит об этом словами, а не пустотой', () => {
     renderDashboard()
     expect(screen.getByText('Домашних заданий пока нет')).toBeInTheDocument()
+  })
+
+  it('блок «Эта неделя» по учебному плану монтируется в кабинете (§151)', () => {
+    useStudentWeekPlanMock.mockReturnValueOnce({
+      courses: [{
+        course_id: 'c1', group_id: 'g1', course_title: 'Физика', subject: 'physics',
+        week_no: 1, weeks_total: 10, week_start: '2026-09-07', week_end: '2026-09-13',
+        deadline: '2026-09-13T21:00:00+00:00',
+        topics: [{ topic_id: 't1', title: 'Кинематика', open_now: true, hw_published: true, hw_status: 'not_started', done: false, marked: false }],
+      }],
+      loading: false, error: null,
+    })
+    renderDashboard()
+    expect(screen.getByTestId('student-week-plan')).toHaveTextContent('Кинематика')
   })
 })
