@@ -28,6 +28,7 @@ import {
   splitHomeworkFiles,
 } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
+import { FileChip } from '@/components/shared/FileChip'
 import { getSignedFileUrl } from '@/lib/storage'
 import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 
@@ -228,7 +229,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
 
       {/* ── Инструкция ── */}
       {homework.instructions && (
-        <p className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{homework.instructions}</p>
+        <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{homework.instructions}</p>
       )}
 
       {/* ── Полоса шагов ── */}
@@ -546,15 +547,20 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                               key={f.id}
                               bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
                               url={f.storage_path}
-                              className="inline-flex items-center gap-2 border border-gray-200 bg-white rounded-2xl px-2.5 py-1.5 text-xs hover:border-primary-300"
+                              className="inline-flex max-w-full min-w-0 items-center gap-2 border border-gray-200 bg-white rounded-2xl px-2.5 py-1.5 text-xs hover:border-primary-300"
                             >
-                              <span className={cn(
-                                'flex-none w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold text-white',
-                                f.mime_type?.startsWith('image/') ? 'bg-blue-500' : 'bg-red-500'
-                              )}>
-                                {f.mime_type?.startsWith('image/') ? 'IMG' : 'PDF'}
-                              </span>
-                              <span className="text-gray-700 truncate">{f.file_name}</span>
+                              <FileChip
+                                name={f.file_name}
+                                className="gap-2 text-gray-700"
+                                leading={(
+                                  <span className={cn(
+                                    'flex-none w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold text-white',
+                                    f.mime_type?.startsWith('image/') ? 'bg-blue-500' : 'bg-red-500'
+                                  )}>
+                                    {f.mime_type?.startsWith('image/') ? 'IMG' : 'PDF'}
+                                  </span>
+                                )}
+                              />
                             </SignedFileLink>
                           ))}
                         </div>

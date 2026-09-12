@@ -126,7 +126,9 @@ function MaterialCard({
       )}
 
       {material.kind === 'text' && (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
+        // break-words: ссылка или формула без пробелов иначе раздвигает
+        // страницу шире экрана телефона (§158, аудит №5).
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
       )}
 
       {material.kind === 'video' &&
