@@ -6972,6 +6972,10 @@ export type Database = {
         Args: { p_job_id: string }
         Returns: undefined
       }
+      topic_homework_clear_marks: {
+        Args: { p_attempt_id: string; p_dry_run?: boolean }
+        Returns: { ai_findings: number; teacher_regions: number }[]
+      }
       topic_homework_ai_request_check: {
         Args: { p_attempt_id: string }
         Returns: string

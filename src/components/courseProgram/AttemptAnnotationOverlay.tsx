@@ -137,6 +137,7 @@ export function AttemptAnnotationOverlay({
   publishButtonLabel = 'Опубликовать пометки',
   hideToolbarPublish = false,
   importRegionsRef,
+  onMarksCleared,
   solutionTopicId,
   onClose,
 }: {
@@ -160,6 +161,8 @@ export function AttemptAnnotationOverlay({
   hideToolbarPublish?: boolean
   /** Проброс к аннотатору: через него панель черновика ИИ переносит рамки. */
   importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
+  /** §156. После «Очистить пометки» — панель ИИ снаружи перечитывает находки. */
+  onMarksCleared?: () => void
   /**
    * Тема, из которой брать решение задания для справочной панели.
    *
@@ -395,6 +398,7 @@ export function AttemptAnnotationOverlay({
               hideToolbarPublish={hideToolbarPublish}
               publishRef={publishRef}
               importRegionsRef={importRegionsRef}
+              onMarksCleared={onMarksCleared}
             />
           </Suspense>
         )}
