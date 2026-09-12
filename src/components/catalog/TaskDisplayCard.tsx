@@ -81,41 +81,50 @@ export function TaskDisplayCard({
         completed ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
       }`}
     >
-      {difficultyBadge && (
-        <span
-          className={`absolute right-4 top-4 z-10 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${difficultyBadge.className}`}
-          data-testid="task-difficulty-badge"
-        >
-          {difficultyBadge.label}
-        </span>
-      )}
-
-      {/* Statement */}
+      {/* Statement. Бейдж сложности — обычный элемент строки, а не absolute в
+          углу: раньше он ложился ровно на кружок «выполнено» и закрывал его
+          (§154, вопрос владельца «где отмечать»). */}
       <div className="flex items-start gap-3 p-4">
         {number !== undefined && (
           <span className="text-xs font-mono text-gray-400 mt-0.5 w-6 flex-shrink-0">
             #{number}
           </span>
         )}
-        <div className={`flex-1 min-w-0 ${difficultyBadge ? 'pr-20 sm:pr-24' : ''}`}>
+        <div className="flex-1 min-w-0">
           <TaskContentRenderer html={stmt} className={figureScaleClass} />
         </div>
-        {onToggle && (
-          <button
-            onClick={onToggle}
-            title={completed ? 'Отменить отметку' : 'Отметить выполненной'}
-            className="flex-shrink-0 mt-0.5"
+        {difficultyBadge && (
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${difficultyBadge.className}`}
+            data-testid="task-difficulty-badge"
           >
-            {completed
-              ? <CheckCircle2 className="w-6 h-6 text-green-500 hover:text-green-600 transition-colors" />
-              : <Circle       className="w-6 h-6 text-gray-300 hover:text-primary-500 transition-colors" />
-            }
-          </button>
+            {difficultyBadge.label}
+          </span>
         )}
       </div>
 
-      {/* Action row */}
+      {/* Action row. Отметка «выполнено» — первая кнопка с подписью, а не
+          безымянный кружок в углу: на телефоне кружок не читался как действие. */}
       <div className="px-4 pb-4 flex gap-2 flex-wrap items-center">
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            aria-pressed={completed}
+            title={completed ? 'Отменить отметку' : 'Отметить выполненной'}
+            data-testid="task-complete-toggle"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              completed
+                ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            {completed
+              ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+              : <Circle       className="w-4 h-4 text-gray-400" />
+            }
+            {completed ? 'Выполнено' : 'Отметить выполненной'}
+          </button>
+        )}
         {extraActions}
 
         {/* Answer toggle (only when not force-controlled) */}

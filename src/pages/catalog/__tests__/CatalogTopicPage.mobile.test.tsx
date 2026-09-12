@@ -78,4 +78,19 @@ describe('CatalogTopicPage — ширина на телефоне', () => {
     expect(classes).toContain('hidden')
     expect(classes).toContain('xl:block')
   })
+
+  it('лента «Быстрый переход» скрыта до xl', () => {
+    const { getByTestId } = renderPage()
+    const classes = getByTestId('topic-switcher').className.split(/\s+/)
+    expect(classes).toContain('hidden')
+    expect(classes).toContain('xl:block')
+  })
+
+  it('на телефоне есть кнопка «Назад к темам раздела», ведущая на страницу раздела', () => {
+    const { getByTestId } = renderPage()
+    const back = getByTestId('topic-back-to-section') as HTMLAnchorElement
+    expect(back.textContent).toContain('Назад к темам раздела')
+    expect(back.getAttribute('href')).toContain('/catalog/s1')
+    expect(back.className.split(/\s+/)).toContain('xl:hidden')
+  })
 })

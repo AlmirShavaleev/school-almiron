@@ -79,17 +79,30 @@ export function CatalogTopicPage() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      {/* Breadcrumb */}
-      <nav className="mb-4 flex items-center gap-2 text-sm text-gray-500 flex-wrap">
-        <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">Каталог</Link>
-        <ChevronLeft className="w-3 h-3 rotate-180" />
-        <Link to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">{sectionTitle}</Link>
+      {/* Breadcrumb. На телефоне вместо крошек — одна заметная кнопка назад
+          к списку тем: переход между темами на узком экране идёт только через
+          неё (решение владельца 13.09, §154), лента тем там скрыта. */}
+      <nav className="mb-4 text-sm text-gray-500">
+        <Link
+          to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`}
+          data-testid="topic-back-to-section"
+          className="xl:hidden inline-flex min-h-11 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-primary-700 ring-1 ring-primary-200 shadow-sm active:bg-primary-50"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Назад к темам раздела
+        </Link>
+        <div className="hidden xl:flex items-center gap-2 flex-wrap">
+          <Link to={`/catalog?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">Каталог</Link>
+          <ChevronLeft className="w-3 h-3 rotate-180" />
+          <Link to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">{sectionTitle}</Link>
+        </div>
       </nav>
 
       {/* Список тем раздела живёт только на широком экране (xl): на телефоне
           колонки складываются, и 30 карточек тем вставали НАД задачами —
           ученик крутил список и думал, что задач нет (§154, board/008).
-          Навигацию по темам на узком экране даёт лента «Быстрый переход». */}
+          Навигацию по темам на узком экране даёт кнопка «Назад к темам раздела»
+          над заголовком; лента «Быстрый переход» там тоже скрыта. */}
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="hidden xl:block xl:sticky xl:top-6 xl:self-start xl:h-[calc(100vh-7.5rem)] xl:overflow-hidden">
           <div className="space-y-4 rounded-[28px] bg-white/90 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80 backdrop-blur xl:flex xl:h-full xl:min-h-0 xl:flex-col">
@@ -264,7 +277,9 @@ function TopicSwitcher({
   view: CatalogViewMode
 }) {
   return (
-    <div className="mt-4 rounded-2xl bg-gradient-to-r from-slate-50 via-white to-blue-50/70 p-3 ring-1 ring-slate-200/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+    // hidden xl:block: на телефоне ленты тем нет — назад к темам ведёт кнопка
+    // над заголовком (решение владельца 13.09, §154); на десктопе лента остаётся.
+    <div data-testid="topic-switcher" className="mt-4 hidden xl:block rounded-2xl bg-gradient-to-r from-slate-50 via-white to-blue-50/70 p-3 ring-1 ring-slate-200/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
       <div className="mb-2 flex items-center gap-2 px-1 text-xs font-medium text-slate-500">
         <Sparkles className="h-3.5 w-3.5 text-blue-500" />
         Быстрый переход по темам раздела
