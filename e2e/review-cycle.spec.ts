@@ -1,11 +1,12 @@
 import { test, expect, chromium, type BrowserContext, type Locator, type Page } from '@playwright/test'
 import path from 'path'
 import { AUTH_FILE } from './global-setup'
+import { DEMO_PASSWORD } from './testCredentials'
 
 test.describe.configure({ mode: 'serial' })
 
 const STUDENT_EMAIL = 'alex@demo.ru'
-const STUDENT_PASSWORD = 'demo123'
+const STUDENT_PASSWORD = DEMO_PASSWORD
 const STUDENT_NAME = 'Алексей Петров'
 const COMMENT_SUFFIX = `(e2e ${Date.now().toString(36)})`
 const COMMENT_TEXT = `Проверь знаки ${COMMENT_SUFFIX}`

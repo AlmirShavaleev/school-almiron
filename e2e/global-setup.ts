@@ -2,6 +2,7 @@ import { chromium, type FullConfig } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { createFixture } from './pdf-fixtures'
+import { DEMO_PASSWORD } from './testCredentials'
 
 export const AUTH_FILE          = path.resolve('test-results/auth.json')
 export const PDF_FIXTURES_FILE  = path.resolve('test-results/pdf-fixtures.json')
@@ -72,7 +73,7 @@ export default async function globalSetup(_config: FullConfig) {
   await page.goto('http://localhost:5173/login')
   await page.waitForSelector('input[type="email"]', { timeout: 30_000 })
   await page.fill('input[type="email"]', 'physics@demo.ru')
-  await page.fill('input[type="password"]', 'demo123')
+  await page.fill('input[type="password"]', DEMO_PASSWORD)
   await page.click('button[type="submit"]')
   await page.waitForURL(u => !u.pathname.includes('/login'), { timeout: 30_000 })
   await ctx.storageState({ path: AUTH_FILE })

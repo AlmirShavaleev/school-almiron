@@ -12,9 +12,17 @@ const LESSON_ID = process.env.E2E_MATERIALS_LESSON_ID
 const TEACHER_PROFILE_ID = '43396c60-0c26-4c7d-a944-1dfa727353be'
 const BUCKET = 'lesson-materials'
 
+// §160: пароль демо-учётки — из окружения, тот же приём, что e2e/testCredentials.ts.
+// Плоский .mjs, запускается напрямую node-ом (не через ts-node), поэтому не
+// импортирует .ts-модуль — держит свою короткую проверку.
+const DEMO_PASSWORD = process.env.SEED_PASSWORD
+if (!DEMO_PASSWORD) {
+  throw new Error('SEED_PASSWORD не задан. Пароль демо-учётки для e2e больше не хранится в коде.')
+}
+
 async function main() {
   const supabase = createClient(SUPABASE_URL, ANON_KEY)
-  const { error: authErr } = await supabase.auth.signInWithPassword({ email: 'physics@demo.ru', password: 'demo123' })
+  const { error: authErr } = await supabase.auth.signInWithPassword({ email: 'physics@demo.ru', password: DEMO_PASSWORD })
   if (authErr) throw authErr
 
   const results = {}

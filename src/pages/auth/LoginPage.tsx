@@ -17,23 +17,13 @@ const schema = z.object({
 })
 type FormData = z.infer<typeof schema>
 
-// Demo accounts shown only in non-production builds
-const IS_DEV = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO === 'true'
-
-const DEMO_ACCOUNTS = IS_DEV ? [
-  { label: 'Ученик',  email: 'alex@demo.ru',    password: 'demo123' },
-  { label: 'Учитель', email: 'physics@demo.ru', password: 'demo123' },
-  { label: 'Куратор', email: 'curator@demo.ru', password: 'demo123' },
-  { label: 'Владелец', email: 'owner@demo.ru',  password: 'demo123' },
-] : []
-
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const profile = useAuthStore(state => state.profile)
   const [error, setError] = useState('')
 
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
 
@@ -49,11 +39,6 @@ export function LoginPage() {
     } else {
       navigate(getPendingInvitePath() || getPendingTeacherJoinLinkPath() || '/dashboard')
     }
-  }
-
-  function loginAsDemo(email: string, password: string) {
-    setValue('email', email)
-    setValue('password', password)
   }
 
   // С 12.08 главная отправляет гостя сюда, поэтому форма входа стала местом,
@@ -134,24 +119,6 @@ export function LoginPage() {
             </Link>
           </div>
         </div>
-
-        {/* Demo accounts — only shown in development */}
-        {IS_DEV && DEMO_ACCOUNTS.length > 0 && (
-        <div className="mt-6 bg-white/80 rounded-2xl p-4 backdrop-blur">
-          <p className="text-xs text-gray-500 text-center mb-3 font-medium">ДЕМО-АККАУНТЫ (пароль: demo123)</p>
-          <div className="grid grid-cols-3 gap-2">
-            {DEMO_ACCOUNTS.map(acc => (
-              <button
-                key={acc.email}
-                onClick={() => loginAsDemo(acc.email, acc.password)}
-                className="px-2 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs rounded-lg transition-colors font-medium"
-              >
-                {acc.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        )}
       </div>
     </div>
   )

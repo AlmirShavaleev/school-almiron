@@ -7,6 +7,7 @@ import { test, expect, chromium, type Page, type BrowserContext } from '@playwri
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { DEMO_PASSWORD } from './testCredentials'
 
 const SUPABASE_URL = 'https://kthfozyfruorwjhvvsbw.supabase.co'
 const ANON_KEY = fs.readFileSync(path.resolve('.env'), 'utf8')
@@ -35,7 +36,7 @@ async function admin() {
   // direct postgres is not exposed here, so seed through the same authenticated
   // teacher session that owns the rows (matches RLS, same as the real app would insert).
   const sb = createClient(SUPABASE_URL, ANON_KEY)
-  await sb.auth.signInWithPassword({ email: 'physics@demo.ru', password: 'demo123' })
+  await sb.auth.signInWithPassword({ email: 'physics@demo.ru', password: DEMO_PASSWORD })
   return sb
 }
 
@@ -73,7 +74,7 @@ test.beforeAll(async () => {
 
   // Student A submits via the real submit RPC (own session), then teacher grades it.
   const sbA = createClient(SUPABASE_URL, ANON_KEY)
-  await sbA.auth.signInWithPassword({ email: 'alex@demo.ru', password: 'demo123' })
+  await sbA.auth.signInWithPassword({ email: 'alex@demo.ru', password: DEMO_PASSWORD })
   check('submit_task_solution', (await sbA.rpc('submit_task_solution', {
     p_assigned_id: ASSIGNED_ID, p_answers: {}, p_files: [],
   } as never)).error)
@@ -98,7 +99,7 @@ test.beforeAll(async () => {
   await studentAPage.goto('/login')
   await studentAPage.waitForSelector('input[type="email"]', { timeout: 30_000 })
   await studentAPage.fill('input[type="email"]', 'alex@demo.ru')
-  await studentAPage.fill('input[type="password"]', 'demo123')
+  await studentAPage.fill('input[type="password"]', DEMO_PASSWORD)
   await studentAPage.click('button[type="submit"]')
   await studentAPage.waitForURL(u => !u.pathname.includes('/login'), { timeout: 30_000 })
 
@@ -107,7 +108,7 @@ test.beforeAll(async () => {
   await studentBPage.goto('/login')
   await studentBPage.waitForSelector('input[type="email"]', { timeout: 30_000 })
   await studentBPage.fill('input[type="email"]', 'nikita@demo.ru')
-  await studentBPage.fill('input[type="password"]', 'demo123')
+  await studentBPage.fill('input[type="password"]', DEMO_PASSWORD)
   await studentBPage.click('button[type="submit"]')
   await studentBPage.waitForURL(u => !u.pathname.includes('/login'), { timeout: 30_000 })
 })

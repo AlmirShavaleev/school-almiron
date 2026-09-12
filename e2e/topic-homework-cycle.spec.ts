@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
 import { AUTH_FILE } from './global-setup'
+import { DEMO_PASSWORD } from './testCredentials'
 
 /**
  * Сквозной smoke новой ветки ДЗ (topic_homework): преподаватель выдаёт ДЗ по
@@ -72,7 +73,7 @@ async function getSeedClient(): Promise<SupabaseClient> {
   if (!anonKey) throw new Error('VITE_SUPABASE_ANON_KEY is not set — cannot run topic-homework-cycle E2E fixtures')
 
   const c = createClient(url, anonKey)
-  const { error } = await c.auth.signInWithPassword({ email: 'physics@demo.ru', password: 'demo123' })
+  const { error } = await c.auth.signInWithPassword({ email: 'physics@demo.ru', password: DEMO_PASSWORD })
   if (error) throw new Error(`topic-homework-cycle seed auth failed: ${error.message}`)
 
   seedClient = c
@@ -82,7 +83,7 @@ async function getSeedClient(): Promise<SupabaseClient> {
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
 const STUDENT_EMAIL = 'alex@demo.ru'
-const STUDENT_PASSWORD = 'demo123'
+const STUDENT_PASSWORD = DEMO_PASSWORD
 const HOMEWORK_PDF = path.resolve('e2e/fixtures/test-material.pdf')
 
 // Фикстуры gitignored и генерируются на лету — тот же приём, что в

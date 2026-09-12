@@ -7,6 +7,7 @@ import { test, expect, chromium, type Page, type BrowserContext, type APIRequest
 import path from 'path'
 import fs from 'fs'
 import { execSync } from 'child_process'
+import { DEMO_PASSWORD } from './testCredentials'
 
 const FIXTURES_DIR = path.resolve('e2e/fixtures')
 const PDF_FIXTURE = path.join(FIXTURES_DIR, 'test-material.pdf')
@@ -40,7 +41,7 @@ test.beforeAll(async () => {
     await p.goto('/login')
     await p.waitForSelector('input[type="email"]', { timeout: 30_000 })
     await p.fill('input[type="email"]', email)
-    await p.fill('input[type="password"]', 'demo123')
+    await p.fill('input[type="password"]', DEMO_PASSWORD)
     await p.click('button[type="submit"]')
     await p.waitForURL(u => !u.pathname.includes('/login'), { timeout: 30_000 })
     return { ctx, page: p }

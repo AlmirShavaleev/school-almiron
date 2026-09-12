@@ -8,6 +8,7 @@
  */
 import { test, expect, chromium, type Page, type BrowserContext } from '@playwright/test'
 import path from 'path'
+import { DEMO_PASSWORD } from './testCredentials'
 
 const COLLECTION_TITLE = 'qqq' // owned by physics@demo.ru, reused across Etap 1-5 tests
 
@@ -30,7 +31,7 @@ test.beforeAll(async () => {
   await studentPage.goto('/login')
   await studentPage.waitForSelector('input[type="email"]', { timeout: 30_000 })
   await studentPage.fill('input[type="email"]', 'alex@demo.ru')
-  await studentPage.fill('input[type="password"]', 'demo123')
+  await studentPage.fill('input[type="password"]', DEMO_PASSWORD)
   await studentPage.click('button[type="submit"]')
   await studentPage.waitForURL(u => !u.pathname.includes('/login'), { timeout: 30_000 })
   await studentPage.waitForSelector('text=Мои задания', { timeout: 20_000 })

@@ -16,6 +16,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { DEMO_PASSWORD } from './testCredentials'
 
 // This runs as a plain Node script (Playwright global setup/teardown), not
 // through Vite — VITE_SUPABASE_URL/ANON_KEY aren't in process.env unless we
@@ -74,7 +75,7 @@ async function getClient(): Promise<SupabaseClient> {
   const c = createClient(url, anonKey)
   const { error } = await c.auth.signInWithPassword({
     email:    'physics@demo.ru',
-    password: 'demo123',
+    password: DEMO_PASSWORD,
   })
   if (error) throw new Error(`PDF E2E fixture auth failed: ${error.message}`)
 

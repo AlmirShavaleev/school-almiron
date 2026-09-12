@@ -1,6 +1,9 @@
 -- ============================================================
 -- DEMO USERS — создание всех тестовых пользователей
--- Пароль для всех: demo123
+-- §160 (2026-09-12): пароль убран из архивного файла задним числом — он
+-- был опубликован тут открытым текстом и утёк в боевую базу. Файл лежит
+-- в _legacy/ как исторический журнал, не переигрывается; для восстановления
+-- этого сценария подставьте свой пароль вместо '<redacted>'.
 -- ============================================================
 
 create extension if not exists pgcrypto;
@@ -11,7 +14,7 @@ create extension if not exists pgcrypto;
 
 do $$
 declare
-  pwd text := crypt('demo123', gen_salt('bf'));
+  pwd text := crypt('<redacted>', gen_salt('bf'));
   now_ts timestamptz := now();
 begin
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, confirmation_token, recovery_token)

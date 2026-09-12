@@ -20,7 +20,7 @@ cp .env.example .env
 ### 3. Запуск
 npm run dev
 
-> Без Supabase: работает в demo-режиме. Логин: alex@demo.ru / demo123
+> Без Supabase: работает в demo-режиме. Демо-учётки заводятся локально скриптом `scripts/seed-users.mjs` — пароли не хранятся в репозитории.
 
 ## Настройка Supabase
 Применить миграции в SQL Editor:
@@ -38,10 +38,9 @@ npm run dev
 | admin | /admin | Управление платформой |
 | owner | /owner | Бизнес-аналитика |
 
-## Демо-аккаунты (пароль: demo123)
-- alex@demo.ru (ученик)
-- petrov-parent@demo.ru (родитель)
-- physics@demo.ru (учитель)
-- curator@demo.ru (куратор)
-- admin@demo.ru (админ)
-- owner@demo.ru (владелец)
+## Демо-аккаунты
+
+Заводятся локально скриптом `scripts/seed-users.mjs` (см. §160 в
+`PROJECT_STATE.md`). Пароль не хранится в репозитории — передаётся
+скрипту через переменную окружения `SEED_PASSWORD`. Скрипт отказывается
+работать против боевого проекта Supabase.
