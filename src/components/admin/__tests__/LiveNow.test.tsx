@@ -48,6 +48,7 @@ vi.mock('@/hooks/useSchoolPresence', () => ({
 }))
 
 import { LiveNow } from '@/components/admin/LiveNow'
+import { PRESENCE_WINDOW_S } from '@/lib/schoolPresence'
 
 const series = (values: number[]) =>
   values.map((value, i) => ({ day: `2026-08-${String(20 + i).padStart(2, '0')}`, value }))
@@ -129,11 +130,22 @@ describe('присутствие', () => {
     expect(screen.queryByTestId('live-online-empty')).not.toBeInTheDocument()
   })
 
-  it('экран обещает 45 секунд, а не «полминуты»', () => {
-    // Приёмка поправлена сознательно: при отметке раз в 20 честный срок
-    // исчезновения — 45 секунд.
+  it('подпись совпадает с окном функции, а не с числом из головы', () => {
+    // Приёмка §165: подпись обязана описывать ровно то окно, которое панель
+    // спрашивает у `school_presence_online`. Число берётся из той же
+    // константы — поменяй окно, не поправив текст, и тест упадёт.
     draw()
-    expect(screen.getByTestId('live-online').textContent).toContain('45 секунд')
+    const minutes = PRESENCE_WINDOW_S / 60
+    expect(screen.getByTestId('live-online').textContent).toContain(`${minutes} минут`)
+    // Старое обещание «45 секунд» снято осознанно: теперь присутствие — это
+    // «занимался последние полчаса», а не «вкладка поверх остальных».
+    expect(screen.getByTestId('live-online').textContent).not.toContain('45 секунд')
+  })
+
+  it('конспект в соседней вкладке назван занятием прямо на экране', () => {
+    // Ради этого §165 и делался: ученик, читающий PDF, присутствует.
+    draw()
+    expect(screen.getByTestId('live-online').textContent).toContain('соседней вкладке')
   })
 
   it('на каком экране человек — не показываем вовсе', () => {

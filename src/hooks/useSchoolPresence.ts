@@ -3,8 +3,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import {
   PRESENCE_POLL_MS, PRESENCE_TOUCH_MS, PRESENCE_WINDOW_S,
-  parseOnline, samePeople, type PresencePerson,
+  getLastActivityAt, noteActivity, parseOnline, samePeople, shouldTouch,
+  type PresencePerson,
 } from '@/lib/schoolPresence'
+
+/** Что считается действием на платформе. Только факт, без подробностей. */
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown'] as const
 
 /**
  * Отметка «я на платформе».
@@ -14,11 +18,16 @@ import {
  * читает список только админ, но если ученик не отметится, показывать будет
  * нечего.
  *
- * Отметки идут ТОЛЬКО при видимой вкладке. Во-первых, требование «вкладка в
- * фоне не жжёт ресурсы»; во-вторых, человек с двадцатью фоновыми вкладками не
- * должен считаться присутствующим в школе больше остальных.
+ * РАНЬШЕ отметки шли только при видимой вкладке, и это было неверно: файлы,
+ * ссылки и часть видео открываются в новой вкладке, так что ученик, читающий
+ * конспект, пропадал из «Сейчас в школе» через 45 секунд. Панель показывала,
+ * у кого вкладка на переднем плане, а не кто занимается.
  *
- * Канала здесь больше нет — почему, написано в `@/lib/schoolPresence`.
+ * ТЕПЕРЬ — льготный период. Вкладка видна: такт 20 с. Вкладка в фоне: такт
+ * 60 с, но только пока с последнего действия прошло меньше получаса. Дальше
+ * молчим — вкладка, забытая на ночь, ресурсы не жжёт.
+ *
+ * Решение вынесено в `shouldTouch`, чтобы правило проверялось без часов.
  */
 export function useSchoolPresence() {
   const profile = useAuthStore(s => s.profile)
@@ -29,26 +38,62 @@ export function useSchoolPresence() {
     if (!profileId) return
 
     let stopped = false
+    let lastTouchAt = 0
 
-    function touch() {
-      if (stopped) return
-      if (typeof document !== 'undefined' && document.hidden) return
+    function sendTouch(now: number) {
+      lastTouchAt = now
       // Ошибку глушим намеренно: отметка присутствия не должна мешать работе,
       // как и счётчик визитов в App.tsx. Не прошла — человек пропадёт из
-      // списка через 45 секунд, и это честнее, чем сломанный экран.
+      // списка по истечении окна, и это честнее, чем сломанный экран.
       void (supabase as any).rpc('school_presence_touch').then(() => {}, () => {})
     }
 
-    touch()
-    const timer = setInterval(touch, PRESENCE_TOUCH_MS)
-    // Вернулись на вкладку — отмечаемся сразу, не дожидаясь такта: иначе после
-    // фона человек до двадцати секунд числился бы ушедшим.
-    document.addEventListener('visibilitychange', touch)
+    function tick() {
+      if (stopped) return
+      const now = Date.now()
+      const hidden = typeof document !== 'undefined' && document.hidden
+      if (shouldTouch(now, { hidden, lastTouchAt, lastActivityAt: getLastActivityAt() })) {
+        sendTouch(now)
+      }
+    }
+
+    /**
+     * Действие человека: клик, ввод, возвращение на вкладку.
+     *
+     * Слушатели глобальные и намеренно грубые — им достаточно ЗНАТЬ, что
+     * человек что-то сделал. Открытие материала (ссылка с `target="_blank"`)
+     * сюда попадает само: клик по ней происходит на нашей странице. Так
+     * правило работает и для тех мест, которые про присутствие не знают, —
+     * и ни одно из них не приходится править.
+     */
+    function onActivity() {
+      if (stopped) return
+      const now = Date.now()
+      noteActivity(now)
+      // Действие — повод отметиться сразу: иначе первые секунды после
+      // возвращения человек числился бы ушедшим.
+      sendTouch(now)
+    }
+
+    function onVisibility() {
+      // Уход в фон действием НЕ считается: иначе вкладка, брошенная в фоне,
+      // продлевала бы себе льготный период сама.
+      if (typeof document !== 'undefined' && document.hidden) return
+      onActivity()
+    }
+
+    onActivity()
+    const timer = setInterval(tick, PRESENCE_TOUCH_MS)
+    for (const name of ACTIVITY_EVENTS) {
+      document.addEventListener(name, onActivity, { passive: true })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       stopped = true
       clearInterval(timer)
-      document.removeEventListener('visibilitychange', touch)
+      for (const name of ACTIVITY_EVENTS) document.removeEventListener(name, onActivity)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [profileId])
 }
