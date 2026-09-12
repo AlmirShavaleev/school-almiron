@@ -176,4 +176,21 @@ describe('CourseProgramPage materials tab', () => {
 
     await waitFor(() => expect(screen.getByRole('tab', { name: /Программа курса/i })).toHaveClass('border-primary-600'))
   })
+
+  /**
+   * §164. Каталог уводит со страницы целиком, поэтому возврат с подобранными
+   * задачами приходит адресом. Без этого преподаватель после прикрепления
+   * оказывался бы на списке курсов и искал тему заново.
+   */
+  it('возврат из каталога открывает окно темы', async () => {
+    fromSpy.mockImplementation(() => makeChain({ data: [], error: null }))
+
+    render(
+      <MemoryRouter initialEntries={['/course-program?courseId=course-1&materialsTopic=topic-1&tile=test']}>
+        <CourseProgramPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('topic-materials-modal')).toHaveTextContent('Тема 1 / Модуль 1'))
+  })
 })

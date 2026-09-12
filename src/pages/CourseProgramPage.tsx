@@ -1525,6 +1525,9 @@ export function CourseProgramPage() {
 
   // Topic materials modal
   const [matTopic,  setMatTopic]  = useState<{ topic: Topic; moduleTitle: string } | null>(null)
+  // Рубрика, на которой окно темы должно открыться, — только при возврате из
+  // каталога (§164). Обычное открытие показывает окно как показывало.
+  const [matTile,   setMatTile]   = useState<string | null>(null)
   // Растёт при закрытии модалки: вкладки курса перечитывают данные без F5.
   const [matRefreshKey, setMatRefreshKey] = useState(0)
   const [toastMsg,  setToastMsg]  = useState<string | null>(null)
@@ -1533,6 +1536,32 @@ export function CourseProgramPage() {
   function openMaterials(topic: Topic, moduleTitle: string) {
     setMatTopic({ topic, moduleTitle })
   }
+
+  /**
+   * Возврат из каталога после подбора задач (§164).
+   *
+   * Каталог уводит со страницы целиком, поэтому вернуться «туда же» можно
+   * только адресом: `materialsTopic` открывает окно темы, `tile` — нужную
+   * рубрику. Параметры снимаем сразу, как окно открыто: иначе «назад» открывал
+   * бы его снова.
+   */
+  const materialsTopicParam = searchParams.get('materialsTopic')
+  const materialsTileParam  = searchParams.get('tile')
+  useEffect(() => {
+    if (!materialsTopicParam || matTopic) return
+    const found = modules
+      .flatMap(m => m.topics.map(t => ({ topic: t, moduleTitle: m.title })))
+      .find(x => x.topic.id === materialsTopicParam)
+    if (!found) return
+    setMatTopic(found)
+    setMatTile(materialsTileParam)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('materialsTopic')
+      next.delete('tile')
+      return next
+    }, { replace: true })
+  }, [materialsTopicParam, materialsTileParam, matTopic, modules, setSearchParams])
 
   // ВАЖНО: без useMemo этот объект создаётся заново на каждый рендер.
   // Он стоит в зависимостях эффектов и уходит в пропсы дочерних компонентов,
@@ -2244,7 +2273,8 @@ export function CourseProgramPage() {
 
     <TopicMaterialsModal
       open={!!matTopic}
-      onClose={() => { setMatTopic(null); setMatRefreshKey(k => k + 1) }}
+      onClose={() => { setMatTopic(null); setMatTile(null); setMatRefreshKey(k => k + 1) }}
+      initialTile={matTile}
       topicId={matTopic?.topic.id ?? null}
       topicTitle={matTopic?.topic.title ?? ''}
       moduleTitle={matTopic?.moduleTitle ?? ''}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ShoppingCart, Check, X } from 'lucide-react'
-import { useCartStore } from '@/store/cartStore'
+import { useActiveSelection } from '@/hooks/useActiveSelection'
 
 interface Props {
   taskId:    string
@@ -9,9 +9,10 @@ interface Props {
 }
 
 export function AddToCartButton({ taskId, className = '', compact = false }: Props) {
-  const addItem = useCartStore(s => s.addItem)
-  const removeItem = useCartStore(s => s.removeItem)
-  const inCart = useCartStore(s => s.items.some(item => item.catalog_task_id === taskId))
+  // Куда кладём — решает режим (§164): обычно подборка, в режиме подбора задач
+  // к уроку — его собственный набор. Кнопка про это больше ничего не знает.
+  const { items, addItem, removeItem } = useActiveSelection()
+  const inCart = items.some(item => item.catalog_task_id === taskId)
   const [justAdded, setJustAdded] = useState(false)
 
   const handleAdd = (e: React.MouseEvent) => {

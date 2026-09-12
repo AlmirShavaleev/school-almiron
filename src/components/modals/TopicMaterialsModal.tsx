@@ -520,9 +520,11 @@ interface Props {
   hwStatus?: string | null
   hwScore?: number | null
   hwMax?: number | null
+  /** Рубрика, на которой открыть окно, — возврат из каталога с задачами (§164). */
+  initialTile?: string | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
@@ -541,6 +543,15 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   useEffect(() => {
     setDateVal(availableFrom || '')
   }, [availableFrom, open, topicId])
+
+  // Возврат из каталога открывает окно сразу на своей рубрике (§164).
+  useEffect(() => {
+    if (!open || !initialTile) return
+    // Ключ приходит из адреса — сверяем с перечнем рубрик, а не верим строке.
+    if ((TOPIC_SECTION_ORDER as readonly string[]).includes(initialTile)) {
+      setActiveTile(initialTile as TopicSection)
+    }
+  }, [open, topicId, initialTile])
 
   if (!open || !topicId) return null
 

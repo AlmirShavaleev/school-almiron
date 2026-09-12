@@ -2,6 +2,7 @@ import { ShoppingCart } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
+import { useAttachTargetStore } from '@/store/attachStore'
 
 const STAFF = new Set(['teacher', 'admin', 'owner'])
 
@@ -11,8 +12,13 @@ const STAFF = new Set(['teacher', 'admin', 'owner'])
 export function CartBadge() {
   const profile = useAuthStore(s => s.profile)
   const items   = useCartStore(s => s.items)
+  // Пока подбираем задачи к уроку, угол занят кнопкой «Прикрепить к теме»:
+  // две плавающие кнопки в одном углу мы уже проходили (§153, board/007).
+  // Сама подборка при этом цела — она вернётся, как только режим выключат.
+  const attachMode = useAttachTargetStore(s => s.target !== null)
 
   if (!profile || (!STAFF.has(profile.role) && profile.role !== 'student')) return null
+  if (attachMode) return null
   if (items.length === 0) return null
 
   const destination = '/cart'
