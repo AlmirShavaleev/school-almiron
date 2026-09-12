@@ -8,6 +8,8 @@ import {
   REFERENCE_CHAR_LIMIT,
   REFERENCE_GAP_MARK,
   REFERENCE_TAIL_CHARS,
+  WORKSHEET_CHAR_LIMIT,
+  WORKSHEET_SECTION,
   describeParseFailure,
   extractAnnotationText,
   isParseUsable,
@@ -16,6 +18,7 @@ import {
   referencePromptBlock,
   tooLittleTextReason,
   truncateReference,
+  worksheetPromptBlock,
 } from '../../../supabase/functions/check-homework-ai/reference.ts'
 
 /**
@@ -217,5 +220,41 @@ describe('tooLittleTextReason — «мало» с числом, а не на с�
 
   it('ноль страниц считает за одну — деления на ноль в причине нет', () => {
     expect(tooLittleTextReason(OCR_ENGINE, '', 0)).toContain('0 знач. симв. на 1 стр.')
+  })
+})
+
+/** §149.1. Условие ДЗ — рабочий лист, свой потолок, свой блок в промпте. */
+describe('рабочий лист (условие ДЗ)', () => {
+  it('рубрика — worksheet_homework, потолок свой и меньше эталонного', () => {
+    expect(WORKSHEET_SECTION).toBe('worksheet_homework')
+    expect(WORKSHEET_CHAR_LIMIT).toBe(20_000)
+    expect(WORKSHEET_CHAR_LIMIT).toBeLessThan(REFERENCE_CHAR_LIMIT)
+  })
+
+  it('обрезка по своему потолку — голова и хвост листа на месте', () => {
+    const doc = 'ЗАДАНИЕ 1 '.repeat(2500) + 'Задание 19: запиши ответ'
+    const block = truncateReference(doc, WORKSHEET_CHAR_LIMIT)
+    expect(block.truncated).toBe(true)
+    expect(block.text.length).toBeLessThanOrEqual(WORKSHEET_CHAR_LIMIT)
+    expect(block.text.endsWith('Задание 19: запиши ответ')).toBe(true)
+  })
+
+  it('блок условия: оговорка о распознавании, число заданий — отсюда', () => {
+    const block = worksheetPromptBlock({ text: 'Задача 1. Запиши ответ.', truncated: false })
+    expect(block.startsWith('УСЛОВИЕ ДЗ')).toBe(true)
+    expect(block).toContain('распознаванием PDF')
+    expect(block).toContain('Число заданий для подсчёта балла бери отсюда')
+    expect(block).not.toContain('НЕ ЦЕЛИКОМ')
+  })
+
+  it('при обрезке условие говорит сверять пропуск по эталону', () => {
+    const block = worksheetPromptBlock({ text: 'x', truncated: true })
+    expect(block).toContain('НЕ ЦЕЛИКОМ')
+    expect(block).toContain('сверяй по эталону')
+  })
+
+  it('причина отказа называет материал', () => {
+    expect(describeParseFailure(['движок x: пусто'], 'рабочий лист ДЗ')).toContain('Не удалось распознать рабочий лист ДЗ:')
+    expect(describeParseFailure(['движок x: пусто'])).toContain('авторское решение:')
   })
 })

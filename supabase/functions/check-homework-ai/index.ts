@@ -17,6 +17,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   MAX_REFERENCE_BYTES,
+  REFERENCE_CHAR_LIMIT,
+  WORKSHEET_CHAR_LIMIT,
+  WORKSHEET_SECTION,
   describeParseFailure,
   extractAnnotationText,
   isParseUsable,
@@ -24,6 +27,7 @@ import {
   referencePromptBlock,
   tooLittleTextReason,
   truncateReference,
+  worksheetPromptBlock,
   type ParseEngine,
   type ReferenceState,
 } from './reference.ts'
@@ -143,7 +147,7 @@ Deno.serve(async (req) => {
     // не нужна (требование владельца 16.08).
     let reference: ReferenceResult
     try {
-      reference = await loadReference(admin, topicId, { apiKey, baseUrl })
+      reference = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, SOLUTION_SPEC)
     } catch (err) {
       reference = {
         text: '', truncated: false, state: 'failed', engine: null, cached: false,
@@ -151,6 +155,20 @@ Deno.serve(async (req) => {
       }
     }
     const solutionText = reference.text
+
+    // §149.1. Условие ДЗ — рабочий лист. Поле `instructions` пустое почти везде,
+    // и до этого модель узнавала состав заданий из решения, с обратной стороны.
+    // Тот же путь и те же правила, что у эталона: разбор бесплатным движком,
+    // кэш по материалу, провал — «проверим без условия», а не падение.
+    let worksheet: ReferenceResult
+    try {
+      worksheet = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, WORKSHEET_SPEC)
+    } catch (err) {
+      worksheet = {
+        text: '', truncated: false, state: 'failed', engine: null, cached: false,
+        error: `Условие не получено: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+      }
+    }
 
     // Шаг 3. Страницы работы.
     const { data: rawFiles } = await admin
@@ -190,6 +208,8 @@ Deno.serve(async (req) => {
     const prompt = buildPrompt({
       title: homework?.title ?? 'Домашнее задание',
       instructions: homework?.instructions ?? '',
+      worksheetText: worksheet.text,
+      worksheetTruncated: worksheet.truncated,
       solutionText,
       referenceTruncated: reference.truncated,
       gradeScale,
@@ -278,15 +298,22 @@ Deno.serve(async (req) => {
       confidence: capConfidence(parsed.confidence, reference.state),
       reference_state: reference.state,
       reference_chars: reference.text.length || null,
+      // §149.1. След в базе, что условие дошло: без него не отличить «модель
+      // не поняла» от «лист не распознался».
+      worksheet_state: worksheet.state,
+      worksheet_chars: worksheet.text.length || null,
       // Пропущенные страницы дописываем в разбор: преподаватель должен видеть,
       // что модель смотрела не всю работу, иначе «замечаний нет» соврёт.
-      summary: withReferenceNote(
-        withSkipNote(String(parsed.summary ?? ''), skipped),
-        reference,
+      summary: withWorksheetNote(
+        withReferenceNote(
+          withSkipNote(String(parsed.summary ?? ''), skipped),
+          reference,
+        ),
+        worksheet,
       ).slice(0, 8000) || null,
-      // Причина «эталона нет» не теряется: преподаватель видит её в разборе,
-      // диагностика — здесь. Проверка при этом прошла, статус done.
-      last_error: reference.error,
+      // Причина «эталона нет» / «условия нет» не теряется: преподаватель видит
+      // её в разборе, диагностика — здесь. Проверка при этом прошла, статус done.
+      last_error: [reference.error, worksheet.error].filter(Boolean).join(' | ') || null,
       completed_at: new Date().toISOString(),
       input_tokens: numberOrNull(usage.prompt_tokens),
       output_tokens: numberOrNull(usage.completion_tokens),
@@ -504,6 +531,18 @@ function withReferenceNote(summary: string, reference: ReferenceResult): string 
   return summary ? `${summary}\n\n${note}` : note
 }
 
+/**
+ * Приписка про условие (§149.1) — по тому же принципу: преподаватель обязан
+ * видеть, что модель составила представление о заданиях без рабочего листа.
+ */
+function withWorksheetNote(summary: string, worksheet: ReferenceResult): string {
+  if (worksheet.state === 'used') return summary
+  const note = worksheet.state === 'failed'
+    ? `Проверено без условия: ${worksheet.error ?? 'рабочий лист не удалось прочитать'}.`
+    : 'Проверено без условия: у темы нет рабочего листа ДЗ.'
+  return summary ? `${summary}\n\n${note}` : note
+}
+
 /** Приписка о непроверенных страницах — в конец разбора, отдельным абзацем. */
 function withSkipNote(summary: string, skipped: string[]): string {
   if (skipped.length === 0) return summary
@@ -537,20 +576,41 @@ const NO_REFERENCE = (state: ReferenceState, error: string | null = null): Refer
   ({ text: '', truncated: false, state, error, engine: null, cached: false })
 
 /**
- * Авторское решение темы для промпта.
+ * Что именно грузим из материалов темы. Две рубрики идут одним путём (§149.1):
+ * эталон — `solution`, условие — рабочий лист `worksheet_homework`. У каждой
+ * СВОЙ потолок: при общем длинное решение вытеснило бы условие или наоборот.
+ */
+interface MaterialSpec {
+  section: string
+  limit: number
+  /** Как называть материал в причинах отказа и в приписках. */
+  label: string
+  fallbackName: string
+}
+
+const SOLUTION_SPEC: MaterialSpec = {
+  section: 'solution', limit: REFERENCE_CHAR_LIMIT, label: 'авторское решение', fallbackName: 'solution.pdf',
+}
+const WORKSHEET_SPEC: MaterialSpec = {
+  section: WORKSHEET_SECTION, limit: WORKSHEET_CHAR_LIMIT, label: 'рабочий лист ДЗ', fallbackName: 'worksheet.pdf',
+}
+
+/**
+ * Текст материала темы для промпта: авторское решение или рабочий лист.
  *
- * Берём ТОЛЬКО рубрику `solution` — это решение домашней работы. `task_solution`
- * (решения задач урока) не трогаем: подсунуть разбор урока вместо разбора ДЗ
- * хуже, чем не дать ничего.
+ * Для эталона берём ТОЛЬКО рубрику `solution` — это решение домашней работы.
+ * `task_solution` (решения задач урока) не трогаем: подсунуть разбор урока
+ * вместо разбора ДЗ хуже, чем не дать ничего.
  *
  * Провал разбора НЕ валит проверку: возвращаем `state: 'failed'`, работа
- * проверяется без эталона. Ещё одна причина падать нам не нужна — за всё время
- * было восемь попыток проверки.
+ * проверяется без этого материала. Ещё одна причина падать нам не нужна — за
+ * всё время было восемь попыток проверки.
  */
-async function loadReference(
+async function loadMaterialText(
   admin: ReturnType<typeof createClient>,
   topicId: string | null,
   ai: { apiKey: string; baseUrl: string },
+  spec: MaterialSpec,
 ): Promise<ReferenceResult> {
   if (!topicId) return NO_REFERENCE('missing')
 
@@ -558,7 +618,7 @@ async function loadReference(
     .from('topic_material_items')
     .select('id, title, content, kind, storage_path, size_bytes, mime_type')
     .eq('topic_id', topicId)
-    .eq('section', 'solution')
+    .eq('section', spec.section)
     .order('position', { ascending: true })
 
   const rows = (materials ?? []) as Record<string, any>[]
@@ -572,7 +632,7 @@ async function loadReference(
     .join('\n\n')
     .trim()
   if (textual) {
-    const block = truncateReference(textual)
+    const block = truncateReference(textual, spec.limit)
     return { ...block, state: 'used', error: null, engine: null, cached: true }
   }
 
@@ -593,14 +653,14 @@ async function loadReference(
     && cached.storage_path === pdf.storage_path
     && Number(cached.size_bytes ?? 0) === Number(pdf.size_bytes ?? 0)
   ) {
-    const block = truncateReference(String(cached.text ?? ''))
+    const block = truncateReference(String(cached.text ?? ''), spec.limit)
     return { ...block, state: 'used', error: null, engine: cached.engine as ParseEngine, cached: true }
   }
 
   if (Number(pdf.size_bytes ?? 0) > MAX_REFERENCE_BYTES) {
     return NO_REFERENCE(
       'failed',
-      `Авторское решение больше ${Math.round(MAX_REFERENCE_BYTES / 1024 / 1024)} МБ — не разбирали`,
+      `${capitalize(spec.label)} больше ${Math.round(MAX_REFERENCE_BYTES / 1024 / 1024)} МБ — не разбирали`,
     )
   }
 
@@ -610,11 +670,11 @@ async function loadReference(
     const { data } = await admin.storage.from(bucket).download(pdf.storage_path)
     if (data) { bytes = new Uint8Array(await data.arrayBuffer()); break }
   }
-  if (!bytes) return NO_REFERENCE('failed', 'Файл авторского решения не скачался из хранилища')
+  if (!bytes) return NO_REFERENCE('failed', `Файл (${spec.label}) не скачался из хранилища`)
 
   // 3. Разбор: сначала бесплатный движок, платный — только если тот не смог.
   const dataUrl = `data:application/pdf;base64,${base64(bytes)}`
-  const fileName = String(pdf.storage_path).split('/').pop() || 'solution.pdf'
+  const fileName = String(pdf.storage_path).split('/').pop() || spec.fallbackName
   let engine = nextEngine(null)
   // §149. Причины собираем по КАЖДОМУ движку, а не держим последнюю: пять
   // прогонов подряд (06–10.09) в last_error лежал только отказ платного
@@ -635,7 +695,7 @@ async function loadReference(
           chars: parsed.text.length,
           created_at: new Date().toISOString(),
         })
-        const block = truncateReference(parsed.text)
+        const block = truncateReference(parsed.text, spec.limit)
         return { ...block, state: 'used', error: null, engine, cached: false }
       }
       // Молча принятый мусор — единственный способ этой работой сделать хуже,
@@ -649,7 +709,11 @@ async function loadReference(
     engine = nextEngine(engine)
   }
 
-  return NO_REFERENCE('failed', describeParseFailure(reasons))
+  return NO_REFERENCE('failed', describeParseFailure(reasons, spec.label))
+}
+
+function capitalize(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1) : text
 }
 
 /**
@@ -717,6 +781,9 @@ function capConfidence(raw: unknown, state: ReferenceState): string | null {
 function buildPrompt(ctx: {
   title: string
   instructions: string
+  /** Рабочий лист ДЗ, распознанный текст; пусто — условия нет (§149.1). */
+  worksheetText: string
+  worksheetTruncated: boolean
   solutionText: string
   /** Эталон показан не целиком — модель обязана знать об этом. */
   referenceTruncated: boolean
@@ -734,6 +801,15 @@ function buildPrompt(ctx: {
     '',
     `ЗАДАНИЕ: ${ctx.title}`,
     ctx.instructions ? `УСЛОВИЕ: ${ctx.instructions}` : '',
+    // §149.1. Порядок: условие → решение → работа. Рабочий лист идёт первым,
+    // чтобы модель знала состав заданий и что в каждом требуется, ДО того как
+    // увидит эталон и работу. Без листа — честно сказать, а не додумывать.
+    ctx.worksheetText
+      ? worksheetPromptBlock({ text: ctx.worksheetText, truncated: ctx.worksheetTruncated })
+      : (ctx.instructions
+        ? ''
+        : 'УСЛОВИЯ ДЗ НЕТ: состав заданий восстанавливай по авторскому решению и работе ученика; не считай задание ответным, если этого не видно из решения.'),
+    '',
     ctx.solutionText
       ? referencePromptBlock({ text: ctx.solutionText, truncated: ctx.referenceTruncated })
       : 'АВТОРСКОГО РЕШЕНИЯ НЕТ: сверять не с чем, оценивай по существу и не завышай уверенность.',

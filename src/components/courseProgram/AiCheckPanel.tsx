@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Sparkles, SquareDashed } from 'lucide-react'
 import {
   CONFIDENCE_LABEL,
   referenceNotice,
+  worksheetNotice,
   aiErrorMessage,
   shouldShowScore,
   type AiFindingRow,
@@ -122,6 +123,17 @@ export function AiCheckPanel({
               className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
             >
               {referenceNotice(job)}
+            </p>
+          )}
+
+          {/* §149.1. То же для условия: без рабочего листа модель угадывала
+              состав заданий по решению — преподаватель должен это видеть. */}
+          {worksheetNotice(job) && (
+            <p
+              data-testid="ai-check-no-worksheet"
+              className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
+            >
+              {worksheetNotice(job)}
             </p>
           )}
 

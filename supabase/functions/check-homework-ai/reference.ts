@@ -48,6 +48,21 @@ export const REFERENCE_TAIL_CHARS = 3_000
 /** Разделитель на месте пропущенной середины — модель обязана его видеть. */
 export const REFERENCE_GAP_MARK = '\n\n[… середина решения пропущена по объёму, ниже — конец документа …]\n\n'
 
+/**
+ * Рубрика с условием ДЗ — рабочий лист. На проде 1057 файлов, ровно по одному
+ * на тему, как и решений. Поле `instructions` у ДЗ пустое почти везде, и до
+ * §149.1 модель узнавала состав заданий из решения — с обратной стороны.
+ */
+export const WORKSHEET_SECTION = 'worksheet_homework'
+
+/**
+ * Свой потолок для условия, НЕ общий с эталоном: лист по объёму сопоставим с
+ * решением, и при одном потолке длинное решение вытеснило бы условие или
+ * наоборот. Обрезка та же — голова плюс хвост: список заданий часто в конце
+ * листа, как таблица ответов в конце решения. §149.1.
+ */
+export const WORKSHEET_CHAR_LIMIT = 20_000
+
 /** Пороги «разбор годен». Ниже — считаем, что движок не справился. */
 export const MIN_MEANINGFUL_TOTAL = 200
 export const MIN_MEANINGFUL_PER_PAGE = 120
@@ -105,10 +120,10 @@ export function tooLittleTextReason(engine: ParseEngine, text: string, pages: nu
  * ни разу про то, что случилось с бесплатным `cloudflare-ai`. Диагностика,
  * теряющая первую половину причины, уводит в сторону. §149.
  */
-export function describeParseFailure(reasons: readonly string[]): string {
+export function describeParseFailure(reasons: readonly string[], subject = 'авторское решение'): string {
   const list = reasons.map(r => r.trim()).filter(Boolean)
   const joined = list.length > 0 ? list.join('; ') : 'разбор PDF не дал текста'
-  const full = `Не удалось распознать авторское решение: ${joined}`
+  const full = `Не удалось распознать ${subject}: ${joined}`
   return full.length > MAX_FAILURE_REASON_CHARS
     ? `${full.slice(0, MAX_FAILURE_REASON_CHARS - 1)}…`
     : full
@@ -201,5 +216,23 @@ export function referencePromptBlock(block: ReferenceBlock): string {
   ].filter(Boolean).join('\n')
 }
 
-/** Состояние эталона у проверки — попадает в панель преподавателя. */
+/**
+ * Блок условия ДЗ для промпта — рабочий лист, распознанный тем же путём, что
+ * и эталон. Идёт ПЕРЕД эталоном: условие → решение → работа. Оговорка о
+ * распознавании обязательна по той же причине, что и у эталона. §149.1.
+ */
+export function worksheetPromptBlock(block: ReferenceBlock): string {
+  return [
+    'УСЛОВИЕ ДЗ (рабочий лист ученика):',
+    block.text,
+    '',
+    'Про условие: лист получен автоматическим распознаванием PDF, нумерация и запись формул могли пострадать.',
+    'По условию определи, сколько всего заданий и что в каждом требуется: только ответ или развёрнутое решение. Число заданий для подсчёта балла бери отсюда.',
+    block.truncated
+      ? 'Условие показано НЕ ЦЕЛИКОМ: середина пропущена по объёму, начало и конец сохранены. Задание из пропуска сверяй по эталону.'
+      : '',
+  ].filter(Boolean).join('\n')
+}
+
+/** Состояние эталона (и условия) у проверки — попадает в панель преподавателя. */
 export type ReferenceState = 'used' | 'missing' | 'failed'

@@ -30,6 +30,9 @@ export interface AiJobRow {
    */
   reference_state: 'used' | 'missing' | 'failed' | null
   reference_chars: number | null
+  /** Дошло ли условие ДЗ — рабочий лист (§149.1). null — проверка старее §149.1. */
+  worksheet_state: 'used' | 'missing' | 'failed' | null
+  worksheet_chars: number | null
   accepted_at: string | null
   created_at: string
   completed_at: string | null
@@ -61,6 +64,18 @@ export function referenceNotice(job: AiJobRow): string | null {
   if (job.reference_state === 'used') return null
   if (job.reference_state === 'failed') return 'Проверено без эталона: решение не удалось прочитать'
   if (job.reference_state === 'missing') return 'Проверено без эталона: у темы нет авторского решения'
+  return null
+}
+
+/**
+ * Подпись про условие ДЗ (§149.1) — по тому же принципу, что и про эталон:
+ * без рабочего листа модель восстанавливала состав заданий по решению.
+ */
+export function worksheetNotice(job: AiJobRow): string | null {
+  if (job.status !== 'done') return null
+  if (job.worksheet_state === 'used') return null
+  if (job.worksheet_state === 'failed') return 'Проверено без условия: рабочий лист не удалось прочитать'
+  if (job.worksheet_state === 'missing') return 'Проверено без условия: у темы нет рабочего листа ДЗ'
   return null
 }
 

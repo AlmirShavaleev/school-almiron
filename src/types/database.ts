@@ -4638,6 +4638,8 @@ export type Database = {
           // reference_state text CHECK (used|missing|failed), reference_chars int.
           reference_chars: number | null
           reference_state: string | null
+          worksheet_chars: number | null
+          worksheet_state: string | null
           requested_by: string | null
           started_at: string | null
           status: string
@@ -4660,6 +4662,8 @@ export type Database = {
           readable?: boolean | null
           reference_chars?: number | null
           reference_state?: string | null
+          worksheet_chars?: number | null
+          worksheet_state?: string | null
           requested_by?: string | null
           started_at?: string | null
           status?: string
@@ -4682,6 +4686,8 @@ export type Database = {
           readable?: boolean | null
           reference_chars?: number | null
           reference_state?: string | null
+          worksheet_chars?: number | null
+          worksheet_state?: string | null
           requested_by?: string | null
           started_at?: string | null
           status?: string
