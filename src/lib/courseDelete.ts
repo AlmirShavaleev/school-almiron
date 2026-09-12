@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { plural } from '@/lib/plural'
 
 /**
  * Удаление курса — клиентская половина.
@@ -55,18 +56,15 @@ const EMPTY_COUNTS: CourseDeleteCounts = {
   attempts: 0, test_attempts: 0, groups: 0, lessons: 0, files: 0,
 }
 
-/** «1 тема / 2 темы / 5 тем» — счёт без склонения читается как машинный. */
-export function plural(n: number, one: string, few: string, many: string): string {
-  const mod100 = n % 100
-  if (mod100 >= 11 && mod100 <= 14) return many
-  switch (n % 10) {
-    case 1: return one
-    case 2:
-    case 3:
-    case 4: return few
-    default: return many
-  }
-}
+/**
+ * Склонение переехало в `@/lib/plural` и реэкспортируется отсюда.
+ *
+ * Причина переезда: звать его из кабинета ученика стало нужно, а этот модуль
+ * тянет `supabase` — ради одного слова в чанк страницы уехала бы вся механика
+ * удаления курса. Реэкспорт оставлен, чтобы прежние импорты и их тест
+ * продолжали работать: второй копии правил русского языка быть не должно.
+ */
+export { plural }
 
 /**
  * Строки для списка «что исчезнет». Нулевые позиции опускаем: строка

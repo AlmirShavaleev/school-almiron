@@ -111,3 +111,33 @@ describe('курс = сумма разделов', () => {
     })
   })
 })
+
+describe('topicsLabel — склонение', () => {
+  // Слово согласуется со ВТОРЫМ числом: именно оно стоит рядом с ним.
+  // Обращение ученика 09.09 было ровно про это — «2 тем» вместо «2 темы».
+  const label = (open: number, total: number) =>
+    topicsLabel({
+      openTopics: open, totalTopics: total,
+      homeworkAvailable: 0, homeworkSubmitted: 0,
+    })
+
+  it('набор из приёмки', () => {
+    expect(label(0, 1)).toBe('0 из 1 тема открыто')
+    expect(label(1, 2)).toBe('1 из 2 темы открыто')
+    expect(label(2, 5)).toBe('2 из 5 тем открыто')
+    expect(label(2, 21)).toBe('2 из 21 тема открыто')
+    expect(label(2, 22)).toBe('2 из 22 темы открыто')
+    expect(label(2, 25)).toBe('2 из 25 тем открыто')
+    expect(label(2, 111)).toBe('2 из 111 тем открыто')
+  })
+
+  it('второй десяток не берёт форму от последней цифры', () => {
+    expect(label(1, 11)).toBe('1 из 11 тем открыто')
+    expect(label(1, 12)).toBe('1 из 12 тем открыто')
+  })
+
+  it('тот самый случай из жалобы', () => {
+    expect(label(2, 2)).toBe('2 из 2 темы открыто')
+    expect(label(2, 2)).not.toContain('2 тем открыто')
+  })
+})

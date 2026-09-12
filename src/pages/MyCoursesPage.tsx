@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { getSubjectColor } from '@/lib/subjectColors'
+import { pluralTopics } from '@/lib/plural'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,11 @@ function CourseItem({ card }: { card: CourseCard }) {
         <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
           <span className="flex items-center gap-1.5">
             <CheckCircle size={12} className="text-green-500" />
-            <span data-testid="course-card-topics">{card.doneTopics} / {card.totalTopics} тем открыто</span>
+            {/* Слово согласуется со ВТОРЫМ числом — именно оно стоит рядом
+                с ним: «2 / 24 темы открыто». */}
+            <span data-testid="course-card-topics">
+              {card.doneTopics} / {pluralTopics(card.totalTopics)} открыто
+            </span>
           </span>
           {card.startDate && (
             <span className="flex items-center gap-1.5">
