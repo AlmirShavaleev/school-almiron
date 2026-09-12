@@ -401,3 +401,146 @@ describe('ДЗ ученику — порядок страниц', () => {
     expect(screen.queryByText(/порядок меняется/)).not.toBeInTheDocument()
   })
 })
+
+/**
+ * §159. Мобильный пакет 2: сдача ДЗ с телефона.
+ *
+ * «Телефон» определяется по вводу (`pointer: coarse`), не по ширине окна —
+ * jsdom по умолчанию отдаёт `matches: false` для любого `matchMedia`, и это
+ * ровно то, на чём держались все тесты выше: они ничего не мокали и остались
+ * зелёными без единой правки — coarse-ветка для них просто не существует.
+ */
+function mockCoarsePointer(matches: boolean) {
+  const listeners = new Set<(e: MediaQueryListEvent) => void>()
+  const mql = {
+    matches,
+    media: '(pointer: coarse)',
+    addEventListener: (_: string, fn: any) => listeners.add(fn),
+    removeEventListener: (_: string, fn: any) => listeners.delete(fn),
+    addListener: (fn: any) => listeners.add(fn),
+    removeListener: (fn: any) => listeners.delete(fn),
+    dispatchEvent: () => true,
+    onchange: null,
+  }
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(mql))
+  return mql
+}
+
+describe('ДЗ ученику — мобильный экран (§159)', () => {
+  const page = (n: number) => ({
+    id: `af${n}`, attempt_id: 'att-1', storage_path: `att-1/page-${n}.jpg`,
+    file_name: `page-${n}.jpg`, mime_type: 'image/jpeg', size_bytes: 10,
+    position: n - 1, created_at: '',
+  })
+
+  beforeEach(() => {
+    attempts = [attempt(1, 'draft')]
+    mockCoarsePointer(true)
+  })
+
+  it('вместо дропзоны — две кнопки, обещаний про перетаскивание и Ctrl+V нет', () => {
+    renderStudent()
+    expect(screen.getByTestId('hw-camera-button')).toBeInTheDocument()
+    expect(screen.getByTestId('hw-gallery-button')).toBeInTheDocument()
+    expect(screen.queryByTestId('hw-dropzone')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Ctrl\+V/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Перетащите/)).not.toBeInTheDocument()
+  })
+
+  it('кнопка «Снять фото» — прямой вход в камеру устройства', () => {
+    renderStudent()
+    const input = screen.getByLabelText('Снять фото страницы') as HTMLInputElement
+    expect(input.type).toBe('file')
+    expect(input.accept).toBe('image/*')
+    expect(input.getAttribute('capture')).toBe('environment')
+  })
+
+  it('на десктопе (fine pointer) кнопок камеры нет — дропзона как раньше', () => {
+    mockCoarsePointer(false)
+    renderStudent()
+    expect(screen.queryByTestId('hw-camera-button')).not.toBeInTheDocument()
+    expect(screen.getByTestId('hw-dropzone')).toBeInTheDocument()
+  })
+
+  it('ручка перетаскивания скрыта, стрелки — 44px, подпись без «перетаскиванием»', () => {
+    attemptFiles = [page(1), page(2)]
+    renderStudent()
+
+    // Ручка есть в разметке (номер страницы виден), но не интерактивна —
+    // pointerdown по ней ничего не запускает.
+    fireEvent.pointerDown(screen.getAllByTestId('hw-page-handle')[0], {
+      pointerId: 9, pointerType: 'touch', clientX: 10, clientY: 10,
+    })
+    fireEvent.pointerMove(screen.getAllByTestId('hw-page-thumb')[0], {
+      pointerId: 9, pointerType: 'touch', clientX: 300, clientY: 10,
+    })
+    fireEvent.pointerUp(screen.getAllByTestId('hw-page-thumb')[0], {
+      pointerId: 9, pointerType: 'touch', clientX: 300, clientY: 10,
+    })
+    expect(reorderAttemptFiles).not.toHaveBeenCalled()
+
+    const left = screen.getAllByLabelText(/Сдвинуть страницу \d влево/)[0]
+    expect(left.className).toMatch(/h-11 w-11/)
+    const del = screen.getAllByLabelText(/Убрать страницу \d/)[0]
+    expect(del.className).toMatch(/h-11 w-11/)
+
+    expect(screen.getByText(/порядок меняется стрелками ← →/)).toBeInTheDocument()
+    expect(screen.queryByText(/или перетаскиванием/)).not.toBeInTheDocument()
+  })
+
+  it('кнопка «Отправить на проверку» — на всю ширину', () => {
+    attemptFiles = [page(1)]
+    renderStudent()
+    expect(screen.getByText('Отправить на проверку').closest('button')?.className).toMatch(/w-full/)
+  })
+
+  it('HEIC с айфона не отклоняется — уходит на загрузку как есть', async () => {
+    renderStudent()
+    const heic = new File(['x'], 'IMG_0001.heic', { type: 'image/heic' })
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files: [heic] } })
+
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [heic], expect.any(Function)))
+    expect(screen.queryByText(/Можно приложить только PDF и картинки/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * Главный сценарий задачи: съёмка тетради постранично. Камера — вход
+   * одноразовый по природе (одно фото на нажатие), поэтому второе нажатие
+   * обязано ДОПИСАТЬ страницу в конец, а не заменить первую — и кнопка
+   * съёмки обязана остаться на месте (её узел в DOM идёт ПЕРЕД сеткой
+   * миниатюр, а не после: миниатюры растут вниз под ней, кнопке некуда
+   * «уехать» при появлении новых страниц).
+   */
+  it('снял — снял ещё раз: вторая страница дописывается, кнопка не двигается', async () => {
+    const { rerender } = renderStudent()
+    const cameraInput = () => screen.getByLabelText('Снять фото страницы') as HTMLInputElement
+
+    const shot1 = new File(['1'], 'photo1.jpg', { type: 'image/jpeg' })
+    fireEvent.change(cameraInput(), { target: { files: [shot1] } })
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledTimes(1))
+    expect(uploadAttemptFiles).toHaveBeenNthCalledWith(1, 'att-1', [shot1], expect.any(Function))
+
+    // Сервер вернул первую страницу — перерисовываем с ней, как в жизни.
+    attemptFiles = [page(1)]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+
+    // Кнопка съёмки видна и стоит ПЕРЕД сеткой — не съехала вниз за страницей.
+    const order = Array.from(document.querySelectorAll('[data-testid="hw-camera-button"], [data-testid="hw-page-grid"]'))
+      .map(el => el.getAttribute('data-testid'))
+    expect(order).toEqual(['hw-camera-button', 'hw-page-grid'])
+    expect(screen.getAllByTestId('hw-page-thumb')).toHaveLength(1)
+
+    const shot2 = new File(['2'], 'photo2.jpg', { type: 'image/jpeg' })
+    fireEvent.change(cameraInput(), { target: { files: [shot2] } })
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledTimes(2))
+    // Второй вызов несёт ТОЛЬКО новый снимок — дописывание, а не пересборка
+    // всего списка заново (иначе первая страница ушла бы вторым вызовом ещё раз).
+    expect(uploadAttemptFiles).toHaveBeenNthCalledWith(2, 'att-1', [shot2], expect.any(Function))
+
+    attemptFiles = [page(1), page(2)]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+
+    expect(screen.getAllByTestId('hw-page-thumb')).toHaveLength(2)
+    expect(screen.getByTestId('hw-camera-button')).toBeInTheDocument()
+  })
+})
