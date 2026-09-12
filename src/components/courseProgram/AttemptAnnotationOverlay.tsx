@@ -4,6 +4,7 @@ import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
 import { cn } from '@/utils/cn'
+import { FileChip } from '@/components/shared/FileChip'
 import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
 import {
   MAX_SOLUTION_FRACTION,
@@ -285,15 +286,17 @@ export function AttemptAnnotationOverlay({
                 url={f.storage_path}
                 title={isOther ? 'Этот файл нельзя разметить — откроется отдельно' : 'Открыть оригинал в новой вкладке'}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-xs',
+                  'inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-xs',
                   isOther
                     ? 'border-amber-300 text-amber-900 hover:border-amber-400'
                     : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-700',
                 )}
               >
-                <Paperclip size={11} />
-                {f.file_name}
-                {isOther && <span className="text-[10px] text-amber-700">без разметки</span>}
+                <FileChip
+                  name={f.file_name}
+                  leading={<Paperclip size={11} className="shrink-0" />}
+                  trailing={isOther && <span className="shrink-0 text-[10px] text-amber-700">без разметки</span>}
+                />
               </SignedFileLink>
             )
           })}

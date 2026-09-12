@@ -159,7 +159,14 @@ export function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">
+        {/* overflow-x-clip — защита от переполнения на телефоне (§158). Любой
+            элемент шире экрана (строка без пробелов, длинный чип, ряд кнопок)
+            заставлял мобильный Chrome ужать ВСЮ страницу до его ширины.
+            Именно clip, а не hidden: hidden сделал бы main контейнером
+            прокрутки, и position: sticky внутри (панели разбора, липкие
+            колонки на xl) перестал бы липнуть. clip только режет выступающее.
+            Таблицы с overflow-x-auto внутри страниц прокручиваются как прежде. */}
+        <main className="flex-1 min-w-0 overflow-x-clip">
           {/* Adaptive padding: 16px mobile → 24px sm → 32px md+ */}
           <div className={isFullscreenReviewRoute
             ? 'min-w-0 h-[calc(100dvh-3.5rem)] px-0 py-0'
