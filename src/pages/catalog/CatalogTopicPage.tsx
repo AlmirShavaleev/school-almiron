@@ -86,8 +86,12 @@ export function CatalogTopicPage() {
         <Link to={`/catalog/${sectionId}?subject=${subjectSlug}&exam=${examSlug}${viewSuffix}`} className="hover:text-primary-600">{sectionTitle}</Link>
       </nav>
 
+      {/* Список тем раздела живёт только на широком экране (xl): на телефоне
+          колонки складываются, и 30 карточек тем вставали НАД задачами —
+          ученик крутил список и думал, что задач нет (§154, board/008).
+          Навигацию по темам на узком экране даёт лента «Быстрый переход». */}
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="xl:sticky xl:top-6 xl:self-start xl:h-[calc(100vh-7.5rem)] xl:overflow-hidden">
+        <aside className="hidden xl:block xl:sticky xl:top-6 xl:self-start xl:h-[calc(100vh-7.5rem)] xl:overflow-hidden">
           <div className="space-y-4 rounded-[28px] bg-white/90 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80 backdrop-blur xl:flex xl:h-full xl:min-h-0 xl:flex-col">
             {topics.length > 1 && sectionId && (
               <div className="xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
@@ -107,7 +111,11 @@ export function CatalogTopicPage() {
           </div>
         </aside>
 
-        <section className="space-y-4">
+        {/* min-w-0 обязателен: у грид-элемента min-width: auto, и без него
+            колонка не может стать уже своего содержимого — лента тем внутри
+            (карточки по 220 px) раздувала её до 7000 px, а с ней и всю
+            страницу на телефоне (§154). На xl это же даёт minmax(0,1fr). */}
+        <section className="min-w-0 space-y-4">
           <div className="rounded-[28px] bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80 backdrop-blur xl:flex-shrink-0">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 text-wrap-balance">{topic?.title ?? 'Тема'}</h1>

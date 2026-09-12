@@ -175,6 +175,20 @@ body {
 }
 
 /*
+ * Телефон (уже 640px): 50 % / 35 % от карточки шириной 358 px — это 179 / 125 px,
+ * график такого размера не прочитать. Иллюстрация получает всю ширину
+ * карточки; на десктопе доли выше остаются как были (§154, board/008).
+ */
+@media (max-width: 639px) {
+  .catalog-html img.catalog-condition-figure,
+  .catalog-html img.catalog-solution-image,
+  .catalog-html.scale-figures-math-exam img.catalog-condition-figure,
+  .catalog-html.scale-figures-math-exam img.catalog-solution-image {
+    max-width: 100% !important;
+  }
+}
+
+/*
  * Math-display block formulas — keep full width (these are formulas, not diagrams).
  */
 .catalog-html img.math-display,
