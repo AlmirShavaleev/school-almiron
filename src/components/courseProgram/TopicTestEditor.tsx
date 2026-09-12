@@ -4,6 +4,7 @@ import { Loader2, AlertCircle, Trash2, Plus, Search, X, Users } from 'lucide-rea
 import { useTopicTestAssignment, useTestBank } from '@/hooks/useTopicTest'
 import { useTopicVariantAttachment } from '@/hooks/useVariantTopicAttach'
 import { useVariants } from '@/hooks/useVariants'
+import { useTopicTaskProgress } from '@/hooks/useTopicTaskProgress'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { toast } from '@/store/toastStore'
@@ -34,6 +35,7 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
     busy: variantBusy, attach: attachVariant, detach: detachVariant,
   } = useTopicVariantAttachment(topicId)
   const { variants, loading: candidatesLoading } = useVariants()
+  const taskProgress = useTopicTaskProgress(topicId)
 
   const [openPicker, setOpenPicker] = useState<'variant' | 'bank' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -139,7 +141,15 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
             `${SUBJECT_LABELS[item.subject] ?? item.subject} ${EXAM_LABELS[item.exam_type] ?? item.exam_type}`,
             `${item.tasks_count} задач`,
           ]}
-          stats={`выдано ${item.assigned_count} · прошли ${item.passed_count}`}
+          /* «Прошли» здесь не работает по смыслу: задачи к уроку никто не
+             «сдаёт», статус submitted не наступает вовсе (§162). Считаем тех,
+             кто решает, и тех, кто закрыл все задачи. */
+          stats={taskProgress
+            ? `задач к уроку: ${taskProgress.tasks_total}`
+              + ` · решают ${taskProgress.students_started} из ${taskProgress.students_total}`
+              + (taskProgress.students_done > 0 ? ` · решили все: ${taskProgress.students_done}` : '')
+              + (taskProgress.closed_self > 0 ? ` · по решению: ${taskProgress.closed_self}` : '')
+            : `выдано ${item.assigned_count}`}
           disabled={variantBusy}
           onDelete={() => {
             if (!confirm(`Открепить «${item.title}» от темы? Выдача ученикам будет снята.`)) return

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { TopicSection } from '@/lib/topicMaterialItems'
 import {
   groupTopicSections,
   TOPIC_SECTION_GROUPS,
@@ -254,11 +255,21 @@ describe('groupTopicSections', () => {
    * «Тестирование» владелец не отнёс ни к одной группе. Вкладка при этом не
    * имеет права пропасть: остаток идёт последним рядом без подписи.
    */
+  // Сейчас каждая рубрика перечня лежит в какой-нибудь группе: `test` попала в
+  // группу «Задачи» (§162). Ряд без подписи остаётся страховкой на случай
+  // новой рубрики, которую забудут внести в группу, — проверяем его выдуманным
+  // ключом, а не реальной рубрикой, иначе тест снова станет неправдой.
   it('рубрика вне групп не теряется и идёт последней без подписи', () => {
-    const rows = groupTopicSections(['test', 'notes'])
+    const rows = groupTopicSections(['nowhere' as TopicSection, 'notes'])
 
     expect(rows[0].group?.key).toBe('theory')
-    expect(rows.at(-1)).toEqual({ group: null, sections: ['test'] })
+    expect(rows.at(-1)).toEqual({ group: null, sections: ['nowhere'] })
+  })
+
+  it('задачи к уроку идут своей группой, а не остатком', () => {
+    const rows = groupTopicSections(['test', 'notes'])
+
+    expect(rows.map(r => r.group?.key)).toEqual(['theory', 'tasks'])
   })
 
   it('порядок внутри группы задаёт перечень, а не порядок входа', () => {
