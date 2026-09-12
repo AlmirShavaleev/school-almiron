@@ -748,6 +748,9 @@ export function HomeworkReviewQueuePage() {
           }
           viewers={viewersOf(reviewing.row.attempt.id)}
           solutionTopicId={reviewing.row.topicId}
+          // §156. После «Очистить пометки» находок в базе нет — панель ИИ и
+          // значки очереди обязаны перечитать их, иначе покажут старое число.
+          onMarksCleared={() => { void ai.reload(); reloadAi() }}
           locked={reviewing.locked}
           onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в

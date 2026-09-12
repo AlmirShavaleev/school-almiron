@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertCircle } from 'lucide-react'
+import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertCircle, Eraser } from 'lucide-react'
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
@@ -8,6 +8,9 @@ import { extractStoragePath, getSignedFileUrl, type PrivateBucket } from '@/lib/
 import { HANDLE_CURSOR, moveRect, rectsEqual, resizeRect, type ResizeHandle } from '@/lib/annotationGeometry'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
+import {
+  EMPTY_MARK_COUNTS, clearAttemptMarks, clearMarksPrompt, countAttemptMarks, hasAnyMarks, type MarkCounts,
+} from '@/lib/attemptMarks'
 import type { MutableRefObject, ReactNode } from 'react'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
@@ -113,6 +116,12 @@ interface BaseProps {
    * черновика ИИ. Возвращает, сколько рамок реально легло на страницы.
    */
   importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
+  /**
+   * §156. Вызывается после «Очистить пометки»: находки ИИ по попытке удалены
+   * в базе, и панель черновика ИИ снаружи обязана перечитать их — иначе она
+   * покажет старое число. Только для нового контура (attemptId).
+   */
+  onMarksCleared?: () => void
 }
 
 /** Рамка, приходящая извне (черновик ИИ), до превращения в обычную пометку. */
@@ -220,6 +229,7 @@ export function SubmissionReviewer({
   onPublishComplete,
   publishRef,
   importRegionsRef,
+  onMarksCleared,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -272,6 +282,27 @@ export function SubmissionReviewer({
   const [editPreview, setEditPreview] = useState<EditPreview>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [visiblePages, setVisiblePages] = useState<Set<string>>(new Set())
+
+  // §156. «Очистить пометки». Числа для кнопки и подтверждения считает база
+  // (dry run той же RPC): находки ИИ лежат по всем задачам попытки, а рамки
+  // могут быть чужими — локальное состояние знает не всё. Пересчитываем при
+  // открытии работы и перед показом подтверждения, чтобы число было свежим.
+  const [markCounts, setMarkCounts] = useState<MarkCounts>(EMPTY_MARK_COUNTS)
+  const [clearDialog, setClearDialog] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const canClearMarks = Boolean(attemptId) && !readOnly
+  const refreshMarkCounts = useCallback(async () => {
+    if (!attemptId) return EMPTY_MARK_COUNTS
+    try {
+      const counts = await countAttemptMarks(attemptId)
+      setMarkCounts(counts)
+      return counts
+    } catch {
+      setMarkCounts(EMPTY_MARK_COUNTS)
+      return EMPTY_MARK_COUNTS
+    }
+  }, [attemptId])
+  useEffect(() => { if (canClearMarks) void refreshMarkCounts() }, [canClearMarks, refreshMarkCounts])
   const [hasOtherAuthor, setHasOtherAuthor] = useState(false)
 
   const pdfRefs = useRef<Record<string, pdfjs.PDFDocumentProxy | null>>({})
@@ -825,6 +856,37 @@ export function SubmissionReviewer({
    * Страницы сохраняются по одной и последовательно: savePage перезаписывает
    * страницу целиком, и параллельные вызовы затёрли бы друг друга.
    */
+  // §156. Открыть подтверждение — со свежими числами из базы. Нажатие само по
+  // себе ничего не удаляет; удаляет только «Удалить» в диалоге.
+  async function openClearDialog() {
+    if (!canClearMarks) return
+    const counts = await refreshMarkCounts()
+    if (!hasAnyMarks(counts)) return
+    setClearDialog(true)
+  }
+
+  async function confirmClearMarks() {
+    if (!attemptId) return
+    setClearing(true)
+    try {
+      await clearAttemptMarks(attemptId)
+      // Локально — сразу: страницы пусты, выделение снято, черновик закрыт.
+      setPages({})
+      setActiveId(null)
+      setSelectedId(null)
+      setDraft(null)
+      setPublished(false)
+      setMarkCounts(EMPTY_MARK_COUNTS)
+      setClearDialog(false)
+      toast.success('Пометки удалены')
+      onMarksCleared?.()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Не удалось удалить пометки')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   async function importRegions(items: ImportedRegion[]): Promise<number> {
     if (readOnly || items.length === 0) return 0
 
@@ -991,7 +1053,15 @@ export function SubmissionReviewer({
       </div>
       <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
         <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion}/>}
+          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
+          {clearDialog && (
+            <ClearMarksDialog
+              text={clearMarksPrompt(markCounts)}
+              busy={clearing}
+              onConfirm={() => { void confirmClearMarks() }}
+              onCancel={() => setClearDialog(false)}
+            />
+          )}
         </div>
       </aside>
     </div>
@@ -1275,10 +1345,20 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
   </div>
 }
 
-function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { regions: RegionItem[]; readOnly: boolean; activeId: string | null; onActivate: (item: RegionItem) => void; onDelete: (item: RegionItem) => void }) {
+function CommentList({ regions, readOnly, activeId, onActivate, onDelete, onClearAll, clearDisabled }: {
+  regions: RegionItem[]
+  readOnly: boolean
+  activeId: string | null
+  onActivate: (item: RegionItem) => void
+  onDelete: (item: RegionItem) => void
+  /** §156. «Очистить пометки» — все, чьи бы ни были, с подтверждением. Нет — кнопки нет. */
+  onClearAll?: () => void
+  /** Удалять нечего — кнопка неактивна, а не молча «успешно». */
+  clearDisabled?: boolean
+}) {
   const multiFile = new Set(regions.map(item => item.filePath)).size > 1
   return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
-    <div className="flex min-h-14 items-center justify-between border-b border-slate-200 px-3">
+    <div className="flex min-h-14 items-center justify-between gap-2 border-b border-slate-200 px-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
           <MessageSquare size={15} className="text-slate-400" />
@@ -1286,7 +1366,22 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { re
         </div>
         <div className="mt-0.5 text-xs text-slate-400">{readOnly ? 'Только просмотр' : 'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками'}</div>
       </div>
-      <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{regions.length}</div>
+      <div className="flex shrink-0 items-center gap-2">
+        {!readOnly && onClearAll && (
+          <button
+            type="button"
+            data-testid="clear-marks-button"
+            onClick={onClearAll}
+            disabled={clearDisabled}
+            title="Удалить все пометки на работе: находки ИИ и рамки проверяющих"
+            className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600 transition-[transform,background-color,color] hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40"
+          >
+            <Eraser size={13} />
+            Очистить пометки
+          </button>
+        )}
+        <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{regions.length}</div>
+      </div>
     </div>
     {regions.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
       {regions.map(item => {
@@ -1311,5 +1406,30 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete }: { re
       <div className="text-sm font-medium text-slate-600">{readOnly ? 'Комментариев пока нет' : 'Здесь появятся комментарии к работе'}</div>
       <div className="max-w-56 text-xs leading-5 text-slate-400">{readOnly ? 'Для этой попытки опубликованных комментариев не найдено.' : 'Выделите область на документе, чтобы привязать к ней комментарий.'}</div>
     </div>}
+  </div>
+}
+
+/**
+ * §156. Подтверждение «Очистить пометки». Удаление необратимо — это просьба
+ * владельца, но именно поэтому подтверждение обязательно и с числом: текст
+ * приходит готовым из clearMarksPrompt и называет, сколько находок ИИ и
+ * рамок проверяющих исчезнет.
+ */
+function ClearMarksDialog({ text, busy, onConfirm, onCancel }: { text: string; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
+  return <div data-testid="clear-marks-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-marks-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+    <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600"><AlertCircle size={18} /></div>
+        <div className="min-w-0">
+          <div id="clear-marks-title" className="text-base font-semibold text-slate-900">Очистить пометки на работе?</div>
+          <div data-testid="clear-marks-text" className="mt-1 text-sm leading-5 text-slate-600">{text}</div>
+          <div className="mt-1 text-xs text-slate-400">Разбор ИИ — балл и текст — останется.</div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button data-testid="clear-marks-cancel" type="button" onClick={onCancel} disabled={busy} className="min-h-10 rounded-lg bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96] disabled:opacity-50">Отмена</button>
+        <button data-testid="clear-marks-confirm" type="button" onClick={onConfirm} disabled={busy} className="min-h-10 rounded-lg bg-red-600 px-3 text-sm font-medium text-white transition-[transform,background-color] hover:bg-red-700 active:scale-[0.96] disabled:opacity-50">{busy ? 'Удаляю…' : 'Удалить'}</button>
+      </div>
+    </div>
   </div>
 }

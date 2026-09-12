@@ -130,5 +130,7 @@ export function useHomeworkAiCheck(attemptId: string | null) {
     error,
     runCheck,
     markAccepted,
+    /** §156. Перечитать задачу и находки — после «Очистить пометки». */
+    reload: () => (attemptId ? load(attemptId) : Promise.resolve()),
   }
 }
