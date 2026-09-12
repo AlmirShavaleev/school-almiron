@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ChevronLeft, ChevronRight, FileText, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
+  Camera, ChevronLeft, ChevronRight, FileText, Images, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
 } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
+import { plural } from '@/lib/plural'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
@@ -32,6 +33,34 @@ import { getSignedFileUrl } from '@/lib/storage'
 import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 
 /**
+ * «Телефон» — по вводу, а не по ширине окна: планшет с клавиатурой и мышью
+ * должен получить настольный экран (широкий сенсорный монитор — наоборот,
+ * телефонный). `pointer: coarse` — основной указатель неточный (палец), это
+ * ровно то различие, которое здесь важно. Тот же защитный приём, что у
+ * `usePrefersReducedMotion` в `LiveNow.tsx`: без `matchMedia` (не бывает в
+ * реальном браузере, бывает в тестовом окружении) — просто false, экран
+ * ведёт себя как десктопный, ничего не ломается молча.
+ */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(pointer: coarse)')
+    setCoarse(query.matches)
+    const onChange = (e: MediaQueryListEvent) => setCoarse(e.matches)
+    if (query.addEventListener) {
+      query.addEventListener('change', onChange)
+      return () => query.removeEventListener('change', onChange)
+    }
+    query.addListener(onChange)
+    return () => query.removeListener(onChange)
+  }, [])
+
+  return coarse
+}
+
+/**
  * Ученический блок ДЗ темы.
  *
  * Черновик ДЗ и чужие попытки сюда не приходят — их отсекает RLS вместе
@@ -44,6 +73,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
     startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
   } = useTopicHomework(topicId)
 
+  const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
@@ -368,91 +398,196 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
         <div className="mt-4">
           {/* Заголовок с числом страниц */}
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
-            Моя работа{draftFiles.length > 0 ? ` · ${draftFiles.length} ${draftFiles.length === 1 ? 'страница' : draftFiles.length <= 4 ? 'страницы' : 'страниц'}` : ''}
+            Моя работа{draftFiles.length > 0 ? ` · ${plural(draftFiles.length, 'страница', 'страницы', 'страниц')}` : ''}
           </div>
 
-          {/* Сетка миниатюр с перестановкой */}
-          {draftFiles.length > 0 && (
-            <PageGrid
-              files={draftFiles}
-              disabled={busy || uploadingFiles}
-              onReorder={ids => run(() => reorderAttemptFiles(active.id, ids))}
-              onDelete={f => run(() => removeAttemptFile(f.id, f.storage_path))}
-            />
-          )}
+          {coarse ? (
+            <>
+              {/*
+                На телефоне кнопки съёмки стоят ПЕРВЫМИ, а сетка страниц растёт
+                под ними, а не над. Ученик снимает тетрадь постранично: нажал —
+                снял — нажал ещё раз; если кнопка съезжает вниз с каждой новой
+                миниатюрой, к третьей странице до неё надо прокручивать. Кнопка
+                — не зона перетаскивания: html5 drag-and-drop и Ctrl+V на
+                телефоне не работают вовсе, обещать их нечего.
+              */}
+              <div className="grid grid-cols-2 gap-3">
+                <label
+                  data-testid="hw-camera-button"
+                  className={cn(
+                    'flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-3 py-4 text-center transition-colors',
+                    uploadingFiles
+                      ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+                      : 'cursor-pointer border-primary-200 bg-primary-50 hover:border-primary-300',
+                  )}
+                >
+                  <Camera size={22} className="text-primary-600" />
+                  <span className="text-sm font-semibold text-primary-700">Снять фото</span>
+                  <input
+                    data-testid="hw-camera-input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    disabled={uploadingFiles}
+                    aria-label="Снять фото страницы"
+                    onChange={async e => {
+                      const picked = Array.from(e.target.files ?? [])
+                      e.target.value = ''
+                      // Append, never replace: второй кадр дописывается в конец
+                      // существующих страниц — тем же uploadPicked, который
+                      // и добавляет файлы к попытке, а не пересоздаёт список.
+                      await uploadPicked(active.id, picked)
+                    }}
+                    className="hidden"
+                  />
+                </label>
+                <label
+                  data-testid="hw-gallery-button"
+                  className={cn(
+                    'flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-3 py-4 text-center transition-colors',
+                    uploadingFiles
+                      ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+                      : 'cursor-pointer border-gray-300 bg-white hover:border-primary-300 hover:bg-primary-50/30',
+                  )}
+                >
+                  <Images size={22} className="text-gray-500" />
+                  <span className="text-sm font-semibold text-gray-700">Выбрать из галереи</span>
+                  <input
+                    data-testid="hw-gallery-input"
+                    type="file"
+                    accept={HOMEWORK_FILE_ACCEPT}
+                    multiple
+                    disabled={uploadingFiles}
+                    aria-label="Выбрать файлы работы"
+                    onChange={async e => {
+                      const picked = Array.from(e.target.files ?? [])
+                      e.target.value = ''
+                      await uploadPicked(active.id, picked)
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
 
-          {/* Прогресс загрузки */}
-          {uploadingFiles && (
-            <ul className="mb-4 space-y-1.5">
-              {uploads.map((u, i) => (
-                <li key={`${u.name}-${i}`}>
-                  <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
-                    <span className="truncate">{u.name}</span>
-                    <span className="shrink-0 tabular-nums">{u.percent}%</span>
-                  </div>
-                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                    <div
-                      className="h-full rounded-full bg-primary-500 transition-all"
-                      style={{ width: `${u.percent}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+              {/* Прогресс загрузки */}
+              {uploadingFiles && (
+                <ul className="mt-3 space-y-1.5">
+                  {uploads.map((u, i) => (
+                    <li key={`${u.name}-${i}`}>
+                      <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                        <span className="truncate">{u.name}</span>
+                        <span className="shrink-0 tabular-nums">{u.percent}%</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-full rounded-full bg-primary-500 transition-all"
+                          style={{ width: `${u.percent}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          {/* Дропзона */}
-          <label
-            data-testid="hw-dropzone"
-            onDragOver={e => { e.preventDefault(); if (!uploadingFiles) setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={async e => {
-              e.preventDefault()
-              setDragOver(false)
-              if (uploadingFiles) return
-              await uploadPicked(active.id, Array.from(e.dataTransfer.files ?? []))
-            }}
-            className={cn(
-              'flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors mt-4',
-              uploadingFiles
-                ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
-                : dragOver
-                  ? 'cursor-copy border-primary-400 bg-primary-50'
-                  : 'cursor-pointer border-gray-300 bg-white hover:border-primary-300 hover:bg-primary-50/30',
-            )}
-          >
-            {uploadingFiles ? (
-              <>
-                <Loader2 size={24} className="animate-spin text-gray-400" />
-                <span className="text-sm text-gray-500">Загрузка…</span>
-              </>
-            ) : (
-              <>
-                <span className="text-2xl">📷</span>
-                <div className="text-sm font-semibold text-gray-700">Перетащите фото или PDF — или нажмите, чтобы выбрать</div>
-                <div className="text-xs text-gray-400">Скриншот можно просто вставить: Ctrl+V</div>
-              </>
-            )}
-            <input
-              data-testid="hw-attempt-file-input"
-              type="file"
-              accept={HOMEWORK_FILE_ACCEPT}
-              multiple
-              disabled={uploadingFiles}
-              aria-label="Файлы работы"
-              onChange={async e => {
-                const picked = Array.from(e.target.files ?? [])
-                e.target.value = ''
-                await uploadPicked(active.id, picked)
-              }}
-              className="hidden"
-            />
-          </label>
+              {/* Сетка миниатюр с перестановкой — растёт ниже кнопок */}
+              {draftFiles.length > 0 && (
+                <PageGrid
+                  files={draftFiles}
+                  disabled={busy || uploadingFiles}
+                  coarse
+                  onReorder={ids => run(() => reorderAttemptFiles(active.id, ids))}
+                  onDelete={f => run(() => removeAttemptFile(f.id, f.storage_path))}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              {/* Сетка миниатюр с перестановкой */}
+              {draftFiles.length > 0 && (
+                <PageGrid
+                  files={draftFiles}
+                  disabled={busy || uploadingFiles}
+                  coarse={false}
+                  onReorder={ids => run(() => reorderAttemptFiles(active.id, ids))}
+                  onDelete={f => run(() => removeAttemptFile(f.id, f.storage_path))}
+                />
+              )}
+
+              {/* Прогресс загрузки */}
+              {uploadingFiles && (
+                <ul className="mb-4 space-y-1.5">
+                  {uploads.map((u, i) => (
+                    <li key={`${u.name}-${i}`}>
+                      <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                        <span className="truncate">{u.name}</span>
+                        <span className="shrink-0 tabular-nums">{u.percent}%</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-full rounded-full bg-primary-500 transition-all"
+                          style={{ width: `${u.percent}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Дропзона — перетаскивание и Ctrl+V нужны только там, где есть мышь/трекпад */}
+              <label
+                data-testid="hw-dropzone"
+                onDragOver={e => { e.preventDefault(); if (!uploadingFiles) setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={async e => {
+                  e.preventDefault()
+                  setDragOver(false)
+                  if (uploadingFiles) return
+                  await uploadPicked(active.id, Array.from(e.dataTransfer.files ?? []))
+                }}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors mt-4',
+                  uploadingFiles
+                    ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+                    : dragOver
+                      ? 'cursor-copy border-primary-400 bg-primary-50'
+                      : 'cursor-pointer border-gray-300 bg-white hover:border-primary-300 hover:bg-primary-50/30',
+                )}
+              >
+                {uploadingFiles ? (
+                  <>
+                    <Loader2 size={24} className="animate-spin text-gray-400" />
+                    <span className="text-sm text-gray-500">Загрузка…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-2xl">📷</span>
+                    <div className="text-sm font-semibold text-gray-700">Перетащите фото или PDF — или нажмите, чтобы выбрать</div>
+                    <div className="text-xs text-gray-400">Скриншот можно просто вставить: Ctrl+V</div>
+                  </>
+                )}
+                <input
+                  data-testid="hw-attempt-file-input"
+                  type="file"
+                  accept={HOMEWORK_FILE_ACCEPT}
+                  multiple
+                  disabled={uploadingFiles}
+                  aria-label="Файлы работы"
+                  onChange={async e => {
+                    const picked = Array.from(e.target.files ?? [])
+                    e.target.value = ''
+                    await uploadPicked(active.id, picked)
+                  }}
+                  className="hidden"
+                />
+              </label>
+            </>
+          )}
 
           {/* Кнопка отправления */}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4">
             <Button
               data-testid="hw-submit-attempt"
+              className="w-full"
               onClick={() => run(() => submitAttempt(active.id))}
               loading={busy}
               disabled={draftFiles.length === 0 || uploadingFiles}
@@ -464,10 +599,11 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
               Подпись описывает ровно то, что умеет экран. До §113 здесь было
               обещание перетаскивания, которого не существовало ни в одном
               обработчике: стрелки называем первыми — они и есть основной способ.
+              На телефоне перетаскивания нет вовсе (§159) — не упоминаем его.
             */}
-            <small className="text-gray-400">
-              {draftFiles.length} {draftFiles.length === 1 ? 'страница' : draftFiles.length <= 4 ? 'страницы' : 'страниц'}
-              {draftFiles.length > 1 && ' · порядок меняется стрелками ← → или перетаскиванием'}
+            <small className="mt-2 block text-center text-gray-400">
+              {plural(draftFiles.length, 'страница', 'страницы', 'страниц')}
+              {draftFiles.length > 1 && (coarse ? ' · порядок меняется стрелками ← →' : ' · порядок меняется стрелками ← → или перетаскиванием')}
             </small>
           </div>
 
@@ -624,10 +760,12 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
  * страницы, а плитки маленькие и попасть мимо легко.
  */
 function PageGrid({
-  files, disabled, onReorder, onDelete,
+  files, disabled, coarse, onReorder, onDelete,
 }: {
   files: TopicHomeworkAttemptFileRow[]
   disabled: boolean
+  /** Указатель неточный (палец) — ручка перетаскивания скрыта, порядок только стрелками. */
+  coarse: boolean
   onReorder: (orderedIds: string[]) => void
   onDelete: (file: TopicHomeworkAttemptFileRow) => void
 }) {
@@ -700,10 +838,11 @@ function PageGrid({
           total={shown.length}
           dragging={!!drag && shown[drag.over]?.id === f.id}
           disabled={disabled}
+          coarse={coarse}
           onDelete={() => onDelete(f)}
           onMove={delta => move(idx, delta)}
           onPointerDownThumb={e => { if (e.pointerType === 'mouse') startDrag(e, idx) }}
-          onPointerDownHandle={e => startDrag(e, idx)}
+          onPointerDownHandle={coarse ? undefined : e => startDrag(e, idx)}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
         />
@@ -732,6 +871,7 @@ function PageThumb({
   onPointerMove,
   onPointerUp,
   disabled,
+  coarse,
 }: {
   file: TopicHomeworkAttemptFileRow
   index: number
@@ -741,10 +881,11 @@ function PageThumb({
   onDelete: () => void
   onMove: (delta: -1 | 1) => void
   onPointerDownThumb: (e: React.PointerEvent) => void
-  onPointerDownHandle: (e: React.PointerEvent) => void
+  onPointerDownHandle?: (e: React.PointerEvent) => void
   onPointerMove: (e: React.PointerEvent) => void
   onPointerUp: (e: React.PointerEvent) => void
   disabled: boolean
+  coarse: boolean
 }) {
   const isImage = !!file.mime_type?.startsWith('image/')
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
@@ -772,7 +913,8 @@ function PageThumb({
     >
       <div
         className={cn(
-          'w-20 h-28 rounded-2xl border bg-gradient-to-b from-white to-slate-100 flex items-center justify-center relative shadow-sm overflow-hidden',
+          'rounded-2xl border bg-gradient-to-b from-white to-slate-100 flex items-center justify-center relative shadow-sm overflow-hidden',
+          coarse ? 'w-28 h-40' : 'w-20 h-28',
           dragging ? 'border-primary-400 ring-2 ring-primary-200' : 'border-gray-200',
         )}
       >
@@ -787,14 +929,17 @@ function PageThumb({
             className="w-full h-full object-cover select-none"
           />
         ) : (
-          <FileText size={32} className="text-gray-400" />
+          <FileText size={coarse ? 40 : 32} className="text-gray-400" />
         )}
         <button
           type="button"
           onClick={onDelete}
           onPointerDown={e => e.stopPropagation()}
           disabled={disabled}
-          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-red-600 text-sm font-bold disabled:opacity-40"
+          className={cn(
+            'absolute flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-red-600 font-bold disabled:opacity-40',
+            coarse ? '-top-2 -right-2 h-11 w-11 text-lg' : '-top-1 -right-1 h-5 w-5 text-sm',
+          )}
           aria-label={`Убрать страницу ${pageNumber}`}
         >
           ×
@@ -803,10 +948,12 @@ function PageThumb({
 
       {/*
         Ряд управления порядком. Кнопки настоящие: их видит скринридер, до них
-        доходит Tab, и подпись говорит, что именно случится. Средняя — ручка
-        для пальца, у неё же номер страницы.
+        доходит Tab, и подпись говорит, что именно случится. На точном
+        указателе средняя ячейка — ещё и ручка перетаскивания для пальца; на
+        неточном (coarse) ручку не подключаем вовсе — только стрелки, палец
+        промахивается мимо узкой полоски чаще, чем попадает.
       */}
-      <div className="mt-1 flex items-center justify-between gap-0.5">
+      <div className={cn('mt-1 flex items-center justify-between', coarse ? 'gap-1' : 'gap-0.5')}>
         <button
           type="button"
           data-testid="hw-page-move-left"
@@ -815,19 +962,27 @@ function PageThumb({
           disabled={disabled || pageNumber === 1}
           aria-label={`Сдвинуть страницу ${pageNumber} влево`}
           title="Сдвинуть влево"
-          className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+          className={cn(
+            'flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent',
+            coarse ? 'h-11 w-11' : 'h-5 w-5',
+          )}
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft size={coarse ? 20 : 14} />
         </button>
 
         <span
           data-testid="hw-page-handle"
           onPointerDown={onPointerDownHandle}
           role="presentation"
-          title="Потяните, чтобы переставить"
+          title={coarse ? undefined : 'Потяните, чтобы переставить'}
           // touch-action только здесь: если запретить прокрутку на всей
           // плитке, палец не сможет пролистнуть страницу с этого места.
-          className="flex-1 cursor-grab touch-none select-none text-center text-xs tabular-nums text-gray-400 active:cursor-grabbing"
+          // На coarse ручка не интерактивна (onPointerDownHandle не пришёл) —
+          // это просто подпись номера страницы, cursor-grab тут ни к чему.
+          className={cn(
+            'flex-1 select-none text-center tabular-nums text-gray-400',
+            coarse ? 'text-sm' : 'cursor-grab touch-none text-xs active:cursor-grabbing',
+          )}
         >
           стр. {pageNumber}
         </span>
@@ -840,9 +995,12 @@ function PageThumb({
           disabled={disabled || pageNumber === total}
           aria-label={`Сдвинуть страницу ${pageNumber} вправо`}
           title="Сдвинуть вправо"
-          className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+          className={cn(
+            'flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent',
+            coarse ? 'h-11 w-11' : 'h-5 w-5',
+          )}
         >
-          <ChevronRight size={14} />
+          <ChevronRight size={coarse ? 20 : 14} />
         </button>
       </div>
     </div>
