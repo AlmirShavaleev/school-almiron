@@ -17,6 +17,7 @@ import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
 import { testPercent } from '@/lib/studentProgram'
 import { TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
+import { pluralTopics } from '@/lib/plural'
 
 // ─── Section pills config ─────────────────────────────────────────────────────
 /**
@@ -1004,9 +1005,11 @@ export function StudentCoursePage() {
         <div className="space-y-3">
           {/* View toggle header */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
+            {/* Склонение по правилам, а не «одна/все остальные»: прежняя
+                развилка давала «2 тем в разделе» — с этим ученик и написал
+                через «Сообщить о проблеме». */}
             <p className="text-sm text-gray-500">
-              {activeMod.topics.length}&nbsp;
-              {activeMod.topics.length === 1 ? 'тема' : 'тем'} в разделе
+              {pluralTopics(activeMod.topics.length)}&nbsp;в разделе
             </p>
             <ViewToggle view={view} onChange={handleViewChange} />
           </div>
