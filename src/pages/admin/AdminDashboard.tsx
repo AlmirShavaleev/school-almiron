@@ -4,7 +4,7 @@ import {
   Users, BookOpen, BarChart3, Search, ArrowRight,
   CheckCircle, RefreshCw, Calendar, Activity, Bell, ListChecks,
   GraduationCap, Plus, Pencil, Lock, UserX, UserPlus,
-  Loader2, ShieldAlert, ClipboardList, Send,
+  Loader2, ShieldAlert, ClipboardList, Send, LifeBuoy,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -14,7 +14,7 @@ import { QuickLogin } from '@/components/demo/QuickLogin'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAdminDashboard, type AdminCourse } from '@/hooks/useAdminDashboard'
-import { useSchoolStats } from '@/hooks/useSchoolStats'
+import { useSchoolStats, telegramLinkingBroken } from '@/hooks/useSchoolStats'
 import { useSchoolAnalytics, DORMANT_DAYS } from '@/hooks/useSchoolAnalytics'
 import { DormantPanel, LearningPanel } from '@/components/admin/SchoolActivity'
 import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
@@ -125,7 +125,7 @@ export function AdminDashboard() {
   // ноль штук», а отсутствие дела, и рисовать его строкой значило бы выдавать
   // спокойный день за работу.
   const todo = useMemo(() => {
-    const rows: { key: string; icon: React.ReactNode; label: string; hint?: string; count: number; go: () => void; tone: string }[] = []
+    const rows: { key: string; icon: React.ReactNode; label: string; hint?: string; count: number | string; go: () => void; tone: string; mood?: 'ok' | 'bad' }[] = []
 
     if (school && school.homework_pending > 0) {
       rows.push({
@@ -165,6 +165,45 @@ export function AdminDashboard() {
         count: stats?.new_users_week ?? 0,
         go: () => { setTab('students'); setRoleFilter('all') },
         tone: 'text-primary-600 bg-primary-50 border-primary-200',
+      })
+    }
+
+    // §169. Обращения «Сообщить о проблеме», которых никто не открывал. Семь
+    // обращений пролежали со статусом «новое» больше месяца, потому что число
+    // не стояло ни на одном экране: колокольчик прозвенел один раз и утонул.
+    if (school && school.support_new > 0) {
+      rows.push({
+        key: 'support',
+        icon: <LifeBuoy size={18} />,
+        label: 'Разобрать обращения',
+        hint: 'написали через «Сообщить о проблеме», никто не открывал',
+        count: school.support_new,
+        go: () => navigate('/admin/support'),
+        tone: 'text-amber-700 bg-amber-50 border-amber-200',
+      })
+    }
+
+    // §169. Воронка привязки Telegram за неделю: ссылок создано / привязок
+    // состоялось. Это не «дело» в обычном смысле, а сторож: привязка ломалась
+    // на три дня, и никто не видел, потому что пару чисел негде было сравнить.
+    // Ноль ссылок — строки нет (за неделю никто не пробовал, сторожить нечего).
+    // Тон — по смыслу (§152): при заметной просадке строка красная.
+    if (school && (school.telegram_links_created_7d > 0 || school.telegram_links_connected_7d > 0)) {
+      const broken = telegramLinkingBroken(school.telegram_links_created_7d, school.telegram_links_connected_7d)
+      rows.push({
+        key: 'telegram',
+        icon: <Send size={18} />,
+        label: 'Telegram за 7 дней',
+        hint: `создано ссылок ${school.telegram_links_created_7d}, привязано ${school.telegram_links_connected_7d}`
+          + (broken ? ' — привязывается меньше половины, похоже на поломку' : ''),
+        count: `${school.telegram_links_connected_7d} / ${school.telegram_links_created_7d}`,
+        go: () => navigate('/admin/telegram'),
+        // `mood` — то же имя, что у бейджей карточек «Сейчас» (LiveCard): цвет
+        // по смыслу, а не по знаку, и проверяется он атрибутом, а не классом.
+        mood: broken ? 'bad' : 'ok',
+        tone: broken
+          ? 'text-red-600 bg-red-50 border-red-200'
+          : 'text-sky-600 bg-sky-50 border-sky-200',
       })
     }
 
@@ -239,7 +278,8 @@ export function AdminDashboard() {
               <CheckCircle size={26} className="mx-auto mb-2 text-green-600" />
               <p className="text-sm font-medium text-green-800">На сегодня всё разобрано.</p>
               <p className="mt-1 text-xs text-green-700">
-                Непроверенных работ нет, пропавших нет, новичков за неделю не появилось.
+                Непроверенных работ нет, пропавших нет, новичков за неделю не появилось,
+                новых обращений нет, ссылок Telegram за неделю не создавали.
               </p>
             </div>
           ) : (
@@ -248,6 +288,7 @@ export function AdminDashboard() {
                 <button
                   key={row.key}
                   onClick={row.go}
+                  data-mood={row.mood}
                   className={cn(
                     'flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all hover:shadow-sm',
                     row.tone,

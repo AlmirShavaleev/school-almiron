@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks,
   Send, ClipboardEdit,
-  LibraryBig, Shield, Wand2,
+  LibraryBig, Shield, Wand2, LifeBuoy,
 } from 'lucide-react'
 
 interface NavItem {
@@ -62,6 +62,7 @@ const navItems: NavItem[] = [
   { label: 'Кабинет учителя',   path: '/teacher',        icon: <GraduationCap size={18} />, roles: ['teacher'] },
   { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
+  { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
@@ -98,7 +99,7 @@ const CURATOR_ITEMS: NavItem[] = [
 ]
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/inbox'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/inbox'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы

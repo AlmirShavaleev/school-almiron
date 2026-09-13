@@ -17,6 +17,7 @@ const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/stud
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
+const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
 const CollectionDetailPage = lazyPage('CollectionDetailPage', () => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
 
@@ -143,6 +144,10 @@ export default function AppRoutes() {
             «Обзоре» панели админа вела в никуда. Содержимое не трогали: это
             зона уведомлений. */}
         <Route path="/admin/telegram" element={<RoleGuard allow={['admin','owner']}><TelegramJournalPage /></RoleGuard>} />
+        {/* Обращения «Сообщить о проблеме» (§57). Экрана со списком не было до
+            §169: статус `new` снять было негде, и обращения лежали месяцами.
+            Сюда ведёт строка «Разобрать обращения» на «Обзоре». */}
+        <Route path="/admin/support" element={<RoleGuard allow={['admin','owner']}><SupportRequestsPage /></RoleGuard>} />
 
         {/* Только персонал (teacher/curator/admin/owner) */}
         <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
