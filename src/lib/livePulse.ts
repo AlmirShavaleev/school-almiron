@@ -34,6 +34,10 @@ export interface WeekOverWeek {
 export interface PulseData {
   visitsDaily:  DayPoint[]
   submitsDaily: DayPoint[]
+  /** Размер очереди проверки на конец каждого дня. Уровень, а не поток. */
+  queueDaily:   DayPoint[]
+  /** Сколько тем стало пройденными в этот день. Строго, через topic_done_events. */
+  marksDaily:   DayPoint[]
   hourly:       HourPoint[]
   week:         WeekOverWeek
   reach:        { active7d: number; enrolled: number }
@@ -143,6 +147,8 @@ export function parsePulse(raw: unknown): PulseData {
   return {
     visitsDaily:  days(body.visits_daily, 'people'),
     submitsDaily: days(body.submits_daily, 'count'),
+    queueDaily:   days(body.queue_daily, 'count'),
+    marksDaily:   days(body.marks_daily, 'count'),
     hourly: Array.isArray(body.hourly)
       ? body.hourly.map((row: any) => ({ hour: Number(row?.hour ?? 0), events: Number(row?.events ?? 0) }))
       : [],
@@ -187,4 +193,89 @@ export function parseFeed(raw: unknown): FeedEvent[] {
       actorName: String(row?.actor_name ?? ''),
       detail:    String(row?.detail ?? ''),
     }))
+}
+
+// ── Карточки с графиками (§152) ────────────────────────────────────────────
+
+/**
+ * Что хорошо, а что плохо.
+ *
+ * Бейдж изменения красится ПО СМЫСЛУ, а не по знаку. Рост заходов, сдач и
+ * пройденных тем — хорошо. Рост очереди проверки — плохо, и зелёная стрелка
+ * вверх на нём была бы прямой дезинформацией: владелец прочёл бы «дела идут в
+ * гору» там, где работы копятся.
+ */
+export type CardTone = 'more-is-good' | 'more-is-bad'
+
+/** Цвет бейджа: смысл изменения, а не его направление. */
+export function changeMood(
+  direction: 'up' | 'down' | 'flat',
+  tone: CardTone,
+): 'good' | 'bad' | 'flat' {
+  if (direction === 'flat') return 'flat'
+  const grew = direction === 'up'
+  return (tone === 'more-is-good') === grew ? 'good' : 'bad'
+}
+
+export interface CardSummary {
+  current:  number
+  previous: number
+}
+
+/**
+ * Сводка для карточки-ПОТОКА: заходы, сдачи, пройденные темы.
+ *
+ * Крупное число — сумма за последнюю неделю, бейдж — к предыдущей. Складывать
+ * поток осмысленно: «за неделю сдали 23 работы» — это величина.
+ */
+export function flowSummary(points: DayPoint[], days = 7): CardSummary {
+  const tail = points.slice(-days)
+  const head = points.slice(-days * 2, -days)
+  const sum = (list: DayPoint[]) => list.reduce((acc, p) => acc + (Number.isFinite(p.value) ? p.value : 0), 0)
+  return { current: sum(tail), previous: sum(head) }
+}
+
+/**
+ * Сводка для карточки-УРОВНЯ: очередь проверки.
+ *
+ * Очередь — не поток, а запас: сумма её значений по дням не значит ничего
+ * (работа, ждавшая три дня, вошла бы в сумму трижды). Поэтому крупное число —
+ * размер очереди СЕЙЧАС, а бейдж — сравнение с уровнем неделю назад.
+ */
+export function levelSummary(points: DayPoint[], days = 7): CardSummary {
+  if (points.length === 0) return { current: 0, previous: 0 }
+  const current = points[points.length - 1]?.value ?? 0
+  const earlier = points[points.length - 1 - days]
+  return { current, previous: earlier?.value ?? current }
+}
+
+export interface CardChartPoint {
+  label:  string
+  /** Завершённые дни. У последнего — null, чтобы линия сюда не дотягивалась. */
+  solid:  number | null
+  /** Незавершённый хвост: предпоследняя точка для стыка плюс сегодняшняя. */
+  dashed: number | null
+}
+
+/**
+ * Разделение ряда на сплошную часть и пунктирный хвост.
+ *
+ * Пунктир означает ровно одно: **период ещё не закончился**. Сегодняшний день
+ * неполный, и сплошная линия до него врала бы формой — падение в конце
+ * читалось бы как обвал, хотя день просто не прожит.
+ *
+ * Прошлые дни пунктиром не рисуются НИКОГДА: стоит нарисовать так «слабые»
+ * дни или дни без данных — и пунктир перестанет что-либо значить.
+ *
+ * Предпоследняя точка попадает в оба ряда намеренно: без общей точки сплошная
+ * и пунктирная линии не состыкуются и в графике будет разрыв.
+ */
+export function splitUnfinishedTail(points: DayPoint[]): CardChartPoint[] {
+  if (points.length === 0) return []
+  const last = points.length - 1
+  return points.map((point, i) => ({
+    label:  point.day,
+    solid:  i < last ? point.value : null,
+    dashed: i >= last - 1 ? point.value : null,
+  }))
 }

@@ -7,8 +7,10 @@ import { render, renderHook, act, waitFor } from '@testing-library/react'
  * Сторожится суть нового механизма (канал снят, см. `@/lib/schoolPresence`):
  *
  * 1. **Отмечается каждый вошедший**, гость — нет.
- * 2. **В фоне не отмечаемся и не опрашиваем** — требование вводной, а здесь
- *    оно ещё и экономит записи в базу.
+ * 2. **В фоне отмечаемся реже и не вечно** (§165): такт 60 с в течение
+ *    получаса после последнего действия. Прежнее «в фоне молчим» считало
+ *    ушедшим ученика, читающего конспект в соседней вкладке. Список при этом
+ *    в фоне не опрашивается — панель смотрит тот, кто на неё смотрит.
  * 3. **Отказ чтения — не «никого нет».** Оба состояния выглядят пустым
  *    списком, и молчание тут соврало бы.
  * 4. **Таймеры снимаются при уходе** — иначе вкладка шлёт отметки вечно.
@@ -28,7 +30,7 @@ vi.mock('@/store/authStore', () => ({
 
 import { useSchoolPresence, useOnlinePeople } from '@/hooks/useSchoolPresence'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
-import { PRESENCE_WINDOW_S } from '@/lib/schoolPresence'
+import { PRESENCE_WINDOW_S, __resetActivityForTests } from '@/lib/schoolPresence'
 
 let hidden = false
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   rpc.mockResolvedValue({ data: [], error: null })
   profile = { id: 'p-1', role: 'student' }
   hidden = false
+  __resetActivityForTests()
   vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
 })
 
@@ -65,36 +68,115 @@ describe('отметка присутствия', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('в фоне отметки не идут, при возврате — идут сразу', async () => {
-    hidden = true
-    renderHook(() => useSchoolPresence())
-    await new Promise(resolve => setTimeout(resolve, 20))
-    expect(rpc).not.toHaveBeenCalled()
-
-    hidden = false
-    await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
-    expect(rpc).toHaveBeenCalledWith('school_presence_touch')
-  })
-
-  it('отметки повторяются по такту, а после ухода прекращаются', async () => {
+  it('видимая вкладка: такт 20 секунд', async () => {
     vi.useFakeTimers()
-    const { unmount } = renderHook(() => useSchoolPresence())
+    renderHook(() => useSchoolPresence())
     expect(rpc).toHaveBeenCalledTimes(1)
 
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
     expect(rpc).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(rpc).toHaveBeenCalledTimes(3)
+  })
+
+  it('в фоне отметки ИДУТ — раз в 60 секунд, ровно полчаса после действия', async () => {
+    // Ровно тот случай, ради которого §165 и делался: ученик открыл конспект
+    // в новой вкладке и читает. Прежнее правило считало его ушедшим.
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    hidden = true
+    // Первые полчаса: по отметке в минуту, а не в 20 секунд.
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(40_000) })
+    expect(rpc).toHaveBeenCalledTimes(2)
+
+    const afterFirstMinute = rpc.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000) })
+    // Десять минут — десять отметок, не тридцать.
+    expect(rpc.mock.calls.length - afterFirstMinute).toBe(10)
+  })
+
+  it('в фоне после получаса отметки прекращаются', async () => {
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+    hidden = true
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60_000) })
+    const atExpiry = rpc.mock.calls.length
+
+    // Вкладка, забытая на ночь, ресурсы не жжёт.
+    await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60 * 60_000) })
+    expect(rpc).toHaveBeenCalledTimes(atExpiry)
+  })
+
+  it('возвращение на вкладку отмечается сразу и возвращает такт 20 секунд', async () => {
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+    hidden = true
+    await act(async () => { await vi.advanceTimersByTimeAsync(40 * 60_000) })
+    const asleep = rpc.mock.calls.length
+
+    hidden = false
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(rpc).toHaveBeenCalledTimes(asleep + 1)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(rpc).toHaveBeenCalledTimes(asleep + 2)
+  })
+
+  it('действие продлевает льготный период', async () => {
+    // Открытие материала — это клик на нашей странице, он сюда и попадает.
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+    hidden = true
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(25 * 60_000) })
+    // Клик по ссылке материала: период отсчитывается заново.
+    await act(async () => { document.dispatchEvent(new Event('pointerdown')) })
+    const afterClick = rpc.mock.calls.length
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000) })
+    // Без продления здесь было бы молчание: 25 + 10 больше тридцати.
+    expect(rpc.mock.calls.length).toBeGreaterThan(afterClick)
+  })
+
+  it('уход в фон сам по себе периода не продлевает', async () => {
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29 * 60_000) })
+    hidden = true
+    // Событие видимости приходит и при УХОДЕ в фон. Считать его действием
+    // значило бы дать брошенной вкладке продлевать себя самой.
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+    const atHide = rpc.mock.calls.length
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000) })
+    expect(rpc).toHaveBeenCalledTimes(atHide)
+  })
+
+  it('после ухода со страницы отметки прекращаются', async () => {
+    vi.useFakeTimers()
+    const { unmount } = renderHook(() => useSchoolPresence())
+    const before = rpc.mock.calls.length
 
     unmount()
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60_000) })
     // Ни одной лишней: иначе закрытая панель слала бы отметки вечно.
-    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc).toHaveBeenCalledTimes(before)
+    // И слушатели сняты — клик после размонтирования тоже ничего не шлёт.
+    await act(async () => { document.dispatchEvent(new Event('pointerdown')) })
+    expect(rpc).toHaveBeenCalledTimes(before)
   })
 
   it('отказ отметки не роняет приложение', async () => {
     rpc.mockRejectedValue(new Error('нет сети'))
     renderHook(() => useSchoolPresence())
     await new Promise(resolve => setTimeout(resolve, 20))
-    // Человек просто пропадёт из списка через 45 секунд — это честнее, чем
+    // Человек просто пропадёт из списка по истечении окна — это честнее, чем
     // сломанный экран из-за счётчика присутствия.
     expect(rpc).toHaveBeenCalled()
   })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collapseToWorks, countByTab, courseFilterOptions, groupByDay, groupByCourse, rowsOfTab,
-  sortQueue, toQueueRows,
+  sortQueue, toQueueRows, topicFilterOptions,
 } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
@@ -313,5 +313,46 @@ describe('courseFilterOptions', () => {
   it('пустая очередь — пустой список', () => {
     const options = courseFilterOptions([])
     expect(options).toEqual([])
+  })
+})
+
+/**
+ * §149. Фильтр по теме: список строится из самой очереди, при выбранном курсе —
+ * только его темы. Тема без сданных работ в списке не появляется.
+ */
+describe('topicFilterOptions', () => {
+  const row = (id: string, topic: { id: string; title: string }, course: { id: string; title: string }) => rawRow({
+    id,
+    homework: {
+      id: `hw-${id}`,
+      title: 'ДЗ',
+      grade_scale: null,
+      topic: { id: topic.id, title: topic.title, module: { id: 'm1', course } },
+    },
+  })
+  const algebra = { id: 'c1', title: 'Алгебра' }
+  const physics = { id: 'c2', title: 'Физика' }
+  const rows = toQueueRows([
+    row('a1', { id: 't1', title: 'Уравнения' }, algebra),
+    row('a2', { id: 't1', title: 'Уравнения' }, algebra),
+    row('a3', { id: 't2', title: 'Векторы' }, algebra),
+    row('a4', { id: 't3', title: 'Кинематика' }, physics),
+  ])
+
+  it('только темы из очереди, со счётчиком работ', () => {
+    const options = topicFilterOptions(rows)
+    expect(options.map(o => o.id).sort()).toEqual(['t1', 't2', 't3'])
+    expect(options.find(o => o.id === 't1')?.count).toBe(2)
+    expect(options.find(o => o.id === 't3')?.count).toBe(1)
+  })
+
+  it('при выбранном курсе — только его темы', () => {
+    expect(topicFilterOptions(rows, 'c1').map(o => o.id).sort()).toEqual(['t1', 't2'])
+    expect(topicFilterOptions(rows, 'c2').map(o => o.id)).toEqual(['t3'])
+    expect(topicFilterOptions(rows, 'нет-такого')).toEqual([])
+  })
+
+  it('темы отсортированы по названию по-русски', () => {
+    expect(topicFilterOptions(rows).map(o => o.title)).toEqual(['Векторы', 'Кинематика', 'Уравнения'])
   })
 })

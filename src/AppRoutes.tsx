@@ -7,6 +7,7 @@ import { LoadingGate } from '@/components/shared/LoadingGate'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
+import { CatalogAttachMode } from '@/components/catalog/CatalogAttachMode'
 
 // Dashboard
 const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
@@ -178,10 +179,14 @@ export default function AppRoutes() {
         <Route path="/my-homeworks" element={<RoleGuard allow={['student']}><MyHomeworksV2Page /></RoleGuard>} />
         <Route path="/mock-exams" element={<MockExamsPage />} />
 
-        <Route path="/catalog" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogPage /></RoleGuard>} />
-        <Route path="/catalog/:sectionId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogSectionPage /></RoleGuard>} />
-        <Route path="/catalog/:sectionId/topic/:topicId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTopicPage /></RoleGuard>} />
-        <Route path="/catalog/task/:taskId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTaskPage /></RoleGuard>} />
+        {/* Обёртка каталога — режим подбора задач к уроку (§164). Вне режима не
+            рисует ничего; страницы каталога о нём не знают. */}
+        <Route element={<CatalogAttachMode />}>
+          <Route path="/catalog" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogPage /></RoleGuard>} />
+          <Route path="/catalog/:sectionId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogSectionPage /></RoleGuard>} />
+          <Route path="/catalog/:sectionId/topic/:topicId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTopicPage /></RoleGuard>} />
+          <Route path="/catalog/task/:taskId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTaskPage /></RoleGuard>} />
+        </Route>
 
         <Route path="/cart" element={<RoleGuard allow={['student','teacher','admin','owner']}><CartPage /></RoleGuard>} />
         <Route path="/collections/:id" element={<RoleGuard allow={['teacher','admin','owner']}><CollectionDetailPage /></RoleGuard>} />

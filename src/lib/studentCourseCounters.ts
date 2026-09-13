@@ -14,6 +14,7 @@
  */
 import { isTopicOpen, todayLocal, type TopicOpenState } from '@/lib/topicAvailability'
 import type { TopicHwStatus } from '@/lib/studentProgram'
+import { pluralTopics } from '@/lib/plural'
 
 export interface CountableTopic extends TopicOpenState {
   /** У темы есть домашнее задание, ВИДИМОЕ ученику (RLS прячет черновики). */
@@ -94,7 +95,13 @@ export function homeworkLabel(counters: CourseCounters): string {
   return `Домашние задания: ${counters.homeworkSubmitted} из ${counters.homeworkAvailable} сдано`
 }
 
-/** Подпись главного счётчика. Слово «тем», а не «заданий», — считаем темы. */
+/**
+ * Подпись главного счётчика. Слово «тем», а не «заданий», — считаем темы.
+ *
+ * Форма слова СКЛОНЯЕТСЯ и согласуется со ВТОРЫМ числом — тем, что стоит с
+ * ней рядом. Жёсткое «тем» давало «2 из 2 тем открыто»: с этим ученик и
+ * написал через «Сообщить о проблеме» 09.09.
+ */
 export function topicsLabel(counters: CourseCounters): string {
-  return `${counters.openTopics} из ${counters.totalTopics} тем открыто`
+  return `${counters.openTopics} из ${pluralTopics(counters.totalTopics)} открыто`
 }

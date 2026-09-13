@@ -4,9 +4,40 @@ import {
   type TopicGroupKey,
 } from './topicProgress'
 
-const progress = (groups: TopicGroupKey[], marks: TopicGroupKey[], homeworkAccepted = false) => ({
-  groups, marks: new Set(marks), homeworkAccepted,
+const progress = (
+  groups: TopicGroupKey[],
+  marks: TopicGroupKey[],
+  homeworkAccepted = false,
+  tasks?: { total: number; solved: number },
+) => ({
+  groups,
+  marks: new Set(marks),
+  homeworkAccepted,
+  tasksTotal: tasks?.total,
+  tasksSolved: tasks?.solved,
 })
+
+/**
+ * Серверное правило «тема пройдена» из `topic_done_events()`, записанное здесь
+ * как есть: группа засчитана, если у темы её нет, либо она закрыта.
+ *
+ * Определение живёт в двух местах — SQL и клиент, — и приёмка §162 требует,
+ * чтобы на одном наборе данных они отвечали одинаково. Эта копия нужна именно
+ * для сравнения: расхождение поймает тест, а не ученик.
+ */
+const serverTopicDone = (t: {
+  hasTheory: boolean; theoryAt: boolean
+  hasLesson: boolean; lessonAt: boolean
+  hasHomework: boolean; hwAt: boolean
+  hasTasks: boolean; tasksTotal: number; tasksClosed: number
+}) => {
+  const tasksAt = t.tasksTotal > 0 && t.tasksClosed >= t.tasksTotal
+  if (!(t.hasTheory || t.hasLesson || t.hasHomework || t.hasTasks)) return false
+  return (!t.hasTheory || t.theoryAt)
+    && (!t.hasLesson || t.lessonAt)
+    && (!t.hasHomework || t.hwAt)
+    && (!t.hasTasks || tasksAt)
+}
 
 describe('topicSections — считаем только те рубрики, что реально есть', () => {
   it('пустая рубрика в набор не попадает', () => {
@@ -45,8 +76,10 @@ describe('topicGroups — рубрики сворачиваются в груп�
     expect(topicGroups(['task_solution', 'video', 'homework'])).toEqual(['theory', 'lesson', 'homework'])
   })
 
-  it('тестирование ни в какую группу не входит и на завершённость не влияет', () => {
-    expect(topicGroups(['test'])).toEqual([])
+  // §162 отменил правило §121 «тестирование вне групп»: владелец назвал
+  // рубрику «Задачи» и решил, что решённые задачи считаются в «тема пройдена».
+  it('задачи к уроку образуют свою группу', () => {
+    expect(topicGroups(['test'])).toEqual(['tasks'])
   })
 
   it('закрытое гейтом решение поднимает группу ДЗ — отмечать там всё равно нечего', () => {
@@ -113,4 +146,55 @@ describe('courseProgress — доля завершённых ТЕМ', () => {
   it('без тем — ноль, а не деление на ноль', () => {
     expect(courseProgress([])).toEqual({ done: 0, total: 0, percent: 0 })
   })
+})
+
+describe('«тема пройдена» — клиент и сервер отвечают одинаково (§162)', () => {
+  // Один набор данных, два определения: `topicDone` на клиенте и правило
+  // `topic_done_events()` на сервере. Пока они совпадают на всех случаях,
+  // третьего определения в проекте нет — а именно этого требует приёмка.
+  const cases: Array<{
+    name: string
+    hasTheory: boolean; theoryAt: boolean
+    hasLesson: boolean; lessonAt: boolean
+    hasHomework: boolean; hwAt: boolean
+    hasTasks: boolean; tasksTotal: number; tasksClosed: number
+  }> = [
+    { name: 'только задачи, все решены',
+      hasTheory: false, theoryAt: false, hasLesson: false, lessonAt: false,
+      hasHomework: false, hwAt: false, hasTasks: true, tasksTotal: 3, tasksClosed: 3 },
+    { name: 'только задачи, решена не вся',
+      hasTheory: false, theoryAt: false, hasLesson: false, lessonAt: false,
+      hasHomework: false, hwAt: false, hasTasks: true, tasksTotal: 3, tasksClosed: 2 },
+    { name: 'теория отмечена, задачи не дорешаны',
+      hasTheory: true, theoryAt: true, hasLesson: false, lessonAt: false,
+      hasHomework: false, hwAt: false, hasTasks: true, tasksTotal: 2, tasksClosed: 1 },
+    { name: 'теория и задачи закрыты',
+      hasTheory: true, theoryAt: true, hasLesson: false, lessonAt: false,
+      hasHomework: false, hwAt: false, hasTasks: true, tasksTotal: 2, tasksClosed: 2 },
+    { name: 'ДЗ принято, задач нет',
+      hasTheory: false, theoryAt: false, hasLesson: false, lessonAt: false,
+      hasHomework: true, hwAt: true, hasTasks: false, tasksTotal: 0, tasksClosed: 0 },
+    { name: 'всё сразу и всё закрыто',
+      hasTheory: true, theoryAt: true, hasLesson: true, lessonAt: true,
+      hasHomework: true, hwAt: true, hasTasks: true, tasksTotal: 1, tasksClosed: 1 },
+    { name: 'у темы нет ничего',
+      hasTheory: false, theoryAt: false, hasLesson: false, lessonAt: false,
+      hasHomework: false, hwAt: false, hasTasks: false, tasksTotal: 0, tasksClosed: 0 },
+  ]
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const groups: TopicGroupKey[] = []
+      const marks: TopicGroupKey[] = []
+      if (c.hasTheory)   { groups.push('theory');   if (c.theoryAt) marks.push('theory') }
+      if (c.hasLesson)   { groups.push('lesson');   if (c.lessonAt) marks.push('lesson') }
+      if (c.hasHomework) { groups.push('homework') }
+      if (c.hasTasks)    { groups.push('tasks') }
+
+      const client = topicDone(progress(groups, marks, c.hwAt,
+        { total: c.tasksTotal, solved: c.tasksClosed }))
+
+      expect(client).toBe(serverTopicDone(c))
+    })
+  }
 })

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   User, Bell, Shield, GraduationCap, Camera, Trash2,
-  Check, AlertCircle, Loader2, Send, Link, Link2Off, Copy, RefreshCw,
+  Check, AlertCircle, Loader2, Send, Link, Link2Off, RefreshCw,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select } from '@/components/ui/Input'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { disconnectTelegram, requestTelegramLink, sendTelegramTest, startCommandFor } from '@/lib/telegramLinkApi'
-import { QrCode } from '@/components/shared/QrCode'
+import { TelegramLinkWaiting } from '@/components/shared/TelegramLinkWaiting'
 import { ROLE_LABELS } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -781,46 +781,7 @@ export function TelegramConnectionBlock({
               </Button>
             </div>
           ) : phase === 'waiting' && linkUrl ? (
-            <div className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                <QrCode value={linkUrl} />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                    <Link size={15} className="text-blue-500 shrink-0" />
-                    <a
-                      href={linkUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-blue-700 underline underline-offset-2 break-all"
-                    >
-                      {linkUrl}
-                    </a>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Ссылка действует час. Откройте её на телефоне или отсканируйте QR — платформа сама заметит подключение.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
-                <AlertCircle size={15} className="text-orange-500 shrink-0" />
-                <div className="min-w-0 flex-1 text-sm text-orange-800">
-                  Если бот открылся и молчит — отправьте ему <code className="rounded bg-orange-100 px-1 py-0.5 font-mono text-xs">{startCommandFor(linkUrl)}</code>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyCommand}
-                  title="Скопировать команду"
-                  className="shrink-0 flex items-center gap-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 transition-colors"
-                >
-                  {copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Скопировано' : 'Копировать'}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 size={14} className="animate-spin" />Ждём подтверждения от бота…
-              </div>
-            </div>
+            <TelegramLinkWaiting linkUrl={linkUrl} copied={copied} onCopyCommand={handleCopyCommand} />
           ) : (
             <Button onClick={handleConnect} loading={genLoading}>
               <Link size={14} className="mr-1.5" />Подключить Telegram

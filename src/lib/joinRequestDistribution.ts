@@ -66,6 +66,9 @@ function mapError(error: unknown): DistributionError {
   if (message.includes('FORBIDDEN: not your student')) {
     return new DistributionError('Этот ученик не связан с вами', code)
   }
+  if (raw?.hint === 'STUDENT_CLAIMED_BY_OTHER_TEACHER' || message.includes('уже закреплён за другим преподавателем')) {
+    return new DistributionError('Этот ученик уже закреплён за другим преподавателем', code)
+  }
   if (message.includes('COURSE_NOT_AVAILABLE')) {
     return new DistributionError('Выбранный курс недоступен', code)
   }
@@ -130,7 +133,13 @@ export interface TeacherCourseOption {
   title: string
 }
 
-/** Active, non-draft courses owned by the current teacher -- source list for the distribution wizard. */
+/**
+ * Active, non-draft courses owned by the current teacher -- source list for the distribution
+ * wizard. Templates excluded by the `is_template` FIELD, not by title (§136: enrollment into a
+ * template is rejected by a DB trigger regardless of the UI, and matching on the word "Шаблон"
+ * would hide a real class that happens to be named that way). Drafts are filtered separately by
+ * `is_draft` -- the enrollment trigger itself doesn't reject drafts, so this list must not either.
+ */
 export async function getMyActiveCourses(ownerId: string): Promise<TeacherCourseOption[]> {
   try {
     const db = supabase as any
@@ -140,6 +149,7 @@ export async function getMyActiveCourses(ownerId: string): Promise<TeacherCourse
       .eq('owner_id', ownerId)
       .eq('is_active', true)
       .eq('is_draft', false)
+      .eq('is_template', false)
       .order('title')
     if (error) throw error
     const rows = Array.isArray(data) ? data : []

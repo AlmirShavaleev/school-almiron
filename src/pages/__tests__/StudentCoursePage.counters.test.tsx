@@ -76,7 +76,7 @@ function renderPage() {
 describe('StudentCoursePage — счётчики', () => {
   it('главный счётчик считает открытые темы, а не задания', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('2 из 4 тем открыто')
+    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('2 из 4 темы открыто')
   })
 
   it('при нуле опубликованных ДЗ строка говорит словами, а не пустует', async () => {
@@ -87,7 +87,7 @@ describe('StudentCoursePage — счётчики', () => {
 
   it('раздел в списке считает тем же правилом, что и курс', async () => {
     renderPage()
-    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('2 из 4 тем открыто')
+    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('2 из 4 темы открыто')
     expect(screen.getByTestId('module-homework-counter')).toHaveTextContent('Домашних заданий пока нет')
   })
 
@@ -113,5 +113,16 @@ describe('StudentCoursePage — счётчики', () => {
     const block = await screen.findByTestId('student-week-plan')
     expect(block).toHaveTextContent('Тема недели')
     expect(block).not.toHaveTextContent('Чужая тема')
+  })
+})
+
+describe('StudentCoursePage — склонение', () => {
+  it('счётчик тем согласует слово со вторым числом', async () => {
+    // Обращение ученика 09.09: «2 тем» вместо «2 темы». Слово стоит рядом со
+    // ВТОРЫМ числом, с ним и согласуется.
+    renderPage()
+    const counter = await screen.findByTestId('course-topics-counter')
+    expect(counter).toHaveTextContent('темы открыто')
+    expect(counter.textContent).not.toMatch(/4 тем открыто/)
   })
 })

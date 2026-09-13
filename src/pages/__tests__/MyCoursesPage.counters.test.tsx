@@ -76,6 +76,7 @@ describe('MyCoursesPage — вторая цифра карточки', () => {
 
   it('считает открытые темы, а не выполненные задания', async () => {
     render(<MemoryRouter><MyCoursesPage /></MemoryRouter>)
-    expect(await screen.findByTestId('course-card-topics')).toHaveTextContent('2 / 4 тем открыто')
+    // Слово согласуется со вторым числом: «4 темы», а не «4 тем».
+    expect(await screen.findByTestId('course-card-topics')).toHaveTextContent('2 / 4 темы открыто')
   })
 })

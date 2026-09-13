@@ -85,10 +85,12 @@ export function VariantDetailPage() {
           className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <nav className="text-sm text-gray-500 flex items-center gap-1.5">
-          <Link to="/variants" className="hover:text-primary-600">Варианты</Link>
+        {/* min-w-0 у nav и truncate без max-w: на телефоне крошки занимают
+            остаток строки, а не жёсткие 320 px, которые уезжали за экран (§158, №31). */}
+        <nav className="text-sm text-gray-500 flex items-center gap-1.5 min-w-0 flex-1">
+          <Link to="/variants" className="hover:text-primary-600 shrink-0">Варианты</Link>
           <span>/</span>
-          <span className="text-gray-700 truncate max-w-xs">{variant.title}</span>
+          <span className="text-gray-700 truncate min-w-0">{variant.title}</span>
         </nav>
       </div>
 
@@ -123,7 +125,8 @@ export function VariantDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          {/* без flex-shrink-0: ряд кнопок переносится под заголовок, а не выталкивает страницу вширь (§158, №31) */}
+          <div className="flex items-center gap-2 flex-wrap">
             {canEdit && (
               <>
                 <Button variant="secondary" onClick={() => navigate(`/variants/${variant.id}/assignments`)}>

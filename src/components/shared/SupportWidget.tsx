@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { CheckCircle2, ImagePlus, LifeBuoy, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { FAB_SLOT } from '@/lib/floatingStack'
 // re-export ниже (строка ~84) транзитный и имени в файл не вводит — импорт обязателен
 import { imagesFromTransfer, nextScreenshotIndex } from '@/lib/clipboardFiles'
 
@@ -211,10 +212,10 @@ export function SupportWidget() {
           onClick={handleOpen}
           data-testid="support-widget-button"
           aria-label="Сообщить о проблеме"
-          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-primary-900 text-white
+          className={`${FAB_SLOT.help} w-14 h-14 rounded-full bg-primary-900 text-white
                      shadow-xl shadow-primary-950/25 flex items-center justify-center
                      hover:bg-primary-800 hover:scale-105 active:scale-95
-                     transition-all duration-200"
+                     transition-all duration-200`}
         >
           <LifeBuoy size={22} />
         </button>

@@ -41,6 +41,15 @@ export interface TopicProgress {
   marks: ReadonlySet<TopicGroupKey>
   /** Принята ли работа по ДЗ темы. Для темы без ДЗ значения не имеет. */
   homeworkAccepted: boolean
+  /**
+   * Задачи к уроку (§162): сколько всего и сколько закрыто.
+   *
+   * Закрытой считается и решённая вердиктом, и разобранная самооценкой — для
+   * завершённости они равны, различие видит преподаватель. У темы без задач
+   * группы `tasks` не будет вовсе, значения не важны.
+   */
+  tasksTotal?: number
+  tasksSolved?: number
 }
 
 /**
@@ -52,8 +61,8 @@ export interface TopicProgress {
  * пропажу раздела). Требовать отметку у пустой группы нельзя, иначе тема
  * никогда не завершится.
  *
- * Тестирование ни в одну группу §121 не входит, поэтому на завершённость не
- * влияет и отметки не имеет.
+ * Задачи к уроку (§162) — четвёртая группа. Отметки она не имеет: её закрывают
+ * решённые задачи, а не кнопка.
  */
 export function topicGroups(sections: readonly TopicSection[]): TopicGroupKey[] {
   return TOPIC_SECTION_GROUPS
@@ -85,9 +94,20 @@ export function topicSections(input: {
   return out
 }
 
-/** Сделана ли группа. ДЗ — только принятой работой, остальное — самоотметкой. */
+/**
+ * Сделана ли группа.
+ *
+ * ДЗ — только принятой работой, задачи к уроку — только решёнными задачами,
+ * остальное — самоотметкой. Правило обязано совпадать с серверным
+ * `topic_done_events()`: определение «пройдено» одно на двоих, и на оба стоит
+ * общий тест.
+ */
 export function groupDone(group: TopicGroupKey, progress: TopicProgress): boolean {
   if (group === 'homework') return progress.homeworkAccepted
+  if (group === 'tasks') {
+    const total = progress.tasksTotal ?? 0
+    return total > 0 && (progress.tasksSolved ?? 0) >= total
+  }
   return progress.marks.has(group)
 }
 

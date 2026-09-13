@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  PRESENCE_POLL_MS, PRESENCE_TOUCH_MS, PRESENCE_WINDOW_S,
-  parseOnline, samePeople,
+  PRESENCE_BACKGROUND_TOUCH_MS, PRESENCE_GRACE_MS, PRESENCE_POLL_MS,
+  PRESENCE_TOUCH_MS, PRESENCE_WINDOW_S,
+  parseOnline, samePeople, shouldTouch,
 } from '@/lib/schoolPresence'
 
 /**
@@ -13,21 +14,70 @@ import {
  */
 
 describe('согласованность сроков', () => {
-  it('окно свежести шире такта отметки, но не вдвое', () => {
-    // 45 при отметке раз в 20: один потерянный удар не выкидывает человека из
-    // списка (20 < 45), а закрытая вкладка пропадает быстро (45 < 60).
-    expect(PRESENCE_WINDOW_S * 1000).toBeGreaterThan(PRESENCE_TOUCH_MS)
-    expect(PRESENCE_WINDOW_S * 1000).toBeLessThan(PRESENCE_TOUCH_MS * 3)
+  it('окно свежести равно льготному периоду — иначе подпись экрана соврёт', () => {
+    // Экран пишет «активны за последние 30 минут». Если окно и период
+    // разойдутся, подпись начнёт описывать не то, что показано.
+    expect(PRESENCE_WINDOW_S * 1000).toBe(PRESENCE_GRACE_MS)
+    expect(PRESENCE_WINDOW_S).toBe(30 * 60)
   })
 
   it('опрос списка не реже отметок — иначе экран отставал бы на такт', () => {
     expect(PRESENCE_POLL_MS).toBeLessThanOrEqual(PRESENCE_TOUCH_MS)
   })
 
-  it('обещание экрана — 45 секунд, а не «полминуты» из вводной', () => {
-    // Приёмка поправлена сознательно: при отметке раз в 20 честный срок
-    // исчезновения — 45 секунд, и обещать полминуты значило бы соврать.
-    expect(PRESENCE_WINDOW_S).toBe(45)
+  it('в фоне такт реже, чем на переднем плане', () => {
+    expect(PRESENCE_BACKGROUND_TOUCH_MS).toBeGreaterThan(PRESENCE_TOUCH_MS)
+  })
+
+  it('окно свежести много шире такта — потерянный удар не выкидывает из списка', () => {
+    expect(PRESENCE_WINDOW_S * 1000).toBeGreaterThan(PRESENCE_BACKGROUND_TOUCH_MS * 2)
+  })
+})
+
+describe('shouldTouch — когда отмечаться', () => {
+  const T0 = 1_000_000
+
+  it('видимая вкладка: такт 20 секунд', () => {
+    const base = { hidden: false, lastTouchAt: T0, lastActivityAt: T0 }
+    expect(shouldTouch(T0 + 19_000, base)).toBe(false)
+    expect(shouldTouch(T0 + 20_000, base)).toBe(true)
+  })
+
+  it('фон в льготный период: такт 60 секунд, а не 20', () => {
+    // Ученик читает PDF в соседней вкладке. Он присутствует, но обновлять
+    // его отметку так же часто незачем.
+    const base = { hidden: true, lastTouchAt: T0, lastActivityAt: T0 }
+    expect(shouldTouch(T0 + 20_000, base)).toBe(false)
+    expect(shouldTouch(T0 + 59_000, base)).toBe(false)
+    expect(shouldTouch(T0 + 60_000, base)).toBe(true)
+  })
+
+  it('фон после льготного периода: молчим, сколько бы ни ждали', () => {
+    // Вкладка, забытая на ночь, не должна держать человека «в школе».
+    const stale = { hidden: true, lastActivityAt: T0 }
+    const now = T0 + PRESENCE_GRACE_MS
+    expect(shouldTouch(now, { ...stale, lastTouchAt: now - 60_000 })).toBe(false)
+    expect(shouldTouch(now + 3_600_000, { ...stale, lastTouchAt: T0 })).toBe(false)
+  })
+
+  it('граница периода: за миг до истечения — ещё да, ровно в срок — уже нет', () => {
+    const at = (delta: number) => shouldTouch(T0 + PRESENCE_GRACE_MS + delta, {
+      hidden: true, lastTouchAt: 0, lastActivityAt: T0,
+    })
+    expect(at(-1)).toBe(true)
+    expect(at(0)).toBe(false)
+  })
+
+  it('видимая вкладка отмечается даже без свежих действий', () => {
+    // Человек смотрит видео на странице и ничего не нажимает — он всё равно
+    // здесь. Льготный период сторожит ТОЛЬКО фон.
+    expect(shouldTouch(T0 + 20_000, {
+      hidden: false, lastTouchAt: T0, lastActivityAt: T0 - PRESENCE_GRACE_MS * 10,
+    })).toBe(true)
+  })
+
+  it('первая отметка уходит сразу, без ожидания такта', () => {
+    expect(shouldTouch(T0, { hidden: false, lastTouchAt: 0, lastActivityAt: T0 })).toBe(true)
   })
 })
 

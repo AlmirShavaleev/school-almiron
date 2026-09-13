@@ -212,19 +212,23 @@ export function VariantAssignmentsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* flex-wrap: на телефоне «Назначить» уходит под крошки, а не ложится на них (§158, №32) */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button onClick={() => navigate(`/variants/${variantId}`)}
           className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <nav className="text-sm text-gray-500 flex items-center gap-1.5 flex-1 min-w-0">
-          <Link to="/variants" className="hover:text-primary-600">Варианты</Link>
-          <span>/</span>
-          <Link to={`/variants/${variantId}`} className="hover:text-primary-600 truncate max-w-[200px]">
+        {/* Крошки занимают остаток строки, но не меньше 12rem — иначе «Назначить»
+            переносится под них. Название варианта — единственный сжимаемый
+            элемент (flex-1 truncate), концы крошек не сжимаются. */}
+        <nav className="text-sm text-gray-500 flex items-center gap-1.5 flex-1 min-w-[12rem]">
+          <Link to="/variants" className="hover:text-primary-600 shrink-0">Варианты</Link>
+          <span className="shrink-0">/</span>
+          <Link to={`/variants/${variantId}`} className="hover:text-primary-600 truncate min-w-0 flex-1">
             {variant.title}
           </Link>
-          <span>/</span>
-          <span className="text-gray-700">{tab === 'assignments' ? 'Назначения' : 'Результаты'}</span>
+          <span className="shrink-0">/</span>
+          <span className="text-gray-700 shrink-0">{tab === 'assignments' ? 'Назначения' : 'Результаты'}</span>
         </nav>
         <Button onClick={() => navigate(`/variants/${variantId}/assign`)}>
           <PlusCircle size={14} className="mr-1.5" /> Назначить

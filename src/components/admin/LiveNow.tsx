@@ -10,6 +10,7 @@ import {
 import { cn } from '@/utils/cn'
 import { useLivePulse } from '@/hooks/useLivePulse'
 import { useOnlinePeople } from '@/hooks/useSchoolPresence'
+import { LiveCard } from '@/components/admin/LiveCard'
 import {
   FEED_LABELS, formatAgo, formatDay, formatHour, peakHour, reachShare,
   totalHourEvents, weekChange, weekDirection,
@@ -120,6 +121,65 @@ export function LiveNow(props: LiveNowProps) {
 
   return (
     <div className="space-y-4" data-testid="live-now">
+      {/* Четыре карточки владельца. Слой поверх вкладки: лента, присутствие и
+          графики §148 ниже остаются как были. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="live-cards">
+        <LiveCard
+          title="Заходы на платформу"
+          points={pulse?.visitsDaily ?? []}
+          kind="flow"
+          tone="more-is-good"
+          // Точка живая, и число под ней — НАСТОЯЩЕЕ присутствие (§148), а не
+          // заходы за сегодня: это разные величины, и подпись обязана
+          // совпадать с источником.
+          statusText={presenceOk ? `${people.length} сейчас на платформе` : 'присутствие не прочиталось'}
+          live={presenceOk}
+          color="#6366f1"
+          animate={!reducedMotion}
+          testId="card-visits"
+        />
+        <LiveCard
+          title="Сдачи домашних работ"
+          points={pulse?.submitsDaily ?? []}
+          kind="flow"
+          tone="more-is-good"
+          statusText={`сегодня: ${lastValue(pulse?.submitsDaily)}`}
+          color="#10b981"
+          onOpen={() => navigate('/inbox')}
+          openLabel="Открыть очередь проверки"
+          animate={!reducedMotion}
+          testId="card-submits"
+        />
+        <LiveCard
+          title="Очередь проверки"
+          points={pulse?.queueDaily ?? []}
+          // Уровень, а не поток: сумма очереди по дням не значит ничего.
+          kind="level"
+          // Рост очереди — ПЛОХО. Зелёная стрелка вверх здесь была бы прямой
+          // дезинформацией.
+          tone="more-is-bad"
+          statusText="работ ждут разбора"
+          color="#f59e0b"
+          onOpen={() => navigate('/inbox')}
+          openLabel="Открыть очередь проверки"
+          animate={!reducedMotion}
+          testId="card-queue"
+        />
+        <LiveCard
+          title="Тема пройдена"
+          points={pulse?.marksDaily ?? []}
+          kind="flow"
+          tone="more-is-good"
+          // Строгое определение, то же, что в кабинете ученика: обе отмечаемые
+          // группы плюс принятое ДЗ. Считать по отметкам рубрик значило бы
+          // разойтись с собственной подписью.
+          statusText="строго: обе группы и принятое ДЗ"
+          color="#8b5cf6"
+          animate={!reducedMotion}
+          testId="card-marks"
+        />
+      </div>
+
       <OnlineBlock
         people={people}
         ok={presenceOk}
@@ -232,11 +292,14 @@ function OnlineBlock({
             <Radio size={16} className={cn(ok ? 'text-green-600' : 'text-slate-300')} />
             <h3 className="text-sm font-semibold text-graphite-950">Сейчас в школе</h3>
           </div>
-          {/* Оговорка про охват присутствия — до числа, а не после: панель
-              видит только тех, у кого приложение открыто прямо сейчас. */}
+          {/* Оговорка про охват присутствия — до числа, а не после.
+              Подпись обязана совпадать с окном `school_presence_online`: это
+              «занимался последние полчаса», а не «вкладка сейчас поверх
+              остальных». Ученик, читающий конспект в соседней вкладке,
+              присутствует — ради этого §165 и делался. */}
           <p className="mt-1 text-xs text-slate-400">
-            Кто открыл платформу прямо сейчас: отметка свежее 45 секунд. Закрыл вкладку —
-            пропадает за это же время. На каком экране человек находится — не показываем.
+            Активны за последние 30 минут. Открытый в соседней вкладке конспект тоже
+            считается занятием. На каком экране человек находится — не показываем.
           </p>
         </div>
         <button
@@ -576,4 +639,10 @@ function PeopleList({
       )}
     </Shell>
   )
+}
+
+/** Значение последнего дня ряда — «сегодня» в подписи карточки. */
+function lastValue(points?: Array<{ value: number }>): number {
+  if (!points || points.length === 0) return 0
+  return points[points.length - 1]?.value ?? 0
 }

@@ -11,7 +11,9 @@ import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
-import { TopicVariantStudent, useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
+import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
+import { useTopicTasks } from '@/hooks/useTopicTasks'
+import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
   STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, groupTopicSections, isMaterialSection,
   isTopicSectionVisible,
@@ -88,6 +90,11 @@ export function TopicPage() {
   // не общим запросом ниже: RPC сама решает, что ученику видно, включая
   // закрытую тему.
   const { variants: topicVariants } = useTopicStudentVariants(topicId ?? undefined)
+
+  // Задачи к уроку (§162). Хук живёт здесь, а не внутри вкладки: страница
+  // показывает «решено N из M» в шапке группы, и второй такой же запрос при
+  // открытии урока был бы лишним.
+  const topicTasks = useTopicTasks(topicId ?? undefined)
 
   // Самоотметки по ГРУППАМ рубрик. Персонал заходит на эту же страницу; у него
   // своей строки `students` нет, хук отдаёт пустой набор и кнопки не будет —
@@ -259,6 +266,25 @@ export function TopicPage() {
       )
     }
 
+    // Задачи к уроку отметки не имеют: группу закрывают решённые задачи.
+    // Поэтому вместо кнопки — счёт, тот же, что ученик видит внутри вкладки.
+    if (groupKey === 'tasks') {
+      if (topicTasks.total === 0) return null
+      const done = topicTasks.solved >= topicTasks.total
+      return (
+        <span
+          data-testid="topic-group-tasks-state"
+          className={cn(
+            'shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium sm:ml-auto',
+            done ? 'bg-emerald-50 text-emerald-800' : 'bg-gray-100 text-gray-500',
+          )}
+        >
+          решено {topicTasks.solved} из {topicTasks.total}
+          {done && ' ✓'}
+        </span>
+      )
+    }
+
     if (!sectionMarks.canMark || !isSelfMarkable(groupKey)) return null
     const marked = sectionMarks.marks.has(groupKey)
 
@@ -308,7 +334,7 @@ export function TopicPage() {
     } else if (tabKey === 'homework') {
       label = 'Домашнее задание'
     } else if (tabKey === 'test') {
-      label = 'Тест'
+      label = 'Задачи'
     }
 
     const isActive = active === tabKey
@@ -458,23 +484,23 @@ export function TopicPage() {
       ) : active === 'homework' ? (
         <TopicHomeworkStudent topicId={topic.id} />
       ) : active === 'test' ? (
-        /* Тест банка и тестирования — разные системы. Если есть оба, показываем
-           оба с подписями, а не выбираем один молча. */
+        /* Задачи к уроку (§162) и тест из банка — разные системы. Если есть
+           оба, показываем оба с подписями, а не выбираем один молча. */
         <div className="space-y-6">
+          {topicVariants.length > 0 && (
+            <section>
+              {hasTest && (
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">Задачи к уроку</h3>
+              )}
+              <TopicTasksStudent tasks={topicTasks} />
+            </section>
+          )}
           {hasTest && (
             <section>
               {topicVariants.length > 0 && (
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">Тест по теме</h3>
               )}
               <TopicTestStudent topicId={topic.id} />
-            </section>
-          )}
-          {topicVariants.length > 0 && (
-            <section>
-              {hasTest && (
-                <h3 className="mb-2 text-sm font-semibold text-gray-700">Тестирования</h3>
-              )}
-              <TopicVariantStudent topicId={topic.id} />
             </section>
           )}
         </div>

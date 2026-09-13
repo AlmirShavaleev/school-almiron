@@ -117,7 +117,7 @@ function SolutionItem({ material, topicId }: { material: TopicMaterial; topicId:
       )}
 
       {material.kind === 'text' && (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{material.content}</p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
       )}
 
       {(material.kind === 'link' || material.kind === 'video') && (

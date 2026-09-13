@@ -295,3 +295,114 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
     expect(screen.queryByTestId('review-accept-button')).not.toBeInTheDocument()
   })
 })
+
+/**
+ * §149. Фильтр по теме рядом с курсом. Просьба владельца дословно: «фильтрация
+ * идёт только по дням, а надо ещё по курсу (уже реализована) и там можно ещё
+ * темы — только те, которые есть в сданных работах».
+ */
+describe('HomeworkReviewQueuePage — фильтр по теме', () => {
+  const optionValues = (testId: string) =>
+    Array.from(screen.getByTestId(testId).querySelectorAll('option')).map(o => o.value)
+  const optionTexts = (testId: string) =>
+    Array.from(screen.getByTestId(testId).querySelectorAll('option')).map(o => o.textContent ?? '')
+  const choose = (testId: string, value: string) =>
+    fireEvent.change(screen.getByTestId(testId), { target: { value } })
+
+  beforeEach(() => {
+    state.all = [
+      queueRow(
+        { topicId: 't1', topicTitle: 'Уравнения', courseId: 'c1', courseTitle: 'Алгебра' },
+        { id: 'a1', student_id: 's1' },
+      ),
+      queueRow(
+        { topicId: 't2', topicTitle: 'Векторы', courseId: 'c1', courseTitle: 'Алгебра' },
+        { id: 'a2', student_id: 's2' },
+      ),
+      queueRow(
+        { topicId: 't3', topicTitle: 'Кинематика', courseId: 'c2', courseTitle: 'Физика' },
+        { id: 'a3', student_id: 's3' },
+      ),
+    ]
+    state.attemptFiles = []
+    state.reviews = []
+    state.studentNames = { s1: 'Аня', s2: 'Боря', s3: 'Вера' }
+    state.loading = false
+    state.error = null
+    reviewAttempt.mockReset()
+  })
+
+  it('темы — только из сданных работ, со счётчиком, рядом с курсом', () => {
+    renderPage()
+    const filters = screen.getByTestId('queue-filters')
+    expect(filters).toContainElement(screen.getByTestId('queue-topic-filter'))
+    expect(optionValues('queue-topic-filter')).toEqual(['all', 't2', 't3', 't1'])
+    expect(optionTexts('queue-topic-filter')).toEqual([
+      'Все темы · 3', 'Векторы · 1', 'Кинематика · 1', 'Уравнения · 1',
+    ])
+  })
+
+  it('выбор темы оставляет только её работы', () => {
+    renderPage()
+    choose('queue-topic-filter', 't3')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(1)
+    expect(screen.getByText('Вера')).toBeInTheDocument()
+    expect(screen.queryByText('Аня')).not.toBeInTheDocument()
+  })
+
+  it('выбран курс — в списке тем только его темы', () => {
+    renderPage()
+    choose('queue-course-filter', 'c1')
+    expect(optionValues('queue-topic-filter')).toEqual(['all', 't2', 't1'])
+    expect(optionTexts('queue-topic-filter')[0]).toBe('Все темы · 2')
+  })
+
+  it('смена курса на чужой для темы сбрасывает тему, а не оставляет пустую выдачу', () => {
+    renderPage()
+    choose('queue-topic-filter', 't3')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(1)
+    choose('queue-course-filter', 'c1')
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('all')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(2)
+    expect(screen.queryByText('Под фильтр ничего не подошло')).not.toBeInTheDocument()
+  })
+
+  it('смена курса на свой для темы тему не трогает', () => {
+    renderPage()
+    choose('queue-topic-filter', 't1')
+    choose('queue-course-filter', 'c1')
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('t1')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(1)
+    expect(screen.getByText('Аня')).toBeInTheDocument()
+  })
+
+  it('«Сбросить» сбрасывает и тему', () => {
+    renderPage()
+    choose('queue-topic-filter', 't1')
+    fireEvent.click(screen.getByText('Сбросить'))
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('all')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(3)
+    expect(screen.queryByText('Сбросить')).not.toBeInTheDocument()
+  })
+
+  it('фильтр отсёк всё — объясняется словами, а не «Очередь пуста»', () => {
+    renderPage()
+    choose('queue-topic-filter', 't1')
+    fireEvent.click(screen.getByRole('button', { name: /Только просроченные/ }))
+    expect(screen.queryByTestId('queue-attempt-card')).not.toBeInTheDocument()
+    expect(screen.getByText('Под фильтр ничего не подошло')).toBeInTheDocument()
+    expect(screen.queryByTestId('queue-empty')).not.toBeInTheDocument()
+  })
+
+  it('на вкладке без работ выбранной темы фильтр отступает — список не пустеет', () => {
+    state.all.push(queueRow(
+      { topicId: 't4', topicTitle: 'Оптика', courseId: 'c2', courseTitle: 'Физика' },
+      { id: 'a4', student_id: 's3', status: 'accepted' },
+    ))
+    renderPage()
+    choose('queue-topic-filter', 't1')
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('all')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(1)
+  })
+})

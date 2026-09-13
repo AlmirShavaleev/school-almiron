@@ -221,6 +221,26 @@ export function courseFilterOptions(rows: QueueRow[]): Array<{ id: string; title
   return Array.from(map.values()).sort((a, b) => a.title.localeCompare(b.title, 'ru'))
 }
 
+/**
+ * Темы, встречающиеся в очереди, со счётчиком работ — по той же логике, что и
+ * курсы: только из строк очереди, а не из справочника тем. Тема без сданных
+ * работ в списке не появляется. При выбранном курсе — только его темы, иначе
+ * преподаватель выберет тему чужого курса и получит пустой экран. §149.
+ */
+export function topicFilterOptions(
+  rows: QueueRow[],
+  courseId: string = 'all',
+): Array<{ id: string; title: string; count: number }> {
+  const map = new Map<string, { id: string; title: string; count: number }>()
+  for (const row of rows) {
+    if (courseId !== 'all' && row.courseId !== courseId) continue
+    const item = map.get(row.topicId) ?? { id: row.topicId, title: row.topicTitle, count: 0 }
+    item.count += 1
+    map.set(row.topicId, item)
+  }
+  return Array.from(map.values()).sort((a, b) => a.title.localeCompare(b.title, 'ru'))
+}
+
 /** Группировка по курсу для заголовков секций; порядок внутри — как в очереди. */
 export function groupByCourse(rows: QueueRow[]): Array<{ courseId: string; courseTitle: string; rows: QueueRow[] }> {
   const groups = new Map<string, { courseId: string; courseTitle: string; rows: QueueRow[] }>()
