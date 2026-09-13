@@ -805,6 +805,81 @@ export type Database = {
           },
         ]
       }
+      course_study_plan_items: {
+        Row: {
+          course_id: string
+          topic_id: string
+          week_no: number
+        }
+        Insert: {
+          course_id: string
+          topic_id: string
+          week_no: number
+        }
+        Update: {
+          course_id?: string
+          topic_id?: string
+          week_no?: number
+        }
+        Relationships: []
+      }
+      course_study_plan_overrides: {
+        Row: {
+          course_id: string
+          created_by: string
+          removed: boolean
+          student_id: string
+          topic_id: string
+          updated_at: string
+          week_no: number | null
+        }
+        Insert: {
+          course_id: string
+          created_by: string
+          removed?: boolean
+          student_id: string
+          topic_id: string
+          updated_at?: string
+          week_no?: number | null
+        }
+        Update: {
+          course_id?: string
+          created_by?: string
+          removed?: boolean
+          student_id?: string
+          topic_id?: string
+          updated_at?: string
+          week_no?: number | null
+        }
+        Relationships: []
+      }
+      course_study_plans: {
+        Row: {
+          auto_open: boolean
+          course_id: string
+          created_at: string
+          created_by: string
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          auto_open?: boolean
+          course_id: string
+          created_at?: string
+          created_by: string
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          auto_open?: boolean
+          course_id?: string
+          created_at?: string
+          created_by?: string
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       courses: {
         Row: {
           copied_from_course_id: string | null
@@ -6873,6 +6948,31 @@ export type Database = {
           telegram_linked: boolean
         }[]
       }
+      student_week_plan: { Args: never; Returns: Json }
+      study_plan_apply_opening: { Args: { p_course_id: string }; Returns: number }
+      study_plan_board: { Args: { p_course_id: string }; Returns: Json }
+      study_plan_current_week: { Args: { p_start: string }; Returns: number }
+      study_plan_save: {
+        Args: { p_course_id: string; p_start_date: string; p_auto_open?: boolean }
+        Returns: undefined
+      }
+      study_plan_set_override: {
+        Args: {
+          p_course_id: string
+          p_student_id: string
+          p_topic_id: string
+          p_week_no?: number | null
+          p_removed?: boolean
+        }
+        Returns: undefined
+      }
+      study_plan_set_topic_week: {
+        Args: { p_course_id: string; p_topic_id: string; p_week_no: number | null }
+        Returns: undefined
+      }
+      study_plan_spread: { Args: { p_course_id: string; p_per_week: number }; Returns: number }
+      study_plan_week_deadline: { Args: { p_start: string; p_week: number }; Returns: string }
+      study_plan_week_start: { Args: { p_start: string; p_week: number }; Returns: string }
       submit_homework_review: {
         Args: {
           p_attempt_id: string

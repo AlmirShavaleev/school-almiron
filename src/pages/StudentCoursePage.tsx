@@ -7,6 +7,7 @@ import {
   LayoutList, LayoutGrid, FileEdit, FileText,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
+import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
 import {
@@ -977,6 +978,8 @@ export function StudentCoursePage() {
           )}
         </div>
       </div>
+
+      {!activeMod && <StudentWeekPlan courseId={course.id} />}
 
       {/* ══ STAFF CARDS ══ */}
       {!activeMod && (
