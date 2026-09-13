@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { StudentProfilePage } from '@/pages/StudentProfilePage'
@@ -65,9 +65,9 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null }) }) }) }) }) }) },
 }))
 
-function renderPage() {
+function renderPage(initialPath = '/students/student-1') {
   return render(
-    <MemoryRouter initialEntries={['/students/student-1']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/students/:id" element={<StudentProfilePage />} />
       </Routes>
@@ -226,5 +226,62 @@ describe('StudentProfilePage — снятые мёртвые показател�
     renderPage()
 
     expect(screen.getByTestId('student-insight-section')).toHaveTextContent('student-1')
+  })
+
+  /**
+   * board/023 (§171): переход со строки курса добавляет `?course=<id>` — блок
+   * этого курса обязан сам подскроллиться и подсветиться, а не заставлять
+   * искать его среди остальных курсов ученика.
+   */
+  describe('фокус на курсе из ?course=<id>', () => {
+    const scrollIntoViewMock = vi.fn()
+
+    beforeEach(() => {
+      // jsdom не умеет scrollIntoView вовсе — без заглушки любой рендер с
+      // фокусом на курсе падал бы с TypeError.
+      Element.prototype.scrollIntoView = scrollIntoViewMock
+      scrollIntoViewMock.mockClear()
+    })
+
+    const TWO_COURSES = [
+      {
+        courseId: 'course-1', courseTitle: 'Физика ЕГЭ', courseSubject: 'physics', courseExamType: 'ege',
+        courseActive: true, groups: [{ groupId: 'group-1', groupName: '10А', groupType: 'individual', isActive: true }],
+      },
+      {
+        courseId: 'course-2', courseTitle: 'Математика ЕГЭ', courseSubject: 'math', courseExamType: 'ege',
+        courseActive: true, groups: [{ groupId: 'group-2', groupName: '11Б', groupType: 'individual', isActive: true }],
+      },
+    ]
+
+    it('скроллит к блоку курса, на который указывает ?course=', async () => {
+      useStudentProfileMock.mockReturnValue({ data: { ...baseProfile, groups: [] }, loading: false })
+      useStudentCourseMembershipsMock.mockReturnValue({ courses: TWO_COURSES, loading: false, error: null, reload: vi.fn() })
+
+      renderPage('/students/student-1?course=course-2')
+
+      await screen.findByText('Математика ЕГЭ')
+      expect(scrollIntoViewMock).toHaveBeenCalled()
+    })
+
+    it('без ?course= ничего не скроллит', async () => {
+      useStudentProfileMock.mockReturnValue({ data: { ...baseProfile, groups: [] }, loading: false })
+      useStudentCourseMembershipsMock.mockReturnValue({ courses: TWO_COURSES, loading: false, error: null, reload: vi.fn() })
+
+      renderPage('/students/student-1')
+
+      await screen.findByText('Физика ЕГЭ')
+      expect(scrollIntoViewMock).not.toHaveBeenCalled()
+    })
+
+    it('неизвестный ?course= (курс не из списка ученика) не роняет страницу', async () => {
+      useStudentProfileMock.mockReturnValue({ data: { ...baseProfile, groups: [] }, loading: false })
+      useStudentCourseMembershipsMock.mockReturnValue({ courses: TWO_COURSES, loading: false, error: null, reload: vi.fn() })
+
+      renderPage('/students/student-1?course=course-nonexistent')
+
+      await screen.findByText('Физика ЕГЭ')
+      expect(scrollIntoViewMock).not.toHaveBeenCalled()
+    })
   })
 })
