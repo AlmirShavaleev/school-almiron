@@ -25,6 +25,7 @@
 // безымянные. Собственный учёт просмотров — отдельная работа, не эта.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { BUNNY_DEFAULT_LIBRARY_ID, parseBunnyVideoUrl } from '../_shared/bunnyVideoUrl.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -52,7 +53,6 @@ const ITEMS_PER_PAGE = 100
 const PERIOD_DAYS = 30
 
 const BUNNY_BASE = 'https://video.bunnycdn.com'
-const DEFAULT_LIBRARY_ID = '726880'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -143,18 +143,6 @@ function classify(failed: UpstreamResult[], libraryId: string): { kind: string; 
     kind: 'upstream',
     message: `Bunny ответил ошибкой (${first?.status || 'нет ответа'}). ${first?.message ?? ''}`.trim(),
   }
-}
-
-/** Идентификатор видео из адреса `…/embed/<library>/<guid>`. */
-function videoIdFromUrl(url: string): string | null {
-  const m = /\/embed\/(\d+)\/([^/?#]+)/.exec(url ?? '')
-  return m ? m[2] : null
-}
-
-/** Номер библиотеки из того же адреса — нужен, чтобы заметить чужую. */
-function libraryIdFromUrl(url: string): string | null {
-  const m = /\/embed\/(\d+)\//.exec(url ?? '')
-  return m ? m[1] : null
 }
 
 interface BunnyVideo {
@@ -302,10 +290,13 @@ async function fetchPlacements(admin: ReturnType<typeof createClient>) {
   const placements: Placement[] = []
   const libraryIdsInDb = new Set<string>()
   for (const row of rows) {
-    const videoId = videoIdFromUrl(row.url ?? '')
-    const lib = libraryIdFromUrl(row.url ?? '')
-    if (lib) libraryIdsInDb.add(lib)
-    if (!videoId) continue
+    // Разбор общий с формой материала (§168): что форма считает видео Bunny,
+    // то и статистика считает роликом — включая строки, записанные до
+    // нормализации в виде «play» или потока CDN.
+    const ref = parseBunnyVideoUrl(row.url)
+    if (ref?.libraryId) libraryIdsInDb.add(ref.libraryId)
+    if (!ref) continue
+    const videoId = ref.guid
     const topic = topicById.get(row.topic_id)
     if (!topic) continue
     const mod = moduleById.get(topic.module_id)
@@ -426,7 +417,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const apiKey = Deno.env.get('BUNNY_STREAM_API_KEY') ?? ''
-  const libraryId = Deno.env.get('BUNNY_STREAM_LIBRARY_ID') ?? DEFAULT_LIBRARY_ID
+  const libraryId = Deno.env.get('BUNNY_STREAM_LIBRARY_ID') ?? BUNNY_DEFAULT_LIBRARY_ID
   if (!apiKey) {
     // Имя переменной — не секрет. Значение не печатается нигде.
     console.error('bunny-video-stats: не задана переменная BUNNY_STREAM_API_KEY')

@@ -496,7 +496,7 @@ function AddMaterialForm({
 
       {(kind === 'video' || kind === 'link') && (
         <input value={url} onChange={e => setUrl(e.target.value)}
-          placeholder={kind === 'video' ? 'Ссылка на YouTube или Vimeo' : 'https://…'}
+          placeholder={kind === 'video' ? 'Ссылка на Bunny, YouTube или Vimeo' : 'https://…'}
           aria-label={kind === 'video' ? 'Ссылка на видео' : 'Ссылка'}
           className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
       )}
@@ -548,7 +548,7 @@ function VideoAddForm({
         value={url}
         onChange={e => setUrl(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') void handleSubmit() }}
-        placeholder="Ссылка на YouTube / Vimeo"
+        placeholder="Ссылка на Bunny / YouTube / Vimeo"
         disabled={loading || busy}
         className="flex-1 h-10 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-50"
       />
