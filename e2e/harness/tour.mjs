@@ -1,0 +1,78 @@
+// Tour: walks screens for each persona at 390 (and 360), saves viewport + full-page shots, logs requests.
+import { chromium } from '@playwright/test'
+import fs from 'node:fs'
+import path from 'node:path'
+import { BASE, makeSession, makeHandler, newPage, ensureDir } from './lib.mjs'
+import { personas, baseFixtures, IDS } from './fixtures.mjs'
+import { scenes } from './scenes.mjs'
+
+const outDir = ensureDir(path.resolve('screenshots/harness/tour'))
+const assetsDir = path.resolve('screenshots/harness/assets')
+const logPath = path.resolve('screenshots/harness/tour.log')
+fs.writeFileSync(logPath, '')
+
+const filter = process.argv[2] // substring of scene name, optional
+const browser = await chromium.launch()
+const contexts = {}
+async function ctxFor(persona, width, height) {
+  const key = `${persona}:${width}x${height}`
+  if (contexts[key]) return contexts[key]
+  const p = personas[persona]
+  const session = p.user ? makeSession(p.user) : null
+  const { context, page } = await newPage(browser, { session, staffProfileId: p.staffProfileId, staffMode: p.staffMode ?? 'admin', width, height })
+  const lines = []
+  const handler = makeHandler({ fixtures: baseFixtures(persona), session, assetsDir, log: (l) => lines.push(`  ${l}`) })
+  await context.route(u => !u.href.startsWith(BASE), handler)
+  page.on('console', m => { if ((m.type() === 'error' || m.type() === 'warning') && !/ERR_FAILED|net::|Download the React DevTools|fonts/.test(m.text())) lines.push(`  CONSOLE ${m.text().slice(0, 220)}`) })
+  page.on('pageerror', e => lines.push(`  PAGEERROR ${String(e).slice(0, 220)}`))
+  page.on('dialog', d => d.dismiss().catch(() => {}))
+  contexts[key] = { context, page, lines }
+  return contexts[key]
+}
+
+for (const s of scenes) {
+  if (filter && !s.name.includes(filter)) continue
+  const width = s.width ?? 390, height = s.height ?? 844
+  const { page, lines } = await ctxFor(s.persona, width, height)
+  lines.length = 0
+  try {
+    if (s.url) await page.goto(BASE + s.url, { waitUntil: 'networkidle', timeout: 30000 })
+    for (const a of s.actions ?? []) {
+      try {
+        if (a.click) await page.getByText(a.click, { exact: a.exact ?? false }).first().click({ timeout: 4000 })
+        if (a.clickRole) await page.getByRole(a.clickRole[0], { name: a.clickRole[1] }).first().click({ timeout: 4000 })
+        if (a.clickSel) await page.locator(a.clickSel).first().click({ timeout: 4000 })
+        if (a.fill) await page.locator(a.fill[0]).first().fill(a.fill[1], { timeout: 4000 })
+        if (a.focus) await page.locator(a.focus).first().focus({ timeout: 4000 })
+        if (a.scroll) await page.evaluate((y) => window.scrollTo(0, y), a.scroll)
+        if (a.wait) await page.waitForTimeout(a.wait)
+        if (a.eval) await page.evaluate(a.eval)
+        if (a.ls) await page.evaluate(([k, v]) => localStorage.setItem(k, v), a.ls)
+        if (a.files) await page.locator('input[type=file]').last().setInputFiles(a.files.map(f => path.resolve(assetsDir, f)), { timeout: 4000 })
+        if (a.chooseFiles) { const [fc] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }), page.locator(a.chooseFiles.clickSel).first().click({ timeout: 4000 })]); await fc.setFiles(a.chooseFiles.files.map(f => path.resolve(assetsDir, f))) }
+        if (a.goto) await page.goto(BASE + a.goto, { waitUntil: 'networkidle', timeout: 30000 })
+      } catch (e) { lines.push(`  ACTION-FAIL ${JSON.stringify(a)} ${String(e).split('\n')[0].slice(0, 160)}`) }
+    }
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+    await page.waitForTimeout(s.settle ?? 600)
+  } catch (e) { lines.push(`  NAV-ERR ${String(e).slice(0, 160)}`) }
+  const finalUrl = page.url().replace(BASE, '')
+  const base = path.join(outDir, `${s.name}${width !== 390 ? '-' + width : ''}`)
+  await page.screenshot({ path: base + '.png' }).catch(() => {})
+  if (s.full !== false) await page.screenshot({ path: base + '-full.png', fullPage: true }).catch(() => {})
+  const overflow = await page.evaluate(() => {
+    const w = document.documentElement.scrollWidth, cw = document.documentElement.clientWidth
+    const wide = []
+    if (w > cw) {
+      for (const el of document.querySelectorAll('body *')) {
+        const r = el.getBoundingClientRect()
+        if (r.right > cw + 1 && r.width > 0 && el.children.length < 30) { wide.push(`${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 3).join('.')}→${Math.round(r.right)}`); if (wide.length > 5) break }
+      }
+    }
+    return { w, cw, wide }
+  }).catch(() => null)
+  const ovLine = overflow && overflow.w > overflow.cw ? `  OVERFLOW scrollWidth=${overflow.w} > ${overflow.cw}: ${overflow.wide.join(' | ')}` : ''
+  fs.appendFileSync(logPath, `\n== ${s.name} [${s.persona} ${width}] ${s.url ?? ''} -> ${finalUrl}\n${ovLine}\n${lines.join('\n')}\n`)
+  console.log(`${s.name} -> ${finalUrl}${ovLine ? '  ⚠ overflow' : ''}`)
+}
+await browser.close()
