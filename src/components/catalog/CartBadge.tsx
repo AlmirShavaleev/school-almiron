@@ -1,6 +1,7 @@
 import { ShoppingCart } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useCartStore } from '@/store/cartStore'
+import { FAB_SLOT } from '@/lib/floatingStack'
 import { useAuthStore } from '@/store/authStore'
 
 const STAFF = new Set(['teacher', 'admin', 'owner'])
@@ -22,9 +23,9 @@ export function CartBadge() {
     <Link
       to={destination}
       data-testid="cart-badge"
-      className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5
+      className={`${FAB_SLOT.cart} flex items-center gap-2.5
         bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-lg
-        hover:bg-blue-700 transition-colors"
+        hover:bg-blue-700 transition-colors`}
       aria-label={`${label} — ${items.length} заданий`}
     >
       <ShoppingCart size={18} />
