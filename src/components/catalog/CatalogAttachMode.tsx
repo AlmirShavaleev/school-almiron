@@ -167,10 +167,16 @@ function AttachConfirmDialog({ onClose }: { onClose: () => void }) {
 
     const back = target.returnTo
     leaveAttachMode()
+    // «в 3 классах» — число из ответа RPC, а не подсчёт на клиенте: тост,
+    // который считает копии сам, рано или поздно разойдётся с базой (§172).
+    const copies = result.copies_synced ?? 0
     toast.success(
-      result.skipped > 0
-        ? `Прикреплено ${result.added} · уже были ${result.skipped} · всего ${result.total}`
-        : `Прикреплено ${result.added} · всего ${result.total}`
+      [
+        `Прикреплено ${result.added}`,
+        result.skipped > 0 ? `уже были ${result.skipped}` : null,
+        `всего ${result.total}`,
+        copies > 0 ? `в ${copies} ${classWord(copies)}` : null,
+      ].filter(Boolean).join(' · ')
     )
     navigate(back)
   }
@@ -239,4 +245,12 @@ function AttachConfirmDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   )
+}
+
+/** «в 1 классе» / «в 3 классах» — иначе тост читается как машинный вывод. */
+function classWord(n: number) {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'классе'
+  return 'классах'
 }

@@ -76,13 +76,28 @@ function MaterialCard({
           {material.title || TOPIC_MATERIAL_LABELS[material.kind]}
         </span>
 
-        {canManage && (
+        {/*
+          Отражение каркаса (§172): показываем, но править здесь не даём.
+          Локальная правка тихо сделала бы из отражения своё, и через месяц
+          никто не вспомнит, почему в 10А видео другое.
+        */}
+        {canManage && material.fromTemplate && (
+          <span
+            title="Материал задаётся в курсе-каркасе"
+            className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700"
+          >
+            из шаблона
+          </span>
+        )}
+
+        {canManage && !material.isVisible && (
+          <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-500">
+            Скрыт
+          </span>
+        )}
+
+        {canManage && !material.fromTemplate && (
           <>
-            {!material.isVisible && (
-              <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-500">
-                Скрыт
-              </span>
-            )}
             <button
               type="button"
               onClick={() => onMove(material.id, 'up')}

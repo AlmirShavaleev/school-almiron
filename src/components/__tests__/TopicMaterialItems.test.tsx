@@ -262,3 +262,45 @@ describe('Учёт просмотров материала', () => {
     await waitFor(() => expect(rpc).toHaveBeenCalled())
   })
 })
+
+/**
+ * §172. Отражения каркаса в классе показываются, но не правятся: кнопки
+ * порядка, скрытия и удаления у них скрыты, а сама строка помечена «из
+ * шаблона». Иначе локальная правка тихо превращает отражение в своё.
+ */
+describe('Материал из каркаса курса (§172)', () => {
+  beforeEach(() => {
+    materials = []
+    loading = false
+    rpc.mockReset()
+    rpc.mockResolvedValue({ data: null, error: null })
+  })
+
+  const fromTemplate = (id: string, title: string): TopicMaterial =>
+    ({ kind: 'text', id, title, position: 0, isVisible: true, section: null, fromTemplate: true, content: 'Текст' })
+
+  it('строка помечена и кнопок правки у неё нет', () => {
+    materials = [fromTemplate('m1', 'Материал каркаса')]
+    renderItems(true)
+
+    expect(screen.getByText('из шаблона')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Удалить материал')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Поднять выше')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Скрыть материал')).not.toBeInTheDocument()
+  })
+
+  it('своё в классе правится как раньше', () => {
+    materials = [text('m2', 'Своё', 0)]
+    renderItems(true)
+
+    expect(screen.queryByText('из шаблона')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Удалить материал')).toBeInTheDocument()
+  })
+
+  it('ученик разницы не видит', () => {
+    materials = [fromTemplate('m1', 'Материал каркаса')]
+    renderItems(false)
+
+    expect(screen.queryByText('из шаблона')).not.toBeInTheDocument()
+  })
+})

@@ -125,7 +125,9 @@ export function useAttachTasksToTopic() {
         p_topic_id: topicId, p_task_ids: taskIds,
       })
       if (err) throw new Error(humanizeAttachTaskError(err.message))
-      return data as { added: number; skipped: number; total: number }
+      // `copies_synced` — сколько классов это увидело: тема каркаса разъезжается
+      // по копиям триггером, и число приходит оттуда же, а не от клиента (§172).
+      return data as { added: number; skipped: number; total: number; copies_synced?: number }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось прикрепить задачи')
       return null

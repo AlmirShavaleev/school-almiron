@@ -240,6 +240,8 @@ export interface TopicMaterialItemRow {
   position: number
   is_visible: boolean
   section: TopicMaterialSection | null
+  /** Отражение материала каркаса: правится в шаблоне курса (§172). */
+  source_item_id?: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -248,11 +250,14 @@ export interface TopicMaterialItemRow {
 /**
  * Материал в форме, удобной для UI: тип-дискриминант гарантирует, что нужное
  * поле есть, и компонентам не нужно проверять null у полей чужих типов.
+ *
+ * `fromTemplate` — строка приехала из каркаса курса (§172): показываем её, но
+ * правится она в шаблоне, иначе класс и каркас разъедутся молча.
  */
 export type TopicMaterial =
-  | { kind: 'text'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; content: string }
-  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; url: string }
-  | { kind: 'link'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; url: string }
+  | { kind: 'text'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; content: string }
+  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; url: string }
+  | { kind: 'link'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; url: string }
   | {
       kind: 'file'
       id: string
@@ -260,6 +265,7 @@ export type TopicMaterial =
       position: number
       isVisible: boolean
       section: TopicMaterialSection | null
+      fromTemplate?: boolean
       storagePath: string
       fileName: string | null
       sizeBytes: number | null
@@ -273,6 +279,7 @@ export function toTopicMaterial(row: TopicMaterialItemRow): TopicMaterial | null
     position: row.position,
     isVisible: row.is_visible,
     section: row.section ?? null,
+    fromTemplate: !!row.source_item_id,
   }
   switch (row.kind) {
     case 'text':
