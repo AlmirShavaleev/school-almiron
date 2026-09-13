@@ -1,9 +1,9 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Users, Star,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
 } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
 import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
 import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
@@ -49,6 +49,10 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 export function StudentProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // board/023 (§171): переход со строки курса — сразу открыть блок этого
+  // курса, а не заставлять преподавателя искать его в списке заново.
+  const focusCourseId = searchParams.get('course')
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
   const [groupsExpanded, setGroupsExpanded] = useState(false)
@@ -171,7 +175,12 @@ export function StudentProfilePage() {
 
       {/* Enrolled courses */}
       {s.student_id && (
-        <EnrolledCoursesSection studentId={s.student_id} studentFullName={s.full_name} currentRole={currentUserRole} />
+        <EnrolledCoursesSection
+          studentId={s.student_id}
+          studentFullName={s.full_name}
+          currentRole={currentUserRole}
+          focusCourseId={focusCourseId}
+        />
       )}
 
       {s.student_id && s.target_subject && s.target_exam && (
@@ -191,11 +200,36 @@ export function StudentProfilePage() {
 // student_courses -- that table is legacy and disconnected from actual course access, which
 // is exactly the bug this section fixes (header badge showed real groups, this block showed
 // "not enrolled" from an unrelated table).
-function EnrolledCoursesSection({ studentId, studentFullName, currentRole }: { studentId: string; studentFullName: string; currentRole: string | undefined }) {
+function EnrolledCoursesSection({
+  studentId,
+  studentFullName,
+  currentRole,
+  focusCourseId = null,
+}: {
+  studentId: string
+  studentFullName: string
+  currentRole: string | undefined
+  focusCourseId?: string | null
+}) {
   const { courses, loading, reload } = useStudentCourseMemberships(studentId)
   const { groups: teacherGroups } = useGroups()
   const [wizardOpen, setWizardOpen] = useState(false)
   const canManage = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'curator' || currentRole === 'teacher'
+
+  // Со строки курса на кабинете ученика приходит `?course=<id>` — сразу
+  // подскроллить к этому блоку, а не заставлять искать его среди остальных
+  // курсов ученика. Ждём, пока список не загружен: раньше `courseRefs` пуст.
+  const courseRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [highlightedCourseId, setHighlightedCourseId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusCourseId || loading) return
+    const node = courseRefs.current.get(focusCourseId)
+    if (!node) return
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedCourseId(focusCourseId)
+    const timer = setTimeout(() => setHighlightedCourseId(null), 2000)
+    return () => clearTimeout(timer)
+  }, [focusCourseId, loading])
 
   const GROUP_TYPE_LABELS: Record<string, string> = {
     individual: 'Индивидуально',
@@ -254,7 +288,19 @@ function EnrolledCoursesSection({ studentId, studentFullName, currentRole }: { s
       ) : (
         <div className="divide-y divide-gray-50">
           {courses.map(c => (
-            <div key={c.courseId} className="flex items-start gap-3 px-5 py-3 hover:bg-gray-50">
+            <div
+              key={c.courseId}
+              ref={node => {
+                if (node) courseRefs.current.set(c.courseId, node)
+                else courseRefs.current.delete(c.courseId)
+              }}
+              data-testid="enrolled-course-row"
+              data-course-id={c.courseId}
+              className={cn(
+                'flex items-start gap-3 px-5 py-3 hover:bg-gray-50 transition-colors',
+                highlightedCourseId === c.courseId && 'bg-primary-50 ring-2 ring-inset ring-primary-300',
+              )}
+            >
               <div className="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0">
                 <BookOpen size={15} />
               </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, UserPlus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
@@ -789,7 +790,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                       key={student.studentId}
                       data-testid="course-student-row"
                       data-student-id={student.studentId}
-                      className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+                      className={cn('relative border-b border-gray-100 hover:bg-primary-50/40', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
                     >
                       <td className="px-4 py-2">
                         <div className="flex flex-col gap-0.5">
@@ -831,7 +832,21 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                               </button>
                             </div>
                           ) : (
-                            <span className="text-sm font-medium text-gray-900">{student.name}</span>
+                            // Растянутая ссылка (§171, board/023): сама `<a>` оборачивает
+                            // только имя, а невидимый `::after` через `inset-0` расширяет
+                            // область клика на всю строку. Настоящий `<Link>`, а не
+                            // `div onClick`, — работает Ctrl+клик, видна цель в статус-баре,
+                            // таб доходит клавиатурой. Колонка «Действия» рисуется поверх
+                            // (ниже — `relative z-10`), поэтому клик по карандашу/отчислению
+                            // до ссылки не долетает.
+                            <Link
+                              to={`/students/${student.studentId}?course=${courseId}`}
+                              data-testid="course-student-link"
+                              className="relative text-sm font-medium text-gray-900 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded w-fit"
+                            >
+                              {student.name}
+                              <span className="absolute inset-0 z-0" aria-hidden="true" />
+                            </Link>
                           )}
                           <span className="text-xs text-gray-400">{student.email}</span>
                         </div>
@@ -861,7 +876,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                       <td className="px-4 py-2">
                         <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="relative z-10 px-4 py-2">
                         {/* Куратор состав не меняет: обе RPC ему теперь
                             отвечают 42501, и кнопка была бы обещанием
                             гарантированной ошибки. */}
