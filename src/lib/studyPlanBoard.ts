@@ -2,15 +2,17 @@
  * Учебный план по неделям (§151): расшифровка выдачи `study_plan_board` и
  * правила показа клетки.
  *
- * Зачёт и просрочка СЧИТАЮТСЯ В БАЗЕ (`study_plan_topic_states`), здесь только
+ * Зачёт и просрочка СЧИТАЮТСЯ В БАЗЕ (`study_plan_topic_states`; тема без
+ * опубликованного ДЗ — через `topic_done_events()` из §152), здесь только
  * раскладываем то, что пришло, и подбираем подпись. Своей копии правила
  * «сделано» тут нет: одно число живёт в одном месте (§147), иначе таблица
  * владельца и кабинет ученика разъедутся на первой же правке.
  *
  * Формат клетки — массив, а не объект: на классе из 16 человек и 169 тем это
  * 2704 клетки, объекты весили 900 КБ на одно открытие. Порядок полей и коды
- * описаны в миграции `study_plan_board_compact`; это единственное место, где
- * они расшифровываются.
+ * описаны в миграциях `study_plan_board_compact` и
+ * `study_plan_done_via_topic_done_events`; это единственное место, где они
+ * расшифровываются.
  */
 
 export type HwStatus = 'none' | 'not_started' | 'draft' | 'submitted' | 'accepted' | 'returned'
@@ -56,8 +58,10 @@ export interface BoardCell {
   week: number
   hw: HwStatus
   hwPublished: boolean
-  selfGroups: number
-  selfMarked: number
+  /** Самоотметки ученика по группам «Теория» / «Урок» — сырые, без расчёта
+   *  «какие группы у темы есть»: это правило живёт в базе (topic_done_events). */
+  theoryMarked: boolean
+  lessonMarked: boolean
   done: boolean
   marked: boolean
   overdue: boolean
@@ -101,8 +105,8 @@ export function decodeBoard(raw: unknown): StudyPlanBoard {
       week: num(row[2]),
       hw: HW_CODES[num(row[3])] ?? 'not_started',
       hwPublished: (flags & FLAG_HW_PUBLISHED) !== 0,
-      selfGroups: num(row[4]),
-      selfMarked: num(row[5]),
+      theoryMarked: num(row[4]) === 1,
+      lessonMarked: num(row[5]) === 1,
       done: (flags & FLAG_DONE) !== 0,
       marked: (flags & FLAG_MARKED) !== 0,
       overdue: (flags & FLAG_OVERDUE) !== 0,
@@ -192,12 +196,12 @@ export const HW_STATUS_LABEL: Record<HwStatus, string> = {
 
 export function cellState(cell: BoardCell): CellState {
   const basis = cell.hwPublished ? 'homework' : 'marks'
-  const marksLabel = cell.selfGroups === 0
-    ? 'отмечать нечего'
-    : cell.marked
-      ? 'отмечено пройденным'
-      : cell.selfMarked > 0
-        ? `отмечено ${cell.selfMarked} из ${cell.selfGroups}`
+  const marksLabel = cell.marked
+    ? 'отмечено пройденным'
+    : cell.theoryMarked
+      ? 'отмечена теория'
+      : cell.lessonMarked
+        ? 'отмечен урок'
         : 'не отмечено'
 
   const markedButNotSubmitted = cell.hwPublished && cell.marked && !cell.done

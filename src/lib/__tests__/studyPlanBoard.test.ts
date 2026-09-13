@@ -21,13 +21,13 @@ const RAW = {
     { topic_id: 't-3', title: 'Статика', module_title: 'Механика', week_no: 2, is_open: null, available_from: '2026-09-14', open_now: false },
   ],
   cells: [
-    // [si, ti, week, hw_code, self_groups, self_marked, flags, submitted_at?]
-    [0, 0, 1, 3, 2, 2, 1 + 2 + 64, '2026-09-08T10:00:00+00:00'],  // сдано, отмечено, ДЗ опубликовано
-    [0, 1, 1, 1, 2, 2, 2 + 64],                                    // отметил пройденным, ДЗ НЕ сдал
-    [0, 2, 2, 0, 2, 0, 0],                                         // ДЗ не опубликовано, не пройдено
-    [1, 0, 1, 1, 2, 0, 4 + 64],                                    // просрочено
-    [1, 1, 1, 0, 2, 2, 1],                                         // ДЗ нет — пройдено по отметке
-    [1, 2, 3, 0, 1, 0, 32],                                        // сдвинуто на неделю 3
+    // [si, ti, week, hw_code, theory_marked, lesson_marked, flags, submitted_at?]
+    [0, 0, 1, 3, 1, 1, 1 + 2 + 64, '2026-09-08T10:00:00+00:00'],  // сдано, отмечено, ДЗ опубликовано
+    [0, 1, 1, 1, 1, 1, 2 + 64],                                    // отметил пройденным, ДЗ НЕ сдал
+    [0, 2, 2, 0, 0, 0, 0],                                         // ДЗ не опубликовано, не пройдено
+    [1, 0, 1, 1, 0, 0, 4 + 64],                                    // просрочено
+    [1, 1, 1, 0, 1, 1, 1],                                         // ДЗ нет — пройдено по отметке
+    [1, 2, 3, 0, 0, 0, 32],                                        // сдвинуто на неделю 3
   ],
   summary: [
     [0, 1, 2, 1, 0], [0, 2, 1, 0, 0],
@@ -47,7 +47,8 @@ describe('decodeBoard', () => {
     expect(submitted.submittedAt).toBe('2026-09-08T10:00:00+00:00')
 
     const shifted = board.cells[5]
-    expect(shifted).toMatchObject({ week: 3, shifted: true, removed: false, hw: 'none', hwPublished: false })
+    expect(shifted).toMatchObject({ week: 3, shifted: true, removed: false, hw: 'none', hwPublished: false, theoryMarked: false })
+    expect(submitted).toMatchObject({ theoryMarked: true, lessonMarked: true })
     expect(shifted.submittedAt).toBeNull()
   })
 
@@ -96,10 +97,10 @@ describe('cellState', () => {
   it('сдано после срока и частичные отметки', () => {
     const late = cellState({ ...board.cells[0], late: true })
     expect(late).toMatchObject({ kind: 'late', label: 'сдано после срока' })
-    const partial = cellState({ ...board.cells[1], marked: false, selfMarked: 1 })
-    expect(partial.marksLabel).toBe('отмечено 1 из 2')
-    const none = cellState({ ...board.cells[1], marked: false, selfMarked: 0, selfGroups: 0 })
-    expect(none.marksLabel).toBe('отмечать нечего')
+    const partial = cellState({ ...board.cells[1], marked: false, lessonMarked: false })
+    expect(partial.marksLabel).toBe('отмечена теория')
+    const none = cellState({ ...board.cells[1], marked: false, theoryMarked: false, lessonMarked: false })
+    expect(none.marksLabel).toBe('не отмечено')
   })
 })
 
