@@ -30,6 +30,21 @@ export interface SchoolStats {
   telegram_connected:       number
   visits_today:             number
   visits_7d:                number
+  /**
+   * §169. Обращения «Сообщить о проблеме» со статусом `new` — те, которых
+   * ещё никто не открывал. «В работе» сюда не входит: его уже кто-то видел.
+   */
+  support_new:              number
+  /**
+   * §169. Воронка привязки Telegram за 7 суток: сколько ссылок создано и
+   * сколько привязок состоялось. Два числа об одном процессе — из одной RPC,
+   * как пара `homework_pending` / `homework_oldest_pending_days`. Второе —
+   * «людей, привязавшихся за неделю» (строка `telegram_connections` одна на
+   * профиль), поэтому оно может быть чуть меньше первого и при здоровой
+   * привязке; порог тревоги это учитывает (`telegramLinkingBroken`).
+   */
+  telegram_links_created_7d:   number
+  telegram_links_connected_7d: number
 }
 
 const EMPTY: SchoolStats = {
@@ -38,6 +53,18 @@ const EMPTY: SchoolStats = {
   homework_reviewed: 0, homework_pending: 0, homework_oldest_pending_days: null,
   variants_completed: 0, telegram_connected: 0,
   visits_today: 0, visits_7d: 0,
+  support_new: 0, telegram_links_created_7d: 0, telegram_links_connected_7d: 0,
+}
+
+/**
+ * Порог, при котором воронка привязки читается как поломка, а не как шум:
+ * ссылок создано хотя бы 5 (меньше — единичные случаи, по ним судить нельзя)
+ * и привязалось меньше половины. Вынесено из компонента, чтобы порог был
+ * одним числом в одном месте и проверялся напрямую.
+ */
+export const TELEGRAM_FUNNEL_MIN_LINKS = 5
+export function telegramLinkingBroken(created: number, connected: number): boolean {
+  return created >= TELEGRAM_FUNNEL_MIN_LINKS && connected / created < 0.5
 }
 
 export function useSchoolStats() {

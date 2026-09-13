@@ -10,6 +10,8 @@
  * человеку понятное сообщение вместо 23514 check_violation.
  */
 
+import { normalizeBunnyVideoUrl } from '@/lib/bunnyVideoUrl'
+
 export const TOPIC_MATERIALS_BUCKET = 'topic-materials'
 
 /**
@@ -477,7 +479,14 @@ export function buildMaterialInsert(
       if (!content) throw new Error('Текст материала не может быть пустым')
       return { ...base, content }
     }
-    case 'video':
+    case 'video': {
+      // Bunny — ДО общей нормализации: голый guid она превратила бы в
+      // `https://<guid>/`, а страницу «play» и поток CDN пропустила бы как
+      // есть — плеер их не показывает, статистика §146 не считает (§168).
+      const url = normalizeBunnyVideoUrl(draft.url) ?? normalizeMaterialUrl(draft.url ?? '')
+      if (!url) throw new Error('Укажите корректную ссылку (http или https)')
+      return { ...base, url }
+    }
     case 'link': {
       const url = normalizeMaterialUrl(draft.url ?? '')
       if (!url) throw new Error('Укажите корректную ссылку (http или https)')
@@ -497,8 +506,13 @@ export function buildMaterialInsert(
   }
 }
 
-/** Встраиваемая ссылка для YouTube/Vimeo, иначе null — покажем обычной ссылкой. */
+/** Встраиваемая ссылка для Bunny/YouTube/Vimeo, иначе null — покажем обычной ссылкой. */
 export function getVideoEmbedUrl(url: string): string | null {
+  // Bunny — тем же разбором, что и при сохранении: карточка преподавателя
+  // раньше показывала embed-адрес Bunny голой ссылкой, хотя это плеер.
+  const bunny = normalizeBunnyVideoUrl(url)
+  if (bunny) return bunny
+
   let u: URL
   try {
     u = new URL(url)

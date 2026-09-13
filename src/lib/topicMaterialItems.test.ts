@@ -101,6 +101,48 @@ describe('buildMaterialInsert', () => {
   it('падает, если файл не загружен', () => {
     expect(() => buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'file' })).toThrow(/файл/i)
   })
+
+  /**
+   * §168. 12.09 к темам руками прикрепили адреса «play» и потока CDN из панели
+   * Bunny; форма приняла их молча, плеер не показал, статистика не посчитала.
+   * Теперь любой вид адреса Bunny ложится в базу embed-адресом — тем же, что у
+   * остальных ~350 видео.
+   */
+  describe('video: адрес Bunny приводится к embed-виду', () => {
+    const GUID = '0016b4df-58da-4ba4-b94a-cdc2d4584d86'
+    const EMBED = `https://iframe.mediadelivery.net/embed/726880/${GUID}`
+
+    it('страница «play» → embed', () => {
+      const v = buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'video', url: `https://player.mediadelivery.net/play/726880/${GUID}` })
+      expect(v.url).toBe(EMBED)
+    })
+
+    it('поток CDN → embed нашей библиотеки', () => {
+      const v = buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'video', url: `https://vz-1a2b3c.b-cdn.net/${GUID}/playlist.m3u8` })
+      expect(v.url).toBe(EMBED)
+    })
+
+    it('голый guid → embed (общая нормализация сделала бы из него хост)', () => {
+      const v = buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'video', url: ` ${GUID} ` })
+      expect(v.url).toBe(EMBED)
+    })
+
+    it('embed-адрес не меняется', () => {
+      expect(buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'video', url: EMBED }).url).toBe(EMBED)
+    })
+
+    it('не-Bunny видео идёт прежним путём', () => {
+      expect(buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'video', url: 'https://rutube.ru/video/abc/' }).url)
+        .toBe('https://rutube.ru/video/abc/')
+    })
+
+    it('для ссылок (kind = link) Bunny не разбирается: guid там — не адрес', () => {
+      expect(() => buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'link', url: `https://player.mediadelivery.net/play/726880/${GUID}` }))
+        .not.toThrow()
+      expect(buildMaterialInsert(TOPIC, AUTHOR, 0, { kind: 'link', url: `https://player.mediadelivery.net/play/726880/${GUID}` }).url)
+        .toBe(`https://player.mediadelivery.net/play/726880/${GUID}`)
+    })
+  })
 })
 
 // ── Путь в бакете: первый сегмент обязан быть topic_id ───────────────────────
@@ -209,6 +251,13 @@ describe('getVideoEmbedUrl', () => {
   })
   it('мусор не роняет', () => {
     expect(getVideoEmbedUrl('не ссылка')).toBeNull()
+  })
+  it('Bunny — плеером, тем же embed-адресом, что при сохранении (§168)', () => {
+    const guid = '0016b4df-58da-4ba4-b94a-cdc2d4584d86'
+    const embed = `https://iframe.mediadelivery.net/embed/726880/${guid}`
+    expect(getVideoEmbedUrl(embed)).toBe(embed)
+    // Строка, записанная до нормализации, всё равно показывается плеером.
+    expect(getVideoEmbedUrl(`https://player.mediadelivery.net/play/726880/${guid}`)).toBe(embed)
   })
 })
 

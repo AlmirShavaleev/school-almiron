@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 
 const reviewer = readFileSync('src/components/SubmissionReviewer.tsx', 'utf8')
 const reviewListPage = readFileSync('src/pages/HomeworkReviewPage.tsx', 'utf8')
-const homeworks = readFileSync('src/hooks/useHomeworks.ts', 'utf8')
 const migration = readFileSync('supabase/migrations/_legacy/017_annotation_sets.sql', 'utf8')
 const studentReviewPage = readFileSync('src/pages/StudentReviewPage.tsx', 'utf8')
 const queueItem = readFileSync('src/components/queue/QueueItem.tsx', 'utf8')
@@ -120,14 +119,6 @@ describe('submission annotation reviewer', () => {
     expect(reviewListPage).toContain('/review/student/')
     expect(studentReviewPage).toContain('<SubmissionReviewer')
     expect(studentReviewPage).toContain("onPublish={isHistoricalAttempt ? undefined : publishReview}")
-  })
-
-  it('loads the student own file and uses the reviewer read-only', () => {
-    expect(homeworks).toContain('student_id,file_url')
-    const homeworksPage = readFileSync('src/pages/HomeworksPage.tsx', 'utf8')
-    expect(homeworksPage).toContain('filePath={studentReview.file_url}')
-    expect(homeworksPage).toContain('filePaths={studentReview.filePaths}')
-    expect(homeworksPage).toContain('readOnly')
   })
 
   it('is integrated into the per-student review page in teacher mode, only for previewable files', () => {

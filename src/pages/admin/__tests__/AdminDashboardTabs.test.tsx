@@ -59,12 +59,18 @@ vi.mock('@/hooks/useAdminDashboard', () => ({
     loading: false, reload: vi.fn(),
   }),
 }))
-vi.mock('@/hooks/useSchoolStats', () => ({
-  useSchoolStats: () => ({
-    stats: schoolStats, loading: false, error: schoolError,
-    fetchedAt: '2026-09-09T17:00:00.000Z', reload: vi.fn(),
-  }),
-}))
+vi.mock('@/hooks/useSchoolStats', async () => {
+  // Порог воронки Telegram — настоящий: строка на «Обзоре» обязана краситься
+  // тем же правилом, которым живёт хук, а не своей копией в тесте.
+  const actual = await vi.importActual<typeof import('@/hooks/useSchoolStats')>('@/hooks/useSchoolStats')
+  return {
+    ...actual,
+    useSchoolStats: () => ({
+      stats: schoolStats, loading: false, error: schoolError,
+      fetchedAt: '2026-09-09T17:00:00.000Z', reload: vi.fn(),
+    }),
+  }
+})
 vi.mock('@/hooks/useSchoolAnalytics', () => ({
   DORMANT_DAYS: 7,
   useSchoolAnalytics: () => ({
@@ -117,6 +123,7 @@ const QUIET_SCHOOL = {
   homework_reviewed: 17, homework_pending: 0, homework_oldest_pending_days: null,
   variants_completed: 1, telegram_connected: 27,
   visits_today: 0, visits_7d: 33,
+  support_new: 0, telegram_links_created_7d: 0, telegram_links_connected_7d: 0,
 }
 
 beforeEach(() => {
@@ -247,6 +254,87 @@ describe('«Обзор» как список дел', () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
     expect(screen.getByText('5')).toBeInTheDocument()
     expect(screen.getByText('23')).toBeInTheDocument()
+  })
+})
+
+describe('§169: обращения и воронка Telegram на «Обзоре»', () => {
+  it('необработанные обращения — строка с числом и переходом на экран обращений', () => {
+    schoolStats = { ...QUIET_SCHOOL, support_new: 7 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+
+    const row = screen.getByRole('button', { name: /Разобрать обращения/ })
+    expect(row).toHaveTextContent('7')
+
+    fireEvent.click(row)
+    expect(navigate).toHaveBeenCalledWith('/admin/support')
+  })
+
+  it('ноль обращений — строки нет, день спокойный', () => {
+    // Список дел не про нули (§147): «разобрать 0 обращений» — не дело.
+    schoolStats = { ...QUIET_SCHOOL, support_new: 0 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.queryByRole('button', { name: /Разобрать обращения/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/На сегодня всё разобрано/)).toBeInTheDocument()
+  })
+
+  it('«в работе» не считается необработанным: число приходит из RPC как есть', () => {
+    // Клиент не пересчитывает: если RPC сказала 2, строка показывает 2, а не
+    // сумму каких-либо других ключей.
+    schoolStats = { ...QUIET_SCHOOL, support_new: 2, telegram_connected: 40 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: /Разобрать обращения/ })).toHaveTextContent('2')
+  })
+
+  it('Telegram за 7 дней: оба числа в строке и переход в журнал', () => {
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 12, telegram_links_connected_7d: 11 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+
+    const row = screen.getByRole('button', { name: /Telegram за 7 дней/ })
+    expect(row).toHaveTextContent('создано ссылок 12, привязано 11')
+    expect(row).toHaveTextContent('11 / 12')
+
+    fireEvent.click(row)
+    expect(navigate).toHaveBeenCalledWith('/admin/telegram')
+  })
+
+  it('здоровая привязка не подсвечена как проблема', () => {
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 12, telegram_links_connected_7d: 11 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    const row = screen.getByRole('button', { name: /Telegram за 7 дней/ })
+    expect(row).toHaveAttribute('data-mood', 'ok')
+    expect(row).not.toHaveTextContent(/похоже на поломку/)
+  })
+
+  it('X ≥ 5 и меньше половины привязалось — тон bad и слова о поломке', () => {
+    // Сломанная привязка 08.09: 100 % → 20 %, три дня никто не видел.
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 10, telegram_links_connected_7d: 2 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    const row = screen.getByRole('button', { name: /Telegram за 7 дней/ })
+    expect(row).toHaveAttribute('data-mood', 'bad')
+    expect(row).toHaveTextContent(/похоже на поломку/)
+  })
+
+  it('ровно половина — ещё не поломка', () => {
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 10, telegram_links_connected_7d: 5 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: /Telegram за 7 дней/ })).toHaveAttribute('data-mood', 'ok')
+  })
+
+  it('меньше пяти ссылок — по ним не судят, даже при нуле привязок', () => {
+    // 4 ссылки и 0 привязок — это может быть один человек, у которого не
+    // получилось; тревога по такому числу была бы шумом каждую неделю.
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 4, telegram_links_connected_7d: 0 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    const row = screen.getByRole('button', { name: /Telegram за 7 дней/ })
+    expect(row).toHaveAttribute('data-mood', 'ok')
+    expect(row).toHaveTextContent('создано ссылок 4, привязано 0')
+  })
+
+  it('за неделю ни ссылок, ни привязок — строки Telegram нет', () => {
+    schoolStats = { ...QUIET_SCHOOL, telegram_links_created_7d: 0, telegram_links_connected_7d: 0 }
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.queryByRole('button', { name: /Telegram за 7 дней/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/На сегодня всё разобрано/)).toBeInTheDocument()
   })
 })
 
