@@ -5,6 +5,7 @@ import { useTopicTestAssignment, useTestBank } from '@/hooks/useTopicTest'
 import { useTopicVariantAttachment } from '@/hooks/useVariantTopicAttach'
 import { useTopicTaskProgress } from '@/hooks/useTopicTaskProgress'
 import { useTopicTasksStaff, fetchAttachTarget, type StaffTaskRow } from '@/hooks/useTopicTaskAttach'
+import { useTopicTemplateLink } from '@/hooks/useTopicTemplateLink'
 import { useAttachTargetStore } from '@/store/attachStore'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -38,6 +39,11 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
   const tasks = useTopicTasksStaff(topicId)
   const setAttachTarget = useAttachTargetStore(s => s.setTarget)
   const navigate = useNavigate()
+
+  // Задачи темы-отражения задаются в каркасе (§172). Здесь их видно, но не
+  // правят: иначе класс и каркас разъедутся, и никто не вспомнит, когда.
+  const { link } = useTopicTemplateLink(topicId)
+  const fromTemplate = !link.is_template && !!link.source_topic_id
 
   const [openPicker, setOpenPicker] = useState<'bank' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -90,16 +96,29 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="primary"
-          size="sm"
-          data-testid="pick-in-catalog"
-          onClick={() => { void pickInCatalog() }}
-          disabled={busy || variantBusy}
-        >
-          <ListPlus size={14} className="mr-1" />
-          Подобрать в каталоге
-        </Button>
+        {fromTemplate ? (
+          /* Отражение каркаса: отсюда ведём туда, где задачи задаются. */
+          <Link
+            to={`/course-program?materialsTopic=${link.source_topic_id}&tile=test`}
+            data-testid="tasks-in-template"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-sm
+              font-medium text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100"
+          >
+            <ListPlus size={14} />
+            Задачи задаются в шаблоне → открыть
+          </Link>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="pick-in-catalog"
+            onClick={() => { void pickInCatalog() }}
+            disabled={busy || variantBusy}
+          >
+            <ListPlus size={14} className="mr-1" />
+            Подобрать в каталоге
+          </Button>
+        )}
         <Button
           variant="secondary"
           size="sm"
@@ -138,7 +157,7 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
         </p>
       )}
 
-      <AttachedTasks tasks={tasks} progress={taskProgress} />
+      <AttachedTasks tasks={tasks} progress={taskProgress} readOnly={fromTemplate} />
 
       {attached.map(item => (
         <AttachedRow
@@ -187,10 +206,12 @@ export function TopicTestEditor({ topicId }: { topicId: string }) {
  * не открыл ни один ученик, выдачи нет, а задачи уже есть.
  */
 function AttachedTasks({
-  tasks, progress,
+  tasks, progress, readOnly = false,
 }: {
   tasks: ReturnType<typeof useTopicTasksStaff>
   progress: ReturnType<typeof useTopicTaskProgress>
+  /** Набор приехал из каркаса: показываем, но порядок и состав не трогаем. */
+  readOnly?: boolean
 }) {
   if (tasks.loading) {
     return (
@@ -228,6 +249,7 @@ function AttachedTasks({
             row={row}
             first={index === 0}
             last={index === tasks.rows.length - 1}
+            readOnly={readOnly}
             busy={tasks.busy === row.item_id}
             onMove={delta => { void tasks.move(row.item_id, delta) }}
             onDetach={async () => {
@@ -248,12 +270,13 @@ function AttachedTasks({
 }
 
 function TaskRow({
-  row, first, last, busy, onMove, onDetach,
+  row, first, last, busy, readOnly = false, onMove, onDetach,
 }: {
   row: StaffTaskRow
   first: boolean
   last: boolean
   busy: boolean
+  readOnly?: boolean
   onMove: (delta: number) => void
   onDetach: () => Promise<void>
 }) {
@@ -270,6 +293,11 @@ function TaskRow({
         </div>
       </div>
 
+      {readOnly ? (
+        <span className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
+          из шаблона
+        </span>
+      ) : (
       <div className="flex shrink-0 items-center">
         <button
           type="button" title="Выше" disabled={first || busy} onClick={() => onMove(-1)}
@@ -290,6 +318,7 @@ function TaskRow({
           <Trash2 size={14} />
         </button>
       </div>
+      )}
     </div>
   )
 }

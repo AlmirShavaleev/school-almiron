@@ -18,6 +18,7 @@ import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvaila
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
+import { TopicTemplateBanner } from '@/components/courseProgram/TopicTemplateBanner'
 import {
   MATERIAL_FILE_ACCEPT, isMaterialSection,
   TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, isTopicSectionVisible,
@@ -758,6 +759,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
         {canEdit && (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/* Каркас и его отражения (§172): куда уедет правка — или откуда
+                приехало то, что здесь показано. */}
+            <TopicTemplateBanner topicId={topicId} />
+
             {/* Сетка плиток */}
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {TILES.map((tile) => {
