@@ -241,14 +241,17 @@ const myStudents = students.slice(1).map((s, k) => ({ student_id: s.id, profile_
   groups: [{ id: k === 7 ? IDS.group2 : IDS.group, group_id: k === 7 ? IDS.group2 : IDS.group, name: k === 7 ? groups[1].name : groups[0].name, course_id: k === 7 ? IDS.course2 : IDS.course, course_title: k === 7 ? course2.title : course.title }] }))
 const days30 = Array.from({ length: 30 }, (_, i) => ({ day: new Date(Date.parse(NOW) - (29 - i) * 864e5).toISOString().slice(0, 10), people: 3 + ((i * 7) % 9) }))
 
-// ── задачи к уроку (§162/§164, board/016) ───────────────────────────────────
+// ── задачи к уроку (§162/§164, board/016; лента шагов §175) ─────────────────
 // 7 задач темы 1: пять первой части (автопроверка), две второй (только
 // «Посмотреть решение» → «Разобрал»). Часть уже решена — ровно то, что
-// просила задача 016 для сцены «тема ученика с вкладкой Задачи».
+// просила задача 016 для сцены «тема ученика с вкладкой Задачи». У задачи 4
+// есть неверные попытки без решения — третье состояние ленты (янтарный
+// контур, §175), иначе его не увидеть на снимке.
 const topicTaskDefs = Array.from({ length: 7 }, (_, k) => {
   const t = catalog_tasks[k]
   const isPart2 = k >= 5 // задачи 6 и 7 — вторая часть
   const solved = k < 2 || k === 5 // 1, 2 решены ответом; 6 (часть 2) разобрана
+  const tried = k === 3 // 4: отвечал дважды, оба раза мимо
   return {
     student_assignment_id: U('c', 1700 + k),
     item_id: U('c', 1700 + k),
@@ -258,15 +261,49 @@ const topicTaskDefs = Array.from({ length: 7 }, (_, k) => {
     assets: catalog_task_assets.filter(a => a.task_id === t.id),
     max_points: isPart2 ? 3 : 1,
     auto_checkable: !isPart2,
-    answer_raw: !isPart2 && solved ? String((k + 1) * 2) : null,
-    is_correct: !isPart2 && solved ? true : null,
-    attempts_count: solved ? (k === 0 ? 2 : 1) : 0,
+    answer_raw: !isPart2 && solved ? String((k + 1) * 2) : tried ? '17' : null,
+    is_correct: !isPart2 && solved ? true : tried ? false : null,
+    attempts_count: solved ? (k === 0 ? 2 : 1) : tried ? 2 : 0,
     closed_by: solved ? (isPart2 ? 'self' : 'auto') : null,
     solution_shown_at: isPart2 && solved ? ago(2) : null,
     solution_html: solved ? (t.solution_html || '<p>Разбор задачи.</p>') : null,
     answer_html: solved ? t.answer_html : null,
   }
 })
+// Ответ/разбор/«Разобрал» на харнессе: правят СВОЮ копию строк (каждый
+// контекст тура получает `baseFixtures` заново), как это сделала бы база, —
+// сцена «после верного ответа» показывает зелёный квадрат при карточке на месте.
+function topicTaskRpcs(rowsFor) {
+  const find = (body) => rowsFor(body).find(r => r.item_id === body.p_item_id)
+  const solutionOf = (r) => catalog_tasks.find(t => t.id === r.task_id) ?? {}
+  return {
+    topic_tasks_for_student: (body) => rowsFor(body),
+    answer_topic_task: (body) => {
+      const r = find(body)
+      if (!r) return null
+      const ok = String(body.p_answer_raw).trim() === String(r.item_position * 2)
+      r.attempts_count += 1
+      r.answer_raw = body.p_answer_raw
+      r.is_correct = ok
+      if (ok) { r.closed_by = 'auto' }
+      return { is_correct: ok, attempts_count: r.attempts_count }
+    },
+    reveal_topic_task_solution: (body) => {
+      const r = find(body)
+      if (!r) return null
+      const t = solutionOf(r)
+      r.solution_shown_at = NOW
+      r.solution_html = t.solution_html || '<p>Разбор задачи.</p>'
+      r.answer_html = t.answer_html ?? null
+      return { solution_html: r.solution_html, solution_plan_html: null, answer_html: r.answer_html }
+    },
+    close_topic_task_self: (body) => {
+      const r = find(body)
+      if (r && r.solution_shown_at) r.closed_by = 'self'
+      return null
+    },
+  }
+}
 const topicTasksStaff = topicTaskDefs.map(r => ({
   item_id: r.item_id, item_position: r.item_position, task_id: r.task_id,
   external_id: catalog_tasks.find(t => t.id === r.task_id)?.external_id ?? null,
@@ -293,6 +330,7 @@ const courseTasksMatrix = matrixStudents.flatMap((s, si) => MATRIX_TOPICS.map(([
 }))
 
 export function baseFixtures(persona) {
+  const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
     tables: {
       profiles, students, teachers, curators: [], courses, modules, topics, groups, group_students,
@@ -334,7 +372,7 @@ export function baseFixtures(persona) {
       get_student_number_stats: [],
       topic_homework_ai_expire_stale_jobs: null,
       get_variant_results: [], variant_pass_counts: [], variant_topic_availability: [], variant_selection_availability: [],
-      topic_tasks_for_student: (body) => body.p_topic_id === IDS.topic(1) ? topicTaskDefs : [],
+      ...topicTaskRpcs((body) => body.p_topic_id === IDS.topic(1) ? myTopicTasks : []),
       topic_tasks_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? topicTasksStaff : [],
       topic_task_progress_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? TOPIC_TASK_PROGRESS : [],
       course_topic_tasks_matrix: (body) => body.p_course_id === IDS.course ? courseTasksMatrix : [],

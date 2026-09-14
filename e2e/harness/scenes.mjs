@@ -24,8 +24,17 @@ export const scenes = [
   { persona: 'student', name: 's05-my-homework-submit', url: '/my-homework', actions: [{ click: 'Сдать' }, { wait: 1500 }] },
   { persona: 'student', name: 's04-topic-test', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Тест")' }, { wait: 800 }] },
   // board/016: тема ученика с вкладкой «Задачи» — 7 задач к уроку, две второй
-  // части, часть уже решена (§162).
+  // части, часть уже решена (§162). С §175 на экране одна задача и лента
+  // шагов сверху; открывается первая нерешённая (3). Сцены ниже — те же
+  // действия, что ученик делает руками: ответ, переход по квадрату, «Дальше».
   { persona: 'student', name: 's04-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }] },
+  // Верный ответ (6 = 3·2): квадрат 3 зеленеет, карточка остаётся с «Верно» и
+  // «Посмотреть решение», «Решено 4 из 7».
+  { persona: 'student', name: 's04-topic-tasks-answered', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { fill: ['input[aria-label="Ответ на задачу"]', '6'] }, { clickRole: ['button', 'Проверить'] }, { wait: 1000 }] },
+  // Клик по квадрату ленты: задача второй части без автопроверки, последняя —
+  // «Дальше» неактивна. Контекст один на персону и ширину, поэтому ответ из
+  // сцены выше здесь уже учтён («Решено 4 из 7») — как в живой сессии.
+  { persona: 'student', name: 's04-topic-tasks-part2', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 7, не начата'] }, { wait: 600 }] },
   { persona: 'student', name: 's04-topic2-submitted', url: `/my-course/${S.group}/topic/${S.topic(2)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }] },
   { persona: 'student', name: 's04-topic4-notsubmitted', url: `/my-course/${S.group}/topic/${S.topic(4)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }] },
   { persona: 'student', name: 's04-topic4-upload', url: `/my-course/${S.group}/topic/${S.topic(4)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }, { clickSel: 'button:has-text("Загрузить работу")' }, { wait: 1200 }] },
@@ -109,6 +118,10 @@ export const scenes = [
   { persona: 'owner', name: 'o10-settings', url: '/settings' },
   { persona: 'owner', name: 'o11-teacher-dashboard', url: '/teacher' },
   { persona: 'owner', name: 'o12-groups', url: `/groups/${S.group}` },
+
+  // ── 1280: лента шагов и карточка на компьютере (§175) ──
+  { persona: 'student', name: 's04-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }] },
+  { persona: 'student', name: 's04-topic-tasks-answered', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { fill: ['input[aria-label="Ответ на задачу"]', '6'] }, { clickRole: ['button', 'Проверить'] }, { wait: 1000 }] },
 
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
