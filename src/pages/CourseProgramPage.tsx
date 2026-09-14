@@ -22,7 +22,7 @@ import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
   Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3, ChevronLeft,
-  Copy, Eye,
+  Copy, Eye, Layers,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -1284,6 +1284,8 @@ function MaterialsMatrix({
 /** Вкладки курса. Значение живёт в адресе, поэтому список нужен и для разбора. */
 const COURSE_TABS = ['program', 'materials', 'homework', 'testresults', 'students', 'settings'] as const
 type CourseTab = typeof COURSE_TABS[number]
+/** Вкладки про учеников — на каркасе курса их нет (§174). */
+const STUDENT_TABS = ['homework', 'testresults', 'students'] as const satisfies readonly CourseTab[]
 
 /**
  * Карточка курса в списке. Именно ссылка, а не кнопка: браузер сам умеет
@@ -1448,7 +1450,7 @@ export function CourseProgramPage() {
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
   const tabParam = searchParams.get('tab')
-  const tab = ((COURSE_TABS as readonly string[]).includes(tabParam ?? '') ? tabParam : 'program') as CourseTab
+  const urlTab = ((COURSE_TABS as readonly string[]).includes(tabParam ?? '') ? tabParam : 'program') as CourseTab
   const setTab = useCallback((t: CourseTab) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -1638,6 +1640,32 @@ export function CourseProgramPage() {
   const grouped = useMemo(() => groupCoursesByTemplate(courses), [courses])
 
   const selectedCourse = courses.find(c => c.id === selectedId) || null
+
+  /**
+   * Классы-копии каркаса (§174) — из уже загруженного списка курсов, без
+   * запроса: те же строки, что раскладывает полка копий в списке. Только
+   * активные, как в `topic_template_link` (§172): черновик и архив — не класс,
+   * куда идут смотреть учеников.
+   */
+  const templateCopies = useMemo(
+    () => (selectedCourse?.is_template
+      ? courses.filter(c => c.copied_from_course_id === selectedCourse.id && c.is_active)
+      : []),
+    [courses, selectedCourse],
+  )
+  /** Название каркаса для копии — подсказка «где прикреплять задачи» (§174). */
+  const templateTitle = selectedCourse?.copied_from_course_id
+    ? (courses.find(c => c.id === selectedCourse.copied_from_course_id)?.title ?? null)
+    : null
+
+  /**
+   * Каркас без ученических вкладок (§174): ученики, ДЗ и результаты живут в
+   * классах-копиях, и «В курсе пока нет учеников» на каркасе — правда, которая
+   * только сбивает. `COURSE_TABS` не трогаем: адрес `?tab=students` на каркасе
+   * просто открывает «Программу курса», а не ломается.
+   */
+  const isTemplate = !!selectedCourse?.is_template
+  const tab: CourseTab = isTemplate && (STUDENT_TABS as readonly string[]).includes(urlTab) ? 'program' : urlTab
 
 
   // Load modules + groups when course selected
@@ -2083,6 +2111,37 @@ export function CourseProgramPage() {
               </div>
             )}
 
+            {/* Каркас: одной строкой — куда ушли ученики, ДЗ и результаты (§174).
+                Названия классов — ссылки: владелец пришёл сюда за ними, а не
+                за объяснением. */}
+            {isTemplate && (
+              <div
+                data-testid="template-classes-row"
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-900"
+              >
+                <Layers size={14} className="shrink-0 text-indigo-600" />
+                <span>
+                  Каркас курса: ученики, домашние задания и результаты — в классах:{' '}
+                  {templateCopies.length === 0 ? (
+                    <span className="text-indigo-700">копий курса пока нет</span>
+                  ) : (
+                    templateCopies.map((c, i) => (
+                      <Fragment key={c.id}>
+                        {i > 0 && ', '}
+                        <Link
+                          to={`/course-program?courseId=${c.id}`}
+                          title={c.title}
+                          className="font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
+                        >
+                          {copyDisplayTitle(c.title, selectedCourse.title)}
+                        </Link>
+                      </Fragment>
+                    ))
+                  )}
+                </span>
+              </div>
+            )}
+
             {/* Вкладки курса. role=tablist/tab — не украшение: с ними
                 скринридер объявляет «вкладка 3 из 6», а стрелки влево-вправо
                 воспринимаются как переключение, а не как обход кнопок. */}
@@ -2090,9 +2149,11 @@ export function CourseProgramPage() {
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
-                { key: 'homework',  label: 'Домашние задания' },
-                { key: 'testresults', label: 'Результаты тестов' },
-                { key: 'students',  label: 'Ученики' },
+                ...(isTemplate ? [] : [
+                  { key: 'homework',  label: 'Домашние задания' },
+                  { key: 'testresults', label: 'Результаты тестов' },
+                  { key: 'students',  label: 'Ученики' },
+                ]),
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
                 <button
@@ -2258,7 +2319,7 @@ export function CourseProgramPage() {
 
             {/* Test Results tab */}
             {tab === 'testresults' && (
-              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} />
+              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} templateTitle={templateTitle} />
             )}
 
             {/* Students tab */}

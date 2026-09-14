@@ -69,6 +69,12 @@ export const scenes = [
   // board/016: экран преподавателя той же темы — тайл «Задачи» (§162/§164):
   // сколько прикреплено и как решают.
   { persona: 'owner', name: 'o03-course-program-tasks', url: `/course-program?course=${S.course}`, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { clickSel: 'button:has-text("Материалы")' }, { wait: 1000 }, { click: 'Равноускоренное прямолинейное' }, { wait: 1500 }, { clickSel: '[data-testid="topic-tile-test"]' }, { wait: 1000 }, { eval: '(() => { const el = [...document.querySelectorAll("div")].find(e => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5); if (el) el.scrollTop = el.scrollHeight })()' }, { wait: 500 }], full: false },
+  // §174 (board/027): вкладка «Результаты тестов» класса — матрица «ученик ×
+  // тема» задач к уроку, ниже тесты из банка; каркас — без ученических вкладок,
+  // со строкой классов-копий. Снимаются на 390 и 1280.
+  { persona: 'owner', name: 'o13-course-task-results', url: `/course-program?courseId=${S.course}&tab=testresults`, actions: [{ wait: 1200 }] },
+  { persona: 'owner', name: 'o13-course-task-results', url: `/course-program?courseId=${S.course}&tab=testresults`, width: 1280, height: 800, actions: [{ wait: 1200 }] },
+  { persona: 'owner', name: 'o13-course-template', url: `/course-program?courseId=${S.courseTemplate}&tab=students`, width: 1280, height: 800, actions: [{ wait: 1200 }] },
   { persona: 'owner', name: 'o04-catalog', url: '/catalog' },
   { persona: 'owner', name: 'o04-catalog-physics', url: '/catalog?subject=physics&exam=ege' },
   { persona: 'owner', name: 'o04-catalog-section', url: `/catalog/${S.section(1)}?subject=physics&exam=ege` },

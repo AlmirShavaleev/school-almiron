@@ -4,6 +4,8 @@ export const IDS = {
   student: U('a', 1), owner: U('a', 2),
   studentRow: U('b', 1), teacherRow: U('c', 2),
   course: U('d', 1), course2: U('d', 2), module: U('e', 1), module2: U('e', 2),
+  // §174: каркас и его классы-копии + модуль каркаса
+  courseTemplate: U('d', 3), courseCopy: (i) => U('d', 10 + i), moduleTemplate: U('e', 3),
   group: U('f', 1), group2: U('f', 2),
   topic: (i) => U('1', i), hw: (i) => U('2', i), attempt: (i) => U('3', i), file: (i) => U('4', i),
   review: (i) => U('5', i), material: (i) => U('6', i), otherStudent: (i) => U("b", 10 + i), profile: (i) => U('a', 10 + i),
@@ -34,10 +36,17 @@ export const personas = {
 // ── course structure ─────────────────────────────────────────────────────────
 const course = { id: IDS.course, title: 'Физика ЕГЭ 2027 · Полный годовой курс подготовки с нуля до 90+ баллов', subject: 'physics', exam_type: 'ege', duration_weeks: 36, price: 4900, description: 'Годовой курс: механика, МКТ и термодинамика, электродинамика, оптика, квантовая физика.', start_date: '2026-09-01', end_date: '2027-05-31', enrollment_open_until: '2026-10-01', is_active: true, is_default_for_direction: true, is_draft: false, is_template: false, owner_id: IDS.owner, copied_from_course_id: null, created_at: ago(24 * 90) }
 const course2 = { id: IDS.course2, title: 'Математика ОГЭ', subject: 'math', exam_type: 'oge', duration_weeks: 30, price: 3900, description: null, start_date: '2026-09-01', end_date: '2027-05-31', enrollment_open_until: null, is_active: true, is_default_for_direction: false, is_draft: false, is_template: false, owner_id: IDS.owner, copied_from_course_id: null, created_at: ago(24 * 90) }
-export const courses = [course, course2]
+// §174: каркас «Физика ЕГЭ Шаблон» и два активных класса-копии (10А, 11А) плюс
+// архивная копия — она в строке классов на каркасе показываться не должна.
+const courseTemplate = { ...course2, id: IDS.courseTemplate, title: 'Физика ЕГЭ Шаблон', subject: 'physics', exam_type: 'ege', duration_weeks: 36, price: 4900, description: 'Каркас: материалы и задачи задаются здесь, ученики — в классах.', is_template: true, is_default_for_direction: false }
+const courseCopies = [['Физика ЕГЭ 10А', true], ['Физика ЕГЭ 11А', true], ['Физика ЕГЭ 2025 (архив)', false]].map(([title, active], i) => ({
+  ...courseTemplate, id: IDS.courseCopy(i + 1), title, is_template: false, is_active: active, copied_from_course_id: IDS.courseTemplate, description: null,
+}))
+export const courses = [course, course2, courseTemplate, ...courseCopies]
 const modules = [
   { id: IDS.module, course_id: IDS.course, title: 'Механика: кинематика, динамика, статика, законы сохранения энергии и импульса', order_index: 1, created_at: ago(24 * 80), courses: course },
   { id: IDS.module2, course_id: IDS.course, title: 'Молекулярная физика и термодинамика', order_index: 2, created_at: ago(24 * 80), courses: course },
+  { id: IDS.moduleTemplate, course_id: IDS.courseTemplate, title: 'Механика', order_index: 1, created_at: ago(24 * 80), courses: courseTemplate },
 ]
 const TOPIC_TITLES = [
   'Равноускоренное прямолинейное движение: уравнения, графики зависимости координаты и скорости от времени',
@@ -49,11 +58,18 @@ const TOPIC_TITLES = [
   'Основы МКТ. Уравнение Менделеева—Клапейрона и изопроцессы',
   'Первый закон термодинамики',
 ]
-export const topics = TOPIC_TITLES.map((title, i) => ({
-  id: IDS.topic(i + 1), module_id: i < 6 ? IDS.module : IDS.module2, title, order_index: i + 1, max_score: 100,
-  is_open: i < 5, available_from: i < 5 ? ago(24 * (30 - i * 5)) : '2026-10-20T06:00:00Z', source_template_id: null, created_at: ago(24 * 80),
-  modules: i < 6 ? modules[0] : modules[1],
-}))
+export const topics = [
+  ...TOPIC_TITLES.map((title, i) => ({
+    id: IDS.topic(i + 1), module_id: i < 6 ? IDS.module : IDS.module2, title, order_index: i + 1, max_score: 100,
+    is_open: i < 5, available_from: i < 5 ? ago(24 * (30 - i * 5)) : '2026-10-20T06:00:00Z', source_template_id: null, created_at: ago(24 * 80),
+    modules: i < 6 ? modules[0] : modules[1],
+  })),
+  // темы каркаса (§174) — три первые темы механики
+  ...TOPIC_TITLES.slice(0, 3).map((title, i) => ({
+    id: IDS.topic(20 + i + 1), module_id: IDS.moduleTemplate, title, order_index: i + 1, max_score: 100,
+    is_open: null, available_from: null, source_template_id: null, created_at: ago(24 * 80), modules: modules[2],
+  })),
+]
 
 for (const m of modules) m.topics = topics.filter(t => t.module_id === m.id).map(({ modules: _m, ...t }) => t)
 export const groups = [
@@ -259,6 +275,23 @@ const topicTasksStaff = topicTaskDefs.map(r => ({
 }))
 const TOPIC_TASK_PROGRESS = [{ tasks_total: 7, students_total: 16, students_started: 12, students_done: 5, closed_auto: 9, closed_self: 2 }]
 
+// ── матрица «ученик × тема с задачами» (§174) ───────────────────────────────
+// Ответ `course_topic_tasks_matrix` для курса 1: восемь учеников группы × четыре
+// темы с задачами (1, 2, 3, 5). Состояния разложены «по диагонали», чтобы на
+// одном экране были все четыре: закрыто всё, часть, ноль при ответах, не
+// открывал. Тема 1 согласована с TOPIC_TASK_PROGRESS: 7 задач.
+const MATRIX_TOPICS = [[1, 7], [2, 5], [3, 6], [5, 4]] // [номер темы, задач]
+const matrixStudents = group_students.filter(g => g.group_id === IDS.group).map(g => ({ id: g.student_id, name: g.students.profiles.full_name }))
+const courseTasksMatrix = matrixStudents.flatMap((s, si) => MATRIX_TOPICS.map(([n, total], ti) => {
+  const t = topics[n - 1]
+  const k = (si + ti) % 5
+  // k: 0 — всё ответом; 1 — часть; 2 — отвечал, не закрыл; 3 — всё, две по разбору; 4 — не открывал
+  const closedSelf = k === 3 ? 2 : 0
+  const closedAuto = k === 0 ? total : k === 1 ? Math.ceil(total / 2) : k === 3 ? total - 2 : 0
+  const touched = k === 4 ? 0 : k === 2 ? 2 : total
+  return { student_id: s.id, full_name: s.name, topic_id: t.id, topic_title: t.title, module_order: t.modules.order_index, topic_order: t.order_index, tasks_total: total, touched, closed_auto: closedAuto, closed_self: closedSelf }
+}))
+
 export function baseFixtures(persona) {
   const fx = {
     tables: {
@@ -304,6 +337,7 @@ export function baseFixtures(persona) {
       topic_tasks_for_student: (body) => body.p_topic_id === IDS.topic(1) ? topicTaskDefs : [],
       topic_tasks_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? topicTasksStaff : [],
       topic_task_progress_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? TOPIC_TASK_PROGRESS : [],
+      course_topic_tasks_matrix: (body) => body.p_course_id === IDS.course ? courseTasksMatrix : [],
       topic_attached_variants: [], variant_topic_groups: [],
     },
     functions: {},

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Loader2, Users, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatScore, scorePercent } from '@/lib/topicTest'
 import { cn } from '@/utils/cn'
+import { CourseTopicTasksMatrix } from './CourseTopicTasksMatrix'
 
 interface Module {
   id: string
@@ -77,7 +78,53 @@ function getScoreColor(percent: number | null): string {
   return 'text-red-600'
 }
 
-export function CourseTestResultsSection({ courseId, modules, refreshKey = 0 }: { courseId: string; modules: Module[]; refreshKey?: number }) {
+/**
+ * Вкладка «Результаты тестов» (§174).
+ *
+ * Первым и главным блоком — задачи к уроку (§162/§164): именно их решают в
+ * живых курсах. Тесты из банка (`topic_tests`) остались, но в живых курсах их
+ * почти нет, поэтому блок ушёл вниз и рисуется только когда у курса есть хоть
+ * одно назначение — сам решает `BankTestResultsSection`, у него данные.
+ */
+export function CourseTestResultsSection({
+  courseId,
+  modules,
+  refreshKey = 0,
+  templateTitle = null,
+}: {
+  courseId: string
+  modules: Module[]
+  refreshKey?: number
+  /** Название каркаса, если курс — копия (`courses.copied_from_course_id`). */
+  templateTitle?: string | null
+}) {
+  return (
+    <div className="space-y-6">
+      <section data-testid="tasks-block">
+        <h2 className="mb-3 text-base font-semibold text-gray-900">Задачи к уроку</h2>
+        <CourseTopicTasksMatrix courseId={courseId} templateTitle={templateTitle} refreshKey={refreshKey} />
+      </section>
+      <BankTestResultsSection courseId={courseId} modules={modules} refreshKey={refreshKey} />
+    </div>
+  )
+}
+
+/** Заголовок блока банка — только вокруг содержимого, не вокруг пустоты. */
+function bankBlock(children: ReactNode) {
+  return (
+    <section data-testid="bank-block">
+      <h2 className="mb-3 text-base font-semibold text-gray-900">Тесты из банка</h2>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * Тесты из банка (`topic_tests` / `topic_test_assignments`) — прежняя вкладка
+ * целиком. Код не переписан, только обёрнут: без единого назначения блок не
+ * рисуется вовсе (§174).
+ */
+function BankTestResultsSection({ courseId, modules, refreshKey = 0 }: { courseId: string; modules: Module[]; refreshKey?: number }) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [assignments, setAssignments] = useState<TopicTestAssignment[]>([])
   const [attempts, setAttempts] = useState<TopicTestAttempt[]>([])
@@ -176,43 +223,40 @@ export function CourseTestResultsSection({ courseId, modules, refreshKey = 0 }: 
     }
   }, [courseId, modules, refreshKey])
 
+  // Пока грузится — без заголовка: «Тесты из банка» над спиннером обещало бы
+  // блок, которого у курса, скорее всего, нет.
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
-        <Loader2 size={18} className="animate-spin" />
-        Загрузка…
+      <div className="flex items-center justify-center py-4 text-gray-400 gap-2 text-xs">
+        <Loader2 size={14} className="animate-spin" />
+        Загрузка тестов из банка…
       </div>
     )
   }
 
   if (error) {
-    return (
+    return bankBlock(
       <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
         <div className="flex gap-2">
           <AlertCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
           <p className="text-sm text-red-700">{error}</p>
         </div>
-      </div>
+      </div>,
     )
   }
 
+  // Ни одного назначения — блока нет вовсе (§174): пустое состояние про
+  // тесты из банка рядом с задачами к уроку только сбивало бы.
   if (assignments.length === 0) {
-    return (
-      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
-        <p className="text-sm font-medium text-gray-700">Тесты ещё не прикреплены к темам курса</p>
-        <p className="mt-2 text-xs text-gray-500">
-          Прикрепить тест можно в модалке темы → плитка «Тестирование»
-        </p>
-      </div>
-    )
+    return null
   }
 
   if (roster.length === 0) {
-    return (
+    return bankBlock(
       <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
         <Users size={32} className="mx-auto mb-3 opacity-30 text-gray-400" />
         <p className="text-sm font-medium text-gray-700">В курсе пока нет учеников</p>
-      </div>
+      </div>,
     )
   }
 
@@ -243,7 +287,7 @@ export function CourseTestResultsSection({ courseId, modules, refreshKey = 0 }: 
     return Math.round(percents.reduce((s, p) => s + p, 0) / percents.length)
   }
 
-  return (
+  return bankBlock(
     <div className="space-y-4">
       {/* Summary card */}
       <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -376,6 +420,6 @@ export function CourseTestResultsSection({ courseId, modules, refreshKey = 0 }: 
           </tbody>
         </table>
       </div>
-    </div>
+    </div>,
   )
 }
