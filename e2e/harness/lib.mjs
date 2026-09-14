@@ -120,6 +120,10 @@ export function makeHandler({ fixtures, session, log, assetsDir }) {
       note(`RPC ${name} ${JSON.stringify(body).slice(0, 140)}`)
       const fn = fixtures.rpc?.[name]
       const res = typeof fn === 'function' ? fn(body, url) : (fn ?? null)
+      // Функция-заглушка может вернуть `new Error('CODE: …')` — это отказ RPC
+      // в форме PostgREST (400, `message` как из RAISE EXCEPTION), чтобы клиент
+      // прошёл свою ветку ошибки, а не получил `null` за успех.
+      if (res instanceof Error) return json(route, { code: 'P0001', message: res.message, details: null, hint: null }, 400)
       return json(route, res)
     }
     // rest

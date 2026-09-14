@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Loader2, AlertCircle, Check, RotateCcw, Eye, CheckCircle2, ArrowLeft, ArrowRight } from 'lucide-react'
+import { Loader2, AlertCircle, Check, XCircle, Eye, CheckCircle2, ArrowLeft, ArrowRight } from 'lucide-react'
 import type { useTopicTasks, TopicTaskRow } from '@/hooks/useTopicTasks'
 import { CatalogTaskContent } from '@/components/catalog/CatalogTaskContent'
 import type { CatalogTask } from '@/hooks/useCatalog'
@@ -18,6 +18,12 @@ import { cn } from '@/utils/cn'
  * Задача без короткого ответа (вторая часть) вердикта не имеет: у неё кнопка
  * «Посмотреть решение», а после разбора — зелёная «Разобрал». Нажать её, не
  * открыв решение, нельзя — это проверяет сервер, не только кнопка.
+ *
+ * Неверный ответ — состояние карточки, а не строка под полем (§176): красная
+ * плашка «Неверно · попытка N», поле красное с тем, что ввёл ученик, кнопка
+ * «Проверить ещё раз». После первой попытки у задачи с коротким ответом
+ * появляется «Посмотреть решение»; открытое решение переводит задачу в
+ * самопроверку — поле исчезает, закрывает её «Разобрал», как вторую часть.
  *
  * На экране одна задача (§175): сверху лента квадратов по числу задач — по
  * ней видно, что решено, и по ней же переключаются; внизу «Назад / Дальше».
@@ -242,11 +248,18 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
   onReveal: () => Promise<unknown>
   onCloseSelf: () => Promise<void>
 }) {
-  const [draft, setDraft] = useState('')
-  const [lastWrong, setLastWrong] = useState(false)
-
   const solved   = row.closed_by !== null
   const revealed = row.solution_shown_at !== null
+
+  // Состояние «неверно» — факт из базы (`is_correct = false` у открытой
+  // задачи), а не только память о последнем нажатии: карточка обязана его
+  // показать и после обновления страницы, и после любого перемонтирования.
+  // Именно перемонтирование (спиннер «Загрузка…» на время перечитывания
+  // строк) прятало «Неверно» от владельца (§176). Гаснет при следующем вводе.
+  const wrongOnServer = row.auto_checkable && !solved && row.is_correct === false
+  const [wrong, setWrong] = useState(wrongOnServer)
+  // Введённый ответ не очищается: ученик должен видеть, что именно ввёл мимо.
+  const [draft, setDraft] = useState(() => (wrongOnServer ? row.answer_raw ?? '' : ''))
 
   // Каталожному рендеру отдаём только то, что ученику уже положено видеть:
   // разбор появляется в карточке лишь после явного «Посмотреть решение».
@@ -266,12 +279,23 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
   async function submit() {
     if (!draft.trim() || busy) return
     const ok = await onAnswer(draft)
-    setLastWrong(ok === false)
+    setWrong(ok === false)
     if (ok) setDraft('')
   }
 
+  // Задача с коротким ответом после открытого решения закрывается отметкой,
+  // как вторая часть: ответ после подсмотренного разбора не засчитывается
+  // (сервер откажет `SOLUTION_SHOWN`), поле ответа убираем. Решённая ответом
+  // и разобранная потом остаётся «Верно».
+  const selfCheck = !row.auto_checkable || (revealed && row.closed_by !== 'auto')
+  const showWrong = wrong && !selfCheck
+
   return (
-    <div className={`rounded-2xl border bg-white p-3 sm:p-4 ${solved ? 'border-emerald-200' : 'border-gray-200'}`}>
+    <div
+      data-testid="topic-task-card"
+      data-verdict={solved ? 'solved' : showWrong ? 'wrong' : undefined}
+      className={`rounded-2xl border bg-white p-3 sm:p-4 ${solved ? 'border-emerald-200' : showWrong ? 'border-red-200' : 'border-gray-200'}`}
+    >
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-xs font-semibold text-gray-500">Задача {index}</span>
         {solved ? (
@@ -283,22 +307,22 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
                 ? `решена с ${row.attempts_count}-й попытки`
                 : 'решена с первой попытки'}
           </span>
-        ) : !row.auto_checkable ? (
+        ) : selfCheck ? (
           <span className="text-xs text-gray-400">самопроверка по решению</span>
         ) : null}
       </div>
 
-      <CatalogTaskContent task={task} showControls={revealed} />
+      <CatalogTaskContent task={task} showControls={revealed} audience="student" />
 
-      {row.auto_checkable ? (
+      {!selfCheck ? (
         <AutoCheckBlock
           solved={solved}
           revealed={revealed}
           busy={busy}
           draft={draft}
-          lastWrong={lastWrong}
+          wrong={wrong}
           attempts={row.attempts_count}
-          onDraft={v => { setDraft(v); setLastWrong(false) }}
+          onDraft={v => { setDraft(v); setWrong(false) }}
           onSubmit={submit}
           onReveal={onReveal}
         />
@@ -306,6 +330,7 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
         <SelfCheckBlock
           solved={solved}
           revealed={revealed}
+          afterAttempt={row.auto_checkable}
           busy={busy}
           onReveal={onReveal}
           onCloseSelf={onCloseSelf}
@@ -318,13 +343,13 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
 // ── Задача с коротким ответом ────────────────────────────────────────────────
 
 function AutoCheckBlock({
-  solved, revealed, busy, draft, lastWrong, attempts, onDraft, onSubmit, onReveal,
+  solved, revealed, busy, draft, wrong, attempts, onDraft, onSubmit, onReveal,
 }: {
   solved: boolean
   revealed: boolean
   busy: boolean
   draft: string
-  lastWrong: boolean
+  wrong: boolean
   attempts: number
   onDraft: (v: string) => void
   onSubmit: () => void
@@ -336,7 +361,6 @@ function AutoCheckBlock({
         <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800">
           <Check size={15} /> Верно
         </span>
-        {/* Разбор — только после верного ответа: до него он был бы ответом. */}
         {!revealed && (
           <Button variant="secondary" size="sm" onClick={() => void onReveal()} disabled={busy}>
             <Eye size={14} className="mr-1" />
@@ -349,6 +373,19 @@ function AutoCheckBlock({
 
   return (
     <div className="mt-3 space-y-2">
+      {/* Плашка на всю ширину карточки, тон `bad` (§152): неверный ответ —
+          состояние карточки, а не подпись под полем. Живёт до следующего ввода. */}
+      {wrong && (
+        <div
+          role="alert"
+          data-testid="topic-task-wrong"
+          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800"
+        >
+          <XCircle size={16} className="shrink-0" />
+          Неверно{attempts > 0 ? ` · попытка ${attempts}` : ''}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-2">
         <input
           value={draft}
@@ -357,33 +394,37 @@ function AutoCheckBlock({
           inputMode="text"
           placeholder="Ответ"
           aria-label="Ответ на задачу"
+          aria-invalid={wrong || undefined}
           className={`flex-1 min-w-0 px-3 py-2.5 border rounded-xl text-base focus:outline-none focus:ring-2 ${
-            lastWrong
-              ? 'border-red-300 bg-red-50 focus:ring-red-300'
+            wrong
+              ? 'border-red-300 bg-red-50 text-red-900 focus:ring-red-300'
               : 'border-gray-200 focus:ring-primary-400'
           }`}
         />
         <Button variant="primary" onClick={onSubmit} disabled={busy || !draft.trim()}>
           {busy ? <Loader2 size={15} className="mr-1 animate-spin" /> : null}
-          Проверить
+          {wrong ? 'Проверить ещё раз' : 'Проверить'}
         </Button>
+        {/* Разбор — после хотя бы одной попытки, не раньше: до неё он был бы
+            ответом. Сервер проверяет то же (`NOT_ATTEMPTED_YET`). */}
+        {attempts > 0 && (
+          <Button variant="secondary" onClick={() => void onReveal()} disabled={busy}>
+            <Eye size={14} className="mr-1" />
+            Посмотреть решение
+          </Button>
+        )}
       </div>
-
-      {lastWrong && (
-        <p className="text-sm text-red-600 flex items-center gap-1.5">
-          <RotateCcw size={13} />
-          Неверно, попробуйте ещё раз{attempts > 0 ? ` · попыток: ${attempts}` : ''}
-        </p>
-      )}
     </div>
   )
 }
 
 // ── Задача без короткого ответа ──────────────────────────────────────────────
 
-function SelfCheckBlock({ solved, revealed, busy, onReveal, onCloseSelf }: {
+function SelfCheckBlock({ solved, revealed, afterAttempt, busy, onReveal, onCloseSelf }: {
   solved: boolean
   revealed: boolean
+  /** Задача с коротким ответом, пришедшая сюда после открытого решения (§176). */
+  afterAttempt: boolean
   busy: boolean
   onReveal: () => Promise<unknown>
   onCloseSelf: () => Promise<void>
@@ -398,6 +439,11 @@ function SelfCheckBlock({ solved, revealed, busy, onReveal, onCloseSelf }: {
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
+      {afterAttempt && revealed && (
+        <p className="w-full text-xs text-gray-500">
+          Решение открыто — ответ больше не проверяется, задачу закрывает отметка «Разобрал».
+        </p>
+      )}
       {!revealed ? (
         <Button variant="secondary" onClick={() => void onReveal()} disabled={busy}>
           <Eye size={14} className="mr-1" />

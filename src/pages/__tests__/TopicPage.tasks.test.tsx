@@ -81,7 +81,8 @@ function row(n: number, patch: Partial<TopicTaskRow> = {}): TopicTaskRow {
 const rows: TopicTaskRow[] = [
   row(1, { closed_by: 'auto', attempts_count: 1 }),
   row(2),
-  row(3),
+  // §176: неверный ответ в базе — карточка обязана показать его и на странице.
+  row(3, { attempts_count: 1, is_correct: false, answer_raw: '41' }),
 ]
 
 vi.mock('@/hooks/useTopicTasks', () => ({
@@ -132,6 +133,15 @@ describe('Страница темы — задачи к уроку (§175)', () 
     expect(screen.getByTestId('statement')).toHaveTextContent('Условие 3')
     const strip = screen.getByTestId('topic-tasks-strip')
     expect(within(strip).getByRole('button', { name: /Задача 3/ })).toHaveAttribute('aria-current', 'step')
+  })
+
+  it('неверный ответ из базы виден на странице: плашка и введённый ответ (§176)', async () => {
+    renderPage('?task=item-3')
+    await openTasks()
+
+    expect(screen.getByTestId('topic-task-wrong')).toHaveTextContent('Неверно · попытка 1')
+    expect(screen.getByLabelText('Ответ на задачу')).toHaveValue('41')
+    expect(screen.getByRole('button', { name: /Проверить ещё раз/ })).toBeInTheDocument()
   })
 
   it('счёт в шапке группы и в ленте — одно число', async () => {

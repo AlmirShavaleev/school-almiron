@@ -34,6 +34,15 @@ export const scenes = [
   // Клик по квадрату ленты: задача второй части без автопроверки, последняя —
   // «Дальше» неактивна. Контекст один на персону и ширину, поэтому ответ из
   // сцены выше здесь уже учтён («Решено 4 из 7») — как в живой сессии.
+  // §176: неверный ответ (5 ≠ 6) — карточка в состоянии «неверно»: красная
+  // плашка, поле красное с введённым ответом, «Проверить ещё раз».
+  { persona: 'student', name: 's04-topic-tasks-wrong', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }, { eval: `document.querySelector('[data-testid="topic-task-wrong"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }] },
+  // Решение после неверной попытки (§176): «Посмотреть решение» → поле ответа
+  // исчезает, виден ответ и разбор, внизу «Разобрал». Контекст тот же, что у
+  // сцены выше, — у задачи 4 уже есть неверный ответ «5».
+  { persona: 'student', name: 's04-topic-tasks-wrong-reveal', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { clickRole: ['button', /Посмотреть решение/] }, { wait: 1000 }, { eval: `[...document.querySelectorAll('[data-testid="topic-task-card"] button')].pop()?.scrollIntoView({ block: 'center' })` }, { wait: 300 }] },
+  // «Разобрал» → задача закрыта «по разбору», квадрат 4 зелёный, «Решено 4 из 7».
+  { persona: 'student', name: 's04-topic-tasks-wrong-closed', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { clickRole: ['button', /Разобрал/] }, { wait: 1000 }] },
   { persona: 'student', name: 's04-topic-tasks-part2', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 7, не начата'] }, { wait: 600 }] },
   { persona: 'student', name: 's04-topic2-submitted', url: `/my-course/${S.group}/topic/${S.topic(2)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }] },
   { persona: 'student', name: 's04-topic4-notsubmitted', url: `/my-course/${S.group}/topic/${S.topic(4)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }] },
@@ -122,6 +131,8 @@ export const scenes = [
   // ── 1280: лента шагов и карточка на компьютере (§175) ──
   { persona: 'student', name: 's04-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }] },
   { persona: 'student', name: 's04-topic-tasks-answered', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { fill: ['input[aria-label="Ответ на задачу"]', '6'] }, { clickRole: ['button', 'Проверить'] }, { wait: 1000 }] },
+
+  { persona: 'student', name: 's04-topic-tasks-wrong', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }] },
 
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },

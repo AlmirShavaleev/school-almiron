@@ -50,9 +50,16 @@ export function useTopicTasks(topicId: string | undefined) {
   const [error, setError]     = useState<string | null>(null)
   const [busyItem, setBusy]   = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  /**
+   * `silent` — перечитать строки, не показывая «Загрузка задач…». После
+   * ответа/разбора/«Разобрал» экран должен остаться на месте: спиннер вместо
+   * ленты размонтирует карточку, и всё её локальное состояние (введённый
+   * ответ, подсветка «неверно») пропадает — ученик не видел, что ответил
+   * мимо (§176). Первая загрузка и смена темы — с индикатором, как раньше.
+   */
+  const load = useCallback(async (opts: { silent?: boolean } = {}) => {
     if (!topicId) { setLoading(false); return }
-    setLoading(true)
+    if (!opts.silent) setLoading(true)
     setError(null)
     try {
       const { data, error: err } = await db.rpc('topic_tasks_for_student', { p_topic_id: topicId })
@@ -80,7 +87,7 @@ export function useTopicTasks(topicId: string | undefined) {
         p_topic_id: topicId, p_item_id: itemId, p_answer_raw: raw,
       })
       if (err) throw new Error(humanizeTaskError(err.message))
-      await load()
+      await load({ silent: true })
       return Boolean(data?.is_correct)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось проверить ответ')
@@ -99,7 +106,7 @@ export function useTopicTasks(topicId: string | undefined) {
         p_topic_id: topicId, p_item_id: itemId,
       })
       if (err) throw new Error(humanizeTaskError(err.message))
-      await load()
+      await load({ silent: true })
       return data as RevealedSolution
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось открыть разбор')
@@ -118,7 +125,7 @@ export function useTopicTasks(topicId: string | undefined) {
         p_topic_id: topicId, p_item_id: itemId,
       })
       if (err) throw new Error(humanizeTaskError(err.message))
-      await load()
+      await load({ silent: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось отметить задачу')
     } finally {
@@ -129,7 +136,9 @@ export function useTopicTasks(topicId: string | undefined) {
   const total  = rows.length
   const solved = useMemo(() => rows.filter(r => r.closed_by !== null).length, [rows])
 
-  return { rows, total, solved, loading, error, busyItem, answer, reveal, closeSelf, reload: load }
+  const reload = useCallback(() => load(), [load])
+
+  return { rows, total, solved, loading, error, busyItem, answer, reveal, closeSelf, reload }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,8 +154,12 @@ export function humanizeTaskError(message: string): string {
   if (message.includes('ALREADY_SOLVED'))      return 'Задача уже решена.'
   if (message.includes('NOT_AUTO_CHECKABLE'))  return 'У этой задачи нет короткого ответа — откройте решение и отметьте сами.'
   if (message.includes('AUTO_CHECKABLE'))      return 'Эту задачу закрывает верный ответ, а не отметка.'
-  if (message.includes('NOT_SOLVED_YET'))      return 'Разбор откроется после верного ответа.'
+  // Разбор задачи с коротким ответом — после первой попытки (§176); код
+  // NOT_SOLVED_YET остаётся от версии §162 на случай базы до миграции.
+  if (message.includes('NOT_ATTEMPTED_YET'))   return 'Сначала попробуй ответить — решение откроется после первой попытки'
+  if (message.includes('NOT_SOLVED_YET'))      return 'Сначала попробуй ответить — решение откроется после первой попытки'
   if (message.includes('SOLUTION_NOT_SHOWN'))  return 'Сначала откройте решение.'
+  if (message.includes('SOLUTION_SHOWN'))      return 'Решение уже открыто — отметь задачу как разобранную'
   if (message.includes('ACCESS_DENIED'))       return 'Задача недоступна.'
   return message
 }

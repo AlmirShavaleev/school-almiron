@@ -14,8 +14,11 @@ import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
  * условия (у него свои тесты).
  */
 vi.mock('@/components/catalog/CatalogTaskContent', () => ({
-  CatalogTaskContent: ({ task }: { task: { statement_html: string } }) => (
-    <div data-testid="statement">{task.statement_html}</div>
+  CatalogTaskContent: ({ task, showControls }: { task: { statement_html: string; solution_html: string | null }; showControls?: boolean }) => (
+    <div>
+      <div data-testid="statement">{task.statement_html}</div>
+      {showControls && task.solution_html && <div data-testid="solution">{task.solution_html}</div>}
+    </div>
   ),
 }))
 
@@ -229,5 +232,127 @@ describe('TopicTasksStudent — лента шагов (§175)', () => {
     renderWith(makeTasks([]))
     expect(screen.getByText('К этому уроку задач пока нет.')).toBeInTheDocument()
     expect(screen.queryByTestId('topic-tasks-strip')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * §176. Неверный ответ — состояние карточки: плашка, красное поле с введённым
+ * ответом, «Проверить ещё раз». Разбор у задачи с коротким ответом — после
+ * первой попытки; открытый разбор переводит задачу в самопроверку.
+ */
+describe('TopicTasksStudent — неверный ответ и разбор после попытки (§176)', () => {
+  const input = () => screen.getByLabelText('Ответ на задачу') as HTMLInputElement
+
+  function withWrong(rows: TopicTaskRow[], id: string, raw: string, attempts: number) {
+    return rows.map(r => r.item_id === id ? { ...r, is_correct: false, attempts_count: attempts, answer_raw: raw } : r)
+  }
+
+  it('неверный ответ → плашка, поле красное с тем же текстом, «Проверить ещё раз»', async () => {
+    const rows = fiveRows()
+    const tasks = makeTasks(rows, { answer: vi.fn(async () => false) })
+    const { rerenderWith } = renderWith(tasks, '/topic?task=item-4')
+
+    expect(screen.queryByTestId('topic-task-wrong')).not.toBeInTheDocument()
+    fireEvent.change(input(), { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tasks.answer).toHaveBeenCalledWith('item-4', '12'))
+    // Хук перечитал строки — без спиннера, карточка та же.
+    rerenderWith(makeTasks(withWrong(rows, 'item-4', '12', 1), { answer: tasks.answer }))
+
+    const alert = await screen.findByTestId('topic-task-wrong')
+    expect(alert).toHaveTextContent('Неверно · попытка 1')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(input()).toHaveValue('12')
+    expect(input()).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: /Проверить ещё раз/ })).toBeInTheDocument()
+    expect(screen.getByTestId('topic-task-card')).toHaveAttribute('data-verdict', 'wrong')
+    expect(squares()[3]).toHaveAttribute('data-state', 'attempted')
+  })
+
+  it('ввод в поле гасит плашку и возвращает «Проверить»', async () => {
+    const rows = fiveRows()
+    const tasks = makeTasks(rows, { answer: vi.fn(async () => false) })
+    const { rerenderWith } = renderWith(tasks, '/topic?task=item-4')
+    fireEvent.change(input(), { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tasks.answer).toHaveBeenCalled())
+    rerenderWith(makeTasks(withWrong(rows, 'item-4', '12', 1), { answer: tasks.answer }))
+    await screen.findByTestId('topic-task-wrong')
+
+    fireEvent.change(input(), { target: { value: '13' } })
+    expect(screen.queryByTestId('topic-task-wrong')).not.toBeInTheDocument()
+    expect(input()).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByRole('button', { name: 'Проверить' })).toBeInTheDocument()
+    expect(screen.getByTestId('topic-task-card')).not.toHaveAttribute('data-verdict')
+  })
+
+  it('состояние «неверно» переживает перемонтирование: пришло с сервера, а не из памяти кнопки', () => {
+    // Ровно то, что было у владельца: карточка перерисована заново после
+    // ответа. У задачи 3 в базе is_correct=false, answer_raw='7', попыток 2.
+    renderWith(makeTasks(fiveRows()), '/topic?task=item-3')
+    expect(screen.getByTestId('topic-task-wrong')).toHaveTextContent('Неверно · попытка 2')
+    expect(input()).toHaveValue('7')
+    expect(screen.getByRole('button', { name: /Проверить ещё раз/ })).toBeInTheDocument()
+  })
+
+  it('«Посмотреть решение»: до первой попытки нет, после неверной — есть', async () => {
+    const rows = fiveRows()
+    const tasks = makeTasks(rows, { answer: vi.fn(async () => false) })
+    const { rerenderWith } = renderWith(tasks, '/topic?task=item-4')
+    expect(screen.queryByRole('button', { name: /Посмотреть решение/ })).not.toBeInTheDocument()
+
+    fireEvent.change(input(), { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tasks.answer).toHaveBeenCalled())
+    rerenderWith(makeTasks(withWrong(rows, 'item-4', '12', 1), { answer: tasks.answer }))
+
+    expect(screen.getByRole('button', { name: /Посмотреть решение/ })).toBeInTheDocument()
+  })
+
+  it('открытое решение: поле ответа исчезает, разбор виден, «Разобрал» → закрыта «по разбору»', async () => {
+    const rows = withWrong(fiveRows(), 'item-4', '12', 1)
+    const tasks = makeTasks(rows)
+    const { rerenderWith } = renderWith(tasks, '/topic?task=item-4')
+
+    fireEvent.click(screen.getByRole('button', { name: /Посмотреть решение/ }))
+    await waitFor(() => expect(tasks.reveal).toHaveBeenCalledWith('item-4'))
+
+    const shown = rows.map(r => r.item_id === 'item-4'
+      ? { ...r, solution_shown_at: '2026-09-14T10:00:00Z', solution_html: '<p>Разбор 4</p>', answer_html: '8' }
+      : r)
+    const tasks2 = makeTasks(shown)
+    rerenderWith(tasks2)
+
+    expect(screen.queryByLabelText('Ответ на задачу')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Проверить/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('solution')).toHaveTextContent('Разбор 4')
+    expect(screen.getByText('самопроверка по решению')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Разобрал/ }))
+    await waitFor(() => expect(tasks2.closeSelf).toHaveBeenCalledWith('item-4'))
+
+    rerenderWith(makeTasks(shown.map(r => r.item_id === 'item-4' ? { ...r, closed_by: 'self' as const } : r)))
+    expect(screen.getByText('Разобрана')).toBeInTheDocument()
+    expect(screen.getByText('разобрана')).toBeInTheDocument()
+    expect(squares()[3]).toHaveAttribute('data-state', 'solved')
+    expect(squares()[3]).toHaveAccessibleName('Задача 4, разобрана')
+    expect(screen.getByText(/Решено 4 из 5/)).toBeInTheDocument()
+  })
+
+  it('верный ответ после неверных — «Верно», плашки нет, поле убрано', async () => {
+    const rows = withWrong(fiveRows(), 'item-4', '12', 1)
+    const tasks = makeTasks(rows, { answer: vi.fn(async () => true) })
+    const { rerenderWith } = renderWith(tasks, '/topic?task=item-4')
+    expect(screen.getByTestId('topic-task-wrong')).toBeInTheDocument()
+
+    fireEvent.change(input(), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tasks.answer).toHaveBeenCalledWith('item-4', '8'))
+    rerenderWith(makeTasks(rows.map(r => r.item_id === 'item-4'
+      ? { ...r, closed_by: 'auto' as const, is_correct: true, attempts_count: 2, answer_raw: '8' } : r)))
+
+    expect(screen.queryByTestId('topic-task-wrong')).not.toBeInTheDocument()
+    expect(screen.getByText('Верно')).toBeInTheDocument()
+    expect(screen.getByText('решена с 2-й попытки')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Ответ на задачу')).not.toBeInTheDocument()
   })
 })

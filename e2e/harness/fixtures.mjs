@@ -278,9 +278,15 @@ function topicTaskRpcs(rowsFor) {
   const solutionOf = (r) => catalog_tasks.find(t => t.id === r.task_id) ?? {}
   return {
     topic_tasks_for_student: (body) => rowsFor(body),
+    // Правила те же, что у RPC в базе (§162 + §176): ответ после открытого
+    // решения не засчитывается, разбор задачи с коротким ответом — после
+    // хотя бы одной попытки, «Разобрал» — только после показа решения.
     answer_topic_task: (body) => {
       const r = find(body)
-      if (!r) return null
+      if (!r) return new Error('ACCESS_DENIED: task not found for this student')
+      if (!r.auto_checkable) return new Error('NOT_AUTO_CHECKABLE: this task is closed by self-check after the solution is shown')
+      if (r.closed_by) return new Error('ALREADY_SOLVED: task is already closed')
+      if (r.solution_shown_at) return new Error('SOLUTION_SHOWN: answer after solution is self-check')
       const ok = String(body.p_answer_raw).trim() === String(r.item_position * 2)
       r.attempts_count += 1
       r.answer_raw = body.p_answer_raw
@@ -290,17 +296,21 @@ function topicTaskRpcs(rowsFor) {
     },
     reveal_topic_task_solution: (body) => {
       const r = find(body)
-      if (!r) return null
+      if (!r) return new Error('ACCESS_DENIED: task not found for this student')
+      if (r.auto_checkable && !r.is_correct && r.attempts_count < 1) return new Error('NOT_ATTEMPTED_YET: solution opens after the first attempt')
       const t = solutionOf(r)
-      r.solution_shown_at = NOW
+      r.solution_shown_at = r.solution_shown_at ?? NOW
       r.solution_html = t.solution_html || '<p>Разбор задачи.</p>'
       r.answer_html = t.answer_html ?? null
       return { solution_html: r.solution_html, solution_plan_html: null, answer_html: r.answer_html }
     },
     close_topic_task_self: (body) => {
       const r = find(body)
-      if (r && r.solution_shown_at) r.closed_by = 'self'
-      return null
+      if (!r) return new Error('ACCESS_DENIED: task not found for this student')
+      if (r.closed_by) return new Error('ALREADY_SOLVED: task is already closed')
+      if (!r.solution_shown_at) return new Error('SOLUTION_NOT_SHOWN: open the solution first')
+      r.closed_by = 'self'
+      return { closed_by: 'self' }
     },
   }
 }

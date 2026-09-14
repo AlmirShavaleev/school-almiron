@@ -71,6 +71,14 @@ interface CatalogTaskContentProps {
   task: CatalogTask
   /** Показывать кнопку «Показать ответ» и т.д. (для teacher/admin/owner) */
   showControls?: boolean
+  /**
+   * Кому показываем. `staff` (по умолчанию) — как в каталоге: служебная
+   * плашка «часть не размечена», ответ и решение свёрнуты. `student` — задачи
+   * к уроку после «Посмотреть решение» (§176): служебных плашек нет, ответ и
+   * решение раскрыты сразу — ученик уже нажал кнопку ради них, второй клик
+   * был бы лишним; свернуть можно теми же кнопками.
+   */
+  audience?: 'staff' | 'student'
   /** Дополнительный slot справа от условия задачи */
   actionsSlot?: React.ReactNode
   /** Порядковый номер в варианте (если задан) */
@@ -80,11 +88,13 @@ interface CatalogTaskContentProps {
 export function CatalogTaskContent({
   task,
   showControls = true,
+  audience = 'staff',
   actionsSlot,
   variantNumber,
 }: CatalogTaskContentProps) {
-  const [showAnswer,        setShowAnswer]        = useState(false)
-  const [showSolution,      setShowSolution]      = useState(false)
+  const forStudent = audience === 'student'
+  const [showAnswer,        setShowAnswer]        = useState(forStudent)
+  const [showSolution,      setShowSolution]      = useState(forStudent)
   const [showPlan,          setShowPlan]          = useState(false)
   const [showGradeCriteria, setShowGradeCriteria] = useState(false)
 
@@ -124,7 +134,7 @@ export function CatalogTaskContent({
             #{variantNumber}
           </span>
         )}
-        {showControls && task.exam_part == null && (
+        {showControls && !forStudent && task.exam_part == null && (
           <span
             data-testid="task-exam-part-unset-badge"
             title="У задачи не указана часть экзамена (exam_part) — влияет на самопроверку в самостоятельно собранных вариантах"
