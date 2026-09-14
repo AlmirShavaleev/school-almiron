@@ -9,6 +9,7 @@ import {
   TOPIC_HOMEWORK_BUCKET,
   buildAttemptFilePath,
   buildHomeworkFilePath,
+  homeworkFileProblem,
   type TopicHomeworkAttemptFileRow,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkFileRow,
@@ -307,6 +308,17 @@ export function useTopicHomework(topicId: string | null) {
       onProgress?: (index: number, percent: number) => void,
     ): Promise<TopicHomeworkAttemptFileRow[]> => {
       if (incoming.length === 0) return []
+
+      // Формат проверяем ДО сжатия и до Storage — и по всей пачке сразу, до
+      // первой отправки: сжатие по своему правилу «не ломать загрузку»
+      // вернёт DNG как есть, а Storage примет что угодно — и у преподавателя
+      // будет пустая работа (§173). Экран отсеивает такие файлы раньше и
+      // показывает причину рядом с кнопкой съёмки; здесь — последний рубеж
+      // для любого вызова в обход экрана.
+      for (const file of incoming) {
+        const problem = homeworkFileProblem(file)
+        if (problem) throw new Error(problem)
+      }
 
       // Позиции продолжают уже приложенные страницы этой попытки. Раньше
       // здесь стоял жёсткий 0: при доклад­ывании файлов порядок в проверке

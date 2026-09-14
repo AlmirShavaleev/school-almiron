@@ -31,7 +31,40 @@ import {
 import { cn } from '@/utils/cn'
 import { FileChip } from '@/components/shared/FileChip'
 import { getSignedFileUrl } from '@/lib/storage'
-import type { TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
+import type { RejectedHomeworkFile, TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
+
+/**
+ * Вход в камеру устройства — один и тот же для кнопки «Снять фото» (§159) и
+ * для «Сфотографировать» в сообщении об отклонённом файле (§173). Здесь
+ * намеренно `image/*`, а не точный `HOMEWORK_FILE_ACCEPT`: камера из
+ * браузера RAW не снимает, а точный список ей только мешает. Снимок всё
+ * равно проходит через `uploadPicked` и тот же гейт по формату.
+ */
+function CameraInput({
+  testId, ariaLabel, disabled, onPick,
+}: {
+  testId: string
+  ariaLabel: string
+  disabled: boolean
+  onPick: (files: File[]) => Promise<void>
+}) {
+  return (
+    <input
+      data-testid={testId}
+      type="file"
+      accept="image/*"
+      capture="environment"
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={async e => {
+        const picked = Array.from(e.target.files ?? [])
+        e.target.value = ''
+        await onPick(picked)
+      }}
+      className="hidden"
+    />
+  )
+}
 
 /**
  * «Телефон» — по вводу, а не по ширине окна: планшет с клавиатурой и мышью
@@ -79,6 +112,12 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
+  /**
+   * Файлы, которые платформа не покажет преподавателю (DNG и прочее, §173).
+   * Отдельно от `localError`: это не сбой, а объяснение с действием —
+   * рядом с текстом стоит «Сфотографировать». Остальная пачка грузится.
+   */
+  const [rejected, setRejected] = useState<RejectedHomeworkFile[]>([])
 
   const [annotatedAttempts, setAnnotatedAttempts] = useState<Set<string>>(new Set())
   const [viewingMarks, setViewingMarks] = useState<string | null>(null)
@@ -119,16 +158,14 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const uploadPicked = useCallback(
     async (attemptId: string, incoming: File[], { fromPaste = false } = {}) => {
       if (incoming.length === 0) return
-      const { accepted, rejected } = splitHomeworkFiles(incoming)
+      // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
+      // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
+      // остальные из той же пачки идут как обычно.
+      const { accepted, rejected: bad } = splitHomeworkFiles(incoming)
       const picked = fromPaste ? accepted.map(namePastedFile) : accepted
 
-      if (rejected.length > 0) {
-        setLocalError(
-          `Можно приложить только PDF и картинки. Не подошло: ${rejected.map(f => f.name).join(', ')}`,
-        )
-      } else {
-        setLocalError(null)
-      }
+      setRejected(bad)
+      setLocalError(null)
       if (picked.length === 0) return
 
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
@@ -402,6 +439,47 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             Моя работа{draftFiles.length > 0 ? ` · ${plural(draftFiles.length, 'страница', 'страницы', 'страниц')}` : ''}
           </div>
 
+          {/*
+            Файл не того формата (§173). Не красная «ошибка», а объяснение с
+            выходом: текст без технических слов и тут же «Сфотографировать» —
+            тот же вход в камеру, что и у кнопки «Снять фото». Стоит НАД
+            кнопками выбора: ученик видит причину раньше, чем попробует ещё раз.
+            Одинаковые причины схлопнуты: восемь DNG — одно объяснение, а не
+            восемь.
+          */}
+          {rejected.length > 0 && (
+            <div
+              data-testid="hw-rejected-files"
+              role="alert"
+              className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900"
+            >
+              {Array.from(new Set(rejected.map(r => r.problem))).map(problem => (
+                <p key={problem}>{problem}</p>
+              ))}
+              <p className="mt-1 text-xs text-amber-700 break-words">
+                Не приложено: {rejected.map(r => r.file.name).join(', ')}
+              </p>
+              <label
+                data-testid="hw-retake-button"
+                className={cn(
+                  'mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold',
+                  uploadingFiles
+                    ? 'cursor-not-allowed border-amber-200 bg-amber-50 text-amber-700 opacity-60'
+                    : 'cursor-pointer border-amber-300 bg-white text-amber-900 hover:border-amber-400',
+                )}
+              >
+                <Camera size={16} />
+                Сфотографировать
+                <CameraInput
+                  testId="hw-retake-input"
+                  ariaLabel="Сфотографировать заново"
+                  disabled={uploadingFiles}
+                  onPick={picked => uploadPicked(active.id, picked)}
+                />
+              </label>
+            </div>
+          )}
+
           {coarse ? (
             <>
               {/*
@@ -424,22 +502,16 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                 >
                   <Camera size={22} className="text-primary-600" />
                   <span className="text-sm font-semibold text-primary-700">Снять фото</span>
-                  <input
-                    data-testid="hw-camera-input"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
+                  {/*
+                    Append, never replace: второй кадр дописывается в конец
+                    существующих страниц — тем же uploadPicked, который и
+                    добавляет файлы к попытке, а не пересоздаёт список.
+                  */}
+                  <CameraInput
+                    testId="hw-camera-input"
+                    ariaLabel="Снять фото страницы"
                     disabled={uploadingFiles}
-                    aria-label="Снять фото страницы"
-                    onChange={async e => {
-                      const picked = Array.from(e.target.files ?? [])
-                      e.target.value = ''
-                      // Append, never replace: второй кадр дописывается в конец
-                      // существующих страниц — тем же uploadPicked, который
-                      // и добавляет файлы к попытке, а не пересоздаёт список.
-                      await uploadPicked(active.id, picked)
-                    }}
-                    className="hidden"
+                    onPick={picked => uploadPicked(active.id, picked)}
                   />
                 </label>
                 <label

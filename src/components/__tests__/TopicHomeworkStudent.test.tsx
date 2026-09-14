@@ -109,12 +109,14 @@ describe('ДЗ ученику — цикл сдачи', () => {
     expect(screen.getByText('Отправить на проверку').closest('button')).toBeDisabled()
   })
 
-  it('пикер принимает несколько файлов сразу (не только один, не только PDF)', () => {
+  it('пикер принимает несколько файлов сразу — точный список форматов, не image/* (§173)', () => {
     attempts = [attempt(1, 'draft')]
     renderStudent()
     const input = screen.getByLabelText('Файлы работы') as HTMLInputElement
     expect(input.multiple).toBe(true)
-    expect(input.accept).toBe('application/pdf,image/*')
+    const accept = input.accept.split(',')
+    expect(accept).not.toContain('image/*')
+    expect(accept).toEqual(expect.arrayContaining(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf', '.jpg', '.pdf']))
   })
 
   it('выбор нескольких фото сразу уходит одним вызовом с индикатором загрузки', async () => {
@@ -241,7 +243,7 @@ describe('ДЗ ученику — способы приложить работу
       dataTransfer: { files: [new File(['x'], 'архив.zip', { type: 'application/zip' })] },
     })
 
-    expect(await screen.findByText(/Можно приложить только PDF и картинки/)).toBeInTheDocument()
+    expect(await screen.findByText(/\(\.zip\) не откроется у преподавателя/)).toBeInTheDocument()
     expect(uploadAttemptFiles).not.toHaveBeenCalled()
   })
 
@@ -500,7 +502,7 @@ describe('ДЗ ученику — мобильный экран (§159)', () => 
     fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files: [heic] } })
 
     await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [heic], expect.any(Function)))
-    expect(screen.queryByText(/Можно приложить только PDF и картинки/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('hw-rejected-files')).not.toBeInTheDocument()
   })
 
   /**
@@ -542,5 +544,127 @@ describe('ДЗ ученику — мобильный экран (§159)', () => 
 
     expect(screen.getAllByTestId('hw-page-thumb')).toHaveLength(2)
     expect(screen.getByTestId('hw-camera-button')).toBeInTheDocument()
+  })
+})
+
+/**
+ * §173. Файлы, которые платформа не покажет, не принимаются.
+ *
+ * Ученик сдал восемь `.dng` (Apple ProRAW) через `image/*` — форма приняла
+ * молча, у преподавателя пусто. Гейт по формату стоит в `uploadPicked` ДО
+ * вызова хука (а значит, до сжатия и до Storage): отклонённый файл не
+ * считается «выбранным», остальная пачка грузится, а рядом с объяснением —
+ * «Сфотографировать», тот же вход в камеру, что у кнопки «Снять фото».
+ */
+describe('ДЗ ученику — файлы не того формата (§173)', () => {
+  const RAW_HINT = /Выключи RAW в камере \(Настройки → Камера → Форматы\) или сфотографируй заново/
+
+  beforeEach(() => {
+    attempts = [attempt(1, 'draft')]
+  })
+
+  it('DNG по MIME из галереи: объяснение про RAW, в загрузку не уходит', async () => {
+    mockCoarsePointer(true)
+    renderStudent()
+    const dng = new File(['raw'], 'IMG_0001.DNG', { type: 'image/x-adobe-dng' })
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files: [dng] } })
+
+    const box = await screen.findByTestId('hw-rejected-files')
+    expect(box).toHaveTextContent('Этот формат (.dng) не откроется у преподавателя.')
+    expect(box).toHaveTextContent(RAW_HINT)
+    expect(box).toHaveTextContent('IMG_0001.DNG')
+    // Не «выбран»: ни вызова загрузки, ни строки прогресса, ни «Загрузка…».
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+    expect(screen.queryByText('Загрузка…')).not.toBeInTheDocument()
+    // Кнопка отправки остаётся заблокированной: страниц по-прежнему нет.
+    expect(screen.getByText('Отправить на проверку').closest('button')).toBeDisabled()
+  })
+
+  it('DNG при пустом MIME (по расширению) — тот же отказ на десктопной дропзоне', async () => {
+    mockCoarsePointer(false)
+    renderStudent()
+    const dng = new File(['raw'], 'IMG_0002.dng', { type: '' })
+    fireEvent.drop(screen.getByTestId('hw-dropzone'), { dataTransfer: { files: [dng] } })
+
+    const box = await screen.findByTestId('hw-rejected-files')
+    expect(box).toHaveTextContent('Этот формат (.dng) не откроется у преподавателя.')
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+  })
+
+  it('пачка «два JPG + один DNG»: два загружены, один отклонён с объяснением', async () => {
+    mockCoarsePointer(true)
+    renderStudent()
+    const a = new File(['a'], 'IMG_0010.jpg', { type: 'image/jpeg' })
+    const dng = new File(['raw'], 'IMG_0011.dng', { type: 'image/x-adobe-dng' })
+    const b = new File(['b'], 'IMG_0012.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files: [a, dng, b] } })
+
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledTimes(1))
+    expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [a, b], expect.any(Function))
+    const box = await screen.findByTestId('hw-rejected-files')
+    expect(box).toHaveTextContent(RAW_HINT)
+    expect(box).toHaveTextContent('Не приложено: IMG_0011.dng')
+    expect(box).not.toHaveTextContent('IMG_0010.jpg')
+  })
+
+  it('восемь DNG — одно объяснение, а не восемь', async () => {
+    mockCoarsePointer(true)
+    renderStudent()
+    const files = Array.from({ length: 8 }, (_, i) => new File(['raw'], `IMG_${i}.dng`, { type: 'image/x-adobe-dng' }))
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files } })
+
+    await screen.findByTestId('hw-rejected-files')
+    expect(screen.getAllByText(/Этот формат \(\.dng\) не откроется/)).toHaveLength(1)
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+  })
+
+  it('JPG / PNG / WebP / HEIC / PDF — путь как раньше, объяснения нет', async () => {
+    mockCoarsePointer(true)
+    renderStudent()
+    const ok = [
+      new File(['1'], 'a.jpg', { type: 'image/jpeg' }),
+      new File(['2'], 'b.png', { type: 'image/png' }),
+      new File(['3'], 'c.webp', { type: 'image/webp' }),
+      new File(['4'], 'd.heic', { type: 'image/heic' }),
+      new File(['5'], 'e.pdf', { type: 'application/pdf' }),
+    ]
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), { target: { files: ok } })
+
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', ok, expect.any(Function)))
+    expect(screen.queryByTestId('hw-rejected-files')).not.toBeInTheDocument()
+  })
+
+  it('«Сфотографировать» рядом с объяснением — вход в камеру, снимок дописывается как обычно', async () => {
+    mockCoarsePointer(true)
+    renderStudent()
+    fireEvent.change(screen.getByLabelText('Выбрать файлы работы'), {
+      target: { files: [new File(['raw'], 'IMG_0001.dng', { type: 'image/x-adobe-dng' })] },
+    })
+    await screen.findByTestId('hw-rejected-files')
+
+    const retake = screen.getByLabelText('Сфотографировать заново') as HTMLInputElement
+    expect(retake.type).toBe('file')
+    expect(retake.accept).toBe('image/*')
+    expect(retake.getAttribute('capture')).toBe('environment')
+    // Те же атрибуты, что у «Снять фото» — это один и тот же вход в камеру.
+    const camera = screen.getByLabelText('Снять фото страницы') as HTMLInputElement
+    expect([retake.accept, retake.getAttribute('capture')]).toEqual([camera.accept, camera.getAttribute('capture')])
+
+    const shot = new File(['jpg'], 'IMG_0002.jpg', { type: 'image/jpeg' })
+    fireEvent.change(retake, { target: { files: [shot] } })
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-1', [shot], expect.any(Function)))
+    // Удачный снимок закрывает объяснение — оно было про прошлый выбор.
+    await waitFor(() => expect(screen.queryByTestId('hw-rejected-files')).not.toBeInTheDocument())
+  })
+
+  it('на десктопе (fine pointer) «Сфотографировать» тоже есть — там кнопки камеры нет', async () => {
+    mockCoarsePointer(false)
+    renderStudent()
+    fireEvent.drop(screen.getByTestId('hw-dropzone'), {
+      dataTransfer: { files: [new File(['raw'], 'IMG_0001.dng', { type: 'image/x-adobe-dng' })] },
+    })
+    await screen.findByTestId('hw-rejected-files')
+    expect(screen.getByLabelText('Сфотографировать заново')).toBeInTheDocument()
+    expect(screen.queryByTestId('hw-camera-button')).not.toBeInTheDocument()
   })
 })

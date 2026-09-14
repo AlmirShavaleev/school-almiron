@@ -40,6 +40,10 @@ const pages = {
     </svg>` },
 }
 
+// §173: «сырой» снимок для сцены s04-topic4-upload-dng. Содержимое неважно —
+// гейт судит по типу/расширению, а до декодера файл не доходит.
+fs.writeFileSync(path.join(out, 'raw.dng'), Buffer.from('not-a-real-dng'))
+
 const browser = await chromium.launch()
 const page = await browser.newPage()
 for (const [name, { w, h, html }] of Object.entries(pages)) {

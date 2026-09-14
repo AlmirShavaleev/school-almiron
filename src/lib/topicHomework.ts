@@ -14,12 +14,39 @@ export const TOPIC_HOMEWORK_BUCKET = 'topic-homework'
 export const TOPIC_HOMEWORK_ATTEMPTS_BUCKET = 'topic-homework-attempts'
 
 /**
- * Что принимаем как файл — и задания от преподавателя, и сдачи ученика:
- * PDF и картинки (фото работы с телефона). Ни бакет, ни RLS тип файла не
- * ограничивают — это чисто подсказка для системного пикера (на мобильном
- * с image/* обычно предлагает камеру наравне с галереей).
+ * Форматы работы ученика, которые платформа ПОКАЖЕТ преподавателю: браузер
+ * откроет их в миниатюре и в проверке, ИИ-проверка их разберёт. Один список
+ * на всё: `accept` пикера, гейт `homeworkFileProblem` и подсказка ученику.
+ *
+ * До §173 здесь стояло `image/*` — и через него прошли восемь `.dng` (Apple
+ * ProRAW, 25–75 МБ каждый): пикер принял, сжатие вернуло файл как есть,
+ * Storage принял, а у преподавателя — пусто, DNG браузеры не показывают.
+ * Ключ — MIME в нижнем регистре, значение — расширения этого типа.
  */
-export const HOMEWORK_FILE_ACCEPT = 'application/pdf,image/*'
+export const HOMEWORK_FILE_TYPES: Readonly<Record<string, readonly string[]>> = {
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/png': ['png'],
+  'image/webp': ['webp'],
+  'image/heic': ['heic'],
+  'image/heif': ['heif'],
+  'application/pdf': ['pdf'],
+}
+
+/**
+ * Что принимаем как файл работы: точный перечень MIME и расширений, а не
+ * `image/*`. Точный `accept` — не только фильтр в пикере: iOS Safari при нём
+ * сам конвертирует HEIC (и, по опыту, ProRAW) в JPEG при выборе из
+ * медиатеки, то есть большинство учеников про формат не узнают вовсе.
+ * Ни бакет, ни RLS тип файла не ограничивают — это подсказка пикеру, а
+ * настоящий отбор делает `homeworkFileProblem` до сжатия и загрузки.
+ *
+ * Кнопка «Сфотографировать» (`image/*` + `capture`, §159) остаётся с
+ * `image/*`: камера из браузера RAW не снимает, а точный список ей мешает.
+ */
+export const HOMEWORK_FILE_ACCEPT = [
+  ...Object.keys(HOMEWORK_FILE_TYPES),
+  ...Object.values(HOMEWORK_FILE_TYPES).flatMap(exts => exts.map(e => `.${e}`)),
+].join(',')
 
 export type TopicHomeworkAttemptStatus =
   | 'draft'
@@ -226,12 +253,66 @@ export function buildAttemptFilePath(attemptId: string, fileName: string, now: n
   return `${attemptId}/${now}_${safeName(fileName)}`
 }
 
-/** Что ученик вправе приложить к работе: PDF и любые картинки. */
+/** Расширение файла в нижнем регистре без точки; '' — если его нет. */
+function fileExtension(name: string): string {
+  const m = /\.([a-z0-9]+)$/i.exec(name ?? '')
+  return m ? m[1].toLowerCase() : ''
+}
+
+/**
+ * «Сырые» снимки с матрицы: ProRAW на iPhone (`.dng`) и RAW зеркалок.
+ * Для них у ученика есть конкретное действие — выключить RAW в камере;
+ * для всего остального (docx, zip, gif) такой совет был бы враньём.
+ */
+const RAW_EXTENSIONS = new Set(['dng', 'raw', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'pef'])
+
+function isRawPhoto(type: string, ext: string): boolean {
+  return RAW_EXTENSIONS.has(ext) || type === 'image/x-adobe-dng' || /^image\/x-.*raw/.test(type)
+}
+
+/**
+ * Почему файл нельзя приложить к работе — текст для ученика, или `null`,
+ * если файл в порядке.
+ *
+ * Гейт стоит ДО `compressImageFile` и до Storage. У сжатия главное правило —
+ * «никогда не ломать загрузку»: неизвестный формат оно возвращает как есть.
+ * Для JPG, который не удалось пережать, это правильно; для DNG это тихая
+ * потеря работы — файл уезжает в Storage, а открыть его никто не сможет.
+ * Поэтому отбор по формату живёт здесь, а не внутри сжатия.
+ *
+ * Судим по `file.type`; когда браузер типа не сообщил (Android-галереи,
+ * часть пикеров отдают пустой type или `application/octet-stream`) — по
+ * расширению. Сообщение без технических слов: ученику нужно действие, а не
+ * MIME-тип.
+ */
+export function homeworkFileProblem(file: { name: string; type?: string | null }): string | null {
+  const type = (file.type ?? '').toLowerCase()
+  const ext = fileExtension(file.name)
+  const typeKnown = type !== '' && type !== 'application/octet-stream'
+
+  const ok = typeKnown
+    ? type in HOMEWORK_FILE_TYPES
+    : Object.values(HOMEWORK_FILE_TYPES).some(exts => exts.includes(ext))
+  if (ok) return null
+
+  const shown = ext ? `.${ext}` : 'без расширения'
+  if (isRawPhoto(type, ext)) {
+    return `Этот формат (${shown}) не откроется у преподавателя. ` +
+      'Выключи RAW в камере (Настройки → Камера → Форматы) или сфотографируй заново.'
+  }
+  return `Этот формат (${shown}) не откроется у преподавателя. ` +
+    'Приложи фото страниц (JPG, PNG) или PDF — или сфотографируй заново.'
+}
+
+/** Что ученик вправе приложить к работе: PDF и картинки из точного списка. */
 export function isAcceptedHomeworkFile(file: File): boolean {
-  const type = (file.type || '').toLowerCase()
-  if (type === 'application/pdf' || type.startsWith('image/')) return true
-  // Некоторые браузеры и Android-галереи отдают пустой type — судим по имени.
-  return /\.(pdf|png|jpe?g|webp|gif|bmp|heic|heif|avif)$/i.test(file.name)
+  return homeworkFileProblem(file) === null
+}
+
+export interface RejectedHomeworkFile {
+  file: File
+  /** Текст для ученика — из `homeworkFileProblem`. */
+  problem: string
 }
 
 /**
@@ -250,13 +331,19 @@ export function namePastedFile(file: File, index: number): File {
 
 /**
  * Разделяет выбранное на «можно приложить» и «нельзя». Отдельная чистая
- * функция, потому что источников теперь три — кнопка выбора, перетаскивание
- * и вставка из буфера, — и правило отбора у них обязано быть одним.
+ * функция, потому что источников четыре — кнопка выбора, камера,
+ * перетаскивание и вставка из буфера, — и правило отбора у них обязано быть
+ * одним. Отклонённый файл несёт причину: пачка «два JPG + один DNG» грузит
+ * два и объясняет про один, не считая его «выбранным».
  */
-export function splitHomeworkFiles(files: File[]): { accepted: File[]; rejected: File[] } {
+export function splitHomeworkFiles(files: File[]): { accepted: File[]; rejected: RejectedHomeworkFile[] } {
   const accepted: File[] = []
-  const rejected: File[] = []
-  for (const f of files) (isAcceptedHomeworkFile(f) ? accepted : rejected).push(f)
+  const rejected: RejectedHomeworkFile[] = []
+  for (const file of files) {
+    const problem = homeworkFileProblem(file)
+    if (problem) rejected.push({ file, problem })
+    else accepted.push(file)
+  }
   return { accepted, rejected }
 }
 
