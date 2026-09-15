@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
 import { useAuthStore } from '@/store/authStore'
+import { usePreviewMode } from '@/store/staffModeStore'
 import type {
   TopicHomeworkAttemptRow, TopicHomeworkReviewRow, GradeScale,
 } from '@/lib/topicHomework'
@@ -21,6 +22,13 @@ import {
  *
  * Клиент не дублирует RLS: неопубликованное ДЗ и закрытую тему база просто
  * не отдаст. Здесь только сборка того, что видно.
+ *
+ * Предпросмотр глазами ученика (§178): группу берём по id из `groups` (RLS
+ * персонала), а не из зачислений; модули, темы, рубрики, ДЗ и тесты — те же
+ * запросы, что у ученика (персоналу RLS их отдаёт). Попытки ДЗ и тестов НЕ
+ * читаем вовсе: под RLS персонала пришли бы работы всех учеников курса, и
+ * страница показала бы чужое как «моё». Прогресс поэтому честно пустой —
+ * «0 из N», без придуманных отметок.
  */
 
 const SELECT_PAGE_SIZE = 1000
@@ -104,8 +112,16 @@ async function fetchAllPagedRows<T>(
   return rows
 }
 
+const GROUP_WITH_COURSE_SELECT = `
+  id, name, course_id,
+  courses(id, title, subject, exam_type, is_template),
+  teachers(id, profiles(id, full_name, email, phone, avatar_url)),
+  curators(id, profiles(id, full_name, email, phone, avatar_url))
+`
+
 export function useStudentCourseProgram(targetGroupId?: string | null) {
   const profile = useAuthStore(s => s.profile)
+  const preview = usePreviewMode()
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
   const [loading,  setLoading]  = useState(true)
@@ -114,38 +130,52 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    if (!profile || profile.role !== 'student') return
+    if (!profile) return
+    if (profile.role !== 'student' && !preview) return
     load()
-  }, [profile, tick, targetGroupId])
+  }, [profile, tick, targetGroupId, preview])
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
-      // 1. Get student id
-      const { data: student } = await supabase
-        .from('students').select('id').eq('profile_id', profile!.id).single()
-      if (!student) return
+      // Форма группы одна на обе ветки — вложенный курс и персонал; типы
+      // PostgREST для embed здесь, как и раньше, не выводятся.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let group: any = null
+      let studentId: string | null = null
 
-      // 2. Get student's groups with courses
-      const gsQuery = supabase
-        .from('group_students')
-        .select(`group_id, groups(
-          id, name, course_id,
-          courses(id, title, subject, exam_type),
-          teachers(id, profiles(id, full_name, email, phone, avatar_url)),
-          curators(id, profiles(id, full_name, email, phone, avatar_url))
-        )`)
-        .eq('student_id', student.id)
+      if (preview) {
+        // Предпросмотр: группа по id под RLS персонала. Без id показывать
+        // нечего — у персонала нет «своей» группы; каркас ученику не виден.
+        if (!targetGroupId) { setLoading(false); return }
+        const { data } = await supabase
+          .from('groups').select(GROUP_WITH_COURSE_SELECT).eq('id', targetGroupId).maybeSingle()
+        const row = data as unknown as { course_id: string | null; courses: { is_template?: boolean } | null } | null
+        if (!row?.course_id || !row.courses || row.courses.is_template) { setLoading(false); return }
+        group = row
+      } else {
+        // 1. Get student id
+        const { data: student } = await supabase
+          .from('students').select('id').eq('profile_id', profile!.id).single()
+        if (!student) return
+        studentId = student.id
 
-      const { data: gs } = targetGroupId
-        ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
-        : await gsQuery.limit(20)
+        // 2. Get student's groups with courses
+        const gsQuery = supabase
+          .from('group_students')
+          .select(`group_id, groups(${GROUP_WITH_COURSE_SELECT})`)
+          .eq('student_id', student.id)
 
-      const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
-      if (!groupWithCourse) { setLoading(false); return }
+        const { data: gs } = targetGroupId
+          ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
+          : await gsQuery.limit(20)
 
-      const group   = (groupWithCourse as any).groups
+        const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
+        if (!groupWithCourse) { setLoading(false); return }
+        group = (groupWithCourse as any).groups
+      }
+
       const course  = group.courses
 
       // PostgREST может вернуть объект или массив в зависимости от схемы FK
@@ -208,33 +238,36 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         })(),
       ])
 
-      // 5. Попытки ученика: ДЗ и тесты
+      // 5. Попытки ученика: ДЗ и тесты. В предпросмотре — не читаем: у
+      // персонала своих попыток нет, а под его RLS пришли бы чужие.
       const homeworkIds   = homeworkRows.map(h => h.id)
       const assignmentIds = assignmentRows.map(a => a.id)
+      type TestAttemptRow = { assignment_id: string; status: string; total_points: number | null; max_points: number | null }
 
-      const [attempts, testAttempts] = await Promise.all([
-        (async () => {
-          if (!homeworkIds.length) return [] as TopicHomeworkAttemptRow[]
-          const { data, error } = await supabase
-            .from('topic_homework_attempts')
-            .select('id, homework_id, student_id, attempt_number, status, submitted_at, created_at, updated_at')
-            .eq('student_id', student.id)
-            .in('homework_id', homeworkIds)
-          if (error) throw new Error(error.message ?? 'Не удалось загрузить попытки')
-          return (data || []) as unknown as TopicHomeworkAttemptRow[]
-        })(),
-        (async () => {
-          type TestAttemptRow = { assignment_id: string; status: string; total_points: number | null; max_points: number | null }
-          if (!assignmentIds.length) return [] as TestAttemptRow[]
-          const { data, error } = await supabase
-            .from('topic_test_attempts')
-            .select('assignment_id, status, total_points, max_points')
-            .eq('student_id', student.id)
-            .in('assignment_id', assignmentIds)
-          if (error) throw new Error(error.message ?? 'Не удалось загрузить результаты тестов')
-          return (data || []) as unknown as TestAttemptRow[]
-        })(),
-      ])
+      const [attempts, testAttempts] = studentId === null
+        ? [[] as TopicHomeworkAttemptRow[], [] as TestAttemptRow[]]
+        : await Promise.all([
+          (async () => {
+            if (!homeworkIds.length) return [] as TopicHomeworkAttemptRow[]
+            const { data, error } = await supabase
+              .from('topic_homework_attempts')
+              .select('id, homework_id, student_id, attempt_number, status, submitted_at, created_at, updated_at')
+              .eq('student_id', studentId)
+              .in('homework_id', homeworkIds)
+            if (error) throw new Error(error.message ?? 'Не удалось загрузить попытки')
+            return (data || []) as unknown as TopicHomeworkAttemptRow[]
+          })(),
+          (async () => {
+            if (!assignmentIds.length) return [] as TestAttemptRow[]
+            const { data, error } = await supabase
+              .from('topic_test_attempts')
+              .select('assignment_id, status, total_points, max_points')
+              .eq('student_id', studentId)
+              .in('assignment_id', assignmentIds)
+            if (error) throw new Error(error.message ?? 'Не удалось загрузить результаты тестов')
+            return (data || []) as unknown as TestAttemptRow[]
+          })(),
+        ])
 
       // 6. Вердикты по попыткам ученика (балл + комментарий)
       const attemptIds = attempts.map(a => a.id)

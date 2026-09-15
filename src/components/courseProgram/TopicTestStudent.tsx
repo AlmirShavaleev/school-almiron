@@ -3,6 +3,7 @@ import {
   Loader2, ClipboardList, CheckCircle, XCircle, MinusCircle, AlertCircle,
 } from 'lucide-react'
 import { useTopicTestStudent } from '@/hooks/useTopicTest'
+import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
 import { formatScore, scorePercent } from '@/lib/topicTest'
 import { Button } from '@/components/ui/Button'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
@@ -20,10 +21,13 @@ import { cn } from '@/utils/cn'
  * 5. Попытка завершена → результаты и разбор
  */
 export function TopicTestStudent({ topicId }: { topicId: string }) {
+  // Предпросмотр глазами ученика (§178): описание теста и «Начать тест» видны,
+  // кнопка выключена; попытка не создаётся.
+  const preview = usePreviewMode()
   const {
     test, items, attempt, answers, loading, error,
     start, saveAnswer, submit, refresh,
-  } = useTopicTestStudent(topicId)
+  } = useTopicTestStudent(topicId, { preview })
 
   // ──────── Локальное состояние ────────
 
@@ -165,6 +169,8 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
             <Button
               onClick={() => start().catch((e: any) => setLocalError(e?.message ?? 'Не удалось начать тест'))}
               size="md"
+              disabled={preview}
+              title={preview ? PREVIEW_NOOP_MESSAGE : undefined}
             >
               Начать тест
             </Button>

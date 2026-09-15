@@ -8,11 +8,15 @@ export function DashboardPage() {
   const profile = useAuthStore(s => s.profile)
   // Владелец в режиме учителя попадает в кабинет учителя, а не в панель
   // админа. Это представление: сам маршрут /admin остаётся ему доступен.
-  const { effectiveRole } = useStaffMode()
+  const { effectiveRole, preview } = useStaffMode()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (!profile) return
+    // Предпросмотр глазами ученика (§178): не в «Мой кабинет» (там личные
+    // данные ученика, которых у владельца нет), а в список курсов — единственный
+    // ученический экран, который персоналу можно показать честно.
+    if (preview) { navigate('/my-course', { replace: true }); return }
     const routes: Record<string, string> = {
       student: '/student',
       teacher: '/teacher',
@@ -27,7 +31,7 @@ export function DashboardPage() {
       owner: '/admin',
     }
     navigate(routes[effectiveRole ?? profile.role] || '/student', { replace: true })
-  }, [profile, effectiveRole, navigate])
+  }, [profile, effectiveRole, preview, navigate])
 
   return (
     <div className="flex items-center justify-center h-64">

@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { removeIfOrphan } from '@/lib/storageRefs'
 import { UPLOAD_CACHE_CONTROL_S } from '@/lib/storage'
 import { useAuthStore } from '@/store/authStore'
+import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
+import { toast } from '@/store/toastStore'
 import { HOMEWORK_PHOTO_PRESET, MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
@@ -24,8 +26,17 @@ import {
  * Хук их не дублирует: ученику черновик ДЗ просто не приходит, чужие попытки
  * не приходят, а запреты вроде пересдачи принятой работы возвращаются
  * ошибкой из базы — её и показываем.
+ *
+ * `preview` (§178, предпросмотр глазами ученика) — ветка для ученического
+ * блока: читаем только само ДЗ и его файлы (персоналу RLS их отдаёт), попытки
+ * и вердикты не читаем вовсе (под RLS персонала пришли бы работы всех
+ * учеников курса и показались бы как «моя»), а все ученические мутации —
+ * noop с тостом. Опция, а не общий `usePreviewMode()` внутри: этим же хуком
+ * живёт редактор ДЗ преподавателя, и ему в предпросмотре по прямой ссылке
+ * терять попытки нельзя.
  */
-export function useTopicHomework(topicId: string | null) {
+export function useTopicHomework(topicId: string | null, options: { preview?: boolean } = {}) {
+  const preview = !!options.preview
   const profile = useAuthStore(s => s.profile)
 
   const [homework, setHomework] = useState<TopicHomeworkRow | null>(null)
@@ -88,7 +99,9 @@ export function useTopicHomework(topicId: string | null) {
 
       const [filesRes, attemptsRes] = await Promise.all([
         supabase.from('topic_homework_files').select('*').eq('homework_id', hw.id).order('position'),
-        supabase.from('topic_homework_attempts').select('*').eq('homework_id', hw.id).order('attempt_number'),
+        preview
+          ? Promise.resolve({ data: [] as TopicHomeworkAttemptRow[] })
+          : supabase.from('topic_homework_attempts').select('*').eq('homework_id', hw.id).order('attempt_number'),
       ])
       if (cancelled) return
 
@@ -136,7 +149,7 @@ export function useTopicHomework(topicId: string | null) {
 
     load()
     return () => { cancelled = true }
-  }, [topicId, tick, applyHomework, applyFiles])
+  }, [topicId, tick, preview, applyHomework, applyFiles])
 
   // ── преподаватель ──────────────────────────────────────────
 
@@ -517,9 +530,35 @@ export function useTopicHomework(topicId: string | null) {
     homework, files, attempts, attemptFiles, reviews, studentNames,
     loading, error, reload,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
-    startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, reorderAttemptFiles, submitAttempt,
+    ...(preview
+      ? PREVIEW_STUDENT_ACTIONS
+      : { startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, reorderAttemptFiles, submitAttempt }),
     reviewAttempt, notifyStudents, loadNotifyTargets,
   }
+}
+
+/**
+ * Ученические мутации в предпросмотре (§178): ни `topic_homework_start_attempt`,
+ * ни `topic_homework_submit_attempt`, ни Storage — только тост. Константы, а
+ * не замыкания на каждый рендер: компонент держит их в зависимостях эффектов.
+ */
+interface PreviewStudentActions {
+  startAttempt: () => Promise<string>
+  uploadAttemptFiles: (
+    attemptId: string, incoming: File[], onProgress?: (index: number, percent: number) => void,
+  ) => Promise<TopicHomeworkAttemptFileRow[]>
+  uploadAttemptFile: (attemptId: string, file: File) => Promise<void>
+  removeAttemptFile: (fileId: string, storagePath: string) => Promise<void>
+  reorderAttemptFiles: (attemptId: string, orderedIds: string[]) => Promise<void>
+  submitAttempt: (attemptId: string) => Promise<void>
+}
+const PREVIEW_STUDENT_ACTIONS: PreviewStudentActions = {
+  startAttempt: async () => { toast.info(PREVIEW_NOOP_MESSAGE); return '' },
+  uploadAttemptFiles: async () => { toast.info(PREVIEW_NOOP_MESSAGE); return [] },
+  uploadAttemptFile: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
+  removeAttemptFile: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
+  reorderAttemptFiles: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
+  submitAttempt: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
 }
 
 /** Строка списка получателей оповещения. Никаких данных самой связки с ТГ. */

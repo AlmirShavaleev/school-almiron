@@ -143,6 +143,39 @@ export const scenes = [
 
   { persona: 'student', name: 's04-topic-tasks-wrong', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }] },
 
+  // ── owner в предпросмотре «глазами ученика» (§178, board/031) ──
+  // Переключатель в шапке на «Ученик», под шапкой жёлтая полоса; /dashboard
+  // ведёт на ученический список курсов без каркаса; тема — ученическая
+  // вёрстка с лентой задач из topic_tasks_for_staff, поле и кнопки выключены.
+  { persona: 'ownerPreview', name: 'p01-switch', url: '/dashboard', width: 1280, height: 800, actions: [{ wait: 1000 }] },
+  { persona: 'ownerPreview', name: 'p02-my-course', url: '/my-course', actions: [{ wait: 1000 }] },
+  { persona: 'ownerPreview', name: 'p03-course', url: `/my-course/${S.group}`, actions: [{ wait: 1000 }] },
+  { persona: 'ownerPreview', name: 'p04-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }] },
+  // Докрутка до поля ответа: видно выключенное поле и кнопки под условием.
+  { persona: 'ownerPreview', name: 'p04-topic-tasks-input', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { eval: `document.querySelector('input[aria-label="Ответ на задачу"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }], full: false },
+  { persona: 'ownerPreview', name: 'p04-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }] },
+  { persona: 'ownerPreview', name: 'p04-topic-tasks-input', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { eval: `document.querySelector('input[aria-label="Ответ на задачу"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }], full: false },
+  { persona: 'ownerPreview', name: 'p04-topic-hw', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1000 }] },
+  // §179 (board/032): в предпросмотре задачи РАБОТАЮТ, но только в памяти
+  // вкладки. Каждая сцена начинается с `goto` — то есть с обновления страницы,
+  // и весь путь проходится заново: в логе после каждого перехода все семь
+  // задач снова «не начата», а из RPC — только `topic_tasks_for_staff` и чистый
+  // `preview_task_verdict`; ни `answer_topic_task`, ни `reveal_…`, ни `close_…`.
+  // Неверный ответ на задачу 1 (5 ≠ 2): «Неверно · попытка 1», квадрат янтарный.
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({ persona: 'ownerPreview', name: 'p04-topic-tasks-wrong', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }, { eval: `document.querySelector('[data-testid="topic-task-wrong"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }] })),
+  // Верный ответ на задачу 2 (4 = 2·2) после неверного на первую: в ленте
+  // сразу три состояния — янтарный, зелёный, серый; «Верно», «Решено 1 из 7».
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({ persona: 'ownerPreview', name: 'p04-topic-tasks-answered', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 800 }, { clickRole: ['button', 'Задача 2, не начата'] }, { wait: 400 }, { fill: ['input[aria-label="Ответ на задачу"]', '4'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }, { eval: `document.querySelector('[data-testid="topic-task-card"]')?.scrollIntoView({ block: 'start' })` }, { wait: 300 }] })),
+  // Разбор после неверной попытки — из `catalog_tasks`: поле исчезает, ответ и
+  // разбор видны, внизу «Разобрал».
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({ persona: 'ownerPreview', name: 'p04-topic-tasks-reveal', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 800 }, { clickRole: ['button', /Посмотреть решение/] }, { wait: 1000 }, { eval: `[...document.querySelectorAll('[data-testid="topic-task-card"] button')].pop()?.scrollIntoView({ block: 'center' })` }, { wait: 300 }] })),
+  // «Разобрал» → «Разобрана», квадрат 1 зелёный, «Решено 1 из 7» — в памяти.
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({ persona: 'ownerPreview', name: 'p04-topic-tasks-closed', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1000 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 800 }, { clickRole: ['button', /Посмотреть решение/] }, { wait: 1000 }, { clickRole: ['button', /Разобрал/] }, { wait: 1000 }] })),
+  // «Отметить как сделанное» у группы «Теория» — переключатель в памяти:
+  // «Отметил сам», таблица отметок не запрашивается.
+  { persona: 'ownerPreview', name: 'p04-topic-mark', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ wait: 800 }, { clickSel: '[data-testid="topic-group-mark-theory"]' }, { wait: 600 }] },
+  { persona: 'ownerPreview', name: 'p05-my-homework-stub', url: '/my-homework', actions: [{ wait: 800 }] },
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

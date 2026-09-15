@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
 import {
@@ -864,6 +865,7 @@ function HomeworkBlock({
 export function StudentCoursePage() {
   const { groupId }  = useParams<{ groupId?: string }>()
   const navigate     = useNavigate()
+  const preview      = usePreviewMode()
   const { course, modules, loading, error } = useStudentCourseProgram(groupId)
 
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
@@ -901,7 +903,7 @@ export function StudentCoursePage() {
   if (!course) return (
     <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-2">
       <BookOpen size={40} className="opacity-30" />
-      <p>Вы не записаны ни в одну группу</p>
+      <p>{preview ? 'Курс не найден или это каркас — у учеников его нет' : 'Вы не записаны ни в одну группу'}</p>
     </div>
   )
 
@@ -979,7 +981,9 @@ export function StudentCoursePage() {
         </div>
       </div>
 
-      {!activeMod && <StudentWeekPlan courseId={course.id} />}
+      {/* «Эта неделя» — RPC `student_week_plan()` считает от `auth_student_id()`;
+          у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}
+      {!activeMod && !preview && <StudentWeekPlan courseId={course.id} />}
 
       {/* ══ STAFF CARDS ══ */}
       {!activeMod && (

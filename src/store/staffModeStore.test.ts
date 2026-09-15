@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import {
   canSwitchStaffMode,
   effectiveRoleOf,
+  isPreviewMode,
   useStaffModeStore,
 } from '@/store/staffModeStore'
 
@@ -51,5 +52,43 @@ describe('staffModeStore', () => {
   it('до входа режим не пишется в хранилище', () => {
     useStaffModeStore.getState().setMode('teacher')
     expect(localStorage.length).toBe(0)
+  })
+
+  // §178: третий режим — предпросмотр глазами ученика.
+  it('режим ученика — роль представления student только у admin/owner', () => {
+    expect(effectiveRoleOf('admin', 'student')).toBe('student')
+    expect(effectiveRoleOf('owner', 'student')).toBe('student')
+    expect(effectiveRoleOf('teacher', 'student')).toBe('teacher')
+    expect(effectiveRoleOf('student', 'student')).toBe('student')
+    expect(effectiveRoleOf('curator', 'student')).toBe('curator')
+  })
+
+  it('предпросмотр включён только у admin/owner в режиме student', () => {
+    expect(isPreviewMode('admin', 'student')).toBe(true)
+    expect(isPreviewMode('owner', 'student')).toBe(true)
+    expect(isPreviewMode('admin', 'teacher')).toBe(false)
+    expect(isPreviewMode('owner', 'admin')).toBe(false)
+    // Реальный ученик и преподаватель предпросмотра не получают, что бы ни
+    // лежало в хранилище.
+    expect(isPreviewMode('teacher', 'student')).toBe(false)
+    expect(isPreviewMode('student', 'student')).toBe(false)
+    expect(isPreviewMode('curator', 'student')).toBe(false)
+    expect(isPreviewMode(null, 'student')).toBe(false)
+  })
+
+  it('режим ученика хранится тем же ключом и переживает перезагрузку', () => {
+    useStaffModeStore.getState().hydrate('p1')
+    useStaffModeStore.getState().setMode('student')
+    expect(localStorage.getItem('almiron:staff-mode:p1')).toBe('student')
+
+    useStaffModeStore.setState({ mode: 'admin', profileId: null })
+    useStaffModeStore.getState().hydrate('p1')
+    expect(useStaffModeStore.getState().mode).toBe('student')
+  })
+
+  it('мусор в хранилище читается как admin', () => {
+    localStorage.setItem('almiron:staff-mode:p1', 'root')
+    useStaffModeStore.getState().hydrate('p1')
+    expect(useStaffModeStore.getState().mode).toBe('admin')
   })
 })

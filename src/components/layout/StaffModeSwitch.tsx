@@ -1,14 +1,16 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Shield, GraduationCap } from 'lucide-react'
+import { Shield, GraduationCap, Eye } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useStaffMode, type StaffMode } from '@/store/staffModeStore'
 
 /**
- * Переключатель «Администратор ⇄ Учитель» в шапке. Виден только admin/owner —
- * тем, у кого есть вторая сущность (строка в `teachers`).
+ * Переключатель «Администратор ⇄ Учитель ⇄ Ученик» в шапке. Виден только
+ * admin/owner — тем, у кого есть вторая сущность (строка в `teachers`).
  *
  * Меняет ТОЛЬКО представление: ярлык роли, набор пунктов меню и стартовый
  * дашборд. Права не трогаются никогда — подробности в `staffModeStore`.
+ * «Ученик» (§178) — предпросмотр ученических экранов без записи; жёлтую
+ * полосу с «Вернуться» рисует `StudentPreviewBanner`.
  */
 
 /**
@@ -16,11 +18,12 @@ import { useStaffMode, type StaffMode } from '@/store/staffModeStore'
  * дашборде. Иначе переключение посреди каталога или проверки ДЗ выбрасывало
  * бы со страницы, на которой работаешь.
  */
-const DASHBOARD_ROUTES = ['/dashboard', '/admin', '/teacher']
+const DASHBOARD_ROUTES = ['/dashboard', '/admin', '/teacher', '/my-course']
 
 const OPTIONS: Array<{ mode: StaffMode; label: string; icon: React.ReactNode }> = [
   { mode: 'admin',   label: 'Администратор', icon: <Shield size={14} /> },
   { mode: 'teacher', label: 'Учитель',       icon: <GraduationCap size={14} /> },
+  { mode: 'student', label: 'Ученик',        icon: <Eye size={14} /> },
 ]
 
 export function StaffModeSwitch() {
@@ -53,7 +56,7 @@ export function StaffModeSwitch() {
             type="button"
             onClick={() => handleSelect(option.mode)}
             aria-pressed={active}
-            title={`Режим: ${option.label}`}
+            title={option.mode === 'student' ? 'Предпросмотр глазами ученика' : `Режим: ${option.label}`}
             data-testid={`staff-mode-${option.mode}`}
             className={cn(
               'flex items-center gap-1.5 px-2 md:px-2.5 py-1.5 rounded-[7px] text-xs font-semibold transition-colors',

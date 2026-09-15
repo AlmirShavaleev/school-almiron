@@ -7,6 +7,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { isTopicOpen, todayLocal, type TopicOpenState } from '@/lib/topicAvailability'
 import { useAuthStore } from '@/store/authStore'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { getSubjectColor } from '@/lib/subjectColors'
@@ -127,8 +128,53 @@ function CourseItem({ card }: { card: CourseCard }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Предпросмотр глазами ученика (§178): вместо зачислений — группы курсов, где
+ * владелец персонал. Читаем `groups` с вложенным курсом под той же RLS, что и
+ * «Программа курса» (`course_is_staff` для преподавателя, всё — для админа):
+ * второго правила «мои ли это курсы» здесь не заводим. Каркасы (`is_template`)
+ * выбрасываем — у учеников их нет. Форма строки та же, что у зачислений
+ * ученика, поэтому дальше страница не различает, откуда пришёл список.
+ */
+interface GroupWithCourse {
+  id: string
+  name: string
+  course_id: string | null
+  courses: {
+    id: string; title: string; subject: string; exam_type: string
+    start_date: string | null; end_date: string | null; is_template?: boolean
+  } | null
+}
+
+async function loadPreviewGroups(): Promise<GroupWithCourse[]> {
+  const { data } = await supabase
+    .from('groups')
+    .select('id, name, course_id, courses(id, title, subject, exam_type, start_date, end_date, is_template)')
+    .order('name')
+  return ((data || []) as unknown as GroupWithCourse[])
+    .filter(g => g.course_id && g.courses && !g.courses.is_template)
+}
+
+async function loadStudentGroups(profileId: string): Promise<GroupWithCourse[] | null> {
+  // 1. student record
+  const { data: student } = await supabase
+    .from('students').select('id').eq('profile_id', profileId).single()
+  if (!student) return null
+
+  // 2. All groups the student is in (with course info)
+  const { data: gs } = await supabase
+    .from('group_students')
+    .select('group_id, groups(id, name, course_id, courses(id, title, subject, exam_type, start_date, end_date))')
+    .eq('student_id', student.id)
+
+  return ((gs || []) as unknown as Array<{ groups: GroupWithCourse | null }>)
+    .filter(g => g.groups?.course_id)
+    .map(g => g.groups as GroupWithCourse)
+}
+
 export function MyCoursesPage() {
   const profile  = useAuthStore(s => s.profile)
+  const preview  = usePreviewMode()
   const [cards,   setCards]   = useState<CourseCard[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -139,20 +185,10 @@ export function MyCoursesPage() {
     async function load() {
       setLoading(true)
       try {
-        // 1. student record
-        const { data: student } = await supabase
-          .from('students').select('id').eq('profile_id', profile!.id).single()
-        if (!student || cancelled) return
-
-        // 2. All groups the student is in (with course info)
-        const { data: gs } = await supabase
-          .from('group_students')
-          .select('group_id, groups(id, name, course_id, courses(id, title, subject, exam_type, start_date, end_date))')
-          .eq('student_id', student.id)
-
-        const groupsWithCourse = (gs || [])
-          .filter((g: any) => g.groups?.course_id)
-          .map((g: any) => g.groups)
+        const groupsWithCourse = preview
+          ? await loadPreviewGroups()
+          : await loadStudentGroups(profile!.id)
+        if (!groupsWithCourse || cancelled) return
 
         if (!groupsWithCourse.length || cancelled) {
           setCards([])
@@ -205,7 +241,7 @@ export function MyCoursesPage() {
 
     load()
     return () => { cancelled = true }
-  }, [profile])
+  }, [profile, preview])
 
   if (loading) {
     return (
@@ -219,7 +255,11 @@ export function MyCoursesPage() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
         <BookOpen size={44} className="opacity-25" />
-        <p className="text-sm">Вы не записаны ни в один курс</p>
+        <p className="text-sm">
+          {preview
+            ? 'Нет курсов для предпросмотра: вы не персонал ни одного курса, кроме каркасов'
+            : 'Вы не записаны ни в один курс'}
+        </p>
       </div>
     )
   }
@@ -231,6 +271,7 @@ export function MyCoursesPage() {
         <p className="text-gray-500 mt-1 text-sm flex items-center gap-1.5">
           <GraduationCap size={14} />
           {cards.length} {cards.length === 1 ? 'курс' : cards.length < 5 ? 'курса' : 'курсов'}
+          {preview && <span data-testid="my-courses-preview-hint">· курсы, где вы персонал, — как их видит ученик</span>}
         </p>
       </div>
 

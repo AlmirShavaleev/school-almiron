@@ -33,9 +33,17 @@ import { cn } from '@/utils/cn'
  *
  * Хук поднят на страницу темы: она же показывает «решено N из M» в шапке
  * группы. Иначе тот же запрос ушёл бы дважды за одно открытие урока.
+ *
+ * Предпросмотр глазами ученика (§178, §179): та же лента и карточка, состав —
+ * из staff-источника. Поле ответа, «Проверить», «Посмотреть решение» и
+ * «Разобрал» работают как у ученика — хук считает вердикт чистой RPC и держит
+ * попытки, разбор и отметки в памяти вкладки, ничего не записывая. Здесь
+ * ветки «предпросмотр» нет: карточка не знает, откуда пришли строки, только
+ * помечает себя `data-preview` для тестов. Флаг приходит из хука
+ * (`tasks.preview`), а не отдельным пропсом: источник правды один.
  */
 export function TopicTasksStudent({ tasks }: { tasks: ReturnType<typeof useTopicTasks> }) {
-  const { rows, total, solved, loading, error, busyItem, answer, reveal, closeSelf } = tasks
+  const { rows, total, solved, loading, error, busyItem, answer, reveal, closeSelf, preview } = tasks
 
   const [searchParams, setSearchParams] = useSearchParams()
   const urlTask = searchParams.get('task')
@@ -126,6 +134,7 @@ export function TopicTasksStudent({ tasks }: { tasks: ReturnType<typeof useTopic
           row={current}
           index={currentIndex + 1}
           busy={busyItem === current.item_id}
+          preview={preview}
           onAnswer={raw => answer(current.item_id, raw)}
           onReveal={() => reveal(current.item_id)}
           onCloseSelf={() => closeSelf(current.item_id)}
@@ -240,10 +249,12 @@ function TaskStrip({ rows, currentId, onSelect }: {
 
 // ── Одна задача ──────────────────────────────────────────────────────────────
 
-function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
+function TaskCard({ row, index, busy, preview, onAnswer, onReveal, onCloseSelf }: {
   row: TopicTaskRow
   index: number
   busy: boolean
+  /** Предпросмотр (§178/§179): только метка на карточке — поведение то же. */
+  preview: boolean
   onAnswer: (raw: string) => Promise<boolean | null>
   onReveal: () => Promise<unknown>
   onCloseSelf: () => Promise<void>
@@ -293,6 +304,7 @@ function TaskCard({ row, index, busy, onAnswer, onReveal, onCloseSelf }: {
   return (
     <div
       data-testid="topic-task-card"
+      data-preview={preview || undefined}
       data-verdict={solved ? 'solved' : showWrong ? 'wrong' : undefined}
       className={`rounded-2xl border bg-white p-3 sm:p-4 ${solved ? 'border-emerald-200' : showWrong ? 'border-red-200' : 'border-gray-200'}`}
     >
@@ -406,7 +418,8 @@ function AutoCheckBlock({
           {wrong ? 'Проверить ещё раз' : 'Проверить'}
         </Button>
         {/* Разбор — после хотя бы одной попытки, не раньше: до неё он был бы
-            ответом. Сервер проверяет то же (`NOT_ATTEMPTED_YET`). */}
+            ответом. Сервер проверяет то же (`NOT_ATTEMPTED_YET`); в
+            предпросмотре попытки считает хук, правило одно. */}
         {attempts > 0 && (
           <Button variant="secondary" onClick={() => void onReveal()} disabled={busy}>
             <Eye size={14} className="mr-1" />
