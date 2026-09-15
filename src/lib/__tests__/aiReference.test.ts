@@ -2,15 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   ENGINE_ORDER,
   FREE_ENGINE,
+  MAX_FAILURE_REASON_CHARS,
   MAX_REFERENCE_BYTES,
   OCR_ENGINE,
   REFERENCE_CHAR_LIMIT,
+  REFERENCE_GAP_MARK,
+  REFERENCE_TAIL_CHARS,
+  WORKSHEET_CHAR_LIMIT,
+  WORKSHEET_SECTION,
+  describeParseFailure,
   extractAnnotationText,
   isParseUsable,
   meaningfulChars,
   nextEngine,
   referencePromptBlock,
+  tooLittleTextReason,
   truncateReference,
+  worksheetPromptBlock,
 } from '../../../supabase/functions/check-homework-ai/reference.ts'
 
 /**
@@ -110,21 +118,43 @@ describe('extractAnnotationText — дословный текст из анно�
   })
 })
 
-describe('truncateReference — режем хвост, начало бережём', () => {
+describe('truncateReference — режем середину, голову и хвост бережём (§149)', () => {
   it('короткое решение не трогает', () => {
     expect(truncateReference('Решение')).toEqual({ text: 'Решение', truncated: false })
   })
 
-  it('длинное режет и сообщает об этом', () => {
-    const long = 'а'.repeat(REFERENCE_CHAR_LIMIT + 500)
+  it('длинное режет посередине: начало и конец на месте, между ними пометка', () => {
+    const head = 'НАЧАЛО '.repeat(3000)
+    const tail = ' ТАБЛИЦА ОТВЕТОВ 19 10'
+    const long = head + 'середина '.repeat(4000) + tail
     const block = truncateReference(long)
     expect(block.truncated).toBe(true)
     expect(block.text.length).toBeLessThanOrEqual(REFERENCE_CHAR_LIMIT)
-    expect(long.startsWith(block.text)).toBe(true)
+    expect(block.text.startsWith('НАЧАЛО НАЧАЛО')).toBe(true)
+    expect(block.text.endsWith('ТАБЛИЦА ОТВЕТОВ 19 10')).toBe(true)
+    expect(block.text).toContain(REFERENCE_GAP_MARK.trim())
   })
 
-  it('лимит поднят с прежних 8000', () => {
-    expect(REFERENCE_CHAR_LIMIT).toBeGreaterThan(8000)
+  it('хвост — ровно REFERENCE_TAIL_CHARS символов конца документа', () => {
+    const long = 'x'.repeat(REFERENCE_CHAR_LIMIT) + 'y'.repeat(REFERENCE_TAIL_CHARS)
+    const block = truncateReference(long)
+    const afterGap = block.text.slice(block.text.indexOf(REFERENCE_GAP_MARK.trim()) + REFERENCE_GAP_MARK.trim().length)
+    expect(afterGap.replace(/\s/g, '')).toBe('y'.repeat(REFERENCE_TAIL_CHARS))
+  })
+
+  it('на эталоне «Первой части» (16 867 символов) при лимите 14 000 таблица ответов не терялась бы', () => {
+    // Воспроизведение прогона 11.09: при старой обрезке с хвоста задачи 17–19 и
+    // таблица ответов на последней странице уходили за лимит.
+    const doc = 'Задача 1 …'.padEnd(16_000, ' решение ') + '\n### Page 22\n1 -2\n2 -2,5\n… 19 10\nЗадача Ответ'
+    const block = truncateReference(doc, 14_000)
+    expect(block.truncated).toBe(true)
+    expect(block.text).toContain('19 10')
+    expect(block.text).toContain('Задача Ответ')
+  })
+
+  it('лимит 40 000 — решение владельца 12.09; 14 000 резало решение в 933 кБ', () => {
+    expect(REFERENCE_CHAR_LIMIT).toBe(40_000)
+    expect(REFERENCE_TAIL_CHARS).toBe(3_000)
   })
 })
 
@@ -146,5 +176,85 @@ describe('referencePromptBlock — оговорка о происхождени�
 describe('порог размера', () => {
   it('десять мегабайт', () => {
     expect(MAX_REFERENCE_BYTES).toBe(10 * 1024 * 1024)
+  })
+})
+
+/**
+ * §149. Причины отказа — по ВСЕМ движкам, а не по последнему. Пять прогонов
+ * подряд в last_error лежал только отказ платного mistral-ocr по балансу, и
+ * что случилось с бесплатным cloudflare-ai, который шёл первым, узнать было
+ * неоткуда.
+ */
+describe('describeParseFailure — причины всех движков в одной строке', () => {
+  it('склеивает причины в порядке движков, первую не теряет', () => {
+    const line = describeParseFailure([
+      `движок ${FREE_ENGINE} вернул слишком мало текста (12 знач. симв. на 3 стр.)`,
+      `движок ${OCR_ENGINE}: This request requires at least $0.50 in balance for files`,
+    ])
+    expect(line.startsWith('Не удалось распознать авторское решение: ')).toBe(true)
+    expect(line.indexOf(FREE_ENGINE)).toBeGreaterThan(-1)
+    expect(line.indexOf(FREE_ENGINE)).toBeLessThan(line.indexOf(OCR_ENGINE))
+    expect(line).toContain('; ')
+  })
+
+  it('без причин говорит, что разбор не дал текста', () => {
+    expect(describeParseFailure([])).toContain('разбор PDF не дал текста')
+    expect(describeParseFailure(['', '  '])).toContain('разбор PDF не дал текста')
+  })
+
+  it('режет строку по потолку — её читает преподаватель в панели', () => {
+    const long = describeParseFailure(['x'.repeat(400), 'y'.repeat(400)])
+    expect(long.length).toBeLessThanOrEqual(MAX_FAILURE_REASON_CHARS)
+    expect(long.endsWith('…')).toBe(true)
+    expect(MAX_FAILURE_REASON_CHARS).toBe(500)
+  })
+})
+
+describe('tooLittleTextReason — «мало» с числом, а не на словах', () => {
+  it('называет движок, значимые символы и страницы', () => {
+    const reason = tooLittleTextReason(FREE_ENGINE, '# | |\nabc 12', 3)
+    expect(reason).toContain(FREE_ENGINE)
+    expect(reason).toContain('5 знач. симв.')
+    expect(reason).toContain('3 стр.')
+  })
+
+  it('ноль страниц считает за одну — деления на ноль в причине нет', () => {
+    expect(tooLittleTextReason(OCR_ENGINE, '', 0)).toContain('0 знач. симв. на 1 стр.')
+  })
+})
+
+/** §149.1. Условие ДЗ — рабочий лист, свой потолок, свой блок в промпте. */
+describe('рабочий лист (условие ДЗ)', () => {
+  it('рубрика — worksheet_homework, потолок свой и меньше эталонного', () => {
+    expect(WORKSHEET_SECTION).toBe('worksheet_homework')
+    expect(WORKSHEET_CHAR_LIMIT).toBe(20_000)
+    expect(WORKSHEET_CHAR_LIMIT).toBeLessThan(REFERENCE_CHAR_LIMIT)
+  })
+
+  it('обрезка по своему потолку — голова и хвост листа на месте', () => {
+    const doc = 'ЗАДАНИЕ 1 '.repeat(2500) + 'Задание 19: запиши ответ'
+    const block = truncateReference(doc, WORKSHEET_CHAR_LIMIT)
+    expect(block.truncated).toBe(true)
+    expect(block.text.length).toBeLessThanOrEqual(WORKSHEET_CHAR_LIMIT)
+    expect(block.text.endsWith('Задание 19: запиши ответ')).toBe(true)
+  })
+
+  it('блок условия: оговорка о распознавании, число заданий — отсюда', () => {
+    const block = worksheetPromptBlock({ text: 'Задача 1. Запиши ответ.', truncated: false })
+    expect(block.startsWith('УСЛОВИЕ ДЗ')).toBe(true)
+    expect(block).toContain('распознаванием PDF')
+    expect(block).toContain('Число заданий для подсчёта балла бери отсюда')
+    expect(block).not.toContain('НЕ ЦЕЛИКОМ')
+  })
+
+  it('при обрезке условие говорит сверять пропуск по эталону', () => {
+    const block = worksheetPromptBlock({ text: 'x', truncated: true })
+    expect(block).toContain('НЕ ЦЕЛИКОМ')
+    expect(block).toContain('сверяй по эталону')
+  })
+
+  it('причина отказа называет материал', () => {
+    expect(describeParseFailure(['движок x: пусто'], 'рабочий лист ДЗ')).toContain('Не удалось распознать рабочий лист ДЗ:')
+    expect(describeParseFailure(['движок x: пусто'])).toContain('авторское решение:')
   })
 })

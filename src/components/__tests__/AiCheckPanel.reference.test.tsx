@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
-import { referenceNotice, type AiJobRow } from '@/lib/aiHomeworkCheck'
+import { referenceNotice, worksheetNotice, type AiJobRow } from '@/lib/aiHomeworkCheck'
 
 /**
  * §135. Проверка без авторского эталона — другой уровень доверия: модель
@@ -22,6 +22,8 @@ const job = (over: Partial<AiJobRow> = {}): AiJobRow => ({
   last_error: null,
   reference_state: 'used',
   reference_chars: 4200,
+  worksheet_state: 'used',
+  worksheet_chars: null,
   accepted_at: null,
   created_at: '2026-08-18T10:00:00Z',
   completed_at: '2026-08-18T10:01:00Z',
@@ -80,5 +82,24 @@ describe('AiCheckPanel — плашка «без эталона»', () => {
     expect(screen.getByTestId('ai-check-no-reference')).toBeInTheDocument()
     expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
     expect(screen.getByTestId('ai-check-score')).toHaveTextContent('80')
+  })
+})
+
+/** §149.1. Условие ДЗ — след в панели по тому же образцу, что и эталон. */
+describe('worksheetNotice', () => {
+  it('при дошедшем листе молчит', () => {
+    expect(worksheetNotice(job({ worksheet_state: 'used' }))).toBeNull()
+  })
+
+  it('без листа у темы — говорит об этом', () => {
+    expect(worksheetNotice(job({ worksheet_state: 'missing' }))).toMatch(/без условия/i)
+  })
+
+  it('при провале разбора — «не удалось прочитать»', () => {
+    expect(worksheetNotice(job({ worksheet_state: 'failed' }))).toMatch(/не удалось прочитать/i)
+  })
+
+  it('у старых проверок (null) подписи нет', () => {
+    expect(worksheetNotice(job({ worksheet_state: null }))).toBeNull()
   })
 })

@@ -27,8 +27,41 @@ export const ENGINE_ORDER: readonly ParseEngine[] = [FREE_ENGINE, OCR_ENGINE] as
 /** Больше этого не разбираем: 4 материала из 844 на 16.08. */
 export const MAX_REFERENCE_BYTES = 10 * 1024 * 1024
 
-/** Сколько текста эталона уходит в промпт. Было 8000 (§32), стало 14000. */
-export const REFERENCE_CHAR_LIMIT = 14_000
+/**
+ * Сколько текста эталона уходит в промпт. Было 8000 (§32), 14000 (§137),
+ * с §149 — 40000 (≈11 тыс. токенов входа, доли цента на проверку, на фоне
+ * картинок страниц незаметно). Решение владельца: 14000 резало решение в
+ * 933 кБ, а медианный файл — 399 кБ, каждый десятый больше 1,4 МБ; обрезка
+ * при 14000 была нормой, а не краем.
+ */
+export const REFERENCE_CHAR_LIMIT = 40_000
+
+/**
+ * Хвост эталона, который сохраняется при обрезке. В решениях Школково
+ * таблица ответов стоит на ПОСЛЕДНЕЙ странице — самая ценная часть эталона.
+ * Обрезка с хвоста (§137) на «Первой части» отрезала задачи 17–19 вместе с
+ * таблицей ответов, и модель отметила ошибки ровно в 16–19 (прогон 11.09,
+ * балл 73 при справедливых 100). §149.
+ */
+export const REFERENCE_TAIL_CHARS = 3_000
+
+/** Разделитель на месте пропущенной середины — модель обязана его видеть. */
+export const REFERENCE_GAP_MARK = '\n\n[… середина решения пропущена по объёму, ниже — конец документа …]\n\n'
+
+/**
+ * Рубрика с условием ДЗ — рабочий лист. На проде 1057 файлов, ровно по одному
+ * на тему, как и решений. Поле `instructions` у ДЗ пустое почти везде, и до
+ * §149.1 модель узнавала состав заданий из решения — с обратной стороны.
+ */
+export const WORKSHEET_SECTION = 'worksheet_homework'
+
+/**
+ * Свой потолок для условия, НЕ общий с эталоном: лист по объёму сопоставим с
+ * решением, и при одном потолке длинное решение вытеснило бы условие или
+ * наоборот. Обрезка та же — голова плюс хвост: список заданий часто в конце
+ * листа, как таблица ответов в конце решения. §149.1.
+ */
+export const WORKSHEET_CHAR_LIMIT = 20_000
 
 /** Пороги «разбор годен». Ниже — считаем, что движок не справился. */
 export const MIN_MEANINGFUL_TOTAL = 200
@@ -61,6 +94,39 @@ export function nextEngine(current: ParseEngine | null): ParseEngine | null {
   if (current === null) return ENGINE_ORDER[0]
   const index = ENGINE_ORDER.indexOf(current)
   return index >= 0 && index + 1 < ENGINE_ORDER.length ? ENGINE_ORDER[index + 1] : null
+}
+
+/**
+ * Потолок строки с причинами отказа. Она уходит в `last_error`, а его читает
+ * преподаватель в панели: две-три причины с числами быстро превращаются в
+ * простыню. §149.
+ */
+export const MAX_FAILURE_REASON_CHARS = 500
+
+/**
+ * Причина «движок вернул слишком мало текста» — с числом. Без него «мало»
+ * неотличимо от «пусто», а это разные поломки: пусто — движок не увидел
+ * файл, мало — увидел скан и распознал крохи.
+ */
+export function tooLittleTextReason(engine: ParseEngine, text: string, pages: number): string {
+  const meaningful = meaningfulChars(text)
+  const pageCount = Math.max(1, pages)
+  return `движок ${engine} вернул слишком мало текста (${meaningful} знач. симв. на ${pageCount} стр.)`
+}
+
+/**
+ * Одна строка из причин ВСЕХ движков. Раньше в `last_error` уезжала причина
+ * только последнего — пять прогонов подряд читали про баланс `mistral-ocr` и
+ * ни разу про то, что случилось с бесплатным `cloudflare-ai`. Диагностика,
+ * теряющая первую половину причины, уводит в сторону. §149.
+ */
+export function describeParseFailure(reasons: readonly string[], subject = 'авторское решение'): string {
+  const list = reasons.map(r => r.trim()).filter(Boolean)
+  const joined = list.length > 0 ? list.join('; ') : 'разбор PDF не дал текста'
+  const full = `Не удалось распознать ${subject}: ${joined}`
+  return full.length > MAX_FAILURE_REASON_CHARS
+    ? `${full.slice(0, MAX_FAILURE_REASON_CHARS - 1)}…`
+    : full
 }
 
 export interface ParsedAnnotation {
@@ -110,15 +176,24 @@ export interface ReferenceBlock {
 }
 
 /**
- * Обрезка эталона под промпт. Режем ХВОСТ, начало сохраняем: условие и первые
- * шаги решения важнее концовки. Факт обрезки возвращаем отдельно — модель
- * обязана знать, что продолжение не показано, иначе примет его отсутствие за
- * ошибку ученика.
+ * Обрезка эталона под промпт. Режем СЕРЕДИНУ: голова (условия и первые шаги)
+ * и хвост (таблица ответов на последней странице) сохраняются, между ними —
+ * явная пометка о пропуске. До §149 резали хвост, и таблица ответов уходила
+ * первой. Факт обрезки возвращаем отдельно — модель обязана знать, что часть
+ * не показана, иначе примет её отсутствие за ошибку ученика.
  */
-export function truncateReference(text: string, limit = REFERENCE_CHAR_LIMIT): ReferenceBlock {
+export function truncateReference(
+  text: string,
+  limit = REFERENCE_CHAR_LIMIT,
+  tail = REFERENCE_TAIL_CHARS,
+): ReferenceBlock {
   const clean = text.trim()
   if (clean.length <= limit) return { text: clean, truncated: false }
-  return { text: clean.slice(0, limit).trimEnd(), truncated: true }
+  const tailLength = Math.min(tail, Math.max(0, limit - REFERENCE_GAP_MARK.length))
+  const headLength = Math.max(0, limit - tailLength - REFERENCE_GAP_MARK.length)
+  const head = clean.slice(0, headLength).trimEnd()
+  const end = tailLength > 0 ? clean.slice(-tailLength).trimStart() : ''
+  return { text: `${head}${REFERENCE_GAP_MARK}${end}`.trim(), truncated: true }
 }
 
 /**
@@ -136,10 +211,28 @@ export function referencePromptBlock(block: ReferenceBlock): string {
     'Про эталон: он получен автоматическим распознаванием PDF, форматирование и запись формул могли пострадать.',
     'Расхождение в ЗАПИСИ формулы ошибкой ученика не считай — сверяй смысл и результат.',
     block.truncated
-      ? 'Решение показано НЕ ЦЕЛИКОМ (обрезано по объёму): отсутствие продолжения не считай ошибкой ученика.'
+      ? 'Решение показано НЕ ЦЕЛИКОМ: середина пропущена по объёму, начало и конец (таблица ответов) сохранены. Задание, чьё решение попало в пропуск, сверяй по таблице ответов; отсутствие пропущенных шагов не считай ошибкой ученика.'
       : '',
   ].filter(Boolean).join('\n')
 }
 
-/** Состояние эталона у проверки — попадает в панель преподавателя. */
+/**
+ * Блок условия ДЗ для промпта — рабочий лист, распознанный тем же путём, что
+ * и эталон. Идёт ПЕРЕД эталоном: условие → решение → работа. Оговорка о
+ * распознавании обязательна по той же причине, что и у эталона. §149.1.
+ */
+export function worksheetPromptBlock(block: ReferenceBlock): string {
+  return [
+    'УСЛОВИЕ ДЗ (рабочий лист ученика):',
+    block.text,
+    '',
+    'Про условие: лист получен автоматическим распознаванием PDF, нумерация и запись формул могли пострадать.',
+    'По условию определи, сколько всего заданий и что в каждом требуется: только ответ или развёрнутое решение. Число заданий для подсчёта балла бери отсюда.',
+    block.truncated
+      ? 'Условие показано НЕ ЦЕЛИКОМ: середина пропущена по объёму, начало и конец сохранены. Задание из пропуска сверяй по эталону.'
+      : '',
+  ].filter(Boolean).join('\n')
+}
+
+/** Состояние эталона (и условия) у проверки — попадает в панель преподавателя. */
 export type ReferenceState = 'used' | 'missing' | 'failed'
