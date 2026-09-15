@@ -3,6 +3,7 @@ import {
   Camera, ChevronLeft, ChevronRight, FileText, Images, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
 } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
+import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -102,10 +103,13 @@ function useCoarsePointer(): boolean {
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({ topicId, className }: { topicId: string; className?: string }) {
+  // Предпросмотр глазами ученика (§178): блок в состоянии «не сдано», кнопка
+  // сдачи видна, но выключена; хук в этой ветке попыток не читает и не пишет.
+  const preview = usePreviewMode()
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
     startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
-  } = useTopicHomework(topicId)
+  } = useTopicHomework(topicId, { preview })
 
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
@@ -700,10 +704,15 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             data-testid="hw-start-attempt"
             onClick={() => run(() => startAttempt())}
             loading={busy}
+            disabled={preview}
+            title={preview ? PREVIEW_NOOP_MESSAGE : undefined}
           >
             <Upload size={15} />
             {attempts.length === 0 ? 'Загрузить работу' : 'Сдать заново'}
           </Button>
+          {preview && (
+            <p className="mt-2 text-xs text-amber-800">{PREVIEW_NOOP_MESSAGE}: ученик здесь загружает фото или PDF работы.</p>
+          )}
         </div>
       )}
 

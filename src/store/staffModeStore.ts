@@ -16,8 +16,22 @@ import { useAuthStore } from '@/store/authStore'
  * Следствие, которое так и задумано: админские маршруты остаются доступными
  * по прямой ссылке и в режиме учителя. Меню — удобство, безопасность держит
  * база.
+ *
+ * Третий режим `student` (§178) — «глазами ученика»: предпросмотр
+ * ученических экранов из аккаунта владельца. Правило то же: только
+ * представление. Ученические страницы в этом режиме читают то, что персоналу
+ * и так отдаёт RLS (программу, материалы, состав задач), а всё личное
+ * (отметки, попытки, ответы) показывают пустым и НЕ пишут: каждая мутация
+ * ученических хуков в предпросмотре — noop с тостом. Единственный источник
+ * правды о том, что мы в предпросмотре, — `usePreviewMode()` ниже.
  */
-export type StaffMode = 'admin' | 'teacher'
+export type StaffMode = 'admin' | 'teacher' | 'student'
+
+/** Ярлык режима предпросмотра — в шапке и сайдбаре одинаково. */
+export const PREVIEW_ROLE_LABEL = 'Ученик · предпросмотр'
+
+/** Один текст на все выключенные кнопки и все noop-мутации предпросмотра. */
+export const PREVIEW_NOOP_MESSAGE = 'В предпросмотре не сохраняется'
 
 /**
  * Ярлыки ролей — ЕДИНСТВЕННАЯ копия на приложение.
@@ -48,7 +62,19 @@ export function canSwitchStaffMode(role: UserRole | null | undefined): boolean {
 export function effectiveRoleOf(role: UserRole | null | undefined, mode: StaffMode): UserRole | null {
   if (!role) return null
   if (!canSwitchStaffMode(role)) return role
-  return mode === 'teacher' ? 'teacher' : role
+  if (mode === 'teacher') return 'teacher'
+  if (mode === 'student') return 'student'
+  return role
+}
+
+/**
+ * Предпросмотр «глазами ученика» включён: настоящая роль admin/owner и режим
+ * `student`. Для всех остальных — всегда false, что бы ни лежало в хранилище:
+ * реальный ученик или преподаватель без права переключения предпросмотра не
+ * получают.
+ */
+export function isPreviewMode(role: UserRole | null | undefined, mode: StaffMode): boolean {
+  return canSwitchStaffMode(role) && mode === 'student'
 }
 
 /** Ключ на profile_id: на одной машине могут входить разные люди. */
@@ -56,7 +82,8 @@ const STORAGE_PREFIX = 'almiron:staff-mode:'
 
 function readStoredMode(profileId: string): StaffMode {
   try {
-    return localStorage.getItem(STORAGE_PREFIX + profileId) === 'teacher' ? 'teacher' : 'admin'
+    const raw = localStorage.getItem(STORAGE_PREFIX + profileId)
+    return raw === 'teacher' || raw === 'student' ? raw : 'admin'
   } catch {
     // localStorage недоступен (приватный режим, запрет хранилища) — режим
     // просто не переживёт перезагрузку, ломаться тут нечему.
@@ -151,6 +178,31 @@ export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
   },
 }))
 
+
+/**
+ * Режим для ТЕКУЩЕГО рендера, ещё до того, как эффект `hydrate` доедет.
+ *
+ * Эффекты идут после коммита, а `RoleGuard` решает «пустить или увести» в
+ * самом рендере. Если на первом рендере после появления профиля отдать
+ * `mode` из стора (там ещё `admin` от предыдущего профиля или старта), сторож
+ * ученического маршрута в предпросмотре отправит на `/dashboard`, и глубокая
+ * ссылка на тему потеряется. Поэтому, пока стор не поднял режим этого
+ * профиля, читаем сохранённый синхронно — тем же `readStoredMode`, что и
+ * `hydrate`, второго правила нет.
+ */
+function useModeForProfile(profileId: string | null | undefined): StaffMode {
+  const mode      = useStaffModeStore(s => s.mode)
+  const storedFor = useStaffModeStore(s => s.profileId)
+  const hydrate   = useStaffModeStore(s => s.hydrate)
+
+  useEffect(() => {
+    hydrate(profileId ?? null)
+  }, [profileId, hydrate])
+
+  if (!profileId) return 'admin'
+  return storedFor === profileId ? mode : readStoredMode(profileId)
+}
+
 /**
  * Роль, которой СЕЙЧАС работают, — для выборок данных.
  *
@@ -166,14 +218,32 @@ export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
  */
 export function useEffectiveRole(): UserRole | null {
   const profile = useAuthStore(s => s.profile)
-  const mode    = useStaffModeStore(s => s.mode)
-  const hydrate = useStaffModeStore(s => s.hydrate)
+  const mode    = useModeForProfile(profile?.id)
 
-  useEffect(() => {
-    hydrate(profile?.id ?? null)
-  }, [profile?.id, hydrate])
-
+  // Предпросмотр ученика не сужает выборки персонала: хуки с ветками по
+  // роли (`useGroups`, `useLessons`, …) живут на страницах персонала, и по
+  // прямой ссылке в режиме `student` они обязаны показывать то же, что в
+  // админском режиме, а не искать несуществующую строку `students`.
+  // Ученическое представление решают `usePreviewMode()` и сами ученические
+  // хуки — у них своя ветка «предпросмотр».
+  if (isPreviewMode(profile?.role, mode)) return profile?.role ?? null
   return effectiveRoleOf(profile?.role ?? null, mode)
+}
+
+/**
+ * Единственный источник правды «мы в предпросмотре глазами ученика».
+ *
+ * Ученические хуки и компоненты спрашивают только его: (а) хуки данных
+ * ученика читают staff-источник или отдают пустое состояние и превращают
+ * мутации в noop; (б) кнопки получают `disabled` с подсказкой. Ни один
+ * вызов записи (`answer_topic_task`, `reveal_…`, `close_…`,
+ * `topic_section_marks`, `topic_homework_*`, `topic_test_*`,
+ * `record_material_view`) в этом режиме не уходит — это условие приёмки §178.
+ */
+export function usePreviewMode(): boolean {
+  const profile = useAuthStore(s => s.profile)
+  const mode    = useModeForProfile(profile?.id)
+  return isPreviewMode(profile?.role, mode)
 }
 
 /**
@@ -193,12 +263,7 @@ export function useEffectiveRole(): UserRole | null {
  */
 export function useNeedsOwnDataFilter(): boolean {
   const profile = useAuthStore(s => s.profile)
-  const mode    = useStaffModeStore(s => s.mode)
-  const hydrate = useStaffModeStore(s => s.hydrate)
-
-  useEffect(() => {
-    hydrate(profile?.id ?? null)
-  }, [profile?.id, hydrate])
+  const mode    = useModeForProfile(profile?.id)
 
   const role = profile?.role ?? null
   return canSwitchStaffMode(role) && mode === 'teacher'
@@ -210,15 +275,10 @@ export function useNeedsOwnDataFilter(): boolean {
  */
 export function useStaffMode() {
   const profile    = useAuthStore(s => s.profile)
-  const mode       = useStaffModeStore(s => s.mode)
+  const mode       = useModeForProfile(profile?.id)
   const choiceMade = useStaffModeStore(s => s.choiceMade)
   const setMode    = useStaffModeStore(s => s.setMode)
   const chooseMode = useStaffModeStore(s => s.chooseMode)
-  const hydrate    = useStaffModeStore(s => s.hydrate)
-
-  useEffect(() => {
-    hydrate(profile?.id ?? null)
-  }, [profile?.id, hydrate])
 
   const role      = profile?.role ?? null
   const canSwitch = canSwitchStaffMode(role)
@@ -229,6 +289,14 @@ export function useStaffMode() {
     setMode,
     chooseMode,
     canSwitch,
+    /** Предпросмотр глазами ученика (§178). То же, что `usePreviewMode()`. */
+    preview: isPreviewMode(role, mode),
+    /**
+     * Выход из предпросмотра — кнопка «Вернуться» на жёлтой полосе. Возвращает
+     * в режим учителя: оттуда владелец в предпросмотр и попадает по смыслу
+     * («как это выглядит у моих учеников»), а не из панели школы.
+     */
+    exitPreview: () => setMode('teacher'),
     /**
      * Показать ли экран выбора режима. Только тем, у кого две сущности, и
      * только пока выбор в этом входе не сделан.

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
+import { toast } from '@/store/toastStore'
 import {
   type TopicTestAssignmentRow,
   type TopicTestAttemptRow,
@@ -497,7 +499,14 @@ export function useTopicTestAssignment(topicId: string | null) {
  * Загружает тест через привязку к теме, задания через RPC и попытки студента.
  * Позволяет начать новую попытку, сохранять ответы и отправлять результаты.
  */
-export function useTopicTestStudent(topicId: string | null) {
+/**
+ * `preview` (§178): тест из банка глазами ученика без попытки — читаем
+ * привязку и задания (RPC `topic_test_assignment_items` персоналу доступна),
+ * попытку НЕ читаем (под RLS персонала `maybeSingle` по всем ученикам курса
+ * падает на «multiple rows»), `start`/`saveAnswer`/`submit` — noop с тостом.
+ */
+export function useTopicTestStudent(topicId: string | null, options: { preview?: boolean } = {}) {
+  const preview = !!options.preview
   const profile = useAuthStore(s => s.profile)
 
   const [test, setTest] = useState<{ id: string; title: string; description: string | null } | null>(null)
@@ -570,12 +579,15 @@ export function useTopicTestStudent(topicId: string | null) {
         setItems((itemsData ?? []) as StudentTestItem[])
       }
 
-      // 3. Загружаем попытку студента
-      const { data: attemptData, error: attemptErr } = await supabase
-        .from('topic_test_attempts')
-        .select('*')
-        .eq('assignment_id', assignmentId)
-        .maybeSingle()
+      // 3. Загружаем попытку студента (в предпросмотре — нет: у персонала
+      // своей попытки нет, а чужие показывать нельзя)
+      const { data: attemptData, error: attemptErr } = preview
+        ? { data: null, error: null }
+        : await supabase
+          .from('topic_test_attempts')
+          .select('*')
+          .eq('assignment_id', assignmentId)
+          .maybeSingle()
 
       if (cancelled) return
       if (attemptErr) {
@@ -607,19 +619,21 @@ export function useTopicTestStudent(topicId: string | null) {
     return () => {
       cancelled = true
     }
-  }, [topicId, profile, tick])
+  }, [topicId, profile, tick, preview])
 
   const start = useCallback(async () => {
+    if (preview) { toast.info(PREVIEW_NOOP_MESSAGE); return }
     if (!assignmentId) throw new Error('Привязка не найдена')
     const { error: err } = await supabase.rpc('topic_test_start_attempt', {
       p_assignment_id: assignmentId,
     })
     if (err) throw err
     reload()
-  }, [assignmentId, reload])
+  }, [assignmentId, reload, preview])
 
   const saveAnswer = useCallback(
     async (itemId: string, text: string) => {
+      if (preview) { toast.info(PREVIEW_NOOP_MESSAGE); return }
       if (!attempt) throw new Error('Попытка не создана')
       const { error: err } = await supabase.rpc('topic_test_save_answer', {
         p_attempt_id: attempt.id,
@@ -629,17 +643,18 @@ export function useTopicTestStudent(topicId: string | null) {
       if (err) throw err
       // Не перезагружаем на каждый ввод — это UX
     },
-    [attempt],
+    [attempt, preview],
   )
 
   const submit = useCallback(async () => {
+    if (preview) { toast.info(PREVIEW_NOOP_MESSAGE); return }
     if (!attempt) throw new Error('Попытка не создана')
     const { error: err } = await supabase.rpc('topic_test_submit_attempt', {
       p_attempt_id: attempt.id,
     })
     if (err) throw err
     reload()
-  }, [attempt, reload])
+  }, [attempt, reload, preview])
 
   const refresh = useCallback(() => {
     reload()

@@ -261,8 +261,10 @@ describe('App.tsx routing for Etap 4', () => {
   })
 
   it('student-only routes: my-assignments', () => {
-    expect(src).toContain("path=\"/my-assignments\" element={<RoleGuard allow={['student']}>")
-    expect(src).toContain("path=\"/my-assignments/:id\" element={<RoleGuard allow={['student']}>")
+    // §178: в предпросмотре глазами ученика маршрут отвечает заглушкой
+    // (`preview="stub"`), охрана по роли прежняя — только student.
+    expect(src).toContain("path=\"/my-assignments\" element={<RoleGuard allow={['student']} preview=\"stub\">")
+    expect(src).toContain("path=\"/my-assignments/:id\" element={<RoleGuard allow={['student']} preview=\"stub\">")
   })
 
   it('curator is NOT granted access to any Etap 4 route', () => {

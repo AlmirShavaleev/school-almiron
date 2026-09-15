@@ -14,13 +14,15 @@ import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
  * повторён в десятке хуков; здесь он нужен, чтобы отдать p_student_id в
  * get_student_topic_journal (RPC сама проверит, что это «сам ученик»).
  */
-export function useMyStudentId() {
+export function useMyStudentId(enabled = true) {
   const profileId = useAuthStore(s => s.profile?.id)
   const [studentId, setStudentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!profileId) { setStudentId(null); setLoading(false); return }
+    // `enabled = false` — предпросмотр глазами ученика (§178): у владельца
+    // строки `students` нет, и искать её незачем.
+    if (!profileId || !enabled) { setStudentId(null); setLoading(false); return }
     let cancelled = false
     setLoading(true)
     supabase.from('students').select('id').eq('profile_id', profileId).maybeSingle()
@@ -30,7 +32,7 @@ export function useMyStudentId() {
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [profileId])
+  }, [profileId, enabled])
 
   return { studentId, loading }
 }

@@ -6,9 +6,10 @@ import { SupportWidget } from '@/components/shared/SupportWidget'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { useAuthStore } from '@/store/authStore'
-import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
+import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { StaffModeSwitch } from './StaffModeSwitch'
 import { StaffModeGate } from './StaffModeGate'
+import { StudentPreviewBanner } from './StudentPreviewBanner'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
@@ -67,7 +68,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
 
 export function DashboardLayout() {
   const { profile, loading } = useAuthStore()
-  const { effectiveRole, needsModeChoice } = useStaffMode()
+  const { effectiveRole, needsModeChoice, preview } = useStaffMode()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -153,11 +154,15 @@ export function DashboardLayout() {
             <div className="hidden sm:block">
               <div className="text-sm font-semibold text-graphite-950 leading-tight">{profile.full_name || 'Профиль'}</div>
               <div className="text-xs text-slate-500 leading-tight">
-                {ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
+                {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
               </div>
             </div>
           </div>
         </header>
+
+        {/* Полоса предпросмотра «глазами ученика» (§178): под шапкой, на всю
+            ширину содержимого, на любой странице, пока режим включён. */}
+        <StudentPreviewBanner />
 
         {/* overflow-x-clip — защита от переполнения на телефоне (§158). Любой
             элемент шире экрана (строка без пробелов, длинный чип, ряд кнопок)

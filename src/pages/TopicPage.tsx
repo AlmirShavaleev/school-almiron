@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
+import { isTopicOpen } from '@/lib/topicAvailability'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
@@ -31,6 +33,7 @@ interface TopicInfo {
   title:          string
   order_index:    number
   available_from: string | null
+  is_open:        boolean | null
   module_title:   string
   course_title:   string
   group_id:       string
@@ -68,7 +71,13 @@ export function TopicPage() {
   const { groupId, topicId } = useParams<{ groupId: string; topicId: string }>()
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
-  const canBypassAvailability = !!profile?.role && ['teacher', 'curator', 'admin', 'owner'].includes(profile.role)
+  // Предпросмотр глазами ученика (§178): строки `students` у владельца нет,
+  // тему берём под RLS персонала; личные хуки ниже в этом режиме отдают
+  // пустое состояние и ничего не пишут.
+  const preview  = usePreviewMode()
+  // В предпросмотре обход закрытой темы не действует: ученик закрытую тему
+  // не видит — и владелец в его роли не должен.
+  const canBypassAvailability = !preview && !!profile?.role && ['teacher', 'curator', 'admin', 'owner'].includes(profile.role)
 
   const [topic,   setTopic]   = useState<TopicInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,8 +97,9 @@ export function TopicPage() {
 
   // Тестирования из раздела «Тесты», выданные этому ученику. Отдельным хуком, а
   // не общим запросом ниже: RPC сама решает, что ученику видно, включая
-  // закрытую тему.
-  const { variants: topicVariants } = useTopicStudentVariants(topicId ?? undefined)
+  // закрытую тему. В предпросмотре RPC не зовём: выдач у персонала нет, а
+  // «есть ли задачи к уроку» решает staff-источник хука задач.
+  const { variants: topicVariants } = useTopicStudentVariants(preview ? undefined : topicId ?? undefined)
 
   // Задачи к уроку (§162). Хук живёт здесь, а не внутри вкладки: страница
   // показывает «решено N из M» в шапке группы, и второй такой же запрос при
@@ -114,15 +124,18 @@ export function TopicPage() {
     async function load() {
       setLoading(true)
       try {
-        // 1. Student record (страница ученика: без записи students темы нет)
-        const { data: student } = await supabase
-          .from('students').select('id').eq('profile_id', profile!.id).single()
-        if (!student || cancelled) return
+        // 1. Student record (страница ученика: без записи students темы нет).
+        // В предпросмотре её и не ищем — тему персоналу отдаёт RLS.
+        if (!preview) {
+          const { data: student } = await supabase
+            .from('students').select('id').eq('profile_id', profile!.id).single()
+          if (!student || cancelled) return
+        }
 
         // 2. Topic + group info + homework + test (parallel)
         const [topicRes, groupRes, hwRes, testRes] = await Promise.all([
           supabase.from('topics')
-            .select('id, title, order_index, available_from, modules(id, title, courses(id, title, subject))')
+            .select('id, title, order_index, available_from, is_open, modules(id, title, courses(id, title, subject))')
             .eq('id', topicId!).single(),
           supabase.from('groups')
             .select('id, name').eq('id', groupId!).single(),
@@ -140,6 +153,7 @@ export function TopicPage() {
           title:          td.title,
           order_index:    td.order_index,
           available_from: td.available_from,
+          is_open:        td.is_open ?? null,
           module_title:   td.modules?.title || '',
           course_title:   td.modules?.courses?.title || '',
           group_id:       groupId!,
@@ -154,7 +168,7 @@ export function TopicPage() {
 
     load()
     return () => { cancelled = true }
-  }, [topicId, groupId, profile])
+  }, [topicId, groupId, profile, preview])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -162,10 +176,15 @@ export function TopicPage() {
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
   const embedUrl   = ytEmbed || vimeoEmbed
-  // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC
-  const isLocked   = topic?.available_from
-    ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
-    : false
+  // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC.
+  // В предпросмотре — полное правило открытости (`isTopicOpen`, тумблер и
+  // дата): ученику закрытую тумблером тему база не отдаёт, а персоналу отдаёт,
+  // и без этой проверки владелец увидел бы то, чего ученик не видит.
+  const isLocked   = preview && topic
+    ? !isTopicOpen(topic)
+    : topic?.available_from
+      ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
+      : false
 
   // ── States ───────────────────────────────────────────────────────────────────
 
@@ -190,7 +209,9 @@ export function TopicPage() {
       </div>
       <h2 className="text-xl font-bold text-gray-800">Тема ещё не открыта</h2>
       <p className="text-gray-500 text-sm">
-        Откроется {new Date(topic.available_from!.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+        {topic.available_from && topic.is_open === null
+          ? `Откроется ${new Date(topic.available_from.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
+          : 'Откроется позже'}
       </p>
       <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">← Назад</button>
     </div>
@@ -226,7 +247,9 @@ export function TopicPage() {
   // Вкладка нужна и когда теста банка нет, а тестирование выдано.
   // Скрытие рубрики решает один переключатель в перечне (`TOPIC_SECTIONS_HIDDEN`),
   // а не условие по месту: рубрика уже однажды разъезжалась по копиям (§100).
-  const hasAnyTest = (hasTest || topicVariants.length > 0) && isTopicSectionVisible('test')
+  // В предпросмотре «выдано ли» отвечает состав задач из staff-источника.
+  const hasTopicTasks = preview ? topicTasks.total > 0 : topicVariants.length > 0
+  const hasAnyTest = (hasTest || hasTopicTasks) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
@@ -293,7 +316,8 @@ export function TopicPage() {
         type="button"
         data-testid={`topic-group-mark-${groupKey}`}
         aria-pressed={marked}
-        disabled={sectionMarks.loading}
+        disabled={sectionMarks.loading || preview}
+        title={preview ? PREVIEW_NOOP_MESSAGE : undefined}
         onClick={async () => {
           setMarkError(null)
           try {
@@ -487,7 +511,7 @@ export function TopicPage() {
         /* Задачи к уроку (§162) и тест из банка — разные системы. Если есть
            оба, показываем оба с подписями, а не выбираем один молча. */
         <div className="space-y-6">
-          {topicVariants.length > 0 && (
+          {hasTopicTasks && (
             <section>
               {hasTest && (
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">Задачи к уроку</h3>
@@ -497,7 +521,7 @@ export function TopicPage() {
           )}
           {hasTest && (
             <section>
-              {topicVariants.length > 0 && (
+              {hasTopicTasks && (
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">Тест по теме</h3>
               )}
               <TopicTestStudent topicId={topic.id} />

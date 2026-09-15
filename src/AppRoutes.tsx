@@ -8,6 +8,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
 import { CatalogAttachMode } from '@/components/catalog/CatalogAttachMode'
+import { PreviewStubGate } from '@/components/layout/StudentPreviewUnavailable'
 
 // Dashboard
 const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
@@ -123,11 +124,13 @@ export default function AppRoutes() {
       <Route element={<DashboardLayout />}>
         {/* Доступно всем авторизованным */}
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
+        {/* В предпросмотре глазами ученика (§178) — заглушка: уведомления у
+            владельца свои, показывать их под ярлыком «Ученик» было бы обманом. */}
+        <Route path="/notifications" element={<PreviewStubGate><NotificationsPage /></PreviewStubGate>} />
         <Route path="/settings" element={<SettingsPage />} />
 
         {/* Дашборды по ролям */}
-        <Route path="/student" element={<RoleGuard allow={['student']}><StudentDashboard /></RoleGuard>} />
+        <Route path="/student" element={<RoleGuard allow={['student']} preview="stub"><StudentDashboard /></RoleGuard>} />
         <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
         {/* Маршрута /curator больше нет (снесён 2026-08-05 по решению
             владельца). «Кабинет куратора» стоял на легаси-механике —
@@ -181,7 +184,7 @@ export default function AppRoutes() {
         <Route path="/homeworks" element={<HomeworksV2RoleRouter />} />
         <Route path="/homework-review" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewV2Page /></RoleGuard>} />
         <Route path="/homework-templates/new" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkTemplateBuilderPage /></RoleGuard>} />
-        <Route path="/my-homeworks" element={<RoleGuard allow={['student']}><MyHomeworksV2Page /></RoleGuard>} />
+        <Route path="/my-homeworks" element={<RoleGuard allow={['student']} preview="stub"><MyHomeworksV2Page /></RoleGuard>} />
         <Route path="/mock-exams" element={<MockExamsPage />} />
 
         {/* Обёртка каталога — режим подбора задач к уроку (§164). Вне режима не
@@ -206,13 +209,16 @@ export default function AppRoutes() {
         <Route path="/variants/:variantId/assign" element={<RoleGuard allow={['teacher','admin','owner']}><AssignVariantPage /></RoleGuard>} />
         <Route path="/variants/:variantId/assignments" element={<RoleGuard allow={['teacher','admin','owner']}><VariantAssignmentsPage /></RoleGuard>} />
         <Route path="/variants/:variantId/work/:studentAssignmentId" element={<RoleGuard allow={['teacher','admin','owner']}><VariantStudentWorkPage /></RoleGuard>} />
-        <Route path="/student/variants" element={<RoleGuard allow={['student']}><StudentVariantsPage /></RoleGuard>} />
+        {/* Варианты ученика в предпросмотре (§178) — заглушка: выдачи и
+            попытки личные; конструктор тоже, иначе под ярлыком «Ученик» он
+            сохранял бы вариант персонала. */}
+        <Route path="/student/variants" element={<RoleGuard allow={['student']} preview="stub"><StudentVariantsPage /></RoleGuard>} />
         {/* Конструктор один на всех (§128): у персонала он сохраняет обычный
             вариант в «Тесты», у ученика — самоназначение на прохождение. */}
-        <Route path="/student/variants/generate" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><StudentVariantGeneratePage /></RoleGuard>} />
-        <Route path="/student/variants/build" element={<RoleGuard allow={['student']}><StudentVariantBuildPage /></RoleGuard>} />
-        <Route path="/student/variants/stats" element={<RoleGuard allow={['student']}><StudentNumberStatsPage /></RoleGuard>} />
-        <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']}><StudentVariantDetailPage /></RoleGuard>} />
+        <Route path="/student/variants/generate" element={<RoleGuard allow={['student','teacher','curator','admin','owner']} preview="stub"><StudentVariantGeneratePage /></RoleGuard>} />
+        <Route path="/student/variants/build" element={<RoleGuard allow={['student']} preview="stub"><StudentVariantBuildPage /></RoleGuard>} />
+        <Route path="/student/variants/stats" element={<RoleGuard allow={['student']} preview="stub"><StudentNumberStatsPage /></RoleGuard>} />
+        <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']} preview="stub"><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Общая очередь проверки PDF-ДЗ нового контура */}
         <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><HomeworkReviewQueuePage /></RoleGuard>} />
@@ -225,16 +231,19 @@ export default function AppRoutes() {
         <Route path="/assign-homework" element={<RoleGuard allow={['teacher','admin','owner']}><AssignHomeworkPage /></RoleGuard>} />
         <Route path="/review-submissions" element={<RoleGuard allow={['teacher','admin','owner']}><ReviewSubmissionsPage /></RoleGuard>} />
         <Route path="/review-submissions/:id" element={<RoleGuard allow={['teacher','admin','owner']}><SubmissionDetailPage /></RoleGuard>} />
-        <Route path="/my-assignments" element={<RoleGuard allow={['student']}><MyAssignmentsPage /></RoleGuard>} />
-        <Route path="/my-assignments/:id" element={<RoleGuard allow={['student']}><AssignmentDetailPage /></RoleGuard>} />
+        <Route path="/my-assignments" element={<RoleGuard allow={['student']} preview="stub"><MyAssignmentsPage /></RoleGuard>} />
+        <Route path="/my-assignments/:id" element={<RoleGuard allow={['student']} preview="stub"><AssignmentDetailPage /></RoleGuard>} />
 
-        {/* Только ученик */}
-        <Route path="/my-course" element={<RoleGuard allow={['student']}><MyCoursesPage /></RoleGuard>} />
-        <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']}><StudentCoursePage /></RoleGuard>} />
-        <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']}><TopicPage /></RoleGuard>} />
-        {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт). */}
-        <Route path="/my-homework" element={<RoleGuard allow={['student']}><MyTopicHomeworkPage /></RoleGuard>} />
-        <Route path="/my-progress" element={<RoleGuard allow={['student']}><MyProgressPage /></RoleGuard>} />
+        {/* Только ученик — и admin/owner в предпросмотре «глазами ученика»
+            (§178): три страницы курса читают программу и материалы, которые
+            персоналу и так отдаёт RLS, личное показывают пустым и не пишут. */}
+        <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
+        <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
+        <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
+        {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт).
+            В предпросмотре — заглушка: здесь личные работы ученика. */}
+        <Route path="/my-homework" element={<RoleGuard allow={['student']} preview="stub"><MyTopicHomeworkPage /></RoleGuard>} />
+        <Route path="/my-progress" element={<RoleGuard allow={['student']} preview="stub"><MyProgressPage /></RoleGuard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
-import { ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
+import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
@@ -116,7 +116,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const profile = useAuthStore(s => s.profile)
-  const { effectiveRole } = useStaffMode()
+  const { effectiveRole, preview } = useStaffMode()
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const badges = useSidebarBadges()
@@ -127,6 +127,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // Меню рисуется РОЛЬЮ ПРЕДСТАВЛЕНИЯ, а не ролью из профиля: у владельца в
   // режиме учителя пропадают админские пункты. Пропали только из меню —
   // маршруты по прямой ссылке живы, их сторожит RoleGuard по настоящей роли.
+  // В предпросмотре (§178) роль представления — `student`: те же пункты, что у
+  // настоящего ученика; личные страницы из них отвечают заглушкой.
   const menuRole     = effectiveRole ?? profile.role
   const isStudent    = menuRole === 'student'
   const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
@@ -206,7 +208,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-white text-sm font-semibold truncate leading-tight">{profile.full_name}</div>
-              <div className="text-primary-200 text-xs mt-0.5">{ROLE_LABELS[menuRole] || menuRole}</div>
+              <div className="text-primary-200 text-xs mt-0.5">{preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[menuRole] || menuRole}</div>
             </div>
           </div>
         </div>

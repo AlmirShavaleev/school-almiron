@@ -71,6 +71,18 @@ describe('Sidebar в режимах представления', () => {
     expect(await screen.findByText('Преподаватель')).toBeInTheDocument()
   })
 
+  // §178: предпросмотр глазами ученика — меню ученическое, подпись честная.
+  it('в режиме ученика меню ученическое, подпись — «Ученик · предпросмотр»', async () => {
+    localStorage.setItem(`almiron:staff-mode:${OWNER_PROFILE_ID}`, 'student')
+    renderSidebar()
+
+    expect(await screen.findByText('Мой курс')).toBeInTheDocument()
+    expect(screen.getByText('Домашние задания')).toBeInTheDocument()
+    expect(screen.getByText('Ученик · предпросмотр')).toBeInTheDocument()
+    expect(screen.queryByText('Панель админа')).not.toBeInTheDocument()
+    expect(screen.queryByText('Программа курса')).not.toBeInTheDocument()
+  })
+
   it('обычного учителя переключатель не касается: меню то же', async () => {
     // Ключ чужого профиля не должен подхватываться — режим на profile_id.
     localStorage.setItem(`almiron:staff-mode:${OWNER_PROFILE_ID}`, 'teacher')

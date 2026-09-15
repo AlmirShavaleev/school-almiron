@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { attemptsNewestFirst, type TopicHomeworkAttemptRow } from '@/lib/topicHomework'
 
 /**
@@ -25,18 +26,19 @@ export const TOPIC_HOMEWORK_STATE_LABEL: Record<TopicHomeworkState, string> = {
 }
 
 export function useMyTopicHomeworkState(topicId: string | null) {
-  const { studentId, loading: resolvingStudent } = useMyStudentId()
+  const preview = usePreviewMode()
+  const { studentId, loading: resolvingStudent } = useMyStudentId(!preview)
   const [state, setState] = useState<TopicHomeworkState>('none')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (resolvingStudent) return
-    if (!topicId || !studentId) { setState('none'); setLoading(false); return }
+    if (resolvingStudent && !preview) return
+    if (!topicId || (!studentId && !preview)) { setState('none'); setLoading(false); return }
 
     let cancelled = false
     setLoading(true)
 
-    async function load(sid: string) {
+    async function load(sid: string | null) {
       const { data: homework } = await supabase
         .from('topic_homework')
         .select('id')
@@ -45,6 +47,10 @@ export function useMyTopicHomeworkState(topicId: string | null) {
 
       if (cancelled) return
       if (!homework?.id) { setState('none'); setLoading(false); return }
+
+      // Предпросмотр (§178): попытки не читаем — под RLS персонала пришли бы
+      // чужие. ДЗ есть, своей работы нет: «Не сдано», как у нового ученика.
+      if (sid === null) { setState('not_submitted'); setLoading(false); return }
 
       const { data: attempts } = await supabase
         .from('topic_homework_attempts')
@@ -64,9 +70,9 @@ export function useMyTopicHomeworkState(topicId: string | null) {
       setLoading(false)
     }
 
-    void load(studentId)
+    void load(preview ? null : studentId)
     return () => { cancelled = true }
-  }, [topicId, studentId, resolvingStudent])
+  }, [topicId, studentId, resolvingStudent, preview])
 
-  return { state, loading: loading || resolvingStudent }
+  return { state, loading: preview ? loading : loading || resolvingStudent }
 }

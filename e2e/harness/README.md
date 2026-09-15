@@ -145,3 +145,12 @@ PostgREST — клиент проходит свою ветку ошибки.
 `topicVariants` в `fixtures.mjs`: по строке `test_variants` с `topic_id` на
 каждую тему из `MATRIX_TOPICS` (§174), чтобы «Материалы» и «Результаты
 тестов» показывали одни и те же числа.
+
+Персона **`ownerPreview`** и сцены **`p01-switch`** (1280), **`p02-my-course`**,
+**`p03-course`**, **`p04-topic-tasks`** / **`-input`** (390 и 1280),
+**`p04-topic-hw`**, **`p05-my-homework-stub`** — §178 (board/031):
+владелец с переключателем шапки на «Ученик» — предпросмотр ученических
+экранов. Тот же владелец, что `owner`, но `staffMode: 'student'` в
+localStorage контекста; в логе на этих страницах не должно быть ни
+`students`, ни `topic_tasks_for_student`, ни одной RPC записи — задачи к
+уроку приходят из `topic_tasks_for_staff`, поле ответа и кнопки выключены.

@@ -15595,3 +15595,135 @@ requested…» — фикстура `topic_test_attempts`, не эта рабо�
 слепота, что у §162 до RPC. К базе по правилам не ходил, поэтому не проверял;
 если подтвердится — нужна RPC вида `course_topic_task_counts(p_course_id)`
 под `course_is_staff`, или расширение `tv_select` на персонал курса темы.
+
+## §178. «Глазами ученика»: предпросмотр ученических экранов из аккаунта владельца (board/031) (2026-09-15)
+
+Ветка `work/student-preview` поверх §173–§177. Просьба владельца: «сверху
+"Администратор | Учитель"; хочу ещё "Ученик" — видеть, как это выглядит у
+них, не заходя на ученический аккаунт». Демо-impersonation (`components/demo`,
+`lib/demo.ts`) не тронут: это вход под чужим аккаунтом, а здесь — только
+представление своего.
+
+### Третий режим — то же правило, что у первых двух
+
+`StaffMode` получил `student`; `effectiveRoleOf` отдаёт `student` только
+admin/owner, `isPreviewMode(role, mode)` — их же и только в этом режиме.
+Настоящий ученик или преподаватель с `student` в хранилище (ключ тот же,
+`almiron:staff-mode:<profile_id>`) предпросмотра не получают по построению,
+а не по проверке на странице. RLS, `RoleGuard` по роли, `get_my_role()` не
+менялись; ни `auth`, ни сессия, ни JWT не подменяются.
+
+Один источник правды — `usePreviewMode()`. Ученические хуки спрашивают
+только его; компоненты — `disabled` по нему. `useEffectiveRole()` (сужение
+выборок персонала в `useGroups`, `useLessons`, …) в предпросмотре отдаёт
+настоящую роль: эти хуки живут на страницах персонала, и по прямой ссылке в
+режиме `student` они обязаны показывать то же, что в админском, а не искать
+несуществующую строку `students`.
+
+**Гидратация стала синхронной для рендера.** `hydrate` жил в эффекте, а
+`RoleGuard` решает «пустить или увести» в рендере: на первом рендере после
+появления профиля стор ещё держал `admin`, сторож отправлял на `/dashboard`,
+и глубокая ссылка на тему в предпросмотре терялась (тест на `/student` это
+поймал: вместо заглушки — список курсов после отскока). `useModeForProfile`
+читает сохранённый режим тем же `readStoredMode`, пока стор не поднял режим
+этого профиля; второго правила чтения нет.
+
+### Маршруты: третья дверь сторожа, только там, где проставлена
+
+`RoleGuard` получил `preview?: 'allow' | 'stub'`. `allow` — три страницы
+курса (`/my-course`, `/my-course/:groupId`, `…/topic/:topicId`): их данные
+персоналу и так отдаёт RLS. `stub` — всё личное: `/student`, `/my-homework`,
+`/my-progress`, `/student/variants*` (включая конструктор — иначе под
+ярлыком «Ученик» он сохранял бы вариант персонала, §128), `/my-assignments*`,
+`/my-homeworks`; `/notifications` под `PreviewStubGate`, потому что у
+владельца они свои. Заглушка честная: «В предпросмотре недоступно: здесь
+личные данные ученика» и ссылка на `/students` (§171) — пустой список читался
+бы как «у учеников пусто». Без флага режим на охрану не влияет.
+`/dashboard` в предпросмотре ведёт на `/my-course`, «Вернуться» на жёлтой
+полосе — в режим учителя и на `/dashboard`.
+
+### Откуда данные, если не от `auth_student_id()`
+
+- **Список курсов** — `groups` с вложенным курсом под RLS персонала (та же
+  политика, что у «Программы курса»: `course_is_staff` для преподавателя,
+  всё — для админа), каркасы (`is_template`) выброшены. Второго правила «мои
+  ли это курсы» на клиенте не заведено намеренно. Карточка та же, «N / M
+  тем открыто» — тем же `isTopicOpen`.
+- **Курс** — `useStudentCourseProgram`: группа по id из `groups`, модули,
+  темы, рубрики, ДЗ и тесты — те же запросы, что у ученика. Попытки ДЗ и
+  тестов **не читаются вовсе**: под RLS персонала пришли бы работы всех
+  учеников курса и показались бы как «моя». Прогресс честно пустой. «Эта
+  неделя» (`student_week_plan()`, от `auth_student_id()`) не зовётся.
+- **Тема** — без строки `students`; обход закрытой темы у персонала в
+  предпросмотре снят, и проверка — полное правило `isTopicOpen` (тумблер и
+  дата): ученику закрытую тумблером тему база не отдаёт, персоналу отдаёт.
+  Скрытые материалы (`is_visible = false`) в ученическом списке предпросмотра
+  отфильтрованы по той же причине. «Решение ДЗ» ведёт себя как у ученика без
+  проверенной работы: `topic_solution_state` у персонала отдаёт
+  `unlocked = false` при наличии ДЗ.
+- **Задачи к уроку** — состав из `topic_tasks_for_staff` (она у персонала
+  есть), приведённый к `TopicTaskRow` с `closed_by = null`,
+  `attempts_count = 0`, `solution_shown_at = null`; картинки условий — из
+  `catalog_task_assets`, как их читает каталог (staff-RPC ассетов не отдаёт).
+  `topic_tasks_for_student` и `topic_student_variants` не зовутся; «есть ли
+  задачи» решает staff-состав.
+- **ДЗ** — `useTopicHomework(topicId, { preview })`: само ДЗ и его файлы —
+  да, попытки/вердикты/имена — нет. Опция, а не `usePreviewMode()` внутри:
+  этим же хуком живёт редактор преподавателя. **Тест из банка** —
+  `useTopicTestStudent(topicId, { preview })`: попытка не читается (у
+  персонала `maybeSingle` по всем ученикам курса падал на «multiple rows» —
+  это и был «JSON object requested…» на харнессе из §176).
+
+### Где мутации заменены на noop (условие приёмки)
+
+Все — с одним тостом `PREVIEW_NOOP_MESSAGE` («В предпросмотре не
+сохраняется»), и все кнопки к ним выключены с той же подсказкой:
+`useTopicTasks.answer/reveal/closeSelf`; `useTopicSectionMarks.toggle`
+(отметки не читаются, `canMark` true — кнопка видна, но выключена);
+`useTopicHomework` — `startAttempt/uploadAttemptFiles/uploadAttemptFile/
+removeAttemptFile/reorderAttemptFiles/submitAttempt`;
+`useTopicTestStudent` — `start/saveAnswer/submit`; `record_material_view` в
+`TopicMaterialItems` (`countView` только у настоящего ученика). Приёмочный
+тест `TopicPage.preview.test.tsx` дёргает все действия руками (Enter в поле,
+клики по выключенным кнопкам) и проверяет `not.toHaveBeenCalledWith` по
+каждой RPC записи, пустой список `insert/update/delete` и что таблицы
+`topic_section_marks`, `topic_homework_attempts`, `topic_test_attempts`,
+`test_variant_answers` не читались.
+
+Чего в предпросмотре не увидеть: «Разобрал» (появляется только после
+открытого решения, а разбор в предпросмотре не открывается) и состояние
+«неверно». Это следствие «ничего не пишем», а не пробел.
+
+### Проверено
+
+`npx tsc -b` → 0 последним. Новые тесты: `staffModeStore.test.ts` +4,
+`StaffModeSwitch.preview.test.tsx` 7 (три режима только admin/owner, полоса,
+«Вернуться», настоящий ученик полосы не видит), `Sidebar.staffMode` +1
+(ученическое меню и подпись), `RoleGuard.preview.test.tsx` 9 (allow/stub,
+`/dashboard` → `/my-course`, без флага не влияет, ученик и преподаватель),
+`MyCoursesPage.preview.test.tsx` 2 (без каркасов, без `students` и
+`group_students`), `TopicPage.preview.test.tsx` 8 (приёмка выше + закрытая
+тумблером тема), `studentPreviewHooks.test.ts` 7 (маппинг staff-строк и
+ассетов, noop-мутации четырёх хуков, каркас не показывается). Текстовый
+тест `homeworkAssignmentSystem.test.ts` подправлен под `preview="stub"`.
+Прогон `src/store src/components/layout src/components/auth
+src/components/courseProgram src/hooks src/pages/__tests__` — зелёный
+(строки `Test Files` в отчёте). eslint по изменённым файлам — новых
+замечаний нет (те же старые `any` и `set-state-in-effect`).
+
+Харнесс: персона `ownerPreview` (тот же владелец, `staffMode: 'student'`).
+Сцены `p01-switch` (1280), `p02-my-course` (390), `p03-course` (390),
+`p04-topic-tasks` и `-input` (1280 и 390), `p04-topic-hw` (390),
+`p05-my-homework-stub` (390). В логе ни одного `students`, `topic_tasks_for_
+student`, `answer_…`, `topic_section_marks`, `topic_homework_attempts` на
+страницах предпросмотра; 0 `ACTION-FAIL`, 0 `OVERFLOW`, 0 `PAGEERROR`.
+Снимки — `patches/031-shots/`. Сцены ученика `s04-topic-tasks*` прогнаны
+после правки — по-прежнему `topic_tasks_for_student` и живые ответы.
+
+### Не сделано / замечания
+
+К базе не ходил, миграций нет — только представление. Экран выбора режима
+при входе (`StaffModeGate`) оставлен с двумя вариантами: предпросмотр —
+кнопка по ходу работы, а не способ входа. Бейдж непрочитанных у пункта
+«Уведомления» в ученическом меню — владельца (он от `useSidebarBadges`),
+сама страница под заглушкой.

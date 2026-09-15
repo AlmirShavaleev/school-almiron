@@ -30,6 +30,10 @@ const byId = (id) => profiles.find(p => p.id === id)
 export const personas = {
   student: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   owner: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §178: тот же владелец, но переключатель в шапке стоит на «Ученик» —
+  // предпросмотр ученических экранов. Отдельная персона, а не действие в
+  // сцене: контекст (и localStorage с режимом) один на персону и ширину.
+  ownerPreview: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'student' },
   guest: { user: null },
 }
 

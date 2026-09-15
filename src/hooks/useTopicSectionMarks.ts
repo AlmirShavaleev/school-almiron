@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
+import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
+import { toast } from '@/store/toastStore'
 import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
 
 /**
@@ -14,14 +16,20 @@ import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
  * Группа `homework` сюда не попадает никогда: её засчитывает принятая работа
  * (`topicProgress.groupDone`). Попытку отметить её руками ловит и клиент, и
  * CHECK таблицы.
+ *
+ * Предпросмотр глазами ученика (§178): `topic_section_marks` не читаем и не
+ * пишем — отметок нет, кнопка видна (`canMark`), но выключена на странице;
+ * `toggle` на всякий случай тоже noop с тостом.
  */
 export function useTopicSectionMarks(topicId: string | null) {
-  const { studentId, loading: resolvingStudent } = useMyStudentId()
+  const preview = usePreviewMode()
+  const { studentId, loading: resolvingStudent } = useMyStudentId(!preview)
   const [marks, setMarks] = useState<Set<TopicGroupKey>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (preview) { setMarks(new Set()); setLoading(false); return }
     if (resolvingStudent) return
     if (!topicId || !studentId) { setMarks(new Set()); setLoading(false); return }
 
@@ -42,9 +50,10 @@ export function useTopicSectionMarks(topicId: string | null) {
       })
 
     return () => { cancelled = true }
-  }, [topicId, studentId, resolvingStudent])
+  }, [topicId, studentId, resolvingStudent, preview])
 
   const toggle = useCallback(async (group: TopicGroupKey) => {
+    if (preview) { toast.info(PREVIEW_NOOP_MESSAGE); return }
     if (!topicId || !studentId) throw new Error('Не удалось определить ученика')
     if (!isSelfMarkable(group)) throw new Error('Этот раздел засчитывает система, а не отметка')
 
@@ -70,7 +79,7 @@ export function useTopicSectionMarks(topicId: string | null) {
       setError(`${message}: ${err.message}`)
       throw err
     }
-  }, [marks, topicId, studentId])
+  }, [marks, topicId, studentId, preview])
 
   return {
     marks,
@@ -78,10 +87,13 @@ export function useTopicSectionMarks(topicId: string | null) {
     /**
      * Есть ли кому отмечать. У персонала строки `students` нет — кнопку
      * показывать нельзя: отметить за ученика невозможно ни здесь, ни в базе
-     * (пишущие политики требуют `student_id = auth_student_id()`).
+     * (пишущие политики требуют `student_id = auth_student_id()`). В
+     * предпросмотре кнопка есть, но выключена — ученик её видит, а владелец
+     * должен видеть то же.
      */
-    canMark: !!studentId,
-    loading: loading || resolvingStudent,
+    canMark: preview || !!studentId,
+    loading: preview ? false : loading || resolvingStudent,
     error,
+    preview,
   }
 }

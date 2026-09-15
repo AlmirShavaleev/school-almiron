@@ -68,6 +68,7 @@ function makeTasks(rows: TopicTaskRow[], patch: Partial<Tasks> = {}): Tasks {
     reveal: vi.fn(async () => null),
     closeSelf: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
+    preview: false,
     ...patch,
   }
 }

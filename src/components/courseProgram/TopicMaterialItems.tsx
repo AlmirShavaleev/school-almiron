@@ -6,6 +6,7 @@ import {
   Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -42,12 +43,14 @@ function formatBytes(bytes: number | null): string | null {
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, isFirst, isLast,
+  material, topicId, canManage, countView, isFirst, isLast,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
   topicId: string
   canManage: boolean
+  /** Считать открытие файла (§107): ученик — да, персонал и предпросмотр — нет. */
+  countView: boolean
   isFirst: boolean
   isLast: boolean
   onDelete: (id: string) => void
@@ -173,7 +176,7 @@ function MaterialCard({
           sizeBytes={material.sizeBytes}
           topicId={topicId}
           sensitive={material.section === GATED_SECTION}
-          countView={!canManage}
+          countView={countView}
         />
       )}
     </div>
@@ -610,6 +613,11 @@ export function TopicMaterialItems({
     uploadMaterialFile, addMaterial, deleteMaterial, toggleVisibility, moveMaterial,
   } = useTopicMaterialItems(topicId)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Предпросмотр глазами ученика (§178): персоналу RLS отдаёт и скрытые
+  // материалы — ученик их не видит, поэтому в ученическом списке предпросмотра
+  // они отфильтрованы; просмотр файла за ученика не засчитывается.
+  const preview = usePreviewMode()
+  const studentPreview = !canManage && preview
 
   function guard<T extends unknown[]>(fn: (...args: T) => Promise<unknown>) {
     return (...args: T) => {
@@ -630,12 +638,14 @@ export function TopicMaterialItems({
   // Имена всех файлов темы — по ним считается номер следующего скриншота.
   const attachedNames = materials.map(m => (m.kind === 'file' ? m.fileName : null))
 
+  const visible = studentPreview ? materials.filter(m => m.isVisible) : materials
+
   // Фильтруем материалы по section
-  let filtered = materials
+  let filtered = visible
   if (section && section !== 'video') {
-    filtered = materials.filter(m => m.section === section)
+    filtered = visible.filter(m => m.section === section)
   } else if (section === 'video') {
-    filtered = materials.filter(m => m.kind === 'video')
+    filtered = visible.filter(m => m.kind === 'video')
   }
 
   /**
@@ -680,6 +690,7 @@ export function TopicMaterialItems({
           material={m}
           topicId={topicId}
           canManage={canManage}
+          countView={!canManage && !preview}
           isFirst={i === 0}
           isLast={i === filtered.length - 1}
           onDelete={guard(deleteMaterial)}
