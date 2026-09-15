@@ -300,6 +300,11 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(queried).not.toContain('topic_homework_attempts')
       expect(queried).not.toContain('topic_test_attempts')
       expect(queried).not.toContain('topic_homework_reviews')
+      // §182: прогресс по задачам к уроку — тоже чужой. RPC не зовётся вовсе,
+      // и в предпросмотре у темы нет ни «N из M», ни выдуманных нулей.
+      expect(rpc).not.toHaveBeenCalled()
+      expect(t.tasks_total).toBe(0)
+      expect(t.tasks_closed).toBe(0)
     })
 
     it('каркас в предпросмотре не показывается', async () => {

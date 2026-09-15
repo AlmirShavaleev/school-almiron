@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
-  BookOpen, Check, Clock, Video, Lightbulb, BookMarked, ClipboardList,
+  BookOpen, Check, Clock, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
   Upload, ArrowLeft, ChevronRight, Play, MessageSquare, BarChart3,
-  LayoutList, LayoutGrid, FileEdit, FileText,
+  LayoutList, LayoutGrid, FileEdit,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
@@ -17,31 +17,9 @@ import {
 import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
 import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
 import { testPercent } from '@/lib/studentProgram'
-import { TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, type TopicSection } from '@/lib/topicMaterialItems'
+import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
-import { pluralTopics } from '@/lib/plural'
-
-// ─── Section pills config ─────────────────────────────────────────────────────
-/**
- * Оформление плашки. Список рубрик, порядок и подписи — из общего места
- * (§100): свой перечень здесь отставал от §95 на три рубрики, и «зелёная
- * точка» у преподавателя перестала значить то же, что плашка у ученика.
- */
-const SECTION_STYLE: Record<TopicSection, { icon: React.ReactNode; color: string }> = {
-  theory:             { icon: <BookOpen size={10} />,      color: 'bg-purple-50 text-purple-600 border-purple-100' },
-  notes:              { icon: <BookMarked size={10} />,    color: 'bg-blue-50 text-blue-600 border-blue-100' },
-  tasks:              { icon: <ClipboardList size={10} />, color: 'bg-orange-50 text-orange-600 border-orange-100' },
-  task_solution:      { icon: <Check size={10} />,         color: 'bg-teal-50 text-teal-600 border-teal-100' },
-  worksheet_tasks:    { icon: <FileText size={10} />,      color: 'bg-sky-50 text-sky-600 border-sky-100' },
-  homework:           { icon: <Lightbulb size={10} />,     color: 'bg-yellow-50 text-yellow-600 border-yellow-100' },
-  solution:           { icon: <Check size={10} />,         color: 'bg-green-50 text-green-600 border-green-100' },
-  worksheet_homework: { icon: <FileText size={10} />,      color: 'bg-cyan-50 text-cyan-600 border-cyan-100' },
-  video:              { icon: <Video size={10} />,         color: 'bg-red-50 text-red-600 border-red-100' },
-  test:               { icon: <BarChart3 size={10} />,     color: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
-}
-
-const SECTION_CONFIG: { key: TopicSection; label: string; icon: React.ReactNode; color: string }[] =
-  TOPIC_SECTION_ORDER.map(key => ({ key, label: TOPIC_SECTION_LABELS[key], ...SECTION_STYLE[key] }))
+import { plural, pluralTopics } from '@/lib/plural'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -303,14 +281,8 @@ function TopicCard({
           {topic.title}
         </div>
 
-        {/* Оценка за ДЗ. Шкала может быть не задана — тогда просто «Принято». */}
-        {isDone && (
-          <div className="mt-1 text-xs font-semibold text-green-700">
-            {topic.hw_score != null && topic.hw_max != null
-              ? `${topic.hw_score} / ${topic.hw_max} б.`
-              : 'ДЗ принято'}
-          </div>
-        )}
+        {/* Балл за ДЗ теперь несёт сигнал «ДЗ: 18/20 б» ниже (§182) —
+            отдельной строкой то же число писалось дважды. */}
 
         {/* Результат теста */}
         {!isLocked && topic.test_status === 'completed' && (
@@ -328,16 +300,10 @@ function TopicCard({
         )}
       </div>
 
-      {/* Material pills */}
-      {!isLocked && hasMaterials && (
-        <div className="px-4 pb-3 flex flex-wrap gap-1">
-          {SECTION_CONFIG.map(m => topic.sections.has(m.key) && (
-            <span key={m.key}
-              className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md border', m.color)}
-            >
-              {m.icon}{m.label}
-            </span>
-          ))}
+      {/* Те же три сигнала, тем же компонентом: второго набора у карточки нет */}
+      {!isLocked && (
+        <div className="px-4 pb-3">
+          <TopicSignals topic={topic} />
         </div>
       )}
 
@@ -406,7 +372,11 @@ const LIST_STATE: Record<string, {
   not_started: {
     row: 'bg-blue-50/40 border-blue-200 hover:border-blue-300',
     numBg: 'bg-blue-100 text-blue-600', titleCls: 'text-gray-800',
-    statusLabel: 'В работе', statusCls: 'bg-blue-100 text-blue-700',
+    // §182. «В работе» стояло у КАЖДОЙ темы, которую ученик просто ещё не
+    // трогал, — плашка у всех подряд не значит ничего и только шумит. Цвет
+    // строки и иконку оставили: они отличают «есть ДЗ» от «нечего сдавать».
+    // Призыв к действию для этого состояния — кнопка «Сдать ДЗ».
+    statusLabel: null, statusCls: 'bg-blue-100 text-blue-700',
     icon: <Play size={12} className="text-blue-500" />,
   },
   none: {
@@ -415,6 +385,110 @@ const LIST_STATE: Record<string, {
     statusLabel: null, statusCls: '',
     icon: <BookOpen size={12} className="text-gray-400" />,
   },
+}
+
+// ─── Три сигнала под названием темы (§182) ───────────────────────────────────
+
+/**
+ * Под названием темы раньше висели семь плашек рубрик в две строки — «Конспект»,
+ * «Задачи», «Рабочий лист задач», «ДЗ», «Решение ДЗ»… Они отвечают на вопрос
+ * «что внутри темы», а ученик на этом экране решает другой: «что мне здесь
+ * делать и сколько осталось». Поэтому рубрика БЕЗ состояния (есть конспект,
+ * есть рабочий лист) — это содержимое, оно и так видно при открытии темы, и
+ * ушло в одну серую строку «ещё N материалов» без перечисления. Остались три
+ * сигнала с состоянием: видео, задачи «N из M», ДЗ.
+ *
+ * Плашка «Решение ДЗ» ушла не только ради краткости: она обещала ученику, что
+ * разбор существует, хотя до сдачи ДЗ он закрыт (`GATED_SECTION` на `TopicPage`).
+ * Обещание «решение есть» до сдачи подталкивает списать. Правило открытия
+ * внутри темы не тронуто — там всё верно.
+ */
+const OTHER_SECTIONS: readonly TopicSection[] = [
+  'theory', 'notes', 'tasks', 'task_solution',
+  'worksheet_tasks', 'worksheet_homework', 'solution', 'test',
+]
+
+/** Нейтральный сигнал: состояние есть, но радоваться нечему. */
+const SIGNAL_NEUTRAL = 'bg-gray-100 text-gray-600'
+
+interface Signal { label: string; cls: string; icon: React.ReactNode }
+
+/**
+ * Состояние ДЗ словами. Палитра — из LIST_STATE той же страницы: вторая на
+ * те же пять состояний разошлась бы с первой на первой же правке.
+ */
+function homeworkSignal(topic: TopicProgress): Signal | null {
+  if (!topic.hw_id) return null
+  switch (topic.hw_status) {
+    case 'submitted':
+      return { label: 'ДЗ на проверке', cls: LIST_STATE.submitted.statusCls, icon: <Clock size={10} /> }
+    case 'returned':
+      return { label: 'ДЗ вернули', cls: LIST_STATE.returned.statusCls, icon: <RotateCcw size={10} /> }
+    case 'draft':
+      return { label: 'ДЗ черновик', cls: LIST_STATE.draft.statusCls, icon: <FileEdit size={10} /> }
+    case 'accepted':
+      return {
+        label: topic.hw_score != null && topic.hw_max != null
+          ? `ДЗ: ${topic.hw_score}/${topic.hw_max} б`
+          : 'ДЗ принято',
+        cls: LIST_STATE.accepted.statusCls,
+        icon: <CheckCircle size={10} />,
+      }
+    default:
+      return { label: 'ДЗ не сдано', cls: LIST_STATE.not_started.statusCls, icon: <Upload size={10} /> }
+  }
+}
+
+/**
+ * «Задачи N из M» — задачи к уроку (§162/§164). Числа даёт сервер (§182) той же
+ * формулой, что лента задач темы (§175) и таблица преподавателя (§174).
+ * Пока ученик не решил ни одной, «0 из 7» читается как упрёк — пишем «Задачи: 7».
+ */
+function tasksSignal(topic: TopicProgress): Signal | null {
+  if (topic.tasks_total <= 0) return null
+  const done = topic.tasks_closed >= topic.tasks_total
+  return {
+    label: topic.tasks_closed > 0
+      ? `Задачи ${topic.tasks_closed} из ${topic.tasks_total}`
+      : `Задачи: ${topic.tasks_total}`,
+    cls: done ? LIST_STATE.accepted.statusCls : SIGNAL_NEUTRAL,
+    icon: <ClipboardList size={10} />,
+  }
+}
+
+function SignalPill({ signal }: { signal: Signal }) {
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap',
+      signal.cls,
+    )}>
+      {signal.icon}{signal.label}
+    </span>
+  )
+}
+
+/** Одна строка сигналов — и в списке, и в карточке. Второго набора нет. */
+function TopicSignals({ topic }: { topic: TopicProgress }) {
+  const hasVideo = topic.sections.has('video')
+  const tasks    = tasksSignal(topic)
+  const hw       = homeworkSignal(topic)
+  const rest     = OTHER_SECTIONS.filter(s => topic.sections.has(s)).length
+
+  if (!hasVideo && !tasks && !hw && rest === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5" data-testid="topic-signals">
+      {hasVideo && <SignalPill signal={{ label: 'Видео', cls: SIGNAL_NEUTRAL, icon: <Play size={10} /> }} />}
+      {tasks && <SignalPill signal={tasks} />}
+      {hw && <SignalPill signal={hw} />}
+      {rest > 0 && (
+        // Не кликается и не перечисляет: это содержимое темы, оно видно внутри.
+        <span className="text-[11px] text-gray-400">
+          ещё {rest} {plural(rest, 'материал', 'материала', 'материалов')}
+        </span>
+      )}
+    </div>
+  )
 }
 
 // ─── TopicListRow ─────────────────────────────────────────────────────────────
@@ -441,7 +515,6 @@ function TopicListRow({
 
   const st = LIST_STATE[stateKey]
   const isDone = topic.hw_status === 'accepted'
-  const hasMaterials = topic.sections.size > 0
   const canSubmit = !isLocked && topic.hw_id &&
     (topic.hw_status === 'not_started' || topic.hw_status === 'draft' || topic.hw_status === 'returned')
 
@@ -497,13 +570,6 @@ function TopicListRow({
           {topic.title}
         </p>
 
-        {/* Score — mobile */}
-        {isDone && topic.hw_score != null && topic.hw_max != null && (
-          <p className="sm:hidden text-xs font-semibold text-green-700 mt-0.5">
-            {topic.hw_score}/{topic.hw_max} б.
-          </p>
-        )}
-
         {/* Результат теста */}
         {!isLocked && topic.test_status === 'completed' && (
           <p className="text-xs font-semibold text-indigo-700 mt-0.5">
@@ -516,18 +582,8 @@ function TopicListRow({
           <p className="text-xs text-indigo-500 mt-0.5">Тест не пройден</p>
         )}
 
-        {/* Material badges */}
-        {!isLocked && hasMaterials && (
-          <div className="flex flex-wrap gap-1 mt-1.5">
-            {SECTION_CONFIG.map(m => topic.sections.has(m.key) && (
-              <span key={m.key}
-                className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md border', m.color)}
-              >
-                {m.icon}{m.label}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Три сигнала «что здесь делать» вместо перечня рубрик (§182) */}
+        {!isLocked && <TopicSignals topic={topic} />}
 
         {isLocked && (
           <p className="text-[10px] text-gray-400 mt-0.5">
@@ -536,14 +592,10 @@ function TopicListRow({
         )}
       </div>
 
-      {/* ── Right: score + status + buttons ── */}
+      {/* ── Right: status + buttons ── */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Score — desktop */}
-        {isDone && topic.hw_score != null && topic.hw_max != null && (
-          <span className="hidden sm:block text-xs font-semibold text-green-700 whitespace-nowrap">
-            {topic.hw_score}/{topic.hw_max}&nbsp;б
-          </span>
-        )}
+        {/* Балл за ДЗ стоял здесь вторым числом рядом с сигналом «ДЗ: 18/20 б»
+            (§182) — одна и та же цифра дважды в одной строке. Осталась одна. */}
 
         {/* Status badge — desktop */}
         {st.statusLabel && (

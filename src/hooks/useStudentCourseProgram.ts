@@ -28,10 +28,46 @@ import {
  * запросы, что у ученика (персоналу RLS их отдаёт). Попытки ДЗ и тестов НЕ
  * читаем вовсе: под RLS персонала пришли бы работы всех учеников курса, и
  * страница показала бы чужое как «моё». Прогресс поэтому честно пустой —
- * «0 из N», без придуманных отметок.
+ * «0 из N», без придуманных отметок. По той же причине не зовём и
+ * `course_topic_tasks_progress_for_student` (§182): персоналу она вернёт ноль
+ * строк, и в предпросмотре будет «Задачи: 7» без выдуманного «N из».
  */
 
 const SELECT_PAGE_SIZE = 1000
+
+// Типы базы не перегенерированы после PENDING_182 — RPC зовётся через `any`,
+// результат типизируется локально.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
+
+/** Строка `course_topic_tasks_progress_for_student` (§182). */
+interface TopicTasksProgressRow {
+  topic_id:    string
+  tasks_total: number
+  closed:      number
+}
+
+/**
+ * Задачи к уроку по всему курсу: одна RPC на курс, а не запрос на тему (тем
+ * бывает 170).
+ *
+ * Ошибку глотаем намеренно: между слиянием ветки и применением миграции RPC на
+ * проде ещё нет, и падение здесь уронило бы весь список курса. Без неё экран
+ * рисуется как раньше — просто без «N из M».
+ */
+async function loadTaskProgress(courseId: string): Promise<Map<string, { total: number; closed: number }>> {
+  const map = new Map<string, { total: number; closed: number }>()
+  try {
+    const { data, error } = await db.rpc('course_topic_tasks_progress_for_student', { p_course_id: courseId })
+    if (error) throw new Error(error.message ?? 'Не удалось загрузить прогресс по задачам')
+    for (const row of (data ?? []) as TopicTasksProgressRow[]) {
+      map.set(row.topic_id, { total: row.tasks_total ?? 0, closed: row.closed ?? 0 })
+    }
+  } catch (e) {
+    console.warn('Не удалось загрузить прогресс по задачам к уроку', e)
+  }
+  return map
+}
 
 export interface TopicProgress {
   id:             string
@@ -59,6 +95,9 @@ export interface TopicProgress {
   test_status:        TopicTestStatus | null
   test_points:        number | null
   test_max_points:    number | null
+  // ── Задачи к уроку (§162/§164): «N закрыто из M», §182 ──
+  tasks_total:  number
+  tasks_closed: number
   // ── Прогресс ──
   completed_count:  number
   assignment_count: number
@@ -209,8 +248,8 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         return
       }
 
-      // 4. Рубрики материалов + ДЗ темы + привязанные тесты
-      const [materialRows, homeworkRows, assignmentRows] = await Promise.all([
+      // 4. Рубрики материалов + ДЗ темы + привязанные тесты + задачи к уроку
+      const [materialRows, homeworkRows, assignmentRows, taskProgress] = await Promise.all([
         fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>((from, to) =>
           supabase
             .from('topic_material_items')
@@ -236,6 +275,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           if (error) throw new Error(error.message ?? 'Не удалось загрузить тесты')
           return (data || []) as any[]
         })(),
+        // В предпросмотре RPC не зовём вовсе (§178): персоналу она вернёт ноль
+        // строк, и «Задачи: 7» без прогресса — честнее, чем «0 из 7».
+        preview
+          ? Promise.resolve(new Map<string, { total: number; closed: number }>())
+          : loadTaskProgress(course.id),
       ])
 
       // 5. Попытки ученика: ДЗ и тесты. В предпросмотре — не читаем: у
@@ -348,6 +392,8 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               test_status:        tStatus,
               test_points:        testAttempt?.total_points ?? null,
               test_max_points:    testAttempt?.max_points ?? null,
+              tasks_total:      taskProgress.get(t.id)?.total ?? 0,
+              tasks_closed:     taskProgress.get(t.id)?.closed ?? 0,
               completed_count:  progress.completed,
               assignment_count: progress.assigned,
             }

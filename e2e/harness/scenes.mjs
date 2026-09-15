@@ -143,6 +143,18 @@ export const scenes = [
 
   { persona: 'student', name: 's04-topic-tasks-wrong', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 800 }, { clickRole: ['button', 'Задача 4, есть попытки, не решена'] }, { wait: 400 }, { fill: ['input[aria-label="Ответ на задачу"]', '5'] }, { clickRole: ['button', /Проверить/] }, { wait: 1000 }] },
 
+  // ── §182 (board/035): тема в списке курса — три сигнала вместо рубрик ──
+  // Раздел «Механика»: шесть тем в разных состояниях (ДЗ вернули / на проверке /
+  // принято с баллом / черновик / не сдано, задачи 3 из 7, 5 из 5, «Задачи: 12»,
+  // 1 из 4, закрытая тема). Списочный вид и тот же раздел карточками; вид
+  // запоминается в localStorage, поэтому каждая сцена сама жмёт переключатель.
+  ...[[1280, 800], [390, 844]].map(([width, height]) => ({
+    persona: 'student', name: 's03-course-topics', url: `/my-course/${S.group}`, width, height,
+    actions: [{ clickSel: 'button:has-text("Механика: кинематика")' }, { wait: 800 }, { clickSel: '[data-testid="view-toggle-list"]' }, { wait: 500 }],
+  })),
+  { persona: 'student', name: 's03-course-topics-cards', url: `/my-course/${S.group}`, width: 1280, height: 800,
+    actions: [{ clickSel: 'button:has-text("Механика: кинематика")' }, { wait: 800 }, { clickSel: '[data-testid="view-toggle-cards"]' }, { wait: 600 }] },
+
   // ── owner в предпросмотре «глазами ученика» (§178, board/031) ──
   // Переключатель в шапке на «Ученик», под шапкой жёлтая полоса; /dashboard
   // ведёт на ученический список курсов без каркаса; тема — ученическая

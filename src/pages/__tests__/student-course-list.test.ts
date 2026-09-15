@@ -6,7 +6,6 @@
 import { readFileSync } from 'fs'
 import { describe, it, expect } from 'vitest'
 import path from 'path'
-import type { TopicProgress } from '@/hooks/useStudentCourseProgram'
 
 const PAGE_SRC = readFileSync(
   path.resolve(__dirname, '../StudentCoursePage.tsx'),
@@ -78,17 +77,12 @@ describe('Status "На проверке"', () => {
 
 // ─── 4. Пройденный урок показывает баллы ─────────────────────────────────────
 
-describe('Checked topic shows score', () => {
-  it('score is rendered for checked topics on desktop', () => {
-    expect(PAGE_SRC).toContain('topic.hw_score != null')
-    expect(PAGE_SRC).toContain('topic.hw_score}/{topic.hw_max}')
-  })
-
-  it('score visible on mobile too', () => {
-    // Should contain a mobile score block (sm:hidden)
-    expect(PAGE_SRC).toMatch(/sm:hidden[\s\S]{0,200}hw_score/)
-  })
-})
+// §182. Балл жил в строке дважды: отдельной колонкой справа и (после правки)
+// сигналом «ДЗ: 18/20 б» под названием. Осталась одна цифра, а проверки по
+// тексту исходника («содержит ли файл `topic.hw_score}/{topic.hw_max}`») — это
+// ровно тот хрупкий тест, про который предупреждает CLAUDE.md: он падает от
+// перестановки, а не от пропажи поведения. Балл за принятое ДЗ проверяется
+// теперь поведенчески — StudentCoursePage.signals.test.tsx.
 
 // ─── 5. Закрытый урок нельзя открыть ─────────────────────────────────────────
 
@@ -169,8 +163,9 @@ describe('Mobile layout', () => {
     expect(PAGE_SRC).toContain('max-w-4xl')
   })
 
-  it('score and status badge hide on mobile (hidden sm:block / hidden sm:inline-flex)', () => {
-    expect(PAGE_SRC).toContain('hidden sm:block text-xs font-semibold text-green-700')
+  it('status badge hides on mobile (hidden sm:inline-flex)', () => {
+    // Колонки с баллом справа больше нет (§182) — балл несёт сигнал под
+    // названием, он виден на обеих ширинах.
     expect(PAGE_SRC).toContain('hidden sm:inline-flex')
   })
 })

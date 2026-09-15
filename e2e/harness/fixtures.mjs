@@ -121,6 +121,25 @@ export const topic_material_items = [
   { id: IDS.material(4), topic_id: IDS.topic(1), kind: 'link', title: 'Демоверсия ЕГЭ-2027 на сайте ФИПИ', content: null, position: 4, is_visible: true, section: 'practice', url: 'https://fipi.invalid/ege/demoversii-specifikacii-kodifikatory', storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
   { id: IDS.material(5), topic_id: IDS.topic(1), kind: 'file', title: 'Рисунок к задаче 4', content: null, position: 5, is_visible: true, section: 'practice', url: null, storage_path: 'course-materials/topic-1/figure.png', file_name: 'figure.png', mime_type: 'image/png', size_bytes: 82000, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
   { id: IDS.material(6), topic_id: IDS.topic(2), kind: 'text', title: 'Конспект', content: '<p>Центростремительное ускорение a = v²/R.</p>', position: 1, is_visible: true, section: 'theory', url: null, storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
+  // §182: у тем 2–5 заполнены РАЗНЫЕ рубрики — иначе в списке раздела строка
+  // «ещё N материалов» у всех одна и та же, и по снимку не видно, что счёт
+  // считается. Рубрика `practice` выше в перечень §100 не входит и в сигналы
+  // не попадает намеренно — это старые строки, оставлены как есть.
+  ...[
+    [2, 'notes', 'text'], [2, 'worksheet_tasks', 'file'],
+    [3, 'theory', 'text'], [3, 'notes', 'text'], [3, 'tasks', 'file'], [3, null, 'video'],
+    [4, 'theory', 'text'], [4, 'solution', 'file'], [4, 'worksheet_homework', 'file'],
+    [5, 'notes', 'text'], [5, 'tasks', 'file'], [5, 'task_solution', 'file'], [5, null, 'video'],
+  ].map(([n, section, kind], i) => ({
+    id: IDS.material(20 + i), topic_id: IDS.topic(n), kind,
+    title: kind === 'video' ? 'Видеоразбор темы' : `Материал темы ${n}`,
+    content: kind === 'text' ? '<p>Короткий конспект.</p>' : null, position: 10 + i, is_visible: true,
+    section, url: kind === 'video' ? 'https://iframe.mediadelivery.invalid/embed/1/efgh' : null,
+    storage_path: kind === 'file' ? `course-materials/topic-${n}/list-${i}.pdf` : null,
+    file_name: kind === 'file' ? `list-${i}.pdf` : null, mime_type: kind === 'file' ? 'application/pdf' : null,
+    size_bytes: kind === 'file' ? 120000 : null, lesson_id: null, source_topic_material_id: null,
+    created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
+  })),
 ]
 
 // ── homework ─────────────────────────────────────────────────────────────────
@@ -366,6 +385,17 @@ const courseTasksMatrix = matrixStudents.flatMap((s, si) => MATRIX_TOPICS.map(([
   return { student_id: s.id, full_name: s.name, topic_id: t.id, topic_title: t.title, module_order: t.modules.order_index, topic_order: t.order_index, tasks_total: total, touched, closed_auto: closedAuto, closed_self: closedSelf }
 }))
 
+// ── задачи к уроку в списке курса (§182) ────────────────────────────────────
+// Ответ `course_topic_tasks_progress_for_student` — «мои» числа по темам курса.
+// Те же темы и те же «всего», что у MATRIX_TOPICS и topicVariants: список курса
+// и матрица преподавателя обязаны показывать одно и то же число. «Закрыто» у
+// темы 1 — три: столько решено в `topicTaskDefs`, то есть во вкладке «Задачи».
+// Состояния разные нарочно: 3 из 7, всё решено, ни одной, одна из четырёх.
+const MY_TASKS_CLOSED = { 1: 3, 2: 5, 3: 0, 5: 1 }
+const myTasksProgress = MATRIX_TOPICS.map(([n, total]) => ({
+  topic_id: IDS.topic(n), tasks_total: total, closed: MY_TASKS_CLOSED[n] ?? 0,
+}))
+
 // ── варианты-носители задач к уроку (§164, §177) ────────────────────────────
 // Одна строка `test_variants` с `topic_id` на тему с задачами — то, откуда
 // матрица «Материалы» берёт число в столбце «Задачи». Темы и числа — те же,
@@ -427,6 +457,9 @@ export function baseFixtures(persona) {
       preview_task_verdict: previewTaskVerdict(persona),
       topic_task_progress_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? TOPIC_TASK_PROGRESS : [],
       course_topic_tasks_matrix: (body) => body.p_course_id === IDS.course ? courseTasksMatrix : [],
+      // §182: как настоящая RPC — строки только ученику курса, персоналу ноль.
+      course_topic_tasks_progress_for_student: (body) =>
+        persona === 'student' && body.p_course_id === IDS.course ? myTasksProgress : [],
       topic_attached_variants: [], variant_topic_groups: [],
     },
     functions: {},
