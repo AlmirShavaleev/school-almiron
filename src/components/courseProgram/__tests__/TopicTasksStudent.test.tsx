@@ -357,3 +357,32 @@ describe('TopicTasksStudent — неверный ответ и разбор по
     expect(screen.queryByLabelText('Ответ на задачу')).not.toBeInTheDocument()
   })
 })
+
+describe('TopicTasksStudent — предпросмотр глазами ученика (§179)', () => {
+  it('в предпросмотре поле, «Проверить», «Посмотреть решение» и «Разобрал» работают, как у ученика; карточка помечена', async () => {
+    const rows = [row(1), row(2, { auto_checkable: false, solution_shown_at: '2026-09-15T10:00:00Z', solution_html: '<p>Разбор</p>' })]
+    const tasks = makeTasks(rows, { preview: true, answer: vi.fn(async () => false) })
+    renderWith(tasks, '/topic?task=item-1')
+
+    expect(screen.getByTestId('topic-task-card')).toHaveAttribute('data-preview', 'true')
+    const input = screen.getByLabelText('Ответ на задачу')
+    expect(input).toBeEnabled()
+    expect(input).not.toHaveAttribute('title')
+    // До первой попытки разбора нет — то же правило, что у ученика.
+    expect(screen.queryByRole('button', { name: /Посмотреть решение/ })).not.toBeInTheDocument()
+    fireEvent.change(input, { target: { value: '5' } })
+    const check = screen.getByRole('button', { name: 'Проверить' })
+    expect(check).toBeEnabled()
+    expect(check).not.toHaveAttribute('title')
+    fireEvent.click(check)
+    await waitFor(() => expect(tasks.answer).toHaveBeenCalledWith('item-1', '5'))
+
+    // Вторая часть с открытым разбором: «Разобрал» доступна.
+    fireEvent.click(squares()[1])
+    const close = screen.getByRole('button', { name: /Разобрал/ })
+    expect(close).toBeEnabled()
+    expect(close).not.toHaveAttribute('title')
+    fireEvent.click(close)
+    await waitFor(() => expect(tasks.closeSelf).toHaveBeenCalledWith('item-2'))
+  })
+})

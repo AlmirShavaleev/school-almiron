@@ -5,7 +5,6 @@ import type { useTopicTasks, TopicTaskRow } from '@/hooks/useTopicTasks'
 import { CatalogTaskContent } from '@/components/catalog/CatalogTaskContent'
 import type { CatalogTask } from '@/hooks/useCatalog'
 import { Button } from '@/components/ui/Button'
-import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
 import { cn } from '@/utils/cn'
 
 /**
@@ -35,11 +34,13 @@ import { cn } from '@/utils/cn'
  * Хук поднят на страницу темы: она же показывает «решено N из M» в шапке
  * группы. Иначе тот же запрос ушёл бы дважды за одно открытие урока.
  *
- * Предпросмотр глазами ученика (§178): та же лента и карточка (состав — из
- * staff-источника, всё «не начато»), но поле ответа и кнопки «Проверить»,
- * «Посмотреть решение», «Разобрал» выключены с подсказкой — ничего не пишется.
- * Флаг приходит из хука (`tasks.preview`), а не отдельным пропсом: источник
- * правды один.
+ * Предпросмотр глазами ученика (§178, §179): та же лента и карточка, состав —
+ * из staff-источника. Поле ответа, «Проверить», «Посмотреть решение» и
+ * «Разобрал» работают как у ученика — хук считает вердикт чистой RPC и держит
+ * попытки, разбор и отметки в памяти вкладки, ничего не записывая. Здесь
+ * ветки «предпросмотр» нет: карточка не знает, откуда пришли строки, только
+ * помечает себя `data-preview` для тестов. Флаг приходит из хука
+ * (`tasks.preview`), а не отдельным пропсом: источник правды один.
  */
 export function TopicTasksStudent({ tasks }: { tasks: ReturnType<typeof useTopicTasks> }) {
   const { rows, total, solved, loading, error, busyItem, answer, reveal, closeSelf, preview } = tasks
@@ -252,7 +253,7 @@ function TaskCard({ row, index, busy, preview, onAnswer, onReveal, onCloseSelf }
   row: TopicTaskRow
   index: number
   busy: boolean
-  /** Предпросмотр (§178): поле и кнопки выключены, ничего не пишется. */
+  /** Предпросмотр (§178/§179): только метка на карточке — поведение то же. */
   preview: boolean
   onAnswer: (raw: string) => Promise<boolean | null>
   onReveal: () => Promise<unknown>
@@ -330,7 +331,6 @@ function TaskCard({ row, index, busy, preview, onAnswer, onReveal, onCloseSelf }
           solved={solved}
           revealed={revealed}
           busy={busy}
-          preview={preview}
           draft={draft}
           wrong={wrong}
           attempts={row.attempts_count}
@@ -344,7 +344,6 @@ function TaskCard({ row, index, busy, preview, onAnswer, onReveal, onCloseSelf }
           revealed={revealed}
           afterAttempt={row.auto_checkable}
           busy={busy}
-          preview={preview}
           onReveal={onReveal}
           onCloseSelf={onCloseSelf}
         />
@@ -356,12 +355,11 @@ function TaskCard({ row, index, busy, preview, onAnswer, onReveal, onCloseSelf }
 // ── Задача с коротким ответом ────────────────────────────────────────────────
 
 function AutoCheckBlock({
-  solved, revealed, busy, preview, draft, wrong, attempts, onDraft, onSubmit, onReveal,
+  solved, revealed, busy, draft, wrong, attempts, onDraft, onSubmit, onReveal,
 }: {
   solved: boolean
   revealed: boolean
   busy: boolean
-  preview: boolean
   draft: string
   wrong: boolean
   attempts: number
@@ -376,7 +374,7 @@ function AutoCheckBlock({
           <Check size={15} /> Верно
         </span>
         {!revealed && (
-          <Button variant="secondary" size="sm" onClick={() => void onReveal()} disabled={busy || preview} title={preview ? PREVIEW_NOOP_MESSAGE : undefined}>
+          <Button variant="secondary" size="sm" onClick={() => void onReveal()} disabled={busy}>
             <Eye size={14} className="mr-1" />
             Посмотреть решение
           </Button>
@@ -384,8 +382,6 @@ function AutoCheckBlock({
       </div>
     )
   }
-
-  const hint = preview ? PREVIEW_NOOP_MESSAGE : undefined
 
   return (
     <div className="mt-3 space-y-2">
@@ -408,27 +404,24 @@ function AutoCheckBlock({
           onChange={e => onDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') onSubmit() }}
           inputMode="text"
-          placeholder={preview ? 'Ответ · предпросмотр' : 'Ответ'}
+          placeholder="Ответ"
           aria-label="Ответ на задачу"
           aria-invalid={wrong || undefined}
-          disabled={preview}
-          title={hint}
           className={`flex-1 min-w-0 px-3 py-2.5 border rounded-xl text-base focus:outline-none focus:ring-2 ${
             wrong
               ? 'border-red-300 bg-red-50 text-red-900 focus:ring-red-300'
               : 'border-gray-200 focus:ring-primary-400'
           }`}
         />
-        <Button variant="primary" onClick={onSubmit} disabled={busy || preview || !draft.trim()} title={hint}>
+        <Button variant="primary" onClick={onSubmit} disabled={busy || !draft.trim()}>
           {busy ? <Loader2 size={15} className="mr-1 animate-spin" /> : null}
           {wrong ? 'Проверить ещё раз' : 'Проверить'}
         </Button>
         {/* Разбор — после хотя бы одной попытки, не раньше: до неё он был бы
-            ответом. Сервер проверяет то же (`NOT_ATTEMPTED_YET`). В
-            предпросмотре кнопку показываем (ученик её увидит после попытки),
-            но выключенной. */}
-        {(attempts > 0 || preview) && (
-          <Button variant="secondary" onClick={() => void onReveal()} disabled={busy || preview} title={hint}>
+            ответом. Сервер проверяет то же (`NOT_ATTEMPTED_YET`); в
+            предпросмотре попытки считает хук, правило одно. */}
+        {attempts > 0 && (
+          <Button variant="secondary" onClick={() => void onReveal()} disabled={busy}>
             <Eye size={14} className="mr-1" />
             Посмотреть решение
           </Button>
@@ -440,13 +433,12 @@ function AutoCheckBlock({
 
 // ── Задача без короткого ответа ──────────────────────────────────────────────
 
-function SelfCheckBlock({ solved, revealed, afterAttempt, busy, preview, onReveal, onCloseSelf }: {
+function SelfCheckBlock({ solved, revealed, afterAttempt, busy, onReveal, onCloseSelf }: {
   solved: boolean
   revealed: boolean
   /** Задача с коротким ответом, пришедшая сюда после открытого решения (§176). */
   afterAttempt: boolean
   busy: boolean
-  preview: boolean
   onReveal: () => Promise<unknown>
   onCloseSelf: () => Promise<void>
 }) {
@@ -466,14 +458,14 @@ function SelfCheckBlock({ solved, revealed, afterAttempt, busy, preview, onRevea
         </p>
       )}
       {!revealed ? (
-        <Button variant="secondary" onClick={() => void onReveal()} disabled={busy || preview} title={preview ? PREVIEW_NOOP_MESSAGE : undefined}>
+        <Button variant="secondary" onClick={() => void onReveal()} disabled={busy}>
           <Eye size={14} className="mr-1" />
           Посмотреть решение
         </Button>
       ) : (
         // Зелёная кнопка появляется только после разбора — и сервер это
         // проверяет отдельно, не полагаясь на то, что кнопки не было видно.
-        <Button variant="success" onClick={() => void onCloseSelf()} disabled={busy || preview} title={preview ? PREVIEW_NOOP_MESSAGE : undefined}>
+        <Button variant="success" onClick={() => void onCloseSelf()} disabled={busy}>
           {busy ? <Loader2 size={15} className="mr-1 animate-spin" /> : <Check size={15} className="mr-1" />}
           Разобрал
         </Button>

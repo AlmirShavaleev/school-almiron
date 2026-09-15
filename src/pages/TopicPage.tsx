@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { isTopicOpen } from '@/lib/topicAvailability'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
@@ -316,8 +316,7 @@ export function TopicPage() {
         type="button"
         data-testid={`topic-group-mark-${groupKey}`}
         aria-pressed={marked}
-        disabled={sectionMarks.loading || preview}
-        title={preview ? PREVIEW_NOOP_MESSAGE : undefined}
+        disabled={sectionMarks.loading}
         onClick={async () => {
           setMarkError(null)
           try {

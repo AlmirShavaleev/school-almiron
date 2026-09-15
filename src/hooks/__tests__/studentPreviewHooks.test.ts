@@ -4,13 +4,19 @@ import { useStaffModeStore } from '@/store/staffModeStore'
 import { useToastStore } from '@/store/toastStore'
 
 /**
- * §178. Ветка «предпросмотр» в хуках данных ученика: откуда берутся строки и
- * что делают мутации. Проверяется поведение хуков напрямую — страница темы
- * покрыта отдельно (`TopicPage.preview.test.tsx`).
+ * §178/§179. Ветка «предпросмотр» в хуках данных ученика: откуда берутся
+ * строки и что делают мутации. Проверяется поведение хуков напрямую —
+ * страница темы покрыта отдельно (`TopicPage.preview.test.tsx`).
+ *
+ * Задачи к уроку (§179): ответ, разбор и «Разобрал» работают — в памяти
+ * хука; вердикт считает чистая RPC `preview_task_verdict`, разбор читается из
+ * `catalog_tasks`, а RPC записи не вызываются никогда.
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
+const TOPIC2 = 'f0000000-0000-0000-0000-000000000002'
 const GROUP = 'g0000000-0000-0000-0000-000000000001'
+const CORRECT = '42'
 
 const rpc = vi.fn()
 const queried: string[] = []
@@ -36,11 +42,17 @@ vi.mock('@/lib/supabase', () => ({
         { item_id: 'i1', item_position: 1, task_id: 't1', statement_html: 'A', exam_part: 1, max_points: 1, auto_checkable: true, answers_count: 5, closed_count: 3 },
         { item_id: 'i2', item_position: 2, task_id: 't2', statement_html: 'B', exam_part: 2, max_points: 3, auto_checkable: false, answers_count: 0, closed_count: 0 },
       ], error: null })
+      // Чистый вердикт (§179): как база — true/false по эталону, без записи.
+      if (name === 'preview_task_verdict') {
+        if (args.p_answer_raw === 'staff-only') return Promise.resolve({ data: null, error: { message: 'STAFF_ONLY: preview verdict is available to platform staff only' } })
+        return Promise.resolve({ data: args.p_answer_raw === CORRECT, error: null })
+      }
       return Promise.resolve({ data: null, error: null })
     },
     from: (table: string) => {
       queried.push(table)
       if (table === 'catalog_task_assets') return chain([{ id: 'a1', task_id: 't2', tex_session_id: null, kind: 'image', storage_path: 'x.png', alt: null, position: 1 }])
+      if (table === 'catalog_tasks') return chain({ answer_html: `<p>${CORRECT}</p>`, solution_html: '<p>Разбор из каталога</p>', solution_plan_html: null })
       if (table === 'groups') return chain(groupRow)
       if (table === 'modules') return chain([{ id: 'm1', title: 'Механика', order_index: 1, topics: [{ id: 'tp1', title: 'Тема', order_index: 1, max_score: 100, available_from: null, is_open: true }] }])
       if (table === 'topic_homework') return chain([{ id: 'hw-1', topic_id: 'tp1', title: 'ДЗ', instructions: null, due_at: null, grade_scale: 'five' }])
@@ -58,6 +70,7 @@ vi.mock('@/store/authStore', () => ({
 }))
 
 import { useTopicTasks } from '@/hooks/useTopicTasks'
+import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
 import { useStudentCourseProgram } from '@/hooks/useStudentCourseProgram'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { useTopicTestStudent } from '@/hooks/useTopicTest'
@@ -92,22 +105,143 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(rpc).not.toHaveBeenCalledWith('topic_tasks_for_student', expect.anything())
     })
 
-    it('ответ, разбор и «Разобрал» — noop с тостом, RPC записи не вызываются', async () => {
+    it('верный ответ → «решена» в памяти хука; вызвана только preview_task_verdict', async () => {
       const { result } = renderHook(() => useTopicTasks(TOPIC))
       await waitFor(() => expect(result.current.loading).toBe(false))
       rpc.mockClear()
 
-      let verdict: boolean | null = true
-      await act(async () => { verdict = await result.current.answer('i1', '42') })
-      expect(verdict).toBeNull()
-      expect(lastToast()).toBe('В предпросмотре не сохраняется')
+      let verdict: boolean | null = null
+      await act(async () => { verdict = await result.current.answer('i1', CORRECT) })
+      expect(verdict).toBe(true)
+      expect(result.current.rows[0]).toMatchObject({ closed_by: 'auto', is_correct: true, attempts_count: 1, answer_raw: CORRECT })
+      expect(result.current.solved).toBe(1)
+      expect(result.current.error).toBeNull()
+      expect(rpc).toHaveBeenCalledTimes(1)
+      expect(rpc).toHaveBeenCalledWith('preview_task_verdict', { p_task_id: 't1', p_answer_raw: CORRECT })
+      // Никакого тоста «не сохраняется»: действие сработало, просто в памяти.
+      expect(lastToast()).toBeUndefined()
+    })
 
-      await act(async () => { await result.current.reveal('i1') })
+    it('неверный → попытка без закрытия; разбор — из catalog_tasks; «Разобрал» → закрыта «по разбору»', async () => {
+      const { result } = renderHook(() => useTopicTasks(TOPIC))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      rpc.mockClear()
+      queried.length = 0
+
+      let verdict: boolean | null = null
+      await act(async () => { verdict = await result.current.answer('i1', '7') })
+      expect(verdict).toBe(false)
+      expect(result.current.rows[0]).toMatchObject({ closed_by: null, is_correct: false, attempts_count: 1, answer_raw: '7', solution_shown_at: null })
+
+      await act(async () => { verdict = await result.current.answer('i1', '8') })
+      expect(result.current.rows[0].attempts_count).toBe(2)
+
+      let revealed: unknown = null
+      await act(async () => { revealed = await result.current.reveal('i1') })
+      expect(revealed).toEqual({ answer_html: `<p>${CORRECT}</p>`, solution_html: '<p>Разбор из каталога</p>', solution_plan_html: null })
+      expect(queried).toContain('catalog_tasks')
+      expect(result.current.rows[0].solution_shown_at).not.toBeNull()
+      expect(result.current.rows[0].solution_html).toBe('<p>Разбор из каталога</p>')
+      expect(result.current.rows[0].answer_html).toBe(`<p>${CORRECT}</p>`)
+
+      // После открытого решения ответ не принимается — то же правило, что у
+      // `answer_topic_task` (§176): вердикт не спрашивается.
+      rpc.mockClear()
+      await act(async () => { verdict = await result.current.answer('i1', CORRECT) })
+      expect(verdict).toBeNull()
+      expect(result.current.error).toMatch(/Решение уже открыто/)
+      expect(rpc).not.toHaveBeenCalled()
+
+      await act(async () => { await result.current.closeSelf('i1') })
+      expect(result.current.rows[0].closed_by).toBe('self')
+      expect(result.current.solved).toBe(1)
+
+      // Вторая часть: разбор без попытки, затем «Разобрал».
+      await act(async () => { await result.current.reveal('i2') })
       await act(async () => { await result.current.closeSelf('i2') })
+      expect(result.current.rows[1].closed_by).toBe('self')
+      expect(result.current.solved).toBe(2)
 
       expect(rpc).not.toHaveBeenCalled()
-      expect(result.current.rows[0].closed_by).toBeNull()
-      expect(result.current.error).toBeNull()
+      expect(written).toEqual([])
+    })
+
+    it('правила сервера повторены: разбор до попытки, «Разобрал» без разбора, ответ на закрытую — отказ без запросов', async () => {
+      const { result } = renderHook(() => useTopicTasks(TOPIC))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      rpc.mockClear()
+      queried.length = 0
+
+      await act(async () => { await result.current.reveal('i1') })
+      expect(result.current.error).toMatch(/после первой попытки/)
+      expect(result.current.rows[0].solution_shown_at).toBeNull()
+      expect(queried).not.toContain('catalog_tasks')
+
+      await act(async () => { await result.current.closeSelf('i2') })
+      expect(result.current.error).toBe('Сначала откройте решение.')
+      expect(result.current.rows[1].closed_by).toBeNull()
+
+      await act(async () => { await result.current.answer('i2', '1') })
+      expect(result.current.error).toMatch(/нет короткого ответа/)
+
+      await act(async () => { await result.current.answer('i1', CORRECT) })
+      rpc.mockClear()
+      await act(async () => { await result.current.answer('i1', CORRECT) })
+      expect(result.current.error).toBe('Задача уже решена.')
+      expect(rpc).not.toHaveBeenCalled()
+      expect(result.current.rows[0].attempts_count).toBe(1)
+    })
+
+    it('отказ базы (STAFF_ONLY) приходит словами, попытка не засчитана', async () => {
+      const { result } = renderHook(() => useTopicTasks(TOPIC))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      let verdict: boolean | null = true
+      await act(async () => { verdict = await result.current.answer('i1', 'staff-only') })
+      expect(verdict).toBeNull()
+      expect(result.current.error).toMatch(/только персоналу/)
+      expect(result.current.rows[0]).toMatchObject({ attempts_count: 0, is_correct: null, closed_by: null })
+    })
+
+    it('перемонтирование на другую тему и обратно — всё забыто', async () => {
+      const { result, rerender } = renderHook(({ id }) => useTopicTasks(id), { initialProps: { id: TOPIC } })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      await act(async () => { await result.current.answer('i1', CORRECT) })
+      await act(async () => { await result.current.reveal('i2') })
+      await act(async () => { await result.current.closeSelf('i2') })
+      expect(result.current.solved).toBe(2)
+
+      rerender({ id: TOPIC2 })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.solved).toBe(0)
+      expect(result.current.rows.every(r => r.closed_by === null && r.attempts_count === 0 && r.solution_shown_at === null)).toBe(true)
+
+      rerender({ id: TOPIC })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.solved).toBe(0)
+      expect(result.current.rows[0]).toMatchObject({ closed_by: null, attempts_count: 0, is_correct: null, answer_raw: null })
+      expect(result.current.rows[1]).toMatchObject({ closed_by: null, solution_shown_at: null, solution_html: null })
+    })
+
+    it('ни одна RPC записи не вызвана за весь путь: ответ, разбор, «Разобрал»', async () => {
+      const { result } = renderHook(() => useTopicTasks(TOPIC))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      await act(async () => { await result.current.answer('i1', '7') })
+      await act(async () => { await result.current.reveal('i1') })
+      await act(async () => { await result.current.closeSelf('i1') })
+      await act(async () => { await result.current.reveal('i2') })
+      await act(async () => { await result.current.closeSelf('i2') })
+      expect(result.current.solved).toBe(2)
+
+      const names = rpc.mock.calls.map(c => c[0] as string)
+      for (const w of ['answer_topic_task', 'reveal_topic_task_solution', 'close_topic_task_self', 'topic_tasks_for_student', 'ensure_topic_task_rows']) {
+        expect(names, w).not.toContain(w)
+      }
+      expect(new Set(names)).toEqual(new Set(['topic_tasks_for_staff', 'preview_task_verdict']))
+      expect(written).toEqual([])
+      expect(queried).not.toContain('test_variant_answers')
     })
 
     it('вне предпросмотра строки по-прежнему от topic_tasks_for_student', async () => {
@@ -116,6 +250,36 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       await waitFor(() => expect(result.current.loading).toBe(false))
       expect(result.current.preview).toBe(false)
       expect(rpc).toHaveBeenCalledWith('topic_tasks_for_student', { p_topic_id: TOPIC })
+    })
+  })
+
+  describe('useTopicSectionMarks', () => {
+    it('«Отметить как сделанное» — переключатель в памяти: отметки не читаются и не пишутся', async () => {
+      const { result } = renderHook(() => useTopicSectionMarks(TOPIC))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(result.current.preview).toBe(true)
+      expect(result.current.canMark).toBe(true)
+      expect(result.current.marks.size).toBe(0)
+
+      await act(async () => { await result.current.toggle('theory') })
+      expect(result.current.marks.has('theory')).toBe(true)
+      expect(lastToast()).toBeUndefined()
+
+      await act(async () => { await result.current.toggle('theory') })
+      expect(result.current.marks.has('theory')).toBe(false)
+
+      expect(queried).not.toContain('topic_section_marks')
+      expect(queried).not.toContain('students')
+      expect(written).toEqual([])
+      expect(result.current.error).toBeNull()
+    })
+
+    it('смена темы стирает отметки предпросмотра', async () => {
+      const { result, rerender } = renderHook(({ id }) => useTopicSectionMarks(id), { initialProps: { id: TOPIC } })
+      await act(async () => { await result.current.toggle('lesson') })
+      expect(result.current.marks.has('lesson')).toBe(true)
+      rerender({ id: TOPIC2 })
+      await waitFor(() => expect(result.current.marks.size).toBe(0))
     })
   })
 

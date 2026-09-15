@@ -319,6 +319,20 @@ function topicTaskRpcs(rowsFor) {
     },
   }
 }
+// §179: чистый вердикт для предпросмотра «глазами ученика». Как база: эталон —
+// `catalog_tasks.answer_html` без тегов, сравнение после нормализации (здесь —
+// trim), для задачи второй части `null`, не персоналу — отказ STAFF_ONLY.
+// Ничего не пишет: строки `myTopicTasks` не трогает — память только у вкладки.
+function previewTaskVerdict(persona) {
+  return (body) => {
+    if (persona === 'student' || persona === 'guest') return new Error('STAFF_ONLY: preview verdict is available to platform staff only')
+    const t = catalog_tasks.find(t => t.id === body.p_task_id)
+    if (!t) return new Error('ACCESS_DENIED: task not found')
+    if (t.exam_part === 2) return null
+    const reference = String(t.answer_html ?? '').replace(/<[^>]+>/g, '').trim()
+    return String(body.p_answer_raw ?? '').trim() === reference
+  }
+}
 const topicTasksStaff = topicTaskDefs.map(r => ({
   item_id: r.item_id, item_position: r.item_position, task_id: r.task_id,
   external_id: catalog_tasks.find(t => t.id === r.task_id)?.external_id ?? null,
@@ -404,6 +418,7 @@ export function baseFixtures(persona) {
       get_variant_results: [], variant_pass_counts: [], variant_topic_availability: [], variant_selection_availability: [],
       ...topicTaskRpcs((body) => body.p_topic_id === IDS.topic(1) ? myTopicTasks : []),
       topic_tasks_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? topicTasksStaff : [],
+      preview_task_verdict: previewTaskVerdict(persona),
       topic_task_progress_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? TOPIC_TASK_PROGRESS : [],
       course_topic_tasks_matrix: (body) => body.p_course_id === IDS.course ? courseTasksMatrix : [],
       topic_attached_variants: [], variant_topic_groups: [],

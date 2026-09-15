@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
-import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
-import { toast } from '@/store/toastStore'
+import { usePreviewMode } from '@/store/staffModeStore'
 import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
 
 /**
@@ -17,9 +16,10 @@ import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
  * (`topicProgress.groupDone`). Попытку отметить её руками ловит и клиент, и
  * CHECK таблицы.
  *
- * Предпросмотр глазами ученика (§178): `topic_section_marks` не читаем и не
- * пишем — отметок нет, кнопка видна (`canMark`), но выключена на странице;
- * `toggle` на всякий случай тоже noop с тостом.
+ * Предпросмотр глазами ученика (§178, §179): `topic_section_marks` не читаем
+ * и не пишем. Отметка — переключатель в памяти хука: владелец видит, как
+ * «закрывается» группа и тема, а после обновления страницы всё пусто — так и
+ * должно быть, ничего не запоминается.
  */
 export function useTopicSectionMarks(topicId: string | null) {
   const preview = usePreviewMode()
@@ -53,8 +53,7 @@ export function useTopicSectionMarks(topicId: string | null) {
   }, [topicId, studentId, resolvingStudent, preview])
 
   const toggle = useCallback(async (group: TopicGroupKey) => {
-    if (preview) { toast.info(PREVIEW_NOOP_MESSAGE); return }
-    if (!topicId || !studentId) throw new Error('Не удалось определить ученика')
+    if (!preview && (!topicId || !studentId)) throw new Error('Не удалось определить ученика')
     if (!isSelfMarkable(group)) throw new Error('Этот раздел засчитывает система, а не отметка')
 
     const had = marks.has(group)
@@ -64,6 +63,8 @@ export function useTopicSectionMarks(topicId: string | null) {
     else next.add(group)
     setMarks(next)
     setError(null)
+    // Предпросмотр: отметка живёт в памяти, в базу не идёт.
+    if (preview || !topicId || !studentId) return
 
     const query = had
       ? supabase.from('topic_section_marks').delete()
@@ -88,8 +89,8 @@ export function useTopicSectionMarks(topicId: string | null) {
      * Есть ли кому отмечать. У персонала строки `students` нет — кнопку
      * показывать нельзя: отметить за ученика невозможно ни здесь, ни в базе
      * (пишущие политики требуют `student_id = auth_student_id()`). В
-     * предпросмотре кнопка есть, но выключена — ученик её видит, а владелец
-     * должен видеть то же.
+     * предпросмотре кнопка есть и переключает отметку в памяти — ученик её
+     * видит, а владелец должен видеть то же.
      */
     canMark: preview || !!studentId,
     loading: preview ? false : loading || resolvingStudent,
