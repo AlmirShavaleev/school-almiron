@@ -48,8 +48,8 @@ vi.mock('@/hooks/useCourseProgram', () => ({
 }))
 
 vi.mock('@/components/modals/TopicMaterialsModal', () => ({
-  TopicMaterialsModal: ({ open, topicTitle, moduleTitle }: { open: boolean; topicTitle: string; moduleTitle: string }) => (
-    open ? <div data-testid="topic-materials-modal">{topicTitle} / {moduleTitle}</div> : null
+  TopicMaterialsModal: ({ open, topicTitle, moduleTitle, initialTile }: { open: boolean; topicTitle: string; moduleTitle: string; initialTile?: string | null }) => (
+    open ? <div data-testid="topic-materials-modal" data-tile={initialTile ?? ''}>{topicTitle} / {moduleTitle}</div> : null
   ),
 }))
 vi.mock('@/components/modals/CreateHomeworkModal', () => ({ CreateHomeworkModal: () => null }))
@@ -72,6 +72,16 @@ const modules = [
         max_score: 100,
         available_from: null,
       },
+    ],
+  },
+]
+
+const twoTopicModules = [
+  {
+    ...modules[0],
+    topics: [
+      modules[0].topics[0],
+      { id: 'topic-2', module_id: 'module-1', title: 'Тема 2', order_index: 1, max_score: 100, available_from: null },
     ],
   },
 ]
@@ -186,6 +196,85 @@ describe('CourseProgramPage materials tab', () => {
   })
 
   /**
+   * §177. Столбец «Задачи» матрицы: задачи к уроку живут в варианте-носителе
+   * (`test_variants.topic_id` + `tasks_count`, §164), а не в
+   * `topic_test_assignments`, — до этого тема с десятью задачами стояла с ✗.
+   */
+  describe('столбец «Задачи» (§177)', () => {
+    function mockTables(overrides: Record<string, unknown[]>) {
+      fromSpy.mockImplementation((table: string) => makeChain({ data: overrides[table] ?? [], error: null }))
+    }
+
+    it('тема с 10 задачами к уроку — число «10» и столбец заполнен', async () => {
+      mockTables({ test_variants: [{ topic_id: 'topic-1', tasks_count: 10 }] })
+
+      await openMaterialsTab()
+
+      const cell = await screen.findByRole('button', { name: 'Задач к уроку: 10' })
+      expect(cell).toHaveTextContent('10')
+      expect(cell).toHaveAttribute('title', 'Задач к уроку: 10')
+      expect(screen.getByText(/1 \/ 10 заполнено \(10%\)/)).toBeInTheDocument()
+    })
+
+    it('тест из банка без задач — галочка «Тест из банка», числа нет', async () => {
+      mockTables({ topic_test_assignments: [{ topic_id: 'topic-1' }] })
+
+      await openMaterialsTab()
+
+      await waitFor(() => expect(screen.getByTitle('Тест из банка')).toBeInTheDocument())
+      expect(screen.queryByTestId('matrix-tasks-count')).not.toBeInTheDocument()
+      expect(screen.getByText(/1 \/ 10 заполнено \(10%\)/)).toBeInTheDocument()
+    })
+
+    it('ни задач, ни теста — ✗ и ноль в полосе', async () => {
+      mockTables({ test_variants: [{ topic_id: 'topic-1', tasks_count: 0 }] })
+
+      await openMaterialsTab()
+
+      await waitFor(() => expect(screen.getByText(/0 \/ 10 заполнено \(0%\)/)).toBeInTheDocument())
+      expect(screen.queryByTestId('matrix-tasks-count')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Тест из банка')).not.toBeInTheDocument()
+    })
+
+    it('полоса «заполнено» считает и задачи, и тест из банка', async () => {
+      loadModulesSpy.mockResolvedValue(twoTopicModules)
+      mockTables({
+        test_variants: [{ topic_id: 'topic-1', tasks_count: 7 }],
+        topic_test_assignments: [{ topic_id: 'topic-2' }],
+      })
+
+      await openMaterialsTab()
+
+      await waitFor(() => expect(screen.getByText(/2 \/ 20 заполнено \(10%\)/)).toBeInTheDocument())
+      expect(screen.getByRole('button', { name: 'Задач к уроку: 7' })).toBeInTheDocument()
+      expect(screen.getByTitle('Тест из банка')).toBeInTheDocument()
+    })
+
+    it('клик по числу открывает окно темы на рубрике «Задачи»', async () => {
+      mockTables({ test_variants: [{ topic_id: 'topic-1', tasks_count: 10 }] })
+
+      await openMaterialsTab()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Задач к уроку: 10' }))
+
+      await waitFor(() => expect(screen.getByTestId('topic-materials-modal')).toHaveTextContent('Тема 1 / Модуль 1'))
+      expect(screen.getByTestId('topic-materials-modal')).toHaveAttribute('data-tile', 'test')
+    })
+
+    it('клик по строке темы открывает окно без выбранной рубрики', async () => {
+      mockTables({ test_variants: [{ topic_id: 'topic-1', tasks_count: 10 }] })
+
+      await openMaterialsTab()
+      await screen.findByRole('button', { name: 'Задач к уроку: 10' })
+
+      fireEvent.click(screen.getByText('Тема 1'))
+
+      await waitFor(() => expect(screen.getByTestId('topic-materials-modal')).toHaveTextContent('Тема 1 / Модуль 1'))
+      expect(screen.getByTestId('topic-materials-modal')).toHaveAttribute('data-tile', '')
+    })
+  })
+
+  /**
    * §164. Каталог уводит со страницы целиком, поэтому возврат с подобранными
    * задачами приходит адресом. Без этого преподаватель после прикрепления
    * оказывался бы на списке курсов и искал тему заново.
@@ -200,5 +289,6 @@ describe('CourseProgramPage materials tab', () => {
     )
 
     await waitFor(() => expect(screen.getByTestId('topic-materials-modal')).toHaveTextContent('Тема 1 / Модуль 1'))
+    expect(screen.getByTestId('topic-materials-modal')).toHaveAttribute('data-tile', 'test')
   })
 })

@@ -155,6 +155,7 @@ export const topic_test_attempts = [
 export const test_variants = [1, 2, 3, 4].map(i => ({
   id: IDS.variant(i), title: i === 1 ? 'Тренировочный вариант №1 (ЕГЭ физика, полный, 26 заданий, по демоверсии 2027)' : `Вариант №${i}`, description: i === 1 ? 'Собран автоматически из каталога по темам 1–8' : null,
   subject: 'physics', exam_type: 'ege', source_type: i % 2 ? 'auto' : 'manual', status: i === 4 ? 'draft' : 'published', tasks_count: 26, settings: {}, created_by: IDS.owner, created_at: ago(24 * i * 3), updated_at: ago(24 * i),
+  topic_id: null,
   created_by_profile: { full_name: NAMES[4], email: 'vladelets@harness.invalid' }, profiles: { full_name: NAMES[4], email: 'vladelets@harness.invalid' },
 }))
 const myAssignments = [1, 2, 3].map(i => ({
@@ -327,7 +328,9 @@ const TOPIC_TASK_PROGRESS = [{ tasks_total: 7, students_total: 16, students_star
 // темы с задачами (1, 2, 3, 5). Состояния разложены «по диагонали», чтобы на
 // одном экране были все четыре: закрыто всё, часть, ноль при ответах, не
 // открывал. Тема 1 согласована с TOPIC_TASK_PROGRESS: 7 задач.
-const MATRIX_TOPICS = [[1, 7], [2, 5], [3, 6], [5, 4]] // [номер темы, задач]
+// Тема 3 — 12 задач: двузначное число в кружке столбца «Задачи» матрицы
+// «Материалы» (§177) должно поместиться в те же 24 px.
+const MATRIX_TOPICS = [[1, 7], [2, 5], [3, 12], [5, 4]] // [номер темы, задач]
 const matrixStudents = group_students.filter(g => g.group_id === IDS.group).map(g => ({ id: g.student_id, name: g.students.profiles.full_name }))
 const courseTasksMatrix = matrixStudents.flatMap((s, si) => MATRIX_TOPICS.map(([n, total], ti) => {
   const t = topics[n - 1]
@@ -339,13 +342,26 @@ const courseTasksMatrix = matrixStudents.flatMap((s, si) => MATRIX_TOPICS.map(([
   return { student_id: s.id, full_name: s.name, topic_id: t.id, topic_title: t.title, module_order: t.modules.order_index, topic_order: t.order_index, tasks_total: total, touched, closed_auto: closedAuto, closed_self: closedSelf }
 }))
 
+// ── варианты-носители задач к уроку (§164, §177) ────────────────────────────
+// Одна строка `test_variants` с `topic_id` на тему с задачами — то, откуда
+// матрица «Материалы» берёт число в столбце «Задачи». Темы и числа — те же,
+// что в MATRIX_TOPICS, чтобы «Материалы» и «Результаты тестов» не спорили.
+// Тема 1 при этом ещё и с тестом из банка (topic_test_assignments): в матрице
+// число главнее галочки.
+export const topicVariants = MATRIX_TOPICS.map(([n, total]) => ({
+  id: IDS.variant(10 + n), title: `Задачи к уроку: ${TOPIC_TITLES[n - 1]}`, description: null,
+  subject: 'physics', exam_type: 'ege', source_type: 'teacher_assigned', status: 'published', tasks_count: total, settings: {},
+  created_by: IDS.owner, created_at: ago(24 * 10), updated_at: ago(24 * 2), topic_id: IDS.topic(n),
+  created_by_profile: { full_name: NAMES[4], email: 'vladelets@harness.invalid' }, profiles: { full_name: NAMES[4], email: 'vladelets@harness.invalid' },
+}))
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
     tables: {
       profiles, students, teachers, curators: [], courses, modules, topics, groups, group_students,
       topic_material_items, topic_homework, topic_homework_attempts, topic_homework_reviews, topic_homework_attempt_files,
-      topic_tests, topic_test_assignments, topic_test_attempts, topic_test_items: [], test_variants, test_variant_items: Array.from({ length: 26 }, (_, k) => ({ id: U('c', 1600 + k), variant_id: IDS.variant(1), task_id: IDS.task(1 + (k % 14)), position: k + 1, points: k < 20 ? 1 : 3, grading_type: k < 20 ? 'auto' : 'manual', section_id: IDS.section(1), topic_id: null, created_at: ago(100) })),
+      topic_tests, topic_test_assignments, topic_test_attempts, topic_test_items: [], test_variants: [...test_variants, ...topicVariants], test_variant_items: Array.from({ length: 26 }, (_, k) => ({ id: U('c', 1600 + k), variant_id: IDS.variant(1), task_id: IDS.task(1 + (k % 14)), position: k + 1, points: k < 20 ? 1 : 3, grading_type: k < 20 ? 'auto' : 'manual', section_id: IDS.section(1), topic_id: null, created_at: ago(100) })),
       catalog_sections, catalog_tasks, catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],

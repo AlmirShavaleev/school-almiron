@@ -1048,18 +1048,29 @@ const MAT_COLS = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(type => (
   color: MAT_COL_COLOR[type],
 }))
 
+/**
+ * Строка варианта-носителя задач к уроку (§164). В сгенерированных типах базы
+ * `test_variants.topic_id` ещё нет (типы отстают от прода, руками их не
+ * дописываем — CLAUDE.md), поэтому форма строки описана здесь.
+ */
+type TopicVariantRow = { topic_id: string | null; tasks_count: number | null }
+
 function MaterialsMatrix({
   courseId, modules, onOpenTopic, onGoToProgram, onToggleTopicOpen, refreshKey = 0,
 }: {
   courseId: string
   modules: Module[]
-  onOpenTopic: (topic: Topic, moduleTitle: string) => void
+  /** `tile` — рубрика, на которой открыть окно темы (клик по числу задач → «Задачи»). */
+  onOpenTopic: (topic: Topic, moduleTitle: string, tile?: TopicSection) => void
   onGoToProgram: () => void
   onToggleTopicOpen: (topicId: string, isOpen: boolean) => Promise<void>
   /** Меняется при закрытии модалки темы — матрица перечитывает заполненность. */
   refreshKey?: number
 }) {
   const [matMap, setMatMap] = useState<Record<string, Set<string>>>({})
+  // Число задач к уроку по теме — отдельно от рубрик: столбец «Задачи» показывает
+  // не «есть/нет», а сколько (§177). Тест из банка числа не имеет.
+  const [taskCounts, setTaskCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -1068,6 +1079,7 @@ function MaterialsMatrix({
 
     if (!courseId || !modules.length) {
       setMatMap({})
+      setTaskCounts({})
       setError(null)
       setLoading(false)
       return
@@ -1075,6 +1087,7 @@ function MaterialsMatrix({
     const topicIds = modules.flatMap(m => m.topics.map(t => t.id))
     if (!topicIds.length) {
       setMatMap({})
+      setTaskCounts({})
       setError(null)
       setLoading(false)
       return
@@ -1085,7 +1098,7 @@ function MaterialsMatrix({
 
     ;(async () => {
       try {
-        const [materialItems, homeworkRows, testRows] = await Promise.all([
+        const [materialItems, homeworkRows, testRows, variantRows] = await Promise.all([
           // Query 1: topic_material_items with pagination
           fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>(async (from, to) =>
             await supabase
@@ -1112,9 +1125,23 @@ function MaterialsMatrix({
             if (error) throw new Error(error.message ?? 'Не удалось загрузить тесты')
             return (data as { topic_id: string }[] | null) || []
           })(),
+          // Query 4: задачи к уроку — вариант-носитель темы (§164). `tasks_count`
+          // ведут `attach_catalog_tasks_to_topic`, `topic_task_detach_item` и
+          // синхронизация каркаса (§172), отдельно по позициям не считаем.
+          // Страницами, как первый запрос: тем в курсе может быть больше
+          // страницы PostgREST.
+          fetchAllPagedRows<TopicVariantRow>(async (from, to) => {
+            const { data, error } = await supabase
+              .from('test_variants')
+              .select('topic_id, tasks_count')
+              .in('topic_id', topicIds)
+              .range(from, to)
+            return { data: data as TopicVariantRow[] | null, error }
+          }),
         ])
 
         const map: Record<string, Set<string>> = {}
+        const counts: Record<string, number> = {}
 
         // Process topic_material_items
         for (const row of materialItems) {
@@ -1142,12 +1169,27 @@ function MaterialsMatrix({
           map[row.topic_id].add('test')
         }
 
+        // Задачи к уроку: столбец «Задачи» заполнен, если задач > 0 — тогда
+        // полоса «заполнено» и итог по модулю считают его так же, как тест из
+        // банка. Один вариант на тему (уникальный индекс), но суммируем на
+        // всякий случай — ноль строк в базе и ноль на экране должны совпадать.
+        for (const row of variantRows) {
+          if (!row.topic_id) continue
+          const n = row.tasks_count ?? 0
+          if (n <= 0) continue
+          counts[row.topic_id] = (counts[row.topic_id] ?? 0) + n
+          if (!map[row.topic_id]) map[row.topic_id] = new Set()
+          map[row.topic_id].add('test')
+        }
+
         if (cancelled) return
         setMatMap(map)
+        setTaskCounts(counts)
       } catch (e) {
         if (cancelled) return
         console.error('Failed to load topic materials', e)
         setMatMap({})
+        setTaskCounts({})
         setError('Не удалось загрузить материалы курса')
       } finally {
         if (!cancelled) setLoading(false)
@@ -1256,10 +1298,30 @@ function MaterialsMatrix({
                     </td>
                     {MAT_COLS.map(c => {
                       const has = matMap[topic.id]?.has(c.type)
+                      const tasksCount = c.type === 'test' ? (taskCounts[topic.id] ?? 0) : 0
                       return (
                         <td key={c.type} className="px-2 py-2.5 text-center">
-                          {has
-                            ? <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full">
+                          {tasksCount > 0
+                            // Число вместо галочки: владельцу нужно видеть, сколько
+                            // задач прикреплено, а не только что они есть. Клик —
+                            // сразу на рубрику «Задачи» темы, тем же путём, что
+                            // возврат из каталога (§164). Кружок те же 24 px:
+                            // двузначное число помещается, трёхзначных не бывает.
+                            ? <button
+                                type="button"
+                                title={`Задач к уроку: ${tasksCount}`}
+                                aria-label={`Задач к уроку: ${tasksCount}`}
+                                data-testid="matrix-tasks-count"
+                                onClick={e => { e.stopPropagation(); onOpenTopic(topic, mod.title, 'test') }}
+                                className="inline-flex items-center justify-center w-6 h-6 bg-green-100 hover:bg-green-200 rounded-full text-[11px] font-semibold leading-none text-green-700 tabular-nums transition-colors"
+                              >
+                                {tasksCount}
+                              </button>
+                            : has
+                            ? <span
+                                title={c.type === 'test' ? 'Тест из банка' : undefined}
+                                className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full"
+                              >
                                 <Check size={12} className="text-green-600" />
                               </span>
                             : <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full">
@@ -1535,9 +1597,15 @@ export function CourseProgramPage() {
   const [toastMsg,  setToastMsg]  = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function openMaterials(topic: Topic, moduleTitle: string) {
+  /**
+   * Единственный вход в окно темы. `tile` — рубрика, на которой его открыть:
+   * так возвращается каталог (§164, адресом) и так же открывает «Задачи» клик
+   * по числу задач в матрице «Материалы» (§177). Второго механизма нет.
+   */
+  const openMaterials = useCallback((topic: Topic, moduleTitle: string, tile: string | null = null) => {
     setMatTopic({ topic, moduleTitle })
-  }
+    setMatTile(tile)
+  }, [setMatTopic, setMatTile])
 
   /**
    * Возврат из каталога после подбора задач (§164).
@@ -1555,15 +1623,14 @@ export function CourseProgramPage() {
       .flatMap(m => m.topics.map(t => ({ topic: t, moduleTitle: m.title })))
       .find(x => x.topic.id === materialsTopicParam)
     if (!found) return
-    setMatTopic(found)
-    setMatTile(materialsTileParam)
+    openMaterials(found.topic, found.moduleTitle, materialsTileParam)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       next.delete('materialsTopic')
       next.delete('tile')
       return next
     }, { replace: true })
-  }, [materialsTopicParam, materialsTileParam, matTopic, modules, setSearchParams])
+  }, [materialsTopicParam, materialsTileParam, matTopic, modules, setSearchParams, openMaterials])
 
   // ВАЖНО: без useMemo этот объект создаётся заново на каждый рендер.
   // Он стоит в зависимостях эффектов и уходит в пропсы дочерних компонентов,
@@ -2305,7 +2372,7 @@ export function CourseProgramPage() {
               <MaterialsMatrix
                 courseId={selectedCourse.id}
                 modules={modules}
-                onOpenTopic={(topic, moduleTitle) => setMatTopic({ topic, moduleTitle })}
+                onOpenTopic={openMaterials}
                 onGoToProgram={() => setTab('program')}
                 onToggleTopicOpen={handleToggleTopicOpen}
                 refreshKey={matRefreshKey}

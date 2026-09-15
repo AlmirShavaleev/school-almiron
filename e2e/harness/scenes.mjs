@@ -84,6 +84,15 @@ export const scenes = [
   { persona: 'owner', name: 'o03-course-program-topic', url: `/course-program?course=${S.course}`, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { click: 'Равноускоренное прямолинейное' }, { wait: 1000 }] },
   { persona: 'owner', name: 'o03-course-program-materials', url: `/course-program?course=${S.course}`, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { clickSel: 'button:has-text("Материалы")' }, { wait: 1200 }] },
   { persona: 'owner', name: 'o03-course-program-materials-topic', url: `/course-program?course=${S.course}`, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { clickSel: 'button:has-text("Материалы")' }, { wait: 1000 }, { click: 'Равноускоренное прямолинейное' }, { wait: 1200 }] },
+  // §177 (board/030): вкладка «Материалы» на 1280 — в столбце «Задачи» число
+  // прикреплённых задач (тема 1 — «7» при тесте из банка, тема 3 — «12»),
+  // ниже — клик по числу открывает окно темы сразу на рубрике «Задачи».
+  { persona: 'owner', name: 'o03-course-program-materials', url: `/course-program?courseId=${S.course}&tab=materials`, width: 1280, height: 800, actions: [{ wait: 1200 }] },
+  { persona: 'owner', name: 'o03-course-program-materials-count-click', url: `/course-program?courseId=${S.course}&tab=materials`, width: 1280, height: 800, actions: [{ wait: 1200 }, { clickSel: '[data-testid="matrix-tasks-count"]' }, { wait: 1500 }], full: false },
+  // То же на 390: матрица прокручивается внутри контейнера (§158), столбец
+  // «Задачи» — крайний правый, докручиваем до него и смотрим, что число не
+  // расширило столбец.
+  { persona: 'owner', name: 'o03-course-program-materials-tasks-col', url: `/course-program?courseId=${S.course}&tab=materials`, actions: [{ wait: 1200 }, { eval: '(() => { const el = document.querySelector("[data-testid=matrix-tasks-count]")?.closest(".overflow-x-auto"); if (el) el.scrollLeft = el.scrollWidth; window.scrollTo(0, 420) })()' }, { wait: 500 }], full: false },
   // board/016: экран преподавателя той же темы — тайл «Задачи» (§162/§164):
   // сколько прикреплено и как решают.
   { persona: 'owner', name: 'o03-course-program-tasks', url: `/course-program?course=${S.course}`, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { clickSel: 'button:has-text("Материалы")' }, { wait: 1000 }, { click: 'Равноускоренное прямолинейное' }, { wait: 1500 }, { clickSel: '[data-testid="topic-tile-test"]' }, { wait: 1000 }, { eval: '(() => { const el = [...document.querySelectorAll("div")].find(e => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5); if (el) el.scrollTop = el.scrollHeight })()' }, { wait: 500 }], full: false },
