@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Shield, GraduationCap, Eye } from 'lucide-react'
+import { Shield, GraduationCap, Eye, Smartphone } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { useStaffMode, type StaffMode } from '@/store/staffModeStore'
+import { useMobilePreview, useStaffMode, type StaffMode } from '@/store/staffModeStore'
 
 /**
  * Переключатель «Администратор ⇄ Учитель ⇄ Ученик» в шапке. Виден только
@@ -11,6 +11,13 @@ import { useStaffMode, type StaffMode } from '@/store/staffModeStore'
  * дашборд. Права не трогаются никогда — подробности в `staffModeStore`.
  * «Ученик» (§178) — предпросмотр ученических экранов без записи; жёлтую
  * полосу с «Вернуться» рисует `StudentPreviewBanner`.
+ *
+ * Справа, через разделитель, — «Телефон» (§181). Визуально в той же группе
+ * («такая же плашечка»), но это переключатель ПОВЕРХ режимов, а не четвёртый
+ * режим: нажатие не меняет `mode`, а показывает текущий экран во вложенном
+ * окне 390×844 (`MobilePreviewFrame`). На узких экранах (`md:hidden` шапки)
+ * кнопки нет — на телефоне мобильный вид бессмыслен; внутри самого «телефона»
+ * её тоже нет (`useMobilePreview().available`), иначе iframe в iframe.
  */
 
 /**
@@ -28,6 +35,7 @@ const OPTIONS: Array<{ mode: StaffMode; label: string; icon: React.ReactNode }> 
 
 export function StaffModeSwitch() {
   const { mode, setMode, canSwitch } = useStaffMode()
+  const mobile = useMobilePreview()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -70,6 +78,27 @@ export function StaffModeSwitch() {
           </button>
         )
       })}
+      {mobile.available && (
+        <>
+          <span aria-hidden className="mx-0.5 hidden h-4 w-px bg-slate-300 md:block" />
+          <button
+            type="button"
+            onClick={() => mobile.setEnabled(!mobile.enabled)}
+            aria-pressed={mobile.enabled}
+            aria-label="Мобильный вид"
+            title="Мобильный вид"
+            data-testid="staff-mode-mobile"
+            className={cn(
+              'hidden md:flex items-center px-2 py-1.5 rounded-[7px] transition-colors',
+              mobile.enabled
+                ? 'bg-white text-graphite-950 shadow-sm'
+                : 'text-slate-500 hover:text-graphite-900'
+            )}
+          >
+            <Smartphone size={14} />
+          </button>
+        </>
+      )}
     </div>
   )
 }

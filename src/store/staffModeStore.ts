@@ -77,25 +77,109 @@ export function isPreviewMode(role: UserRole | null | undefined, mode: StaffMode
   return canSwitchStaffMode(role) && mode === 'student'
 }
 
-/** Ключ на profile_id: на одной машине могут входить разные люди. */
-const STORAGE_PREFIX = 'almiron:staff-mode:'
+/**
+ * «Мобильный вид» (§181) — переключатель ПОВЕРХ режимов, а не четвёртый
+ * режим: режимов роли по-прежнему три, «телефон» ортогонален им («Учитель +
+ * телефон», «Ученик + телефон»). Он не меняет ни роль, ни данные — только
+ * показывает текущий экран во вложенном окне 390×844 (`MobilePreviewFrame`),
+ * где вся отзывчивая вёрстка переключается сама, потому что у iframe свой
+ * viewport. Origin тот же: сессия и режим внутри те же, никаких новых прав.
+ */
 
-function readStoredMode(profileId: string): StaffMode {
+/** Размер «телефона» — один, планшета нет намеренно (карточка board/034). */
+export const MOBILE_PREVIEW_WIDTH  = 390
+export const MOBILE_PREVIEW_HEIGHT = 844
+
+/** Как часто оболочка сверяет адрес внутри «телефона» с внешним (мс). */
+export const MOBILE_PREVIEW_SYNC_MS = 500
+
+/** Параметр адреса, по которому вложенное окно узнаёт, что оно «телефон». */
+export const MOBILE_PREVIEW_PARAM = 'mobile-preview'
+
+/**
+ * Имя вложенного окна (`<iframe name>`). `window.name` живёт столько же,
+ * сколько само окно, и переживает навигацию внутри него — в отличие от
+ * `?mobile-preview=1`, который React Router теряет на первом же `navigate`
+ * внутри iframe. Без этого второго признака после первого перехода внутри
+ * «телефона» вложенное окно перестало бы считать себя вложенным и нарисовало
+ * бы iframe в iframe.
+ */
+export const MOBILE_PREVIEW_FRAME_NAME = 'mobile-preview'
+
+/** Ровно то, что нужно от `window`, чтобы решить «я вложенное окно?». */
+export interface WindowLike {
+  self:     unknown
+  top:      unknown
+  name:     string
+  location: { search: string }
+}
+
+/**
+ * «Я — окно внутри мобильного вида». Оба условия сразу: `self !== top` И
+ * признак от родителя (параметр адреса на первой загрузке или имя окна
+ * после). Одного `self !== top` мало: чужие встраивания дали бы ложное
+ * срабатывание и спрятали бы переключатель.
+ *
+ * Внутри такого окна кнопка «Телефон» не рисуется, `mobilePreview` считается
+ * выключенным, что бы ни лежало в хранилище (оно общее с родителем), и iframe
+ * не создаётся.
+ */
+export function isInsideMobilePreview(win: WindowLike | undefined = typeof window === 'undefined' ? undefined : window): boolean {
+  if (!win) return false
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + profileId)
-    return raw === 'teacher' || raw === 'student' ? raw : 'admin'
+    if (win.self === win.top) return false
+    if (win.name === MOBILE_PREVIEW_FRAME_NAME) return true
+    return new URLSearchParams(win.location.search).get(MOBILE_PREVIEW_PARAM) === '1'
   } catch {
-    // localStorage недоступен (приватный режим, запрет хранилища) — режим
-    // просто не переживёт перезагрузку, ломаться тут нечему.
-    return 'admin'
+    // Доступ к `top` в чужом cross-origin встраивании может бросить —
+    // считаем, что это не наш «телефон».
+    return false
   }
 }
 
-function writeStoredMode(profileId: string, mode: StaffMode): void {
+/** Ключ на profile_id: на одной машине могут входить разные люди. */
+const STORAGE_PREFIX = 'almiron:staff-mode:'
+
+/**
+ * Что лежит под ключом. Раньше — просто строка режима (`'teacher'`); с §181
+ * — JSON с режимом и «телефоном». Старую строку читаем как режим без
+ * «телефона»: уже сохранённые режимы ломать нельзя, а харнесс и сейчас
+ * пишет строку.
+ */
+interface StoredStaffState {
+  mode:          StaffMode
+  mobilePreview: boolean
+}
+
+const DEFAULT_STORED: StoredStaffState = { mode: 'admin', mobilePreview: false }
+
+function asMode(raw: unknown): StaffMode {
+  return raw === 'teacher' || raw === 'student' ? raw : 'admin'
+}
+
+function readStored(profileId: string): StoredStaffState {
   try {
-    localStorage.setItem(STORAGE_PREFIX + profileId, mode)
+    const raw = localStorage.getItem(STORAGE_PREFIX + profileId)
+    if (!raw) return DEFAULT_STORED
+    if (raw.startsWith('{')) {
+      const parsed: unknown = JSON.parse(raw)
+      const obj = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+      return { mode: asMode(obj.mode), mobilePreview: obj.mobilePreview === true }
+    }
+    return { mode: asMode(raw), mobilePreview: false }
   } catch {
-    /* см. readStoredMode */
+    // localStorage недоступен (приватный режим, запрет хранилища) или под
+    // ключом мусор — режим просто не переживёт перезагрузку, ломаться тут
+    // нечему.
+    return DEFAULT_STORED
+  }
+}
+
+function writeStored(profileId: string, state: StoredStaffState): void {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + profileId, JSON.stringify(state))
+  } catch {
+    /* см. readStored */
   }
 }
 
@@ -141,10 +225,14 @@ export function clearStaffModeChoice(profileId: string | null | undefined): void
 
 interface StaffModeState {
   mode:       StaffMode
+  /** «Мобильный вид» (§181). Сырое состояние: для не-admin/owner и внутри
+      вложенного окна его читают через `useMobilePreview()`, который отдаёт false. */
+  mobilePreview: boolean
   profileId:  string | null
   /** Выбран ли режим в текущем входе. Для не-admin/owner смысла не имеет. */
   choiceMade: boolean
   setMode:    (mode: StaffMode) => void
+  setMobilePreview: (enabled: boolean) => void
   /** Выбор на входном экране: ставит режим И закрывает экран до конца входа. */
   chooseMode: (mode: StaffMode) => void
   /** Подхватить сохранённый режим при появлении/смене профиля. */
@@ -152,55 +240,92 @@ interface StaffModeState {
 }
 
 export const useStaffModeStore = create<StaffModeState>()((set, get) => ({
-  mode:       'admin',
-  profileId:  null,
-  choiceMade: false,
+  mode:          'admin',
+  mobilePreview: false,
+  profileId:     null,
+  choiceMade:    false,
   setMode: (mode) => {
-    const { profileId } = get()
-    if (profileId) writeStoredMode(profileId, mode)
+    const { profileId, mobilePreview } = get()
+    if (profileId) writeStored(profileId, { mode, mobilePreview })
     set({ mode })
   },
+  setMobilePreview: (mobilePreview) => {
+    const { profileId, mode } = get()
+    if (profileId) writeStored(profileId, { mode, mobilePreview })
+    set({ mobilePreview })
+  },
   chooseMode: (mode) => {
-    const { profileId } = get()
+    const { profileId, mobilePreview } = get()
     if (profileId) {
-      writeStoredMode(profileId, mode)
+      writeStored(profileId, { mode, mobilePreview })
       writeChoiceMade(profileId)
     }
     set({ mode, choiceMade: true })
   },
   hydrate: (profileId) => {
     if (get().profileId === profileId) return
+    const stored = profileId ? readStored(profileId) : DEFAULT_STORED
     set({
       profileId,
-      mode:       profileId ? readStoredMode(profileId) : 'admin',
-      choiceMade: profileId ? readChoiceMade(profileId) : false,
+      mode:          stored.mode,
+      mobilePreview: stored.mobilePreview,
+      choiceMade:    profileId ? readChoiceMade(profileId) : false,
     })
   },
 }))
 
 
 /**
- * Режим для ТЕКУЩЕГО рендера, ещё до того, как эффект `hydrate` доедет.
+ * Сохранённое состояние для ТЕКУЩЕГО рендера, ещё до того, как эффект
+ * `hydrate` доедет.
  *
  * Эффекты идут после коммита, а `RoleGuard` решает «пустить или увести» в
  * самом рендере. Если на первом рендере после появления профиля отдать
  * `mode` из стора (там ещё `admin` от предыдущего профиля или старта), сторож
  * ученического маршрута в предпросмотре отправит на `/dashboard`, и глубокая
  * ссылка на тему потеряется. Поэтому, пока стор не поднял режим этого
- * профиля, читаем сохранённый синхронно — тем же `readStoredMode`, что и
- * `hydrate`, второго правила нет.
+ * профиля, читаем сохранённый синхронно — тем же `readStored`, что и
+ * `hydrate`, второго правила нет. «Телефон» читается тем же путём: иначе
+ * первый рендер после F5 на миг собрал бы обычное дерево (с его запросами),
+ * и только потом — рамку.
  */
-function useModeForProfile(profileId: string | null | undefined): StaffMode {
-  const mode      = useStaffModeStore(s => s.mode)
-  const storedFor = useStaffModeStore(s => s.profileId)
-  const hydrate   = useStaffModeStore(s => s.hydrate)
+function useStoredForProfile(profileId: string | null | undefined): StoredStaffState {
+  const mode          = useStaffModeStore(s => s.mode)
+  const mobilePreview = useStaffModeStore(s => s.mobilePreview)
+  const storedFor     = useStaffModeStore(s => s.profileId)
+  const hydrate       = useStaffModeStore(s => s.hydrate)
 
   useEffect(() => {
     hydrate(profileId ?? null)
   }, [profileId, hydrate])
 
-  if (!profileId) return 'admin'
-  return storedFor === profileId ? mode : readStoredMode(profileId)
+  if (!profileId) return DEFAULT_STORED
+  return storedFor === profileId ? { mode, mobilePreview } : readStored(profileId)
+}
+
+function useModeForProfile(profileId: string | null | undefined): StaffMode {
+  return useStoredForProfile(profileId).mode
+}
+
+/**
+ * Единственный источник правды «показываем текущий экран как на телефоне».
+ *
+ * `enabled` — true только у admin/owner (`canSwitchStaffMode`) и только в
+ * верхнем окне: внутри вложенного окна (`isInsideMobilePreview`) всегда
+ * false, что бы ни лежало в общем хранилище, — иначе iframe в iframe.
+ * `available` — можно ли вообще показать кнопку: те же два условия.
+ */
+export function useMobilePreview(): { enabled: boolean; available: boolean; setEnabled: (enabled: boolean) => void } {
+  const profile          = useAuthStore(s => s.profile)
+  const stored           = useStoredForProfile(profile?.id)
+  const setMobilePreview = useStaffModeStore(s => s.setMobilePreview)
+
+  const available = canSwitchStaffMode(profile?.role) && !isInsideMobilePreview()
+  return {
+    available,
+    enabled:    available && stored.mobilePreview,
+    setEnabled: (enabled) => { if (available) setMobilePreview(enabled) },
+  }
 }
 
 /**

@@ -6,10 +6,11 @@ import { SupportWidget } from '@/components/shared/SupportWidget'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { useAuthStore } from '@/store/authStore'
-import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
+import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useMobilePreview, useStaffMode } from '@/store/staffModeStore'
 import { StaffModeSwitch } from './StaffModeSwitch'
 import { StaffModeGate } from './StaffModeGate'
 import { StudentPreviewBanner } from './StudentPreviewBanner'
+import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
@@ -69,6 +70,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
 export function DashboardLayout() {
   const { profile, loading } = useAuthStore()
   const { effectiveRole, needsModeChoice, preview } = useStaffMode()
+  const { enabled: mobilePreview } = useMobilePreview()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -101,6 +103,11 @@ export function DashboardLayout() {
   // редиректы туда-обратно и не гадать, куда возвращать после выбора.
   // Видят только admin/owner и только пока выбор в этом входе не сделан.
   if (needsModeChoice) return <StaffModeGate />
+
+  // «Мобильный вид» (§181): ВМЕСТО дерева кабинета — рамка-«телефон» с тем же
+  // приложением во вложенном окне. Внутри самого вложенного окна `enabled`
+  // всегда false (`useMobilePreview`), и там рисуется обычное дерево.
+  if (mobilePreview) return <MobilePreviewFrame />
 
   const initials = profile.full_name
     ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('')

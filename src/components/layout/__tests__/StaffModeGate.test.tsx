@@ -73,7 +73,8 @@ describe('Экран выбора режима после входа', () => {
     expect(await screen.findByText('cabinet-marker')).toBeInTheDocument()
     expect(useStaffModeStore.getState().mode).toBe('teacher')
     // Режим переживает перезагрузку, отметка о выборе — только текущий вход.
-    expect(localStorage.getItem(`almiron:staff-mode:${ADMIN_ID}`)).toBe('teacher')
+    // С §181 под ключом JSON с режимом и «телефоном».
+    expect(JSON.parse(localStorage.getItem(`almiron:staff-mode:${ADMIN_ID}`)!).mode).toBe('teacher')
     expect(sessionStorage.getItem(`almiron:staff-mode-chosen:${ADMIN_ID}`)).toBe('1')
   })
 

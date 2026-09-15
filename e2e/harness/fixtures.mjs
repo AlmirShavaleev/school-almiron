@@ -34,6 +34,12 @@ export const personas = {
   // предпросмотр ученических экранов. Отдельная персона, а не действие в
   // сцене: контекст (и localStorage с режимом) один на персону и ширину.
   ownerPreview: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'student' },
+  // §181: тот же владелец с включённым «Мобильным видом» — вместо кабинета
+  // рамка-«телефон» 390×844 с тем же приложением во вложенном окне. Режим
+  // роли под ним любой: `ownerMobile` — администратор, `ownerPreviewMobile` —
+  // «Ученик + телефон» (жёлтая полоса §178 внутри телефона).
+  ownerMobile: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'admin', mobilePreview: true },
+  ownerPreviewMobile: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'student', mobilePreview: true },
   guest: { user: null },
 }
 

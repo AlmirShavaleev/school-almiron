@@ -2,14 +2,22 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import {
   canSwitchStaffMode,
   effectiveRoleOf,
+  isInsideMobilePreview,
   isPreviewMode,
   useStaffModeStore,
+  type WindowLike,
 } from '@/store/staffModeStore'
+
+/** Что лежит под ключом профиля: с §181 это JSON `{ mode, mobilePreview }`. */
+function stored(profileId: string): { mode?: string; mobilePreview?: boolean } | null {
+  const raw = localStorage.getItem('almiron:staff-mode:' + profileId)
+  return raw === null ? null : JSON.parse(raw)
+}
 
 describe('staffModeStore', () => {
   beforeEach(() => {
     localStorage.clear()
-    useStaffModeStore.setState({ mode: 'admin', profileId: null })
+    useStaffModeStore.setState({ mode: 'admin', mobilePreview: false, profileId: null })
   })
 
   it('переключатель есть только у admin и owner', () => {
@@ -37,7 +45,7 @@ describe('staffModeStore', () => {
   it('режим переживает перезагрузку и хранится на profile_id', () => {
     useStaffModeStore.getState().hydrate('p1')
     useStaffModeStore.getState().setMode('teacher')
-    expect(localStorage.getItem('almiron:staff-mode:p1')).toBe('teacher')
+    expect(stored('p1')?.mode).toBe('teacher')
 
     // «перезагрузка»: новый чистый стор поднимает сохранённое
     useStaffModeStore.setState({ mode: 'admin', profileId: null })
@@ -79,7 +87,7 @@ describe('staffModeStore', () => {
   it('режим ученика хранится тем же ключом и переживает перезагрузку', () => {
     useStaffModeStore.getState().hydrate('p1')
     useStaffModeStore.getState().setMode('student')
-    expect(localStorage.getItem('almiron:staff-mode:p1')).toBe('student')
+    expect(stored('p1')?.mode).toBe('student')
 
     useStaffModeStore.setState({ mode: 'admin', profileId: null })
     useStaffModeStore.getState().hydrate('p1')
@@ -90,5 +98,71 @@ describe('staffModeStore', () => {
     localStorage.setItem('almiron:staff-mode:p1', 'root')
     useStaffModeStore.getState().hydrate('p1')
     expect(useStaffModeStore.getState().mode).toBe('admin')
+  })
+
+  // §181: «Мобильный вид» — переключатель поверх режимов, тот же ключ.
+  describe('мобильный вид (§181)', () => {
+    it('старое строковое значение читается как режим без «телефона»', () => {
+      localStorage.setItem('almiron:staff-mode:p1', 'teacher')
+      useStaffModeStore.getState().hydrate('p1')
+      expect(useStaffModeStore.getState().mode).toBe('teacher')
+      expect(useStaffModeStore.getState().mobilePreview).toBe(false)
+    })
+
+    it('«телефон» хранится тем же ключом вместе с режимом и переживает перезагрузку', () => {
+      useStaffModeStore.getState().hydrate('p1')
+      useStaffModeStore.getState().setMode('student')
+      useStaffModeStore.getState().setMobilePreview(true)
+      expect(stored('p1')).toEqual({ mode: 'student', mobilePreview: true })
+      // Режим при этом не изменился — «телефон» ортогонален.
+      expect(useStaffModeStore.getState().mode).toBe('student')
+
+      useStaffModeStore.setState({ mode: 'admin', mobilePreview: false, profileId: null })
+      useStaffModeStore.getState().hydrate('p1')
+      expect(useStaffModeStore.getState().mode).toBe('student')
+      expect(useStaffModeStore.getState().mobilePreview).toBe(true)
+
+      // Смена режима не сбрасывает «телефон», выключение «телефона» — режим.
+      useStaffModeStore.getState().setMode('teacher')
+      expect(stored('p1')).toEqual({ mode: 'teacher', mobilePreview: true })
+      useStaffModeStore.getState().setMobilePreview(false)
+      expect(stored('p1')).toEqual({ mode: 'teacher', mobilePreview: false })
+    })
+
+    it('битый JSON и чужие значения читаются как admin без «телефона»', () => {
+      localStorage.setItem('almiron:staff-mode:p1', '{"mode":"root","mobilePreview":"yes"')
+      useStaffModeStore.getState().hydrate('p1')
+      expect(useStaffModeStore.getState().mode).toBe('admin')
+      expect(useStaffModeStore.getState().mobilePreview).toBe(false)
+
+      useStaffModeStore.setState({ mode: 'admin', mobilePreview: false, profileId: null })
+      localStorage.setItem('almiron:staff-mode:p1', '{"mode":"root","mobilePreview":"yes"}')
+      useStaffModeStore.getState().hydrate('p1')
+      expect(useStaffModeStore.getState().mode).toBe('admin')
+      expect(useStaffModeStore.getState().mobilePreview).toBe(false)
+    })
+
+    it('до входа «телефон» не пишется в хранилище', () => {
+      useStaffModeStore.getState().setMobilePreview(true)
+      expect(localStorage.length).toBe(0)
+    })
+
+    it('isInsideMobilePreview: только вложенное окно с признаком от родителя', () => {
+      const win = (over: Partial<WindowLike>): WindowLike => {
+        const self = {}
+        return { self, top: self, name: '', location: { search: '' }, ...over }
+      }
+      // Верхнее окно — никогда, даже с параметром в адресе.
+      expect(isInsideMobilePreview(win({}))).toBe(false)
+      expect(isInsideMobilePreview(win({ location: { search: '?mobile-preview=1' } }))).toBe(false)
+      // Вложенное окно без признака — чужое встраивание, не наш «телефон».
+      expect(isInsideMobilePreview(win({ top: {} }))).toBe(false)
+      expect(isInsideMobilePreview(win({ top: {}, location: { search: '?mobile-preview=0' } }))).toBe(false)
+      // Вложенное с параметром на первой загрузке…
+      expect(isInsideMobilePreview(win({ top: {}, location: { search: '?tab=2&mobile-preview=1' } }))).toBe(true)
+      // …и по имени окна после навигации внутри, когда параметр уже потерян.
+      expect(isInsideMobilePreview(win({ top: {}, name: 'mobile-preview' }))).toBe(true)
+      expect(isInsideMobilePreview(undefined)).toBe(false)
+    })
   })
 })

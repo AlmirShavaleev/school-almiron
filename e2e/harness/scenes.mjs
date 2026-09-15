@@ -176,6 +176,23 @@ export const scenes = [
   { persona: 'ownerPreview', name: 'p04-topic-mark', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ wait: 800 }, { clickSel: '[data-testid="topic-group-mark-theory"]' }, { wait: 600 }] },
   { persona: 'ownerPreview', name: 'p05-my-homework-stub', url: '/my-homework', actions: [{ wait: 800 }] },
 
+  // ── «Мобильный вид» (§181, board/034) ──
+  // Владелец на компьютере (1280×800) с включённым переключателем «Телефон»:
+  // вместо кабинета — тёмная полоса и рамка 390×844 с тем же приложением
+  // внутри. Внутри — телефонная вёрстка (шапка с «бургером»), потому что у
+  // iframe свой viewport. `full: false`: оболочка `position: fixed`.
+  { persona: 'ownerMobile', name: 'm01-course-program-topic', url: `/course-program?course=${S.course}`, width: 1280, height: 800, actions: [{ wait: 1500 }, { frameClick: 'Физика ЕГЭ 2027' }, { wait: 800 }, { frameClick: 'Равноускоренное прямолинейное' }, { wait: 1200 }], full: false },
+  { persona: 'ownerMobile', name: 'm01-course-program-menu', url: `/course-program?course=${S.course}`, width: 1280, height: 800, actions: [{ wait: 1500 }, { frameClickSel: 'header button' }, { wait: 600 }], full: false },
+  // Ноутбук 1280×720: рамка масштабируется, телефон виден целиком.
+  { persona: 'ownerMobile', name: 'm01-course-program-topic-720', url: `/course-program?course=${S.course}`, width: 1280, height: 720, actions: [{ wait: 1500 }, { frameClick: 'Физика ЕГЭ 2027' }, { wait: 800 }, { frameClick: 'Равноускоренное прямолинейное' }, { wait: 1200 }], full: false },
+  // «Ученик + телефон»: жёлтая полоса предпросмотра (§178) — внутри телефона.
+  { persona: 'ownerPreviewMobile', name: 'm02-student-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ wait: 1500 }], full: false },
+  { persona: 'ownerPreviewMobile', name: 'm02-student-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ wait: 1500 }, { frameClickSel: 'button:has-text("Задачи")' }, { wait: 1200 }, { frameEval: `document.querySelector('[data-testid="topic-task-card"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }], full: false },
+  // Переход внутри телефона подтягивает внешний адрес; «Выйти из мобильного
+  // вида» возвращает обычный кабинет на том же экране (в логе `-> /students`).
+  // Последняя в группе: после выхода «телефон» в контексте персоны выключен.
+  { persona: 'ownerMobile', name: 'm03-exit-synced', url: '/admin', width: 1280, height: 800, actions: [{ wait: 1500 }, { frameClickSel: 'header button' }, { wait: 600 }, { frameClick: 'Ученики' }, { wait: 1200 }, { clickSel: '[data-testid="mobile-preview-exit"]' }, { wait: 1200 }] },
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

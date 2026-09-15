@@ -85,8 +85,8 @@ describe('Переключатель с режимом «Ученик» (§178)'
     expect(screen.getByTestId('student-preview-banner')).toHaveTextContent('Предпросмотр глазами ученика')
     expect(screen.getByTestId('student-preview-banner')).toHaveTextContent('ответы и отметки не сохраняются')
     expect(screen.getByTestId('where')).toHaveTextContent('/dashboard')
-    // Тем же ключом, что и прежние два режима.
-    expect(localStorage.getItem(`almiron:staff-mode:${OWNER_ID}`)).toBe('student')
+    // Тем же ключом, что и прежние два режима (с §181 — JSON с режимом).
+    expect(JSON.parse(localStorage.getItem(`almiron:staff-mode:${OWNER_ID}`)!).mode).toBe('student')
   })
 
   it('посреди работы (не на дашборде) переключение не выбрасывает со страницы', () => {

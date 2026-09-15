@@ -203,22 +203,25 @@ function pickAsset(rest, assetsDir) {
   return path.join(assetsDir, 'figure.png')
 }
 
-export async function newPage(browser, { session, staffProfileId, staffMode, width = 390, height = 844 }) {
+export async function newPage(browser, { session, staffProfileId, staffMode, mobilePreview = false, width = 390, height = 844 }) {
   const context = await browser.newContext({
     viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
     locale: 'ru-RU', timezoneId: 'Europe/Moscow',
   })
-  await context.addInitScript(({ session, staffProfileId, staffMode }) => {
+  await context.addInitScript(({ session, staffProfileId, staffMode, mobilePreview }) => {
     try {
       if (session) localStorage.setItem('sb-harness-auth-token', JSON.stringify(session))
       else localStorage.removeItem('sb-harness-auth-token')
       if (staffProfileId) {
-        localStorage.setItem('almiron:staff-mode:' + staffProfileId, staffMode || 'admin')
+        // Старая строковая форма — намеренно: приложение обязано читать её как
+        // раньше (§181). JSON с «телефоном» — только когда он нужен сцене.
+        localStorage.setItem('almiron:staff-mode:' + staffProfileId,
+          mobilePreview ? JSON.stringify({ mode: staffMode || 'admin', mobilePreview: true }) : (staffMode || 'admin'))
         sessionStorage.setItem('almiron:staff-mode-chosen:' + staffProfileId, '1')
       }
     } catch {}
-  }, { session, staffProfileId, staffMode })
+  }, { session, staffProfileId, staffMode, mobilePreview })
   const page = await context.newPage()
   return { context, page }
 }

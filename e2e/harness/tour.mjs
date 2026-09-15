@@ -19,7 +19,7 @@ async function ctxFor(persona, width, height) {
   if (contexts[key]) return contexts[key]
   const p = personas[persona]
   const session = p.user ? makeSession(p.user) : null
-  const { context, page } = await newPage(browser, { session, staffProfileId: p.staffProfileId, staffMode: p.staffMode ?? 'admin', width, height })
+  const { context, page } = await newPage(browser, { session, staffProfileId: p.staffProfileId, staffMode: p.staffMode ?? 'admin', mobilePreview: p.mobilePreview ?? false, width, height })
   const lines = []
   const handler = makeHandler({ fixtures: baseFixtures(persona), session, assetsDir, log: (l) => lines.push(`  ${l}`) })
   await context.route(u => !u.href.startsWith(BASE), handler)
@@ -42,6 +42,12 @@ for (const s of scenes) {
         if (a.click) await page.getByText(a.click, { exact: a.exact ?? false }).first().click({ timeout: 4000 })
         if (a.clickRole) await page.getByRole(a.clickRole[0], { name: a.clickRole[1] }).first().click({ timeout: 4000 })
         if (a.clickSel) await page.locator(a.clickSel).first().click({ timeout: 4000 })
+        // §181: действия ВНУТРИ «телефона» (iframe мобильного вида). Перехват
+        // запросов стоит на контексте, так что вложенное окно обслуживается
+        // теми же фикстурами без дополнительной настройки.
+        if (a.frameClick) await page.frameLocator('iframe[title="Мобильный вид"]').getByText(a.frameClick, { exact: a.exact ?? false }).first().click({ timeout: 4000 })
+        if (a.frameClickSel) await page.frameLocator('iframe[title="Мобильный вид"]').locator(a.frameClickSel).first().click({ timeout: 4000 })
+        if (a.frameEval) await page.frames().find(f => f.name() === 'mobile-preview')?.evaluate(a.frameEval)
         if (a.fill) await page.locator(a.fill[0]).first().fill(a.fill[1], { timeout: 4000 })
         if (a.focus) await page.locator(a.focus).first().focus({ timeout: 4000 })
         if (a.scroll) await page.evaluate((y) => window.scrollTo(0, y), a.scroll)
