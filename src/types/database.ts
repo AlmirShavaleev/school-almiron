@@ -4718,7 +4718,9 @@ export type Database = {
           requested_by: string | null
           started_at: string | null
           status: string
+          dropped_findings: number | null
           suggested_score: number | null
+          tasks: Json | null
           summary: string | null
         }
         Insert: {
@@ -4742,7 +4744,9 @@ export type Database = {
           requested_by?: string | null
           started_at?: string | null
           status?: string
+          dropped_findings?: number | null
           suggested_score?: number | null
+          tasks?: Json | null
           summary?: string | null
         }
         Update: {
@@ -4766,7 +4770,9 @@ export type Database = {
           requested_by?: string | null
           started_at?: string | null
           status?: string
+          dropped_findings?: number | null
           suggested_score?: number | null
+          tasks?: Json | null
           summary?: string | null
         }
         Relationships: [
