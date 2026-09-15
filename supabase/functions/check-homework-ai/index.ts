@@ -31,13 +31,24 @@ import {
   type ParseEngine,
   type ReferenceState,
 } from './reference.ts'
+import {
+  CATEGORIES,
+  MAX_FINDINGS,
+  MAX_FORMAT_FINDINGS,
+  MAX_PRAISE_FINDINGS,
+  computeScore,
+  deriveConfidence,
+  filterFindings,
+  parseTasks,
+  withUncheckedNote,
+  type Category,
+  type FindingDraft,
+} from './findings.ts'
 
 const ATTEMPTS_BUCKET = 'topic-homework-attempts'
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const DEFAULT_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
-const MAX_FINDINGS = 12
-const CATEGORIES = ['comment', 'calc', 'logic', 'format', 'praise'] as const
 const IMAGE_MIME = /^image\/(png|jpe?g|webp|heic|heif)$/i
 const PDF_MIME = /^application\/pdf$/i
 /** Страниц на ВСЮ работу за одну проверку; остаток — текстом в разбор. */
@@ -66,8 +77,6 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
-
-type Category = typeof CATEGORIES[number]
 
 interface AttemptFile {
   id: string
@@ -228,7 +237,9 @@ Deno.serve(async (req) => {
         model,
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...content] }],
         response_format: { type: 'json_object' },
-        max_tokens: 4000,
+        // §180. Таблица по заданиям удлиняет ответ: 20 строк — это ещё ~1,5 тыс.
+        // токенов сверх находок. В выгрузке 15.09 выход был до 1,7 тыс.
+        max_tokens: 6000,
       }),
     })
 
@@ -244,69 +255,112 @@ Deno.serve(async (req) => {
     const parsed = parseJson(text)
     if (!parsed) throw new Error(`Не удалось разобрать ответ модели: ${text.slice(0, 200)}`)
 
-    // Шаг 5. Находки. Кривые выбрасываем поштучно: одна плохая рамка не должна
-    // отменять весь разбор — остальные всё равно полезны.
+    // Шаг 5. Таблица заданий и находки (§180).
+    //
+    // Балл считает КОД из таблицы, а не модель: в выгрузке 15.09 «ошибка в
+    // одной задаче из шести» давала 5 из 5, а две ошибки из 16 — 94. Число из
+    // ответа модели в базу не идёт (кроме случая, когда таблицы нет вовсе —
+    // тогда оно сохраняется с confidence low, и панель его не показывает).
+    const tasksRaw = parseTasks(parsed.tasks)
+
+    // Рамки проверяем ДО фильтра по таблице: если первую находку строки
+    // отбросить после лимита «одна на задание», строка останется без находки,
+    // хотя у второй рамка была годной. Кривые выбрасываем поштучно: одна
+    // плохая рамка не должна отменять весь разбор.
     const findings = Array.isArray(parsed.findings) ? parsed.findings : []
-    const rows: Record<string, unknown>[] = []
-    for (const raw of findings.slice(0, MAX_FINDINGS)) {
+    let badRects = 0
+    const drafts: (FindingDraft & { target: PageImage; rect: { x: number; y: number; w: number; h: number } })[] = []
+    for (const raw of findings) {
       const index = Number(raw?.page_index ?? raw?.file_index)
       const target = sent[Number.isFinite(index) ? index - 1 : -1]
-      if (!target) continue
+      if (!target) { badRects += 1; continue }
 
       const rect = raw?.rect ?? {}
       const x = clamp01(rect.x)
       const y = clamp01(rect.y)
       let w = clamp01(rect.w)
       let h = clamp01(rect.h)
-      if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) continue
+      if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) { badRects += 1; continue }
       w = Math.min(w, 1 - x)
       h = Math.min(h, 1 - y)
-      if (w <= 0 || h <= 0) continue
+      if (w <= 0 || h <= 0) { badRects += 1; continue }
 
       const note = String(raw?.text ?? '').trim().slice(0, 2000)
-      if (!note) continue
+      if (!note) { badRects += 1; continue }
 
-      const category: Category = CATEGORIES.includes(raw?.category) ? raw.category : 'comment'
-
-      rows.push({
-        job_id: jobId,
-        file_id: target.file.id,
-        // Настоящий номер страницы: у фотографии 1, у PDF — та страница,
-        // картинку которой мы отрисовали и показали модели.
-        page: target.page,
-        position: rows.length,
-        rect_x: x, rect_y: y, rect_w: w, rect_h: h,
+      const category: Category = (CATEGORIES as readonly string[]).includes(raw?.category) ? raw.category : 'comment'
+      drafts.push({
         category,
         text: note,
+        task: String(raw?.task ?? raw?.task_no ?? '').trim().slice(0, 16),
+        target,
+        rect: { x, y, w, h },
       })
     }
+
+    // Самопротиворечия («должно быть 0,78, а не 0,78»), находки по верным
+    // строкам, лимиты praise/format, потолок — всё здесь, в проверяемом тестом
+    // модуле. Счётчик отброшенных — в лог и в столбец dropped_findings.
+    const filtered = filterFindings(drafts, tasksRaw)
+    const tasks = filtered.tasks
+    const droppedFindings = filtered.dropped + badRects
+    if (droppedFindings > 0) {
+      console.log(`findings: отброшено ${droppedFindings} —`, { ...filtered.droppedBy, badRect: badRects, model, jobId })
+    }
+
+    const rows: Record<string, unknown>[] = filtered.kept.map((f, position) => ({
+      job_id: jobId,
+      file_id: f.target.file.id,
+      // Настоящий номер страницы: у фотографии 1, у PDF — та страница,
+      // картинку которой мы отрисовали и показали модели.
+      page: f.target.page,
+      position,
+      rect_x: f.rect.x, rect_y: f.rect.y, rect_w: f.rect.w, rect_h: f.rect.h,
+      category: f.category,
+      text: f.text,
+    }))
 
     if (rows.length > 0) {
       const { error: insertError } = await admin.from('topic_homework_ai_findings').insert(rows)
       if (insertError) throw new Error(`Не удалось сохранить находки: ${insertError.message}`)
     }
 
+    const readable = parsed.readable !== false
+    const score = computeScore(tasks, gradeScale)
+    // Таблицы нет — модель не выполнила формат. Её свободное число сохраняем
+    // для истории, но с confidence low: панель такой балл не показывает
+    // (shouldShowScore), а в сравнении версий он виден.
+    const modelScore = numberOrNull(parsed.suggested_score)
+    const suggestedScore = tasks.length > 0
+      ? score.score
+      : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
+    const confidence = tasks.length > 0 || !readable
+      ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state })
+      : 'low'
+
     const usage = payload?.usage ?? {}
-    await admin.from('topic_homework_ai_jobs').update({
+    const { error: doneError } = await admin.from('topic_homework_ai_jobs').update({
       status: 'done',
       provider: providerOf(baseUrl),
       model,
-      readable: parsed.readable !== false,
-      suggested_score: numberOrNull(parsed.suggested_score),
-      // Без эталона потолок доверия — medium: модель сверяла работу со своим
-      // собственным решением, а не с авторским.
-      confidence: capConfidence(parsed.confidence, reference.state),
+      readable,
+      suggested_score: suggestedScore,
+      confidence,
+      // §180. Таблица по заданиям — преподавателю и для сравнения версий.
+      tasks,
+      dropped_findings: droppedFindings,
       reference_state: reference.state,
       reference_chars: reference.text.length || null,
       // §149.1. След в базе, что условие дошло: без него не отличить «модель
       // не поняла» от «лист не распознался».
       worksheet_state: worksheet.state,
       worksheet_chars: worksheet.text.length || null,
-      // Пропущенные страницы дописываем в разбор: преподаватель должен видеть,
-      // что модель смотрела не всю работу, иначе «замечаний нет» соврёт.
+      // Пропущенные страницы и несверенные задания дописываем в разбор:
+      // преподаватель должен видеть, что модель смотрела не всю работу и что
+      // не вошло в балл, иначе «замечаний нет» соврёт.
       summary: withWorksheetNote(
         withReferenceNote(
-          withSkipNote(String(parsed.summary ?? ''), skipped),
+          withSkipNote(withUncheckedNote(String(parsed.summary ?? ''), tasks), skipped),
           reference,
         ),
         worksheet,
@@ -318,6 +372,9 @@ Deno.serve(async (req) => {
       input_tokens: numberOrNull(usage.prompt_tokens),
       output_tokens: numberOrNull(usage.completion_tokens),
     }).eq('id', jobId)
+    // Раньше результат этой записи не проверялся: при неизвестном столбце
+    // (миграция не применена до деплоя) задача молча зависала в processing.
+    if (doneError) throw new Error(`Не удалось сохранить результат проверки: ${doneError.message}`)
 
     return json({ job_id: jobId, findings: rows.length })
   } catch (err) {
@@ -763,20 +820,14 @@ async function parsePdf(
   return parsed
 }
 
-/** Без эталона доверие не может быть высоким — модель сверяла работу с собой. */
-function capConfidence(raw: unknown, state: ReferenceState): string | null {
-  const value = ['high', 'medium', 'low'].includes(raw as string) ? (raw as string) : null
-  if (!value) return null
-  if (state === 'used') return value
-  return value === 'high' ? 'medium' : value
-}
-
 /**
- * Промпт. Две вещи в нём важнее формулировок:
+ * Промпт. Три вещи в нём важнее формулировок:
  *  — модель сначала решает задачу САМА и только потом сверяет. Иначе она
  *    соглашается с ходом ученика и подтверждает его же ошибку;
  *  — координаты просим долями страницы и повторяем это дважды, потому что
- *    пиксели — самый частый способ промахнуться мимо строки.
+ *    пиксели — самый частый способ промахнуться мимо строки;
+ *  — с v17 (§180) модель отдаёт ТАБЛИЦУ по заданиям, а балл считает код
+ *    (`findings.ts`): свободное число модели не следовало из её же разбора.
  */
 function buildPrompt(ctx: {
   title: string
@@ -822,7 +873,11 @@ function buildPrompt(ctx: {
     ctx.solutionText
       ? '3. Если твой ответ расходится с авторским решением — прав автор, а не ты. Считай своё решение ошибочным и перепроверь.'
       : '',
-    '4. Отметь конкретные места: ошибки в вычислениях, логике — и удачные ходы.',
+    // §180. Сначала таблица по заданиям, потом находки только по неверным.
+    // Прежний шаг «отметь удачные ходы» убран: он и породил поток praise —
+    // 39 % находок в выгрузке 15.09, по одной похвале на каждую верную задачу.
+    '4. Составь ТАБЛИЦУ ПО ЗАДАНИЯМ — по одной строке на каждое задание работы. Список заданий бери из условия (рабочего листа); если условия нет — из того, что нашёл в работе. В строке: номер, вердикт, ответ ученика КАК ТЫ ЕГО ПРОЧИТАЛ, ожидаемый ответ (по эталону или своему решению), короткая заметка.',
+    '5. Находки — ТОЛЬКО по строкам таблицы с вердиктом wrong или partial: не больше одной на задание, с рамкой ровно на месте ошибки. По верным заданиям находок не пиши.',
     '',
     `Тебе передано страниц: ${ctx.pageCount}. Перед каждой идёт строка «Страница #N: имя». Многостраничный PDF разложен на страницы, у каждой свой номер.`,
     '',
@@ -830,23 +885,28 @@ function buildPrompt(ctx: {
     '{',
     '  "readable": true,',
     '  "summary": "разбор для учителя на русском: что верно, что нет, на что обратить внимание",',
+    '  "tasks": [',
+    '    {"no": "3", "verdict": "wrong", "student_answer": "0,82", "expected_answer": "0,78", "note": "потерян знак при переносе"},',
+    '    {"no": "4", "verdict": "correct", "student_answer": "12", "expected_answer": "12", "note": ""}',
+    '  ],',
     '  "suggested_score": 4,',
     '  "confidence": "high",',
     '  "findings": [',
-    '    {"page_index": 1, "rect": {"x": 0.12, "y": 0.34, "w": 0.4, "h": 0.06},',
+    '    {"task": "3", "page_index": 1, "rect": {"x": 0.12, "y": 0.34, "w": 0.4, "h": 0.06},',
     '     "category": "calc", "text": "Здесь потерян знак минус при переносе"}',
     '  ]',
     '}',
     '',
     'ПРАВИЛА:',
     `- ${scale}`,
-    // Балл раньше брался из воздуха: методики в промпте не было вовсе, и
-    // модель ставила 68 там, где сама насчитала 8 верных заданий из 18.
-    // Теперь способ подсчёта задан явно.
-    '- КАК СЧИТАТЬ БАЛЛ: посчитай, сколько заданий решено верно, и раздели на общее число заданий.',
-    '- Эта доля и есть балл: по стобалльной шкале — доля в процентах; по пятибалльной — та же доля, округлённая ВВЕРХ до целого от 2 до 5.',
-    '- Задание с верным результатом и верным ходом засчитывается ПОЛНОСТЬЮ, даже если запись неаккуратна.',
-    '- Замечания по оформлению (category "format") на балл НЕ влияют: это советы. Балл снижают только неверный результат и неверный ход.',
+    '- verdict: "correct" — верный результат и верный ход (или верный ответ там, где условие требует только ответа); "partial" — ответ верный, но ход с изъяном или его нет там, где условие требует развёрнутого решения, либо верный ход с арифметическим сбоем в конце; "wrong" — неверный результат или неверный ход; "unchecked" — сверить нельзя (не прочитать, страницы нет, проверить не по чему).',
+    // §180. Балл из таблицы считает код; своё число модель может написать для
+    // самопроверки, но в базу оно не идёт. Правило названо в промпте, чтобы
+    // модель заполняла таблицу, понимая, во что она превращается.
+    '- БАЛЛ считает система по таблице: (correct + 0,5·partial) / (все задания, кроме unchecked). По стобалльной — в процентах; по пятибалльной — 5 от 90 %, 4 от 70 %, 3 от 50 %, иначе 2. Своё suggested_score напиши для самопроверки — оно будет пересчитано по таблице.',
+    '- Если ответ ученика совпадает с ожидаемым, вердикт НЕ может быть wrong, и находки об ошибке быть не должно. Никогда не пиши «должно быть X, а не X» или «X вместо X» с одинаковыми значениями — такая находка отбрасывается.',
+    '- Задание с верным результатом и верным ходом — "correct" ПОЛНОСТЬЮ, даже если запись неаккуратна.',
+    '- Замечания по оформлению (category "format") на вердикт НЕ влияют: это советы. Вердикт снижают только неверный результат и неверный ход.',
     // §149. Правило «нет хода решения — ноль» модель выдумала сама: разборы
     // 10.09 на 0 и 3 балла («все задания засчитаны как неверные из-за
     // отсутствия хода решения», «нет решения, только ответы») — при том, что в
@@ -854,15 +914,16 @@ function buildPrompt(ctx: {
     // обязателен: полный балл вслепую за верный ответ без выкладок там, где
     // условие требует развёрнутого решения (вторая часть ЕГЭ), — ошибка того
     // же сорта, что и ноль вслепую.
-    '- Отсутствие развёрнутого решения само по себе НЕ ошибка. Смотри на УСЛОВИЕ: если задание требует только ответа (рабочий лист, тест, «запиши ответ»), оценивай по ответам — верный ответ засчитывается полностью. Если условие требует развёрнутого решения, отсутствие хода отметь замечанием и снизь балл за задание, но не обнуляй его при верном ответе.',
-    '- Если все задания решены верно, а замечания только по оформлению — ставь высший балл.',
-    '- Другой верный способ решения — не ошибка. Пришёл к верному результату верным рассуждением — полный зачёт, а красивый ход отметь как "praise".',
-    '- Не разобрал почерк — не ошибка: дай "comment" и понизь confidence, но не считай решение неверным.',
+    '- Отсутствие развёрнутого решения само по себе НЕ ошибка. Смотри на УСЛОВИЕ: если задание требует только ответа (рабочий лист, тест, «запиши ответ»), оценивай по ответам — верный ответ засчитывается "correct". Если условие требует развёрнутого решения, отсутствие хода при верном ответе — "partial" с заметкой, а не "wrong".',
+    '- Если все задания верны — findings пустой, summary: «Все верно» и одна-две фразы по делу. Похвалу отдельными находками не пиши.',
+    `- Похвала ("praise") — не больше ${MAX_PRAISE_FINDINGS} на работу и только если есть хотя бы одна ошибка. Замечаний по оформлению ("format") — не больше ${MAX_FORMAT_FINDINGS}.`,
+    '- Другой верный способ решения — не ошибка. Пришёл к верному результату верным рассуждением — "correct".',
+    '- Не разобрал почерк — не ошибка: строке дай "unchecked", находку "comment" с текстом «проверьте вручную», понизь confidence.',
     // §149. Прогон 11.09 («Теория», балл 89 при справедливых 100): модель
     // прочитала рукописную «1» как «7» в задании с тремя вариантами, написала
     // «почерк читаем» и с высокой уверенностью засчитала ошибку. Это не предел
     // зрения, а отсутствие правила на случай конфликта прочитанного с эталоном.
-    '- КОНФЛИКТ С ЭТАЛОНОМ: если прочитанный ответ ученика расходится с эталоном, но похож на него по написанию (1/7, 4/9, 0/6, 5/6, 3/8) или невозможен по условию (нет такого варианта, не та размерность) — это вероятная ошибка РАСПОЗНАВАНИЯ, а не ученика. Ошибку не засчитывай, понизь confidence и напиши в тексте находки «проверьте вручную».',
+    '- КОНФЛИКТ С ЭТАЛОНОМ: если прочитанный ответ ученика расходится с эталоном, но похож на него по написанию (1/7, 4/9, 0/6, 5/6, 3/8) или невозможен по условию (нет такого варианта, не та размерность) — это вероятная ошибка РАСПОЗНАВАНИЯ, а не ученика. Ошибку не засчитывай ("unchecked" или "correct"), понизь confidence и напиши в заметке «проверьте вручную».',
     '- В спорном случае решай в пользу ученика: твой разбор — предложение, вердикт всё равно ставит преподаватель.',
     '- confidence: "high" — работа читается уверенно и решение однозначно; "medium" — есть сомнения; "low" — почерк плохо разбирается или задание непонятно.',
     // §149. Без эталона модель всё равно ставила балл — и ставила ноль: пять
@@ -871,14 +932,15 @@ function buildPrompt(ctx: {
     // выглядит как результат проверки. Честный выход — не занижать, а сказать.
     ctx.solutionText
       ? ''
-      : '- Авторского решения нет: не считай ответ неверным лишь потому, что не с чем сверить. Засчитывай то, что проверил сам. Если ответы проверить нельзя — не занижай балл, ставь confidence "low" и прямо напиши в summary, какие задания остались не сверены.',
-    '- Если работу невозможно прочитать: "readable": false, "findings": [], "confidence": "low".',
+      : '- Авторского решения нет: не считай ответ неверным лишь потому, что не с чем сверить. Засчитывай то, что проверил сам. Если ответ проверить нельзя — строке "unchecked", не "wrong"; confidence "low"; в summary прямо перечисли, какие задания остались не сверены.',
+    '- Если работу невозможно прочитать: "readable": false, "tasks": [], "findings": [], "confidence": "low".',
+    '- task в находке — номер строки таблицы (поле "no"), к которой она относится.',
     '- page_index — номер страницы из строки «Страница #N», начиная с 1.',
     '- КООРДИНАТЫ — ДОЛИ СТРАНИЦЫ ОТ 0 ДО 1, начало отсчёта в левом верхнем углу. Не пиксели.',
     '- Координаты считай относительно ТОЙ страницы, на которую ставишь рамку, а не всей работы.',
     '- x + w не больше 1, y + h не больше 1. Рамка должна плотно охватывать нужные строки, а не всю страницу.',
     `- Не больше ${MAX_FINDINGS} находок. Лучше меньше, но по делу.`,
-    '- category: "calc" — арифметика и знаки, "logic" — неверный ход решения, "format" — оформление и единицы измерения, "praise" — удачный ход, "comment" — всё остальное.',
+    '- category: "calc" — арифметика и знаки, "logic" — неверный ход решения, "format" — оформление и единицы измерения, "praise" — удачный ход, "comment" — всё остальное (в том числе «не разобрать»).',
     '- text — по-русски, обращение к ученику на «ты», одно-два предложения, без общих слов.',
   ].filter(Boolean).join('\n')
 }

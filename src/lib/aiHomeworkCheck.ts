@@ -11,6 +11,15 @@ export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type AiConfidence = 'high' | 'medium' | 'low'
 export type AiFindingCategory = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
 
+/** Строка таблицы заданий v17 (§180) — зеркало `TaskRow` из `check-homework-ai/findings.ts`. */
+export interface AiTaskRow {
+  no: string
+  verdict: 'correct' | 'wrong' | 'partial' | 'unchecked'
+  student_answer: string
+  expected_answer: string
+  note: string
+}
+
 export interface AiJobRow {
   id: string
   attempt_id: string
@@ -33,6 +42,15 @@ export interface AiJobRow {
   /** Дошло ли условие ДЗ — рабочий лист (§149.1). null — проверка старее §149.1. */
   worksheet_state: 'used' | 'missing' | 'failed' | null
   worksheet_chars: number | null
+  /**
+   * §180 (v17). Таблица по заданиям, из которой код считает балл:
+   * `[{no, verdict, student_answer, expected_answer, note}]`. Панель её пока
+   * не показывает (граница board/033); undefined/null — проверка старее v17
+   * или столбец ещё не применён (PENDING_180).
+   */
+  tasks?: AiTaskRow[] | null
+  /** §180. Сколько находок модели отбросил код (выдумки, лимиты, рамки). */
+  dropped_findings?: number | null
   accepted_at: string | null
   created_at: string
   completed_at: string | null
