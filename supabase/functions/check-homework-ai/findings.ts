@@ -1,5 +1,5 @@
 /**
- * Таблица по заданиям, балл и фильтр находок ИИ-проверки (v17, §180).
+ * Таблица по заданиям, балл и фильтр находок ИИ-проверки (v17, §180; v18, §189).
  *
  * Чистый модуль без Deno-API и без сети — как `reference.ts`: его гоняет
  * vitest из `src/`, потому что `index.ts` живёт в Deno и в песочнице не
@@ -18,6 +18,16 @@
  *  — похвала — 39 % находок, потолок MAX_FINDINGS съедали praise, а ошибки в
  *    него не влезали. Лимиты по категориям считаются здесь, а не в промпте:
  *    промпт модель не выполняет, код — выполняет.
+ *
+ * v18 (§189), первая живая проверка v17 на проде:
+ *  — вердикт спорил с собственными ответами модели: строка «12 / 30, ответ
+ *    неверен: должно быть 30» стояла с вердиктом `correct`, и балл выходил 97
+ *    вместо 84. Фильтр §180 ловил только ОБРАТНЫЙ случай (`wrong` при равных
+ *    ответах). Теперь сверка идёт в обе стороны — и по ЧИСЛАМ, а не по
+ *    строкам: «в 144 раза» и «144» — одно и то же, «12» и «30» — разное;
+ *  — работа читалась не целиком (8 страниц из 11), а балл выглядел
+ *    полноценным. Балл по двум третям работы для преподавателя хуже, чем
+ *    отсутствие балла: он поставит его не глядя. Отсюда `isPartialCheck`.
  */
 
 export const CATEGORIES = ['comment', 'calc', 'logic', 'format', 'praise'] as const
@@ -50,10 +60,16 @@ export const MAX_FORMAT_FINDINGS = 2
 /** Похвалы на работу — и только когда есть хотя бы одна ошибка. */
 export const MAX_PRAISE_FINDINGS = 1
 /**
- * Доля несверенных заданий, с которой уверенность режется до `low`: модель
- * не увидела треть работы — её «high» ничего не стоит.
+ * Доля несверенных заданий, с которой проверка считается неполной: уверенность
+ * режется до `low`, а балл не выводится вовсе (§189).
+ *
+ * До v18 порог был 0,3 и влиял только на уверенность. Живой прогон показал,
+ * чем это кончается: пять заданий из 21 «отсутствуют» (на деле — не дошли
+ * страницы), а в панели «балл 97, уверенность высокая». Преподаватель такой
+ * балл принимает не глядя. Порог опущен до 0,2 и теперь гасит балл: пятая
+ * часть работы, оставшаяся непрочитанной, — уже не погрешность.
  */
-export const UNCHECKED_LOW_CONFIDENCE_SHARE = 0.3
+export const UNCHECKED_LOW_CONFIDENCE_SHARE = 0.2
 
 const MAX_TASK_NO_CHARS = 16
 const MAX_ANSWER_CHARS = 200
@@ -91,6 +107,90 @@ export function answersEqual(a: unknown, b: unknown): boolean {
   const x = normalizeAnswer(a)
   const y = normalizeAnswer(b)
   return x.length > 0 && y.length > 0 && x === y
+}
+
+// ---------------------------------------------------------------------------
+// Сверка ответов числами (§189)
+// ---------------------------------------------------------------------------
+
+/**
+ * Слова-обёртки, которые не меняют значения числа: «в 144 раза» — это 144.
+ * Список короткий намеренно: всё, чего здесь нет, считается ЕДИНИЦЕЙ и
+ * сравнивается (см. `compareAnswers`).
+ */
+const FILLER_WORDS = new Set([
+  'в', 'во', 'около', 'примерно', 'приблизительно', 'ответ', 'равно', 'равен',
+  'раз', 'раза', 'разов', 'ровно', 'всего', 'итого', 'и', 'это',
+])
+
+/** «±8» — это множество {−8, 8}, а не число: сравнивать нечего. */
+const AMBIGUOUS_SIGN = /[±∓]/
+
+/** Число и единица из ответа; null — числа нет или их несколько. */
+export interface AnswerNumber {
+  value: number
+  /** Что осталось от строки, кроме числа и слов-обёрток: «куб см», «%», ''. */
+  unit: string
+}
+
+/**
+ * Число из ответа — или `null`, если вытащить его однозначно нельзя.
+ *
+ * Правило одно: ровно ОДНО числовое значение в строке. «2 30/49» (смешанная
+ * дробь), «3 из 15», «А-2, Б-3», «0,82 - 0,04» дают несколько чисел — значит
+ * сравнивать нечего, и вердикт модели останется как есть. Это дороже по
+ * пропущенным случаям, но дешевле по испорченным: гадать на ответе ученика
+ * нельзя (§189).
+ */
+export function answerNumber(raw: unknown): AnswerNumber | null {
+  const s = String(raw ?? '')
+    .toLowerCase()
+    .replace(/[−–—‒]/g, '-')
+    .replace(/\u00a0/g, ' ')
+    // Пробел-разделитель разрядов — только перед ГРУППОЙ ИЗ ТРЁХ цифр:
+    // «1 000 000» — одно число, «2 30/49» — три.
+    .replace(/(\d)\s+(?=\d{3}(?:\D|$))/g, '$1')
+    // Десятичная запятая; «А-2, Б-3» не трогаем — там после запятой пробел.
+    .replace(/(\d),(?=\d)/g, '$1.')
+    .trim()
+  if (!s || AMBIGUOUS_SIGN.test(s)) return null
+
+  const numbers = s.match(/-?\d+(?:\.\d+)?/g)
+  if (!numbers || numbers.length !== 1) return null
+  const value = Number(numbers[0])
+  if (!Number.isFinite(value)) return null
+
+  const unit = s
+    .replace(numbers[0], ' ')
+    .replace(/[.,;:!?()[\]«»"'’]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 0 && !FILLER_WORDS.has(word))
+    .join(' ')
+  return { value, unit }
+}
+
+export type AnswerMatch = 'equal' | 'different' | 'unknown'
+
+/**
+ * Сверка ответа ученика с ожидаемым. `unknown` — сравнить нельзя, и это
+ * полноправный ответ: по нему вердикт модели не трогают вовсе.
+ *
+ * Сравниваются ЧИСЛА, а не строки: в живой таблице «в 144 раза» и «144»,
+ * «3,6 куб. см» и «3,6» — один и тот же ответ, записанный по-разному. Три
+ * случая, где код молчит, потому что рискует ошибиться:
+ *  — числа не вытащились (текст, набор, «да/нет», формула, дробь);
+ *  — проценты только с одной стороны («50 %» и «0,5» — возможно, одно и то же);
+ *  — единицы названы с обеих сторон и разные («0,5 м» и «50 см»): это перевод
+ *    единиц, а не ошибка ученика, и решать его на глазок мы не станем.
+ */
+export function compareAnswers(a: unknown, b: unknown): AnswerMatch {
+  if (answersEqual(a, b)) return 'equal'
+  const x = answerNumber(a)
+  const y = answerNumber(b)
+  if (!x || !y) return 'unknown'
+  if (x.unit.includes('%') !== y.unit.includes('%')) return 'unknown'
+  if (x.unit && y.unit && x.unit !== y.unit) return 'unknown'
+  return x.value === y.value ? 'equal' : 'different'
 }
 
 // ---------------------------------------------------------------------------
@@ -136,20 +236,69 @@ export function parseTasks(raw: unknown): TaskRow[] {
 }
 
 /**
- * Самопротиворечие в строке таблицы: вердикт `wrong`, а ответ ученика равен
- * ожидаемому. Такая строка переводится в `correct`.
+ * Заметка говорит, что ход решения был верным, а сбой — в конце. Тогда
+ * понижение идёт до `partial`, а не до `wrong`: §149 велит в спорном решать
+ * в пользу ученика, и «верный ход с арифметической ошибкой» — ровно половина
+ * задания, а не ноль.
+ */
+const CORRECT_PATH_NOTE = new RegExp(
+  '(?:верн[а-яё]*\\s+ход|ход\\s+верн[а-яё]*|верно\\s+(?:реш|найден|рассужд|записан)[а-яё]*'
+  + '|арифметическ[а-яё]*|вычислительн[а-яё]*|описк[а-яё]*|округлени[а-яё]*'
+  + '|в\\s+конце|при\\s+переносе)',
+  'iu',
+)
+
+/** До какого вердикта понижать `correct` с несовпавшим ответом. */
+export function lowerVerdict(note: string): TaskVerdict {
+  return CORRECT_PATH_NOTE.test(String(note ?? '')) ? 'partial' : 'wrong'
+}
+
+export interface ReconcileResult {
+  tasks: TaskRow[]
+  /**
+   * Номера заданий, где код ПОНИЗИЛ вердикт `correct` — их называет summary:
+   * преподаватель должен видеть, что это правка системы, а не слово модели.
+   */
+  lowered: string[]
+}
+
+/**
+ * Таблица, сверенная сама с собой. Две правки, обе — по числам:
+ *
+ *  — `wrong` при совпавшем ответе → `correct` (§180). Модель отмечает ошибку
+ *    там, где значения равны, чтобы было что написать;
+ *  — `correct` при РАЗОШЕДШЕМСЯ ответе → `wrong` (или `partial`, если заметка
+ *    говорит о верном ходе). Это §189: в живой таблице стояло «12 / 30, ответ
+ *    неверен: должно быть 30» с вердиктом `correct`, и балл вышел 97 вместо
+ *    84. Модель пишет «неверно» словами и ставит `correct` — фильтр v17 ловил
+ *    только обратное направление.
+ *
+ * Обе правки делаются, только когда `compareAnswers` дал определённый ответ:
+ * `unknown` (текст, набор, дробь, разные единицы) оставляет строку модели как
+ * есть. Пропустить спорный случай дешевле, чем испортить верный.
  *
  * `partial` с равными ответами НЕ трогаем намеренно: это законный случай
  * §149 «ответ верный, но хода нет / ход с изъяном» там, где условие требует
  * развёрнутого решения. Переводить его в `correct` значило бы отменить
  * правило, добытое на прогонах 10.09.
  */
+export function reconcileTasksDetailed(tasks: readonly TaskRow[]): ReconcileResult {
+  const lowered: string[] = []
+  const out = tasks.map(t => {
+    const match = compareAnswers(t.student_answer, t.expected_answer)
+    if (t.verdict === 'wrong' && match === 'equal') return { ...t, verdict: 'correct' as const }
+    if (t.verdict === 'correct' && match === 'different') {
+      lowered.push(t.no)
+      return { ...t, verdict: lowerVerdict(t.note) }
+    }
+    return t
+  })
+  return { tasks: out, lowered }
+}
+
+/** Только строки, без списка понижений — для мест, где список не нужен. */
 export function reconcileTasks(tasks: readonly TaskRow[]): TaskRow[] {
-  return tasks.map(t => (
-    t.verdict === 'wrong' && answersEqual(t.student_answer, t.expected_answer)
-      ? { ...t, verdict: 'correct' as const }
-      : t
-  ))
+  return reconcileTasksDetailed(tasks).tasks
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +457,8 @@ export interface FilterResult<T extends FindingDraft = FindingDraft> {
   dropped: number
   /** Причины отброса — в лог функции, по счётчику на причину. */
   droppedBy: Record<'contradiction' | 'text' | 'offTable' | 'limit', number>
+  /** §189. Задания, где код понизил вердикт `correct`; их называет summary. */
+  lowered: string[]
 }
 
 /**
@@ -328,7 +479,7 @@ export interface FilterResult<T extends FindingDraft = FindingDraft> {
  * Без таблицы (модель её не вернула) работают только шаги 3, 5, 6.
  */
 export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[], rawTasks: readonly TaskRow[]): FilterResult<T> {
-  const tasks = reconcileTasks(rawTasks)
+  const { tasks, lowered } = reconcileTasksDetailed(rawTasks)
   const byNo = new Map<string, TaskRow>()
   for (const t of tasks) byNo.set(t.no.toLowerCase(), t)
   const hasTable = tasks.length > 0
@@ -363,7 +514,7 @@ export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[]
 
     // calc / logic / comment
     if (row) {
-      const equal = answersEqual(row.student_answer, row.expected_answer)
+      const equal = compareAnswers(row.student_answer, row.expected_answer) === 'equal'
       if (equal && f.category !== 'comment' && (row.verdict === 'correct' || row.verdict === 'wrong' || f.category === 'calc')) {
         droppedBy.contradiction += 1
         continue
@@ -396,7 +547,7 @@ export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[]
   droppedBy.limit += ordered.length - capped.length
 
   const dropped = rawFindings.length - capped.length
-  return { kept: capped, tasks, dropped, droppedBy }
+  return { kept: capped, tasks, dropped, droppedBy, lowered }
 }
 
 // ---------------------------------------------------------------------------
@@ -406,25 +557,51 @@ export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[]
 export type Confidence = 'high' | 'medium' | 'low'
 export type ReferenceStateLike = 'used' | 'missing' | 'failed'
 
+/** Доля несверенных заданий; пустая таблица — ноль, а не деление на ноль. */
+export function uncheckedShare(tasks: readonly TaskRow[]): number {
+  if (tasks.length === 0) return 0
+  return tasks.filter(t => t.verdict === 'unchecked').length / tasks.length
+}
+
+/**
+ * Прочитана ли работа не целиком (§189).
+ *
+ * Два признака, и оба означают одно: часть работы до проверки не дошла —
+ * страницы не влезли (`pagesSkipped`) или заданий с вердиктом `unchecked`
+ * набралось от пятой части. Следствие жёсткое: балл не выводится вовсе и
+ * уверенность `low`.
+ *
+ * Почему не «балл по прочитанному»: живой прогон дал «97, уверенность
+ * высокая» по работе, от которой прочитано две трети, — преподаватель ставит
+ * такой балл не глядя. Отсутствие балла заставляет его открыть работу, а
+ * заниженный или завышенный — нет.
+ */
+export function isPartialCheck(ctx: { tasks: readonly TaskRow[]; pagesSkipped: boolean }): boolean {
+  return ctx.pagesSkipped || uncheckedShare(ctx.tasks) >= UNCHECKED_LOW_CONFIDENCE_SHARE
+}
+
 /**
  * Уверенность считается грубо в коде: `low`, если работа нечитаема или
- * несверенных заданий ≥ 30 %; без эталона потолок `medium` (§137); иначе —
- * как у модели. В выгрузке 15.09 «high» стояло почти везде, включая находки
- * «0,78, а не 0,78», так что слово модели тут — не последнее.
+ * проверена не целиком (§189: непрочитанные страницы либо ≥ 20 % несверенных
+ * заданий); без эталона потолок `medium` (§137); иначе — как у модели. В
+ * выгрузке 15.09 «high» стояло почти везде, включая находки «0,78, а не
+ * 0,78», так что слово модели тут — не последнее.
  */
 export function deriveConfidence(
   modelValue: unknown,
-  ctx: { tasks: readonly TaskRow[]; readable: boolean; referenceState: ReferenceStateLike },
+  ctx: {
+    tasks: readonly TaskRow[]
+    readable: boolean
+    referenceState: ReferenceStateLike
+    /** Хоть одна страница работы до модели не доехала. */
+    pagesSkipped: boolean
+  },
 ): Confidence | null {
   const value: Confidence | null = ['high', 'medium', 'low'].includes(modelValue as string)
     ? modelValue as Confidence
     : null
   if (!ctx.readable) return 'low'
-  const total = ctx.tasks.length
-  if (total > 0) {
-    const unchecked = ctx.tasks.filter(t => t.verdict === 'unchecked').length
-    if (unchecked / total >= UNCHECKED_LOW_CONFIDENCE_SHARE) return 'low'
-  }
+  if (isPartialCheck(ctx)) return 'low'
   if (!value) return null
   if (ctx.referenceState !== 'used' && value === 'high') return 'medium'
   return value
@@ -435,5 +612,21 @@ export function withUncheckedNote(summary: string, tasks: readonly TaskRow[]): s
   const list = tasks.filter(t => t.verdict === 'unchecked').map(t => t.no)
   if (list.length === 0) return summary
   const note = `Не сверены задания (в балл не вошли): ${list.join(', ')}.`
+  return summary ? `${summary}\n\n${note}` : note
+}
+
+/**
+ * Приписка о понижённых вердиктах (§189).
+ *
+ * Считать их в `dropped_findings` было бы неправильно: там мера выдумок
+ * модели, а здесь — правка, которую преподаватель обязан видеть поимённо.
+ * Число в панели пришло не от модели, и молчать об этом нельзя: иначе
+ * расхождение «в таблице неверно, а балл высокий» он найдёт сам и перестанет
+ * верить обоим.
+ */
+export function withLoweredNote(summary: string, lowered: readonly string[]): string {
+  if (lowered.length === 0) return summary
+  const what = lowered.length === 1 ? 'заданию' : 'заданиям'
+  const note = `Система поправила вердикт по ${what} ${lowered.join(', ')} (ответ не совпал с ожидаемым).`
   return summary ? `${summary}\n\n${note}` : note
 }

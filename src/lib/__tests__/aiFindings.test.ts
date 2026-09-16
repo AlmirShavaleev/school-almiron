@@ -3,17 +3,23 @@ import {
   MAX_FINDINGS,
   MAX_FORMAT_FINDINGS,
   MAX_PRAISE_FINDINGS,
+  UNCHECKED_LOW_CONFIDENCE_SHARE,
+  answerNumber,
   answersEqual,
+  compareAnswers,
   computeScore,
   contradictionPairs,
   deriveConfidence,
   filterFindings,
   fiveFromRatio,
+  isPartialCheck,
   isSelfContradictoryText,
   normalizeAnswer,
   parseTasks,
   reconcileTasks,
+  reconcileTasksDetailed,
   taskNoFromText,
+  withLoweredNote,
   withUncheckedNote,
   type FindingDraft,
   type TaskRow,
@@ -21,10 +27,13 @@ import {
 
 /**
  * §180. ИИ-проверка v17: балл из таблицы заданий, находки без выдумок.
+ * §189 (v18): вердикт не спорит с ответами, неполная проверка без балла.
  *
  * Модуль чистый ради этих тестов: `index.ts` живёт в Deno и здесь не
  * запускается. Примеры взяты из выгрузки 15 прогонов 15.09
- * (`board/ИИ_ПРОВЕРКА_ВЫГРУЗКА_15-09.md`) — это настоящие тексты модели.
+ * (`board/ИИ_ПРОВЕРКА_ВЫГРУЗКА_15-09.md`) и из первого живого прогона v17
+ * (job `e1a17336…`, Гарифуллин, «Прототипы №3, часть 2») — это настоящие
+ * строки модели, а не придуманные.
  */
 
 const task = (no: string, verdict: TaskRow['verdict'], student = '', expected = '', note = ''): TaskRow =>
@@ -270,14 +279,27 @@ describe('фильтр находок по таблице', () => {
 })
 
 describe('уверенность и приписка о несверенных', () => {
-  it('low при нечитаемой работе или ≥ 30 % unchecked, medium без эталона, иначе как у модели', () => {
+  const ctx = (over: Partial<Parameters<typeof deriveConfidence>[1]> = {}) => ({
+    tasks: [task('1', 'correct')],
+    readable: true,
+    referenceState: 'used' as const,
+    pagesSkipped: false,
+    ...over,
+  })
+
+  it('low при нечитаемой работе или ≥ 20 % unchecked, medium без эталона, иначе как у модели', () => {
     const three = [task('1', 'correct'), task('2', 'unchecked'), task('3', 'correct')]
-    expect(deriveConfidence('high', { tasks: three, readable: true, referenceState: 'used' })).toBe('low')
-    expect(deriveConfidence('high', { tasks: [task('1', 'correct')], readable: false, referenceState: 'used' })).toBe('low')
-    expect(deriveConfidence('high', { tasks: [task('1', 'correct')], readable: true, referenceState: 'used' })).toBe('high')
-    expect(deriveConfidence('high', { tasks: [task('1', 'correct')], readable: true, referenceState: 'missing' })).toBe('medium')
-    expect(deriveConfidence('low', { tasks: [], readable: true, referenceState: 'failed' })).toBe('low')
-    expect(deriveConfidence('чушь', { tasks: [], readable: true, referenceState: 'used' })).toBeNull()
+    expect(deriveConfidence('high', ctx({ tasks: three }))).toBe('low')
+    expect(deriveConfidence('high', ctx({ readable: false }))).toBe('low')
+    expect(deriveConfidence('high', ctx())).toBe('high')
+    expect(deriveConfidence('high', ctx({ referenceState: 'missing' }))).toBe('medium')
+    expect(deriveConfidence('low', ctx({ tasks: [], referenceState: 'failed' }))).toBe('low')
+    expect(deriveConfidence('чушь', ctx({ tasks: [] }))).toBeNull()
+  })
+
+  it('§189: непрочитанные страницы роняют уверенность независимо от таблицы', () => {
+    expect(deriveConfidence('high', ctx({ pagesSkipped: true }))).toBe('low')
+    expect(deriveConfidence('high', ctx({ tasks: [], pagesSkipped: true }))).toBe('low')
   })
 
   it('несверенные задания перечисляются в summary, при их отсутствии summary не меняется', () => {
@@ -285,5 +307,185 @@ describe('уверенность и приписка о несверенных',
       .toBe('Разбор.\n\nНе сверены задания (в балл не вошли): 4, 7.')
     expect(withUncheckedNote('Разбор.', [task('1', 'correct')])).toBe('Разбор.')
     expect(withUncheckedNote('', [task('2', 'unchecked')])).toBe('Не сверены задания (в балл не вошли): 2.')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// §189 (v18)
+// ---------------------------------------------------------------------------
+
+describe('§189. число из ответа', () => {
+  it('слова, единицы и разряды вокруг числа не мешают', () => {
+    expect(answerNumber('в 144 раза')).toEqual({ value: 144, unit: '' })
+    expect(answerNumber('3,6 куб. см')).toEqual({ value: 3.6, unit: 'куб см' })
+    expect(answerNumber('в 25 раз')).toEqual({ value: 25, unit: '' })
+    expect(answerNumber('12')).toEqual({ value: 12, unit: '' })
+    expect(answerNumber('1 000 000 руб')).toEqual({ value: 1000000, unit: 'руб' })
+    expect(answerNumber('−8')).toEqual({ value: -8, unit: '' })
+    expect(answerNumber('50%')).toEqual({ value: 50, unit: '%' })
+  })
+
+  it('там, где чисел нет или их несколько, число не вытаскивается вовсе', () => {
+    // Смешанная дробь, набор соответствий, диапазон, выражение — гадать нельзя.
+    expect(answerNumber('2 30/49')).toBeNull()
+    expect(answerNumber('А-2, Б-3')).toBeNull()
+    expect(answerNumber('3 из 15')).toBeNull()
+    expect(answerNumber('0,82 - 0,04')).toBeNull()
+    expect(answerNumber('±8')).toBeNull()
+    expect(answerNumber('да')).toBeNull()
+    expect(answerNumber('')).toBeNull()
+    expect(answerNumber(null)).toBeNull()
+  })
+})
+
+describe('§189. сверка ответа с ожидаемым', () => {
+  it.each([
+    ['в 144 раза', '144'],
+    ['3,6 куб. см', '3,6'],
+    ['в 25 раз', '25'],
+    ['0,2', '0.20'],
+    ['5 м', '5 м'],
+  ])('одно и то же, записанное по-разному: «%s» = «%s»', (a, b) => {
+    expect(compareAnswers(a, b)).toBe('equal')
+  })
+
+  it.each([
+    ['12', '30'],
+    ['12', '6'],
+    ['в 144 раза', '12'],
+    ['3,6 куб. см', '7,2'],
+  ])('разные числа: «%s» ≠ «%s»', (a, b) => {
+    expect(compareAnswers(a, b)).toBe('different')
+  })
+
+  it.each([
+    ['2 30/49', '98'],
+    ['да', 'нет'],
+    ['', ''],
+    ['12', ''],
+    ['±8', '8'],
+    ['x = 2 и x = 3', '2'],
+    ['50%', '0,5'],
+    ['0,5 м', '50 см'],
+  ])('сравнивать нечего — вердикт модели не трогаем: «%s» / «%s»', (a, b) => {
+    expect(compareAnswers(a, b)).toBe('unknown')
+  })
+})
+
+describe('§189. вердикт сверяется с ответами в обе стороны', () => {
+  it('correct с разошедшимися ответами понижается до wrong, заметка сохраняется', () => {
+    // Живая таблица job e1a17336…: задания 4 и 11 — «correct» при 12/30 и 12/6.
+    const r = reconcileTasksDetailed([
+      task('4', 'correct', '12', '30', 'ответ неверен: должно быть 30'),
+      task('11', 'correct', '12', '6', 'ответ неверен: должно быть 6'),
+    ])
+    expect(r.tasks.map(t => t.verdict)).toEqual(['wrong', 'wrong'])
+    expect(r.tasks[0].note).toBe('ответ неверен: должно быть 30')
+    expect(r.lowered).toEqual(['4', '11'])
+  })
+
+  it('заметка говорит о верном ходе — понижаем до partial, а не до wrong', () => {
+    const r = reconcileTasksDetailed([
+      task('5', 'correct', '18', '20', 'ход верный, арифметическая ошибка в конце'),
+      task('6', 'correct', '18', '20', 'верный ход, описка при переносе'),
+    ])
+    expect(r.tasks.map(t => t.verdict)).toEqual(['partial', 'partial'])
+    expect(r.lowered).toEqual(['5', '6'])
+  })
+
+  it.each([
+    ['в 144 раза', '144'],
+    ['3,6 куб. см', '3,6'],
+    ['2 30/49', '98'],
+    ['да', 'нет'],
+    ['', ''],
+    ['12', ''],
+  ])('correct не понижается там, где сравнивать нечего или ответы совпали: «%s» / «%s»', (student, expected) => {
+    const r = reconcileTasksDetailed([task('1', 'correct', student, expected)])
+    expect(r.tasks[0].verdict).toBe('correct')
+    expect(r.lowered).toEqual([])
+  })
+
+  it('обратное направление §180 живо и работает по числам', () => {
+    const r = reconcileTasksDetailed([
+      task('1', 'wrong', '0,78', '0.78'),
+      task('2', 'wrong', 'в 144 раза', '144'),
+      task('3', 'partial', '10', '10', 'нет развёрнутого решения'),
+      task('4', 'wrong', '64', '±8'),
+    ])
+    expect(r.tasks.map(t => t.verdict)).toEqual(['correct', 'correct', 'partial', 'wrong'])
+    expect(r.lowered).toEqual([])
+    expect(reconcileTasks(r.tasks).map(t => t.verdict)).toEqual(['correct', 'correct', 'partial', 'wrong'])
+  })
+
+  it('unchecked и partial с разошедшимися ответами не трогаем — понижать нечего', () => {
+    const r = reconcileTasksDetailed([
+      task('1', 'unchecked', '12', '30'),
+      task('2', 'partial', '12', '30'),
+      task('3', 'wrong', '12', '30'),
+    ])
+    expect(r.tasks.map(t => t.verdict)).toEqual(['unchecked', 'partial', 'wrong'])
+    expect(r.lowered).toEqual([])
+  })
+
+  it('понижение открывает дорогу находке по этой строке: она больше не «по верному заданию»', () => {
+    const tasks = [task('4', 'correct', '12', '30', 'ответ неверен: должно быть 30')]
+    const r = filterFindings([finding('calc', 'В задаче 4 должно быть 30', '4')], tasks)
+    expect(r.kept).toHaveLength(1)
+    expect(r.tasks[0].verdict).toBe('wrong')
+    expect(r.lowered).toEqual(['4'])
+  })
+
+  it('балл пересчитывается после понижений: тот самый прогон — 84, а не 97', () => {
+    // 21 задание: 15 correct + 1 partial + 5 unchecked дали 97.
+    const tasks: TaskRow[] = [
+      ...Array.from({ length: 15 }, (_, i) => task(String(i + 1), 'correct', '7', '7')),
+      task('16', 'partial', '5', '5', 'нет хода'),
+      ...Array.from({ length: 5 }, (_, i) => task(String(i + 17), 'unchecked')),
+    ]
+    expect(computeScore(tasks, 'hundred').score).toBe(97)
+
+    // Задания 4 и 11 на деле разошлись с ожидаемым.
+    tasks[3] = task('4', 'correct', '12', '30', 'ответ неверен: должно быть 30')
+    tasks[10] = task('11', 'correct', '12', '6', 'ответ неверен: должно быть 6')
+    const r = reconcileTasksDetailed(tasks)
+    expect(r.lowered).toEqual(['4', '11'])
+    expect(computeScore(r.tasks, 'hundred').score).toBe(84)
+  })
+
+  it('поправленные задания названы в summary — число пришло не от модели', () => {
+    expect(withLoweredNote('Разбор.', ['4', '11']))
+      .toBe('Разбор.\n\nСистема поправила вердикт по заданиям 4, 11 (ответ не совпал с ожидаемым).')
+    expect(withLoweredNote('', ['4']))
+      .toBe('Система поправила вердикт по заданию 4 (ответ не совпал с ожидаемым).')
+    expect(withLoweredNote('Разбор.', [])).toBe('Разбор.')
+  })
+})
+
+describe('§189. проверена не вся работа — балла нет', () => {
+  const full = Array.from({ length: 10 }, (_, i) => task(String(i + 1), 'correct'))
+
+  it('непрочитанные страницы делают проверку неполной при любой таблице', () => {
+    expect(isPartialCheck({ tasks: full, pagesSkipped: true })).toBe(true)
+    expect(isPartialCheck({ tasks: [], pagesSkipped: true })).toBe(true)
+    expect(isPartialCheck({ tasks: full, pagesSkipped: false })).toBe(false)
+    expect(isPartialCheck({ tasks: [], pagesSkipped: false })).toBe(false)
+  })
+
+  it('порог по несверенным — пятая часть заданий, ровно 20 % уже считается', () => {
+    expect(UNCHECKED_LOW_CONFIDENCE_SHARE).toBe(0.2)
+    const twoOfTen = full.map((t, i) => (i < 2 ? task(t.no, 'unchecked') : t))
+    expect(isPartialCheck({ tasks: twoOfTen, pagesSkipped: false })).toBe(true)
+
+    const oneOfTen = full.map((t, i) => (i < 1 ? task(t.no, 'unchecked') : t))
+    expect(isPartialCheck({ tasks: oneOfTen, pagesSkipped: false })).toBe(false)
+  })
+
+  it('тот самый прогон: 5 несверенных из 21 — проверка неполная, даже если страницы влезли', () => {
+    const tasks = [
+      ...Array.from({ length: 16 }, (_, i) => task(String(i + 1), 'correct')),
+      ...Array.from({ length: 5 }, (_, i) => task(String(i + 17), 'unchecked')),
+    ]
+    expect(isPartialCheck({ tasks, pagesSkipped: false })).toBe(true)
   })
 })

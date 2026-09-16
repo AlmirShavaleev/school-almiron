@@ -15,7 +15,9 @@ import {
   TASK_VERDICT_LABEL,
   aiTasksOf,
   findingsOfTask,
+  isPartialCheck,
   normalizeTaskNo,
+  partialCheckReason,
   referenceNotice,
   shouldShowScore,
   summarizeTasks,
@@ -80,6 +82,13 @@ export function AiCheckPanel({
 
   const tasks = aiTasksOf(job)
   const summary = tasks ? summarizeTasks(tasks) : null
+  /**
+   * §189. Балла нет, а разбор есть: функция погасила его, потому что работа
+   * прочитана не целиком. Молчание тут читается как «ИИ не справился», и
+   * преподаватель не узнает, что часть страниц до модели не доехала.
+   */
+  const partial = isPartialCheck(job)
+  const partialReason = partial ? partialCheckReason(job?.summary) : null
   /**
    * Номера заданий, у которых находка вообще есть. Строка без находки
    * кликабельной не делается: нажатие, которое ничего не меняет, читается
@@ -195,6 +204,16 @@ export function AiCheckPanel({
               >
                 Предлагает балл: {job.suggested_score}
               </span>
+            ) : partial ? (
+              // §189. Вместо балла — причина его отсутствия. Балл по двум
+              // третям работы преподаватель принимает не глядя; эта плашка
+              // заставляет его открыть страницы и досмотреть самому.
+              <span
+                data-testid="ai-check-partial"
+                className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 font-medium text-amber-900"
+              >
+                Проверена не вся работа — балл не выводится
+              </span>
             ) : (
               <span className="rounded-md bg-white px-2 py-0.5 text-gray-500">Балл не предлагается</span>
             )}
@@ -210,6 +229,17 @@ export function AiCheckPanel({
               <span data-testid="ai-check-model" className="text-violet-500">· {job.model}</span>
             )}
           </div>
+
+          {/* Пояснение к плашке — дословно из разбора: список непрочитанных
+              страниц и несверенных заданий пишет сама функция. */}
+          {partialReason && (
+            <p
+              data-testid="ai-check-partial-reason"
+              className="whitespace-pre-wrap rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-900"
+            >
+              {partialReason}
+            </p>
+          )}
 
           {job.summary && (
             <div className="rounded-lg border border-violet-200 bg-white p-2.5">

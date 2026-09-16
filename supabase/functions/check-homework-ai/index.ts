@@ -39,7 +39,9 @@ import {
   computeScore,
   deriveConfidence,
   filterFindings,
+  isPartialCheck,
   parseTasks,
+  withLoweredNote,
   withUncheckedNote,
   type Category,
   type FindingDraft,
@@ -51,8 +53,19 @@ const DEFAULT_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
 const IMAGE_MIME = /^image\/(png|jpe?g|webp|heic|heif)$/i
 const PDF_MIME = /^application\/pdf$/i
-/** Страниц на ВСЮ работу за одну проверку; остаток — текстом в разбор. */
-const MAX_PAGES = 10
+/**
+ * Страниц на ВСЮ работу за одну проверку; остаток — текстом в разбор и, с
+ * §189, гашением балла.
+ *
+ * Было 10 и резало обычные работы: рабочий лист на 11–16 страниц — норма, а
+ * первый живой прогон v17 дошёл до модели восемью страницами из одиннадцати.
+ * Потолок поднят до 20 (вход растёт примерно втрое — см. отчёт board/042).
+ *
+ * ВАЖНО: для PDF этот потолок редко срабатывает первым — раньше него
+ * упирается RENDER_BUDGET_MS (процессорное время, ниже). Работа из фотографий
+ * рендера не требует, и для неё 20 — настоящий предел.
+ */
+const MAX_PAGES = 20
 /** 150 DPI: рукописный текст читается уверенно, страница остаётся ~200 кБ. */
 const RENDER_DPI = 150
 const MAX_RENDER_WIDTH = 1600
@@ -63,9 +76,15 @@ const JPEG_QUALITY = 80
  * бы висеть в `processing`, а преподаватель смотрел бы на вечный спиннер.
  * Замер на настоящих работах (машина разработчика): страница A4 при 150 DPI —
  * около 80 мс на рендер плюс 140 мс на JPEG. В проде дороже: с бюджетом 1500 мс
- * работа на 41 страницу всё равно ложилась в 546. Отсюда 700 мс — это примерно
- * три-четыре страницы плотного скана, и остаётся запас на base64, который тоже
- * считает процессор. Недобранные страницы честно уезжают в приписку к разбору.
+ * работа на 41 страницу всё равно ложилась в 546. Недобранные страницы честно
+ * уезжают в приписку к разбору.
+ *
+ * §189, замер на проде: при 1100 мс работа из 11 страниц дала 8 — то есть
+ * около 140 мс на страницу, и 11 страниц потребовали бы примерно 1550 мс.
+ * ИМЕННО ЭТОТ бюджет, а не MAX_PAGES, обрезал первый живой прогон v17.
+ * Поднимать его не стали: за ним лимит 2 с CPU, а сверху ещё base64 всех
+ * страниц, и цена ошибки — убитый воркер с задачей, вечно висящей в
+ * `processing`. Решение о числе — за владельцем, после замера.
  *
  * Число подобрано замером, а не из общих соображений: если менять — проверять
  * на pub_4656538.pdf (41 страница), это самая тяжёлая работа из известных.
@@ -307,6 +326,11 @@ Deno.serve(async (req) => {
     if (droppedFindings > 0) {
       console.log(`findings: отброшено ${droppedFindings} —`, { ...filtered.droppedBy, badRect: badRects, model, jobId })
     }
+    // §189. Понижения вердикта считаем ОТДЕЛЬНО от dropped_findings: там мера
+    // выдумок модели, а это правка кода по числам, и её видно в summary.
+    if (filtered.lowered.length > 0) {
+      console.log(`tasks: понижено вердиктов ${filtered.lowered.length} —`, { tasks: filtered.lowered, model, jobId })
+    }
 
     const rows: Record<string, unknown>[] = filtered.kept.map((f, position) => ({
       job_id: jobId,
@@ -331,11 +355,18 @@ Deno.serve(async (req) => {
     // для истории, но с confidence low: панель такой балл не показывает
     // (shouldShowScore), а в сравнении версий он виден.
     const modelScore = numberOrNull(parsed.suggested_score)
-    const suggestedScore = tasks.length > 0
-      ? score.score
-      : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
+    // §189. Работа прочитана не целиком — балла не будет ни своего, ни
+    // модельного. Балл по двум третям работы выглядит как результат проверки и
+    // принимается не глядя; «балл не выводится» заставляет открыть работу.
+    const pagesSkipped = skipped.length > 0
+    const partialCheck = isPartialCheck({ tasks, pagesSkipped })
+    const suggestedScore = partialCheck
+      ? null
+      : tasks.length > 0
+        ? score.score
+        : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
     const confidence = tasks.length > 0 || !readable
-      ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state })
+      ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state, pagesSkipped })
       : 'low'
 
     const usage = payload?.usage ?? {}
@@ -360,7 +391,13 @@ Deno.serve(async (req) => {
       // не вошло в балл, иначе «замечаний нет» соврёт.
       summary: withWorksheetNote(
         withReferenceNote(
-          withSkipNote(withUncheckedNote(String(parsed.summary ?? ''), tasks), skipped),
+          withSkipNote(
+            // §189. Понижения вердикта — отдельной строкой сразу после
+            // несверенных: преподаватель должен видеть, что балл поправила
+            // система, а не модель.
+            withLoweredNote(withUncheckedNote(String(parsed.summary ?? ''), tasks), filtered.lowered),
+            skipped,
+          ),
           reference,
         ),
         worksheet,
@@ -905,6 +942,11 @@ function buildPrompt(ctx: {
     // модель заполняла таблицу, понимая, во что она превращается.
     '- БАЛЛ считает система по таблице: (correct + 0,5·partial) / (все задания, кроме unchecked). По стобалльной — в процентах; по пятибалльной — 5 от 90 %, 4 от 70 %, 3 от 50 %, иначе 2. Своё suggested_score напиши для самопроверки — оно будет пересчитано по таблице.',
     '- Если ответ ученика совпадает с ожидаемым, вердикт НЕ может быть wrong, и находки об ошибке быть не должно. Никогда не пиши «должно быть X, а не X» или «X вместо X» с одинаковыми значениями — такая находка отбрасывается.',
+    // §189. Обратное направление того же правила. В живой таблице стояло
+    // «student_answer 12, expected_answer 30, note: ответ неверен: должно быть
+    // 30» — и вердикт correct. Система теперь такую строку понижает сама, но
+    // сказать об этом модели дешевле, чем править за ней.
+    '- И наоборот: если ответ ученика НЕ совпадает с ожидаемым, вердикт НЕ может быть correct — это wrong (или partial, если ход верен, а сбой арифметический). Система сверяет эти два поля числами и вердикт correct с разошедшимися ответами понижает сама.',
     '- Задание с верным результатом и верным ходом — "correct" ПОЛНОСТЬЮ, даже если запись неаккуратна.',
     '- Замечания по оформлению (category "format") на вердикт НЕ влияют: это советы. Вердикт снижают только неверный результат и неверный ход.',
     // §149. Правило «нет хода решения — ноль» модель выдумала сама: разборы
