@@ -125,7 +125,7 @@ Runtime нет), **2 с CPU на запрос** — отсюда `RENDER_BUDGET_
 
 ## Проверки — точные команды
 
-- Типы: **`npx tsc -b > log 2>&1; echo $?`** (= `npm run typecheck`),
+- Типы: **`npx tsc -b > tsc.log 2>&1; echo $?`** (= `npm run typecheck`),
   буквально последним действием. **`npx tsc --noEmit` в этом репозитории
   не проверяет ничего** (корневой `tsconfig.json` — `references`, без `-b`
   список файлов пуст) — на этом была серия красных сборок.

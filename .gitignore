@@ -87,3 +87,6 @@ doc_web/_err.txt
 doc_web/data/
 # Разовая тестовая фикстура
 test_doc.doc
+# Выводы `npx tsc -b > tsc.log 2>&1` — рабочие логи, не исходники (§191)
+tsc.log
+log

@@ -1,5 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// Модалка шлёт запрос в edge-функцию `copy_lesson` напрямую через fetch и
+// строит её адрес из VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Без этих
+// переменных `invokeCopyLesson` падает ДО fetch — тогда проверки «что ушло на
+// сервер» ждут мок, которого не было, а проверка общей ошибки зеленеет по
+// неверной причине (тот же тост показывает и ранний выход). Переменные берутся
+// из окружения (локальный `.env`, env в CI), то есть тест зависел от машины.
+// Поэтому окружение задаётся здесь явно — тест обязан быть герметичным.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+
+const SUPABASE_URL = 'https://stub.supabase.co'
+const SUPABASE_ANON_KEY = 'stub-anon-key'
 
 const { toastSuccessSpy, toastErrorSpy } = vi.hoisted(() => ({
   toastSuccessSpy: vi.fn(),
@@ -64,6 +74,8 @@ function renderModal(groupId: string | null, groupName: string | null) {
 
 describe('AddLessonTemplateToCourseModal', () => {
   beforeEach(() => {
+    vi.stubEnv('VITE_SUPABASE_URL', SUPABASE_URL)
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', SUPABASE_ANON_KEY)
     fetchSpy.mockReset()
     toastSuccessSpy.mockReset()
     toastErrorSpy.mockReset()
@@ -74,14 +86,19 @@ describe('AddLessonTemplateToCourseModal', () => {
     })
   })
 
-  it('sends p_target_group_id as null when copying without a group', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('sends target_group_id as null when copying without a group', async () => {
     renderModal(null, null)
 
     fireEvent.click(screen.getByText('Урок 1'))
     fireEvent.click(screen.getByRole('button', { name: /Добавить в программу/i }))
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${SUPABASE_URL}/functions/v1/copy_lesson`)
     expect(JSON.parse(String(options.body))).toMatchObject({
       template_id: 'tpl-1',
       target_course_id: 'course-1',
@@ -103,7 +120,7 @@ describe('AddLessonTemplateToCourseModal', () => {
     })
   })
 
-  it('maps known RPC errors by substring, even with prefixed messages', async () => {
+  it('maps known copy_lesson errors by substring, even with prefixed messages', async () => {
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 400,
@@ -117,7 +134,7 @@ describe('AddLessonTemplateToCourseModal', () => {
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledWith('Выбранный модуль не принадлежит курсу'))
   })
 
-  it('shows generic error for unknown RPC codes', async () => {
+  it('shows generic error for unknown copy_lesson codes', async () => {
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 400,
@@ -129,5 +146,8 @@ describe('AddLessonTemplateToCourseModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Добавить в программу/i }))
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledWith('Не удалось скопировать урок'))
+    // Тот же тост показывает и ранний выход «нет VITE_SUPABASE_URL», поэтому
+    // проверяем, что запрос всё-таки ушёл: иначе тест зелен по ошибке.
+    expect(fetchSpy).toHaveBeenCalled()
   })
 })
