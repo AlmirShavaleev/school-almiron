@@ -159,7 +159,14 @@ export function DashboardLayout() {
                 : initials
               }
             </div>
-            <div className="hidden sm:block">
+            {/* §190. Имя и роль показываем с 1024, а не с 640. Между ними
+                шапка уже с боковым меню (`md:ml-64`), и переключатель режимов
+                с подписями занимает 383px из 588 доступных: имя не помещалось,
+                но и не сжималось — вся страница уезжала вбок, а мобильный
+                Chrome в ответ ужимал кабинет целиком (§158). Первым до нуля
+                сжимался заголовок страницы, то есть пропадал он, а не
+                украшение. На 1024+ ряд помещается — вид прежний. */}
+            <div className="hidden lg:block">
               <div className="text-sm font-semibold text-graphite-950 leading-tight">{profile.full_name || 'Профиль'}</div>
               <div className="text-xs text-slate-500 leading-tight">
                 {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}

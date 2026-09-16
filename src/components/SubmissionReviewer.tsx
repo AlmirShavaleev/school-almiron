@@ -1043,8 +1043,19 @@ export function SubmissionReviewer({
           и длинный список комментариев растягивал строку, а overflow-hidden
           снаружи просто обрезал её — прокрутка внутри становилась недостижимой.
           minmax(0,…) разрешает строке сжиматься, и внутренний overflow-auto
-          снова работает. На узком экране колонка комментариев занимает нижние 45%. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] overflow-hidden xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]">
+          снова работает. На узком экране колонка комментариев занимает нижние 45%.
+
+          §190. Низкий и широкий экран (телефон боком) — отдельный случай: делить
+          390 пикселей высоты пополам нечем. Замер на 844×390: работе доставалось
+          97 пикселей по высоте — полоска в две строки рукописи, по которой
+          проверять нельзя. Поэтому там раскладка не «работа сверху, комментарии
+          снизу», а как на большом экране — рядом: работа получает всю высоту
+          колонки, 209 пикселей вместо 97. Условие по ВЫСОТЕ, а не по ширине:
+          1280×800 под него не подпадает и остаётся прежним, а узкий 390×430
+          (телефон с открытой клавиатурой) — тем более, там min-width. Колонка
+          комментариев те же 22rem, что и на xl: уже неё не помещаются заголовок
+          и «Очистить пометки», они начинают наезжать друг на друга. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] overflow-hidden [@media(min-width:700px)_and_(max-height:600px)]:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] [@media(min-width:700px)_and_(max-height:600px)]:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]">
       <div ref={frameRef} data-testid="review-document-scroll-area" className="min-h-0 overflow-auto p-3 sm:p-4">
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
         <div className="mx-auto flex min-h-full w-full flex-col gap-4">
@@ -1110,7 +1121,9 @@ export function SubmissionReviewer({
           {documentFooter}
         </div>}
       </div>
-      <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
+      {/* Граница переезжает вслед за раскладкой: когда колонка комментариев
+          стоит сбоку, черта сверху рисовала бы линию поперёк пустого места. */}
+      <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white [@media(min-width:700px)_and_(max-height:600px)]:border-l [@media(min-width:700px)_and_(max-height:600px)]:border-t-0 lg:border-l lg:border-t-0">
         <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
           {clearDialog && (
@@ -1425,13 +1438,28 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
 }) {
   const multiFile = new Set(regions.map(item => item.filePath)).size > 1
   return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
-    <div className="flex min-h-14 items-center justify-between gap-2 border-b border-slate-200 px-3">
+    {/* §190. `shrink-0`: шапка списка — обычный флекс-элемент колонки, и там,
+        где колонке не хватало высоты, её ужимало ниже собственного содержимого.
+        Текст при этом никуда не девался, а наезжал на список под ней: на 390
+        слово «Комментарии» срезало сверху, а «стрелками» ложилось на черту. */}
+    <div className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <MessageSquare size={15} className="text-slate-400" />
-          Комментарии
+        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800">
+          <MessageSquare size={15} className="shrink-0 text-slate-400" />
+          {/* Многоточие ставит тот, кто длинный (§183): на ряду-флексе
+              `truncate` только режет по букве. */}
+          <span className="truncate">Комментарии</span>
         </div>
-        <div className="mt-0.5 text-xs text-slate-400">{readOnly ? 'Только просмотр' : 'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками'}</div>
+        <div className={cn(
+          'mt-0.5 text-xs text-slate-400',
+          // Подсказка про перетаскивание и стрелки — про мышь и клавиатуру,
+          // которых на телефоне нет, а места она занимает шесть строк из
+          // сорока пяти процентов высоты. Показываем там, где ими работают:
+          // ширина от 640 И высота от 601. Одним медиа-запросом, а не парой
+          // `hidden sm:block` + `…:hidden`, чтобы не зависеть от порядка
+          // правил в сборке.
+          !readOnly && 'hidden [@media(min-width:640px)_and_(min-height:601px)]:block',
+        )}>{readOnly ? 'Только просмотр' : 'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками'}</div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {!readOnly && onClearAll && (

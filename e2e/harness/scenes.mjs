@@ -257,6 +257,13 @@ export const scenes = [
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'student', name: 's05-my-homework', url: '/my-homework', width: 1280, height: 800, actions: [{ wait: 900 }] },
 
+  // ── §190 (board/043): очередь проверки и окно проверки на 1280 — тем же
+  // способом доказываем, что мобильные правки не тронули компьютер. Сцены на
+  // 390 и 844×390 уже есть выше под теми же именами.
+  { persona: 'owner', name: 'o06-queue', url: '/homework-queue', width: 1280, height: 800, actions: [{ wait: 900 }] },
+  { persona: 'owner', name: 'o06-queue-filters', url: '/homework-queue', width: 1280, height: 800, actions: [{ clickSel: 'text=На доработке' }, { wait: 700 }] },
+  { persona: 'owner', name: 'o06-review', url: '/homework-queue', width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

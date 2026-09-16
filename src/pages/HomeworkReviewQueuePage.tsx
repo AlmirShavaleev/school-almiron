@@ -50,6 +50,17 @@ function findingsDeclension(count: number): string {
  * Строка — не одна большая кнопка, а две: широкая область с именем и отдельная
  * «Проверить» справа. Вкладывать кнопку в кнопку нельзя, а обе ведут в одно и
  * то же место, так что попасть мимо невозможно.
+ *
+ * §190. Ниже 1024 строка переносится: имя занимает первую строку целиком,
+ * отметка выбора, плашка состояния и «Проверить» уходят во вторую. В один ряд
+ * они не помещаются физически — плашка и кнопка нерастяжимы, а имя растяжимое,
+ * поэтому сжималось именно оно: на 390 фамилия резалась до «Кузне…», а на
+ * 844 (телефон боком, где уже появляется боковое меню на 256px) кнопке имени
+ * оставалось 15 пикселей — от строки не оставалось ничего. Граница именно
+ * `lg`, а не `sm`: между 768 и 1024 колонка содержимого узкая как раз из-за
+ * бокового меню, и одна строка там так же нечитаема, как на телефоне.
+ * Порядок задан `order-*`, а не перестановкой разметки: с `lg:` и порядок, и
+ * ширины прежние — имя снова растяжимое (`grow basis-0`), переносить нечего.
  */
 function QueueRowItem({
   row, files, studentName, viewers, showCourse, pending, selected, onToggleSelect, ai, aiBusy, onRunAi, onOpen,
@@ -90,7 +101,7 @@ function QueueRowItem({
       data-attempt-id={attempt.id}
       data-late={late ? 'true' : 'false'}
       data-status={attempt.status}
-      className="flex items-center gap-3 border-b border-gray-100 px-1 py-2.5 transition-colors last:border-b-0 hover:bg-primary-50/40"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-100 px-1 py-2.5 transition-colors last:border-b-0 hover:bg-primary-50/40"
     >
       {pending && (
         <input
@@ -100,7 +111,7 @@ function QueueRowItem({
           onChange={onToggleSelect}
           onClick={e => e.stopPropagation()}
           aria-label="Выбрать работу"
-          className="h-4 w-4 shrink-0 accent-primary-600"
+          className="order-2 h-4 w-4 shrink-0 accent-primary-600 lg:order-none"
         />
       )}
 
@@ -108,7 +119,7 @@ function QueueRowItem({
         type="button"
         onClick={onOpen}
         title={`${row.topicTitle} · ${row.homeworkTitle}`}
-        className="min-w-0 flex-1 truncate text-left text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+        className="order-1 min-w-0 grow basis-full truncate text-left text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 lg:order-none lg:basis-0"
       >
         <span className="font-medium">{studentName}</span>
         <span className="text-gray-400"> — </span>
@@ -129,13 +140,13 @@ function QueueRowItem({
         )}
       </button>
 
-      {time && <span className="hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline">{time}</span>}
+      {time && <span className="order-3 hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline lg:order-none">{time}</span>}
 
       {/* ИИ-статус метка */}
       {pending && (aiBusy || ai) && (
         <span
           className={cn(
-            'hidden shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex',
+            'order-3 hidden shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex lg:order-none',
             aiBusy || ai?.status === 'pending' || ai?.status === 'processing'
               ? 'bg-gray-100 text-gray-600'
               : ai?.status === 'done'
@@ -172,7 +183,7 @@ function QueueRowItem({
         <span
           data-testid="queue-viewer-badge"
           title={viewersLabel(viewers)}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white"
+          className="order-3 inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white lg:order-none"
         >
           <Eye size={11} />
           Проверяется
@@ -180,7 +191,7 @@ function QueueRowItem({
       ) : late ? (
         <span
           data-testid="queue-late-badge"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800"
+          className="order-3 inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 lg:order-none"
         >
           <AlertTriangle size={11} />
           Просрочено
@@ -189,7 +200,7 @@ function QueueRowItem({
         <span
           data-testid="queue-status-badge"
           className={cn(
-            'hidden shrink-0 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex',
+            'order-3 hidden shrink-0 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex lg:order-none',
             pending ? 'bg-primary-100 text-primary-800' : ATTEMPT_STATUS_TONE[attempt.status],
           )}
         >
@@ -203,7 +214,7 @@ function QueueRowItem({
           onClick={() => onRunAi()}
           disabled={aiBusy}
           title="Проверить этой работе черновик ИИ"
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50 sm:inline-flex"
+          className="order-3 hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50 sm:inline-flex lg:order-none"
         >
           {aiBusy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
         </button>
@@ -213,7 +224,7 @@ function QueueRowItem({
         size="sm"
         variant={busy || !pending ? 'secondary' : 'primary'}
         onClick={onOpen}
-        className="shrink-0"
+        className="order-3 ml-auto shrink-0 lg:order-none lg:ml-0"
       >
         {pending ? 'Проверить' : 'Открыть'}
       </Button>
@@ -604,15 +615,21 @@ export function HomeworkReviewQueuePage() {
           </label>
           )}
 
-          <label className="flex items-center gap-2 text-xs text-gray-500">
-            <Filter size={13} />
+          {/* §190. `min-w-0` на подписи и на самом `select` — иначе выпадающий
+              список шире экрана. Ширина `select` равна САМОМУ ДЛИННОМУ пункту
+              («Физика ЕГЭ 2027 · Полный годовой курс…» — 613px), сжиматься ему
+              не даёт `min-width: auto` флекс-элемента, и на 390 правый край со
+              стрелкой уезжал за карточку фильтров. На компьютере ряд и так
+              помещается целиком — сжимать нечего, вид прежний. */}
+          <label className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
+            <Filter size={13} className="shrink-0" />
             Курс
             <select
               data-testid="queue-course-filter"
               aria-label="Курс"
               value={courseFilter}
               onChange={e => changeCourse(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              className="min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
             >
               <option value="all">Все курсы · {rows.length}</option>
               {courseOptions.map(c => (
@@ -624,14 +641,14 @@ export function HomeworkReviewQueuePage() {
           {/* Тема — третий фильтр (§149). Список из самой очереди: тема без
               сданных работ здесь не появится, а при выбранном курсе — только
               его темы. */}
-          <label className="flex items-center gap-2 text-xs text-gray-500">
+          <label className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
             Тема
             <select
               data-testid="queue-topic-filter"
               aria-label="Тема"
               value={activeTopic}
               onChange={e => setTopicFilter(e.target.value)}
-              className="max-w-[16rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              className="min-w-0 max-w-[16rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
             >
               <option value="all">
                 Все темы · {courseFilter === 'all' ? rows.length : rows.filter(r => r.courseId === courseFilter).length}
@@ -642,13 +659,13 @@ export function HomeworkReviewQueuePage() {
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-xs text-gray-500">
+          <label className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
             Порядок
             <select
               aria-label="Порядок"
               value={order}
               onChange={e => setOrder(e.target.value === 'newest' ? 'newest' : 'oldest')}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              className="min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
             >
               <option value="oldest">Сначала давние</option>
               <option value="newest">Сначала свежие</option>
@@ -666,7 +683,7 @@ export function HomeworkReviewQueuePage() {
                 : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900',
             )}
           >
-            <AlertTriangle size={12} />
+            <AlertTriangle size={12} className="shrink-0" />
             Только просроченные{lateCount > 0 ? ` · ${lateCount}` : ''}
           </button>
 
