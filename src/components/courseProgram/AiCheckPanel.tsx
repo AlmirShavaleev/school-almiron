@@ -21,7 +21,7 @@ import {
   referenceNotice,
   shouldShowScore,
   summarizeTasks,
-  taskNoFromText,
+  taskNoOfFinding,
   worksheetNotice,
   aiErrorMessage,
   type AiFindingRow,
@@ -93,11 +93,14 @@ export function AiCheckPanel({
    * Номера заданий, у которых находка вообще есть. Строка без находки
    * кликабельной не делается: нажатие, которое ничего не меняет, читается
    * как поломка интерфейса, а не как «тут нечего показывать».
+   *
+   * §192. Номер берётся у находки одним правилом (`taskNoOfFinding`):
+   * столбец `task`, а текст — только для проверок, сделанных до §192.
    */
   const tasksWithFindings = useMemo(() => {
     const set = new Set<string>()
     for (const f of findings) {
-      const no = normalizeTaskNo(taskNoFromText(f.text))
+      const no = taskNoOfFinding(f)
       if (no) set.add(no)
     }
     return set
@@ -332,7 +335,7 @@ export function AiCheckPanel({
               <p className="mb-1 text-xs font-semibold text-violet-900">Находки</p>
               <ul data-testid="ai-check-findings" className="space-y-1.5">
                 {findings.map(finding => {
-                const no = normalizeTaskNo(taskNoFromText(finding.text))
+                const no = taskNoOfFinding(finding)
                 const active = activeTask != null && no !== '' && no === activeTask
                 return (
                   <li

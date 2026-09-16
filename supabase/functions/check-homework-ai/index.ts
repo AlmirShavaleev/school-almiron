@@ -342,6 +342,11 @@ Deno.serve(async (req) => {
       rect_x: f.rect.x, rect_y: f.rect.y, rect_w: f.rect.w, rect_h: f.rect.h,
       category: f.category,
       text: f.text,
+      // §192. Номер задания уже посчитан фильтром (`filterFindings` сверяет его
+      // с таблицей и держит лимит «одна находка на задание») — сохраняем его,
+      // чтобы панель связывала строку с находкой по данным, а не угадывала
+      // номер из текста. Пусто — модель номера не назвала, так и пишем null.
+      task: f.task || null,
     }))
 
     if (rows.length > 0) {

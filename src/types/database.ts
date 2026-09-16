@@ -4647,6 +4647,11 @@ export type Database = {
           rect_w: number
           rect_x: number
           rect_y: number
+          // Дописано руками в формате генератора (§180.1, §192): полная
+          // MCP-генерация тянет за собой расхождения database.ts с продом в
+          // чужих зонах (useStudyPlanBoard). СВЕРИТЬ при следующей полной
+          // генерации. Схема: task text (миграция §192, только добавляющая).
+          task: string | null
           text: string
         }
         Insert: {
@@ -4660,6 +4665,7 @@ export type Database = {
           rect_w: number
           rect_x: number
           rect_y: number
+          task?: string | null
           text: string
         }
         Update: {
@@ -4673,6 +4679,7 @@ export type Database = {
           rect_w?: number
           rect_x?: number
           rect_y?: number
+          task?: string | null
           text?: string
         }
         Relationships: [

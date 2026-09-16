@@ -70,6 +70,13 @@ export interface AiFindingRow {
   category: AiFindingCategory
   text: string
   position: number
+  /**
+   * §192. Номер задания, названный самой функцией: тот `task`, по которому
+   * фильтр находок держит лимит «одна находка на задание» (`findings.ts`).
+   * null/undefined — проверка старее §192 (столбца не было) либо модель номера
+   * не назвала; тогда связь со строкой таблицы ищется в тексте.
+   */
+  task?: string | null
 }
 
 /**
@@ -245,22 +252,35 @@ export function normalizeTaskNo(raw: string | null | undefined): string {
 /**
  * Номер задания из текста находки: «В задаче 4 …», «задание 12», «№ 7».
  *
- * Копия `taskNoFromText` из `check-homework-ai/findings.ts`, и копия
- * вынужденная: у находки в базе нет столбца с номером задания — поле `task`
- * живёт только внутри функции, в `topic_homework_ai_findings` оно не пишется.
- * Пока столбца нет, связь «строка таблицы ↔ находка» восстанавливается по
- * тексту — тем же правилом, каким функция её и устанавливала.
+ * Копия `taskNoFromText` из `check-homework-ai/findings.ts`. С §192 это
+ * запасной путь, а не основной: номер задания приходит из базы столбцом
+ * `task`. Правило остаётся ради проверок, сделанных до §192, — их в базе
+ * уже несколько десятков, и связь у них восстанавливается только так.
  */
 export function taskNoFromText(text: string | null | undefined): string {
   const m = String(text ?? '').match(/(?:задач[аеиу]|задани[еяию]|№)\s*№?\s*(\d{1,3}[а-яa-z]?)/iu)
   return m ? m[1] : ''
 }
 
+/**
+ * Номер задания находки, приведённый к сравнению (§192).
+ *
+ * Единственное место, где решается, к какому заданию относится находка.
+ * Сначала столбец `task` — его пишет сама функция из своей же таблицы, и это
+ * данные, а не догадка; и только если он пуст (проверки до §192 либо модель
+ * номера не назвала) — старое правило по тексту. Пусто — находка ничьей
+ * строке не принадлежит, и подсвечивать её нечем.
+ */
+export function taskNoOfFinding(finding: Pick<AiFindingRow, 'text'> & { task?: string | null }): string {
+  const fromColumn = normalizeTaskNo(finding.task)
+  return fromColumn || normalizeTaskNo(taskNoFromText(finding.text))
+}
+
 /** Находки, относящиеся к строке таблицы. Пусто — строке подсвечивать нечего. */
 export function findingsOfTask(findings: readonly AiFindingRow[], no: string): AiFindingRow[] {
   const target = normalizeTaskNo(no)
   if (!target) return []
-  return findings.filter(f => normalizeTaskNo(taskNoFromText(f.text)) === target)
+  return findings.filter(f => taskNoOfFinding(f) === target)
 }
 
 /** Идёт ли прогон прямо сейчас — для блокировки кнопки и спиннера. */

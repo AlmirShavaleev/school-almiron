@@ -6,6 +6,7 @@ import {
   findingsOfTask,
   summarizeTasks,
   taskNoFromText,
+  taskNoOfFinding,
   type AiFindingRow,
   type AiJobRow,
   type AiTaskRow,
@@ -133,6 +134,44 @@ describe('taskNoFromText / findingsOfTask', () => {
   })
 })
 
+/**
+ * §192. Номер задания у находки приходит столбцом `task` — его пишет сама
+ * функция из своей же таблицы. Текст остаётся запасным путём: проверок,
+ * сделанных до §192, в базе несколько десятков, и у них столбец пуст.
+ */
+describe('taskNoOfFinding — столбец задания у находки (§192)', () => {
+  it('номер берётся из столбца, даже когда в тексте его нет', () => {
+    const f = finding({ id: 'c1', task: '3', text: 'Знак ускорения при торможении отрицательный.' })
+    expect(taskNoOfFinding(f)).toBe('3')
+    expect(findingsOfTask([f], '3').map(x => x.id)).toEqual(['c1'])
+  })
+
+  it('столбец записан по-разному — «№ 4», «4.» — и всё равно та же строка', () => {
+    expect(taskNoOfFinding(finding({ task: '№ 4', text: 'Нет единиц.' }))).toBe('4')
+    expect(taskNoOfFinding(finding({ task: '4.', text: 'Нет единиц.' }))).toBe('4')
+  })
+
+  it('столбца нет (проверка старее §192) — работает старое правило по тексту', () => {
+    expect(taskNoOfFinding(finding({ task: null }))).toBe('3')
+    expect(taskNoOfFinding(finding({ task: '' }))).toBe('3')
+    const legacy = finding({ id: 'l1' })
+    delete legacy.task
+    expect(taskNoOfFinding(legacy)).toBe('3')
+    expect(findingsOfTask([legacy], '3').map(x => x.id)).toEqual(['l1'])
+  })
+
+  it('столбец спорит с текстом — верим столбцу: это данные, а не догадка', () => {
+    expect(taskNoOfFinding(finding({ task: '5', text: 'В задаче 3 знак ускорения' }))).toBe('5')
+  })
+
+  it('ни столбца, ни номера в тексте — находка ничьей строке не принадлежит', () => {
+    const f = finding({ id: 'n1', task: null, text: 'Нет единиц измерения.' })
+    expect(taskNoOfFinding(f)).toBe('')
+    expect(findingsOfTask([f], '3')).toEqual([])
+    expect(findingsOfTask([f], '')).toEqual([])
+  })
+})
+
 describe('AiCheckPanel — блок «По заданиям»', () => {
   it('строки идут в порядке ответа модели', () => {
     panel()
@@ -200,6 +239,34 @@ describe('AiCheckPanel — блок «По заданиям»', () => {
     panel({}, [finding({ id: 'f9', category: 'format', text: 'Нет единиц измерения.' })])
     const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
     expect(within(wrong).queryByRole('button')).toBeNull()
+  })
+
+  it('§192. Находка со столбцом задания подсвечивается, хотя номера в тексте нет', () => {
+    panel({}, [finding({ id: 'c1', task: '3', text: 'Знак ускорения при торможении отрицательный.' })])
+    const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
+    fireEvent.click(within(wrong).getByRole('button'))
+    const active = screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')
+    expect(active).toHaveLength(1)
+    expect(active[0]).toHaveTextContent('Знак ускорения при торможении')
+  })
+
+  it('§192. Находка без столбца (проверка старее) связывается по тексту, как раньше', () => {
+    const legacy = finding({ id: 'l1' })
+    delete legacy.task
+    panel({}, [legacy])
+    const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
+    fireEvent.click(within(wrong).getByRole('button'))
+    expect(screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')).toHaveLength(1)
+  })
+
+  it('§192. Ни столбца, ни номера в тексте — строка не кликается, панель цела', () => {
+    panel({}, [finding({ id: 'n1', task: null, text: 'Нет единиц измерения.' })])
+    for (const row of screen.getAllByTestId('ai-task-row')) {
+      expect(within(row).queryByRole('button')).toBeNull()
+    }
+    expect(screen.getByTestId('ai-check-panel')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ai-check-finding')).toHaveLength(1)
+    expect(screen.getAllByTestId('ai-check-finding')[0].dataset.active).toBeUndefined()
   })
 
   it('при низкой уверенности балл в сводке молчит, как и в шапке', () => {
