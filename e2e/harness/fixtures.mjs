@@ -174,6 +174,51 @@ export const topic_homework_attempt_files = topic_homework_attempts.flatMap((a, 
   mime_type: 'image/jpeg', size_bytes: 2400000, width: 1200, height: 1600, page_number: n, position: n, rotation: 0, sha256: null, metadata: {}, created_at: a.created_at,
 })))
 
+// ── ИИ-проверка ДЗ (§180 v17 + §186) ─────────────────────────────────────────
+// Две проверки рядом, потому что панель обязана уметь обе: свежая с таблицей
+// по заданиям (`tasks`) и старая, где столбца ещё не было (в проде таких три
+// десятка). Номера заданий в тексте находок не для красоты: столбца `task` у
+// находки в базе нет, и панель связывает строку с находкой по тексту.
+const aiFileOf = (attemptId) => topic_homework_attempt_files.find(f => f.attempt_id === attemptId).id
+const aiJobBase = {
+  provider: 'openrouter', model: 'qwen/qwen3-vl-235b-a22b-instruct', readable: true, requested_by: IDS.owner,
+  attempts: 1, accepted_at: null, last_error: null, input_tokens: 9800, output_tokens: 1400,
+  worksheet_state: 'used', worksheet_chars: 1800,
+}
+export const aiJobs = [
+  {
+    // accepted_at выставлен: рамки этой проверки уже перенесены в разбор
+    // (страница делает это сама при открытии). Иначе каждый заход по сцене
+    // переносил бы их заново, и в «Комментариях» копились бы копии.
+    ...aiJobBase, id: U('c', 1300), attempt_id: IDS.attempt(15), status: 'done', accepted_at: ago(1),
+    suggested_score: 4, confidence: 'medium', reference_state: 'used', reference_chars: 7647,
+    started_at: ago(1), created_at: ago(1), completed_at: ago(1),
+    summary: 'Задания 1, 2 и 5 решены верно. В задании 3 потерян знак ускорения при торможении, в задании 4 ответ верный, но развёрнутого решения нет — условие его требует.\n\nНе сверены задания (в балл не вошли): 6.',
+    tasks: [
+      { no: '1', verdict: 'correct', student_answer: '12 м/с', expected_answer: '12 м/с', note: '' },
+      { no: '2', verdict: 'correct', student_answer: '0,4', expected_answer: '0,4', note: '' },
+      { no: '3', verdict: 'wrong', student_answer: '−2 м/с²', expected_answer: '2 м/с²', note: 'При торможении знак ускорения противоположен скорости' },
+      { no: '4', verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Ответ верный, хода решения нет' },
+      { no: '5', verdict: 'correct', student_answer: '25 м', expected_answer: '25 м', note: '' },
+      { no: '6', verdict: 'unchecked', student_answer: '', expected_answer: '18 c', note: 'Страница снята не полностью, ответ не виден' },
+    ],
+    dropped_findings: 2,
+  },
+  {
+    ...aiJobBase, id: U('c', 1302), attempt_id: IDS.attempt(13), status: 'done', accepted_at: ago(26),
+    suggested_score: 4, confidence: 'medium', reference_state: 'used', reference_chars: 14000,
+    started_at: ago(26), created_at: ago(26), completed_at: ago(26),
+    summary: 'Часть задач решена верно, в задачах 16–19 расхождения с эталоном. Проверьте вручную: почерк местами читается плохо.',
+    tasks: null, dropped_findings: null,
+  },
+]
+export const aiFindings = [
+  { id: U('c', 1301), job_id: U('c', 1300), file_id: aiFileOf(IDS.attempt(15)), page: 1, position: 0, rect_x: 0.12, rect_y: 0.45, rect_w: 0.6, rect_h: 0.08, category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.' },
+  { id: U('c', 1303), job_id: U('c', 1300), file_id: aiFileOf(IDS.attempt(15)), page: 1, position: 1, rect_x: 0.1, rect_y: 0.62, rect_w: 0.62, rect_h: 0.1, category: 'logic', text: 'Задание 4: ответ верный, но выкладок нет — условие просит развёрнутое решение.' },
+  { id: U('c', 1304), job_id: U('c', 1300), file_id: aiFileOf(IDS.attempt(15)), page: 1, position: 2, rect_x: 0.14, rect_y: 0.8, rect_w: 0.5, rect_h: 0.06, category: 'format', text: 'Нет единиц измерения в ответах.' },
+  { id: U('c', 1305), job_id: U('c', 1302), file_id: aiFileOf(IDS.attempt(13)), page: 1, position: 0, rect_x: 0.12, rect_y: 0.3, rect_w: 0.55, rect_h: 0.09, category: 'calc', text: 'Проверьте вычисления в задаче 17.' },
+]
+
 // ── tests / variants ─────────────────────────────────────────────────────────
 export const topic_tests = [1, 2].map(i => ({ id: IDS.test(i), title: i === 1 ? 'Тест по кинематике: 12 заданий с кратким ответом и таблицей соответствия' : 'Тест: динамика', description: null, is_published: true, created_by: IDS.owner, created_at: ago(300), updated_at: ago(300), topic_test_items: [{ count: 12 }], topic_test_assignments: [{ count: 1 }] }))
 export const topic_test_assignments = [{ id: IDS.assignment(1), test_id: IDS.test(1), topic_id: IDS.topic(1), assigned_by: IDS.owner, created_at: ago(200), topic_tests: topic_tests[0] }]
@@ -419,8 +464,8 @@ export function baseFixtures(persona) {
       catalog_sections, catalog_tasks, catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
-      topic_homework_ai_jobs: [{ id: U('c', 1300), attempt_id: IDS.attempt(10), status: 'awaiting_teacher', suggested_score: 4, confidence: 'needs_review', accepted_at: null, created_at: ago(1), completed_at: ago(1), attempts: 1, last_error: null, model: 'qwen', provider: 'openrouter', readable: true, requested_by: IDS.owner, started_at: ago(1), input_tokens: 1000, output_tokens: 300, reference_chars: 0, reference_state: 'missing', summary: 'Задачи 1–5 решены верно, в задаче 6 арифметическая ошибка.' }],
-      topic_homework_ai_findings: [{ id: U('c', 1301), job_id: U('c', 1300), file_id: topic_homework_attempt_files.find(f => f.attempt_id === IDS.attempt(10)).id, page: 1, position: 1, rect_x: 0.12, rect_y: 0.45, rect_w: 0.6, rect_h: 0.08, category: 'error', text: 'Знак ускорения: при торможении a < 0.' }],
+      topic_homework_ai_jobs: aiJobs,
+      topic_homework_ai_findings: aiFindings,
       annotation_sets: [], mock_exam_results: [], lesson_materials: [], school_presence: [],
     },
     rpc: {

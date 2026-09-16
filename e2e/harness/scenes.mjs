@@ -2,6 +2,20 @@ import { IDS } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 
+// §186: панель ИИ живёт в футере под работой — до неё надо доскроллить, иначе
+// на снимке будут только страницы работы.
+const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scrollIntoView({ block: 'start' })`
+// На 390 панель длиннее экрана, а снизу её подпирает лист «Комментарии»
+// аннотатора — к таблице надо подъехать отдельно.
+const toAiTasks = `(document.querySelector('[data-testid="ai-check-tasks"]') ?? document.querySelector('[data-testid="ai-check-panel"]'))?.scrollIntoView({ block: 'start' })`
+// Вторая работа очереди — у неё проверка старая, без таблицы по заданиям.
+// На 390 подсвеченная находка и подсвеченная строка в один экран не влезают:
+// снизу лист «Комментарии». Поэтому на узком снимаем находку.
+const toActiveFinding = `document.querySelector('[data-testid="ai-check-finding"][data-active]')?.scrollIntoView({ block: 'start' })`
+// Нижний край панели — там строка про находки, отброшенные кодом (§180).
+const toAiDropped = `document.querySelector('[data-testid="ai-check-dropped"]')?.scrollIntoView({ block: 'center' })`
+const openSecondAttempt = `[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Проверить')[1]?.click()`
+
 export const scenes = [
   // ── guest ──
   { persona: 'guest', name: 'g01-login', url: '/login' },
@@ -118,6 +132,21 @@ export const scenes = [
   { persona: 'owner', name: 'o06-review-verdict', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }, { eval: '(() => { const el = [...document.querySelectorAll("div")].find(e => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5); if (el) el.scrollTop = el.scrollHeight })()' }, { wait: 600 }], full: false },
   { persona: 'owner', name: 'o06-review-keyboard', url: '/homework-queue', height: 430, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }, { focus: 'textarea' }, { wait: 400 }], full: false },
   { persona: 'owner', name: 'o06-review-landscape', url: '/homework-queue', width: 844, height: 390, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }], full: false },
+  // ── §186 (board/039): таблица по заданиям в панели ИИ ──
+  // Первая работа очереди — свежая проверка v17: шесть строк, среди них
+  // `wrong`, `partial` и `unchecked`, сводка и балл из неё. Снимаем на 1280 и
+  // 390: на узком строка обязана стать карточкой без горизонтального скролла.
+  // `-picked` — нажата неверная строка, её находка подсвечена ниже.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-review-ai-tasks', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: width < 640 ? toAiTasks : toAiPanel }, { wait: 600 }], full: false },
+    { persona: 'owner', name: 'o06-review-ai-tasks-picked', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toAiPanel }, { wait: 400 }, { clickSel: '[data-testid="ai-task-row"][data-verdict="wrong"] button' }, { wait: 400 }, { eval: width < 640 ? toActiveFinding : toAiTasks }, { wait: 400 }], full: false },
+    // Нижний край панели: сколько находок код отбросил как противоречивые.
+    { persona: 'owner', name: 'o06-review-ai-dropped', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toAiDropped }, { wait: 600 }], full: false },
+    // Проверка старее v17 (`tasks` пуст): блока «По заданиям» нет вовсе,
+    // панель выглядит ровно как до §186. В базе таких проверок три десятка.
+    { persona: 'owner', name: 'o06-review-ai-legacy', url: '/homework-queue', width, height, actions: [{ wait: 1200 }, { eval: openSecondAttempt }, { wait: 2500 }, { eval: toAiPanel }, { wait: 600 }], full: false },
+  ]),
+
   { persona: 'owner', name: 'o07-students', url: '/students' },
   { persona: 'owner', name: 'o07-students-invites', url: '/students', actions: [{ clickRole: ['button', 'Приглашения'] }, { wait: 600 }] },
   { persona: 'owner', name: 'o07-students-distribute', url: '/students', actions: [{ clickRole: ['button', 'Новые ученики'] }, { wait: 600 }, { clickRole: ['button', 'Распределить'] }, { wait: 800 }] },

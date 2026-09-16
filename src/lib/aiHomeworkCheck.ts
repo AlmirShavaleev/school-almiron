@@ -11,10 +11,12 @@ export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type AiConfidence = 'high' | 'medium' | 'low'
 export type AiFindingCategory = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
 
+export type AiTaskVerdict = 'correct' | 'wrong' | 'partial' | 'unchecked'
+
 /** Строка таблицы заданий v17 (§180) — зеркало `TaskRow` из `check-homework-ai/findings.ts`. */
 export interface AiTaskRow {
   no: string
-  verdict: 'correct' | 'wrong' | 'partial' | 'unchecked'
+  verdict: AiTaskVerdict
   student_answer: string
   expected_answer: string
   note: string
@@ -44,9 +46,9 @@ export interface AiJobRow {
   worksheet_chars: number | null
   /**
    * §180 (v17). Таблица по заданиям, из которой код считает балл:
-   * `[{no, verdict, student_answer, expected_answer, note}]`. Панель её пока
-   * не показывает (граница board/033); undefined/null — проверка старее v17
-   * или столбец ещё не применён (PENDING_180).
+   * `[{no, verdict, student_answer, expected_answer, note}]`. Показывает её
+   * панель (§186, `aiTasksOf`); undefined/null — проверка старее v17, таких
+   * в базе три десятка, и блок «По заданиям» им не рисуется вовсе.
    */
   tasks?: AiTaskRow[] | null
   /** §180. Сколько находок модели отбросил код (выдумки, лимиты, рамки). */
@@ -97,6 +99,20 @@ export function worksheetNotice(job: AiJobRow): string | null {
   return null
 }
 
+/**
+ * Категория находки словами. Те же слова, что у человека в аннотаторе
+ * (`SubmissionReviewer.CATEGORIES`): рамка ИИ и рамка преподавателя попадают
+ * в один разбор, и называться по-разному они не могут. Копия здесь потому,
+ * что в аннотаторе список не экспортирован, а сам он — чужая зона (§184).
+ */
+export const FINDING_CATEGORY_LABEL: Record<AiFindingCategory, string> = {
+  comment: 'Комментарий',
+  calc: 'Вычислительная ошибка',
+  logic: 'Логическая ошибка',
+  format: 'Оформление',
+  praise: 'Отлично',
+}
+
 /** Насколько модель уверена — словами, а не ярлыком. */
 export const CONFIDENCE_LABEL: Record<AiConfidence, string> = {
   high: 'высокая уверенность',
@@ -116,6 +132,97 @@ export function shouldShowScore(job: AiJobRow): boolean {
     && job.readable !== false
     && job.suggested_score != null
     && job.confidence !== 'low'
+}
+
+// ---------------------------------------------------------------------------
+// Таблица по заданиям (§186)
+// ---------------------------------------------------------------------------
+
+/** Вердикт строки словами — то же, что показывает панель рядом со значком. */
+export const TASK_VERDICT_LABEL: Record<AiTaskVerdict, string> = {
+  correct: 'верно',
+  wrong: 'неверно',
+  partial: 'частично',
+  unchecked: 'не сверено',
+}
+
+const TASK_VERDICTS: readonly string[] = ['correct', 'wrong', 'partial', 'unchecked']
+
+/**
+ * Таблица заданий проверки — или `null`, когда показывать нечего.
+ *
+ * `null` здесь значит «блока в панели не будет»: у трёх десятков проверок
+ * старее v17 столбец пустой, и панель обязана выглядеть ровно как до §186.
+ * Строки приходят из jsonb, то есть из ответа модели через `parseTasks`, —
+ * значения перепроверяем ещё раз: кривая строка не должна ронять разбор
+ * работы, из-за которого преподаватель сюда и пришёл.
+ */
+export function aiTasksOf(job: AiJobRow | null | undefined): AiTaskRow[] | null {
+  if (!job || job.status !== 'done' || !Array.isArray(job.tasks)) return null
+  const rows: AiTaskRow[] = []
+  for (const item of job.tasks) {
+    if (!item || typeof item !== 'object') continue
+    const raw = item as Partial<AiTaskRow>
+    const no = String(raw.no ?? '').trim()
+    if (!no) continue
+    rows.push({
+      no,
+      // Неизвестный вердикт — «не сверено», как в findings.ts: в сомнении
+      // задание не идёт ни в плюс, ни в минус.
+      verdict: TASK_VERDICTS.includes(raw.verdict as string) ? raw.verdict as AiTaskVerdict : 'unchecked',
+      student_answer: String(raw.student_answer ?? '').trim(),
+      expected_answer: String(raw.expected_answer ?? '').trim(),
+      note: String(raw.note ?? '').trim(),
+    })
+  }
+  return rows.length > 0 ? rows : null
+}
+
+export interface AiTasksSummary {
+  correct: number
+  wrong: number
+  partial: number
+  unchecked: number
+  total: number
+}
+
+/**
+ * Сводка по таблице — она же объяснение балла.
+ *
+ * Балл считает функция (§180: `(correct + 0,5·partial) / (всего −
+ * unchecked)`), и рядом с ним преподаватель должен видеть числа, из которых
+ * он вышел, иначе балл снова выглядит мнением модели.
+ */
+export function summarizeTasks(tasks: readonly AiTaskRow[]): AiTasksSummary {
+  const summary: AiTasksSummary = { correct: 0, wrong: 0, partial: 0, unchecked: 0, total: tasks.length }
+  for (const t of tasks) summary[t.verdict] += 1
+  return summary
+}
+
+/** Номер задания к сравнению: «№ 4», «4.», «4 » — одно и то же задание. */
+export function normalizeTaskNo(raw: string | null | undefined): string {
+  return String(raw ?? '').toLowerCase().replace(/[\s№.]/g, '')
+}
+
+/**
+ * Номер задания из текста находки: «В задаче 4 …», «задание 12», «№ 7».
+ *
+ * Копия `taskNoFromText` из `check-homework-ai/findings.ts`, и копия
+ * вынужденная: у находки в базе нет столбца с номером задания — поле `task`
+ * живёт только внутри функции, в `topic_homework_ai_findings` оно не пишется.
+ * Пока столбца нет, связь «строка таблицы ↔ находка» восстанавливается по
+ * тексту — тем же правилом, каким функция её и устанавливала.
+ */
+export function taskNoFromText(text: string | null | undefined): string {
+  const m = String(text ?? '').match(/(?:задач[аеиу]|задани[еяию]|№)\s*№?\s*(\d{1,3}[а-яa-z]?)/iu)
+  return m ? m[1] : ''
+}
+
+/** Находки, относящиеся к строке таблицы. Пусто — строке подсвечивать нечего. */
+export function findingsOfTask(findings: readonly AiFindingRow[], no: string): AiFindingRow[] {
+  const target = normalizeTaskNo(no)
+  if (!target) return []
+  return findings.filter(f => normalizeTaskNo(taskNoFromText(f.text)) === target)
 }
 
 /** Идёт ли прогон прямо сейчас — для блокировки кнопки и спиннера. */
