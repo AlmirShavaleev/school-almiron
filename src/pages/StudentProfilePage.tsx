@@ -114,21 +114,23 @@ export function StudentProfilePage() {
               <h1 className="text-2xl font-bold tracking-tight text-graphite-950">{s.full_name}</h1>
               {s.target_score && (
                 <span className="flex items-center gap-1 rounded-full bg-gold-50 px-2.5 py-1 text-xs font-semibold text-gold-800 ring-1 ring-gold-100">
-                  <Star size={12} />Цель: {s.target_score}
+                  <Star size={12} className="shrink-0" />Цель: {s.target_score}
                 </span>
               )}
             </div>
 
             <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
-              <span className="flex items-center gap-1.5"><Mail size={13} />{s.email}</span>
-              {s.phone && <span className="flex items-center gap-1.5"><Phone size={13} />{s.phone}</span>}
+              {/* Почта — одно слово без пробелов: на телефоне она либо
+                  переносится по буквам, либо распирает карточку (§183). */}
+              <span className="flex min-w-0 items-center gap-1.5"><Mail size={13} className="shrink-0" /><span className="break-all">{s.email}</span></span>
+              {s.phone && <span className="flex items-center gap-1.5"><Phone size={13} className="shrink-0" />{s.phone}</span>}
             </div>
 
             <div className="flex flex-wrap gap-2 mt-3">
               {s.groups.length <= 1 ? (
                 s.groups.map(g => (
                   <span key={g.id} className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full">
-                    <Users size={11} />{g.course_title}
+                    <Users size={11} className="shrink-0" />{g.course_title}
                     {/* Имя группы печатаем, только когда оно отличается от
                         названия курса: при «один курс = одна группа» (§61) они
                         совпадают, и плашка дважды повторяла одно и то же. */}
@@ -143,13 +145,13 @@ export function StudentProfilePage() {
                     onClick={() => setGroupsExpanded(v => !v)}
                     className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full hover:bg-primary-100"
                   >
-                    <Users size={11} />
+                    <Users size={11} className="shrink-0" />
                     {new Set(s.groups.map(g => g.course_title)).size} курс{new Set(s.groups.map(g => g.course_title)).size === 1 ? '' : 'а'} · {s.groups.length} групп{s.groups.length === 1 ? 'а' : 'ы'}
                     {groupsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
                   {groupsExpanded && s.groups.map(g => (
                     <span key={g.id} className="flex items-center gap-1.5 text-xs bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-full">
-                      <Users size={11} />{g.course_title}
+                      <Users size={11} className="shrink-0" />{g.course_title}
                       {g.name !== g.course_title && (
                         <span className="text-slate-400">· {g.name}</span>
                       )}
@@ -305,17 +307,23 @@ function EnrolledCoursesSection({
                 <BookOpen size={15} />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-gray-900 truncate">{c.courseTitle}</span>
-                {/* Курс снят с ведения, но зачисление осталось — говорим об
-                    этом прямо, а не прячем строку (§123). */}
-                {!c.courseActive && (
-                  <span
-                    data-testid="course-archived-badge"
-                    className="ml-2 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500"
-                  >
-                    курс в архиве
-                  </span>
-                )}
+                {/* Строчный `truncate` многоточия не даёт — overflow к inline
+                    не применяется, и длинное название курса просто обрывалось
+                    на телефоне по букве (§183). Ряд-флекс возвращает
+                    многоточие, плашка архива стоит рядом как прежде. */}
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span className="font-medium text-gray-900 truncate">{c.courseTitle}</span>
+                  {/* Курс снят с ведения, но зачисление осталось — говорим об
+                      этом прямо, а не прячем строку (§123). */}
+                  {!c.courseActive && (
+                    <span
+                      data-testid="course-archived-badge"
+                      className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500"
+                    >
+                      курс в архиве
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-gray-500 mt-0.5">
                   {c.courseSubject === 'physics' ? 'Физика' : c.courseSubject === 'math' ? 'Математика' : c.courseSubject}
                   {c.courseExamType && ` · ${c.courseExamType.toUpperCase()}`}

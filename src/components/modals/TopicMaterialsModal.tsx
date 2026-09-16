@@ -675,15 +675,25 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div data-testid="topic-materials-modal" role="dialog" aria-modal="true" aria-label={topicTitle} className="relative bg-white w-full sm:rounded-2xl shadow-2xl sm:max-w-2xl max-h-[92vh] flex flex-col z-10 overflow-hidden">
-        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <div className="min-w-0 flex-1">
+        {/*
+          Шапка переносится, а не сжимается (§183). Управление темой (тумблер с
+          подписью и поле даты) занимает около 340px — на 390 ему и названию
+          одновременно места нет, и до правки колонка названия сжималась до
+          слова в строку, а тумблер с датой наезжали на неё сверху. `flex-wrap`
+          с порядком «название → крестик → управление» кладёт управление целой
+          строкой ниже, а `order-*` возвращает прежний порядок с `sm:`. На
+          ширине от 640px ряд как был: название растяжимое (`flex-1 min-w-0`),
+          два блока справа нерастяжимые — переноситься нечему.
+        */}
+        <div className="flex flex-wrap items-start justify-between gap-y-3 px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="order-1 min-w-0 flex-1">
             <h2 className="font-bold text-gray-900 leading-tight">{topicTitle}</h2>
-            {moduleTitle && <div className="flex items-center gap-1.5 mt-0.5"><GraduationCap size={12} className="text-gray-400" /><span className="text-xs text-gray-400">{moduleTitle}</span></div>}
+            {moduleTitle && <div className="flex items-center gap-1.5 mt-0.5"><GraduationCap size={12} className="shrink-0 text-gray-400" /><span className="text-xs text-gray-400">{moduleTitle}</span></div>}
           </div>
           {canEdit && (
-            <div className="flex items-start gap-4 ml-3 shrink-0">
+            <div className="order-3 flex w-full items-start justify-between gap-2 shrink-0 sm:order-2 sm:ml-3 sm:w-auto sm:justify-start sm:gap-4">
               {/* Тумблер — главный способ управления; дата ниже осталась автоматикой. */}
-              <div className="flex flex-col items-end gap-1.5">
+              <div className="flex flex-col items-start gap-1.5 sm:items-end">
                 <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Тема</label>
                 <button
                   type="button"
@@ -704,7 +714,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                   {topicOpen ? 'Открыта' : 'Закрыта'}
                   {savingOpen && <Loader2 size={12} className="animate-spin" />}
                 </button>
-                <div className="text-[10px] leading-tight text-gray-400 text-right max-w-[190px]">
+                <div className="max-w-[150px] text-left text-[10px] leading-tight text-gray-400 sm:max-w-[190px] sm:text-right">
                   {scheduleNote}
                   {!dateAutomation && (
                     <>
@@ -748,7 +758,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             </div>
           )}
-          <button data-testid="topic-modal-close" aria-label="Закрыть" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors ml-3 shrink-0 p-1"><X size={20} /></button>
+          <button data-testid="topic-modal-close" aria-label="Закрыть" onClick={onClose} className="order-2 text-gray-400 hover:text-gray-600 transition-colors ml-3 shrink-0 p-1 sm:order-3"><X size={20} /></button>
         </div>
 
         {!canEdit && (

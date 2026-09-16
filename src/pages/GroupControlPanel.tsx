@@ -76,7 +76,10 @@ export function GroupControlPanel() {
         <div className="relative flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 truncate">{group.name}</h1>
+              {/* `truncate` — только с планшета: на телефоне названию группы
+                  негде уместиться в строку, и оно молча обрезалось многоточием
+                  на середине. Ниже 640px оно переносится (§183). */}
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-graphite-950 sm:truncate">{group.name}</h1>
               <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full',
                 group.is_active ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200')}>
                 {group.is_active ? 'Активна' : 'Архив'}
@@ -85,13 +88,13 @@ export function GroupControlPanel() {
             <div className="flex items-center gap-3 mt-2 text-sm text-slate-500 flex-wrap">
               {group.course && (
                 <Link to="/course-program" className="inline-flex items-center gap-1 hover:text-primary-700">
-                  <BookOpen size={13} />{group.course.title}
+                  <BookOpen size={13} className="shrink-0" />{group.course.title}
                 </Link>
               )}
               {(group.schedule_days?.length || group.schedule_time) && (
                 <span className="inline-flex items-center gap-1">
-                  <Calendar size={13} />{group.schedule_days?.join(', ') || '—'}
-                  {group.schedule_time && <><Clock size={12} className="ml-1" />{group.schedule_time}</>}
+                  <Calendar size={13} className="shrink-0" />{group.schedule_days?.join(', ') || '—'}
+                  {group.schedule_time && <><Clock size={12} className="ml-1 shrink-0" />{group.schedule_time}</>}
                 </span>
               )}
               <span className="text-slate-400">учитель: {group.teacher_name || '—'} · куратор: {group.curator_name || '—'}</span>

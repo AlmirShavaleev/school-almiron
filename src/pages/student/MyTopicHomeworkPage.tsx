@@ -164,9 +164,14 @@ function HomeworkRow({
 
         {/* Курс — метка, а не бледная подпись: цвет от предмета, начертание
             заметнее названия работы. Своё название ДЗ остаётся серым хвостом. */}
+        {/* `truncate` стоит на ряду-флексе, а text-overflow применяется к
+            потомку — поэтому на телефоне название курса резалось по букве и
+            без многоточия (§183). Многоточие ставит сама подпись курса, но
+            ужимается она только ниже 640px: на компьютере её по-прежнему
+            хватает целиком, а сокращается хвост со своим названием работы. */}
         <p className="mt-1 flex items-center gap-1.5 truncate text-xs">
           <span className={cn('h-2 w-2 shrink-0 rounded-full', color.dot)} aria-hidden />
-          <span className="font-medium text-gray-700">{row.course_title}</span>
+          <span className="truncate font-medium text-gray-700 sm:shrink-0">{row.course_title}</span>
           {hasCustomTitle && <span className="truncate text-gray-500">· {row.title}</span>}
         </p>
 

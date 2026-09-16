@@ -402,9 +402,11 @@ export function TopicPage() {
           <span className="text-primary-600 font-medium">{topic.module_title}</span>
         </div>
         <h1 className="text-2xl font-bold text-gray-900">{topic.title}</h1>
+        {/* shrink-0: без него иконка в 12px сжималась в чёрточку, а подпись
+            группы уезжала на строку ниже (§183). */}
         <div className="flex items-center gap-2 text-xs text-gray-400 mt-1 flex-wrap">
-          <GraduationCap size={12} />
-          <span>{topic.group_name}</span>
+          <GraduationCap size={12} className="shrink-0" />
+          <span className="min-w-0 flex-1">{topic.group_name}</span>
         </div>
       </div>
 

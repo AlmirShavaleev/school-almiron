@@ -73,7 +73,7 @@ export function JournalView({ studentId, viewerRole: _viewerRole, lessonHref }: 
             <div className="flex flex-wrap gap-2 mt-2">
               {student.groups.map(g => (
                 <span key={g.group_id} className="flex items-center gap-1.5 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-2.5 py-1 rounded-full">
-                  <Users size={11} />{g.group_name}
+                  <Users size={11} className="shrink-0" />{g.group_name}
                 </span>
               ))}
               {student.groups.length === 0 && <span className="text-xs text-gray-400">Не состоит в группе</span>}
@@ -186,9 +186,13 @@ function LessonRow({ lesson, href }: { lesson: JournalLesson; href: string }) {
     <Link to={href} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors group">
       {attIcon}
       <div className="flex-1 min-w-0">
+        {/* Многоточие ставит потомок, а не сам ряд-флекс (§183): с `truncate`
+            на контейнере подпись группы обрывалась на телефоне по букве.
+            Название занятия ужимается только ниже 640px — на компьютере оно
+            как было целиком. */}
         <div className="text-sm text-gray-800 truncate flex items-center gap-2">
-          {lesson.title}
-          {lesson.group_name && <span className="text-xs text-gray-400">· {lesson.group_name}</span>}
+          <span className="truncate sm:shrink-0">{lesson.title}</span>
+          {lesson.group_name && <span className="truncate text-xs text-gray-400">· {lesson.group_name}</span>}
         </div>
         {(lesson.actual_topic || lesson.planned_topic) && (
           <div className="text-xs text-gray-400 truncate">{lesson.actual_topic || lesson.planned_topic}</div>
