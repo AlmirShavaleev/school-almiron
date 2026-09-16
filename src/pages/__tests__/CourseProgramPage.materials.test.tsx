@@ -52,7 +52,6 @@ vi.mock('@/components/modals/TopicMaterialsModal', () => ({
     open ? <div data-testid="topic-materials-modal" data-tile={initialTile ?? ''}>{topicTitle} / {moduleTitle}</div> : null
   ),
 }))
-vi.mock('@/components/modals/CreateHomeworkModal', () => ({ CreateHomeworkModal: () => null }))
 vi.mock('@/components/modals/AddLessonTemplateToCourseModal', () => ({ AddLessonTemplateToCourseModal: () => null }))
 
 import { CourseProgramPage } from '@/pages/CourseProgramPage'

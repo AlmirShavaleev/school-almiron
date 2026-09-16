@@ -1,4 +1,4 @@
-import { Users, UserCheck, ClipboardList, Clock, AlertTriangle, Activity } from 'lucide-react'
+import { Users, UserCheck } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { GroupKpi } from '@/hooks/useGroupControl'
 
@@ -11,16 +11,16 @@ function Kpi({ icon, label, value, tone }: { icon: React.ReactNode; label: strin
   )
 }
 
+/**
+ * Четыре плитки по ДЗ («Сдача ДЗ», «На проверке», «Просрочки», «Риск») сняты
+ * в §185: они считались по `homeworks`/`homework_submissions` — старому
+ * контуру с 0 строк, — и всегда показывали 0 при живой очереди проверки.
+ */
 export function GroupKPI({ kpi }: { kpi: GroupKpi }) {
-  const risk = kpi.riskPct >= 40 ? 'text-red-600' : kpi.riskPct >= 15 ? 'text-orange-500' : 'text-green-600'
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       <Kpi icon={<Users size={13} />}        label="Учеников"    value={kpi.students}            tone="text-blue-500" />
       <Kpi icon={<UserCheck size={13} />}    label="Посещаем."   value={`${kpi.attendancePct}%`} tone="text-green-500" />
-      <Kpi icon={<ClipboardList size={13} />}label="Сдача ДЗ"    value={`${kpi.submissionPct}%`} tone="text-indigo-500" />
-      <Kpi icon={<Clock size={13} />}        label="На проверке" value={kpi.activeReviews}       tone="text-orange-500" />
-      <Kpi icon={<AlertTriangle size={13} />}label="Просрочки"   value={kpi.overdue}             tone="text-red-500" />
-      <Kpi icon={<Activity size={13} />}     label="Риск"        value={`${kpi.riskPct}%`}       tone={risk} />
     </div>
   )
 }

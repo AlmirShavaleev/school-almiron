@@ -23,8 +23,13 @@ export function resolveNextQueueItem(
   return items[index + 1] ?? null
 }
 
+/**
+ * Единственный разбор работы, оставшийся в этой очереди, — подборка задач
+ * (`/review-submissions/:id`). Ветка `legacy_homework` вела на
+ * `/homeworks/:id/review/:groupId/:studentId`; в §185 эти экраны удалены
+ * вместе со старым контуром ДЗ, а очередь с тех пор просит у RPC только
+ * `task_collection` (см. `HomeworkQueuePage`).
+ */
 export function getQueueItemReviewPath(item: QueueItem): string {
-  return item.source === 'task_collection'
-    ? `/review-submissions/${item.submissionId}`
-    : `/homeworks/${item.homework.id}/review/${item.group.id}/${item.student.id}`
+  return `/review-submissions/${item.submissionId}`
 }

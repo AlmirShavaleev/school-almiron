@@ -58,8 +58,9 @@ describe('pendingQueue resolver', () => {
     expect(resolveNextQueueItem([], { submissionId: 'sub-1', source: 'legacy_homework' })).toBeNull()
   })
 
-  it('builds review paths for both systems', () => {
-    expect(getQueueItemReviewPath(legacyItem('sub-1'))).toBe('/homeworks/hw-1/review/group-1/student-1')
+  // §185: экранов разбора старого контура больше нет, и очередь просит у RPC
+  // только `task_collection` — единственный адрес разбора ведёт туда.
+  it('builds the review path for a task collection submission', () => {
     expect(getQueueItemReviewPath(collectionItem('task-sub-2'))).toBe('/review-submissions/task-sub-2')
   })
 })

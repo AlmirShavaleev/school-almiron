@@ -15,7 +15,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
-import { formatDateTime, formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import { bucketForMaterialPath } from '@/lib/topicMaterialItems'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
 import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
@@ -54,11 +54,10 @@ interface GroupStudent {
   avatar_url: string | null
 }
 
-interface LessonHomework {
-  id:       string
-  title:    string
-  due_date: string
-}
+// Карточка «Домашние задания» на уроке снята в §185 вместе со старым контуром
+// (`homeworks`, `homework_submissions`, 0 строк): она читала `homeworks` по
+// `lesson_id` и всегда показывала «К уроку не привязано ДЗ». Занятия платформа
+// не ведёт с 2026-08-08, ДЗ живёт на темах курса.
 
 /**
  * Материал темы нового контура (topic_material_items). Старая таблица
@@ -156,12 +155,10 @@ export function LessonDetailPage() {
   const [attendance,    setAttendance]    = useState<AttendanceRow[]>([])
   const [groupStudents, setGroupStudents] = useState<GroupStudent[]>([])
   const [savingAtt,     setSavingAtt]     = useState<Set<string>>(new Set())
-  const [homeworks,     setHomeworks]     = useState<LessonHomework[]>([])
   const [materials,     setMaterials]     = useState<TopicMaterial[]>([])
   const [materialsError, setMaterialsError] = useState<string | null>(null)
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
-  const [hwTick,        setHwTick]        = useState(0)
 
   const [completing,   setCompleting]   = useState(false)
   const [cancelling,   setCancelling]   = useState(false)
@@ -189,13 +186,6 @@ export function LessonDetailPage() {
   const [notesDraft,   setNotesDraft]   = useState('')
   const [savingNotes,  setSavingNotes]  = useState(false)
 
-  // Reload only homeworks (after creating a new one)
-  useEffect(() => {
-    if (!id || hwTick === 0) return
-    supabase.from('homeworks').select('id, title, due_date').eq('lesson_id', id)
-      .then(({ data }) => setHomeworks(data || []))
-  }, [id, hwTick])
-
   // Check if lesson is deletable (for admin/owner only)
   useEffect(() => {
     if (!lesson || !profile?.role || !['admin', 'owner'].includes(profile.role)) return
@@ -217,8 +207,8 @@ export function LessonDetailPage() {
 
     async function load() {
       setMaterialsError(null)
-      // Round 1: lesson + attendance + homeworks (parallel)
-      const [lRes, aRes, hRes] = await Promise.all([
+      // Round 1: lesson + attendance (parallel)
+      const [lRes, aRes] = await Promise.all([
         supabase.from('lessons')
           .select(`
             id, group_id, student_id, topic_id, teacher_id, title, scheduled_at, duration_minutes,
@@ -234,11 +224,6 @@ export function LessonDetailPage() {
         supabase.from('attendance')
           .select('student_id, status, note, students(profiles(full_name, avatar_url))')
           .eq('lesson_id', id!),
-
-        supabase.from('homeworks')
-          .select('id, title, due_date')
-          .eq('lesson_id', id!)
-          .order('due_date', { ascending: true }),
       ])
 
       if (lRes.error) throw lRes.error
@@ -344,7 +329,6 @@ export function LessonDetailPage() {
       setLesson(built)
       setAttendance(attRows)
       setGroupStudents(gs)
-      setHomeworks(hRes.data || [])
       setMaterials(mats)
       setNotesDraft(built.notes || '')
     }
@@ -1050,42 +1034,6 @@ export function LessonDetailPage() {
             )}
           </Card>
 
-          {/* Homeworks */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ClipboardList size={17} />Домашние задания</CardTitle>
-              <div className="flex items-center gap-2">
-                <Link to="/homeworks" className="text-xs text-primary-600 hover:text-primary-700">Все →</Link>
-              </div>
-            </CardHeader>
-            {homeworks.length === 0 ? (
-              <p className="text-sm text-gray-400 py-4 text-center">К уроку не привязано ДЗ</p>
-            ) : (
-              <div className="space-y-2">
-                {homeworks.map(hw => {
-                  const overdue = new Date(hw.due_date) < now
-                  return (
-                    <Link
-                      key={hw.id}
-                      to={`/homeworks/${hw.id}`}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-primary-200 hover:shadow-sm transition-all group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
-                        <ClipboardList size={15} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate group-hover:text-primary-700">{hw.title}</div>
-                        <div className={cn('text-xs', overdue ? 'text-red-500 font-medium' : 'text-gray-400')}>
-                          {overdue ? '🔴 Истёк ' : 'до '}{formatDate(hw.due_date)}
-                        </div>
-                      </div>
-                      <ChevronRight size={14} className="text-gray-300 group-hover:text-primary-500 shrink-0" />
-                    </Link>
-                  )
-                })}
-              </div>
-            )}
-          </Card>
         </div>
       </div>
 

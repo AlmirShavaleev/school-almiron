@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen, Loader2, AlertCircle, Calendar, Clock, Layers, UserX } from 'lucide-react'
+import { ArrowLeft, BookOpen, Loader2, AlertCircle, Calendar, Clock, UserX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/cn'
 import { useGroupControl, type GroupStudent } from '@/hooks/useGroupControl'
 import { GroupHeaderActions } from '@/components/group/GroupHeaderActions'
 import { GroupKPI } from '@/components/group/GroupKPI'
-import { HomeworkPipeline } from '@/components/group/HomeworkPipeline'
 import { LessonStream } from '@/components/group/LessonStream'
 import { StudentManager } from '@/components/group/StudentManager'
 import { TransferStudentModal } from '@/components/group/TransferStudentModal'
@@ -25,7 +24,7 @@ export function GroupControlPanel() {
   const canManage = role === 'admin' || role === 'owner'
   const canTeach  = canManage || role === 'teacher'
 
-  const { group, students, lessons, pipeline, kpi, loading, error, reload } = useGroupControl(id)
+  const { group, students, lessons, kpi, loading, error, reload } = useGroupControl(id)
 
   const [editOpen, setEditOpen]       = useState(false)
   const [studentsOpen, setStudentsOpen] = useState(false)
@@ -128,12 +127,9 @@ export function GroupControlPanel() {
       {/* KPI */}
       <GroupKPI kpi={kpi} />
 
-      {/* Homework pipeline — ядро (legacy) */}
-      <div>
-        <h2 className="text-sm font-bold text-graphite-800 mb-2 flex items-center gap-1.5"><Layers size={15} />Поток домашних заданий</h2>
-        <HomeworkPipeline pipeline={pipeline} groupId={group.id} />
-      </div>
-
+      {/* «Поток домашних заданий» снят в §185 вместе со старым контуром
+          (`homeworks`/`homework_submissions`, 0 строк): доска всегда была
+          пустой. Живые работы группы — в секции ниже. */}
       <GroupHomeworkV2Assignments groupId={group.id} />
 
       {/* Lessons + Students */}

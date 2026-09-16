@@ -28,9 +28,6 @@ const GroupControlPanel = lazyPage('GroupControlPanel', () => import('@/pages/Gr
 const TeacherDetailPage = lazyPage('TeacherDetailPage', () => import('@/pages/TeacherDetailPage').then(m => ({ default: m.TeacherDetailPage })))
 const LessonDetailPage = lazyPage('LessonDetailPage', () => import('@/pages/LessonDetailPage').then(m => ({ default: m.LessonDetailPage })))
 const StudentJournalPage = lazyPage('StudentJournalPage', () => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
-const HomeworkDetailPage = lazyPage('HomeworkDetailPage', () => import('@/pages/HomeworkDetailPage').then(m => ({ default: m.HomeworkDetailPage })))
-const HomeworkReviewPage = lazyPage('HomeworkReviewPage', () => import('@/pages/HomeworkReviewPage').then(m => ({ default: m.HomeworkReviewPage })))
-const StudentReviewPage = lazyPage('StudentReviewPage', () => import('@/pages/StudentReviewPage').then(m => ({ default: m.StudentReviewPage })))
 const HomeworkQueuePage = lazyPage('HomeworkQueuePage', () => import('@/pages/HomeworkQueuePage').then(m => ({ default: m.HomeworkQueuePage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
@@ -139,8 +136,8 @@ export default function AppRoutes() {
             показать ничего даже единственному профилю с ролью curator.
             Новое кураторство живёт в `course_curators` и входа в отдельный
             кабинет не имеет: куратор работает на общих страницах проверки
-            ДЗ, программы и учеников. Страница CuratorDashboard.tsx оставлена
-            на диске до общей зачистки перед запуском. */}
+            ДЗ, программы и учеников. Страница CuratorDashboard.tsx лежала на
+            диске без роута и удалена в §185 вместе со старым контуром ДЗ. */}
         <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
         {/* Журнал отправок Telegram. Страница существовала с 08.07, но не была
             подключена ни маршрутом, ни импортом — быстрая ссылка на неё в
@@ -165,11 +162,11 @@ export default function AppRoutes() {
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
         <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner','student']}><LessonDetailPage /></RoleGuard>} />
-        <Route path="/homeworks/:id" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkDetailPage /></RoleGuard>} />
-        <Route path="/homeworks/:id/review" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewPage /></RoleGuard>} />
-        <Route path="/homeworks/:id/review/student/:studentId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentReviewPage /></RoleGuard>} />
-        <Route path="/homeworks/:id/review/:groupId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkReviewPage /></RoleGuard>} />
-        <Route path="/homeworks/:id/review/:groupId/:studentId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StudentReviewPage /></RoleGuard>} />
+        {/* Маршруты `/homeworks/:id`, `/homeworks/:id/review[/…]` сняты в §185
+            вместе со старым контуром ДЗ (`homeworks`, `homework_submissions`,
+            0 строк): карточка ДЗ, список проверки и разбор работы ученика
+            читали только эти таблицы и показывали пустоту. Всё, что живёт, —
+            в `topic_homework*` и на `/homework-queue`. */}
 
         {/* Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
             занятия вне платформы, таблицы `lessons` и `attendance` пусты по

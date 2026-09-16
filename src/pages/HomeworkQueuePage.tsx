@@ -14,13 +14,15 @@ export function HomeworkQueuePage() {
   const [courseId, setCourseId] = useState<string>('')
   const [groupId, setGroupId] = useState<string>('')
   const [studentId, setStudentId] = useState<string>('')
-  const [sourceType, setSourceType] = useState<'' | 'legacy_homework' | 'task_collection'>('')
   const [overdueOnly, setOverdueOnly] = useState(false)
+  // Источник прибит к `task_collection`: второй источник RPC —
+  // `legacy_homework` (`homeworks`/`homework_submissions`, 0 строк), и в §185
+  // экраны его разбора удалены, так что его строки вели бы в никуда.
   const { items, counts, loading, loadingMore, reload, hasMore, loadMore, tabCounts } = useHomeworkQueue(mode, {
     courseId: courseId || null,
     groupId: groupId || null,
     studentId: studentId || null,
-    sourceType: sourceType || null,
+    sourceType: 'task_collection',
     overdueOnly,
   })
 
@@ -115,7 +117,7 @@ export function HomeworkQueuePage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
           value={courseId}
           onChange={e => { setCourseId(e.target.value); setGroupId('') }}
@@ -145,15 +147,6 @@ export function HomeworkQueuePage() {
           {studentOptions.map(student => (
             <option key={student.id} value={student.id}>{student.name}</option>
           ))}
-        </select>
-        <select
-          value={sourceType}
-          onChange={e => setSourceType(e.target.value as '' | 'legacy_homework' | 'task_collection')}
-          className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
-        >
-          <option value="">Все источники</option>
-          <option value="legacy_homework">Legacy homework</option>
-          <option value="task_collection">Task collection</option>
         </select>
         <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
           <input

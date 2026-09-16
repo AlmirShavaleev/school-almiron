@@ -5,8 +5,6 @@ import { join } from 'node:path'
 
 const root = process.cwd()
 const migration = readFileSync(join(root, 'supabase/migrations/_legacy/010_homework_assignments.sql'), 'utf8')
-const createModal = readFileSync(join(root, 'src/components/modals/CreateHomeworkModal.tsx'), 'utf8')
-const assignModal = readFileSync(join(root, 'src/components/modals/AssignHomeworkModal.tsx'), 'utf8')
 
 describe('homework assignments phase A migration', () => {
   it('keeps homeworks as a topic-level template without reintroducing group_id', () => {
@@ -64,18 +62,7 @@ describe('homework assignments phase A migration', () => {
   })
 })
 
-describe('homework assignments phase A UI', () => {
-  it('creates homework templates without a required concrete due date', () => {
-    expect(createModal).not.toContain("register('due_date')")
-    expect(createModal).toContain('due_date:')
-    expect(createModal).not.toContain('notifyNewHomework')
-  })
-
-  it('assign modal calls the server-side RPC and shows unique student count', () => {
-    expect(assignModal).toContain("supabase.rpc('assign_homework'")
-    expect(assignModal).toContain('uniqueStudentCount')
-    expect(assignModal).toContain('p_group_ids')
-    expect(assignModal).toContain('p_student_ids')
-    expect(assignModal).toContain('p_due_at')
-  })
-})
+// Раздел «phase A UI» снят в §185: он читал исходники `CreateHomeworkModal` и
+// `AssignHomeworkModal`, а те удалены вместе со старым контуром ДЗ — на них с
+// §170 не осталось ни одного импорта. Проверки самой миграции выше не
+// тронуты: файл миграции на месте, и таблицы в базе тоже.

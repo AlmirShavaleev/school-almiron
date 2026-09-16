@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Users, Calendar, BookOpen, GraduationCap, Video,
-  ClipboardList, ChevronRight, AlertCircle, Loader2, Mail, Phone,
-  Star, CheckCircle2, Clock,
+  ChevronRight, AlertCircle, Loader2, Mail, Phone,
+  Star, CheckCircle2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -50,16 +50,10 @@ interface TeacherLesson {
   group_id:         string
 }
 
-interface TeacherHW {
-  id:           string
-  title:        string
-  due_date:     string
-  group_name:   string
-  group_id:     string
-  total:        number
-  submitted:    number
-  pending:      number
-}
+// Карточка «Домашние задания» и две плитки по ДЗ («Сдача ДЗ», «На проверке»)
+// сняты в §185: они читали `homeworks`/`homework_submissions` — старый контур
+// с 0 строк — и всегда показывали «ДЗ не выдавалось» и 0 %. Работа
+// преподавателя по живому контуру видна на «Проверке ДЗ» (`/homework-queue`).
 
 export function TeacherDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -68,7 +62,6 @@ export function TeacherDetailPage() {
   const [teacher,   setTeacher]   = useState<TeacherFull | null>(null)
   const [groups,    setGroups]    = useState<TeacherGroup[]>([])
   const [lessons,   setLessons]   = useState<TeacherLesson[]>([])
-  const [homeworks, setHomeworks] = useState<TeacherHW[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
 
@@ -84,8 +77,8 @@ export function TeacherDetailPage() {
     return () => { cancelled = true }
 
     async function load() {
-      // Round 1: teacher + groups + lessons + homeworks
-      const [tRes, gRes, lRes, hRes] = await Promise.all([
+      // Round 1: teacher + groups + lessons
+      const [tRes, gRes, lRes] = await Promise.all([
         supabase.from('teachers')
           .select('id, bio, rating, hourly_rate, subjects, created_at, profiles(id, full_name, email, phone, avatar_url, created_at)')
           .eq('id', id!)
@@ -100,12 +93,6 @@ export function TeacherDetailPage() {
           .select('id, title, scheduled_at, duration_minutes, status, group_id, groups(name)')
           .eq('teacher_id', id!)
           .order('scheduled_at', { ascending: false })
-          .limit(20),
-
-        supabase.from('homeworks')
-          .select('id, title, due_date, group_id, groups(name)')
-          .eq('created_by', id!)
-          .order('due_date', { ascending: false })
           .limit(20),
       ])
 
@@ -130,15 +117,6 @@ export function TeacherDetailPage() {
         },
       }
 
-      const rawHW = hRes.data || []
-      const hwIds = rawHW.map((h: any) => h.id)
-
-      // Round 2: HW submissions count to compute "pending"
-      const { data: subs } = hwIds.length
-        ? await supabase.from('homework_submissions').select('homework_id, status').in('homework_id', hwIds)
-        : { data: [] as any[] }
-      if (cancelled) return
-
       const builtGroups: TeacherGroup[] = (gRes.data || []).map((g: any) => ({
         id:            g.id,
         name:          g.name,
@@ -156,21 +134,9 @@ export function TeacherDetailPage() {
         group_name: l.groups?.name || '—', group_id: l.group_id,
       }))
 
-      const builtHW: TeacherHW[] = rawHW.map((hw: any) => {
-        const my = (subs || []).filter((s: any) => s.homework_id === hw.id)
-        const submitted = my.filter((s: any) => ['submitted', 'checked'].includes(s.status)).length
-        const pending   = my.filter((s: any) => s.status === 'submitted').length
-        return {
-          id: hw.id, title: hw.title, due_date: hw.due_date,
-          group_name: hw.groups?.name || '—', group_id: hw.group_id,
-          total: my.length, submitted, pending,
-        }
-      })
-
       setTeacher(builtTeacher)
       setGroups(builtGroups)
       setLessons(builtLessons)
-      setHomeworks(builtHW)
     }
   }, [id])
 
@@ -198,11 +164,6 @@ export function TeacherDetailPage() {
   const totalStudents = groups.reduce((s, g) => s + g.student_count, 0)
   const upcomingLessons = lessons.filter(l => new Date(l.scheduled_at) > now)
   const completedLessons = lessons.filter(l => new Date(l.scheduled_at) <= now)
-  const totalPendingHW = homeworks.reduce((s, h) => s + h.pending, 0)
-  const totalHWSubmissions = homeworks.reduce((s, h) => s + h.submitted, 0)
-  const totalHWExpected    = homeworks.reduce((s, h) => s + h.total, 0)
-  const hwRate = totalHWExpected > 0 ? Math.round(totalHWSubmissions / totalHWExpected * 100) : 0
-
   const subjectLabels: Record<string, string> = { physics: 'Физика', math: 'Математика' }
 
   return (
@@ -280,22 +241,9 @@ export function TeacherDetailPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <StatCard title="Групп"        value={groups.length}    icon={<Users size={20} />}        color="blue" />
         <StatCard title="Учеников"     value={totalStudents}    icon={<GraduationCap size={20} />} color="purple" />
-        <StatCard
-          title="Сдача ДЗ"
-          value={`${hwRate}%`}
-          icon={<ClipboardList size={20} />}
-          color={hwRate >= 80 ? 'green' : hwRate >= 60 ? 'orange' : 'red'}
-        />
-        <StatCard
-          title="На проверке"
-          value={totalPendingHW}
-          icon={<Clock size={20} />}
-          color={totalPendingHW > 0 ? 'orange' : 'green'}
-          subtitle={totalPendingHW === 0 ? 'Всё проверено 🎉' : 'ждут оценки'}
-        />
       </div>
 
       {/* Groups */}
@@ -345,8 +293,8 @@ export function TeacherDetailPage() {
         )}
       </Card>
 
-      {/* Lessons + Homeworks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* Lessons */}
+      <div>
 
         <Card>
           <CardHeader>
@@ -381,52 +329,6 @@ export function TeacherDetailPage() {
           )}
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ClipboardList size={17} />Домашние задания</CardTitle>
-            {totalPendingHW > 0 && <Badge variant="warning" className="text-xs">{totalPendingHW} на проверке</Badge>}
-          </CardHeader>
-          {homeworks.length === 0 ? (
-            <p className="text-sm text-gray-400 py-6 text-center">ДЗ не выдавалось</p>
-          ) : (
-            <div className="space-y-0">
-              {homeworks.slice(0, 8).map(hw => {
-                const overdue = new Date(hw.due_date) < now
-                const pct = hw.total > 0 ? Math.round(hw.submitted / hw.total * 100) : 0
-                return (
-                  <Link
-                    key={hw.id}
-                    to={`/homeworks/${hw.id}`}
-                    className="block py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-gray-900 truncate">{hw.title}</div>
-                        <div className={cn('text-xs mt-0.5',
-                            overdue ? 'text-red-500 font-medium' : 'text-gray-400')}
-                        >
-                          {overdue ? '🔴 Истёк ' : 'до '}{formatDate(hw.due_date)} · {hw.group_name}
-                        </div>
-                      </div>
-                      <div className="text-xs text-right shrink-0">
-                        <span className="font-semibold text-gray-900">{hw.submitted}</span>
-                        <span className="text-gray-400">/{hw.total}</span>
-                        {hw.pending > 0 && (
-                          <span className="block text-orange-600 font-medium mt-0.5">{hw.pending} не пров.</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full',
-                        pct === 100 ? 'bg-green-500' : pct >= 70 ? 'bg-blue-500' : 'bg-orange-400')}
-                        style={{ width: `${pct}%` }} />
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </Card>
       </div>
     </div>
   )

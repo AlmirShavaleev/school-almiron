@@ -35,44 +35,10 @@ export function exportAttendance(rows: AttendanceExportRow[], groupName?: string
   download(wb, `poseschaemost${groupName ? '_' + groupName : ''}.xlsx`)
 }
 
-// ─── Домашние задания ─────────────────────────────────────────────
-export interface HomeworkExportRow {
-  studentName: string
-  groupName:   string
-  hwTitle:     string
-  status:      string
-  score:       number | null
-  maxScore:    number
-  submittedAt: string
-  checkedAt:   string
-}
-
-export function exportHomeworks(rows: HomeworkExportRow[]) {
-  const STATUS: Record<string, string> = {
-    pending:    'Не сдано',
-    submitted:  'Сдано',
-    checked:    'Проверено',
-    revision:   'На доработку',
-  }
-
-  const data = rows.map(r => ({
-    'Ученик':          r.studentName,
-    'Группа':          r.groupName,
-    'ДЗ':              r.hwTitle,
-    'Статус':          STATUS[r.status] || r.status,
-    'Балл':            r.score ?? '',
-    'Макс. балл':      r.maxScore,
-    'Дата сдачи':      r.submittedAt,
-    'Дата проверки':   r.checkedAt,
-  }))
-
-  const ws = XLSX.utils.json_to_sheet(data)
-  setColWidths(ws, [30, 20, 35, 15, 8, 12, 18, 18])
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Домашние задания')
-  download(wb, 'domashnie_zadania.xlsx')
-}
+// Выгрузка «Домашние задания» (`exportHomeworks` + `HomeworkExportRow`) снята
+// в §185: со времени удаления `HomeworksPage` (§170) её никто не вызывал, а
+// строки она собирала из `homeworks`/`homework_submissions` — старого контура
+// ДЗ, где 0 строк. Живой контур выгружается не отсюда.
 
 // ─── Пробники ─────────────────────────────────────────────────────
 export interface MockExamExportRow {

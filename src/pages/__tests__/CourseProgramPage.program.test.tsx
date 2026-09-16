@@ -57,7 +57,6 @@ vi.mock('@/hooks/useCourseHomeworkTemplates', () => ({
 }))
 
 vi.mock('@/components/modals/TopicMaterialsModal', () => ({ TopicMaterialsModal: () => null }))
-vi.mock('@/components/modals/CreateHomeworkModal', () => ({ CreateHomeworkModal: () => null }))
 vi.mock('@/components/modals/AddLessonTemplateToCourseModal', () => ({ AddLessonTemplateToCourseModal: () => null }))
 
 import { CourseProgramPage } from '@/pages/CourseProgramPage'

@@ -19,19 +19,16 @@ export interface StudentProfileData {
   attendance_present: number
   attendance_absent:  number
   attendance_late:    number
-  hw_total:           number
-  hw_checked:         number
-  hw_avg_score:       number | null  // percent 0-100
-  hw_completion_pct:  number         // percent 0-100
   course_progress_pct: number        // percent 0-100
   mock_count:   number
   mock_avg:     number | null        // percent 0-100
   // Lists
-  homeworks: {
-    id: string; title: string; due_date: string
-    status: string; score: number | null; max_score: number; feedback: string | null
-    group_name: string
-  }[]
+  //
+  // Список `homeworks` и счётчики `hw_*` сняты в §185: они собирались из
+  // `homeworks`/`homework_submissions` (старый контур, 0 строк) и с §111 не
+  // читались ни одной из трёх страниц хука — плитки ДЗ на карточке ученика
+  // убрали тогда же. Живой контур ученика — `topic_homework*`
+  // (`StudentInsightSection`, `useMyProgress`).
   mock_results: {
     id: string; title: string; date: string
     score: number; max_score: number; subject: string
@@ -117,54 +114,6 @@ export function useStudentProfile(studentId: string | null) {
         }))
       }
 
-      // 4. Homeworks (на уровне темы курса)
-      const topicIdsForHw = courseIds.length
-        ? ((await supabase.from('modules').select('topics(id)').in('course_id', courseIds)).data || [])
-            .flatMap((m: any) => (m.topics || []).map((t: any) => t.id))
-        : []
-      const { data: hws } = topicIdsForHw.length
-        ? await supabase
-            .from('homeworks')
-            .select('id, title, due_date, max_score, topics(title)')
-            .in('topic_id', topicIdsForHw)
-            .order('due_date', { ascending: false })
-        : { data: [] }
-
-      const hwIds = (hws || []).map((h: any) => h.id)
-      const { data: subs } = hwIds.length
-        ? await supabase
-            .from('homework_submissions')
-            .select('homework_id, status, score, feedback')
-            .eq('student_id', sid)
-            .in('homework_id', hwIds)
-        : { data: [] }
-
-      const subMap: Record<string, any> = {}
-      for (const s of subs || []) subMap[s.homework_id] = s
-
-      const homeworks = (hws || []).map((h: any) => {
-        const sub = subMap[h.id]
-        return {
-          id:         h.id,
-          title:      h.title,
-          due_date:   h.due_date,
-          status:     sub?.status || 'not_submitted',
-          score:      sub?.score ?? null,
-          max_score:  h.max_score,
-          feedback:   sub?.feedback || null,
-          group_name: h.groups?.name || '—',
-        }
-      })
-
-      const hwChecked     = homeworks.filter(h => h.status === 'checked')
-      const hwSubmitted   = homeworks.filter(h => h.status !== 'not_submitted').length
-      const hwAvg         = hwChecked.length > 0
-        ? Math.round(hwChecked.reduce((s, h) => s + (h.score! / h.max_score * 100), 0) / hwChecked.length)
-        : null
-      const hwCompletionPct = homeworks.length > 0
-        ? Math.round(hwSubmitted / homeworks.length * 100)
-        : 0
-
       // 5. Course progress — unique topics covered by completed lessons / total topics in courses
       let courseProgressPct = 0
       if (groupIds.length && courseIds.length) {
@@ -222,14 +171,9 @@ export function useStudentProfile(studentId: string | null) {
         attendance_present:  attPresent,
         attendance_absent:   attAbsent,
         attendance_late:     attLate,
-        hw_total:            homeworks.length,
-        hw_checked:          hwChecked.length,
-        hw_avg_score:        hwAvg,
-        hw_completion_pct:   hwCompletionPct,
         course_progress_pct: courseProgressPct,
         mock_count:          mockResults.length,
         mock_avg:            mockAvg,
-        homeworks,
         mock_results:        mockResults,
         recent_attendance:   recentAttendance,
       })

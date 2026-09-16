@@ -235,12 +235,12 @@ describe('LessonDetailPage — Etap 5 sections wired without touching legacy blo
   })
 
   // Блок материалов переведён на новый контур (ЧАТ Б): topic_materials больше
-  // не читается нигде во фронте. Легаси-таблица homeworks здесь пока остаётся —
-  // она уйдёт вместе с очередью 1 §4.
+  // не читается нигде во фронте. Легаси-таблица homeworks ушла отсюда в §185
+  // вместе с карточкой «Домашние задания» урока.
   it('materials come from topic_material_items, not the legacy topic_materials table', () => {
     expect(src).toContain("from('topic_material_items')")
     expect(src).not.toContain("from('topic_materials')")
-    expect(src).toContain("from('homeworks')")
+    expect(src).not.toContain("from('homeworks')")
   })
 
   it('marking a lesson completed also stamps completed_at', () => {

@@ -26,46 +26,35 @@ export interface GroupLesson {
   id: string; title: string; scheduled_at: string; duration_minutes: number | null; status: string; zoom_link: string | null
 }
 
-export type PipeStatus = 'submitted' | 'revision' | 'checked' | 'not_submitted'
-
-export interface PipeCard {
-  key: string
-  studentId: string
-  studentName: string
-  hwId: string
-  hwTitle: string
-  status: PipeStatus
-  score: number | null
-}
-
+/**
+ * «Поток домашних заданий» (`pipeline`) и четыре плитки KPI по ДЗ —
+ * «Сдача ДЗ», «На проверке», «Просрочки», «Риск» — сняты в §185 вместе со
+ * старым контуром (`homeworks`, `homework_submissions`, 0 строк). Довод тот
+ * же, что у §111 на карточке ученика: ноль там читался как «в группе никто
+ * ничего не сдал», хотя данных не было вовсе, а живые работы лежат в
+ * `topic_homework*` и показываются секцией `GroupHomeworkV2Assignments`
+ * ниже на той же странице.
+ */
 export interface GroupKpi {
   students: number
   attendancePct: number
-  submissionPct: number
-  activeReviews: number   // submitted
-  overdue: number         // не сдано к дедлайну
-  riskPct: number
 }
 
 export interface GroupControlData {
   group: GroupMeta | null
   students: GroupStudent[]
   lessons: GroupLesson[]
-  pipeline: Record<PipeStatus, PipeCard[]>
   kpi: GroupKpi
   loading: boolean
   error: string | null
   reload: () => void
 }
 
-const EMPTY_PIPE: Record<PipeStatus, PipeCard[]> = { submitted: [], revision: [], checked: [], not_submitted: [] }
-
 export function useGroupControl(groupId: string | undefined): GroupControlData {
   const [group, setGroup]       = useState<GroupMeta | null>(null)
   const [students, setStudents] = useState<GroupStudent[]>([])
   const [lessons, setLessons]   = useState<GroupLesson[]>([])
-  const [pipeline, setPipeline] = useState<Record<PipeStatus, PipeCard[]>>(EMPTY_PIPE)
-  const [kpi, setKpi]           = useState<GroupKpi>({ students: 0, attendancePct: 0, submissionPct: 0, activeReviews: 0, overdue: 0, riskPct: 0 })
+  const [kpi, setKpi]           = useState<GroupKpi>({ students: 0, attendancePct: 0 })
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [tick, setTick]         = useState(0)
@@ -118,89 +107,28 @@ export function useGroupControl(groupId: string | undefined): GroupControlData {
       })).sort((a, b) => a.full_name.localeCompare(b.full_name))
       setStudents(studs)
       const studentIds = studs.map(s => s.id)
-      const studentName: Record<string, string> = {}; studs.forEach(s => studentName[s.id] = s.full_name)
 
       const rawLessons = (lRes.data || []) as any[]
       setLessons(rawLessons)
       const lessonIds = rawLessons.map(l => l.id)
 
-      // 4. content bridge: course topics → homeworks
-      let hws: any[] = []
-      const hwById: Record<string, any> = {}
-      if (meta.course_id) {
-        const { data: mods } = await supabase.from('modules').select('topics(id, title)').eq('course_id', meta.course_id)
-        const topicTitle: Record<string, string> = {}
-        const topicIds: string[] = []
-        for (const m of (mods || []) as any[]) for (const t of (m.topics || [])) { topicTitle[t.id] = t.title; topicIds.push(t.id) }
-        if (topicIds.length) {
-          const { data: hwData } = await supabase.from('homeworks')
-            .select('id, title, due_date, topic_id').in('topic_id', topicIds)
-          hws = (hwData || []) as any[]
-          for (const h of hws) { h.topic_title = topicTitle[h.topic_id]; hwById[h.id] = h }
-        }
-      }
-      const hwIds = hws.map(h => h.id)
-
-      // 5. submissions (этой группы) + 6. attendance (parallel)
-      const [subRes, attRes] = await Promise.all([
-        hwIds.length && studentIds.length
-          ? supabase.from('homework_submissions')
-              .select('id, homework_id, student_id, status, score')
-              .in('homework_id', hwIds).in('student_id', studentIds)
-          : Promise.resolve({ data: [] as any[] }),
-        lessonIds.length && studentIds.length
-          ? supabase.from('attendance').select('student_id, lesson_id, status')
-              .in('lesson_id', lessonIds).in('student_id', studentIds)
-          : Promise.resolve({ data: [] as any[] }),
-      ])
+      // 4. attendance
+      const attRes = lessonIds.length && studentIds.length
+        ? await supabase.from('attendance').select('student_id, lesson_id, status')
+            .in('lesson_id', lessonIds).in('student_id', studentIds)
+        : { data: [] as any[] }
       if (cancelled) return
-
-      const subs = (subRes.data || []) as any[]
-      const subByPair: Record<string, any> = {}
-      for (const s of subs) subByPair[`${s.homework_id}:${s.student_id}`] = s
-
-      // ── pipeline ──────────────────────────────────────────────
-      const pipe: Record<PipeStatus, PipeCard[]> = { submitted: [], revision: [], checked: [], not_submitted: [] }
-      for (const hw of hws) {
-        for (const sid of studentIds) {
-          const sub = subByPair[`${hw.id}:${sid}`]
-          const status: PipeStatus = !sub ? 'not_submitted'
-            : (sub.status === 'submitted' || sub.status === 'revision' || sub.status === 'checked') ? sub.status : 'not_submitted'
-          pipe[status].push({
-            key: `${hw.id}:${sid}`,
-            studentId: sid, studentName: studentName[sid] || '—',
-            hwId: hw.id, hwTitle: hw.title, status, score: sub?.score ?? null,
-          })
-        }
-      }
-      setPipeline(pipe)
 
       // ── KPI ───────────────────────────────────────────────────
       const att = (attRes.data || []) as any[]
       const present = att.filter(a => a.status === 'present' || a.status === 'late').length
       const attendancePct = att.length ? Math.round(present / att.length * 100) : 0
 
-      const totalExpected = hws.length * studentIds.length
-      const turnedIn = subs.filter(s => ['submitted', 'checked', 'revision'].includes(s.status)).length
-      const submissionPct = totalExpected ? Math.round(turnedIn / totalExpected * 100) : 0
-      const activeReviews = pipe.submitted.length
-
-      const now = Date.now()
-      let overdue = 0
-      for (const hw of hws) {
-        if (!hw.due_date || new Date(hw.due_date).getTime() >= now) continue
-        for (const sid of studentIds) {
-          const sub = subByPair[`${hw.id}:${sid}`]
-          if (!sub || sub.status === 'not_submitted') overdue++
-        }
-      }
-      const riskPct = totalExpected ? Math.round(overdue / totalExpected * 100) : 0
-
-      setKpi({ students: studentIds.length, attendancePct, submissionPct, activeReviews, overdue, riskPct })
+      setKpi({ students: studentIds.length, attendancePct })
     }
 
     return () => { cancelled = true }
   }, [groupId, tick])
 
-  return { group, students, lessons, pipeline, kpi, loading, error, reload }
+  return { group, students, lessons, kpi, loading, error, reload }
 }
