@@ -155,6 +155,14 @@ export const scenes = [
   { persona: 'owner', name: 'o08-variants', url: '/variants' },
   { persona: 'owner', name: 'o08-variants-list', url: '/variants/all' },
   { persona: 'owner', name: 'o08-variants-exam', url: '/variants/exam/physics/ege' },
+  // §187 (board/040): в фикстурах `test_variants` лежат вперемешку четыре
+  // самостоятельных варианта и четыре носителя задач к уроку (`topic_id`
+  // заполнен, `topicVariants`), причём носители свежее половины вариантов по
+  // `updated_at`. На снимках «Тесты» и «Тесты → Физика ЕГЭ» на 1280 строк
+  // «Задачи к уроку «…»» быть не должно, а на карточке «Физика ЕГЭ» — «4
+  // теста», а не «8 тестов».
+  { persona: 'owner', name: 'o08-variants', url: '/variants', width: 1280, height: 800, actions: [{ wait: 900 }] },
+  { persona: 'owner', name: 'o08-variants-exam', url: '/variants/exam/physics/ege', width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'owner', name: 'o08-variant-assign', url: `/variants/${S.variant(1)}/assign` },
   { persona: 'owner', name: 'o08-variant-assignments', url: `/variants/${S.variant(1)}/assignments` },
   { persona: 'owner', name: 'o08-variant-detail', url: `/variants/${S.variant(1)}` },
