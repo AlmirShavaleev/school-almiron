@@ -31,6 +31,7 @@ let lastUpsert: any = null
 let upsertDeferred: { promise: Promise<{ error: unknown }>; resolve: (value: { error: unknown }) => void } | null = null
 const fromSpy = vi.fn()
 const scrollIntoViewSpy = vi.fn()
+const scrollToSpy = vi.fn()
 const observedElements: Element[] = []
 
 vi.mock('@/lib/supabase', () => ({
@@ -88,6 +89,10 @@ class IntersectionObserverMock {
 }
 
 Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+  // Видимая область начинается с нуля и ниже страницы — как на живом экране.
+  if ((this as HTMLElement).dataset?.testid === 'review-document-scroll-area') {
+    return { x: 0, y: 0, left: 0, top: 0, width: 200, height: 180, right: 200, bottom: 180, toJSON() { return this } } as DOMRect
+  }
   const pageNumber = Number((this as HTMLElement).dataset.pageNumber ?? (this as HTMLElement).closest('[data-page-number]')?.getAttribute('data-page-number') ?? '1')
   const top = (pageNumber - 1) * 250
   return {
@@ -97,6 +102,7 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
 }
 Element.prototype.setPointerCapture = vi.fn()
 Element.prototype.scrollIntoView = scrollIntoViewSpy
+Element.prototype.scrollTo = scrollToSpy as unknown as Element['scrollTo']
 
 async function renderReady(props: Partial<Extract<React.ComponentProps<typeof SubmissionReviewer>, { submissionId: string }>> = {}) {
   render(<SubmissionReviewer submissionId="sub-1" filePath="submissions/x/y.pdf" {...props} />)
@@ -121,6 +127,7 @@ describe('SubmissionReviewer regions', () => {
     upsertError = null
     observedElements.length = 0
     scrollIntoViewSpy.mockReset()
+    scrollToSpy.mockReset()
     toastError.mockReset()
     fromSpy.mockReset()
     fromSpy.mockImplementation(() => makeAnnotationTable())
@@ -277,14 +284,19 @@ describe('SubmissionReviewer regions', () => {
     expect(screen.queryByTestId('review-document-footer')).not.toBeInTheDocument()
   })
 
-  it('clicking a page-2 comment scrolls the strip to that page', async () => {
+  // §184: раньше здесь ожидался `scrollIntoView({ block: 'center' })` по всей
+  // странице. Проверка держалась за способ, а не за результат, и мимо неё
+  // прошёл главный баг: центр высокой страницы — не то место, где ошибка.
+  // Подробные проверки геометрии — в SubmissionReviewer.scrollToRegion.test.tsx.
+  it('clicking a page-2 comment scrolls the document area to the region itself', async () => {
+    const rect = { x: 0.1, y: 0.2, w: 0.2, h: 0.2 }
     selectResult = {
       data: [{
         page: 2,
         status: 'draft',
         data: {
           version: 2,
-          objects: [{ id: 'r2', type: 'region', rect: { x: 0.1, y: 0.2, w: 0.2, h: 0.2 }, category: 'logic', text: 'Пропущен шаг' }],
+          objects: [{ id: 'r2', type: 'region', rect, category: 'logic', text: 'Пропущен шаг' }],
         },
       }],
       error: null,
@@ -293,8 +305,14 @@ describe('SubmissionReviewer regions', () => {
 
     fireEvent.click(screen.getByText('Пропущен шаг'))
 
-    expect(scrollIntoViewSpy).toHaveBeenCalled()
-    expect(scrollIntoViewSpy.mock.calls.at(-1)?.[0]).toMatchObject({ block: 'center', behavior: 'smooth' })
+    await waitFor(() => expect(scrollToSpy).toHaveBeenCalled())
+    const { top } = scrollToSpy.mock.calls.at(-1)?.[0] as { top: number }
+    const area = screen.getByTestId('review-document-scroll-area').getBoundingClientRect()
+    const page = screen.getByTestId('review-page-2').getBoundingClientRect()
+    const regionTop = page.top + rect.y * page.height - area.top
+    const regionBottom = page.top + (rect.y + rect.h) * page.height - area.top
+    expect(top).toBeLessThan(regionTop)
+    expect(top + area.height).toBeGreaterThan(regionBottom)
   })
 
   it('"Сохранить" persists before the draft even finishes closing — no window where navigating away loses it', async () => {

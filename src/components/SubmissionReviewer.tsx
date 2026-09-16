@@ -145,6 +145,15 @@ const MIN_REGION_SIZE = 0.015
 const HANDLE_UNIT = 0.013
 /** Шаг стрелок на клавиатуре — «чуть-чуть», примерно 2-3 пикселя на листе A4. */
 const NUDGE_STEP = 0.003
+/**
+ * §184. Запас над рамкой при переходе к замечанию — доля высоты видимой
+ * области. Рамка, прижатая к верхнему краю, читается как «страница просто
+ * доскроллилась»: нужно видеть строку-две над ошибкой, иначе непонятно, к чему
+ * замечание. Для рамки, которая не влезает целиком, запас падает до минимума —
+ * важнее показать её начало.
+ */
+const REGION_TOP_GAP = 0.15
+const REGION_MIN_GAP = 16
 const EMPTY: PageData = { version: 2, objects: [] }
 const CATEGORIES: Record<Category, { label: string; short: string; color: string; bg: string; ring: string; phrases: string[] }> = {
   comment: { label: 'Комментарий', short: 'K', color: '#2563eb', bg: 'bg-blue-50', ring: 'ring-blue-500/35', phrases: [] },
@@ -726,13 +735,63 @@ export function SubmissionReviewer({
     if (selectedId === item.id) setSelectedId(null)
   }
 
+  /**
+   * §184. Прокрутка к САМОЙ РАМКЕ, а не к странице.
+   *
+   * Раньше здесь был `pageRefs.current[key].scrollIntoView({ block: 'center' })`,
+   * то есть страница целиком ставилась по центру видимой области. Замеры в
+   * харнессе (работа из трёх страниц-фотографий, замечание на y = 0.86 третьей):
+   * при 1280 видимая область — 587 px, страница — 1149 px, после клика рамка
+   * оказывалась на 904–985 px при нижнем крае области 784 — то есть за кадром.
+   * Центр высокой страницы и место ошибки — разные экраны; «доскроллило, но не
+   * туда». Считаем координату рамки сами: верх страницы + доля rect.y её высоты.
+   *
+   * Прокручиваем именно контейнер `review-document-scroll-area` (у него
+   * `overflow-auto`), а не зовём `scrollIntoView`: тот заодно двигает все
+   * прокручиваемые предки вплоть до окна, и в модалке очереди это лишнее.
+   */
+  const scrollToRegion = useCallback((item: RegionItem, behavior: ScrollBehavior) => {
+    const area = frameRef.current
+    const node = pageRefs.current[item.surfaceKey]
+    if (!area || !node) return
+    const areaRect = area.getBoundingClientRect()
+    const pageRect = node.getBoundingClientRect()
+    if (!pageRect.height || !areaRect.height) return
+    const regionTop = pageRect.top + item.rect.y * pageRect.height
+    const regionHeight = item.rect.h * pageRect.height
+    const gap = Math.max(REGION_MIN_GAP, Math.min(areaRect.height * REGION_TOP_GAP, (areaRect.height - regionHeight) / 2))
+    const top = Math.max(0, area.scrollTop + (regionTop - areaRect.top) - gap)
+    if (typeof area.scrollTo === 'function') area.scrollTo({ top, behavior })
+    else area.scrollTop = top
+  }, [])
+
+  /**
+   * Запрос на прокрутку исполняется в эффекте, а не прямо в обработчике: клик
+   * по замечанию сначала меняет `currentPage`, от которого зависит, рисуется ли
+   * страница, и мерить геометрию надо уже после этого рендера. Счётчик, а не
+   * просто ref: повторный клик по тому же замечанию не меняет ни одного
+   * состояния, React бы не перерисовал компонент — и эффект не сработал бы.
+   */
+  const scrollTargetRef = useRef<{ item: RegionItem; behavior: ScrollBehavior } | null>(null)
+  const [scrollTick, setScrollTick] = useState(0)
+  useEffect(() => {
+    const target = scrollTargetRef.current
+    if (!target) return
+    scrollTargetRef.current = null
+    scrollToRegion(target.item, target.behavior)
+  }, [scrollTick, scrollToRegion])
+
   function activateRegion(item: RegionItem) {
+    // Соседняя страница — плавно, чужая — мгновенно: смуз через два экрана
+    // читается как «зависло», да и смотреть по дороге не на что.
+    const behavior: ScrollBehavior = currentPage === item.globalPage ? 'smooth' : 'auto'
     setCurrentPage(item.globalPage)
     setActiveId(item.id)
     // Клик по комментарию выделяет рамку: дальше её можно подвинуть стрелками,
     // не выцеливая мышью маленький прямоугольник на странице.
     if (!readOnly) setSelectedId(item.id)
-    pageRefs.current[item.surfaceKey]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    scrollTargetRef.current = { item, behavior }
+    setScrollTick(tick => tick + 1)
   }
 
   // Свежие значения для оконных слушателей: подписка не должна пересоздаваться
@@ -1053,7 +1112,7 @@ export function SubmissionReviewer({
       </div>
       <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
         <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
+          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
           {clearDialog && (
             <ClearMarksDialog
               text={clearMarksPrompt(markCounts)}
@@ -1345,11 +1404,19 @@ function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; se
   </div>
 }
 
-function CommentList({ regions, readOnly, activeId, onActivate, onDelete, onClearAll, clearDisabled }: {
+function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelete, onClearAll, clearDisabled }: {
   regions: RegionItem[]
   readOnly: boolean
   activeId: string | null
+  /** Клик: перевести взгляд на рамку (и выделить её). */
   onActivate: (item: RegionItem) => void
+  /**
+   * §184. Наведение: ТОЛЬКО подсветить. Раньше здесь звался тот же обработчик,
+   * что и на клике, — и документ уезжал под каждым комментарием, над которым
+   * прошла мышь по дороге к нужному; заодно наведение выделяло рамку и
+   * показывало ручки правки, хотя выделение задумано как действие клика.
+   */
+  onHover: (id: string) => void
   onDelete: (item: RegionItem) => void
   /** §156. «Очистить пометки» — все, чьи бы ни были, с подтверждением. Нет — кнопки нет. */
   onClearAll?: () => void
@@ -1386,7 +1453,7 @@ function CommentList({ regions, readOnly, activeId, onActivate, onDelete, onClea
     {regions.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
       {regions.map(item => {
         const category = CATEGORIES[item.category]
-        return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onActivate(item)} className={cn('group mb-2 rounded-xl p-2.5 ring-1 transition-[background-color,box-shadow,transform]', activeId === item.id ? `${category.bg} ${category.ring} ring-2 shadow-sm` : 'bg-white ring-slate-200 hover:bg-slate-50 hover:shadow-sm')}>
+        return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onHover(item.id)} className={cn('group mb-2 rounded-xl p-2.5 ring-1 transition-[background-color,box-shadow,transform]', activeId === item.id ? `${category.bg} ${category.ring} ring-2 shadow-sm` : 'bg-white ring-slate-200 hover:bg-slate-50 hover:shadow-sm')}>
           <button type="button" onClick={() => onActivate(item)} className="block w-full text-left">
             <div className="mb-1 flex items-center gap-2 text-xs">
               <span className="rounded-full px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: category.color }}>{category.short}</span>
