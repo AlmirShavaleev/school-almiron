@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, isAfter, isPast } from 'date-fns'
+import { differenceInCalendarDays, format, formatDistanceToNow, isAfter, isPast } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 export function formatDate(date: string | Date): string {
@@ -15,6 +15,27 @@ export function formatTime(date: string | Date): string {
 
 export function timeAgo(date: string | Date): string {
   return formatDistanceToNow(new Date(date), { locale: ru, addSuffix: true })
+}
+
+/**
+ * Когда строку списка трогали в последний раз: «сегодня в 10:16», «вчера в
+ * 18:40», дальше — обычная дата («12 сент. 2026»).
+ *
+ * Час дня сообщает что-то, только пока он свежий: у сегодняшней правки «в
+ * 10:16» отличает её от той, что была час назад, а у прошлогодней время суток
+ * не помогает никому. Отсюда две формы вместо одной.
+ *
+ * Сутки считаются КАЛЕНДАРНЫЕ, а не «24 часа назад»: взгляд на список в 09:00
+ * на правку вчерашних 23:50 — это «вчера», хотя прошло девять часов.
+ *
+ * `now` параметром — чтобы тест не зависел от часов машины.
+ */
+export function formatUpdatedAt(date: string | Date, now: Date = new Date()): string {
+  const d = new Date(date)
+  const days = differenceInCalendarDays(now, d)
+  if (days === 0) return `сегодня в ${format(d, 'HH:mm', { locale: ru })}`
+  if (days === 1) return `вчера в ${format(d, 'HH:mm', { locale: ru })}`
+  return format(d, 'd MMM yyyy', { locale: ru })
 }
 
 export function isOverdue(date: string | Date): boolean {

@@ -20,6 +20,7 @@ const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/Ad
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
+const CollectionsPage = lazyPage('CollectionsPage', () => import('@/pages/CollectionsPage').then(m => ({ default: m.CollectionsPage })))
 const CollectionDetailPage = lazyPage('CollectionDetailPage', () => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
 
 // Shared pages
@@ -194,6 +195,9 @@ export default function AppRoutes() {
         </Route>
 
         <Route path="/cart" element={<RoleGuard allow={['student','teacher','admin','owner']}><CartPage /></RoleGuard>} />
+        {/* Права списка ровно те же, что у карточки подборки: куратор карточку
+            не открывает — значит, и списка ему не видно (§188). */}
+        <Route path="/collections" element={<RoleGuard allow={['teacher','admin','owner']}><CollectionsPage /></RoleGuard>} />
         <Route path="/collections/:id" element={<RoleGuard allow={['teacher','admin','owner']}><CollectionDetailPage /></RoleGuard>} />
 
         <Route path="/variant-builder" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />

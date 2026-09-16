@@ -124,6 +124,11 @@ export const scenes = [
   { persona: 'owner', name: 'o04-catalog-task-solution', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege`, actions: [{ click: 'Решение' }, { wait: 500 }] },
   { persona: 'owner', name: 'o05-cart', url: '/catalog', actions: [{ ls: ['almiron-cart', cart] }, { goto: '/cart' }] },
   { persona: 'owner', name: 'o05-catalog-with-cart', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege` },
+  // §188 (board/041): список «Мои подборки». В фикстурах пять строк, в списке
+  // обязаны быть три: архивная и чужая не показываются.
+  { persona: 'owner', name: 'o05-collections', url: '/collections', actions: [{ wait: 600 }] },
+  { persona: 'owner', name: 'o05-collections-wide', url: '/collections', width: 1280, height: 800, actions: [{ wait: 600 }] },
+  { persona: 'owner', name: 'o05-collections-archived', url: '/collections', width: 1280, height: 800, actions: [{ wait: 600 }, { clickSel: 'button[aria-label="В архив"]' }, { wait: 800 }] },
   { persona: 'owner', name: 'o05-collection', url: `/collections/${S.collection}` },
   { persona: 'owner', name: 'o05-collection-export', url: `/collections/${S.collection}`, actions: [{ click: 'PDF' }, { wait: 800 }] },
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue' },

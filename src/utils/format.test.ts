@@ -3,6 +3,7 @@ import {
   formatDate,
   formatDateTime,
   formatTime,
+  formatUpdatedAt,
   timeAgo,
   isOverdue,
   isUpcoming,
@@ -42,6 +43,28 @@ describe('formatTime', () => {
   it('formats only time', () => {
     const result = formatTime('2024-03-15T14:30:00')
     expect(result).toBe('14:30')
+  })
+})
+
+describe('formatUpdatedAt', () => {
+  const now = new Date('2026-09-16T09:00:00')
+
+  it('сегодняшнюю правку показывает временем', () => {
+    expect(formatUpdatedAt('2026-09-16T10:16:00', now)).toBe('сегодня в 10:16')
+  })
+
+  it('вчерашнюю — тоже временем', () => {
+    expect(formatUpdatedAt('2026-09-15T18:40:00', now)).toBe('вчера в 18:40')
+  })
+
+  it('«вчера» считается календарными сутками, а не «24 часами назад»', () => {
+    // От 23:50 вчерашнего дня до 09:00 сегодняшнего — девять часов, но для
+    // человека это всё равно «вчера».
+    expect(formatUpdatedAt('2026-09-15T23:50:00', now)).toBe('вчера в 23:50')
+  })
+
+  it('старую — обычной датой, без времени суток', () => {
+    expect(formatUpdatedAt('2026-09-12T10:16:00', now)).toMatch(/12 сент\.?\s*2026/)
   })
 })
 

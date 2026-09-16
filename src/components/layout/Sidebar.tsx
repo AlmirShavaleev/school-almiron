@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks,
   Send, ClipboardEdit,
-  LibraryBig, Shield, Wand2, LifeBuoy,
+  LibraryBig, Shield, Wand2, LifeBuoy, Layers,
 } from 'lucide-react'
 
 interface NavItem {
@@ -66,6 +66,10 @@ const navItems: NavItem[] = [
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
+  // Рядом с каталогом намеренно: подборка рождается в его корзине, там же её и
+  // будут искать. Роли — как у карточки подборки (без куратора), а не как у
+  // каталога: пункт меню не должен вести туда, куда RoleGuard не пустит (§188).
+  { label: 'Мои подборки',      path: '/collections',    icon: <Layers size={18} />,        roles: ['teacher', 'admin', 'owner'] },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
@@ -105,7 +109,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
   { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
-  { title: 'Задания', paths: ['/catalog', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
+  { title: 'Задания', paths: ['/catalog', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
 

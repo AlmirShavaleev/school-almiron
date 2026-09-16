@@ -45,6 +45,81 @@ export function useCollections() {
   return { collections, loading, error, reload }
 }
 
+// ── Item counts for a whole list — ОДНИМ запросом ─────────────────────────────
+
+/**
+ * Сколько заданий в каждой подборке списка.
+ *
+ * Один запрос на весь список, а не по запросу на строку: у списка нет предела
+ * по длине, и N+1 здесь означал бы «чем больше подборок собрал человек, тем
+ * дольше открывается их список» — ровно наоборот тому, что нужно.
+ *
+ * Считаем строки на клиенте, а не через `select('*, task_collection_items(count)')`:
+ * встроенный счётчик PostgREST завязан на то, что связь между таблицами
+ * распознана по внешнему ключу, и тихо отдаёт пустоту, если это не так. Здесь
+ * же обычная выборка одного столбца по `in` — она либо работает, либо явно
+ * падает ошибкой.
+ *
+ * Ключ эффекта — склейка id строкой: массив каждый рендер новый по ссылке, и
+ * на нём эффект уходил бы в бесконечный цикл.
+ */
+export function useCollectionItemCounts(collectionIds: string[]) {
+  const key = collectionIds.join(',')
+  const [counts, setCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    // Пустой список — просто не ходим в базу. Старые числа при этом остаются в
+    // состоянии, и это нарочно: рисовать их некому (строк нет), а сброс здесь
+    // был бы лишним setState прямо в эффекте.
+    if (!key) return
+    let cancelled = false
+
+    db.from('task_collection_items')
+      .select('collection_id')
+      .in('collection_id', key.split(','))
+      .then(({ data }: { data: Array<{ collection_id: string }> | null }) => {
+        if (cancelled) return
+        const next: Record<string, number> = {}
+        for (const row of data ?? []) {
+          next[row.collection_id] = (next[row.collection_id] ?? 0) + 1
+        }
+        setCounts(next)
+      })
+
+    return () => { cancelled = true }
+  }, [key])
+
+  return counts
+}
+
+// ── Archive a collection ──────────────────────────────────────────────────────
+
+/**
+ * «В архив» вместо «Удалить»: поле `is_archived` и фильтр по нему в
+ * `useCollections` уже есть, а собранная вручную подборка — работа на полчаса,
+ * которую нельзя терять по одному промаху. Удаления в списке нет намеренно.
+ */
+export function useArchiveCollection() {
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const archive = useCallback(async (collectionId: string) => {
+    setPendingId(collectionId)
+    setError(null)
+
+    const { error: err } = await db
+      .from('task_collections')
+      .update({ is_archived: true })
+      .eq('id', collectionId)
+
+    setPendingId(null)
+    if (err) { setError(err.message); return false }
+    return true
+  }, [])
+
+  return { archive, pendingId, error }
+}
+
 // ── Load single collection + items ────────────────────────────────────────────
 
 export interface CollectionWithItems {

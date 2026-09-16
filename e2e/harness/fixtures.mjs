@@ -9,7 +9,9 @@ export const IDS = {
   group: U('f', 1), group2: U('f', 2),
   topic: (i) => U('1', i), hw: (i) => U('2', i), attempt: (i) => U('3', i), file: (i) => U('4', i),
   review: (i) => U('5', i), material: (i) => U('6', i), otherStudent: (i) => U("b", 10 + i), profile: (i) => U('a', 10 + i),
-  section: (i) => U('7', i), task: (i) => U('8', i), ctopic: (i) => U('9', i), collection: U('c', 100), variant: (i) => U('c', 200 + i),
+  section: (i) => U('7', i), task: (i) => U('8', i), ctopic: (i) => U('9', i),
+  collection: U('c', 100), collection2: U('c', 101), collection3: U('c', 102), collection4: U('c', 103), collection5: U('c', 104),
+  variant: (i) => U('c', 200 + i),
   test: (i) => U('c', 300 + i), assignment: (i) => U('c', 400 + i), myAssignment: (i) => U('c', 600 + i), notif: (i) => U('c', 500 + i),
 }
 const NOW = '2026-09-12T09:30:00.000Z'
@@ -271,8 +273,29 @@ export const catalog_topics = [
   { id: IDS.ctopic(5), title: 'Законы Ньютона', parent_id: IDS.ctopic(4), position: 1, subject: 'Физика', exam_type: 'ЕГЭ', external_id: 5, is_published: true, slug: 'newton', created_at: ago(9000), updated_at: ago(900) },
 ]
 export const catalog_task_topics = catalog_tasks.map((t, k) => ({ task_id: t.id, topic_id: IDS.ctopic(k % 2 ? 2 : 3), is_primary: true, source: 'import', catalog_tasks: t, catalog_topics: catalog_topics[k % 2 ? 1 : 2] }))
-export const task_collections = [{ id: IDS.collection, title: 'Подборка: кинематика, 30 заданий для отработки перед контрольной 18 сентября', description: 'Для группы вторник/пятница', subject: 'Физика', work_type: 'custom', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(30), updated_at: ago(2) }]
-export const task_collection_items = Array.from({ length: 30 }, (_, k) => ({ id: U('c', 700 + k), collection_id: IDS.collection, catalog_task_id: IDS.task(1 + (k % 14)), position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks[k % 14] }))
+// §188: список «Мои подборки». Три своих неархивных (список показывает их),
+// одна архивная и одна чужая — они в списке появиться НЕ должны, и стоят здесь
+// именно для того, чтобы это было видно на снимке, а не только в тестах.
+//
+// Даты у первых двух — от РЕАЛЬНОГО времени прогона, а не от фиксированного
+// `NOW` фикстур: формат строки списка («сегодня в 10:16», «вчера в 18:40»)
+// иначе на снимке не покажется никогда — `NOW` навсегда в прошлом.
+const realAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString()
+export const task_collections = [
+  { id: IDS.collection, title: 'Подборка: кинематика, 30 заданий для отработки перед контрольной 18 сентября', description: 'Для группы вторник/пятница', subject: 'Физика', work_type: 'custom', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(30), updated_at: realAgo(3) },
+  { id: IDS.collection2, title: 'Производная: 10 заданий на касательную', description: null, subject: 'Математика', work_type: 'homework', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(60), updated_at: realAgo(20) },
+  { id: IDS.collection3, title: 'Контрольная по динамике', description: null, subject: 'Физика', work_type: 'control', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 20), updated_at: ago(24 * 14) },
+  { id: IDS.collection4, title: 'Убрана в архив: пробник сентября', description: null, subject: 'Физика', work_type: 'ege_variant', is_archived: true, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 40), updated_at: ago(24 * 30) },
+  { id: IDS.collection5, title: 'Чужая подборка коллеги', description: null, subject: 'Математика', work_type: 'worksheet', is_archived: false, pdf_config: {}, created_by: IDS.profile(1), created_at: ago(24), updated_at: ago(1) },
+]
+const collectionItems = (collectionId, n, from) => Array.from({ length: n }, (_, k) => ({ id: U('c', from + k), collection_id: collectionId, catalog_task_id: IDS.task(1 + (k % 14)), position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks[k % 14] }))
+export const task_collection_items = [
+  ...collectionItems(IDS.collection, 30, 700),
+  ...collectionItems(IDS.collection2, 10, 730),
+  ...collectionItems(IDS.collection3, 4, 745),
+  ...collectionItems(IDS.collection4, 26, 750),
+  ...collectionItems(IDS.collection5, 8, 780),
+]
 
 // ── notifications ────────────────────────────────────────────────────────────
 const NOTIF = [
