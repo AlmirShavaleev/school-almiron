@@ -16,6 +16,7 @@ import {
   isSelfContradictoryText,
   normalizeAnswer,
   parseTasks,
+  renderDensityFor,
   reconcileTasks,
   reconcileTasksDetailed,
   taskNoFromText,
@@ -487,5 +488,77 @@ describe('§189. проверена не вся работа — балла не
       ...Array.from({ length: 5 }, (_, i) => task(String(i + 17), 'unchecked')),
     ]
     expect(isPartialCheck({ tasks, pagesSkipped: false })).toBe(true)
+  })
+})
+
+/**
+ * §193. Плотность рендера зависит от объёма работы.
+ *
+ * Проверяем не «какие числа записаны», а поведение на границах ступеней и два
+ * свойства, ради которых всё затевалось: длинная работа дешевле короткой, и
+ * потолок ширины падает вместе с DPI (иначе для крупноформатных сканов
+ * понижение плотности не даёт ничего — это показал замер).
+ */
+describe('renderDensityFor — плотность рендера по числу страниц', () => {
+  it('короткая работа читается как раньше, 150 DPI', () => {
+    expect(renderDensityFor(1).dpi).toBe(150)
+    expect(renderDensityFor(8).dpi).toBe(150)
+  })
+
+  it('со страницы 9 и до 14 включительно — 120 DPI', () => {
+    expect(renderDensityFor(9).dpi).toBe(120)
+    expect(renderDensityFor(11).dpi).toBe(120)
+    expect(renderDensityFor(14).dpi).toBe(120)
+  })
+
+  it('с 15 страниц — 100 DPI', () => {
+    expect(renderDensityFor(15).dpi).toBe(100)
+    expect(renderDensityFor(20).dpi).toBe(100)
+    expect(renderDensityFor(41).dpi).toBe(100)
+  })
+
+  it('плотность не растёт с числом страниц ни на одном шаге', () => {
+    let previous = Infinity
+    for (let pages = 1; pages <= 60; pages += 1) {
+      const { dpi } = renderDensityFor(pages)
+      expect(dpi).toBeLessThanOrEqual(previous)
+      previous = dpi
+    }
+  })
+
+  it('потолок ширины падает вместе с DPI — иначе крупный скан не подешевеет', () => {
+    const short = renderDensityFor(5)
+    const medium = renderDensityFor(11)
+    const long = renderDensityFor(30)
+    expect(medium.maxWidth).toBeLessThan(short.maxWidth)
+    expect(long.maxWidth).toBeLessThan(medium.maxWidth)
+    // Пропорция та же, что у DPI: ступень означает одно и то же для листа A4 и
+    // для страницы, сохранённой в крупном формате.
+    for (const d of [short, medium, long]) {
+      expect(d.maxWidth / d.dpi).toBeCloseTo(short.maxWidth / short.dpi, 1)
+    }
+  })
+
+  it('страница дешевеет на каждой ступени: пикселей у A4 меньше, чем было', () => {
+    // Ширина страницы A4 в пунктах; так же считает scale в index.ts.
+    const a4Points = 595
+    const pixelsFor = (pages: number) => {
+      const { dpi, maxWidth } = renderDensityFor(pages)
+      const scale = Math.min(dpi / 72, maxWidth / a4Points)
+      return (a4Points * scale) ** 2 * Math.SQRT2
+    }
+    expect(pixelsFor(11)).toBeLessThan(pixelsFor(8))
+    expect(pixelsFor(15)).toBeLessThan(pixelsFor(11))
+    // Замер §193: 120 DPI — примерно две трети цены, 100 DPI — меньше половины.
+    expect(pixelsFor(11) / pixelsFor(8)).toBeCloseTo(0.64, 1)
+    expect(pixelsFor(15) / pixelsFor(8)).toBeCloseTo(0.44, 1)
+  })
+
+  it('число страниц не прочиталось — берём верхнюю ступень, от перебора страхует бюджет', () => {
+    expect(renderDensityFor(0).dpi).toBe(150)
+    expect(renderDensityFor(-3).dpi).toBe(150)
+    expect(renderDensityFor(Number.NaN).dpi).toBe(150)
+    expect(renderDensityFor(null).dpi).toBe(150)
+    expect(renderDensityFor(undefined).dpi).toBe(150)
   })
 })
