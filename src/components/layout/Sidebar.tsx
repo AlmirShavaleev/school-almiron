@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffModeStore'
@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks,
   Send, ClipboardEdit,
-  LibraryBig, Shield, Wand2, LifeBuoy, Layers,
+  LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images,
 } from 'lucide-react'
 
 interface NavItem {
@@ -70,6 +70,10 @@ const navItems: NavItem[] = [
   // будут искать. Роли — как у карточки подборки (без куратора), а не как у
   // каталога: пункт меню не должен вести туда, куда RoleGuard не пустит (§188).
   { label: 'Мои подборки',      path: '/collections',    icon: <Layers size={18} />,        roles: ['teacher', 'admin', 'owner'] },
+  // Заливка картинок в бакет каталога (§195). Роли ровно те, кому это
+  // разрешает политика бакета (`is_admin_or_owner()`): преподавателю пункт не
+  // показываем — он бы привёл на экран, где Storage откажет на каждой кнопке.
+  { label: 'Картинки каталога', path: '/catalog/assets', icon: <Images size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
@@ -102,6 +106,25 @@ const CURATOR_ITEMS: NavItem[] = [
   { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
 ]
 
+/**
+ * Какой ОДИН пункт меню считать текущим.
+ *
+ * `NavLink` сам по себе горит на любом пути, который начинается с его адреса,
+ * и пункты-вложенцы подсвечиваются парами: на `/catalog/assets` (§195) горели
+ * бы и «Картинки каталога», и «Каталог заданий». Подсвеченных пунктов должно
+ * быть не больше одного — иначе меню отвечает на вопрос «где я» двумя
+ * адресами сразу. Побеждает самый длинный совпавший путь: он и есть тот
+ * экран, на котором человек стоит.
+ */
+function activeNavPath(paths: readonly string[], pathname: string): string | null {
+  let best: string | null = null
+  for (const p of paths) {
+    if (pathname !== p && !pathname.startsWith(p.endsWith('/') ? p : `${p}/`)) continue
+    if (best == null || p.length > best.length) best = p
+  }
+  return best
+}
+
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/inbox'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
@@ -109,7 +132,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
   { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
-  { title: 'Задания', paths: ['/catalog', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
+  { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
 
@@ -125,6 +148,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const badges = useSidebarBadges()
   const curatorships = useMyCuratorships()
+  const { pathname } = useLocation()
 
   if (!profile) return null
 
@@ -136,6 +160,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const menuRole     = effectiveRole ?? profile.role
   const isStudent    = menuRole === 'student'
   const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
+  const activePath   = activeNavPath(
+    [...visibleItems, ...(isStudent && curatorships.isCurator ? CURATOR_ITEMS : [])].map(i => i.path),
+    pathname,
+  )
 
   async function handleSignOut() {
     await signOut()
@@ -233,6 +261,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       key={item.path}
                       item={item}
                       badge={badges[item.path]}
+                      active={item.path === activePath}
                       onClose={onClose}
                     />
                   ))}
@@ -240,7 +269,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               ))}
             </div>
           ) : (
-            <StaffNavigation items={visibleItems} badges={badges} onClose={onClose} />
+            <StaffNavigation items={visibleItems} badges={badges} activePath={activePath} onClose={onClose} />
           )}
         </nav>
 
@@ -259,7 +288,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   )
 }
 
-function StaffNavigation({ items, badges, onClose }: { items: NavItem[]; badges: Record<string, number>; onClose: () => void }) {
+function StaffNavigation({ items, badges, activePath, onClose }: { items: NavItem[]; badges: Record<string, number>; activePath: string | null; onClose: () => void }) {
   const used = new Set<string>()
   const sections = STAFF_SECTION_LABELS.map(section => ({
     title: section.title,
@@ -281,7 +310,7 @@ function StaffNavigation({ items, badges, onClose }: { items: NavItem[]; badges:
           <ul className="space-y-0.5">
             {section.items.map(item => (
               <li key={item.label + item.path}>
-                <SidebarNavItem item={item} badge={badges[item.path]} onClose={onClose} />
+                <SidebarNavItem item={item} badge={badges[item.path]} active={item.path === activePath} onClose={onClose} />
               </li>
             ))}
           </ul>
@@ -291,14 +320,16 @@ function StaffNavigation({ items, badges, onClose }: { items: NavItem[]; badges:
   )
 }
 
-function SidebarNavItem({ item, badge, onClose }: { item: NavItem; badge?: number; onClose: () => void }) {
+function SidebarNavItem({ item, badge, active, onClose }: { item: NavItem; badge?: number; active: boolean; onClose: () => void }) {
   return (
     <NavLink
       to={item.path}
       onClick={onClose}
-      className={({ isActive }) => cn(
+      // Подсветку решает `activeNavPath`, а не сам `NavLink`: его правило
+      // «адрес начинается с моего» зажигает сразу два вложенных пункта.
+      className={cn(
         'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group',
-        isActive
+        active
           ? 'bg-white text-primary-950 shadow-sm'
           : 'text-primary-100/90 hover:bg-white/10 hover:text-white'
       )}

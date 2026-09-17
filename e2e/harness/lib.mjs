@@ -183,7 +183,41 @@ export function makeHandler({ fixtures, session, log, assetsDir }) {
         note(`STORAGE ${rest.split('?')[0]} -> ${path.basename(file)}`)
         return route.fulfill({ status: 200, contentType: file.endsWith('.pdf') ? 'application/pdf' : 'image/png', body: fs.readFileSync(file) })
       }
-      if (rest.startsWith('object/list/')) return json(route, [])
+      // Листинг папки бакета. Без фикстуры — пустой список, как раньше.
+      // `fixtures.storage[bucket]` — плоский массив объектов с ПОЛНЫМ ключом
+      // (`physics-ege/kin/fig-1.png`), префикс режется здесь: так фикстуру
+      // пишут один раз, а не по папке на каждую сцену.
+      if (rest.startsWith('object/list/')) {
+        const bucket = rest.slice('object/list/'.length).split('?')[0]
+        let body = {}
+        try { body = JSON.parse(request.postData() || '{}') } catch {}
+        const prefix = String(body.prefix ?? '')
+        note(`STORAGE list ${bucket} prefix=${prefix}`)
+        return json(route, listBucket(fixtures, bucket, prefix))
+      }
+      // Заливка. Кладём объект в ту же фикстуру, чтобы следующий листинг
+      // показал залитое — сцена «три файла в папке» снимается ровно тем же
+      // действием, что делает человек, а не подложенной строкой.
+      if ((method === 'POST' || method === 'PUT') && rest.startsWith('object/')) {
+        const full = decodeURIComponent(rest.slice('object/'.length).split('?')[0])
+        const slash = full.indexOf('/')
+        const bucket = full.slice(0, slash)
+        const key = full.slice(slash + 1)
+        const upsert = String(request.headers()['x-upsert'] ?? '') === 'true'
+        const store = bucketStore(fixtures, bucket)
+        const exists = store.some(o => o.name === key)
+        note(`STORAGE upload ${bucket}/${key}${upsert ? ' upsert' : ''}${exists ? ' EXISTS' : ''}`)
+        if (exists && !upsert) {
+          return json(route, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' }, 409)
+        }
+        // Размер залитого файла харнесс знать НЕ может: тело уходит
+        // multipart-ом, и файл, выбранный через `setInputFiles`, Playwright в
+        // `postDataBuffer()` не отдаёт — там остаётся одна обвязка (282 байта
+        // на любой файл). Поэтому размер `null`, а экран честно рисует «—»;
+        // выдуманное число выглядело бы на снимке ошибкой приложения.
+        if (!exists) store.push({ name: key, size: null, updated_at: new Date().toISOString() })
+        return json(route, { Key: `${bucket}/${key}` }, 200)
+      }
       note(`STORAGE ${method} ${rest}`)
       return json(route, {})
     }
@@ -192,6 +226,39 @@ export function makeHandler({ fixtures, session, log, assetsDir }) {
     note(`?? ${method} ${p}`)
     return json(route, [])
   }
+}
+
+/** Массив объектов бакета внутри фикстур; заводится по требованию. */
+function bucketStore(fixtures, bucket) {
+  if (!fixtures.storage) fixtures.storage = {}
+  if (!Array.isArray(fixtures.storage[bucket])) fixtures.storage[bucket] = []
+  return fixtures.storage[bucket]
+}
+
+/**
+ * Ответ `object/list` по префиксу — как у настоящего Storage: файлы прямо в
+ * папке отдаются строками с метаданными, вложенные папки — агрегатом без `id`
+ * и без метаданных (клиент обязан уметь их отличать).
+ */
+function listBucket(fixtures, bucket, prefix) {
+  const dir = prefix ? prefix.replace(/\/+$/, '') + '/' : ''
+  const files = []
+  const folders = new Set()
+  for (const obj of bucketStore(fixtures, bucket)) {
+    if (!obj.name.startsWith(dir)) continue
+    const tail = obj.name.slice(dir.length)
+    if (!tail) continue
+    const cut = tail.indexOf('/')
+    if (cut === -1) {
+      files.push({
+        name: tail, id: `id-${obj.name}`,
+        updated_at: obj.updated_at ?? null, created_at: obj.updated_at ?? null, last_accessed_at: null,
+        metadata: { size: obj.size ?? null, mimetype: obj.mimetype ?? 'image/png' },
+      })
+    } else folders.add(tail.slice(0, cut))
+  }
+  const folderRows = [...folders].map(name => ({ name, id: null, updated_at: null, created_at: null, last_accessed_at: null, metadata: null }))
+  return [...folderRows, ...files].sort((a, b) => (a.name > b.name ? 1 : a.name < b.name ? -1 : 0))
 }
 
 function pickAsset(rest, assetsDir) {

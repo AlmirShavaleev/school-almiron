@@ -46,6 +46,7 @@ const CatalogPage = lazyPage('CatalogPage', () => import('@/pages/catalog/Catalo
 const CatalogSectionPage = lazyPage('CatalogSectionPage', () => import('@/pages/catalog/CatalogSectionPage').then(m => ({ default: m.CatalogSectionPage })))
 const CatalogTopicPage = lazyPage('CatalogTopicPage', () => import('@/pages/catalog/CatalogTopicPage').then(m => ({ default: m.CatalogTopicPage })))
 const CatalogTaskPage = lazyPage('CatalogTaskPage', () => import('@/pages/catalog/CatalogTaskPage').then(m => ({ default: m.CatalogTaskPage })))
+const CatalogAssetsPage = lazyPage('CatalogAssetsPage', () => import('@/pages/catalog/CatalogAssetsPage').then(m => ({ default: m.CatalogAssetsPage })))
 const VariantBuilderPage = lazyPage('VariantBuilderPage', () => import('@/pages/variants/VariantBuilderPage').then(m => ({ default: m.VariantBuilderPage })))
 const VariantsHomePage = lazyPage('VariantsHomePage', () => import('@/pages/variants/VariantsHomePage').then(m => ({ default: m.VariantsHomePage })))
 const VariantsListPage = lazyPage('VariantsListPage', () => import('@/pages/variants/VariantsListPage').then(m => ({ default: m.VariantsListPage })))
@@ -193,6 +194,15 @@ export default function AppRoutes() {
           <Route path="/catalog/:sectionId/topic/:topicId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTopicPage /></RoleGuard>} />
           <Route path="/catalog/task/:taskId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']}><CatalogTaskPage /></RoleGuard>} />
         </Route>
+
+        {/* Заливка картинок каталога в бакет (§195). Вне обёртки режима подбора
+            задач: к уроку здесь прикреплять нечего. Права — как у политики
+            бакета `catalog_assets_admin_write` (`is_admin_or_owner()`): пускать
+            преподавателя на экран, где каждая кнопка упрётся в отказ Storage,
+            значит врать ему про его права. Статический сегмент `assets` бьёт
+            динамический `:sectionId` по рангу маршрута, порядок объявления на
+            это не влияет. */}
+        <Route path="/catalog/assets" element={<RoleGuard allow={['admin','owner']}><CatalogAssetsPage /></RoleGuard>} />
 
         <Route path="/cart" element={<RoleGuard allow={['student','teacher','admin','owner']}><CartPage /></RoleGuard>} />
         {/* Права списка ровно те же, что у карточки подборки: куратор карточку

@@ -1,6 +1,9 @@
 import { IDS } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
+// §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
+// формат, что ждёт импортёр задач, — он же стоит подсказкой в самом поле.
+const CATALOG_ASSETS_FOLDER = 'physics-ege/author-kinematics'
 
 // §186: панель ИИ живёт в футере под работой — до неё надо доскроллить, иначе
 // на снимке будут только страницы работы.
@@ -122,6 +125,27 @@ export const scenes = [
   { persona: 'owner', name: 'o04-catalog-topic', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege` },
   { persona: 'owner', name: 'o04-catalog-task', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege` },
   { persona: 'owner', name: 'o04-catalog-task-solution', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege`, actions: [{ click: 'Решение' }, { wait: 500 }] },
+  // §195 (board/047): заливка картинок каталога. Пара сцен на каждую ширину —
+  // пустая папка и та же папка после заливки трёх файлов. Второй снимок
+  // делается настоящей заливкой через форму (харнесс кладёт объект в свой
+  // «бакет» и отдаёт его следующим листингом), а не подложенным списком.
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({
+    persona: 'owner', name: 'o14-catalog-assets-empty', url: '/catalog/assets', width, height,
+    actions: [{ fill: ['[data-testid="catalog-assets-folder"]', CATALOG_ASSETS_FOLDER] }, { wait: 800 }],
+  })),
+  ...[[390, 844], [1280, 800]].map(([width, height]) => ({
+    persona: 'owner', name: 'o14-catalog-assets-uploaded', url: '/catalog/assets', width, height,
+    actions: [
+      { fill: ['[data-testid="catalog-assets-folder"]', CATALOG_ASSETS_FOLDER] },
+      { wait: 600 },
+      { files: ['figure.png', 'table.png', 'formula.png'] },
+      { wait: 600 },
+      { clickSel: '[data-testid="catalog-assets-upload"]' },
+      // Ждём дольше жизни тоста «Загружено: 3 файла» (4,5 с): иначе он
+      // закрывает собой кнопку «Скопировать пути» — ради которой экран и есть.
+      { wait: 5200 },
+    ],
+  })),
   { persona: 'owner', name: 'o05-cart', url: '/catalog', actions: [{ ls: ['almiron-cart', cart] }, { goto: '/cart' }] },
   { persona: 'owner', name: 'o05-catalog-with-cart', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege` },
   // §188 (board/041): список «Мои подборки». В фикстурах пять строк, в списке

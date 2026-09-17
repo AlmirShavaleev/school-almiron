@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { physicsDifficultyByExternalId, getPhysicsDifficultyOrder, type PhysicsDifficulty } from '@/lib/physicsDifficulty'
 import { physicsTopicsCatalog } from '@/lib/physicsTopicsCatalog'
+import { CATALOG_ASSETS_BUCKET } from '@/lib/catalogAssets'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,9 @@ const db = supabase as any
 
 // ── Supabase Storage URL helper ───────────────────────────────────────────────
 
-const BUCKET = 'catalog-assets'
+/** Имя бакета объявлено один раз (`src/lib/catalogAssets.ts`): туда же пишет
+ *  экран загрузки картинок (§195), и две копии строки разъехались бы молча. */
+const BUCKET = CATALOG_ASSETS_BUCKET
 const AI_PHYSICS_SOURCE = 'ai_physics_v1'
 const AI_PHYSICS_ROOT_EXTERNAL_ID = 900000
 const AI_PHYSICS_MAX_EXTERNAL_ID = 900712
