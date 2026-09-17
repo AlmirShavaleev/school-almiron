@@ -319,7 +319,7 @@ describe('карточки с графиками', () => {
     for (const card of ['card-submits', 'card-queue']) {
       navigate.mockReset()
       fireEvent.click(within(screen.getByTestId(card)).getByRole('button'))
-      expect(navigate).toHaveBeenCalledWith('/inbox')
+      expect(navigate).toHaveBeenCalledWith('/homework-queue')
     }
   })
 

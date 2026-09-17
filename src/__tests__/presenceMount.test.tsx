@@ -68,7 +68,7 @@ describe('отметка присутствия на всём приложени
 
   it('преподаватель тоже отмечается', async () => {
     profile = { id: 'p-teacher', role: 'teacher' }
-    draw('/inbox')
+    draw('/homework-queue')
     await waitFor(() => expect(touches()).toHaveLength(1))
   })
 

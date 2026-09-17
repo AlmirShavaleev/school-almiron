@@ -73,14 +73,6 @@ describe('useDeleteLessonMaterial — atomic delete via RPC', () => {
   })
 })
 
-describe('useAssignments submission file upload also disables caching (same risk class as lesson materials)', () => {
-  it('uploadSubmissionFile sets cacheControl: 0', () => {
-    const src = read('src/hooks/useAssignments.ts')
-    const block = src.slice(src.indexOf('export async function uploadSubmissionFile'), src.indexOf('export async function deleteSubmissionFile'))
-    expect(block).toContain("cacheControl: '0'")
-  })
-})
-
 // ══════════════════════════════════════════════════════════════════════════════
 // 4. Signed URLs only, never public URLs, bounded TTL
 // ══════════════════════════════════════════════════════════════════════════════

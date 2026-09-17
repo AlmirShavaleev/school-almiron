@@ -3,9 +3,6 @@ import { readFileSync } from 'node:fs'
 
 const reviewer = readFileSync('src/components/SubmissionReviewer.tsx', 'utf8')
 const migration = readFileSync('supabase/migrations/_legacy/017_annotation_sets.sql', 'utf8')
-const queueItem = readFileSync('src/components/queue/QueueItem.tsx', 'utf8')
-const queuePage = readFileSync('src/pages/HomeworkQueuePage.tsx', 'utf8')
-const queueHook = readFileSync('src/hooks/useHomeworkQueue.ts', 'utf8')
 
 describe('submission annotation reviewer', () => {
   // §185: три блока, читавшие `HomeworkReviewPage.tsx` и `StudentReviewPage.tsx`,
@@ -117,27 +114,9 @@ describe('submission annotation reviewer', () => {
     expect(reviewer).not.toContain('setTimeout(() =>')
   })
 
-  it('navigates queue items straight into the full review pages', () => {
-    expect(queueItem).toContain('getQueueItemReviewPath(item)')
-    expect(queuePage).not.toContain('onQuickReview')
-  })
-
-  it('adds a checked submissions tab backed by group-scoped legacy and collection review statuses', () => {
-    expect(queuePage).toContain("setMode('checked')")
-    expect(queuePage).toContain("setMode('returned')")
-    expect(queuePage).toContain('Проверенные')
-    expect(queuePage).toContain('На доработке')
-    expect(queueHook).toContain("export type QueueMode = Exclude<ReviewQueueMode, 'all'>")
-    expect(queueHook).toContain("fetchReviewQueuePage(mode")
-    expect(queueHook).toContain("fetchReviewQueueCounts(")
-    expect(queuePage).toContain('Показать ещё')
-  })
-
-  it('removes the topic quick-review modal from the queue page', () => {
-    expect(queuePage).not.toContain('ReviewTopicSubmissionModal')
-    expect(queuePage).toContain('<QueueList')
-    expect(queuePage).toContain("groupBy={mode === 'pending' ? groupBy : 'flat'}")
-  })
+  // §197: три блока про `/inbox` — очередь подборок, её страницу, хук и
+  // строку списка — сняты вместе с контуром «Этапа 4». Аннотатор к той очереди
+  // отношения не имел: он живёт на `/homework-queue` и в карточке попытки.
 
   it('keeps author immutable and annotations inaccessible to anon', () => {
     expect(migration).toContain('annotation_sets_author_immutable')

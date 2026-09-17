@@ -6,7 +6,7 @@ import { render, act } from '@testing-library/react'
  * periodic TOKEN_REFRESHED events that carry the same profile row. Before the
  * fix, that meant a brand-new object reference on every refresh, which
  * ripples into every consumer with `profile` (not `profile?.id`) in a deps
- * array — see useHomeworkQueue / CreateMockExamModal. AppAuth must now skip
+ * array — see useStudentJournal / CreateMockExamModal. AppAuth must now skip
  * setProfile when the fetched row is field-for-field identical to what's
  * already in the store.
  */

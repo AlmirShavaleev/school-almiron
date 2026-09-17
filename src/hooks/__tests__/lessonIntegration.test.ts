@@ -103,113 +103,14 @@ describe('LessonMaterialsCard', () => {
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 5. Homework-from-lesson: auto-derives recipient, no second assignment mechanism
+// 5-6. Выдача ДЗ с карточки занятия — снято в §197
+//
+// Разделы про `useAssignLessonHomework`, `AssignLessonHomeworkModal`,
+// `lessonHomeworkDraft` и `LessonHomeworkCard` ушли вместе с самим сценарием:
+// карточка ДЗ занятия выдавала подборку как работу, а её экраны разбора
+// (`/review-submissions`, `/my-assignments`) удалены. Итоги занятия и
+// материалы — разделы 3 и 4 выше — этим не затронуты.
 // ══════════════════════════════════════════════════════════════════════════════
-
-describe('useAssignLessonHomework / useLessonHomework', () => {
-  const src = read('src/hooks/useAssignments.ts')
-
-  it('assign_lesson_homework RPC receives no student_id/group_id from client (server derives from lesson)', () => {
-    const block = src.slice(src.indexOf('export function useAssignLessonHomework'), src.indexOf('export function useLessonHomework'))
-    expect(block).toContain("db.rpc('assign_lesson_homework'")
-    expect(block).not.toContain('p_student_id')
-    expect(block).not.toContain('p_group_id')
-  })
-
-  it('surfaces duplicate-assignment as a distinct flag for explicit confirmation', () => {
-    expect(src).toContain('isDuplicate')
-    expect(src).toContain("err.message.includes('DUPLICATE')")
-  })
-
-  it('lesson homework query filters by lesson_id (the new nullable link)', () => {
-    const block = src.slice(src.indexOf('export function useLessonHomework'))
-    expect(block).toContain(".eq('lesson_id', lessonId)")
-  })
-})
-
-describe('AssignLessonHomeworkModal', () => {
-  const src = read('src/components/lessons/AssignLessonHomeworkModal.tsx')
-
-  it('lets teacher pick an existing collection', () => {
-    expect(src).toContain('useCollections')
-  })
-
-  it('"Собрать новую подборку" persists lesson context via a dedicated draft key, not the cart', () => {
-    expect(src).toContain('setLessonHomeworkDraftContext')
-    expect(src).toContain("navigate('/catalog')")
-  })
-
-  it('shows duplicate-confirmation UI distinct from generic errors', () => {
-    expect(src).toContain('isDuplicate')
-    expect(src).toContain('Всё равно назначить ещё раз')
-  })
-
-  it('does not collect student_id/group_id from the teacher (auto-derived server-side)', () => {
-    expect(src).not.toContain('studentId')
-    expect(src).not.toContain('groupId')
-  })
-})
-
-describe('lessonHomeworkDraft util — separate from cart', () => {
-  const src = read('src/utils/lessonHomeworkDraft.ts')
-
-  it('uses a distinct localStorage key from the cart store', () => {
-    expect(src).toContain("'almiron:lesson-homework-draft-context'")
-    expect(src).not.toContain('almiron-cart')
-  })
-
-  it('survives reload (localStorage, not component state)', () => {
-    expect(src).toContain('localStorage.setItem')
-    expect(src).toContain('localStorage.getItem')
-  })
-})
-
-describe('CartPage — lesson-return wiring does not affect the plain cart flow', () => {
-  const src = read('src/pages/CartPage.tsx')
-
-  it('checks lesson draft context only after a successful save, falls back to normal /collections/:id', () => {
-    expect(src).toContain('getLessonHomeworkDraftContext()')
-    expect(src).toContain("navigate(`/collections/${id}`)")
-    expect(src).toContain('assignCollection=')
-  })
-
-  it('clears the draft context once consumed (no stale redirect on next normal save)', () => {
-    expect(src).toContain('clearLessonHomeworkDraftContext()')
-  })
-})
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 6. LessonHomeworkCard — states, group summary, no lesson-status coupling
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe('LessonHomeworkCard', () => {
-  const src = read('src/components/lessons/LessonHomeworkCard.tsx')
-
-  it('shows "not added yet" + add button only for teacher when no assignment exists', () => {
-    expect(src).toContain('Домашнее задание пока не добавлено')
-    expect(src).toContain('canEdit && !assignment')
-  })
-
-  it('shows group roster summary (total/not_started/submitted/returned/accepted) for group assignments', () => {
-    expect(src).toContain('function GroupSummary')
-    expect(src).toContain("r.status === 'not_started'")
-    expect(src).toContain("r.status === 'accepted'")
-  })
-
-  it('one submission being reviewed does not touch other roster rows (rendered independently per row)', () => {
-    expect(src).toContain('function RosterRow')
-    expect(src).toContain('entries.map(r =>')
-  })
-
-  it('never writes/reads lesson.status — homework status is fully independent', () => {
-    expect(src).not.toContain('lesson.status')
-    expect(src).not.toContain('lessonStatus')
-  })
-
-  it('student sees own status and a link into the existing Etap4 assignment detail page (reused, not duplicated)', () => {
-    expect(src).toContain('/my-assignments/${assignment.id}')
-  })
-})
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 7. RLS/route wiring

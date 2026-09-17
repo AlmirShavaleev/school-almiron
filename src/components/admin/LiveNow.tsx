@@ -145,7 +145,10 @@ export function LiveNow(props: LiveNowProps) {
           tone="more-is-good"
           statusText={`сегодня: ${lastValue(pulse?.submitsDaily)}`}
           color="#10b981"
-          onOpen={() => navigate('/inbox')}
+          // Обе карточки считают `topic_homework_attempts` — значит и вести
+          // обязаны в очередь этого же контура. До §197 здесь стоял `/inbox`
+          // (очередь подборок): число было из одних данных, а экран из других.
+          onOpen={() => navigate('/homework-queue')}
           openLabel="Открыть очередь проверки"
           animate={!reducedMotion}
           testId="card-submits"
@@ -160,7 +163,7 @@ export function LiveNow(props: LiveNowProps) {
           tone="more-is-bad"
           statusText="работ ждут разбора"
           color="#f59e0b"
-          onOpen={() => navigate('/inbox')}
+          onOpen={() => navigate('/homework-queue')}
           openLabel="Открыть очередь проверки"
           animate={!reducedMotion}
           testId="card-queue"

@@ -26,7 +26,6 @@ vi.mock('@/pages/GroupControlPanel', () => ({ GroupControlPanel: () => null }))
 vi.mock('@/pages/TeacherDetailPage', () => ({ TeacherDetailPage: () => null }))
 vi.mock('@/pages/LessonDetailPage', () => ({ LessonDetailPage: () => null }))
 vi.mock('@/pages/StudentJournalPage', () => ({ StudentJournalPage: () => null }))
-vi.mock('@/pages/HomeworkQueuePage', () => ({ HomeworkQueuePage: () => null }))
 vi.mock('@/pages/LessonsPage', () => ({ LessonsPage: () => null }))
 vi.mock('@/pages/MockExamsPage', () => ({ MockExamsPage: () => null }))
 vi.mock('@/pages/SettingsPage', () => ({ SettingsPage: () => null }))
@@ -55,11 +54,6 @@ vi.mock('@/pages/student/StudentVariantDetailPage', () => ({ StudentVariantDetai
 vi.mock('@/pages/student/StudentVariantBuildPage', () => ({ StudentVariantBuildPage: () => null }))
 vi.mock('@/pages/student/StudentVariantGeneratePage', () => ({ StudentVariantGeneratePage: () => null }))
 vi.mock('@/pages/student/StudentNumberStatsPage', () => ({ StudentNumberStatsPage: () => null }))
-vi.mock('@/pages/AssignHomeworkPage', () => ({ AssignHomeworkPage: () => null }))
-vi.mock('@/pages/ReviewSubmissionsPage', () => ({ ReviewSubmissionsPage: () => null }))
-vi.mock('@/pages/SubmissionDetailPage', () => ({ SubmissionDetailPage: () => null }))
-vi.mock('@/pages/student/MyAssignmentsPage', () => ({ MyAssignmentsPage: () => null }))
-vi.mock('@/pages/student/AssignmentDetailPage', () => ({ AssignmentDetailPage: () => null }))
 
 import AppRoutes from '@/AppRoutes'
 

@@ -9,8 +9,8 @@ import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, TrendingUp, Inbox, ListChecks,
-  Send, ClipboardEdit,
+  ChevronRight, ClipboardCheck, X, TrendingUp, ListChecks,
+  Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images,
 } from 'lucide-react'
 
@@ -31,7 +31,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   // Non-student roles
   { label: 'Главная',           path: '/dashboard',      icon: <Home size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Очередь задач',     path: '/inbox',          icon: <Inbox size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
 
   // Student navigation (grouped)
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
@@ -52,7 +51,6 @@ const navItems: NavItem[] = [
   // Тот же экран у персонала — вход из «Заданий», рядом с «Тестами». Сохраняет
   // обычный вариант, а не самоназначение (§128).
   { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Мои задания',       path: '/my-assignments', icon: <ClipboardEdit size={18} />, roles: ['student'],  section: 'Учёба', hidden: true },
   { label: 'Прогресс',          path: '/my-progress',    icon: <TrendingUp size={18} />,    roles: ['student'],  section: 'Успехи' },
 
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
@@ -79,8 +77,6 @@ const navItems: NavItem[] = [
   // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
   // темам курса. Переименована, чтобы два разных раздела не звались одинаково.
   { label: 'Банк тестов',       path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Назначение работ',  path: '/assign-homework', icon: <Send size={18} />,     roles: ['teacher', 'admin', 'owner'], hidden: true },
-  { label: 'Проверка работ',    path: '/review-submissions', icon: <ClipboardEdit size={18} />, roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
@@ -126,13 +122,13 @@ function activeNavPath(paths: readonly string[], pathname: string): string | nul
 }
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/inbox'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
   { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
-  { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/assign-homework', '/review-submissions', '/homeworks', '/mock-exams'] },
+  { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
 

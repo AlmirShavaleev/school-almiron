@@ -4,7 +4,6 @@ import { Trash2, Save, BookOpen, ArrowLeft, FileDown, Zap } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { useSaveCollection } from '@/hooks/useCollections'
 import { useCatalogTasksBatch, type CatalogTask, type CatalogTaskAsset } from '@/hooks/useCatalog'
-import { getLessonHomeworkDraftContext, clearLessonHomeworkDraftContext } from '@/utils/lessonHomeworkDraft'
 import type { WorkType } from '@/types/collections'
 import { WORK_TYPE_LABELS } from '@/types/collections'
 import { useAuthStore } from '@/store/authStore'
@@ -73,17 +72,11 @@ export function CartPage() {
       // Only clear cart after confirmed successful save
       clearCart()
 
-      // If we got here via "Собрать новую подборку" from a lesson card,
-      // return to that lesson with the new collection preselected instead
-      // of the normal /collections/:id destination. Separate localStorage
-      // key from the cart — never interferes with the plain cart flow.
-      const draft = getLessonHomeworkDraftContext()
-      if (draft) {
-        clearLessonHomeworkDraftContext()
-        navigate(`/lessons/${draft.lessonId}?assignCollection=${id}`)
-      } else {
-        navigate(`/collections/${id}`)
-      }
+      // Возврат «на занятие, откуда пришли» здесь был ровно один: кнопка
+      // «Собрать новую подборку» в карточке ДЗ занятия. §197 снял карточку
+      // вместе с выдачей подборок как работ, и ставить черновой контекст стало
+      // некому — ветка не могла сработать ни разу. Осталось одно назначение.
+      navigate(`/collections/${id}`)
     }
   }
 

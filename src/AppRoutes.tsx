@@ -29,7 +29,6 @@ const GroupControlPanel = lazyPage('GroupControlPanel', () => import('@/pages/Gr
 const TeacherDetailPage = lazyPage('TeacherDetailPage', () => import('@/pages/TeacherDetailPage').then(m => ({ default: m.TeacherDetailPage })))
 const LessonDetailPage = lazyPage('LessonDetailPage', () => import('@/pages/LessonDetailPage').then(m => ({ default: m.LessonDetailPage })))
 const StudentJournalPage = lazyPage('StudentJournalPage', () => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
-const HomeworkQueuePage = lazyPage('HomeworkQueuePage', () => import('@/pages/HomeworkQueuePage').then(m => ({ default: m.HomeworkQueuePage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotificationsPage = lazyPage('NotificationsPage', () => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
@@ -62,11 +61,6 @@ const StudentVariantDetailPage = lazyPage('StudentVariantDetailPage', () => impo
 const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
 const StudentVariantGeneratePage = lazyPage('StudentVariantGeneratePage', () => import('@/pages/student/StudentVariantGeneratePage').then(m => ({ default: m.StudentVariantGeneratePage })))
 const StudentNumberStatsPage = lazyPage('StudentNumberStatsPage', () => import('@/pages/student/StudentNumberStatsPage').then(m => ({ default: m.StudentNumberStatsPage })))
-const AssignHomeworkPage = lazyPage('AssignHomeworkPage', () => import('@/pages/AssignHomeworkPage').then(m => ({ default: m.AssignHomeworkPage })))
-const ReviewSubmissionsPage = lazyPage('ReviewSubmissionsPage', () => import('@/pages/ReviewSubmissionsPage').then(m => ({ default: m.ReviewSubmissionsPage })))
-const SubmissionDetailPage = lazyPage('SubmissionDetailPage', () => import('@/pages/SubmissionDetailPage').then(m => ({ default: m.SubmissionDetailPage })))
-const MyAssignmentsPage = lazyPage('MyAssignmentsPage', () => import('@/pages/student/MyAssignmentsPage').then(m => ({ default: m.MyAssignmentsPage })))
-const AssignmentDetailPage = lazyPage('AssignmentDetailPage', () => import('@/pages/student/AssignmentDetailPage').then(m => ({ default: m.AssignmentDetailPage })))
 const HomeworksV2RoleRouter = lazyPage('HomeworksV2RoleRouter', () => import('@/pages/HomeworksV2RoleRouter').then(m => ({ default: m.HomeworksV2RoleRouter })))
 const HomeworkReviewQueuePage = lazyPage('HomeworkReviewQueuePage', () => import('@/pages/HomeworkReviewQueuePage').then(m => ({ default: m.HomeworkReviewQueuePage })))
 const HomeworkReviewV2Page = lazyPage('HomeworkReviewV2Page', () => import('@/pages/HomeworkReviewV2Page').then(m => ({ default: m.HomeworkReviewV2Page })))
@@ -162,7 +156,10 @@ export default function AppRoutes() {
         <Route path="/course-program/:courseId/topic-tests" element={<RoleGuard allow={['teacher','admin','owner']}><CourseTopicTestsPage /></RoleGuard>} />
         <Route path="/course-program/:courseId/plan" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><StudyPlanPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
-        <Route path="/inbox" element={<RoleGuard allow={['teacher','curator','admin','owner']}><HomeworkQueuePage /></RoleGuard>} />
+        {/* Маршрута `/inbox` («Очередь задач») больше нет: §197 снял контур
+            «Этапа 4» — выдачу подборок как работ. Очередь показывала строки
+            `task_collection` (0 в базе) и вела на `/review-submissions`, куда
+            никто не ходил. Живая очередь проверки одна — `/homework-queue`. */}
         <Route path="/lessons/:id" element={<RoleGuard allow={['teacher','curator','admin','owner','student']}><LessonDetailPage /></RoleGuard>} />
         {/* Маршруты `/homeworks/:id`, `/homeworks/:id/review[/…]` сняты в §185
             вместе со старым контуром ДЗ (`homeworks`, `homework_submissions`,
@@ -238,12 +235,12 @@ export default function AppRoutes() {
         <Route path="/tests" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankPage /></RoleGuard>} />
         <Route path="/tests/:testId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankTestPage /></RoleGuard>} />
 
-        {/* Этап 4: выдача и проверка ДЗ */}
-        <Route path="/assign-homework" element={<RoleGuard allow={['teacher','admin','owner']}><AssignHomeworkPage /></RoleGuard>} />
-        <Route path="/review-submissions" element={<RoleGuard allow={['teacher','admin','owner']}><ReviewSubmissionsPage /></RoleGuard>} />
-        <Route path="/review-submissions/:id" element={<RoleGuard allow={['teacher','admin','owner']}><SubmissionDetailPage /></RoleGuard>} />
-        <Route path="/my-assignments" element={<RoleGuard allow={['student']} preview="stub"><MyAssignmentsPage /></RoleGuard>} />
-        <Route path="/my-assignments/:id" element={<RoleGuard allow={['student']} preview="stub"><AssignmentDetailPage /></RoleGuard>} />
+        {/* Маршруты «Этапа 4» (`/assign-homework`, `/review-submissions[/:id]`,
+            `/my-assignments[/:id]`) сняты в §197 вместе с выдачей подборки как
+            работы: `assigned_collections`, `assigned_collection_members` и
+            `task_submissions` пусты, а сам сценарий дублировал ДЗ темы. Подборки
+            остались — их собирают в каталоге, печатают и хранят в «Моих
+            подборках» (`/collections`, §188). */}
 
         {/* Только ученик — и admin/owner в предпросмотре «глазами ученика»
             (§178): три страницы курса читают программу и материалы, которые
