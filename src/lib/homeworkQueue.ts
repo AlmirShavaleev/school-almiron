@@ -5,7 +5,9 @@
  * преподавателя. Кто именно видит попытки, решает RLS (те же политики, что
  * кормят проверку внутри темы); здесь только формирование и порядок списка.
  */
-import type { TopicHomeworkAttemptRow } from '@/lib/topicHomework'
+import type {
+  TopicHomeworkAttemptRow, TopicHomeworkAttemptStatus, TopicHomeworkReviewRow,
+} from '@/lib/topicHomework'
 
 /**
  * Вкладки страницы проверки. Ровно три состояния попытки, которые видит
@@ -25,6 +27,18 @@ export const QUEUE_TABS: ReadonlyArray<{ key: QueueTab; label: string }> = [
 /** Статусы, которые страница вообще грузит: одним запросом на все вкладки. */
 export const QUEUE_STATUSES: QueueTab[] = QUEUE_TABS.map(t => t.key)
 
+/**
+ * Статусы, которые запрашивает очередь проверки. Черновик ни на одной вкладке
+ * не показывается и ни в один счётчик не входит — он нужен только как ответ на
+ * вопрос «не начал ли ученик новую попытку».
+ *
+ * §198: возвращённую работу теперь можно принять как есть, но только если она
+ * последняя. Признак «есть попытка новее» без черновиков не получить: пока
+ * ученик собирает новую попытку, она в статусе `draft`, и очередь её не видела
+ * вовсе — преподаватель нажал бы «Принять» и получил отказ базы.
+ */
+export const QUEUE_LOADED_STATUSES: TopicHomeworkAttemptStatus[] = ['draft', ...QUEUE_STATUSES]
+
 /** Строка очереди: попытка + контекст (ДЗ → тема → курс), пришедший из join'а. */
 export interface QueueRow {
   attempt: TopicHomeworkAttemptRow
@@ -38,6 +52,16 @@ export interface QueueRow {
    * попытки живут здесь как история, а не как отдельные строки списка.
    */
   history: TopicHomeworkAttemptRow[]
+  /**
+   * Попытка НОВЕЕ показанной, если она есть (§198). На практике это черновик:
+   * сданную или проверенную новую попытку `collapseToWorks` сам выбрал бы
+   * состоянием работы.
+   *
+   * Поле необязательное: его заполняет только `buildQueueWorks`, а кабинет
+   * ученика и карточка ученика собирают работы прежним `collapseToWorks` и о
+   * черновиках соседних попыток ничего не знают.
+   */
+  newerAttempt?: TopicHomeworkAttemptRow | null
   homeworkId: string
   homeworkTitle: string
   gradeScale: 'five' | 'hundred' | null
@@ -52,18 +76,23 @@ export interface QueueRow {
 /**
  * Работу уже проверил кто-то другой.
  *
- * `topic_homework_review_attempt` меняет статус только `where status =
- * 'submitted'` и, не найдя строки, падает с «Попытка не в статусе "сдано"».
+ * `topic_homework_review_attempt` пускает вердикт только к попытке в статусе
+ * `submitted` или `returned_for_revision` (§198) и, не найдя строки, падает.
  * Это и есть защита от двойного вердикта: второй проверяющий не перезапишет
- * решение первого. Опознаём этот случай по тексту, потому что своего кода
- * ошибки у него нет — а отличать его надо, иначе преподаватель получит
- * непонятную техническую фразу вместо объяснения.
+ * решение первого. Опознаём случай по тексту, потому что своего кода ошибки у
+ * него нет — а отличать его надо, иначе преподаватель получит непонятную
+ * техническую фразу вместо объяснения.
+ *
+ * Текстов два, и оба из RPC: «Попытка не в статусе «сдано»» (черновик) и
+ * «Работа уже принята…» (пока мы считали балл, коллега принял работу).
+ * Принятая — единственное состояние, из которого вердикт больше не ставится:
+ * возврат на доработку с §198 пересматривается.
  */
 export function isAlreadyReviewedError(error: unknown): boolean {
   const message = typeof error === 'object' && error !== null && 'message' in error
     ? String((error as { message?: unknown }).message ?? '')
     : String(error ?? '')
-  return message.includes('не в статусе')
+  return message.includes('не в статусе') || message.includes('уже принята')
 }
 
 /**
@@ -142,6 +171,97 @@ export function collapseToWorks(rows: QueueRow[]): QueueRow[] {
     out.push({ ...latest, history: older.map(r => r.attempt) })
   }
   return out
+}
+
+/**
+ * Работы очереди проверки из ВСЕГО загруженного: то же схлопывание, что и
+ * раньше, плюс отметка «у работы есть попытка новее показанной».
+ *
+ * Черновики в список не попадают — ни строкой, ни состоянием работы. Иначе
+ * работа, возвращённая на доработку, исчезала бы с вкладки «На доработке» в
+ * ту секунду, когда ученик начал новую попытку: именно там преподаватель её и
+ * ищет, чтобы принять как есть (§198).
+ *
+ * Отдельная функция, а не правка `collapseToWorks`: тем же схлопыванием живут
+ * кабинет ученика (`studentTodo`) и карточка ученика (`useStudentInsights`), и
+ * там черновик — законное состояние работы («ещё не сдал»).
+ */
+export function buildQueueWorks(rows: QueueRow[]): QueueRow[] {
+  const works = collapseToWorks(rows.filter(r => r.attempt.status !== 'draft'))
+  const drafts = rows.filter(r => r.attempt.status === 'draft')
+  if (drafts.length === 0) return works
+
+  const newestDraft = new Map<string, TopicHomeworkAttemptRow>()
+  for (const row of drafts) {
+    const key = workKey(row)
+    const known = newestDraft.get(key)
+    if (!known || row.attempt.attempt_number > known.attempt_number) {
+      newestDraft.set(key, row.attempt)
+    }
+  }
+
+  return works.map(work => {
+    const draft = newestDraft.get(workKey(work))
+    return draft && draft.attempt_number > work.attempt.attempt_number
+      ? { ...work, newerAttempt: draft }
+      : work
+  })
+}
+
+/**
+ * Что показывать в блоке вердикта.
+ *
+ * - `form` — работа ждёт решения, обычная форма;
+ * - `revise` — работа возвращена на доработку, но она последняя: принять как
+ *   есть можно (§198), и об этом нужно сказать прямо;
+ * - `blocked` — у работы есть попытка новее: вердикт этой попытке база не
+ *   примет, кнопки должны быть выключены, а не «нажмите и получите ошибку»;
+ * - `summary` — принято, решение больше не меняется.
+ *
+ * Правило одно и то же, что в `topic_homework_review_attempt`: исходные
+ * статусы `submitted` и `returned_for_revision`, и только последняя попытка.
+ * Это UX, а не защита — отказ всё равно держит база.
+ */
+export type VerdictAccess = 'form' | 'revise' | 'blocked' | 'summary'
+
+export function verdictAccess(row: QueueRow): VerdictAccess {
+  const { status } = row.attempt
+  if (status !== 'submitted' && status !== 'returned_for_revision') return 'summary'
+  if (row.newerAttempt) return 'blocked'
+  return status === 'submitted' ? 'form' : 'revise'
+}
+
+/** Почему вердикт недоступен — текст для преподавателя, или `null`. */
+export function newerAttemptReason(row: QueueRow): string | null {
+  const newer = row.newerAttempt
+  if (!newer) return null
+  return newer.status === 'draft'
+    ? `Ученик уже начал новую попытку (№${newer.attempt_number}) — эту принимать нельзя`
+    : `Ученик сдал работу заново — откройте последнюю попытку (№${newer.attempt_number})`
+}
+
+/**
+ * Одна строка про путь работы: «возвращена 4 августа, принята 5 августа».
+ *
+ * Нужна там, где вердикт уже стоит: с §198 у ОДНОЙ попытки может быть
+ * несколько вердиктов, и последний («принято») сам по себе врёт о том, что
+ * было. `null`, если вердикт всего один — тогда его и так видно.
+ */
+export function verdictTrail(reviews: TopicHomeworkReviewRow[], attemptId: string): string | null {
+  const own = reviews
+    .filter(r => r.attempt_id === attemptId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  if (own.length < 2) return null
+  return own
+    .map(r => {
+      const when = new Date(r.created_at)
+      const day = Number.isNaN(when.getTime())
+        ? null
+        : when.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+      const what = r.decision === 'accepted' ? 'принята' : 'возвращена'
+      return day ? `${what} ${day}` : what
+    })
+    .join(', ')
 }
 
 /** Строки одной вкладки. Порядок не трогаем — он задан `sortQueue`. */

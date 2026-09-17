@@ -15,7 +15,8 @@ import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import {
-  QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate, topicFilterOptions,
+  QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate, newerAttemptReason,
+  topicFilterOptions, verdictAccess, verdictTrail,
   type QueueRow, type QueueTab,
 } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
@@ -285,26 +286,30 @@ function AttemptHistory({
 }
 
 /**
- * Уже вынесенный вердикт — вместо формы у проверенных работ.
+ * Уже вынесенный вердикт — вместо формы у принятых работ.
  *
- * Формы здесь быть не может: `topic_homework_review_attempt` меняет статус
- * только `where status = 'submitted'`, и повторное решение база не примет.
- * Показать кнопки «Принять» и «Вернуть» значило бы обещать действие, которое
- * гарантированно закончится ошибкой.
+ * Формы здесь быть не может: `topic_homework_review_attempt` принятую работу
+ * не пересматривает (§198 открыл только ветку «возврат → принято»), и
+ * показать кнопку «Принять» значило бы обещать действие, которое гарантированно
+ * закончится ошибкой.
  */
 function VerdictSummary({
-  review, gradeScale, status, history, reviews,
+  review, gradeScale, status, history, reviews, attemptId,
 }: {
   review: TopicHomeworkReviewRow | null
   gradeScale: 'five' | 'hundred' | null
   status: QueueRow['attempt']['status']
   history: TopicHomeworkAttemptRow[]
   reviews: TopicHomeworkReviewRow[]
+  attemptId: string
 }) {
   const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
   const decided = review?.created_at
     ? new Date(review.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
     : null
+  // §198: у одной попытки может быть несколько вердиктов («вернули, потом
+  // приняли»). Последний сам по себе врёт о том, что было, — показываем путь.
+  const trail = verdictTrail(reviews, attemptId)
 
   return (
     <div data-testid="queue-verdict-summary" className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
@@ -323,6 +328,12 @@ function VerdictSummary({
         {decided && <span className="text-xs text-gray-400">{decided}</span>}
       </div>
 
+      {trail && (
+        <p data-testid="queue-verdict-trail" className="mt-1.5 text-xs text-gray-500">
+          Эта попытка: {trail}
+        </p>
+      )}
+
       {review?.comment && (
         <p className="mt-2 whitespace-pre-line rounded-lg bg-white px-2.5 py-1.5 text-xs text-gray-700">
           {review.comment}
@@ -334,6 +345,40 @@ function VerdictSummary({
         ученик увидит обновлённый разбор.
       </p>
     </div>
+  )
+}
+
+/**
+ * Подпись над формой у работы, которую уже вернули на доработку (§198).
+ *
+ * Без неё блок вердикта у возвращённой работы читается как ошибка: «я же её
+ * вернул, почему опять кнопки». Дата — из вердикта о возврате, а не из
+ * `updated_at` попытки: правит `updated_at` любой триггер, а преподавателю
+ * нужен момент решения.
+ */
+function ReturnedNotice({
+  review, attempt,
+}: {
+  review: TopicHomeworkReviewRow | null
+  attempt: TopicHomeworkAttemptRow
+}) {
+  const raw = review?.created_at ?? attempt.updated_at
+  const when = raw ? new Date(raw) : null
+  const day = when && !Number.isNaN(when.getTime())
+    ? when.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+    : null
+
+  return (
+    <p
+      data-testid="queue-returned-notice"
+      className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+    >
+      {day
+        ? `Работа была возвращена на доработку ${day}.`
+        : 'Работа была возвращена на доработку.'}
+      {' '}
+      Можно принять её как есть — ученик получит уведомление.
+    </p>
   )
 }
 
@@ -461,9 +506,19 @@ export function HomeworkReviewQueuePage() {
   const { viewers } = useReviewPresence({ courseIds, attemptId: reviewing?.row.attempt.id ?? null })
   const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
 
+  /**
+   * Что показывать в блоке вердикта открытой работы (§198). Правило считает
+   * `verdictAccess` — тот же, что держит RPC: решение ставится сданной работе
+   * и пересматривается у возвращённой, но только если попытка последняя.
+   */
+  const verdictKind = reviewing ? verdictAccess(reviewing.row) : 'summary'
+  const verdictForm = verdictKind !== 'summary'
+
   // ── Черновик ИИ ─────────────────────────────────────────────────────
   // Панель черновика поднимается только для работы, которую ещё проверяют:
   // у проверенной вердикт уже стоит, и подставлять в неё текст некуда.
+  // Пересмотр возврата (§198) её тоже не поднимает: разбор ИИ по этой попытке
+  // уже был, а второй прогон стоит денег и ничего нового не скажет.
   const openAttempt = reviewing?.row.attempt ?? null
   const openAttemptId = openAttempt?.status === 'submitted' ? openAttempt.id : null
   const ai = useHomeworkAiCheck(openAttemptId)
@@ -810,23 +865,30 @@ export function HomeworkReviewQueuePage() {
           onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
           // тулбаре только путала: две зелёные кнопки читались как одно действие.
-          // У проверенной работы формы нет, и кнопка возвращается: дополнить
+          // У принятой работы формы нет, и кнопка возвращается: дополнить
           // разбор и опубликовать заново — единственное, что тут ещё можно.
-          hideToolbarPublish={reviewing.row.attempt.status === 'submitted'}
+          // То же и у выключенной формы (§198, попытка не последняя): вердикт
+          // недоступен, но пометки дополнить и опубликовать по-прежнему можно.
+          hideToolbarPublish={verdictKind === 'form' || verdictKind === 'revise'}
           importRegionsRef={importRegionsRef}
-          footer={reviewing.row.attempt.status !== 'submitted' ? () => (
+          footer={!verdictForm ? () => (
             <VerdictSummary
               review={latestReview(reviews, reviewing.row.attempt.id)}
               gradeScale={reviewing.row.gradeScale}
               status={reviewing.row.attempt.status}
               history={reviewing.row.history}
               reviews={reviews}
+              attemptId={reviewing.row.attempt.id}
             />
           ) : ({ publishAnnotations }) => (
             <ReviewActions
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
+              // §198. Не последняя попытка — форма на месте, но выключена:
+              // вердикт этой попытке база не примет, а пустой карточки без
+              // объяснения хватило бы, чтобы решить, что экран сломан.
+              disabledReason={verdictKind === 'blocked' ? newerAttemptReason(reviewing.row) : null}
               above={
                 <>
                 {/* Пересданная работа: прошлый вердикт выше формы — иначе
@@ -837,17 +899,25 @@ export function HomeworkReviewQueuePage() {
                   gradeScale={reviewing.row.gradeScale}
                   className="mb-3"
                 />
-                <AiCheckPanel
-                  job={ai.job}
-                  findings={ai.findings}
-                  running={ai.running}
-                  error={ai.error}
-                  onRun={ai.runCheck}
-                  onApplyFrames={applyAiFrames}
-                  // Новый объект на каждое нажатие: вставить один и тот же
-                  // текст второй раз тоже должно получаться.
-                  onUseText={text => setFillRequest({ comment: text })}
-                />
+                {reviewing.row.attempt.status === 'returned_for_revision' && (
+                  <ReturnedNotice
+                    review={latestReview(reviews, reviewing.row.attempt.id)}
+                    attempt={reviewing.row.attempt}
+                  />
+                )}
+                {verdictKind === 'form' && (
+                  <AiCheckPanel
+                    job={ai.job}
+                    findings={ai.findings}
+                    running={ai.running}
+                    error={ai.error}
+                    onRun={ai.runCheck}
+                    onApplyFrames={applyAiFrames}
+                    // Новый объект на каждое нажатие: вставить один и тот же
+                    // текст второй раз тоже должно получаться.
+                    onUseText={text => setFillRequest({ comment: text })}
+                  />
+                )}
                 </>
               }
               fillRequest={fillRequest}

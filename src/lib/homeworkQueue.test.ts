@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  collapseToWorks, countByTab, courseFilterOptions, groupByDay, groupByCourse, rowsOfTab,
-  sortQueue, toQueueRows, topicFilterOptions,
+  buildQueueWorks, collapseToWorks, countByTab, courseFilterOptions, groupByDay, groupByCourse,
+  isAlreadyReviewedError, newerAttemptReason, rowsOfTab, sortQueue, toQueueRows,
+  topicFilterOptions, verdictAccess, verdictTrail,
 } from './homeworkQueue'
 
 function rawRow(over: Record<string, unknown> = {}) {
@@ -145,6 +146,137 @@ describe('вкладки состояний', () => {
   it('черновики в счётчики не попадают — их преподаватель не видит', () => {
     const withDraft = toQueueRows([rawRow({ id: 'd1', status: 'draft' }), ...[]])
     expect(countByTab(withDraft)).toEqual({ submitted: 0, returned_for_revision: 0, accepted: 0 })
+  })
+})
+
+/**
+ * §198. Возвращённую работу можно принять как есть, но только пока она
+ * последняя. Признак «есть попытка новее» очередь получает из тех же строк —
+ * через `buildQueueWorks`, которому теперь отдают и черновики.
+ */
+describe('buildQueueWorks — «есть попытка новее»', () => {
+  const pairWithDraft = [
+    rawRow({
+      id: 'returned', attempt_number: 1, status: 'returned_for_revision',
+      submitted_at: '2026-09-15T10:00:00Z',
+    }),
+    rawRow({
+      id: 'draft', attempt_number: 2, status: 'draft', submitted_at: null,
+    }),
+  ]
+
+  it('черновик не становится строкой списка и не меняет состояние работы', () => {
+    const works = buildQueueWorks(toQueueRows(pairWithDraft))
+
+    expect(works).toHaveLength(1)
+    expect(works[0].attempt.id).toBe('returned')
+    expect(works[0].attempt.status).toBe('returned_for_revision')
+    expect(countByTab(works)).toEqual({ submitted: 0, returned_for_revision: 1, accepted: 0 })
+  })
+
+  it('работа помечена попыткой новее — иначе «Принять» кончится отказом базы', () => {
+    const works = buildQueueWorks(toQueueRows(pairWithDraft))
+
+    expect(works[0].newerAttempt?.id).toBe('draft')
+    expect(works[0].newerAttempt?.attempt_number).toBe(2)
+  })
+
+  it('без черновика отметки нет — возвращённую работу можно принять', () => {
+    const works = buildQueueWorks(toQueueRows([pairWithDraft[0]]))
+
+    expect(works[0].newerAttempt ?? null).toBe(null)
+  })
+
+  it('черновик другого ученика на работу не влияет', () => {
+    const works = buildQueueWorks(toQueueRows([
+      pairWithDraft[0],
+      rawRow({ id: 'draft-other', student_id: 's2', attempt_number: 2, status: 'draft' }),
+    ]))
+
+    expect(works).toHaveLength(1)
+    expect(works[0].newerAttempt ?? null).toBe(null)
+  })
+
+  it('работа из одного черновика в очереди не появляется вовсе', () => {
+    expect(buildQueueWorks(toQueueRows([pairWithDraft[1]]))).toHaveLength(0)
+  })
+})
+
+describe('verdictAccess — что показывать в блоке вердикта', () => {
+  const work = (status: string, newer?: Record<string, unknown> | null) => {
+    const [row] = toQueueRows([rawRow({ id: 'a1', status })])
+    return newer === undefined || newer === null
+      ? row
+      : { ...row, newerAttempt: toQueueRows([rawRow(newer)])[0].attempt }
+  }
+
+  it('сданная работа — обычная форма', () => {
+    expect(verdictAccess(work('submitted'))).toBe('form')
+  })
+
+  it('возвращённая работа — форма с подписью: принять как есть можно', () => {
+    expect(verdictAccess(work('returned_for_revision'))).toBe('revise')
+  })
+
+  it('есть попытка новее — блок вердикта выключен', () => {
+    const row = work('returned_for_revision', { id: 'd', attempt_number: 2, status: 'draft' })
+    expect(verdictAccess(row)).toBe('blocked')
+    expect(newerAttemptReason(row)).toContain('новую попытку')
+  })
+
+  it('принятая работа — только вердикт, формы нет', () => {
+    expect(verdictAccess(work('accepted'))).toBe('summary')
+    expect(newerAttemptReason(work('accepted'))).toBe(null)
+  })
+
+  it('про пересданную работу сказано «откройте последнюю попытку»', () => {
+    const row = work('returned_for_revision', { id: 's2', attempt_number: 3, status: 'submitted' })
+    expect(newerAttemptReason(row)).toContain('№3')
+    expect(newerAttemptReason(row)).toContain('последнюю попытку')
+  })
+})
+
+describe('verdictTrail — путь одной попытки', () => {
+  const review = (id: string, decision: string, at: string) => ({
+    id, attempt_id: 'a1', reviewer_id: 'p1', decision, comment: null, score: null, created_at: at,
+  }) as any
+
+  it('два вердикта по одной попытке читаются как история', () => {
+    const trail = verdictTrail([
+      review('r2', 'accepted', '2026-09-17T09:00:00Z'),
+      review('r1', 'returned_for_revision', '2026-09-15T09:00:00Z'),
+    ], 'a1')
+
+    expect(trail).toMatch(/^возвращена /)
+    expect(trail).toContain('принята')
+  })
+
+  it('один вердикт истории не делает', () => {
+    expect(verdictTrail([review('r1', 'accepted', '2026-09-17T09:00:00Z')], 'a1')).toBe(null)
+  })
+
+  it('вердикты чужой попытки не считаются', () => {
+    expect(verdictTrail([
+      review('r1', 'returned_for_revision', '2026-09-15T09:00:00Z'),
+      { ...review('r2', 'accepted', '2026-09-17T09:00:00Z'), attempt_id: 'other' },
+    ], 'a1')).toBe(null)
+  })
+})
+
+describe('isAlreadyReviewedError', () => {
+  it('узнаёт отказ по несданной попытке', () => {
+    expect(isAlreadyReviewedError({ message: 'Попытка не в статусе «сдано»' })).toBe(true)
+  })
+
+  it('узнаёт отказ по уже принятой работе (§198)', () => {
+    expect(isAlreadyReviewedError({ message: 'Работа уже принята — вердикт не меняется' })).toBe(true)
+    expect(isAlreadyReviewedError({ message: 'Работа уже принята другим проверяющим' })).toBe(true)
+  })
+
+  it('отказ «ученик сдал заново» — не про чужой вердикт', () => {
+    expect(isAlreadyReviewedError({
+      message: 'Ученик уже сдал работу заново — открывайте последнюю попытку (№2)',
+    })).toBe(false)
   })
 })
 

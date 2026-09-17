@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  QUEUE_STATUSES,
-  collapseToWorks,
+  QUEUE_LOADED_STATUSES,
+  buildQueueWorks,
   countByTab,
   isAlreadyReviewedError,
   rowsOfTab,
@@ -21,7 +21,9 @@ import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
  * запрос был жёстко `status = 'submitted'`, и страница показывала только
  * ожидающих: принятые и возвращённые с неё были невидимы, хотя их
  * большинство. Одним запросом вместо трёх — потому что счётчики вкладок
- * должны быть честными ещё до того, как на вкладку зашли.
+ * должны быть честными ещё до того, как на вкладку зашли. С §198 в том же
+ * запросе едут и черновики — не строками списка, а ответом на вопрос «не начал
+ * ли ученик новую попытку» (см. `buildQueueWorks`).
  *
  * Видимость держит RLS — но только НАСТОЯЩЕМУ преподавателю.
  * `topic_homework_attempts_select` пускает через `topic_homework_can_manage`,
@@ -58,15 +60,17 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
         .select(
           '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
         )
-        .in('status', QUEUE_STATUSES)
+        .in('status', QUEUE_LOADED_STATUSES)
         .order('submitted_at', { ascending: true })
 
       if (cancelled) return
       if (err) { setError(err.message); setLoading(false); return }
 
       // Схлопываем попытки в работы ДО всех фильтров и счётчиков: вкладка и
-      // счётчик обязаны говорить об одном и том же — о работах.
-      const loaded = sortQueue(collapseToWorks(toQueueRows(data ?? [])))
+      // счётчик обязаны говорить об одном и том же — о работах. Черновики в
+      // выборке нужны только как отметка «есть попытка новее» (§198): строкой
+      // и состоянием работы они не становятся.
+      const loaded = sortQueue(buildQueueWorks(toQueueRows(data ?? [])))
       // Куратор курса — это может быть ученик другого курса, и RLS отдаёт ему
       // ЕЩЁ И его собственные сдачи (`student_id = auth_student_id()`).
       // Сам себя человек не проверяет: свои работы из очереди убираем.
@@ -135,12 +139,17 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
    * или «На доработке», и счётчики сходятся без повторного запроса.
    *
    * Двойная проверка одной работы возможна: персонала у курса несколько
-   * (владелец, преподаватели групп, кураторы), и очередь у всех общая. От
-   * порчи данных защищает сама RPC — она меняет статус только `where status =
-   * 'submitted'` и иначе падает, так что второй вердикт не перезапишет первый.
-   * Но её текст «Попытка не в статусе "сдано"» ничего не объясняет
-   * преподавателю. Переводим его на человеческий и перечитываем очередь: чужое
-   * решение уже в базе, и показывать своё представление о нём — врать.
+   * (владелец, преподаватели групп, кураторы), и очередь у всех общая. От порчи
+   * данных защищает сама RPC — принятую работу она не пересматривает и падает,
+   * так что чужое «принято» не перезапишет никто. Но её текст ничего не
+   * объясняет преподавателю: переводим на человеческий и перечитываем очередь —
+   * чужое решение уже в базе, и показывать своё представление о нём значит
+   * врать.
+   *
+   * §198. Возврат на доработку терминальным больше не считается: если коллега
+   * успел вернуть работу, наш вердикт пройдёт и станет второй строкой истории.
+   * Это и есть смысл карточки («вернули, потом приняли»), а не потеря защиты —
+   * терминальна ровно одна ветка, принятие.
    */
   const reviewAttempt = useCallback(
     async (attemptId: string, decision: 'accepted' | 'returned_for_revision', comment?: string, score?: number | null) => {
@@ -153,7 +162,7 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
       if (err) {
         if (isAlreadyReviewedError(err)) {
           reload()
-          throw new Error('Эту работу уже проверил кто-то другой — она убрана из очереди.')
+          throw new Error('Эту работу уже проверил кто-то другой — список обновлён.')
         }
         throw err
       }

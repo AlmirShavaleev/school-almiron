@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { countByTab, rowsOfTab, type QueueRow, type QueueTab } from '@/lib/homeworkQueue'
 
@@ -293,6 +293,116 @@ describe('HomeworkReviewQueuePage — вкладки состояний', () => 
     expect(verdict).toHaveTextContent('Оценка: 5/5')
     expect(verdict).toHaveTextContent('Хорошая работа')
     expect(screen.queryByTestId('review-accept-button')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * §198. «Работа на доработке, но я захожу ещё раз и таки принимаю работу».
+ *
+ * До этого раздела путь был закрыт: вердикт ставился только попытке в статусе
+ * «сдано», и принять возвращённую работу можно было лишь после новой сдачи
+ * ученика. Теперь блок вердикта у возвращённой работы на месте — с подписью,
+ * почему он там, — а у работы, которую ученик уже начал переделывать, он
+ * выключен: такой вердикт база не примет.
+ */
+describe('HomeworkReviewQueuePage — принять работу с доработки', () => {
+  const returnReview = {
+    id: 'r1', attempt_id: 'a1', reviewer_id: 'p1', decision: 'returned_for_revision',
+    comment: 'Переделай второй пункт', score: null, created_at: '2026-09-15T12:00:00Z',
+  }
+
+  beforeEach(() => {
+    state.all = []
+    state.attemptFiles = []
+    state.reviews = []
+    state.studentNames = { s1: 'Ученик' }
+    state.loading = false
+    state.error = null
+    reviewAttempt.mockReset()
+  })
+
+  function openReturned(over: Partial<QueueRow> = {}) {
+    state.all = [queueRow(over, { id: 'a1', status: 'returned_for_revision' })]
+    state.reviews = [returnReview as any]
+    renderPage()
+    fireEvent.click(screen.getByTestId('queue-tab-returned_for_revision'))
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть' }))
+  }
+
+  it('работа с доработки открывается из очереди и несёт блок вердикта', () => {
+    openReturned()
+
+    // Форма, а не «вердикт уже вынесен»: балл у этого ДЗ по шкале, поэтому
+    // «Принять» включается после его ввода — как и у сданной работы.
+    expect(screen.getByTestId('review-comment-input')).toBeEnabled()
+    fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '5' } })
+    expect(screen.getByTestId('review-accept-button')).toBeEnabled()
+    expect(screen.queryByTestId('queue-verdict-summary')).not.toBeInTheDocument()
+  })
+
+  it('над формой сказано, что работу вернули и можно принять как есть', () => {
+    openReturned()
+
+    const notice = screen.getByTestId('queue-returned-notice')
+    expect(notice).toHaveTextContent('возвращена на доработку')
+    expect(notice).toHaveTextContent('принять её как есть')
+    expect(notice).toHaveTextContent('получит уведомление')
+  })
+
+  it('принятие уходит в RPC с решением «принято»', async () => {
+    reviewAttempt.mockResolvedValue(undefined)
+    openReturned({ gradeScale: null })
+
+    fireEvent.click(screen.getByTestId('review-accept-button'))
+
+    await waitFor(() => expect(reviewAttempt).toHaveBeenCalled())
+    expect(reviewAttempt.mock.calls[0][0]).toBe('a1')
+    expect(reviewAttempt.mock.calls[0][1]).toBe('accepted')
+  })
+
+  it('ученик уже начал новую попытку — блок вердикта выключен с причиной', () => {
+    openReturned({
+      newerAttempt: {
+        id: 'a2', homework_id: 'hw1', student_id: 's1', attempt_number: 2,
+        status: 'draft', submitted_at: null,
+        created_at: '2026-09-16T09:00:00Z', updated_at: '2026-09-16T09:00:00Z',
+      } as any,
+    })
+
+    expect(screen.getByTestId('review-blocked-reason')).toHaveTextContent('новую попытку')
+    expect(screen.getByTestId('review-accept-button')).toBeDisabled()
+    expect(screen.getByTestId('review-return-button')).toBeDisabled()
+  })
+
+  it('выключенный блок не даёт поставить вердикт', () => {
+    openReturned({
+      newerAttempt: {
+        id: 'a2', homework_id: 'hw1', student_id: 's1', attempt_number: 2,
+        status: 'draft', submitted_at: null,
+        created_at: '2026-09-16T09:00:00Z', updated_at: '2026-09-16T09:00:00Z',
+      } as any,
+    })
+
+    fireEvent.click(screen.getByTestId('review-accept-button'))
+    expect(reviewAttempt).not.toHaveBeenCalled()
+  })
+
+  it('у принятой после возврата работы видно и возврат, и принятие', () => {
+    state.all = [queueRow({}, { id: 'a1', status: 'accepted' })]
+    state.reviews = [
+      returnReview as any,
+      {
+        id: 'r2', attempt_id: 'a1', reviewer_id: 'p1', decision: 'accepted',
+        comment: null, score: 5, created_at: '2026-09-17T08:00:00Z',
+      } as any,
+    ]
+    renderPage()
+    fireEvent.click(screen.getByTestId('queue-tab-accepted'))
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть' }))
+
+    const trail = screen.getByTestId('queue-verdict-trail')
+    expect(trail).toHaveTextContent('возвращена')
+    expect(trail).toHaveTextContent('принята')
   })
 })
 

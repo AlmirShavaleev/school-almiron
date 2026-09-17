@@ -50,6 +50,7 @@ export function ReviewActions({
   hint,
   above,
   fillRequest,
+  disabledReason,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -61,6 +62,14 @@ export function ReviewActions({
   hint?: string
   /** Блок над формой вердикта — сюда попадает панель черновика ИИ. */
   above?: React.ReactNode
+  /**
+   * Почему вердикт сейчас невозможен (§198). Форма остаётся на месте, но
+   * выключена целиком: преподаватель видит, что решение здесь бывает, и
+   * читает причину — вместо кнопки, нажатие которой заведомо кончится отказом
+   * базы. Правило «почему» считает вызывающий (`verdictAccess`), здесь только
+   * показ.
+   */
+  disabledReason?: string | null
   /**
    * Запрос «подставь это в форму». Меняется целиком новым объектом при каждом
    * нажатии, поэтому повторная вставка того же текста тоже срабатывает —
@@ -81,15 +90,17 @@ export function ReviewActions({
     if (fillRequest.score != null) setScore(String(fillRequest.score))
   }, [fillRequest])
 
+  const blocked = Boolean(disabledReason)
+
   // Комментарий обязателен только при возврате. То же условие держит
   // CHECK topic_homework_reviews_comment_chk — здесь оно ради подсказки,
   // а не вместо базы.
-  const canReturn = comment.trim().length > 0
+  const canReturn = comment.trim().length > 0 && !blocked
 
   const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
   const scoreNum = score === '' ? null : parseInt(score, 10)
   const scoreValid = scoreMax == null || (scoreNum != null && scoreNum >= 0 && scoreNum <= scoreMax)
-  const canAccept = scoreMax == null || (scoreNum != null && scoreValid)
+  const canAccept = !blocked && (scoreMax == null || (scoreNum != null && scoreValid))
 
   async function run(decision: 'accepted' | 'returned_for_revision') {
     setBusy(true)
@@ -112,10 +123,19 @@ export function ReviewActions({
       {hint && (
         <p data-testid="review-hint" className="mb-2 text-xs text-gray-500">{hint}</p>
       )}
+      {disabledReason && (
+        <p
+          data-testid="review-blocked-reason"
+          className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800"
+        >
+          {disabledReason}
+        </p>
+      )}
       <textarea
         data-testid="review-comment-input"
         value={comment}
         onChange={e => setComment(e.target.value)}
+        disabled={blocked}
         placeholder="Комментарий (обязателен при возврате на доработку)"
         aria-label="Комментарий к работе"
         rows={2}
@@ -128,6 +148,7 @@ export function ReviewActions({
           type="number"
           value={score}
           onChange={e => setScore(e.target.value)}
+          disabled={blocked}
           placeholder={`Балл (0–${scoreMax})`}
           aria-label={`Балл (0–${scoreMax})`}
           min="0"
@@ -149,12 +170,14 @@ export function ReviewActions({
           variant="secondary"
           onClick={() => run('returned_for_revision')}
           disabled={busy || !canReturn}
-          title={canReturn ? undefined : 'Напишите, что исправить'}
+          title={blocked ? disabledReason ?? undefined : canReturn ? undefined : 'Напишите, что исправить'}
         >
           <RotateCcw size={14} />
           Вернуть на доработку
         </Button>
-        {!canReturn && <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>}
+        {!canReturn && !blocked && (
+          <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>
+        )}
         {scoreMax != null && !scoreValid && score !== '' && (
           <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
         )}
