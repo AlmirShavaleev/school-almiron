@@ -1,4 +1,11 @@
--- §204 (board/055). НЕ ПРИМЕНЕНА: применяет оркестратор через MCP apply_migration и переименовывает файл по фактической версии из schema_migrations.
+-- §204 (board/055). ПРИМЕНЕНО оркестратором 17.09.2026, версия 20260917230035
+-- (supabase_migrations.schema_migrations, MIGRATIONS.md).
+--
+-- Блок проб под ролями, лежавший в конце файла, вынесен из миграции: он не
+-- применялся и применяться не должен. Его дословный вывод — в разделе §204
+-- PROJECT_STATE. Порядок проверок в video_watch_add исправлен следующей
+-- миграцией 20260917230444 (§204.1) — пробы нашли дефект сразу после
+-- применения.
 --
 -- Запись просмотра видео учеником: дневные итоги + единственный вход на запись.
 --
@@ -174,71 +181,3 @@ comment on function public.video_watch_add(uuid, integer, integer, integer) is
 
 revoke all on function public.video_watch_add(uuid, integer, integer, integer) from public, anon;
 grant execute on function public.video_watch_add(uuid, integer, integer, integer) to authenticated;
-
--- ── 5. Пробы под ролями ─────────────────────────────────────────────────────
---
--- Выполнять на проде через MCP ПОСЛЕ применения, целиком одним блоком: он
--- откатывается сам (`raise exception` в конце), в базе ничего не остаётся.
--- Ловушки §29.4: set_config отдельным оператором, не в одном списке выборки с
--- проверяемой функцией; под владельцем таблиц RLS не проверяется вовсе.
---
--- Подставить: :student — profiles.id ученика курса, у которого есть доступ к
--- теме видео; :outsider — ученик ДРУГОГО курса; :staff — преподаватель группы
--- этого курса; :item — id строки topic_material_items с kind='video',
--- is_visible = true.
---
--- do $probe$
--- declare
---   v_student  uuid := '<profiles.id ученика курса>';
---   v_outsider uuid := '<profiles.id ученика другого курса>';
---   v_staff    uuid := '<profiles.id преподавателя группы>';
---   v_item     uuid := '<topic_material_items.id, kind=video, is_visible>';
---   v_n        integer;
--- begin
---   -- 1. Ученик курса пишет и видит свою строку.
---   perform set_config('role', 'authenticated', true);
---   perform set_config('request.jwt.claims',
---     json_build_object('sub', v_student, 'role', 'authenticated')::text, true);
---   perform public.video_watch_add(v_item, 12, 300, 900);
---   select count(*) into v_n from public.video_watch_daily
---    where student_id = v_student and item_id = v_item;
---   if v_n <> 1 then raise exception 'ПРОБА 1: ученик не видит свою строку (%)', v_n; end if;
---
---   -- 2. p_seconds = 600 — строк не прибавляется, секунды те же 12.
---   perform public.video_watch_add(v_item, 600, 400, 900);
---   select seconds into v_n from public.video_watch_daily
---    where student_id = v_student and item_id = v_item;
---   if v_n <> 12 then raise exception 'ПРОБА 2: 600 секунд записались (%)', v_n; end if;
---
---   -- 3. Чужой ученик — отказ TOPIC_NOT_VISIBLE.
---   perform set_config('request.jwt.claims',
---     json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
---   begin
---     perform public.video_watch_add(v_item, 10, 10, 900);
---     raise exception 'ПРОБА 3: чужому ученику запись разрешена';
---   exception when sqlstate 'P0001' then
---     if sqlerrm not like 'TOPIC_NOT_VISIBLE%' then raise; end if;
---   end;
---
---   -- 4. Персонал пишет — строк не появляется, и это НЕ ошибка.
---   perform set_config('request.jwt.claims',
---     json_build_object('sub', v_staff, 'role', 'authenticated')::text, true);
---   perform public.video_watch_add(v_item, 10, 10, 900);
---   select count(*) into v_n from public.video_watch_daily
---    where student_id = v_staff and item_id = v_item;
---   if v_n <> 0 then raise exception 'ПРОБА 4: просмотр персонала записался'; end if;
---
---   -- 5. Персонал видит строку своего ученика.
---   select count(*) into v_n from public.video_watch_daily
---    where student_id = v_student and item_id = v_item;
---   if v_n <> 1 then raise exception 'ПРОБА 5: персонал не видит строку ученика'; end if;
---
---   -- 6. Чужой ученик не видит чужую строку.
---   perform set_config('request.jwt.claims',
---     json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
---   select count(*) into v_n from public.video_watch_daily where item_id = v_item;
---   if v_n <> 0 then raise exception 'ПРОБА 6: чужому ученику видны строки (%)', v_n; end if;
---
---   raise exception 'ПРОБЫ ПРОЙДЕНЫ — откат';
--- end
--- $probe$;
