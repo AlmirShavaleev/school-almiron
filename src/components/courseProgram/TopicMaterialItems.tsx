@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import {
@@ -6,6 +6,9 @@ import {
   Paperclip, Plus, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
+import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
+import { useVideoWatchMarks, type VideoWatchMark } from '@/hooks/useVideoWatchMarks'
+import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -43,7 +46,7 @@ function formatBytes(bytes: number | null): string | null {
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, countView, isFirst, isLast,
+  material, topicId, canManage, countView, watchMark, isFirst, isLast,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
@@ -51,6 +54,8 @@ function MaterialCard({
   canManage: boolean
   /** Считать открытие файла (§107): ученик — да, персонал и предпросмотр — нет. */
   countView: boolean
+  /** Уже записанный просмотр этого видео (§204); undefined — записи нет. */
+  watchMark?: VideoWatchMark
   isFirst: boolean
   isLast: boolean
   onDelete: (id: string) => void
@@ -151,9 +156,13 @@ function MaterialCard({
 
       {material.kind === 'video' &&
         (embed ? (
-          <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
-            <iframe src={embed} title={material.title || 'Видео темы'} allowFullScreen className="h-full w-full" />
-          </div>
+          <WatchedVideo
+            materialId={material.id}
+            embed={embed}
+            title={material.title || 'Видео темы'}
+            countWatch={countView}
+            watchMark={watchMark}
+          />
         ) : (
           <a href={material.url} target="_blank" rel="noopener noreferrer"
             className="break-all text-sm text-primary-600 hover:underline">
@@ -618,6 +627,17 @@ export function TopicMaterialItems({
   // они отфильтрованы; просмотр файла за ученика не засчитывается.
   const preview = usePreviewMode()
   const studentPreview = !canManage && preview
+  const myProfileId = useAuthStore(state => state.profile?.id ?? null)
+
+  // Отметки «просмотрено» (§204) — только в ученическом списке и только по
+  // своим строкам. В предпросмотре и у персонала счётчик не работает вовсе,
+  // значит и спрашивать нечего.
+  const countsWatch = !canManage && !preview
+  const videoItemIds = useMemo(
+    () => materials.filter(m => m.kind === 'video').map(m => m.id),
+    [materials],
+  )
+  const watchMarks = useVideoWatchMarks(videoItemIds, countsWatch, myProfileId)
 
   function guard<T extends unknown[]>(fn: (...args: T) => Promise<unknown>) {
     return (...args: T) => {
@@ -690,7 +710,8 @@ export function TopicMaterialItems({
           material={m}
           topicId={topicId}
           canManage={canManage}
-          countView={!canManage && !preview}
+          countView={countsWatch}
+          watchMark={watchMarks[m.id]}
           isFirst={i === 0}
           isLast={i === filtered.length - 1}
           onDelete={guard(deleteMaterial)}

@@ -173,7 +173,7 @@ export function StudentProfilePage() {
         факт «ученик ничего не сдал», хотя данных не было вовсе. Работу
         честно делает секция ниже — на живом контуре.
       */}
-      {s.student_id && <StudentInsightSection studentId={s.student_id} />}
+      {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
 
       {/* Enrolled courses */}
       {s.student_id && (

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
-  AlertTriangle, ChevronDown, ChevronUp, Clock, Loader2, RefreshCw, Sparkles, TrendingDown, TrendingUp,
+  AlertTriangle, ChevronDown, ChevronUp, Clock, Loader2, RefreshCw, Sparkles, TrendingDown, TrendingUp, Video,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { useStudentInsights } from '@/hooks/useStudentInsights'
 import { useStudentFeedback } from '@/hooks/useStudentFeedback'
+import { useStudentVideoWatch } from '@/hooks/useStudentVideoWatch'
+import { formatWatchMinutes } from '@/lib/videoWatch'
 import { useAttentionSignals } from '@/hooks/useAttentionSignals'
 import { insightsForModel, type StudentInsights } from '@/lib/studentInsights'
 import { SIGNAL_DISCLAIMER, signalText, type AttentionSignal } from '@/lib/attentionSignals'
@@ -176,14 +178,61 @@ function AttentionSignals({ signals, comparable }: { signals: AttentionSignal[];
   )
 }
 
+function formatWatchDay(day: string): string {
+  const date = new Date(`${day}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return day
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' })
+}
+
+/**
+ * Строка просмотра видео (§204).
+ *
+ * Одна строка, а не плитка: цифра молодая, и пока по ней нельзя судить об
+ * ученике так же уверенно, как по сданным работам. Дата начала записи стоит
+ * рядом с числом обязательно — без неё «12 минут за всё время» читается как
+ * приговор, хотя означает всего лишь, что счётчик включили позавчера.
+ *
+ * Отказ базы (таблицы ещё нет, прав нет) — не ноль, а отсутствие строки: ноль
+ * здесь означал бы «не смотрел», а это совсем другое утверждение.
+ */
+function VideoWatchLine({ profileId }: { profileId: string | null }) {
+  const watch = useStudentVideoWatch(profileId)
+  if (!profileId || watch.loading || watch.unavailable) return null
+
+  return (
+    <div
+      data-testid="student-video-watch"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+    >
+      <Video size={14} className="shrink-0 text-primary-600" />
+      {watch.firstDay ? (
+        <>
+          <span className="font-semibold text-gray-900">Видео: {formatWatchMinutes(watch.weekSeconds)} за неделю</span>
+          <span className="text-gray-500">· {formatWatchMinutes(watch.totalSeconds)} всего</span>
+          <span className="text-xs text-gray-400">· записи с {formatWatchDay(watch.firstDay)}</span>
+        </>
+      ) : (
+        <>
+          <span className="text-gray-700">Видео: записей пока нет</span>
+          <span className="text-xs text-gray-400">· считается только просмотр в плеере темы</span>
+        </>
+      )}
+    </div>
+  )
+}
+
 /**
  * Карточка ученика: цифры и обратная связь.
  *
  * Видит только персонал — и это держит база (политики
  * `student_feedback_notes` и RLS работ), а не то, что компонент смонтирован на
  * преподавательской странице.
+ *
+ * `profileId` — отдельным параметром: строка просмотра видео считается по
+ * `profiles.id` (`auth.uid()` ученика), а всё остальное здесь — по
+ * `students.id`. Один параметр на оба смысла дал бы вечный ноль без ошибки.
  */
-export function StudentInsightSection({ studentId }: { studentId: string }) {
+export function StudentInsightSection({ studentId, profileId = null }: { studentId: string; profileId?: string | null }) {
   const { insights, loading, error, reload } = useStudentInsights(studentId)
   const feedback = useStudentFeedback(studentId)
   const attention = useAttentionSignals(studentId)
@@ -251,6 +300,10 @@ export function StudentInsightSection({ studentId }: { studentId: string }) {
       </div>
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      {/* Просмотр видео не зависит от того, сдавал ли ученик работы, — строка
+          стоит выше ветки «нет данных» и живёт своей жизнью (§204). */}
+      <VideoWatchLine profileId={profileId} />
 
       {loading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-gray-400">

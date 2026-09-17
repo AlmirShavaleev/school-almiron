@@ -11,13 +11,15 @@ import { isTopicOpen } from '@/lib/topicAvailability'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
+import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
+import { useVideoWatchMarks } from '@/hooks/useVideoWatchMarks'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
 import { useTopicTasks } from '@/hooks/useTopicTasks'
 import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
-  STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, groupTopicSections, isMaterialSection,
+  STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
   isTopicSectionVisible,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
@@ -172,10 +174,26 @@ export function TopicPage() {
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const videoUrl   = materials.find(m => m.kind === 'video')?.url || ''
+  const videoMaterial = materials.find(m => m.kind === 'video') ?? null
+  const videoUrl   = videoMaterial?.url || ''
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
-  const embedUrl   = ytEmbed || vimeoEmbed
+  // Bunny — третьим, тем же разбором, что в карточке материала (§168).
+  // Прежние две строки оставлены как есть: они и раньше работали, а вот адрес
+  // Bunny здесь плеером не становился вовсе — вкладка показывала ссылку
+  // «Смотреть видео» наружу. Считать просмотр у ссылки, которая уводит со
+  // страницы, нечего, поэтому §204 без этой строки не заработал бы там, где
+  // лежат собственные видео школы.
+  const embedUrl   = ytEmbed || vimeoEmbed || getVideoEmbedUrl(videoUrl)
+
+  // Отметка «просмотрено» на вкладке «Видео» (§204): своя строка, если она
+  // уже записана. В предпросмотре не считаем и не спрашиваем.
+  const countsVideoWatch = !preview
+  const videoWatchMarks = useVideoWatchMarks(
+    videoMaterial ? [videoMaterial.id] : [],
+    countsVideoWatch,
+    profile?.id ?? null,
+  )
   // Сравниваем по локальной дате (YYYY-MM-DD), без сдвига в UTC.
   // В предпросмотре — полное правило открытости (`isTopicOpen`, тумблер и
   // дата): ученику закрытую тумблером тему база не отдаёт, а персоналу отдаёт,
@@ -468,14 +486,22 @@ export function TopicPage() {
           Преподаватель ещё не добавил материалы
         </div>
       ) : active === null ? null : active === 'video' ? (
+        embedUrl && videoMaterial ? (
+          // Рамка та же, что была у внешнего блока: чёрная, скруглённая, с
+          // тенью. Нового плеера здесь нет — тот же iframe плюс приёмник
+          // событий и отметка «просмотрено» (§204).
+          <WatchedVideo
+            materialId={videoMaterial.id}
+            embed={embedUrl}
+            title="Видео темы"
+            countWatch={countsVideoWatch}
+            watchMark={videoWatchMarks[videoMaterial.id]}
+            frameClassName="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-md"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          />
+        ) : (
         <div className="rounded-2xl overflow-hidden bg-black shadow-md">
-          {embedUrl ? (
-            <div className="aspect-video">
-              <iframe src={embedUrl} className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen />
-            </div>
-          ) : videoUrl ? (
+          {videoUrl ? (
             <a href={videoUrl} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-4 p-6 hover:bg-gray-900 transition-colors">
               <div className="w-14 h-14 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
@@ -494,6 +520,7 @@ export function TopicPage() {
             </div>
           )}
         </div>
+        )
       ) : active === 'solution' && solutionState.hasSolution && !solutionState.unlocked ? (
         <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
           <Lock size={20} className="mx-auto text-amber-500" />

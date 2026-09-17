@@ -119,7 +119,7 @@ x, м | 0 | 2 | 8 | 18 | 32 | 50 | 72
 Ссылка на демоверсию: https://example.invalid/very/long/link/that/does/not/break/anywhere/at/all/0123456789012345678901234567890123456789`
 export const topic_material_items = [
   { id: IDS.material(1), topic_id: IDS.topic(1), kind: 'text', title: 'Конспект: уравнения равноускоренного движения и разбор графиков', content: LONG_TEXT, position: 1, is_visible: true, section: 'theory', url: null, storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
-  { id: IDS.material(2), topic_id: IDS.topic(1), kind: 'video', title: 'Видеоразбор: как читать графики v(t) и x(t), типовые ошибки на ЕГЭ', content: null, position: 2, is_visible: true, section: 'theory', url: 'https://iframe.mediadelivery.invalid/embed/1/abcd', storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
+  { id: IDS.material(2), topic_id: IDS.topic(1), kind: 'video', title: 'Видеоразбор: как читать графики v(t) и x(t), типовые ошибки на ЕГЭ', content: null, position: 2, is_visible: true, section: 'theory', url: 'https://iframe.mediadelivery.net/embed/726880/00000000-0000-4000-8000-00000000abcd', storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
   { id: IDS.material(3), topic_id: IDS.topic(1), kind: 'file', title: 'Задачи для самостоятельного решения (PDF, 3 страницы)', content: null, position: 3, is_visible: true, section: 'practice', url: null, storage_path: 'course-materials/topic-1/zadachi-dlya-samostoyatelnogo-resheniya-ochen-dlinnoe-imya-fayla.pdf', file_name: 'zadachi-dlya-samostoyatelnogo-resheniya-ochen-dlinnoe-imya-fayla.pdf', mime_type: 'application/pdf', size_bytes: 1240000, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
   { id: IDS.material(4), topic_id: IDS.topic(1), kind: 'link', title: 'Демоверсия ЕГЭ-2027 на сайте ФИПИ', content: null, position: 4, is_visible: true, section: 'practice', url: 'https://fipi.invalid/ege/demoversii-specifikacii-kodifikatory', storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
   { id: IDS.material(5), topic_id: IDS.topic(1), kind: 'file', title: 'Рисунок к задаче 4', content: null, position: 5, is_visible: true, section: 'practice', url: null, storage_path: 'course-materials/topic-1/figure.png', file_name: 'figure.png', mime_type: 'image/png', size_bytes: 82000, lesson_id: null, source_topic_material_id: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
@@ -137,7 +137,7 @@ export const topic_material_items = [
     id: IDS.material(20 + i), topic_id: IDS.topic(n), kind,
     title: kind === 'video' ? 'Видеоразбор темы' : `Материал темы ${n}`,
     content: kind === 'text' ? '<p>Короткий конспект.</p>' : null, position: 10 + i, is_visible: true,
-    section, url: kind === 'video' ? 'https://iframe.mediadelivery.invalid/embed/1/efgh' : null,
+    section, url: kind === 'video' ? 'https://iframe.mediadelivery.net/embed/726880/00000000-0000-4000-8000-00000000ef11' : null,
     storage_path: kind === 'file' ? `course-materials/topic-${n}/list-${i}.pdf` : null,
     file_name: kind === 'file' ? `list-${i}.pdf` : null, mime_type: kind === 'file' ? 'application/pdf' : null,
     size_bytes: kind === 'file' ? 120000 : null, lesson_id: null, source_topic_material_id: null,
@@ -588,6 +588,32 @@ export const topicVariants = MATRIX_TOPICS.map(([n, total]) => ({
   created_by_profile: { full_name: NAMES[4], email: 'vladelets@harness.invalid' }, profiles: { full_name: NAMES[4], email: 'vladelets@harness.invalid' },
 }))
 
+// ── просмотр видео (§204, board/055) ────────────────────────────────────────
+// Дни считаются от РЕАЛЬНОГО «сегодня» по Москве, а не от NOW фикстур: строка
+// в карточке ученика показывает «за неделю», и с прибитой датой это число на
+// снимке было бы нулём в любой прогон позже недели после правки.
+//
+// Две стороны одной таблицы: у ученика (IDS.student) видео темы 1 досмотрено
+// до 840 из 900 — 93 %, отметка «Просмотрено» обязана появиться; у видео темы
+// 3 строки нет вовсе — отметки быть не должно. У ученика карточки
+// (IDS.profile(0)) три дня, два из них внутри недели, самый ранний — 25 дней
+// назад: по нему рисуется подпись «записи с …».
+const moscowDay = (deltaDays) => {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+  const d = new Date(`${today}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + deltaDays)
+  return d.toISOString().slice(0, 10)
+}
+export const video_watch_daily = [
+  { student_id: IDS.student, item_id: IDS.material(2), day: moscowDay(-1), seconds: 520, max_position: 840, duration_seconds: 900, updated_at: ago(24) },
+  { student_id: IDS.student, item_id: IDS.material(2), day: moscowDay(0), seconds: 180, max_position: 840, duration_seconds: 900, updated_at: ago(1) },
+  { student_id: IDS.profile(0), item_id: IDS.material(2), day: moscowDay(-25), seconds: 1500, max_position: 620, duration_seconds: 900, updated_at: ago(24 * 25) },
+  { student_id: IDS.profile(0), item_id: IDS.material(2), day: moscowDay(-3), seconds: 900, max_position: 880, duration_seconds: 900, updated_at: ago(24 * 3) },
+  { student_id: IDS.profile(0), item_id: IDS.material(25), day: moscowDay(0), seconds: 420, max_position: 300, duration_seconds: 1200, updated_at: ago(2) },
+]
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
@@ -607,6 +633,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
       annotation_sets: annotationSets, mock_exam_results: [], lesson_materials: [], school_presence: [],
+      video_watch_daily,
     },
     rpc: {
       record_app_visit: null, school_presence_touch: null,
@@ -649,6 +676,10 @@ export function baseFixtures(persona) {
       course_topic_tasks_progress_for_student: (body) =>
         persona === 'student' && body.p_course_id === IDS.course ? myTasksProgress : [],
       topic_attached_variants: [], variant_topic_groups: [],
+      // §204: единственный вход на запись просмотра. В логе прогона его быть
+      // НЕ должно: внешний плеер харнесс обрывает, событий нет — значит, и
+      // секунд нет. Заглушка стоит именно для того, чтобы это было видно.
+      video_watch_add: null,
     },
     functions: {},
   }

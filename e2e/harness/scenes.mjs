@@ -15,6 +15,9 @@ const openSecondAttempt = `[...document.querySelectorAll('button')].filter(b => 
 const toReviewTasks = `(document.querySelector('[data-testid="ai-check-tasks"]') ?? document.querySelector('[data-testid="ai-check-panel"]'))?.scrollIntoView({ block: 'start' })`
 // §199: заметка разворачивается по фокусу — снимаем развёрнутой.
 const openFirstNote = `(() => { const el = document.querySelector('[data-testid="review-task-row"][data-verdict="wrong"] [data-testid="review-task-note"]'); el?.focus(); el?.scrollIntoView({ block: 'center' }) })()`
+// §204: отметка «Просмотрено» стоит под плеером — до неё надо доскроллить;
+// если её нет (видео не досмотрено), показываем сам плеер.
+const toWatchBadge = `(document.querySelector('[data-testid="video-watched-badge"]') ?? document.querySelector('iframe[title="Видео темы"]'))?.scrollIntoView({ block: 'center' })`
 // §199: блок «По заданиям» в разборе работы у ученика.
 const toStudentTasks = `document.querySelector('[data-testid="student-review-tasks"]')?.scrollIntoView({ block: 'center' })`
 // §202 (board/054): печатный лист прокручивается к МЕЛКОЙ иллюстрации — рядом с
@@ -350,6 +353,23 @@ export const scenes = [
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue', width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'owner', name: 'o06-queue-filters', url: '/homework-queue', width: 1280, height: 800, actions: [{ clickSel: 'text=На доработке' }, { wait: 700 }] },
   { persona: 'owner', name: 'o06-review', url: '/homework-queue', width: 1280, height: 800, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+
+  // ── §204 (board/055): запись просмотра видео ──
+  // Плеер Bunny харнесс не поднимает (внешние адреса обрываются), и это ровно
+  // тот случай, который карточка называет главным: событий нет — значит, в
+  // логе не должно быть ни одного `RPC video_watch_add`. Отметка
+  // «Просмотрено» при этом рисуется по записанной строке `video_watch_daily`,
+  // а не по тому, что вкладка открыта.
+  ...[[390, 844], [1280, 800]].flatMap(([width, height]) => [
+    // Видео темы 1: у ученика записано 840 из 900 — отметка есть.
+    { persona: 'student', name: 's04-topic-video-watched', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Видео")' }, { wait: 1200 }, { eval: toWatchBadge }, { wait: 400 }] },
+    // Видео темы 3: записи нет — отметки быть не должно.
+    { persona: 'student', name: 's04-topic3-video-fresh', url: `/my-course/${S.group}/topic/${S.topic(3)}`, width, height, actions: [{ clickSel: 'button:has-text("Видео")' }, { wait: 1200 }, { eval: toWatchBadge }, { wait: 400 }] },
+    // Тот же ролик карточкой рубрики «Теория» — второе место, где он живёт.
+    { persona: 'student', name: 's04-topic-theory-video', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Теория")' }, { wait: 1200 }, { eval: toWatchBadge }, { wait: 400 }] },
+    // Карточка ученика у преподавателя: минуты за неделю, всего и дата начала.
+    { persona: 'owner', name: 'o07-student-video', url: `/students/${S.otherStudent(0)}`, width, height, actions: [{ wait: 1200 }, { eval: `document.querySelector('[data-testid="student-video-watch"]')?.scrollIntoView({ block: 'center' })` }, { wait: 400 }], full: false },
+  ]),
 
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
