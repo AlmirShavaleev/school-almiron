@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Archive, BookOpen, ClipboardList, Eye, Layers, Loader2 } from 'lucide-react'
+import { Archive, BookOpen, ClipboardList, Layers, Loader2 } from 'lucide-react'
 import { useCollections, useCollectionItemCounts, useArchiveCollection } from '@/hooks/useCollections'
 import { WORK_TYPE_LABELS } from '@/types/collections'
 import type { TaskCollection } from '@/types/collections'
@@ -110,13 +110,46 @@ function CollectionRow({
   const navigate = useNavigate()
   const href = `/collections/${collection.id}`
 
+  /**
+   * Открывает карточку целиком (§200). Клики по вложенной ссылке и по кнопке
+   * «в архив» сюда доходить не должны: ссылка уводит сама, а архив — вообще не
+   * про открытие. Модификаторы отдаём браузеру: Ctrl/Cmd-клик по карточке — это
+   * просьба открыть в новой вкладке, а не перейти в текущей.
+   */
+  function handleCardClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.defaultPrevented) return
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    if ((e.target as HTMLElement).closest('a, button')) return
+    navigate(href)
+  }
+
+  function handleCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault() // пробел иначе прокручивает страницу
+    navigate(href)
+  }
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3 hover:border-gray-300 transition-all">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`Открыть подборку «${collection.title}»`}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3 cursor-pointer hover:border-primary-300 hover:bg-primary-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 transition-all"
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Ссылка, а не обработчик на строке: адрес видно в статусной строке,
-              работает средняя кнопка и «открыть в новой вкладке». */}
-          <Link to={href} className="font-medium text-gray-800 hover:text-primary-700 truncate">
+          {/* Ссылка, а не просто текст: адрес видно в статусной строке, работает
+              средняя кнопка и «открыть в новой вкладке». С клавиатуры цель одна —
+              сама карточка, поэтому ссылка из обхода Tab убрана (`tabIndex={-1}`):
+              два стопа подряд на один и тот же адрес только мешают. */}
+          <Link
+            to={href}
+            tabIndex={-1}
+            className="font-medium text-gray-800 hover:text-primary-700 truncate"
+          >
             {collection.title}
           </Link>
           <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -136,11 +169,9 @@ function CollectionRow({
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
-        <RowBtn
-          icon={<Eye size={15} />}
-          title="Открыть"
-          onClick={() => navigate(href)}
-        />
+        {/* «Глазик» здесь был единственным способом открыть подборку и потому
+            же оказался лишним, как только открывает вся карточка (§200).
+            Архив остаётся: это не «открыть», и промахнуться по нему нельзя. */}
         <RowBtn
           icon={<Archive size={15} />}
           title="В архив"
@@ -152,14 +183,20 @@ function CollectionRow({
   )
 }
 
+/**
+ * Кнопка действия внутри кликабельной карточки. Всплытие гасит сама: иначе
+ * «в архив» заодно открывало бы подборку, а человек, промахнувшийся мимо
+ * архива, получал бы два действия вместо одного.
+ */
 function RowBtn({ icon, title, onClick, disabled }: {
   icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean
 }) {
   return (
     <button
+      type="button"
       title={title}
       aria-label={title}
-      onClick={onClick}
+      onClick={e => { e.stopPropagation(); onClick() }}
       disabled={disabled}
       className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
     >

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
-  FilePlus2, Search, Filter, Edit2, Eye, Trash2, Copy,
+  FilePlus2, Search, Filter, Edit2, Trash2, Copy,
   FileText, Loader2, BookOpen, Users, ArrowLeft, Wand2,
 } from 'lucide-react'
 import { useVariants, type TestVariant } from '@/hooks/useVariants'
@@ -199,8 +199,35 @@ function VariantRow({
   onDuplicate: () => void
   onDelete: () => void
 }) {
+  /**
+   * Строка открывает вариант целиком (§200). «Открыть» здесь — единственное
+   * действие, ради которого в строку и смотрят; правка, копия и удаление
+   * остаются кнопками и всплытие гасят, чтобы клик по ним не открывал заодно
+   * вариант.
+   */
+  function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.defaultPrevented) return
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    if ((e.target as HTMLElement).closest('a, button')) return
+    onOpen()
+  }
+
+  function handleRowKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    onOpen()
+  }
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 hover:border-gray-300 transition-all">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`Открыть вариант «${variant.title}»`}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
+      className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 cursor-pointer hover:border-primary-300 hover:bg-primary-50/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 transition-all"
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-gray-800 truncate">{variant.title}</span>
@@ -229,7 +256,8 @@ function VariantRow({
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
-        <ActionBtn icon={<Eye size={15} />}    title="Открыть"     onClick={onOpen} />
+        {/* «Глазик» убран: открывает вся строка, отдельная кнопка «Открыть»
+            только занимала место рядом с тремя другими (§200). */}
         <ActionBtn icon={<Edit2 size={15} />}  title="Редактировать" onClick={onEdit} />
         <ActionBtn icon={<Copy size={15} />}   title="Дублировать" onClick={onDuplicate} />
         <ActionBtn icon={<Trash2 size={15} />} title="Удалить"     onClick={onDelete} danger />
@@ -238,13 +266,19 @@ function VariantRow({
   )
 }
 
+/**
+ * Кнопка действия внутри кликабельной строки: всплытие гасит сама, иначе
+ * «удалить» или «дублировать» заодно открывали бы вариант.
+ */
 function ActionBtn({ icon, title, onClick, danger }: {
   icon: React.ReactNode; title: string; onClick: () => void; danger?: boolean
 }) {
   return (
     <button
+      type="button"
       title={title}
-      onClick={onClick}
+      aria-label={title}
+      onClick={e => { e.stopPropagation(); onClick() }}
       className={`p-2 rounded-lg transition-colors ${
         danger
           ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'

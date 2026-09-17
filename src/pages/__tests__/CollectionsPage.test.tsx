@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 
 /**
  * §188. Список сохранённых подборок каталога. Проверяем поведение, ради
@@ -8,6 +8,10 @@ import { MemoryRouter } from 'react-router-dom'
  * заданий берутся одним запросом на весь список, строка ведёт в карточку,
  * «В архив» убирает строку и пишет в базу, а пустой список — не пустая
  * таблица.
+ *
+ * §200 добавил к этому цель клика: открывает вся карточка, а не «глазик».
+ * Главное здесь — что архив от клика по карточке НЕ срабатывает и что клик по
+ * архиву не открывает подборку: это самая дорогая ошибка на экране.
  *
  * Мок — маленький PostgREST: фильтры `eq`/`in` он ПРИМЕНЯЕТ, а не проглатывает.
  * Иначе «чужая подборка не видна» доказывалось бы тем, что чужой строки нет в
@@ -98,8 +102,26 @@ vi.mock('@/store/authStore', () => ({
 
 import { CollectionsPage } from '@/pages/CollectionsPage'
 
+/** Где мы сейчас: проверять переход по адресу честнее, чем по моку navigate. */
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}</div>
+}
+
 function renderPage() {
-  return render(<MemoryRouter><CollectionsPage /></MemoryRouter>)
+  return render(
+    <MemoryRouter initialEntries={['/collections']}>
+      <CollectionsPage />
+      <LocationProbe />
+    </MemoryRouter>
+  )
+}
+
+const here = () => screen.getByTestId('location').textContent
+
+/** Карточка подборки как целое — она же цель клика. */
+function card(title: string) {
+  return screen.getByRole('link', { name: `Открыть подборку «${title}»` })
 }
 
 describe('CollectionsPage — «Мои подборки» (§188)', () => {
@@ -133,6 +155,47 @@ describe('CollectionsPage — «Мои подборки» (§188)', () => {
 
     expect(await screen.findByText('Кинематика — контрольная'))
       .toHaveAttribute('href', '/collections/c-1')
+  })
+
+  it('клик по карточке открывает подборку (§200)', async () => {
+    renderPage()
+    await screen.findByText('Кинематика — контрольная')
+
+    fireEvent.click(card('Кинематика — контрольная'))
+
+    expect(here()).toBe('/collections/c-1')
+  })
+
+  it('Enter на карточке открывает подборку (§200)', async () => {
+    renderPage()
+    await screen.findByText('Производная — домашняя')
+
+    fireEvent.keyDown(card('Производная — домашняя'), { key: 'Enter' })
+
+    expect(here()).toBe('/collections/c-2')
+  })
+
+  it('клик по «В архив» архивирует и НЕ открывает подборку (§200)', async () => {
+    renderPage()
+    await screen.findByText('Кинематика — контрольная')
+
+    const [archiveBtn] = screen.getAllByRole('button', { name: 'В архив' })
+    fireEvent.click(archiveBtn)
+
+    await waitFor(() =>
+      expect(screen.queryByText('Кинематика — контрольная')).not.toBeInTheDocument()
+    )
+    expect(here()).toBe('/collections')
+  })
+
+  it('клик по карточке ничего не архивирует (§200)', async () => {
+    renderPage()
+    await screen.findByText('Кинематика — контрольная')
+
+    fireEvent.click(card('Кинематика — контрольная'))
+
+    expect(writes).toEqual([])
+    expect(screen.getByText('Кинематика — контрольная')).toBeInTheDocument()
   })
 
   it('«В архив» убирает строку и пишет is_archived = true', async () => {

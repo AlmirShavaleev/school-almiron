@@ -157,6 +157,11 @@ export const scenes = [
   { persona: 'owner', name: 'o05-collections', url: '/collections', actions: [{ wait: 600 }] },
   { persona: 'owner', name: 'o05-collections-wide', url: '/collections', width: 1280, height: 800, actions: [{ wait: 600 }] },
   { persona: 'owner', name: 'o05-collections-archived', url: '/collections', width: 1280, height: 800, actions: [{ wait: 600 }, { clickSel: 'button[aria-label="В архив"]' }, { wait: 800 }] },
+  // §200 (board/052): открывает вся карточка. Playwright бьёт в ЦЕНТР элемента —
+  // то самое пустое место между названием и архивом, куда владелец жал и не
+  // получал ничего. Конечный адрес в логе (`-> /collections/…`) и есть проверка.
+  { persona: 'owner', name: 'o05-collections-row-click', url: '/collections', width: 1280, height: 800, actions: [{ wait: 600 }, { clickSel: '[role="link"][aria-label^="Открыть подборку"]' }, { wait: 800 }] },
+  { persona: 'owner', name: 'o05-collections-row-click-390', url: '/collections', actions: [{ wait: 600 }, { clickSel: '[role="link"][aria-label^="Открыть подборку"]' }, { wait: 800 }] },
   { persona: 'owner', name: 'o05-collection', url: `/collections/${S.collection}` },
   { persona: 'owner', name: 'o05-collection-export', url: `/collections/${S.collection}`, actions: [{ click: 'PDF' }, { wait: 800 }] },
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue' },
