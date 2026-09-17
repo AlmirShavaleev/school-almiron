@@ -3,6 +3,7 @@ import {
   MAX_FINDINGS,
   MAX_FORMAT_FINDINGS,
   MAX_PRAISE_FINDINGS,
+  MAX_RENDER_FILES,
   UNCHECKED_LOW_CONFIDENCE_SHARE,
   answerNumber,
   answersEqual,
@@ -16,7 +17,9 @@ import {
   isSelfContradictoryText,
   normalizeAnswer,
   parseTasks,
+  planRenderFile,
   renderDensityFor,
+  renderPageCostMs,
   reconcileTasks,
   reconcileTasksDetailed,
   taskNoFromText,
@@ -560,5 +563,200 @@ describe('renderDensityFor — плотность рендера по числу
     expect(renderDensityFor(Number.NaN).dpi).toBe(150)
     expect(renderDensityFor(null).dpi).toBe(150)
     expect(renderDensityFor(undefined).dpi).toBe(150)
+  })
+})
+
+/**
+ * §196. Бюджет рендера — один на работу, а не на каждый файл.
+ *
+ * До §196 `RENDER_BUDGET_MS` отсчитывался внутри `renderPdfPages`, то есть
+ * заново на каждый PDF: работа из трёх файлов стоила до трёх бюджетов (4,5 с)
+ * при жёстком пределе 2 с процессорного времени. За пределом воркер убивают с
+ * кодом 546, и задача навсегда остаётся в `processing` — преподаватель смотрит
+ * на вечный спиннер (§48).
+ *
+ * `render` ниже повторяет цикл `collectPages` + `renderPdfPages` из `index.ts`:
+ * тот живёт в Deno и в vitest не запускается, а решения из него вынесены сюда
+ * (`planRenderFile`, `renderPageCostMs`). Порядок шагов в цикле держится
+ * тестами: сперва потолок страниц, потом «первая страница безусловно», потом
+ * дедлайн.
+ */
+describe('бюджет рендера — один на всю работу (§196)', () => {
+  /** `RENDER_BUDGET_MS` в index.ts. */
+  const BUDGET = 1500
+  /** `MAX_PAGES` в index.ts — потолок страниц на работу. */
+  const MAX_PAGES = 20
+  /** Жёсткий предел edge-функции: за ним код 546 и вечный `processing`. */
+  const CPU_LIMIT = 2000
+
+  interface FileResult {
+    no: number
+    /** Файл вообще открывали? */
+    opened: boolean
+    /** Сколько страниц уехало модели. */
+    taken: number
+    total: number
+  }
+
+  const render = (pagesPerFile: readonly number[], pageCostMs: number, budgetMs = BUDGET) => {
+    let spentMs = 0
+    let pagesSent = 0
+    let opened = 0
+    const files: FileResult[] = pagesPerFile.map((total, index) => {
+      const no = index + 1
+      const limit = MAX_PAGES - pagesSent
+      if (limit <= 0) return { no, opened: false, taken: 0, total }
+      const slice = planRenderFile({
+        budgetMs,
+        budgetLeftMs: budgetMs - spentMs,
+        filesAfter: pagesPerFile.length - no,
+        pageCostMs,
+        opened,
+      })
+      if (!slice.open) return { no, opened: false, taken: 0, total }
+      opened += 1
+      let elapsed = 0
+      let taken = 0
+      while (taken < total) {
+        if (taken >= limit) break
+        // Первая страница файла рендерится всегда, даже если бюджет уже вышел.
+        if (taken > 0 && elapsed > slice.sliceMs) break
+        elapsed += pageCostMs
+        taken += 1
+      }
+      spentMs += elapsed
+      pagesSent += taken
+      return { no, opened: true, taken, total }
+    })
+    return { files, spentMs, pagesSent }
+  }
+
+  /** Строка в `skipped`: файл не открыли или взяли из него не всю пачку. */
+  const skipped = (files: readonly FileResult[]) => files.filter(f => !f.opened || f.taken < f.total)
+
+  it('три файла по 5 страниц: бюджет делится, а не отсчитывается заново', () => {
+    const { files, spentMs, pagesSent } = render([5, 5, 5], 109)
+
+    expect(files.map(f => f.taken)).toEqual([5, 5, 4])
+    expect(pagesSent).toBe(14)
+    // Главное число карточки: до §196 те же три файла стоили бы три бюджета.
+    expect(spentMs).toBeLessThanOrEqual(BUDGET + 109)
+    expect(spentMs).toBeLessThan(CPU_LIMIT)
+    // Недобранное уезжает в приписку `skipped` — и гасит балл (§189).
+    expect(skipped(files).map(f => f.no)).toEqual([3])
+  })
+
+  it('один файл на 20 страниц получает весь бюджет — как до §196', () => {
+    const cost = renderPageCostMs(20)
+    // Резервировать не на кого: однофайловая работа ничего не теряет.
+    expect(planRenderFile({ budgetMs: BUDGET, budgetLeftMs: BUDGET, filesAfter: 0, pageCostMs: cost, opened: 0 }))
+      .toEqual({ open: true, sliceMs: BUDGET })
+
+    const { files, spentMs } = render([20], cost)
+    expect(files[0].taken).toBeGreaterThan(1)
+    expect(files[0].taken).toBeLessThan(20)
+    expect(spentMs).toBeLessThanOrEqual(BUDGET + cost)
+  })
+
+  it('дешёвые страницы: 20-страничный файл упирается в потолок страниц, а не во время', () => {
+    const { files, spentMs } = render([20], 60)
+    expect(files[0].taken).toBe(MAX_PAGES)
+    expect(spentMs).toBeLessThan(BUDGET)
+  })
+
+  it('восемь файлов: часть не открывается вовсе, но названы все', () => {
+    const { files, spentMs } = render([10, 10, 10, 10, 10, 10, 10, 10], 109)
+
+    expect(files.filter(f => !f.opened).length).toBeGreaterThan(0)
+    // Молча пропустить файл нельзя: работа выглядела бы так, будто его не было.
+    expect(skipped(files).length).toBe(8)
+    expect(spentMs).toBeLessThanOrEqual(BUDGET + 109)
+    expect(spentMs).toBeLessThan(CPU_LIMIT)
+    // Непроверенные идут подряд с конца: пока бюджет есть, файлы открываются.
+    const firstUnopened = files.findIndex(f => !f.opened)
+    expect(files.slice(firstUnopened).every(f => !f.opened)).toBe(true)
+  })
+
+  it('шесть одностраничных PDF проходят целиком: план идёт по факту, а не по числу файлов', () => {
+    const { files } = render([1, 1, 1, 1, 1, 1], 220)
+    expect(files.map(f => f.taken)).toEqual([1, 1, 1, 1, 1, 1])
+    expect(skipped(files)).toEqual([])
+  })
+
+  it('второй файл работы не исчезает: резерв переживает перебор первого', () => {
+    // Две части рабочего листа по 11 страниц, цена страницы 150 DPI на проде.
+    // Без поправки на перебор первый файл съедал резерв, и второй не открывался
+    // вовсе — работа выглядела так, будто второй части не существует.
+    const { files } = render([11, 11], 140)
+    expect(files.every(f => f.opened)).toBe(true)
+    expect(files.every(f => f.taken >= 1)).toBe(true)
+  })
+
+  it('три файла остаются тремя даже при самой дорогой странице', () => {
+    const { files, spentMs } = render([11, 11, 11], renderPageCostMs())
+    expect(files.map(f => f.opened)).toEqual([true, true, true])
+    expect(files.every(f => f.taken >= 1)).toBe(true)
+    expect(spentMs).toBeLessThan(CPU_LIMIT)
+  })
+
+  it('дюжина дешёвых файлов упирается в потолок открываемых файлов', () => {
+    // Бюджета хватило бы на все, но каждый открытый PDF — это ещё и запуск
+    // WASM-движка, которого бюджет страниц не считает.
+    const { files } = render(Array.from({ length: 12 }, () => 1), 60)
+    expect(files.filter(f => f.opened).length).toBe(MAX_RENDER_FILES)
+    expect(skipped(files).length).toBe(12 - MAX_RENDER_FILES)
+  })
+
+  it('у каждого открытого файла есть хотя бы одна страница', () => {
+    for (const pages of [[5, 5, 5], [1, 1, 1, 1, 1, 1], [12, 3], [10, 10, 10, 10, 10, 10, 10, 10], [41, 41]]) {
+      for (const cost of [60, 109, 139, 220]) {
+        for (const file of render(pages, cost).files) {
+          if (file.opened) expect(file.taken).toBeGreaterThanOrEqual(1)
+        }
+      }
+    }
+    // Первый файл открывается всегда, даже когда бюджета нет вовсе.
+    expect(planRenderFile({ budgetMs: BUDGET, budgetLeftMs: 0, filesAfter: 5, pageCostMs: 220, opened: 0 }))
+      .toEqual({ open: true, sliceMs: 0 })
+    expect(planRenderFile({ budgetMs: BUDGET, budgetLeftMs: 0, filesAfter: 5, pageCostMs: 220, opened: 1 }).open)
+      .toBe(false)
+  })
+
+  it('перебор не больше одной страницы, сколько бы файлов ни было', () => {
+    for (let count = 1; count <= 12; count += 1) {
+      for (const cost of [60, 109, 139, 172, 220]) {
+        const { spentMs } = render(Array.from({ length: count }, () => 10), cost)
+        expect(spentMs).toBeLessThanOrEqual(BUDGET + cost)
+        expect(spentMs).toBeLessThan(CPU_LIMIT)
+      }
+    }
+  })
+
+  it('резерв на гарантийные страницы растёт с числом оставшихся файлов', () => {
+    const cost = 220
+    const many = planRenderFile({ budgetMs: BUDGET, budgetLeftMs: BUDGET, filesAfter: 3, pageCostMs: cost, opened: 0 })
+    const one = planRenderFile({ budgetMs: BUDGET, budgetLeftMs: BUDGET, filesAfter: 1, pageCostMs: cost, opened: 0 })
+    // Резерв — по странице на каждый файл, который ещё будет открыт, плюс одна
+    // на перебор текущего: цикл выходит за свою долю ровно на одну страницу.
+    expect(many.sliceMs).toBe(BUDGET - 3 * cost)
+    expect(one.sliceMs).toBe(BUDGET - 2 * cost)
+    expect(many.sliceMs).toBeLessThan(one.sliceMs)
+    // Резерв не съедает больше половины остатка: иначе первому файлу нечем
+    // показать работу, а список обложек проверкой не является.
+    expect(many.sliceMs).toBeGreaterThanOrEqual(BUDGET / 2)
+    // Цена страницы не прочиталась — планируем по остатку, как до §196.
+    expect(planRenderFile({ budgetMs: BUDGET, budgetLeftMs: 800, filesAfter: 3, pageCostMs: Number.NaN, opened: 1 }))
+      .toEqual({ open: true, sliceMs: 800 })
+  })
+
+  it('цена страницы падает вместе с плотностью и не занижается при неизвестном числе страниц', () => {
+    expect(renderPageCostMs(5)).toBeGreaterThan(renderPageCostMs(11))
+    expect(renderPageCostMs(11)).toBeGreaterThan(renderPageCostMs(30))
+    // Число страниц до открытия файла неизвестно — берём самую дорогую ступень.
+    expect(renderPageCostMs()).toBe(renderPageCostMs(1))
+    expect(renderPageCostMs()).toBeGreaterThanOrEqual(renderPageCostMs(41))
+    // Пропорция — измеренная §193 цена полного цикла «рендер + JPEG».
+    expect(renderPageCostMs(11) / renderPageCostMs(5)).toBeCloseTo(0.78, 2)
+    expect(renderPageCostMs(30) / renderPageCostMs(5)).toBeCloseTo(0.63, 2)
   })
 })

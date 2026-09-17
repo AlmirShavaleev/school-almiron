@@ -41,7 +41,9 @@ import {
   filterFindings,
   isPartialCheck,
   parseTasks,
+  planRenderFile,
   renderDensityFor,
+  renderPageCostMs,
   withLoweredNote,
   withUncheckedNote,
   type Category,
@@ -91,12 +93,21 @@ const JPEG_QUALITY = 80
  * большем их числе. Худший случай по времени вырос с ~1260 до ~1580 мс, зато
  * работа из 11 страниц укладывается целиком (~1200 мс при 120 DPI).
  *
+ * §196. Это бюджет на ВСЮ РАБОТУ, а не на файл. До §196 он отсчитывался заново
+ * внутри `renderPdfPages`, то есть на каждый PDF: работа из трёх файлов стоила
+ * до трёх бюджетов (4,5 с) при пределе 2 с CPU — гарантированный код 546 и
+ * задача, навсегда зависшая в `processing`. Теперь бюджет делится между файлами
+ * (`planRenderFile`): каждому достаётся остаток минус резерв на гарантийные
+ * первые страницы следующих, а файл, которому не хватило и на одну страницу, не
+ * открывается вовсе и честно называется в разборе. Худший случай перестал
+ * зависеть от числа файлов: бюджет плюс одна страница перебора, ~1720 мс.
+ *
  * ЧТО ПРОВЕРЯТЬ при следующем изменении — три вещи, в этом порядке:
  *  1) самая длинная известная работа (pub_4656538.pdf, 41 страница) не даёт
  *     код 546 и не виснет в `processing`;
- *  2) работа из НЕСКОЛЬКИХ PDF: бюджет отсчитывается заново на каждый файл,
- *     поэтому три файла стоят до 3×бюджета — это, а не одна длинная работа,
- *     упирается в лимит 2 с первым;
+ *  2) работа из НЕСКОЛЬКИХ PDF: каждый открытый файл отдал хотя бы одну
+ *     страницу, непроверенные файлы названы в разборе, общее время рендера не
+ *     выросло по сравнению с однофайловой работой;
  *  3) 11-страничная работа доезжает всеми 11 страницами (приписки
  *     «взяты страницы 1–N из M» в разборе быть не должно).
  */
@@ -465,9 +476,44 @@ async function collectPages(
 
   const budgetLeft = () => MAX_PAGES - pages.length
 
+  // §196. Бюджет рендера один на всю работу, и делится он здесь.
+  //
+  // Фотографии в счёт не идут — они не рендерятся. Цена страницы берётся по
+  // самой дорогой ступени §193: сколько в файле страниц, до его открытия
+  // неизвестно, а занизить резерв опаснее, чем завысить.
+  const mimeOf = (file: AttemptFile) => file.mime_type ?? guessMime(file)
+  const pdfPageCost = renderPageCostMs()
+  const pdfTotal = files.filter(f => PDF_MIME.test(mimeOf(f))).length
+  let pdfSeen = 0
+  let pdfOpened = 0
+  let renderSpent = 0
+
   for (const file of files) {
+    const mime = mimeOf(file)
+    const isPdf = PDF_MIME.test(mime)
+    if (isPdf) pdfSeen += 1
+
     if (budgetLeft() <= 0) {
       skipped.push(`${nameOf(file)} — не поместился в лимит ${MAX_PAGES} страниц`)
+      continue
+    }
+
+    // §196. Доля общего бюджета этому файлу — и решение, открывать ли его
+    // вообще. Файлов может быть больше, чем помещается в бюджет даже по одной
+    // странице на файл; такой файл не скачивается и не открывается, но молчать
+    // о нём нельзя: без строки в разборе работа выглядит так, будто файла не
+    // было, и преподаватель поверит разбору без половины решения.
+    const plan = isPdf
+      ? planRenderFile({
+        budgetMs: RENDER_BUDGET_MS,
+        budgetLeftMs: RENDER_BUDGET_MS - renderSpent,
+        filesAfter: pdfTotal - pdfSeen,
+        pageCostMs: pdfPageCost,
+        opened: pdfOpened,
+      })
+      : { open: true, sliceMs: 0 }
+    if (!plan.open) {
+      skipped.push(`${nameOf(file)} — файл не проверен: не хватило времени рендера`)
       continue
     }
 
@@ -477,9 +523,8 @@ async function collectPages(
       continue
     }
     const raw = new Uint8Array(await blob.arrayBuffer())
-    const mime = file.mime_type ?? guessMime(file)
 
-    if (!PDF_MIME.test(mime)) {
+    if (!isPdf) {
       if (total + raw.length > MAX_INLINE_BYTES) {
         skipped.push(`${nameOf(file)} — слишком большой файл`)
         continue
@@ -489,8 +534,11 @@ async function collectPages(
       continue
     }
 
+    const renderStartedAt = Date.now()
+    pdfOpened += 1
     try {
-      const rendered = await renderPdfPages(raw, budgetLeft())
+      const rendered = await renderPdfPages(raw, budgetLeft(), plan.sliceMs)
+      renderSpent += rendered.spentMs
       if (rendered.total > rendered.images.length) {
         skipped.push(`${nameOf(file)} — взяты страницы 1–${rendered.images.length} из ${rendered.total}`)
       }
@@ -509,6 +557,10 @@ async function collectPages(
         })
       }
     } catch (err) {
+      // §196. Время, съеденное упавшим файлом, всё равно списываем с общего
+      // бюджета: иначе PDF, сломавшийся на середине рендера, вернёт следующему
+      // файлу полный бюджет — и работа снова будет стоить несколько бюджетов.
+      renderSpent += Date.now() - renderStartedAt
       // Один битый PDF не должен отменять проверку остальных страниц.
       skipped.push(`${nameOf(file)} — ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -526,13 +578,21 @@ async function collectPages(
  * менять её по ходу нельзя — страницы одной работы должны быть одного масштаба,
  * иначе преподаватель увидит рядом крупную и мелкую половину одной работы.
  *
+ * §196. `budgetMs` — не собственный бюджет файла, а доля общего бюджета работы,
+ * посчитанная в `collectPages`; сюда же возвращается `spentMs`, чтобы следующий
+ * файл получил остаток. Отсчёт начинается ПЕРЕД циклом страниц, как и до §196:
+ * скачивание файла и запуск WASM-движка процессорного времени страниц не
+ * тратят, и если начать считать раньше, холодный старт съест бюджет у первого
+ * же файла — ровно та потеря страниц, против которой §193.
+ *
  * Импорт динамический: работа из одних фотографий не должна платить за
  * загрузку WASM-движка.
  */
 async function renderPdfPages(
   bytes: Uint8Array,
   limit: number,
-): Promise<{ images: { page: number; bytes: Uint8Array }[]; total: number }> {
+  budgetMs: number,
+): Promise<{ images: { page: number; bytes: Uint8Array }[]; total: number; spentMs: number }> {
   // Импорт и инициализацию разделяем: «пакет не подтянулся» и «wasm не завёлся»
   // чинятся по-разному, и в last_error должно быть видно, что именно случилось.
   //
@@ -575,12 +635,15 @@ async function renderPdfPages(
     if (dpi !== 150) console.log(`render: ${total} стр. → ${dpi} DPI, потолок ширины ${maxWidth}`)
 
     const startedAt = Date.now()
+    const deadline = startedAt + budgetMs
     let index = 0
     for (const page of document.pages()) {
       if (images.length >= limit) break
       // Хотя бы одна страница должна уехать модели, даже если бюджет уже вышел:
-      // разбор по первой странице полезнее, чем «ИИ не смог».
-      if (images.length > 0 && Date.now() - startedAt > RENDER_BUDGET_MS) break
+      // разбор по первой странице полезнее, чем «ИИ не смог». С §196 это ещё и
+      // единственная гарантия, что второй файл работы вообще существует для
+      // модели: общий дедлайн к его очереди может быть уже позади.
+      if (images.length > 0 && Date.now() > deadline) break
       index += 1
       const { originalWidth } = page.getOriginalSize()
       const scale = Math.min(dpi / 72, maxWidth / Math.max(1, originalWidth))
@@ -597,7 +660,7 @@ async function renderPdfPages(
       images.push({ page: index, bytes: new Uint8Array(encoded.data) })
     }
 
-    return { images, total }
+    return { images, total, spentMs: Date.now() - startedAt }
   } finally {
     document?.destroy()
     library.destroy()
