@@ -30,6 +30,17 @@ const pages = {
     <div style="font-family:'Times New Roman';font-size:40px;background:#fff;padding:20px;white-space:nowrap">
       F = G·m₁·m₂ / r² ,  E = mc² ,  ∫₀^∞ e^(−x²) dx = √π / 2 ,  x = (−b ± √(b² − 4ac)) / 2a
     </div>` },
+  // §202: мелкий скан — в каталоге такие есть (в печати они раньше оставались
+  // размером с ноготь рядом с чертежом на пол-страницы). Ширина 150 px выбрана
+  // как типичный «мелкий исходник» (<200 px, см. §17).
+  'figure-small.png': { w: 150, h: 110, html: `
+    <svg width="150" height="110" xmlns="http://www.w3.org/2000/svg" style="background:#fff">
+      <line x1="18" y1="92" x2="142" y2="92" stroke="#222" stroke-width="1"/>
+      <line x1="18" y1="92" x2="18" y2="10" stroke="#222" stroke-width="1"/>
+      <polyline points="18,92 48,60 78,70 108,28 142,16" fill="none" stroke="#c0392b" stroke-width="2"/>
+      <text x="120" y="106" font-size="9" font-family="Arial">t, с</text>
+      <text x="4" y="18" font-size="9" font-family="Arial">x</text>
+    </svg>` },
   'figure.png': { w: 600, h: 400, html: `
     <svg width="600" height="400" xmlns="http://www.w3.org/2000/svg" style="background:#fff">
       <line x1="60" y1="340" x2="560" y2="340" stroke="#222" stroke-width="3"/>

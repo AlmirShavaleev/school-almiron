@@ -17,6 +17,11 @@ const toReviewTasks = `(document.querySelector('[data-testid="ai-check-tasks"]')
 const openFirstNote = `(() => { const el = document.querySelector('[data-testid="review-task-row"][data-verdict="wrong"] [data-testid="review-task-note"]'); el?.focus(); el?.scrollIntoView({ block: 'center' }) })()`
 // §199: блок «По заданиям» в разборе работы у ученика.
 const toStudentTasks = `document.querySelector('[data-testid="student-review-tasks"]')?.scrollIntoView({ block: 'center' })`
+// §202 (board/054): печатный лист прокручивается к МЕЛКОЙ иллюстрации — рядом с
+// ней на листе стоит задача с крупным чертежом, на этой паре и видно полосу
+// ширин. Прокрутка по элементу, а не по пикселю: высота листа зависит как раз
+// от правила, которое проверяем.
+const toSmallFigure = `document.querySelector('.print-document img[alt*="мелкий"]')?.scrollIntoView({ block: 'center' })`
 
 export const scenes = [
   // ── guest ──
@@ -128,6 +133,13 @@ export const scenes = [
   { persona: 'owner', name: 'o04-catalog-section', url: `/catalog/${S.section(1)}?subject=physics&exam=ege` },
   { persona: 'owner', name: 'o04-catalog-topic', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege` },
   { persona: 'owner', name: 'o04-catalog-task', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege` },
+  // §202 (board/054): экран каталога на 1280 и карточка математической задачи —
+  // контроль, что правка ПЕЧАТИ не поехала на экран. У математики свой класс
+  // .scale-figures-math-exam (35 % карточки), он тут и виден.
+  { persona: 'owner', name: 'o04-catalog-topic', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege`, width: 1280, height: 900 },
+  { persona: 'owner', name: 'o04-catalog-task', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege`, width: 1280, height: 900 },
+  { persona: 'owner', name: 'o04-catalog-task-math', url: `/catalog/task/${S.task(41)}?subject=math&exam=ege` },
+  { persona: 'owner', name: 'o04-catalog-task-math', url: `/catalog/task/${S.task(41)}?subject=math&exam=ege`, width: 1280, height: 900 },
   { persona: 'owner', name: 'o04-catalog-task-solution', url: `/catalog/task/${S.task(1)}?subject=physics&exam=ege`, actions: [{ click: 'Решение' }, { wait: 500 }] },
   // §195 (board/047): заливка картинок каталога. Пара сцен на каждую ширину —
   // пустая папка и та же папка после заливки трёх файлов. Второй снимок
@@ -185,6 +197,16 @@ export const scenes = [
   // §201: та же задача части 2 в каталоге — подпись рядом с кнопками вместо
   // отсутствующей кнопки «Ответ».
   { persona: 'owner', name: 'o04-catalog-task-part2', url: `/catalog/task/${S.task(15)}?subject=math&exam=ege`, width: 1280, height: 900 },
+  // §202 (board/054): лист печатной подборки, на котором рядом стоят задача с
+  // крупным чертежом (600 px) и задача с мелким сканом (150 px) — именно на
+  // этой паре видно, приведены ли иллюстрации к одной полосе ширин.
+  { persona: 'owner', name: 'o05-print-figures', url: `/collections/${S.collection}`, width: 1280, height: 900, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
+  { persona: 'owner', name: 'o05-print-figures', url: `/collections/${S.collection}`, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
+  // Та же печатная страница, но подборка МАТЕМАТИКИ: у неё работает базовое
+  // правило ширины (print-figures-boost — только физика ЕГЭ), и именно на ней
+  // видно, что было «крупный чертёж рядом с ноготком».
+  { persona: 'owner', name: 'o05-print-figures-math', url: `/collections/${S.collection2}`, width: 1280, height: 900, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
+  { persona: 'owner', name: 'o05-print-figures-math', url: `/collections/${S.collection2}`, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue' },
   { persona: 'owner', name: 'o06-queue-filters', url: '/homework-queue', actions: [{ clickSel: 'text=На доработке' }, { wait: 500 }] },
   { persona: 'owner', name: 'o06-review', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }] },

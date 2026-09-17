@@ -304,6 +304,10 @@ const STATEMENTS = [
   `<p>Материальная точка движется по закону x(t) = 3 + 2t − t². Найдите проекцию скорости через 4 с после начала движения.</p><p><img src="formula-wide.png" alt="формула"></p>`,
   `<p>Автомобиль массой 1500 кг разгоняется с места равноускоренно и за 10 с проходит 100 м. Определите силу тяги, если коэффициент сопротивления 0,05. Ускорение свободного падения принять равным 10 м/с².</p><table border="1"><tr><th>№</th><th>m, кг</th><th>t, с</th><th>S, м</th><th>μ</th><th>g, м/с²</th><th>F, Н</th></tr><tr><td>1</td><td>1500</td><td>10</td><td>100</td><td>0,05</td><td>10</td><td>?</td></tr></table>`,
   `<p>На рисунке представлен график зависимости проекции скорости от времени.</p><img src="figure.png" alt="график"><p>Установите соответствие между интервалами и характером движения.</p><table><tr><th>ИНТЕРВАЛЫ</th><th>ХАРАКТЕР ДВИЖЕНИЯ</th></tr><tr><td>А) 0–2 с</td><td>1) равноускоренное с положительным ускорением</td></tr><tr><td>Б) 2–4 с</td><td>2) равнозамедленное</td></tr><tr><td></td><td>3) равномерное</td></tr><tr><td></td><td>4) покой</td></tr></table>`,
+  // §202: задача с МЕЛКИМ сканом (150 px) — в каталоге такие есть, и в печати
+  // они стояли рядом с чертежом на пол-страницы. Без неё разброс размеров на
+  // снимке не виден: все остальные заглушки крупные (600–900 px).
+  `<p>На рисунке приведён график зависимости координаты тела от времени при прямолинейном движении по оси Ox.</p><img src="figure-small.png" alt="мелкий график"><p>Чему равна проекция скорости тела на ось Ox? Ответ дайте в м/с.</p>`,
 ]
 export const catalog_tasks = Array.from({ length: 14 }, (_, k) => ({
   id: IDS.task(k + 1), section_id: IDS.section(1 + (k % 2 === 0 ? 0 : 0)), subject: 'Физика', exam_type: 'ЕГЭ', external_id: 124600 + k, position: k + 1, is_published: true,
@@ -336,10 +340,26 @@ export const part2_catalog_tasks = [
     difficulty: 'high', exam_part: 2, max_points: 3, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
   },
 ]
-export const catalog_task_assets = catalog_tasks.flatMap((t, k) => [
+// §202 (board/054): задачи по математике. Нужны именно они: класс
+// `print-figures-boost` VariantDocument вешает только на физику ЕГЭ, поэтому
+// печатную подборку по БАЗОВОМУ правилу ширины иллюстраций видно лишь на
+// другом предмете. Чередуются крупный чертёж (600 px) и мелкий скан (150 px) —
+// разброс, на который жаловался владелец.
+export const catalog_tasks_math = Array.from({ length: 4 }, (_, k) => ({
+  id: IDS.task(40 + k), section_id: IDS.section(21), subject: 'Математика', exam_type: 'ЕГЭ', external_id: 331200 + k, position: k + 1, is_published: true,
+  statement_html: k % 2 === 0
+    ? `<p>На рисунке изображён график функции y = f(x) и касательная к нему в точке x₀.</p><img src="figure.png" alt="график функции"><p>Найдите значение производной функции f(x) в точке x₀.</p>`
+    : `<p>На клетчатой бумаге с клеткой размером 1×1 изображён треугольник ABC.</p><img src="figure-small.png" alt="мелкий чертёж"><p>Найдите длину его средней линии, параллельной стороне AC.</p>`,
+  has_answer: true, has_solution: false, answer_html: `<p>${k + 2}</p>`, solution_html: null, solution_plan_html: null, grade_criteria_html: null,
+  difficulty: 'base', exam_part: 1, max_points: 1, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+}))
+export const catalog_task_assets = [...catalog_tasks, ...catalog_tasks_math].flatMap((t, k) => [
   { id: U('9', 500 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/table.png', alt: 'таблица', position: 1, size_bytes: 12000, source_url: null, tex_session_id: null },
   { id: U('9', 501 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/formula-wide.png', alt: 'формула', position: 2, size_bytes: 12000, source_url: null, tex_session_id: null },
   { id: U('9', 502 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/figure.png', alt: 'график', position: 3, size_bytes: 12000, source_url: null, tex_session_id: null },
+  // §202: мелкий скан — отдельной строкой, иначе resolveTaskHtml не найдёт актив
+  // для src="figure-small.png" и оставит картинку без класса иллюстрации.
+  { id: U('9', 900 + k), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/figure-small.png', alt: 'мелкий график', position: 4, size_bytes: 3000, source_url: null, tex_session_id: null },
 ])
 export const catalog_topics = [
   { id: IDS.ctopic(1), title: 'Кинематика', parent_id: null, position: 1, subject: 'Физика', exam_type: 'ЕГЭ', external_id: 1, is_published: true, slug: 'kinematika', created_at: ago(9000), updated_at: ago(900) },
@@ -363,7 +383,7 @@ catalog_tasks.push(...part2_catalog_tasks)
 const realAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString()
 export const task_collections = [
   { id: IDS.collection, title: 'Подборка: кинематика, 30 заданий для отработки перед контрольной 18 сентября', description: 'Для группы вторник/пятница', subject: 'Физика', work_type: 'custom', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(30), updated_at: realAgo(3) },
-  { id: IDS.collection2, title: 'Производная: 10 заданий на касательную', description: null, subject: 'Математика', work_type: 'homework', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(60), updated_at: realAgo(20) },
+  { id: IDS.collection2, title: 'Производная и планиметрия: 8 заданий с чертежами', description: null, subject: 'Математика', work_type: 'homework', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(60), updated_at: realAgo(20) },
   { id: IDS.collection3, title: 'Контрольная по динамике', description: null, subject: 'Физика', work_type: 'control', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 20), updated_at: ago(24 * 14) },
   { id: IDS.collection4, title: 'Убрана в архив: пробник сентября', description: null, subject: 'Физика', work_type: 'ege_variant', is_archived: true, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 40), updated_at: ago(24 * 30) },
   { id: IDS.collection5, title: 'Чужая подборка коллеги', description: null, subject: 'Математика', work_type: 'worksheet', is_archived: false, pdf_config: {}, created_by: IDS.profile(1), created_at: ago(24), updated_at: ago(1) },
@@ -374,7 +394,9 @@ export const task_collections = [
 const collectionItems = (collectionId, n, from) => Array.from({ length: n }, (_, k) => ({ id: U('c', from + k), collection_id: collectionId, catalog_task_id: IDS.task(1 + (k % 14)), position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks[k % 14] }))
 export const task_collection_items = [
   ...collectionItems(IDS.collection, 30, 700),
-  ...collectionItems(IDS.collection2, 10, 730),
+  // §202: математическая подборка собрана из математических задач — печать
+  // такой подборки идёт по базовому правилу ширины иллюстраций.
+  ...Array.from({ length: 8 }, (_, k) => ({ id: U('c', 730 + k), collection_id: IDS.collection2, catalog_task_id: catalog_tasks_math[k % 4].id, position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks_math[k % 4] })),
   ...collectionItems(IDS.collection3, 4, 745),
   ...collectionItems(IDS.collection4, 26, 750),
   ...collectionItems(IDS.collection5, 8, 780),
@@ -578,7 +600,7 @@ export function baseFixtures(persona) {
         // кнопки «Ответ» нет не по ошибке: рядом стоит подпись про критерии.
         ...part2_catalog_tasks.map((t, k) => ({ id: U('c', 1630 + k), variant_id: IDS.variant(1), task_id: t.id, position: 27 + k, points: t.max_points, grading_type: 'manual', section_id: IDS.section(25), topic_id: null, created_at: ago(100) })),
       ],
-      catalog_sections, catalog_tasks, catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
+      catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math], catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,

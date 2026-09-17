@@ -264,6 +264,8 @@ function listBucket(fixtures, bucket, prefix) {
 function pickAsset(rest, assetsDir) {
   const lower = rest.toLowerCase()
   if (lower.endsWith('.pdf')) return path.join(assetsDir, 'doc.pdf')
+  // §202: «-small» раньше «figure» — иначе мелкий скан отдал бы крупный график
+  if (lower.includes('small')) return path.join(assetsDir, 'figure-small.png')
   if (lower.includes('table')) return path.join(assetsDir, 'table.png')
   if (lower.includes('wide') || lower.includes('formula')) return path.join(assetsDir, 'formula.png')
   if (lower.includes('photo') || lower.includes('homework') || lower.includes('submission')) return path.join(assetsDir, 'photo.png')
