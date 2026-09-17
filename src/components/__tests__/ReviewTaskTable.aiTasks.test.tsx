@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
+import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import {
   aiTasksOf,
   findingsOfTask,
@@ -81,7 +81,7 @@ const job = (over: Partial<AiJobRow> = {}): AiJobRow => ({
 })
 
 const panel = (over: Partial<AiJobRow> = {}, findings: AiFindingRow[] = FINDINGS) => render(
-  <AiCheckPanel
+  <ReviewTaskTable
     job={job(over)}
     findings={findings}
     running={false}
@@ -172,7 +172,7 @@ describe('taskNoOfFinding — столбец задания у находки (�
   })
 })
 
-describe('AiCheckPanel — блок «По заданиям»', () => {
+describe('ReviewTaskTable — слепок ИИ в блоке «По заданиям»', () => {
   it('строки идут в порядке ответа модели', () => {
     panel()
     const rows = screen.getAllByTestId('ai-task-row')
@@ -204,69 +204,38 @@ describe('AiCheckPanel — блок «По заданиям»', () => {
     expect(wrong).toHaveTextContent('8 м/с')
   })
 
-  it('клик по неверной строке подсвечивает её находку, второй клик снимает', () => {
+  it('слепок править нельзя: ни списков вердикта, ни удаления строк', () => {
+    // §180: `topic_homework_ai_jobs.tasks` — измерение, а не черновик. Пока
+    // своей таблицы нет, блок только читается.
+    panel()
+    expect(screen.queryAllByTestId('review-task-verdict')).toHaveLength(0)
+    expect(screen.queryAllByTestId('review-task-remove')).toHaveLength(0)
+  })
+
+  it('§199. Списка находок в панели больше нет — он дублировал «Комментарии»', () => {
+    panel()
+    expect(screen.queryAllByTestId('ai-check-finding')).toHaveLength(0)
+    // Перенос рамок при этом остался: тексты читаются в правой колонке.
+    expect(screen.getByTestId('ai-check-apply-frames')).toBeInTheDocument()
+  })
+
+  it('§199. Заметка свёрнута в строку, полная — по клику', () => {
     panel()
     const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
-    expect(screen.getAllByTestId('ai-check-finding').some(f => f.dataset.active === 'true')).toBe(false)
-
-    fireEvent.click(within(wrong).getByRole('button'))
-    const active = screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')
-    expect(active).toHaveLength(1)
-    expect(active[0]).toHaveTextContent('знак ускорения')
-
-    fireEvent.click(within(wrong).getByRole('button'))
-    expect(screen.getAllByTestId('ai-check-finding').some(f => f.dataset.active === 'true')).toBe(false)
+    const note = within(wrong).getByTestId('review-task-note-text')
+    expect(note.dataset.open).toBeUndefined()
+    expect(note.className).toContain('truncate')
+    fireEvent.click(note)
+    expect(note.dataset.open).toBe('true')
+    expect(note.className).not.toContain('truncate')
   })
 
-  it('частичное задание тоже подсвечивает свою находку', () => {
+  it('§199. Резюме ИИ свёрнуто по умолчанию, раскрывается по заголовку', () => {
     panel()
-    const partial = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'partial')!
-    fireEvent.click(within(partial).getByRole('button'))
-    const active = screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')
-    expect(active).toHaveLength(1)
-    expect(active[0]).toHaveTextContent('хода решения нет')
-  })
-
-  it('у верной и несверенной строки нажимать не на что', () => {
-    panel()
-    for (const verdict of ['correct', 'unchecked']) {
-      const row = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === verdict)!
-      expect(within(row).queryByRole('button')).toBeNull()
-    }
-  })
-
-  it('строка без находки не кликается — нажатие, которое ничего не делает, читается как поломка', () => {
-    panel({}, [finding({ id: 'f9', category: 'format', text: 'Нет единиц измерения.' })])
-    const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
-    expect(within(wrong).queryByRole('button')).toBeNull()
-  })
-
-  it('§192. Находка со столбцом задания подсвечивается, хотя номера в тексте нет', () => {
-    panel({}, [finding({ id: 'c1', task: '3', text: 'Знак ускорения при торможении отрицательный.' })])
-    const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
-    fireEvent.click(within(wrong).getByRole('button'))
-    const active = screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')
-    expect(active).toHaveLength(1)
-    expect(active[0]).toHaveTextContent('Знак ускорения при торможении')
-  })
-
-  it('§192. Находка без столбца (проверка старее) связывается по тексту, как раньше', () => {
-    const legacy = finding({ id: 'l1' })
-    delete legacy.task
-    panel({}, [legacy])
-    const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
-    fireEvent.click(within(wrong).getByRole('button'))
-    expect(screen.getAllByTestId('ai-check-finding').filter(f => f.dataset.active === 'true')).toHaveLength(1)
-  })
-
-  it('§192. Ни столбца, ни номера в тексте — строка не кликается, панель цела', () => {
-    panel({}, [finding({ id: 'n1', task: null, text: 'Нет единиц измерения.' })])
-    for (const row of screen.getAllByTestId('ai-task-row')) {
-      expect(within(row).queryByRole('button')).toBeNull()
-    }
-    expect(screen.getByTestId('ai-check-panel')).toBeInTheDocument()
-    expect(screen.getAllByTestId('ai-check-finding')).toHaveLength(1)
-    expect(screen.getAllByTestId('ai-check-finding')[0].dataset.active).toBeUndefined()
+    expect(screen.queryByTestId('ai-check-summary')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-check-summary-counts')).toHaveTextContent('верно 1')
+    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
+    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
   })
 
   it('при низкой уверенности балл в сводке молчит, как и в шапке', () => {
@@ -276,10 +245,11 @@ describe('AiCheckPanel — блок «По заданиям»', () => {
   })
 })
 
-describe('AiCheckPanel — проверка старее v17', () => {
+describe('ReviewTaskTable — проверка старее v17', () => {
   it('без таблицы блока нет, а панель работает как раньше', () => {
     panel({ tasks: null })
     expect(screen.queryByTestId('ai-check-tasks')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
     expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
     expect(screen.getByTestId('ai-check-apply-frames')).toBeInTheDocument()
   })
@@ -288,14 +258,14 @@ describe('AiCheckPanel — проверка старее v17', () => {
     const legacy = job()
     delete legacy.tasks
     render(
-      <AiCheckPanel job={legacy} findings={FINDINGS} running={false} error={null} onRun={() => {}} onApplyFrames={async () => 0} />,
+      <ReviewTaskTable job={legacy} findings={FINDINGS} running={false} error={null} onRun={() => {}} onApplyFrames={async () => 0} />,
     )
     expect(screen.queryByTestId('ai-check-tasks')).not.toBeInTheDocument()
     expect(screen.getByTestId('ai-check-panel')).toBeInTheDocument()
   })
 })
 
-describe('AiCheckPanel — отброшенные находки', () => {
+describe('ReviewTaskTable — отброшенные находки', () => {
   it('больше нуля — говорим об этом серой строкой', () => {
     panel({ dropped_findings: 3 })
     expect(screen.getByTestId('ai-check-dropped')).toHaveTextContent('отбросил 3 находки')

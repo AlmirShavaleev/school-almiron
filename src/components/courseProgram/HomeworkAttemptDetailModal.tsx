@@ -5,6 +5,8 @@ import { getSignedFileUrl } from '@/lib/storage'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { viewersOfAttempt } from '@/lib/reviewPresence'
 import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
+import { ReviewTaskList } from './ReviewTaskList'
+import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -176,6 +178,14 @@ export function HomeworkAttemptDetailModal({
   // Разбор с рамками открывается и отсюда, и из общей очереди — присутствие
   // должно быть общим, иначе двое «не увидят» друг друга просто потому, что
   // пришли разными дверями.
+  /**
+   * §199. Та же таблица проверки, что видит ученик. Здесь она нужна затем же,
+   * зачем и вердикт с комментарием: окно показывает ИТОГ проверки, а правят
+   * его в очереди (`/homework-queue`) — см. §14/§16.
+   */
+  const attemptIds = useMemo(() => attempts.map(a => a.id), [attempts])
+  const reviewTasks = useReviewTasksOfAttempts(attemptIds)
+
   const courseIds = useMemo(() => [courseId], [courseId])
   const { viewers } = useReviewPresence({ courseIds, attemptId: annotating?.attempt.id ?? null })
   const viewersOf = (attemptId: string) => viewersOfAttempt(viewers, attemptId)
@@ -345,6 +355,12 @@ export function HomeworkAttemptDetailModal({
                           Оценка: {review.score}/{scoreMax}
                         </p>
                       )}
+
+                      {/* §199. Разбор по заданиям. Строк нет — блока нет. */}
+                      <ReviewTaskList
+                        rows={reviewTasks.filter(t => t.attempt_id === attempt.id)}
+                        className="mt-3"
+                      />
                     </div>
                   )
                 })}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Camera, ChevronLeft, ChevronRight, FileText, Images, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
 } from 'lucide-react'
@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
+import { ReviewTaskList } from './ReviewTaskList'
+import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { plural } from '@/lib/plural'
 import {
   ATTEMPT_STATUS_LABEL,
@@ -127,6 +129,12 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const [viewingMarks, setViewingMarks] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const attemptIdsKey = attempts.map(a => a.id).sort().join(',')
+  /**
+   * §199. Таблица проверки по заданиям. Гейт «только после вердикта» держит
+   * политика: до вердикта база не отдаёт ни строки, и блока нет сам собой.
+   */
+  const reviewTaskIds = useMemo(() => (attemptIdsKey ? attemptIdsKey.split(',') : []), [attemptIdsKey])
+  const reviewTasks = useReviewTasksOfAttempts(reviewTaskIds)
 
   useEffect(() => {
     const ids = attemptIdsKey ? attemptIdsKey.split(',') : []
@@ -793,6 +801,18 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                           </div>
                         </div>
                       )}
+
+                      {/*
+                        §199. Разбор по заданиям — та самая таблица, которую
+                        преподаватель правил при проверке. Стоит под его
+                        комментарием: сначала общее, потом по заданиям.
+                        Строк нет (старая работа, работа без проверки) — блока
+                        нет вовсе, экран как раньше.
+                      */}
+                      <ReviewTaskList
+                        rows={reviewTasks.filter(t => t.attempt_id === a.id)}
+                        className="mt-2.5"
+                      />
 
                       {/* Кнопка пометок */}
                       {annotatedAttempts.has(a.id) && (

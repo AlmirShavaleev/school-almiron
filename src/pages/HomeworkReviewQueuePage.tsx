@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
-import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
+import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import type { ImportedRegion } from '@/components/SubmissionReviewer'
 import { CONFIDENCE_LABEL, findingsToRegions } from '@/lib/aiHomeworkCheck'
+import { reviewTasksScore } from '@/lib/homeworkReviewTasks'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
+import { useHomeworkReviewTasks } from '@/hooks/useHomeworkReviewTasks'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
 import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
@@ -522,6 +524,13 @@ export function HomeworkReviewQueuePage() {
   const openAttempt = reviewing?.row.attempt ?? null
   const openAttemptId = openAttempt?.status === 'submitted' ? openAttempt.id : null
   const ai = useHomeworkAiCheck(openAttemptId)
+  /**
+   * §199. Таблица проверки — своя сущность, а не слепок ИИ: её правит
+   * преподаватель, и именно она становится результатом. Поднимается для той же
+   * работы, что и черновик ИИ, — у проверенной вердикт уже стоит.
+   */
+  const reviewTasks = useHomeworkReviewTasks(openAttemptId)
+  const tableScore = reviewTasksScore(reviewTasks.rows, reviewing?.row.gradeScale ?? null).score
   // Перенос рамок делает сам аннотатор: он владеет страницами и умеет их
   // сохранять. Отсюда ref вместо проброса данных вниз.
   const importRegionsRef = useRef<((regions: ImportedRegion[]) => Promise<number>) | null>(null)
@@ -905,21 +914,27 @@ export function HomeworkReviewQueuePage() {
                     attempt={reviewing.row.attempt}
                   />
                 )}
-                {verdictKind === 'form' && (
-                  <AiCheckPanel
-                    job={ai.job}
-                    findings={ai.findings}
-                    running={ai.running}
-                    error={ai.error}
-                    onRun={ai.runCheck}
-                    onApplyFrames={applyAiFrames}
-                    // Новый объект на каждое нажатие: вставить один и тот же
-                    // текст второй раз тоже должно получаться.
-                    onUseText={text => setFillRequest({ comment: text })}
-                  />
-                )}
+                <ReviewTaskTable
+                  job={ai.job}
+                  findings={ai.findings}
+                  running={ai.running}
+                  error={ai.error}
+                  onRun={ai.runCheck}
+                  onApplyFrames={applyAiFrames}
+                  // Новый объект на каждое нажатие: вставить один и тот же
+                  // текст второй раз тоже должно получаться.
+                  onUseText={text => setFillRequest({ comment: text })}
+                  tasks={reviewTasks.rows}
+                  gradeScale={reviewing.row.gradeScale}
+                  saveState={reviewTasks.saveState}
+                  onAddTask={reviewTasks.addRow}
+                  onSeedTasks={reviewTasks.seedNow}
+                  onPatchTask={reviewTasks.patchRow}
+                  onRemoveTask={reviewTasks.removeRow}
+                />
                 </>
               }
+              tableScore={tableScore}
               fillRequest={fillRequest}
               onReview={async (attemptId, decision, comment, score) => {
                 // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть

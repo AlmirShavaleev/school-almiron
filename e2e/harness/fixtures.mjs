@@ -221,6 +221,55 @@ export const aiFindings = [
   { id: U('c', 1305), job_id: U('c', 1302), file_id: aiFileOf(IDS.attempt(13)), page: 1, position: 0, rect_x: 0.12, rect_y: 0.3, rect_w: 0.55, rect_h: 0.09, category: 'calc', text: 'Проверьте вычисления в задаче 17.' },
 ]
 
+// ── таблица проверки по заданиям (§199, board/051) ───────────────────────────
+// Своя сущность, а не слепок ИИ: её правит преподаватель, и именно её видит
+// ученик после вердикта. Две таблицы в фикстурах: у работы в очереди
+// (attempt 15 — та же, у которой есть проверка v17) и у собственной работы
+// ученика (attempt 1, вердикт по ней уже есть — иначе RLS строк не отдала бы,
+// и снимать в ученическом разборе было бы нечего).
+//
+// Строки нарочно РАСХОДЯТСЯ со слепком ИИ по заданию 3: преподаватель
+// исправил прочитанный ответ и понизил вердикт. На снимке видно, что таблица
+// живёт сама, а не повторяет модель.
+const reviewTaskRow = (n, attemptId, over) => ({
+  id: U('d', 100 + n), attempt_id: attemptId, position: n * 10,
+  verdict: 'unchecked', student_answer: null, expected_answer: null, note: null,
+  updated_by: IDS.owner, updated_at: ago(1), ...over,
+})
+export const topic_homework_review_tasks = [
+  reviewTaskRow(1, IDS.attempt(15), { no: '1', verdict: 'correct', student_answer: '12 м/с', expected_answer: '12 м/с' }),
+  reviewTaskRow(2, IDS.attempt(15), { no: '2', verdict: 'correct', student_answer: '0,4', expected_answer: '0,4' }),
+  reviewTaskRow(3, IDS.attempt(15), { no: '3', verdict: 'wrong', student_answer: '−2 м/с²', expected_answer: '2 м/с²', note: 'При торможении знак ускорения противоположен скорости — в выражении должен стоять минус, иначе модуль сходится, а направление нет.' }),
+  reviewTaskRow(4, IDS.attempt(15), { no: '4', verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Ответ верный, хода решения нет' }),
+  reviewTaskRow(5, IDS.attempt(15), { no: '5', verdict: 'correct', student_answer: '25 м', expected_answer: '25 м' }),
+  reviewTaskRow(6, IDS.attempt(15), { no: '6', verdict: 'unchecked', expected_answer: '18 c', note: 'Страница снята не полностью, ответ не виден' }),
+  // ── работа ученика, уже проверенная ──
+  reviewTaskRow(11, IDS.attempt(1), { no: '1', verdict: 'correct', student_answer: '4 м/с²', expected_answer: '4 м/с²' }),
+  reviewTaskRow(12, IDS.attempt(1), { no: '3', verdict: 'wrong', student_answer: '−5 м/с²', expected_answer: '5 м/с²', note: 'Знак ускорения при торможении: a направлено против скорости, значит в проекции на ось движения оно отрицательное.' }),
+  reviewTaskRow(13, IDS.attempt(1), { no: '7', verdict: 'partial', student_answer: '18 м', expected_answer: '18 м', note: 'Ответ верный, но график v(t) не построен' }),
+  reviewTaskRow(14, IDS.attempt(1), { no: '9', verdict: 'correct', student_answer: '2,5 c', expected_answer: '2,5 c' }),
+]
+
+// ── пометки на работе (§199, для сцены с переключателем похвал) ─────────────
+// Разметка ровно той работы очереди, у которой есть проверка v17: две ошибки
+// и две похвалы. Без похвал в списке переключатель не появляется вовсе — его
+// нечего прятать, — и снять сцену было бы нечем. Статус `draft`: опубликованные
+// пометки ученик видит кнопкой «Пометки учителя», а тут проверка идёт.
+export const annotationSets = [{
+  id: U('d', 200), attempt_id: IDS.attempt(15), submission_id: null,
+  file_path: topic_homework_attempt_files.find(f => f.attempt_id === IDS.attempt(15)).storage_path,
+  page: 1, status: 'draft', author_id: IDS.owner, created_at: ago(1), updated_at: ago(1),
+  data: {
+    version: 2,
+    objects: [
+      { id: 'a1', type: 'region', category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.', rect: { x: 0.12, y: 0.45, w: 0.6, h: 0.08 } },
+      { id: 'a2', type: 'region', category: 'praise', text: 'Отлично!', rect: { x: 0.1, y: 0.2, w: 0.3, h: 0.05 } },
+      { id: 'a3', type: 'region', category: 'logic', text: 'Задание 4: ответ верный, но выкладок нет — условие просит развёрнутое решение.', rect: { x: 0.1, y: 0.62, w: 0.62, h: 0.1 } },
+      { id: 'a4', type: 'region', category: 'praise', text: 'Верное решение', rect: { x: 0.14, y: 0.3, w: 0.32, h: 0.05 } },
+    ],
+  },
+}]
+
 // ── tests / variants ─────────────────────────────────────────────────────────
 export const topic_tests = [1, 2].map(i => ({ id: IDS.test(i), title: i === 1 ? 'Тест по кинематике: 12 заданий с кратким ответом и таблицей соответствия' : 'Тест: динамика', description: null, is_published: true, created_by: IDS.owner, created_at: ago(300), updated_at: ago(300), topic_test_items: [{ count: 12 }], topic_test_assignments: [{ count: 1 }] }))
 export const topic_test_assignments = [{ id: IDS.assignment(1), test_id: IDS.test(1), topic_id: IDS.topic(1), assigned_by: IDS.owner, created_at: ago(200), topic_tests: topic_tests[0] }]
@@ -489,7 +538,8 @@ export function baseFixtures(persona) {
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
-      annotation_sets: [], mock_exam_results: [], lesson_materials: [], school_presence: [],
+      topic_homework_review_tasks,
+      annotation_sets: annotationSets, mock_exam_results: [], lesson_materials: [], school_presence: [],
     },
     rpc: {
       record_app_visit: null, school_presence_touch: null,
@@ -519,6 +569,9 @@ export function baseFixtures(persona) {
         assignments: [], trend: Array.from({ length: 8 }, (_, i) => ({ week_start: ago(24 * 7 * (8 - i)).slice(0, 10), lessons_completed: 2, submitted: i % 3, accepted: i % 2 })) },
       get_student_number_stats: [],
       topic_homework_ai_expire_stale_jobs: null,
+      // §199: строки уже есть — настоящая RPC в этом случае возвращает 0 и
+      // ничего не трогает, чтобы правки преподавателя не затирались слепком.
+      topic_homework_review_tasks_seed: 0,
       get_variant_results: [], variant_pass_counts: [], variant_topic_availability: [], variant_selection_availability: [],
       ...topicTaskRpcs((body) => body.p_topic_id === IDS.topic(1) ? myTopicTasks : []),
       topic_tasks_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? topicTasksStaff : [],

@@ -8,16 +8,15 @@ const CATALOG_ASSETS_FOLDER = 'physics-ege/author-kinematics'
 // §186: панель ИИ живёт в футере под работой — до неё надо доскроллить, иначе
 // на снимке будут только страницы работы.
 const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scrollIntoView({ block: 'start' })`
-// На 390 панель длиннее экрана, а снизу её подпирает лист «Комментарии»
-// аннотатора — к таблице надо подъехать отдельно.
-const toAiTasks = `(document.querySelector('[data-testid="ai-check-tasks"]') ?? document.querySelector('[data-testid="ai-check-panel"]'))?.scrollIntoView({ block: 'start' })`
-// Вторая работа очереди — у неё проверка старая, без таблицы по заданиям.
-// На 390 подсвеченная находка и подсвеченная строка в один экран не влезают:
-// снизу лист «Комментарии». Поэтому на узком снимаем находку.
-const toActiveFinding = `document.querySelector('[data-testid="ai-check-finding"][data-active]')?.scrollIntoView({ block: 'start' })`
 // Нижний край панели — там строка про находки, отброшенные кодом (§180).
 const toAiDropped = `document.querySelector('[data-testid="ai-check-dropped"]')?.scrollIntoView({ block: 'center' })`
 const openSecondAttempt = `[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Проверить')[1]?.click()`
+// §199: таблица проверки — то, ради чего панель теперь открывают.
+const toReviewTasks = `(document.querySelector('[data-testid="ai-check-tasks"]') ?? document.querySelector('[data-testid="ai-check-panel"]'))?.scrollIntoView({ block: 'start' })`
+// §199: заметка разворачивается по фокусу — снимаем развёрнутой.
+const openFirstNote = `(() => { const el = document.querySelector('[data-testid="review-task-row"][data-verdict="wrong"] [data-testid="review-task-note"]'); el?.focus(); el?.scrollIntoView({ block: 'center' }) })()`
+// §199: блок «По заданиям» в разборе работы у ученика.
+const toStudentTasks = `document.querySelector('[data-testid="student-review-tasks"]')?.scrollIntoView({ block: 'center' })`
 
 export const scenes = [
   // ── guest ──
@@ -37,6 +36,11 @@ export const scenes = [
   { persona: 'student', name: 's04-topic-solution', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ click: 'Решение ДЗ' }, { wait: 800 }] },
   { persona: 'student', name: 's04-topic-hw', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1000 }] },
   { persona: 'student', name: 's04-topic-hw-keyboard', url: `/my-course/${S.group}/topic/${S.topic(1)}`, height: 430, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 800 }, { focus: 'textarea' }], full: false },
+  // §199 (board/051): разбор работы у ученика — блок «По заданиям». Строки
+  // приходят только после вердикта (политика), у работы 1 он есть.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'student', name: 's04-topic-hw-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1200 }, { eval: toStudentTasks }, { wait: 600 }], full: false },
+  ]),
   { persona: 'student', name: 's04-topic-theory', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Теория")' }, { wait: 800 }] },
   { persona: 'student', name: 's05-my-homework-submit', url: '/my-homework', actions: [{ click: 'Сдать' }, { wait: 1500 }] },
   { persona: 'student', name: 's04-topic-test', url: `/my-course/${S.group}/topic/${S.topic(1)}`, actions: [{ clickSel: 'button:has-text("Тест")' }, { wait: 800 }] },
@@ -161,19 +165,30 @@ export const scenes = [
   { persona: 'owner', name: 'o06-review-verdict', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }, { eval: '(() => { const el = [...document.querySelectorAll("div")].find(e => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5); if (el) el.scrollTop = el.scrollHeight })()' }, { wait: 600 }], full: false },
   { persona: 'owner', name: 'o06-review-keyboard', url: '/homework-queue', height: 430, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }, { focus: 'textarea' }, { wait: 400 }], full: false },
   { persona: 'owner', name: 'o06-review-landscape', url: '/homework-queue', width: 844, height: 390, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }], full: false },
-  // ── §186 (board/039): таблица по заданиям в панели ИИ ──
-  // Первая работа очереди — свежая проверка v17: шесть строк, среди них
-  // `wrong`, `partial` и `unchecked`, сводка и балл из неё. Снимаем на 1280 и
-  // 390: на узком строка обязана стать карточкой без горизонтального скролла.
-  // `-picked` — нажата неверная строка, её находка подсвечена ниже.
+  // ── §186 (board/039) + §199 (board/051): блок «По заданиям» ──
+  // Сцены подсветки находок строкой таблицы сняты вместе с самим списком
+  // находок (§199: он дословно дублировал «Комментарии»). Осталось то, что
+  // живо: счётчик отброшенных находок и проверка старее v17, у которой
+  // таблицы нет вовсе, — панель ей обязана выглядеть как до §186.
   ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
-    { persona: 'owner', name: 'o06-review-ai-tasks', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: width < 640 ? toAiTasks : toAiPanel }, { wait: 600 }], full: false },
-    { persona: 'owner', name: 'o06-review-ai-tasks-picked', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toAiPanel }, { wait: 400 }, { clickSel: '[data-testid="ai-task-row"][data-verdict="wrong"] button' }, { wait: 400 }, { eval: width < 640 ? toActiveFinding : toAiTasks }, { wait: 400 }], full: false },
-    // Нижний край панели: сколько находок код отбросил как противоречивые.
     { persona: 'owner', name: 'o06-review-ai-dropped', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toAiDropped }, { wait: 600 }], full: false },
-    // Проверка старее v17 (`tasks` пуст): блока «По заданиям» нет вовсе,
-    // панель выглядит ровно как до §186. В базе таких проверок три десятка.
     { persona: 'owner', name: 'o06-review-ai-legacy', url: '/homework-queue', width, height, actions: [{ wait: 1200 }, { eval: openSecondAttempt }, { wait: 2500 }, { eval: toAiPanel }, { wait: 600 }], full: false },
+  ]),
+
+  // ── §199 (board/051): таблица проверки правится, экран разгружен ──
+  // Та же работа очереди, что и у §186, но блок «По заданиям» теперь СВОЙ:
+  // строки из `topic_homework_review_tasks`, вердикт выпадающим списком,
+  // заметка и ответы правятся, строку можно добавить и удалить. Списка находок
+  // в панели больше нет, резюме ИИ свёрнуто.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-review-tasks', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 600 }], full: false },
+    // Длинная заметка: в таблице одна строка, в фокусе — целиком.
+    { persona: 'owner', name: 'o06-review-tasks-note', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: openFirstNote }, { wait: 400 }], full: false },
+    // Раскрытое резюме ИИ — оно же проверка, что «Вставить в комментарий» на месте.
+    { persona: 'owner', name: 'o06-review-summary-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="ai-check-summary-toggle"]' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="ai-check-summary"]')?.scrollIntoView({ block: 'center' })` }, { wait: 400 }], full: false },
+    // Правая колонка «Комментарии»: похвалы спрятаны, переключатель виден.
+    { persona: 'owner', name: 'o06-review-praise-off', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
+    { persona: 'owner', name: 'o06-review-praise-on', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="comment-list-praise-toggle"] input' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
   ]),
 
   { persona: 'owner', name: 'o07-students', url: '/students' },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
+import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import {
   isPartialCheck,
   partialCheckReason,
@@ -62,7 +62,7 @@ const job = (over: Partial<AiJobRow> = {}): AiJobRow => ({
 })
 
 const panel = (over: Partial<AiJobRow> = {}) => render(
-  <AiCheckPanel
+  <ReviewTaskTable
     job={job(over)}
     findings={[]}
     running={false}
@@ -106,7 +106,7 @@ describe('partialCheckReason', () => {
   })
 })
 
-describe('AiCheckPanel — плашка вместо балла', () => {
+describe('ReviewTaskTable — плашка вместо балла', () => {
   it('вместо балла — причина, а не пустое «балл не предлагается»', () => {
     panel()
     expect(screen.getByTestId('ai-check-partial')).toHaveTextContent('Проверена не вся работа')

@@ -49,6 +49,7 @@ export function ReviewActions({
   onReview,
   hint,
   above,
+  tableScore,
   fillRequest,
   disabledReason,
 }: {
@@ -60,7 +61,7 @@ export function ReviewActions({
    * написано на кнопке (в разборе с рамками оно ещё и публикует пометки).
    */
   hint?: string
-  /** Блок над формой вердикта — сюда попадает панель черновика ИИ. */
+  /** Блок над формой вердикта — сюда попадает таблица проверки (§199). */
   above?: React.ReactNode
   /**
    * Почему вердикт сейчас невозможен (§198). Форма остаётся на месте, но
@@ -70,6 +71,14 @@ export function ReviewActions({
    * показ.
    */
   disabledReason?: string | null
+   * §199. Балл, который получается из таблицы проверки по заданиям. Пока
+   * преподаватель не вписал своё число — подставляется в поле сам и едет за
+   * таблицей при каждой правке вердикта строки. Как только число введено
+   * руками, подстановка прекращается: балл — решение человека, и подменять
+   * его на ходу нельзя. Вместо подмены рядом появляется «по таблице
+   * получается N» и кнопка «Взять из таблицы».
+   */
+  tableScore?: number | null
   /**
    * Запрос «подставь это в форму». Меняется целиком новым объектом при каждом
    * нажатии, поэтому повторная вставка того же текста тоже срабатывает —
@@ -83,6 +92,8 @@ export function ReviewActions({
   const [score, setScore] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Балл введён руками — дальше таблица его не трогает. */
+  const [scoreByHand, setScoreByHand] = useState(false)
 
   useEffect(() => {
     if (!fillRequest) return
@@ -91,6 +102,12 @@ export function ReviewActions({
   }, [fillRequest])
 
   const blocked = Boolean(disabledReason)
+  // Балл из таблицы. Только пока поле не тронуто руками: подстановка поверх
+  // введённого числа — это спор с человеком, а не помощь ему.
+  useEffect(() => {
+    if (scoreByHand || tableScore == null) return
+    setScore(String(tableScore))
+  }, [tableScore, scoreByHand])
 
   // Комментарий обязателен только при возврате. То же условие держит
   // CHECK topic_homework_reviews_comment_chk — здесь оно ради подсказки,
@@ -110,6 +127,7 @@ export function ReviewActions({
       await onReview(attempt.id, decision, comment, scoreToPass)
       setComment('')
       setScore('')
+      setScoreByHand(false)
     } catch (e: any) {
       setError(e?.message ?? 'Не удалось сохранить решение')
     } finally {
@@ -143,18 +161,36 @@ export function ReviewActions({
       />
 
       {scoreMax != null && (
-        <input
-          data-testid="review-score-input"
-          type="number"
-          value={score}
-          onChange={e => setScore(e.target.value)}
-          disabled={blocked}
-          placeholder={`Балл (0–${scoreMax})`}
-          aria-label={`Балл (0–${scoreMax})`}
-          min="0"
-          max={scoreMax}
-          className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-        />
+        <div className="mb-2">
+          <input
+            data-testid="review-score-input"
+            type="number"
+            value={score}
+            onChange={e => { setScoreByHand(true); setScore(e.target.value) }}
+            disabled={blocked}
+            placeholder={`Балл (0–${scoreMax})`}
+            aria-label={`Балл (0–${scoreMax})`}
+            min="0"
+            max={scoreMax}
+            className="w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+          />
+          {/* §199. Своё число преподавателя не подменяем — говорим, что даёт
+              таблица, и предлагаем взять. Пока число из таблицы и есть в
+              поле, говорить нечего. */}
+          {tableScore != null && String(tableScore) !== score.trim() && (
+            <p data-testid="review-score-from-table" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              По таблице получается {tableScore}
+              <button
+                type="button"
+                data-testid="review-score-take-table"
+                onClick={() => { setScoreByHand(false); setScore(String(tableScore)) }}
+                className="font-medium text-primary-600 underline-offset-2 hover:underline"
+              >
+                Взять из таблицы
+              </button>
+            </p>
+          )}
+        </div>
       )}
 
       {error && <div className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</div>}

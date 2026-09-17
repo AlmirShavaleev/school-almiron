@@ -1436,7 +1436,19 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
   /** Удалять нечего — кнопка неактивна, а не молча «успешно». */
   clearDisabled?: boolean
 }) {
-  const multiFile = new Set(regions.map(item => item.filePath)).size > 1
+  /**
+   * §199. Похвалы спрятаны по умолчанию: при проверке нужны ошибки, а
+   * «Отлично!» на каждом верном задании оттесняло замечания вниз списка. Сами
+   * находки `praise` никуда не деваются — они полезны ученику, речь только о
+   * виде экрана проверки, поэтому переключателя нет в режиме чтения (там
+   * список смотрит ученик).
+   */
+  const [showPraise, setShowPraise] = useState(false)
+  const praiseCount = regions.filter(item => item.category === 'praise').length
+  const hidePraise = !readOnly && !showPraise && praiseCount > 0
+  const shown = hidePraise ? regions.filter(item => item.category !== 'praise') : regions
+
+  const multiFile = new Set(shown.map(item => item.filePath)).size > 1
   return <div data-testid="comment-list" className="flex min-h-0 flex-1 flex-col">
     {/* §190. `shrink-0`: шапка списка — обычный флекс-элемент колонки, и там,
         где колонке не хватало высоты, её ужимало ниже собственного содержимого.
@@ -1475,11 +1487,29 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
             Очистить пометки
           </button>
         )}
-        <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{regions.length}</div>
+        <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium tabular-nums text-slate-500">{shown.length}</div>
       </div>
     </div>
-    {regions.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
-      {regions.map(item => {
+    {/* §199. Переключатель стоит отдельной строкой под шапкой, а не в ней:
+        шапка списка и так тесная (§190 — там из-за нехватки ширины текст
+        наезжал на черту), и третий элемент справа отнимал бы место у подсказки
+        про перетаскивание. */}
+    {!readOnly && praiseCount > 0 && <label
+      data-testid="comment-list-praise-toggle"
+      className="flex shrink-0 cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-xs text-slate-500"
+    >
+      <input
+        type="checkbox"
+        checked={showPraise}
+        onChange={event => setShowPraise(event.target.checked)}
+        aria-label="Показывать похвалы"
+        className="h-3.5 w-3.5 shrink-0 accent-emerald-600"
+      />
+      <span className="min-w-0 truncate">Показывать похвалы</span>
+      <span className="ml-auto shrink-0 tabular-nums text-slate-400">{praiseCount}</span>
+    </label>}
+    {shown.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
+      {shown.map(item => {
         const category = CATEGORIES[item.category]
         return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onHover(item.id)} className={cn('group mb-2 rounded-xl p-2.5 ring-1 transition-[background-color,box-shadow,transform]', activeId === item.id ? `${category.bg} ${category.ring} ring-2 shadow-sm` : 'bg-white ring-slate-200 hover:bg-slate-50 hover:shadow-sm')}>
           <button type="button" onClick={() => onActivate(item)} className="block w-full text-left">
@@ -1498,8 +1528,11 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
         <MessageSquare size={18} />
       </div>
-      <div className="text-sm font-medium text-slate-600">{readOnly ? 'Комментариев пока нет' : 'Здесь появятся комментарии к работе'}</div>
-      <div className="max-w-56 text-xs leading-5 text-slate-400">{readOnly ? 'Для этой попытки опубликованных комментариев не найдено.' : 'Выделите область на документе, чтобы привязать к ней комментарий.'}</div>
+      {/* Список пуст, но пометки есть — значит все они похвалы и спрятаны
+          переключателем. Сказать это словами обязательно: иначе «комментариев
+          нет» прямо над числом «0» читается как потеря разбора. */}
+      <div className="text-sm font-medium text-slate-600">{hidePraise ? 'Замечаний нет' : readOnly ? 'Комментариев пока нет' : 'Здесь появятся комментарии к работе'}</div>
+      <div className="max-w-56 text-xs leading-5 text-slate-400">{hidePraise ? `Только похвалы: ${praiseCount}. Включите «Похвалы», чтобы увидеть их.` : readOnly ? 'Для этой попытки опубликованных комментариев не найдено.' : 'Выделите область на документе, чтобы привязать к ней комментарий.'}</div>
     </div>}
   </div>
 }

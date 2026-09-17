@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { AiCheckPanel } from '@/components/courseProgram/AiCheckPanel'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import { referenceNotice, worksheetNotice, type AiJobRow } from '@/lib/aiHomeworkCheck'
 
 /**
@@ -31,7 +31,7 @@ const job = (over: Partial<AiJobRow> = {}): AiJobRow => ({
 })
 
 const panel = (over: Partial<AiJobRow> = {}) => render(
-  <AiCheckPanel
+  <ReviewTaskTable
     job={job(over)}
     findings={[]}
     running={false}
@@ -66,7 +66,7 @@ describe('referenceNotice', () => {
   })
 })
 
-describe('AiCheckPanel — плашка «без эталона»', () => {
+describe('ReviewTaskTable — плашка «без эталона»', () => {
   it('при разборе без эталона плашка видна', () => {
     panel({ reference_state: 'missing' })
     expect(screen.getByTestId('ai-check-no-reference')).toHaveTextContent('без эталона')
@@ -80,8 +80,10 @@ describe('AiCheckPanel — плашка «без эталона»', () => {
   it('плашка не заменяет собой разбор и балл', () => {
     panel({ reference_state: 'failed' })
     expect(screen.getByTestId('ai-check-no-reference')).toBeInTheDocument()
-    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
     expect(screen.getByTestId('ai-check-score')).toHaveTextContent('80')
+    // §199: разбор свёрнут по умолчанию — раскрываем и проверяем, что он цел.
+    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
+    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
   })
 })
 
