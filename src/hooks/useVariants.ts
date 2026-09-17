@@ -179,7 +179,7 @@ export function useVariantDetail(variantId: string | undefined) {
 
     const { data: tasksData } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)')
+      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, max_points, position, catalog_sections(title)')
       .in('id', taskIds)
 
     // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
@@ -384,7 +384,7 @@ export function useVariantBuilder() {
 
     const { data: t } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position')
+      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position')
       .eq('id', newId)
       .maybeSingle()
     if (!t) return null

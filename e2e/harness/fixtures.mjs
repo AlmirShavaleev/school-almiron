@@ -11,6 +11,7 @@ export const IDS = {
   review: (i) => U('5', i), material: (i) => U('6', i), otherStudent: (i) => U("b", 10 + i), profile: (i) => U('a', 10 + i),
   section: (i) => U('7', i), task: (i) => U('8', i), ctopic: (i) => U('9', i),
   collection: U('c', 100), collection2: U('c', 101), collection3: U('c', 102), collection4: U('c', 103), collection5: U('c', 104),
+  collection6: U('c', 105),
   variant: (i) => U('c', 200 + i),
   test: (i) => U('c', 300 + i), assignment: (i) => U('c', 400 + i), myAssignment: (i) => U('c', 600 + i), notif: (i) => U('c', 500 + i),
 }
@@ -309,6 +310,32 @@ export const catalog_tasks = Array.from({ length: 14 }, (_, k) => ({
   statement_html: STATEMENTS[k % STATEMENTS.length], has_answer: true, has_solution: k % 3 === 0, answer_html: `<p>${(k + 1) * 2}</p>`, solution_html: k % 3 === 0 ? '<p>v_ср = Δx / Δt = (50 − 2) / 4 = 12 м/с.</p>' : null, solution_plan_html: null, grade_criteria_html: null,
   difficulty: ['base', 'advanced', 'high'][k % 3], exam_part: k < 10 ? 1 : 2, max_points: k < 10 ? 1 : 3, partial_type: k % 4 === 3 ? 'matching' : null, source_url: null, created_at: ago(9000), updated_at: ago(900),
 }))
+// §201: задачи части 2 — собственного ответа у них нет по природе (ответ живёт
+// внутри решения), зато есть критерии оценивания и максимум баллов. Ровно на
+// таких задачах печать раньше писала «Ответ не указан». Вторая задача — без
+// критериев: у неё эта надпись обязана остаться, и на снимке видно, что случаи
+// различаются, а не подгоняются под красивую картинку. Текст без картинок —
+// размеры иллюстраций в печати чинит отдельная карточка (§202), мешать её
+// снимки с этими не нужно.
+export const part2_catalog_tasks = [
+  {
+    id: IDS.task(15), section_id: IDS.section(25), subject: 'Математика', exam_type: 'ЕГЭ', external_id: 130001, position: 1, is_published: true,
+    statement_html: '<p>Найдите все значения параметра a, при каждом из которых уравнение имеет ровно два различных корня.</p>',
+    has_answer: false, answer_html: null, has_solution: true,
+    solution_html: '<p>Рассмотрим два случая…</p><p>Отсюда a ∈ (−1; 0) ∪ {2}.</p>',
+    solution_plan_html: null,
+    grade_criteria_html: '<p>Обоснованно получен верный ответ — <b>2 балла</b>.</p><p>С помощью верного рассуждения получен ответ, отличающийся от верного только конечным числом точек, — <b>1 балл</b>.</p><p>Решение не соответствует ни одному из критериев выше — <b>0 баллов</b>.</p>',
+    difficulty: 'high', exam_part: 2, max_points: 2, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+  },
+  {
+    id: IDS.task(16), section_id: IDS.section(25), subject: 'Математика', exam_type: 'ЕГЭ', external_id: 130002, position: 2, is_published: true,
+    statement_html: '<p>Решите неравенство и укажите все целые значения параметра, при которых решений нет.</p>',
+    has_answer: false, answer_html: null, has_solution: true,
+    solution_html: '<p>Разбор задачи есть, а критериев в каталоге нет.</p>',
+    solution_plan_html: null, grade_criteria_html: null,
+    difficulty: 'high', exam_part: 2, max_points: 3, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+  },
+]
 export const catalog_task_assets = catalog_tasks.flatMap((t, k) => [
   { id: U('9', 500 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/table.png', alt: 'таблица', position: 1, size_bytes: 12000, source_url: null, tex_session_id: null },
   { id: U('9', 501 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/formula-wide.png', alt: 'формула', position: 2, size_bytes: 12000, source_url: null, tex_session_id: null },
@@ -322,6 +349,10 @@ export const catalog_topics = [
   { id: IDS.ctopic(5), title: 'Законы Ньютона', parent_id: IDS.ctopic(4), position: 1, subject: 'Физика', exam_type: 'ЕГЭ', external_id: 5, is_published: true, slug: 'newton', created_at: ago(9000), updated_at: ago(900) },
 ]
 export const catalog_task_topics = catalog_tasks.map((t, k) => ({ task_id: t.id, topic_id: IDS.ctopic(k % 2 ? 2 : 3), is_primary: true, source: 'import', catalog_tasks: t, catalog_topics: catalog_topics[k % 2 ? 1 : 2] }))
+// Задачи части 2 добавляются в общий список уже после картинок и тем: они из
+// другого предмета (математика, раздел «Параметры») и в физических темах
+// каталога появляться не должны, иначе испортят чужие сцены.
+catalog_tasks.push(...part2_catalog_tasks)
 // §188: список «Мои подборки». Три своих неархивных (список показывает их),
 // одна архивная и одна чужая — они в списке появиться НЕ должны, и стоят здесь
 // именно для того, чтобы это было видно на снимке, а не только в тестах.
@@ -336,6 +367,9 @@ export const task_collections = [
   { id: IDS.collection3, title: 'Контрольная по динамике', description: null, subject: 'Физика', work_type: 'control', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 20), updated_at: ago(24 * 14) },
   { id: IDS.collection4, title: 'Убрана в архив: пробник сентября', description: null, subject: 'Физика', work_type: 'ege_variant', is_archived: true, pdf_config: {}, created_by: IDS.owner, created_at: ago(24 * 40), updated_at: ago(24 * 30) },
   { id: IDS.collection5, title: 'Чужая подборка коллеги', description: null, subject: 'Математика', work_type: 'worksheet', is_archived: false, pdf_config: {}, created_by: IDS.profile(1), created_at: ago(24), updated_at: ago(1) },
+  // §201: подборка для снимка печати — задача части 2 с критериями, задача
+  // части 2 без критериев и обычная задача части 1 в одном документе.
+  { id: IDS.collection6, title: 'Часть 2: критерии и баллы', description: null, subject: 'Математика', work_type: 'custom', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(12), updated_at: ago(2) },
 ]
 const collectionItems = (collectionId, n, from) => Array.from({ length: n }, (_, k) => ({ id: U('c', from + k), collection_id: collectionId, catalog_task_id: IDS.task(1 + (k % 14)), position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks[k % 14] }))
 export const task_collection_items = [
@@ -344,6 +378,12 @@ export const task_collection_items = [
   ...collectionItems(IDS.collection3, 4, 745),
   ...collectionItems(IDS.collection4, 26, 750),
   ...collectionItems(IDS.collection5, 8, 780),
+  // §201: порядок задач в подборке фиксированный — так снимок печати всегда
+  // показывает все три случая подряд.
+  ...[part2_catalog_tasks[0], part2_catalog_tasks[1], catalog_tasks[0]].map((t, k) => ({
+    id: U('c', 790 + k), collection_id: IDS.collection6, catalog_task_id: t.id,
+    position: k + 1, custom_number: null, created_at: ago(12), catalog_tasks: t,
+  })),
 ]
 
 // ── notifications ────────────────────────────────────────────────────────────
@@ -532,7 +572,12 @@ export function baseFixtures(persona) {
     tables: {
       profiles, students, teachers, curators: [], courses, modules, topics, groups, group_students,
       topic_material_items, topic_homework, topic_homework_attempts, topic_homework_reviews, topic_homework_attempt_files,
-      topic_tests, topic_test_assignments, topic_test_attempts, topic_test_items: [], test_variants: [...test_variants, ...topicVariants], test_variant_items: Array.from({ length: 26 }, (_, k) => ({ id: U('c', 1600 + k), variant_id: IDS.variant(1), task_id: IDS.task(1 + (k % 14)), position: k + 1, points: k < 20 ? 1 : 3, grading_type: k < 20 ? 'auto' : 'manual', section_id: IDS.section(1), topic_id: null, created_at: ago(100) })),
+      topic_tests, topic_test_assignments, topic_test_attempts, topic_test_items: [], test_variants: [...test_variants, ...topicVariants], test_variant_items: [
+        ...Array.from({ length: 26 }, (_, k) => ({ id: U('c', 1600 + k), variant_id: IDS.variant(1), task_id: IDS.task(1 + (k % 14)), position: k + 1, points: k < 20 ? 1 : 3, grading_type: k < 20 ? 'auto' : 'manual', section_id: IDS.section(1), topic_id: null, created_at: ago(100) })),
+        // §201: две задачи части 2 в конце варианта — на них видно, что
+        // кнопки «Ответ» нет не по ошибке: рядом стоит подпись про критерии.
+        ...part2_catalog_tasks.map((t, k) => ({ id: U('c', 1630 + k), variant_id: IDS.variant(1), task_id: t.id, position: 27 + k, points: t.max_points, grading_type: 'manual', section_id: IDS.section(25), topic_id: null, created_at: ago(100) })),
+      ],
       catalog_sections, catalog_tasks, catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],

@@ -381,7 +381,7 @@ async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
   for (const batch of chunk(taskIds, IN_FILTER_CHUNK)) {
     const { data, error } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, exam_part')
+      .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position, exam_part')
       .in('id', batch)
       .eq('is_published', true)
       .order('position')
@@ -867,7 +867,7 @@ export function useCatalogTask(taskId: string | undefined) {
       try {
         const { data: t, error: e1 } = await db
           .from('catalog_tasks')
-          .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, position, is_published, exam_part')
+          .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position, is_published, exam_part')
           .eq('id', taskId)
           .single()
         if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Задача не найдена'); setLoading(false); return }
@@ -943,7 +943,7 @@ export function useCatalogTasksBatch(taskIds: string[]) {
         for (let i = 0; i < taskIds.length; i += CHUNK) {
           const { data, error: e } = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, exam_part')
+            .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, max_points, position, exam_part')
             .in('id', taskIds.slice(i, i + CHUNK))
             .eq('is_published', true)
           if (e || cancelled) { if (!cancelled) setError(e?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }

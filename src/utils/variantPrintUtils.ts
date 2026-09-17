@@ -4,6 +4,7 @@
  */
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
 import type { VariantPrintSettings } from '@/types/variantPrint'
+import { extendedAnswerShort, hasExtendedAnswer } from '@/utils/extendedAnswer'
 
 export type PrintableTask = CatalogTask & {
   assets?: CatalogTaskAsset[]
@@ -210,19 +211,27 @@ export function htmlToPlainText(html: string): string {
  * Builds the compact "Ключ" table: task number -> short plain-text answer.
  * Only includes items whose task has has_answer=true (per spec — no
  * invented "difficulty"/"rule" fields).
+ *
+ * Исключение — задачи с развёрнутым ответом (часть 2, см. extendedAnswer.ts):
+ * своего ответа у них нет, но пропускать их в ключе нельзя. Преподаватель
+ * сверяет ключ с бланком по номерам, и «пропавшая» строка читается как сбой
+ * выгрузки. Пишем «разв., N б.» — это правда и сразу говорит, что задачу
+ * проверяют по критериям, а не сверкой с ключом.
  */
 export function buildKeyTable(items: PrintableItem[]): KeyEntry[] {
   const entries: KeyEntry[] = []
   items.forEach((item, idx) => {
     const task = item.task
-    if (!task || !task.has_answer || !task.answer_html) return
+    if (!task) return
+    const number = item.customNumber ?? String(idx + 1)
+    if (hasExtendedAnswer(task)) {
+      entries.push({ itemId: item.id, number, shortAnswer: extendedAnswerShort(task.max_points) })
+      return
+    }
+    if (!task.has_answer || !task.answer_html) return
     const shortAnswer = htmlToPlainText(task.answer_html)
     if (!shortAnswer) return
-    entries.push({
-      itemId: item.id,
-      number: item.customNumber ?? String(idx + 1),
-      shortAnswer,
-    })
+    entries.push({ itemId: item.id, number, shortAnswer })
   })
   return entries
 }

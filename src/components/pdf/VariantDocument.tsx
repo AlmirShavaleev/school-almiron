@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
+import { extendedAnswerLabel, hasExtendedAnswer } from '@/utils/extendedAnswer'
 import {
   buildKeyTable,
   resolveSourceLabel,
@@ -159,6 +160,15 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                 effShowAnswers && task.has_answer && task.answer_html
                   ? resolveTaskHtml(task.answer_html, task.assets)
                   : ''
+              // Часть 2: своего ответа нет, но есть критерии и максимум баллов
+              // — именно по ним и проверяют (см. extendedAnswer.ts). Критерии
+              // идут вместе с ответами: подборку печатает преподаватель, и
+              // если он выключил ответы, критериев в листе быть не должно.
+              const isExtendedAnswer = hasExtendedAnswer(task)
+              const criteriaHtml =
+                effShowAnswers && isExtendedAnswer
+                  ? resolveTaskHtml(task.grade_criteria_html, task.assets)
+                  : ''
               const sourceLabel = showSource ? resolveSourceLabel(task) : null
               const sectionLabel = showCodifierSection ? resolveSectionLabel(task) : null
               // Физика ЕГЭ: иллюстрации в PDF укрупняются (см. shouldBoostPrintFigures)
@@ -193,9 +203,19 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                       <p className="print-section-label">Ответ</p>
                       {answerHtml ? (
                         <div className="catalog-html" dangerouslySetInnerHTML={{ __html: answerHtml }} />
+                      ) : isExtendedAnswer ? (
+                        <p className="print-answer-extended">{extendedAnswerLabel(task.max_points)}</p>
                       ) : (
+                        // Ответа нет и критериев нет — так и пишем, это честно.
                         <p className="print-no-content">Ответ не указан</p>
                       )}
+                    </div>
+                  )}
+
+                  {criteriaHtml && (
+                    <div className="print-section print-section--criteria">
+                      <p className="print-section-label">Критерии оценивания</p>
+                      <div className={`catalog-html${figuresBoostClass}`} dangerouslySetInnerHTML={{ __html: criteriaHtml }} />
                     </div>
                   )}
 

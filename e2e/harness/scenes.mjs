@@ -164,6 +164,27 @@ export const scenes = [
   { persona: 'owner', name: 'o05-collections-row-click-390', url: '/collections', actions: [{ wait: 600 }, { clickSel: '[role="link"][aria-label^="Открыть подборку"]' }, { wait: 800 }] },
   { persona: 'owner', name: 'o05-collection', url: `/collections/${S.collection}` },
   { persona: 'owner', name: 'o05-collection-export', url: `/collections/${S.collection}`, actions: [{ click: 'PDF' }, { wait: 800 }] },
+  // §201 (board/053): печать подборки с задачами части 2. С включёнными
+  // ответами вместо «Ответ не указан» — максимум баллов и критерии; у задачи
+  // без критериев надпись остаётся. Второй снимок — те же задачи с
+  // выключенными ответами: критериев в листе быть не должно, преподаватель
+  // печатает такую подборку ученику.
+  {
+    persona: 'owner', name: 'o05-collection-part2-answers', url: `/collections/${S.collection6}`, width: 1280, height: 900,
+    actions: [
+      { click: 'PDF' }, { wait: 800 },
+      { clickSel: 'label:has-text("Ответы") input[type=checkbox]' },
+      { clickSel: 'label:has-text("Ключ (таблица ответов)") input[type=checkbox]' },
+      { wait: 800 },
+    ],
+  },
+  {
+    persona: 'owner', name: 'o05-collection-part2-no-answers', url: `/collections/${S.collection6}`, width: 1280, height: 900,
+    actions: [{ click: 'PDF' }, { wait: 800 }],
+  },
+  // §201: та же задача части 2 в каталоге — подпись рядом с кнопками вместо
+  // отсутствующей кнопки «Ответ».
+  { persona: 'owner', name: 'o04-catalog-task-part2', url: `/catalog/task/${S.task(15)}?subject=math&exam=ege`, width: 1280, height: 900 },
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue' },
   { persona: 'owner', name: 'o06-queue-filters', url: '/homework-queue', actions: [{ clickSel: 'text=На доработке' }, { wait: 500 }] },
   { persona: 'owner', name: 'o06-review', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }] },

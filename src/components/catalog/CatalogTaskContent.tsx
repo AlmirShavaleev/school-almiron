@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { getAssetUrl, safeDecodeStoragePath, type CatalogTask } from '@/hooks/useCatalog'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { isAnswerTemplateSvg } from '@/pages/catalog/classifyAnswerTemplate'
+import { extendedAnswerNote, hasExtendedAnswer } from '@/utils/extendedAnswer'
 
 // ── resolveHtml ───────────────────────────────────────────────────────────────
 
@@ -125,6 +126,10 @@ export function CatalogTaskContent({
   const isMathExam = task.subject === 'Математика' && (task.exam_type === 'ЕГЭ' || task.exam_type === 'ОГЭ')
   const figureScaleClass = isMathExam ? ' scale-figures-math-exam' : ''
 
+  // Часть 2: ответа нет по природе задачи, вместо него — критерии и максимум
+  // баллов (см. extendedAnswer.ts).
+  const isExtendedAnswer = hasExtendedAnswer(task)
+
   return (
     <div ref={cardRef} className="bg-white rounded-xl border border-gray-200">
       {/* Условие */}
@@ -192,6 +197,20 @@ export function CatalogTaskContent({
               {showGradeCriteria ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               {showGradeCriteria ? 'Скрыть критерии' : 'Критерии оценки'}
             </button>
+          )}
+          {/*
+            У задачи части 2 кнопки «Ответ» нет вовсе — и ряд кнопок без неё
+            читается как «задача недогрузилась». Подпись объясняет, что ответа
+            здесь и не должно быть: проверяют по критериям на N баллов.
+            Одна строка рядом с кнопками, не отдельный блок.
+          */}
+          {isExtendedAnswer && (
+            <p
+              data-testid="task-extended-answer-note"
+              className="self-center text-xs text-gray-500"
+            >
+              {extendedAnswerNote(task.max_points)}
+            </p>
           )}
         </div>
       )}

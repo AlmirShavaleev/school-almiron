@@ -232,6 +232,43 @@ describe('buildKeyTable', () => {
     const item = makeItem({ task: { ...makeItem().task!, answer_html: '' } })
     expect(buildKeyTable([item])).toHaveLength(0)
   })
+
+  // Часть 2 (§201): своего ответа нет, но строка в ключе нужна — иначе
+  // пропуск номера читается как сбой выгрузки.
+  it('пишет «разв., N б.» для задачи с развёрнутым ответом', () => {
+    const item = makeItem({
+      task: {
+        ...makeItem().task!,
+        has_answer: false,
+        answer_html: null,
+        grade_criteria_html: '<p>Верно получен ответ — 2 балла</p>',
+        max_points: 2,
+      },
+    })
+    const rows = buildKeyTable([item])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].shortAnswer).toBe('разв., 2 б.')
+  })
+
+  it('без max_points у развёрнутой задачи — только «разв.», без выдуманного балла', () => {
+    const item = makeItem({
+      task: {
+        ...makeItem().task!,
+        has_answer: false,
+        answer_html: null,
+        grade_criteria_html: '<p>Критерии</p>',
+        max_points: null,
+      },
+    })
+    expect(buildKeyTable([item])[0].shortAnswer).toBe('разв.')
+  })
+
+  it('задачу без ответа и без критериев в ключ по-прежнему не берёт', () => {
+    const item = makeItem({
+      task: { ...makeItem().task!, has_answer: false, answer_html: null, grade_criteria_html: '   ' },
+    })
+    expect(buildKeyTable([item])).toHaveLength(0)
+  })
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
