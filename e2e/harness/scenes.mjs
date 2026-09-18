@@ -25,6 +25,10 @@ const toStudentTasks = `document.querySelector('[data-testid="student-review-tas
 // ширин. Прокрутка по элементу, а не по пикселю: высота листа зависит как раз
 // от правила, которое проверяем.
 const toSmallFigure = `document.querySelector('.print-document img[alt*="мелкий"]')?.scrollIntoView({ block: 'center' })`
+// §205 (board/056): печатный лист с формулами. Прокрутка по элементу, а не по
+// пикселю — высота листа зависит ровно от правила, которое проверяем.
+const toPrintTop = `document.querySelector('.print-document img.math-display')?.scrollIntoView({ block: 'center' })`
+const toShortSystem = `document.querySelector('.print-document img[alt*="система и три"]')?.scrollIntoView({ block: 'center' })`
 
 export const scenes = [
   // ── guest ──
@@ -210,6 +214,18 @@ export const scenes = [
   // видно, что было «крупный чертёж рядом с ноготком».
   { persona: 'owner', name: 'o05-print-figures-math', url: `/collections/${S.collection2}`, width: 1280, height: 900, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
   { persona: 'owner', name: 'o05-print-figures-math', url: `/collections/${S.collection2}`, actions: [{ click: 'PDF' }, { wait: 1500 }, { eval: toSmallFigure }, { wait: 500 }], full: false },
+  // §205 (board/056): печатный лист подборки, где ВСЁ содержимое — формулы
+  // картинками (как в подборке владельца по математике). «Пояснения» включаем:
+  // блочные формулы живут в разборе, без них на листе видны только строчные.
+  { persona: 'owner', name: 'o05-print-formulas', url: `/collections/${S.collection7}`, width: 1280, height: 900, actions: [{ click: 'PDF' }, { wait: 1500 }, { click: 'Пояснения' }, { wait: 1200 }, { eval: toPrintTop }, { wait: 400 }], full: false },
+  { persona: 'owner', name: 'o05-print-formulas', url: `/collections/${S.collection7}`, actions: [{ click: 'PDF' }, { wait: 1500 }, { click: 'Пояснения' }, { wait: 1200 }, { eval: toPrintTop }, { wait: 400 }], full: false },
+  // Второй лист той же подборки: гигант из первой задачи и следующие за ним
+  // короткое равенство и строчные формулы — на этой паре и виден разброс.
+  { persona: 'owner', name: 'o05-print-formulas-2', url: `/collections/${S.collection7}`, width: 1280, height: 900, actions: [{ click: 'PDF' }, { wait: 1500 }, { click: 'Пояснения' }, { wait: 1200 }, { eval: toShortSystem }, { wait: 400 }], full: false },
+  { persona: 'owner', name: 'o05-print-formulas-2', url: `/collections/${S.collection7}`, actions: [{ click: 'PDF' }, { wait: 1500 }, { click: 'Пояснения' }, { wait: 1200 }, { eval: toShortSystem }, { wait: 400 }], full: false },
+  // Контроль «экран не поехал»: та же задача-формула в каталоге.
+  { persona: 'owner', name: 'o04-catalog-task-formula', url: `/catalog/task/${S.task(50)}?subject=math&exam=ege`, width: 1280, height: 900, actions: [{ click: 'Решение' }, { wait: 600 }] },
+  { persona: 'owner', name: 'o04-catalog-task-formula', url: `/catalog/task/${S.task(50)}?subject=math&exam=ege`, actions: [{ click: 'Решение' }, { wait: 600 }] },
   { persona: 'owner', name: 'o06-queue', url: '/homework-queue' },
   { persona: 'owner', name: 'o06-queue-filters', url: '/homework-queue', actions: [{ clickSel: 'text=На доработке' }, { wait: 500 }] },
   { persona: 'owner', name: 'o06-review', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2000 }] },

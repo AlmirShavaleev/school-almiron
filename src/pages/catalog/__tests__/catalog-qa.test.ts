@@ -732,12 +732,17 @@ describe('Математика ОГЭ — exam routing & data separation', () =>
     expect(inlineMathRuleIdx).toBeLessThan(printMediaIdx)
   })
 
-  it('inline math formula rule uses display:inline-block and a text-relative height, never max-width:50%', () => {
+  it('inline math formula rule uses display:inline-block and a text-relative ceiling, never a fixed height', () => {
     const css = read('src/index.css')
     const rule = css.slice(css.indexOf('.print-document .catalog-html img[class~="math"]'))
     const block = rule.slice(0, rule.indexOf('}') + 1)
     expect(block).toContain('display: inline-block')
-    expect(block).toMatch(/height:\s*1(\.\d+)?em/) // ~1-1.2em per spec, not a fixed px/pt
+    // §205: ПОТОЛОК в em, а не жёсткая высота. Жёсткая высота впихивала дробь
+    // и корень в один этаж (замер на экспорте владельца: цифра 0,51 от кегля
+    // текста); потолок оставляет двухэтажную запись двухэтажной.
+    expect(block).toMatch(/max-height:\s*\d+(\.\d+)?em/)
+    expect(block).toMatch(/\bheight:\s*auto/)
+    expect(block).not.toMatch(/[^-]height:\s*\d+(\.\d+)?em/)
     expect(block).not.toContain('max-width: 50%')
   })
 

@@ -55,6 +55,64 @@ const pages = {
 // гейт судит по типу/расширению, а до декодера файл не доходит.
 fs.writeFileSync(path.join(out, 'raw.dng'), Buffer.from('not-a-real-dng'))
 
+/*
+ * §205 (board/056). Формулы каталога — это SVG из внешнего конвейера, а не
+ * растр. В печати их размер на бумаге определяется НАТУРАЛЬНЫМ размером файла,
+ * поэтому заглушка обязана повторять именно его. Числа ниже сняты с настоящего
+ * экспорта владельца (подборка по математике, 14 страниц, A4 книжная, поля
+ * 12 мм, кегль текста 8 pt): у каждой формулы на странице PDF есть свой clip —
+ * это и есть её бокс, из него делится обратно натуральный размер
+ * (`px = pt / 0,75 / zoom`).
+ *
+ * Оказалось, что конвейер отдаёт формулы в РАЗНОМ разрешении:
+ *
+ *   семейство       натур. размер, px     высота цифры, px
+ *   обычное         100…470 × 30…350      ~16
+ *   «гигант»        516…640 × 645…1835    ~47…58
+ *
+ * Отсюда четыре случая, которые нужны на печатном листе, плюс пятый —
+ * короткая система в «гигантском» разрешении (её ни один потолок по высоте
+ * до конца не чинит, и это видно только на ней).
+ */
+const FS = 'Times New Roman, Times, serif'
+// Кегль подбирается по высоте цифры: у Times capHeight ≈ 0,662 em.
+const svgFormulas = {
+  // p. 3 экспорта: вся цепочка из шести систем — ОДНА картинка 640×1835.
+  // 12 строк по 153 px, цифра 52,7 px.
+  'formula-sys-long.svg': sysSvg(640, 1835, 12, 153, 80, 100),
+  // p. 1 экспорта: та же «гигантская» плотность, но всего 4 строки — 516×645.
+  'formula-sys-short.svg': sysSvg(516, 645, 4, 161, 87, 110),
+  // p. 5 экспорта: короткое равенство в обычном разрешении, 120×55.
+  'formula-eq.svg': sysSvg(120, 55, 2, 27, 21, 20),
+  // Строчная формула с дробью и корнем: 146×49 (высота втрое больше строчной
+  // простой — из-за неё жёсткая `height: 1.05em` и давала ноготок).
+  'formula-frac.svg': `<svg xmlns="http://www.w3.org/2000/svg" width="146" height="49" viewBox="0 0 146 49">
+  <text x="0" y="34" font-family="${FS}" font-size="24">&#8730;15x = 1</text>
+  <text x="104" y="20" font-family="${FS}" font-size="24">2</text>
+  <line x1="100" y1="26" x2="124" y2="26" stroke="#000" stroke-width="2"/>
+  <text x="104" y="46" font-family="${FS}" font-size="24">3</text>
+</svg>`,
+  // Простая строчная формула в одну строку: 186×25.
+  'formula-inline.svg': `<svg xmlns="http://www.w3.org/2000/svg" width="186" height="25" viewBox="0 0 186 25">
+  <text x="0" y="19" font-family="${FS}" font-size="24">2</text>
+  <text x="14" y="9" font-family="${FS}" font-size="15">&#8722;4&#8722;x</text>
+  <text x="62" y="19" font-family="${FS}" font-size="24">= 16 &#8722; 4x</text>
+</svg>`,
+}
+// Система уравнений: фигурная скобка на пару строк + сами строки.
+function sysSvg(w, h, rows, step, fontSize, firstBaseline) {
+  const lines = []
+  for (let i = 0; i < rows; i++) {
+    const y = firstBaseline + i * step
+    if (i % 2 === 0) {
+      lines.push(`<text x="${w * 0.04}" y="${y + step * 0.62}" font-family="${FS}" font-size="${fontSize * 1.9}">{</text>`)
+    }
+    lines.push(`<text x="${w * 0.16}" y="${y}" font-family="${FS}" font-size="${fontSize}">${i % 2 === 0 ? '15x = 25x' : 'x &#8805; 0'}</text>`)
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n${lines.join('\n')}\n</svg>`
+}
+for (const [name, body] of Object.entries(svgFormulas)) fs.writeFileSync(path.join(out, name), body)
+
 const browser = await chromium.launch()
 const page = await browser.newPage()
 for (const [name, { w, h, html }] of Object.entries(pages)) {

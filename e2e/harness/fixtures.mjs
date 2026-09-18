@@ -11,7 +11,7 @@ export const IDS = {
   review: (i) => U('5', i), material: (i) => U('6', i), otherStudent: (i) => U("b", 10 + i), profile: (i) => U('a', 10 + i),
   section: (i) => U('7', i), task: (i) => U('8', i), ctopic: (i) => U('9', i),
   collection: U('c', 100), collection2: U('c', 101), collection3: U('c', 102), collection4: U('c', 103), collection5: U('c', 104),
-  collection6: U('c', 105),
+  collection6: U('c', 105), collection7: U('c', 106),
   variant: (i) => U('c', 200 + i),
   test: (i) => U('c', 300 + i), assignment: (i) => U('c', 400 + i), myAssignment: (i) => U('c', 600 + i), notif: (i) => U('c', 500 + i),
 }
@@ -353,6 +353,58 @@ export const catalog_tasks_math = Array.from({ length: 4 }, (_, k) => ({
   has_answer: true, has_solution: false, answer_html: `<p>${k + 2}</p>`, solution_html: null, solution_plan_html: null, grade_criteria_html: null,
   difficulty: 'base', exam_part: 1, max_points: 1, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
 }))
+/*
+ * §205 (board/056): задачи по математике, у которых ВСЁ содержимое — формулы
+ * картинками SVG (`class="math"` в тексте, `class="math-display"` отдельным
+ * блоком). Именно такие подборки печатает владелец: растровых иллюстраций там
+ * нет вовсе, поэтому правило §202 на них не действует.
+ *
+ * Натуральные размеры заглушек сняты с его экспорта от 18.09 (см. `assets.mjs`):
+ *   formula-inline.svg   186×25   простая строчная
+ *   formula-frac.svg     146×49   строчная с дробью и корнем
+ *   formula-eq.svg       120×55   короткое равенство блоком
+ *   formula-sys-short.svg 516×645  короткая система в «гигантском» разрешении
+ *   formula-sys-long.svg  640×1835 длинная цепочка систем — одна картинка
+ *
+ * Порядок задач фиксирован: 1 — длинный гигант, 2 — короткий гигант,
+ * 3 — обычная формула, 4 — только строчные. На одном листе видны все четыре.
+ */
+const FORMULA_TASKS = [
+  {
+    name: 'длинная цепочка систем',
+    statement: `<p>Найдите корень уравнения <img class="math" src="formula-inline.svg" alt="2^(-4-x) = 16">. Если уравнение имеет больше одного корня, в ответе запишите больший из корней.</p>`,
+    solution: `<p>Возведём обе части уравнения в квадрат. Тогда уравнение равносильно системе:</p><img class="math-display" src="formula-sys-long.svg" alt="цепочка равносильных систем"><p>Таким образом, больший корень равен <img class="math" src="formula-frac.svg" alt="x = 27/5 = 5,4">.</p>`,
+  },
+  {
+    name: 'короткая система того же разрешения',
+    statement: `<p>Найдите корень уравнения <img class="math" src="formula-frac.svg" alt="√15x = 1 2/3">. Если уравнение имеет больше одного корня, в ответе запишите меньший из корней.</p>`,
+    solution: `<p>Перейдём к равенству подлогарифмических выражений, с учётом ограничений логарифма:</p><img class="math-display" src="formula-sys-short.svg" alt="система и три равенства"><p>Значит, меньший из корней равен <img class="math" src="formula-inline.svg" alt="x = -5">.</p>`,
+  },
+  {
+    name: 'обычное равенство блоком',
+    statement: `<p>Найдите корень уравнения <img class="math" src="formula-inline.svg" alt="5^(2-x) = 125">.</p>`,
+    solution: `<p>Перейдём к равенству показателей степеней:</p><img class="math-display" src="formula-eq.svg" alt="2 - x = 3, x = -1"><p>Проверка подстановкой даёт верное равенство.</p>`,
+  },
+  {
+    name: 'только строчные формулы',
+    statement: `<p>Уравнение в общем виде выглядит как <img class="math" src="formula-inline.svg" alt="√A = B"> и равносильно системе. Условие <img class="math" src="formula-frac.svg" alt="A ⩾ 0"> излишне, так как <img class="math" src="formula-inline.svg" alt="A = B²"> как любое выражение в квадрате.</p>`,
+    solution: `<p>Извлечём кубический корень из обеих частей уравнения: <img class="math" src="formula-frac.svg" alt="x + 4 = -5">.</p>`,
+  },
+]
+export const catalog_tasks_formula = FORMULA_TASKS.map((f, k) => ({
+  id: IDS.task(50 + k), section_id: IDS.section(21), subject: 'Математика', exam_type: 'ЕГЭ', external_id: 441700 + k, position: k + 1, is_published: true,
+  statement_html: f.statement,
+  has_answer: true, has_solution: true, answer_html: `<p>${k - 5}</p>`, solution_html: f.solution, solution_plan_html: null, grade_criteria_html: null,
+  difficulty: 'base', exam_part: 1, max_points: 1, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+}))
+// Активы формул: resolveTaskHtml подставит URL только если актив найден по имени
+// файла. Класса иллюстрации формулам он НЕ вешает (у них есть `math`) — это и
+// проверяем: размер на бумаге им задаёт только CSS печати.
+export const catalog_task_assets_formula = catalog_tasks_formula.flatMap((t, k) =>
+  ['formula-inline.svg', 'formula-frac.svg', 'formula-eq.svg', 'formula-sys-short.svg', 'formula-sys-long.svg'].map((name, j) => ({
+    id: U('9', 940 + k * 5 + j), task_id: t.id, kind: 'condition', storage_path: `math/ege/1/${name}`, alt: name, position: j + 1, size_bytes: 4000, source_url: null, tex_session_id: null,
+  })),
+)
 export const catalog_task_assets = [...catalog_tasks, ...catalog_tasks_math].flatMap((t, k) => [
   { id: U('9', 500 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/table.png', alt: 'таблица', position: 1, size_bytes: 12000, source_url: null, tex_session_id: null },
   { id: U('9', 501 + k * 3), task_id: t.id, kind: 'condition', storage_path: 'physics/ege/1/formula-wide.png', alt: 'формула', position: 2, size_bytes: 12000, source_url: null, tex_session_id: null },
@@ -390,6 +442,8 @@ export const task_collections = [
   // §201: подборка для снимка печати — задача части 2 с критериями, задача
   // части 2 без критериев и обычная задача части 1 в одном документе.
   { id: IDS.collection6, title: 'Часть 2: критерии и баллы', description: null, subject: 'Математика', work_type: 'custom', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(12), updated_at: ago(2) },
+  // §205: подборка по математике целиком из формул — как у владельца.
+  { id: IDS.collection7, title: 'Показательные и иррациональные уравнения: 4 задания', description: null, subject: 'Математика', work_type: 'homework', is_archived: false, pdf_config: {}, created_by: IDS.owner, created_at: ago(11), updated_at: ago(1) },
 ]
 const collectionItems = (collectionId, n, from) => Array.from({ length: n }, (_, k) => ({ id: U('c', from + k), collection_id: collectionId, catalog_task_id: IDS.task(1 + (k % 14)), position: k + 1, custom_number: null, created_at: ago(30), catalog_tasks: catalog_tasks[k % 14] }))
 export const task_collection_items = [
@@ -405,6 +459,11 @@ export const task_collection_items = [
   ...[part2_catalog_tasks[0], part2_catalog_tasks[1], catalog_tasks[0]].map((t, k) => ({
     id: U('c', 790 + k), collection_id: IDS.collection6, catalog_task_id: t.id,
     position: k + 1, custom_number: null, created_at: ago(12), catalog_tasks: t,
+  })),
+  // §205: четыре задачи-формулы подряд — на печатном листе видны все четыре случая.
+  ...catalog_tasks_formula.map((t, k) => ({
+    id: U('c', 795 + k), collection_id: IDS.collection7, catalog_task_id: t.id,
+    position: k + 1, custom_number: null, created_at: ago(11), catalog_tasks: t,
   })),
 ]
 
@@ -626,7 +685,7 @@ export function baseFixtures(persona) {
         // кнопки «Ответ» нет не по ошибке: рядом стоит подпись про критерии.
         ...part2_catalog_tasks.map((t, k) => ({ id: U('c', 1630 + k), variant_id: IDS.variant(1), task_id: t.id, position: 27 + k, points: t.max_points, grading_type: 'manual', section_id: IDS.section(25), topic_id: null, created_at: ago(100) })),
       ],
-      catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math], catalog_task_assets, catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
+      catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math, ...catalog_tasks_formula], catalog_task_assets: [...catalog_task_assets, ...catalog_task_assets_formula], catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,

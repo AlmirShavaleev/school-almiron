@@ -181,7 +181,8 @@ export function makeHandler({ fixtures, session, log, assetsDir }) {
       if (method === 'GET' && (rest.startsWith('object/') || rest.startsWith('render/image/'))) {
         const file = pickAsset(rest, assetsDir)
         note(`STORAGE ${rest.split('?')[0]} -> ${path.basename(file)}`)
-        return route.fulfill({ status: 200, contentType: file.endsWith('.pdf') ? 'application/pdf' : 'image/png', body: fs.readFileSync(file) })
+        const type = file.endsWith('.pdf') ? 'application/pdf' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+        return route.fulfill({ status: 200, contentType: type, body: fs.readFileSync(file) })
       }
       // Листинг папки бакета. Без фикстуры — пустой список, как раньше.
       // `fixtures.storage[bucket]` — плоский массив объектов с ПОЛНЫМ ключом
@@ -264,6 +265,14 @@ function listBucket(fixtures, bucket, prefix) {
 function pickAsset(rest, assetsDir) {
   const lower = rest.toLowerCase()
   if (lower.endsWith('.pdf')) return path.join(assetsDir, 'doc.pdf')
+  // §205: формулы в каталоге лежат ВЕКТОРОМ (.svg) — от натурального размера
+  // файла зависит их размер на бумаге, поэтому подменять их растром нельзя.
+  // Отдаём по имени файла: `.../formula-sys-long.svg` → `formula-sys-long.svg`.
+  if (lower.endsWith('.svg')) {
+    const name = decodeURIComponent(lower.split('?')[0]).split('/').pop()
+    const file = path.join(assetsDir, name)
+    if (fs.existsSync(file)) return file
+  }
   // §202: «-small» раньше «figure» — иначе мелкий скан отдал бы крупный график
   if (lower.includes('small')) return path.join(assetsDir, 'figure-small.png')
   if (lower.includes('table')) return path.join(assetsDir, 'table.png')

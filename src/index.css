@@ -214,12 +214,19 @@ body {
 .print-document .catalog-html img[class~="math"] {
   display: inline-block !important;
   width: auto !important;
-  height: 1.05em !important;
-  max-width: none !important;
-  max-height: 1.2em !important;
+  height: auto !important;
+  /* Ширина больше не ограничена высотой строки — колонка становится пределом. */
+  max-width: 100% !important;
+  /* §205: потолок, а не жёсткая высота. 5,7em = 24,3pt физически (em внутри
+   * zoom уже уменьшен, см. ниже) — двухэтажная формула в него укладывается
+   * целиком, а трёхэтажный монстр из другого разрешения не разносит строку. */
+  max-height: 5.7em !important;
   margin: 0 0.06em !important;
-  vertical-align: -0.15em;
+  /* Без жёсткой высоты формула выше строки, и «сдвиг от базовой линии» больше
+   * не годится: середина дроби должна стоять на математической оси строки. */
+  vertical-align: middle;
   object-fit: contain;
+  zoom: 0.45;
 }
 
 /*
@@ -241,6 +248,11 @@ body {
   width: auto !important;
   height: auto !important;
   max-width: 55% !important;
+  /* §205: потолок по высоте. 36em = 158pt физически (em внутри zoom уменьшен
+   * ровно на zoom, проверено замером) — ровно двадцатая часть того, что
+   * занимала гигантская цепочка систем, и ни одна формула теперь не выше
+   * пятой части листа, поэтому `break-inside: avoid` наконец работает. */
+  max-height: 36em !important;
   margin: 0.45em auto !important;
   object-fit: contain;
   break-inside: avoid;
