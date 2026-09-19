@@ -9,7 +9,7 @@ import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import type { ImportedRegion } from '@/components/SubmissionReviewer'
-import { CONFIDENCE_LABEL, findingsToRegions } from '@/lib/aiHomeworkCheck'
+import { CONFIDENCE_LABEL, aiTasksOf, findingsToRegions } from '@/lib/aiHomeworkCheck'
 import { reviewTasksScore } from '@/lib/homeworkReviewTasks'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewTasks } from '@/hooks/useHomeworkReviewTasks'
@@ -535,6 +535,12 @@ export function HomeworkReviewQueuePage() {
   // Перенос рамок делает сам аннотатор: он владеет страницами и умеет их
   // сохранять. Отсюда ref вместо проброса данных вниз.
   const importRegionsRef = useRef<((regions: ImportedRegion[]) => Promise<number>) | null>(null)
+  /**
+   * §207. Уборка накопленных дублей рамок. Ref, а не данные вниз, по той же
+   * причине, что и перенос: страницами владеет аннотатор.
+   */
+  const dedupeFramesRef = useRef<(() => Promise<number>) | null>(null)
+  const [duplicateFrames, setDuplicateFrames] = useState(0)
   const [fillRequest, setFillRequest] = useState<{ comment?: string } | null>(null)
 
   async function applyAiFrames(): Promise<number> {
@@ -893,6 +899,8 @@ export function HomeworkReviewQueuePage() {
           // недоступен, но пометки дополнить и опубликовать по-прежнему можно.
           hideToolbarPublish={verdictKind === 'form' || verdictKind === 'revise'}
           importRegionsRef={importRegionsRef}
+          dedupeFramesRef={dedupeFramesRef}
+          onDuplicateFramesChange={setDuplicateFrames}
           footer={!verdictForm ? () => (
             <VerdictSummary
               review={latestReview(reviews, reviewing.row.attempt.id)}
@@ -934,6 +942,8 @@ export function HomeworkReviewQueuePage() {
                   error={ai.error}
                   onRun={ai.runCheck}
                   onApplyFrames={applyAiFrames}
+                  duplicateFrames={duplicateFrames}
+                  onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
                   // Новый объект на каждое нажатие: вставить один и тот же
                   // текст второй раз тоже должно получаться.
                   onUseText={text => setFillRequest({ comment: text })}
@@ -942,6 +952,10 @@ export function HomeworkReviewQueuePage() {
                   saveState={reviewTasks.saveState}
                   onAddTask={reviewTasks.addRow}
                   onSeedTasks={reviewTasks.seedNow}
+                  // §207. Таблица собрана из проверки старее последней —
+                  // заменить её строками именно ТОГО прогона, о котором
+                  // сказали преподавателю, а не «последнего завершённого».
+                  onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
                   onPatchTask={reviewTasks.patchRow}
                   onRemoveTask={reviewTasks.removeRow}
                 />

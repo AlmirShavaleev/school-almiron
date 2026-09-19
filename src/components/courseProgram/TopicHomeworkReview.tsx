@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Loader2, Paperclip, RotateCcw, Users } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { HintNote } from '@/components/shared/HintNote'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -139,8 +140,15 @@ export function ReviewActions({
   return (
     <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
       {above && <div className="mb-3">{above}</div>}
+      {/*
+        §207. Подсказка про публикацию пометок — под знаком вопроса, а не
+        абзацем. Она верная и новому человеку нужна, но висела над формой при
+        каждой проверке, а узнают из неё ровно один раз.
+      */}
       {hint && (
-        <p data-testid="review-hint" className="mb-2 text-xs text-gray-500">{hint}</p>
+        <div className="mb-1 flex justify-end">
+          <HintNote label="Что делает решение по работе" testId="review-hint" lines={[hint]} />
+        </div>
       )}
       {disabledReason && (
         <p

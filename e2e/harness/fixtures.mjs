@@ -237,13 +237,26 @@ const reviewTaskRow = (n, attemptId, over) => ({
   verdict: 'unchecked', student_answer: null, expected_answer: null, note: null,
   updated_by: IDS.owner, updated_at: ago(1), ...over,
 })
+//
+// §207 (board/058): работа в очереди — из 21 задания, ровно та, на которую
+// жаловался владелец: «верно 13 · неверно 2 · частично 1 · не сверено 5».
+// Меньший набор не показывал ни одной из трёх проблем экрана — ни каши из
+// одинаковых «не сверено», ни того, что верные строки оттесняют ошибки вниз.
+const CORRECT_21 = [
+  ['1', '12 м/с'], ['2', '0,4'], ['3', '25 м'], ['4', '8 Н'], ['5', '1,5 кг'],
+  ['6', '144 р.'], ['7', '2 30/49'], ['8', '0,25'], ['9', '2,5 c'], ['10', '36 км/ч'],
+  ['11', '9,8 м/с²'], ['12', '600 Дж'], ['13', '4 Ом'],
+]
 export const topic_homework_review_tasks = [
-  reviewTaskRow(1, IDS.attempt(15), { no: '1', verdict: 'correct', student_answer: '12 м/с', expected_answer: '12 м/с' }),
-  reviewTaskRow(2, IDS.attempt(15), { no: '2', verdict: 'correct', student_answer: '0,4', expected_answer: '0,4' }),
-  reviewTaskRow(3, IDS.attempt(15), { no: '3', verdict: 'wrong', student_answer: '−2 м/с²', expected_answer: '2 м/с²', note: 'При торможении знак ускорения противоположен скорости — в выражении должен стоять минус, иначе модуль сходится, а направление нет.' }),
-  reviewTaskRow(4, IDS.attempt(15), { no: '4', verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Ответ верный, хода решения нет' }),
-  reviewTaskRow(5, IDS.attempt(15), { no: '5', verdict: 'correct', student_answer: '25 м', expected_answer: '25 м' }),
-  reviewTaskRow(6, IDS.attempt(15), { no: '6', verdict: 'unchecked', expected_answer: '18 c', note: 'Страница снята не полностью, ответ не виден' }),
+  ...CORRECT_21.map(([no, answer], i) => reviewTaskRow(i + 1, IDS.attempt(15), {
+    no, verdict: 'correct', student_answer: answer, expected_answer: answer,
+  })),
+  reviewTaskRow(14, IDS.attempt(15), { no: '14', verdict: 'wrong', student_answer: '−2 м/с²', expected_answer: '2 м/с²', note: 'Ошибка в решении: при торможении знак ускорения противоположен скорости — в выражении должен стоять минус, иначе модуль сходится, а направление нет.' }),
+  reviewTaskRow(15, IDS.attempt(15), { no: '15', verdict: 'wrong', student_answer: 'в 144 рубля', expected_answer: 'в 160 рублей', note: 'Правильный ход, но потерян процент во втором шаге' }),
+  reviewTaskRow(16, IDS.attempt(15), { no: '16', verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Ответ верный, хода решения нет' }),
+  ...['17', '18', '19', '20', '21'].map((no, i) => reviewTaskRow(17 + i, IDS.attempt(15), {
+    no, verdict: 'unchecked', note: 'нет на фото',
+  })),
   // ── работа ученика, уже проверенная ──
   reviewTaskRow(11, IDS.attempt(1), { no: '1', verdict: 'correct', student_answer: '4 м/с²', expected_answer: '4 м/с²' }),
   reviewTaskRow(12, IDS.attempt(1), { no: '3', verdict: 'wrong', student_answer: '−5 м/с²', expected_answer: '5 м/с²', note: 'Знак ускорения при торможении: a направлено против скорости, значит в проекции на ось движения оно отрицательное.' }),
@@ -267,6 +280,13 @@ export const annotationSets = [{
       { id: 'a2', type: 'region', category: 'praise', text: 'Отлично!', rect: { x: 0.1, y: 0.2, w: 0.3, h: 0.05 } },
       { id: 'a3', type: 'region', category: 'logic', text: 'Задание 4: ответ верный, но выкладок нет — условие просит развёрнутое решение.', rect: { x: 0.1, y: 0.62, w: 0.62, h: 0.1 } },
       { id: 'a4', type: 'region', category: 'praise', text: 'Верное решение', rect: { x: 0.14, y: 0.3, w: 0.32, h: 0.05 } },
+      // §207 (board/058): два накопленных дубля первой рамки — след прежних
+      // переносов, когда «Перенести рамки» дописывал находки заново при каждом
+      // нажатии. Пометки источника у них нет (её тогда не было), поэтому на
+      // экране они и лежат ради кнопки «Убрать повторы»: молча их не чистит
+      // никто — отличить такой дубль от ручной рамки нечем.
+      { id: 'a1-dup1', type: 'region', category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.', rect: { x: 0.121, y: 0.452, w: 0.6, h: 0.08 } },
+      { id: 'a1-dup2', type: 'region', category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.', rect: { x: 0.12, y: 0.45, w: 0.601, h: 0.08 } },
     ],
   },
 },

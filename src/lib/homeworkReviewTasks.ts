@@ -138,6 +138,134 @@ export function nextPosition(rows: readonly { position: number }[]): number {
 }
 
 /**
+ * §207. Проверка ИИ новее таблицы преподавателя?
+ *
+ * Слепок модели не перезаписывает таблицу (§199) — иначе свежий прогон затирал
+ * бы правки человека. Но тогда на экране жили два ряда счётчиков, которые
+ * спорили друг с другом: «верно 13» по таблице и «верно 17» по последнему
+ * прогону. Счётчик оставлен один, табличный, а вот молчать про устаревшую
+ * таблицу нельзя — иначе преподаватель сдаст работу по позапрошлому разбору,
+ * не узнав, что есть новый.
+ *
+ * Сравниваем по времени: конец прогона против самой свежей правки строки.
+ * Таблица, только что собранная из этого прогона, новее его — и строка не
+ * появится, что и требуется.
+ */
+export function aiCheckIsNewerThanTable(
+  job: { status: string; completed_at: string | null } | null | undefined,
+  rows: readonly { updated_at: string }[],
+): boolean {
+  if (!job || job.status !== 'done' || !job.completed_at) return false
+  if (rows.length === 0) return false
+  const done = Date.parse(job.completed_at)
+  if (!Number.isFinite(done)) return false
+  let newest = -Infinity
+  for (const row of rows) {
+    const at = Date.parse(row.updated_at)
+    if (Number.isFinite(at) && at > newest) newest = at
+  }
+  if (newest === -Infinity) return false
+  return done > newest
+}
+
+/** Что рисует таблица: строка, свёрнутая пачка «не сверено» или пачка верных. */
+export type ReviewTableItem<Row> =
+  | { kind: 'row'; row: Row }
+  | { kind: 'unchecked'; key: string; rows: Row[]; note: string; label: string }
+  | { kind: 'correct'; key: string; rows: Row[] }
+
+interface GroupableRow {
+  id: string
+  no: string
+  verdict: ReviewTaskVerdict
+  note: string | null
+}
+
+/** Заметка для сравнения: пусто и пробелы — одно и то же. */
+const noteKey = (note: string | null | undefined) => String(note ?? '').trim()
+
+/**
+ * §207. Свёртка таблицы проверки.
+ *
+ * Две пачки, и обе — ответ на одну жалобу владельца: «слишком перегружено».
+ *
+ * 1. Подряд идущие «не сверено» с ОДИНАКОВОЙ заметкой — одной строкой
+ *    «Задания 17–21 не сверены: нет на фото». Одинаковость проверяется, а не
+ *    предполагается: пять «не сверено» с разными причинами — это пять разных
+ *    фактов, и слепить их значило бы соврать. Подряд — по порядку таблицы, до
+ *    любой свёртки: иначе спрятанные верные склеивали бы соседей, которые в
+ *    работе идут через задание.
+ * 2. Верные — одной строкой «13 верных». Решение владельца: при проверке
+ *    смотрят на ошибки, а верные строки оттесняют их вниз. Пачка ставится
+ *    туда, где в таблице стоит ПЕРВОЕ верное задание, — так порядок остаётся
+ *    узнаваемым, а не уезжает в конец списка. Меньше `CORRECT_PACK_MIN`
+ *    верных не сворачиваются вовсе: строка «1 верное» занимает столько же
+ *    места, сколько само задание, и не экономит ничего — только прячет.
+ */
+export function groupReviewTasks<Row extends GroupableRow>(
+  rows: readonly Row[],
+): Array<ReviewTableItem<Row>> {
+  const items: Array<ReviewTableItem<Row>> = []
+  let correct: Row[] | null = null
+  // Считаем заранее: решение «сворачивать или нет» одно на всю таблицу, а
+  // узнать его по ходу, встретив первое верное, нельзя.
+  const packCorrect = rows.filter(row => row.verdict === 'correct').length >= CORRECT_PACK_MIN
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]
+
+    if (packCorrect && row.verdict === 'correct') {
+      if (correct) correct.push(row)
+      else {
+        correct = [row]
+        items.push({ kind: 'correct', key: `correct-${row.id}`, rows: correct })
+      }
+      continue
+    }
+
+    if (row.verdict === 'unchecked') {
+      const note = noteKey(row.note)
+      const pack: Row[] = [row]
+      let j = i + 1
+      while (j < rows.length && rows[j].verdict === 'unchecked' && noteKey(rows[j].note) === note) {
+        pack.push(rows[j])
+        j += 1
+      }
+      if (pack.length > 1) {
+        items.push({
+          kind: 'unchecked',
+          key: `unchecked-${row.id}`,
+          rows: pack,
+          note,
+          label: uncheckedPackLabel(pack.map(r => r.no), note),
+        })
+        i = j - 1
+        continue
+      }
+    }
+
+    items.push({ kind: 'row', row })
+  }
+
+  return items
+}
+
+/**
+ * Со скольких верных заданий пачка окупается. Две строки прячутся в одну —
+ * экономия ноль, а найти задание становится труднее.
+ */
+export const CORRECT_PACK_MIN = 3
+
+/** «Задания 17–21 не сверены: нет на фото». */
+export function uncheckedPackLabel(nos: readonly string[], note: string): string {
+  const range = nos.length === 2
+    ? `${nos[0]} и ${nos[1]}`
+    : `${nos[0]}–${nos[nos.length - 1]}`
+  const head = `Задания ${range} не сверены`
+  return note ? `${head}: ${note}` : head
+}
+
+/**
  * Строки для новой таблицы из слепка ИИ — на случай, когда заполняет клиент,
  * а не RPC (в приложении заполняет RPC; здесь — чтобы правило «что именно
  * копируется» было названо один раз и проверялось тестом).

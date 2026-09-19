@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import { referenceNotice, worksheetNotice, type AiJobRow } from '@/lib/aiHomeworkCheck'
 
@@ -38,7 +38,6 @@ const panel = (over: Partial<AiJobRow> = {}) => render(
     error={null}
     onRun={async () => {}}
     onApplyFrames={async () => 0}
-    onUseText={() => {}}
   />,
 )
 
@@ -77,13 +76,18 @@ describe('ReviewTaskTable — плашка «без эталона»', () => {
     expect(screen.queryByTestId('ai-check-no-reference')).not.toBeInTheDocument()
   })
 
-  it('плашка не заменяет собой разбор и балл', () => {
+  it('плашка не заменяет собой балл', () => {
     panel({ reference_state: 'failed' })
     expect(screen.getByTestId('ai-check-no-reference')).toBeInTheDocument()
     expect(screen.getByTestId('ai-check-score')).toHaveTextContent('80')
-    // §199: разбор свёрнут по умолчанию — раскрываем и проверяем, что он цел.
-    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
-    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
+  })
+
+  it('§207. Резюме ИИ с экрана убрано — от него остались балл и «Проверить заново»', () => {
+    panel({ reference_state: 'used' })
+    expect(screen.queryByTestId('ai-check-summary')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ai-check-summary-toggle')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-check-score')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-check-run')).toBeInTheDocument()
   })
 })
 

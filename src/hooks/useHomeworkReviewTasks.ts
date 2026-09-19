@@ -3,10 +3,12 @@ import { supabase } from '@/lib/supabase'
 import {
   nextPosition,
   nextTaskNo,
+  reviewTasksFromAi,
   sortReviewTasks,
   type ReviewTaskPatch,
   type ReviewTaskRow,
 } from '@/lib/homeworkReviewTasks'
+import type { AiTaskRow } from '@/lib/aiHomeworkCheck'
 
 /**
  * `supabase as any`: `topic_homework_review_tasks` появилась миграцией §199, а
@@ -157,6 +159,61 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
     }
   }, [attemptId, fetchRows])
 
+  /**
+   * §207. Заполнить таблицу заново из свежей проверки ИИ.
+   *
+   * Отдельно от `seedNow`, потому что смысл противоположный: `seedNow`
+   * идемпотентна и намеренно НЕ трогает готовую таблицу (§199 — слепок модели
+   * не должен затирать правки человека), а здесь преподаватель сам решил, что
+   * его таблица устарела и нужна новая. Поэтому старые строки удаляются.
+   *
+   * Строки собираются на клиенте из слепка (`reviewTasksFromAi`), а не
+   * повторным вызовом RPC: RPC после удаления взяла бы ПОСЛЕДНЮЮ завершённую
+   * проверку, а преподаватель нажал кнопку под конкретной, ту, о которой ему
+   * сказали. И если вставка не удалась — прежние строки возвращаются на место:
+   * потерять таблицу молча хуже, чем не обновить её.
+   */
+  const refillFromAi = useCallback(async (tasks: readonly AiTaskRow[]) => {
+    if (!attemptId || tasks.length === 0) return false
+    const before = rows
+    setSaveState('saving')
+    const { error: delErr } = await db().from(TABLE).delete().eq('attempt_id', attemptId)
+    if (delErr) {
+      setSaveState('error')
+      setError(delErr.message)
+      return false
+    }
+    const { error: insErr } = await db()
+      .from(TABLE)
+      .insert(reviewTasksFromAi(tasks).map(row => ({ ...row, attempt_id: attemptId })))
+    if (insErr) {
+      // Вернуть как было: у строк те же id, их только что удалили.
+      await db().from(TABLE).insert(before.map(row => ({
+        id: row.id,
+        attempt_id: row.attempt_id,
+        no: row.no,
+        verdict: row.verdict,
+        student_answer: row.student_answer,
+        expected_answer: row.expected_answer,
+        note: row.note,
+        position: row.position,
+      })))
+      setRows(before)
+      setSaveState('error')
+      setError(insErr.message)
+      return false
+    }
+    try {
+      setRows(await fetchRows(attemptId))
+      setSaveState('saved')
+      return true
+    } catch (e: any) {
+      setSaveState('error')
+      setError(e?.message ?? 'Не удалось прочитать таблицу проверки')
+      return false
+    }
+  }, [attemptId, fetchRows, rows])
+
   const removeRow = useCallback(async (id: string) => {
     const before = rows
     setRows(current => current.filter(row => row.id !== id))
@@ -181,6 +238,7 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
     patchRow,
     removeRow,
     seedNow,
+    refillFromAi,
     reload: () => (attemptId ? fetchRows(attemptId).then(setRows) : Promise.resolve()),
   }
 }

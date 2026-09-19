@@ -141,6 +141,8 @@ export function AttemptAnnotationOverlay({
   publishButtonLabel = 'Опубликовать пометки',
   hideToolbarPublish = false,
   importRegionsRef,
+  dedupeFramesRef,
+  onDuplicateFramesChange,
   onMarksCleared,
   solutionTopicId,
   pdfAudience = 'staff',
@@ -167,6 +169,10 @@ export function AttemptAnnotationOverlay({
   hideToolbarPublish?: boolean
   /** Проброс к аннотатору: через него панель черновика ИИ переносит рамки. */
   importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
+  /** §207. Проброс к аннотатору: уборка точных повторов рамок по нажатию. */
+  dedupeFramesRef?: MutableRefObject<(() => Promise<number>) | null>
+  /** §207. Сколько сейчас точных повторов — кнопку рисует экран снаружи. */
+  onDuplicateFramesChange?: (count: number) => void
   /** §156. После «Очистить пометки» — панель ИИ снаружи перечитывает находки. */
   onMarksCleared?: () => void
   /**
@@ -427,6 +433,8 @@ export function AttemptAnnotationOverlay({
               hideToolbarPublish={hideToolbarPublish}
               publishRef={publishRef}
               importRegionsRef={importRegionsRef}
+              dedupeFramesRef={dedupeFramesRef}
+              onDuplicateFramesChange={onDuplicateFramesChange}
               onMarksCleared={onMarksCleared}
               exportSourceRef={exportSourceRef}
             />

@@ -11,6 +11,10 @@ import { toast } from '@/store/toastStore'
 import {
   EMPTY_MARK_COUNTS, clearAttemptMarks, clearMarksPrompt, countAttemptMarks, hasAnyMarks, type MarkCounts,
 } from '@/lib/attemptMarks'
+import {
+  countDuplicateFrames, replaceAiFrames, withoutDuplicateFrames, type FrameSource,
+} from '@/lib/aiFrames'
+import { HintNote } from '@/components/shared/HintNote'
 import type { MutableRefObject, ReactNode } from 'react'
 import type { AttemptExportSourceRef } from '@/lib/attemptPdfSource'
 
@@ -19,7 +23,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 type Category = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; w: number; h: number }
-type Region = { id: string; type: 'region'; rect: Rect; category: Category; text: string }
+/**
+ * §207. `source` — откуда рамка. Ставится только при переносе находок ИИ и
+ * только нами; у рамки, нарисованной руками, его нет и не появится. На этом
+ * различии держится идемпотентность переноса: заменяем ровно свои.
+ */
+type Region = { id: string; type: 'region'; rect: Rect; category: Category; text: string; source?: FrameSource | null }
 type Draft = { filePath: string; page: number; globalPage: number; fileIndex: number; rect: Rect; category: Category; text: string }
 type LegacyMark =
   | { id: string; type: 'stroke'; points: Point[]; color: string; width: number }
@@ -118,6 +127,15 @@ interface BaseProps {
    */
   importRegionsRef?: MutableRefObject<((regions: ImportedRegion[]) => Promise<number>) | null>
   /**
+   * §207. Императивная уборка точных повторов рамок. Отдельно от переноса
+   * потому, что это НЕ автоматическое действие: у старых дублей нет пометки
+   * источника, и молча трогать пометки, которые могли быть нарисованы руками,
+   * нельзя. Возвращает, сколько рамок убрано.
+   */
+  dedupeFramesRef?: MutableRefObject<(() => Promise<number>) | null>
+  /** §207. Сколько сейчас точных повторов — для видимой кнопки снаружи. */
+  onDuplicateFramesChange?: (count: number) => void
+  /**
    * §156. Вызывается после «Очистить пометки»: находки ИИ по попытке удалены
    * в базе, и панель черновика ИИ снаружи обязана перечитать их — иначе она
    * покажет старое число. Только для нового контура (attemptId).
@@ -138,6 +156,13 @@ export interface ImportedRegion {
   rect: { x: number; y: number; w: number; h: number }
   category: Category
   text: string
+  /**
+   * §207. id находки, из которой рамка сделана. По нему перенос помечает свои
+   * рамки и при повторном нажатии заменяет ИХ, а не добавляет новый слой.
+   */
+  sourceId: string
+  /** id прогона ИИ — видно, из какой проверки рамка. */
+  jobId?: string | null
 }
 
 type Props = BaseProps & AnnotationTarget
@@ -189,6 +214,14 @@ const normalizeRect = (start: Point, end: Point): Rect => ({
   h: Math.abs(end.y - start.y),
 })
 const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
+/**
+ * Тот же ли набор пометок. Сравнение по id и порядку: перенос и уборка
+ * повторов только добавляют и убирают объекты, не правя их внутри, — а полное
+ * сравнение содержимого здесь означало бы обход прямоугольников на каждой
+ * странице ради ответа «ничего не поменялось».
+ */
+const sameMarks = (a: readonly Mark[], b: readonly Mark[]) =>
+  a.length === b.length && a.every((mark, index) => mark.id === b[index].id)
 const isPermissionError = (error: unknown) => {
   const candidate = error as { code?: string; status?: number; message?: string; details?: string; hint?: string } | null
   const text = `${candidate?.message || ''} ${candidate?.details || ''} ${candidate?.hint || ''}`.toLowerCase()
@@ -245,6 +278,8 @@ export function SubmissionReviewer({
   onPublishComplete,
   publishRef,
   importRegionsRef,
+  dedupeFramesRef,
+  onDuplicateFramesChange,
   onMarksCleared,
   exportSourceRef,
 }: Props) {
@@ -286,6 +321,23 @@ export function SubmissionReviewer({
   const [imageRatios, setImageRatios] = useState<Record<string, number>>({})
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({})
   const [pages, setPages] = useState<Record<string, PageData>>({})
+  /**
+   * §207. Прочитаны ли уже страницы из базы.
+   *
+   * До этого момента `pages` пуст — и пуст не потому, что пометок нет, а
+   * потому, что их ещё не привезли. Любая запись в этот момент сохраняет
+   * страницу ЦЕЛИКОМ из пустого состояния, то есть стирает рамки
+   * преподавателя. Перенос находок ИИ запускается сам при открытии работы,
+   * гонка тут не теоретическая. Поэтому императивные ручки (перенос и уборка
+   * повторов) до загрузки просто не выставлены: снаружи это уже умеют ждать.
+   */
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
+  /**
+   * Ключ, а не флаг: при смене работы флаг пришлось бы сбрасывать
+   * присваиванием прямо в теле эффекта, а сравнение с текущей целью
+   * обнуляется само.
+   */
+  const pagesLoaded = loadedKey === persistenceKey
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle')
   const [publishing, setPublishing] = useState(false)
@@ -458,6 +510,7 @@ export function SubmissionReviewer({
       const next: Record<string, PageData> = {}
       for (const row of data ?? []) next[pageKey(row.file_path || normalizedPaths[0], row.page)] = cleanData(row.data)
       setPages(next)
+      setLoadedKey(persistenceKey)
       setPublished((data ?? []).some(row => row.status === 'published'))
       // Работу мог уже смотреть другой сотрудник курса: очередь у персонала
       // общая, и никакого «занято» в ней нет. Отмечаем это явно — иначе второй
@@ -982,8 +1035,25 @@ export function SubmissionReviewer({
     }
   }
 
+  /**
+   * §207. Перенос находок ИИ — идемпотентный.
+   *
+   * Раньше он просто дописывал рамки в конец страницы, и второе нажатие
+   * («Проверить заново» → «Перенести рамки») клало те же находки вторым
+   * слоем. Теперь каждая перенесённая рамка помечена источником, и повторный
+   * перенос СНАЧАЛА убирает ранее перенесённые из ИИ, потом кладёт новые.
+   *
+   * Проход идёт по всем известным страницам, а не только по тем, куда легли
+   * новые рамки: после переcборки проверки находка могла уйти со страницы 6 —
+   * и старая рамка там осталась бы навсегда.
+   *
+   * Чего этот проход не делает ни при каких условиях — не трогает пометки без
+   * `source.kind === 'ai'`. Рамки преподавателя не восстанавливаются, и цена
+   * ошибки здесь несимметрична: лишний дубль видно и убирается кнопкой, а
+   * стёртую работу человека вернуть нечем.
+   */
   async function importRegions(items: ImportedRegion[]): Promise<number> {
-    if (readOnly || items.length === 0) return 0
+    if (readOnly) return 0
 
     const byPage = new Map<string, { filePath: string; page: number; regions: Region[] }>()
     for (const item of items) {
@@ -992,31 +1062,92 @@ export function SubmissionReviewer({
       if (item.rect.w < MIN_REGION_SIZE || item.rect.h < MIN_REGION_SIZE) continue
       const key = pageKey(item.filePath, item.page)
       const bucket = byPage.get(key) ?? { filePath: item.filePath, page: item.page, regions: [] }
-      bucket.regions.push({ id: id(), type: 'region', rect: item.rect, category: item.category, text })
+      bucket.regions.push({
+        id: id(),
+        type: 'region',
+        rect: item.rect,
+        category: item.category,
+        text,
+        source: { kind: 'ai', finding: item.sourceId, job: item.jobId ?? null },
+      })
       byPage.set(key, bucket)
+    }
+
+    // Страницы, где что-то может измениться: куда кладём новое и где уже лежат
+    // наши прежние рамки.
+    const keys = new Set<string>(byPage.keys())
+    for (const [key, data] of Object.entries(pages)) {
+      if (data.objects.some(mark => isRegion(mark) && mark.source?.kind === 'ai')) keys.add(key)
     }
 
     let imported = 0
     const nextPages: Record<string, PageData> = {}
-    for (const [key, bucket] of byPage) {
-      const base = nextPages[key] ?? pages[key] ?? EMPTY
-      const nextData = pageWithVersion([...base.objects, ...bucket.regions])
-      const ok = await savePage(bucket.filePath, bucket.page, nextData)
+    for (const key of keys) {
+      const bucket = byPage.get(key)
+      const { filePath, page } = bucket ?? parsePageKey(key)
+      const base = pages[key] ?? EMPTY
+      const nextObjects = replaceAiFrames(base.objects as Region[], (bucket?.regions ?? []) as Region[])
+      // Страница не изменилась — не пишем: лишний upsert сбрасывает
+      // «Сохранено» и без нужды перетирает чужую страницу целиком.
+      if (sameMarks(base.objects, nextObjects)) {
+        imported += bucket?.regions.length ?? 0
+        continue
+      }
+      const nextData = pageWithVersion(nextObjects)
+      const ok = await savePage(filePath, page, nextData)
       // Сбой на одной странице не должен отменять уже перенесённые: они уже
       // в базе, и «откатить» их значило бы стереть заодно ручные пометки.
       if (!ok) continue
       nextPages[key] = nextData
-      imported += bucket.regions.length
+      imported += bucket?.regions.length ?? 0
     }
 
-    if (imported > 0) setPages(value => ({ ...value, ...nextPages }))
+    if (Object.keys(nextPages).length > 0) setPages(value => ({ ...value, ...nextPages }))
     return imported
+  }
+
+  /**
+   * §207. Сколько на работе точных повторов рамок — то самое наследство, что
+   * накопили прежние переносы. Пометки источника у них нет, поэтому отличить
+   * их от ручных нечем: чистим только по нажатию и только точные совпадения.
+   */
+  const duplicateFrames = useMemo(() => countDuplicateFrames(pages), [pages])
+  useEffect(() => {
+    onDuplicateFramesChange?.(readOnly || !pagesLoaded ? 0 : duplicateFrames)
+  }, [duplicateFrames, onDuplicateFramesChange, pagesLoaded, readOnly])
+
+  async function removeDuplicateFrames(): Promise<number> {
+    if (readOnly) return 0
+    let removed = 0
+    const nextPages: Record<string, PageData> = {}
+    for (const [key, data] of Object.entries(pages)) {
+      const kept = withoutDuplicateFrames(data.objects as Region[])
+      if (kept.length === data.objects.length) continue
+      const nextData = pageWithVersion(kept)
+      const { filePath, page } = parsePageKey(key)
+      if (!(await savePage(filePath, page, nextData))) continue
+      nextPages[key] = nextData
+      removed += data.objects.length - kept.length
+    }
+    if (removed > 0) {
+      setPages(value => ({ ...value, ...nextPages }))
+      setActiveId(null)
+      setSelectedId(null)
+    }
+    return removed
   }
 
   useEffect(() => {
     if (!importRegionsRef) return
-    importRegionsRef.current = importRegions
+    // Пока страницы не прочитаны — ручки нет: см. `pagesLoaded`.
+    importRegionsRef.current = pagesLoaded ? importRegions : null
     return () => { importRegionsRef.current = null }
+  })
+
+  useEffect(() => {
+    if (!dedupeFramesRef) return
+    dedupeFramesRef.current = pagesLoaded ? removeDuplicateFrames : null
+    return () => { dedupeFramesRef.current = null }
   })
 
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>
@@ -1498,16 +1629,25 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
               `truncate` только режет по букве. */}
           <span className="truncate">Комментарии</span>
         </div>
-        <div className={cn(
-          'mt-0.5 text-xs text-slate-400',
-          // Подсказка про перетаскивание и стрелки — про мышь и клавиатуру,
-          // которых на телефоне нет, а места она занимает шесть строк из
-          // сорока пяти процентов высоты. Показываем там, где ими работают:
-          // ширина от 640 И высота от 601. Одним медиа-запросом, а не парой
-          // `hidden sm:block` + `…:hidden`, чтобы не зависеть от порядка
-          // правил в сборке.
-          !readOnly && 'hidden [@media(min-width:640px)_and_(min-height:601px)]:block',
-        )}>{readOnly ? 'Только просмотр' : 'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками'}</div>
+        {readOnly
+          ? <div className="mt-0.5 text-xs text-slate-400">Только просмотр</div>
+          : (
+            /*
+              §207. Абзац про перетаскивание и стрелки ушёл под знак вопроса.
+              Он верный, но читают его один раз, а висел он над списком всегда —
+              и на узком экране съедал шесть строк из тех сорока пяти процентов
+              высоты, ради которых список и открывают. Медиа-запрос, которым его
+              прятали на телефоне, больше не нужен: свёрнутая подсказка занимает
+              один значок на любом экране.
+            */
+            <HintNote
+              label="Как работать с рамками"
+              testId="reviewer-marks-hint"
+              lines={[
+                'Клик открывает место в работе. Рамку можно перетащить, растянуть за уголки или подвинуть стрелками.',
+              ]}
+            />
+          )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {!readOnly && onClearAll && (

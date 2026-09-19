@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import {
@@ -230,12 +230,53 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
     expect(note.className).not.toContain('truncate')
   })
 
-  it('§199. Резюме ИИ свёрнуто по умолчанию, раскрывается по заголовку', () => {
+  it('§207. «Вставить в комментарий» пережила блок «Резюме ИИ»', () => {
+    // Разбор с экрана ушёл, а вернуть его в комментарий по-прежнему бывает
+    // нужно: преподаватель стёр текст — без кнопки это тупик.
+    const onUseText = vi.fn()
+    render(
+      <ReviewTaskTable
+        job={job()}
+        findings={FINDINGS}
+        running={false}
+        error={null}
+        onRun={() => {}}
+        onApplyFrames={async () => 0}
+        onUseText={onUseText}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('ai-check-use-text'))
+    expect(onUseText).toHaveBeenCalledWith('Разбор')
+  })
+
+  it('§207. Обработчика вставки нет — нет и кнопки', () => {
     panel()
+    expect(screen.queryByTestId('ai-check-use-text')).not.toBeInTheDocument()
+  })
+
+  it('§207. Счётчик на экране один — табличный; второго ряда от ИИ нет', () => {
+    panel()
+    expect(screen.getByTestId('ai-check-tasks-summary')).toBeInTheDocument()
+    expect(screen.queryByTestId('ai-check-summary-counts')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ai-check-summary-toggle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-summary')).not.toBeInTheDocument()
-    expect(screen.getByTestId('ai-check-summary-counts')).toHaveTextContent('верно 1')
-    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
-    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
+  })
+
+  it('§207. Имени модели и слов про уверенность на экране нет', () => {
+    const { container } = panel()
+    expect(screen.queryByTestId('ai-check-model')).not.toBeInTheDocument()
+    expect(container.textContent).not.toContain('qwen')
+    expect(container.textContent).not.toMatch(/уверенность/i)
+  })
+
+  it('§207. Пояснений на экране нет, но под знаком вопроса они есть', () => {
+    const { container } = panel()
+    expect(container.textContent).not.toContain('Тексты находок')
+    expect(container.textContent).not.toContain('может ошибиться')
+    fireEvent.click(screen.getByTestId('ai-check-hint-toggle'))
+    const hint = screen.getByTestId('ai-check-hint')
+    expect(hint).toHaveTextContent('Тексты находок')
+    expect(hint).toHaveTextContent('может ошибиться')
   })
 
   it('при низкой уверенности балл в сводке молчит, как и в шапке', () => {
@@ -249,8 +290,6 @@ describe('ReviewTaskTable — проверка старее v17', () => {
   it('без таблицы блока нет, а панель работает как раньше', () => {
     panel({ tasks: null })
     expect(screen.queryByTestId('ai-check-tasks')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('ai-check-summary-toggle'))
-    expect(screen.getByTestId('ai-check-summary')).toHaveTextContent('Разбор')
     expect(screen.getByTestId('ai-check-apply-frames')).toBeInTheDocument()
   })
 
@@ -265,23 +304,38 @@ describe('ReviewTaskTable — проверка старее v17', () => {
   })
 })
 
+/**
+ * §207. Отброшенные находки — измерение качества модели, а не рабочая
+ * информация преподавателя. С экрана строка ушла под знак вопроса, но не
+ * пропала: число там по-прежнему честное и склоняется.
+ */
 describe('ReviewTaskTable — отброшенные находки', () => {
-  it('больше нуля — говорим об этом серой строкой', () => {
-    panel({ dropped_findings: 3 })
-    expect(screen.getByTestId('ai-check-dropped')).toHaveTextContent('отбросил 3 находки')
+  const openHint = () => fireEvent.click(screen.getByTestId('ai-check-hint-toggle'))
+
+  it('на экране строки нет — она под знаком вопроса', () => {
+    const { container } = panel({ dropped_findings: 3 })
+    expect(container.textContent).not.toContain('отбросил')
+    openHint()
+    expect(screen.getByTestId('ai-check-hint')).toHaveTextContent('отбросил 3 находки')
   })
 
   it('число склоняется — «1 находку», «5 находок»', () => {
-    panel({ dropped_findings: 1 })
-    expect(screen.getByTestId('ai-check-dropped')).toHaveTextContent('отбросил 1 находку')
-    panel({ dropped_findings: 5 })
-    expect(screen.getAllByTestId('ai-check-dropped')[1]).toHaveTextContent('отбросил 5 находок')
+    const one = panel({ dropped_findings: 1 })
+    fireEvent.click(within(one.container).getByTestId('ai-check-hint-toggle'))
+    expect(within(one.container).getByTestId('ai-check-hint')).toHaveTextContent('отбросил 1 находку')
+    one.unmount()
+    const five = panel({ dropped_findings: 5 })
+    fireEvent.click(within(five.container).getByTestId('ai-check-hint-toggle'))
+    expect(within(five.container).getByTestId('ai-check-hint')).toHaveTextContent('отбросил 5 находок')
   })
 
-  it('ноль и null — молчим', () => {
-    panel({ dropped_findings: 0 })
-    expect(screen.queryByTestId('ai-check-dropped')).not.toBeInTheDocument()
+  it('ноль и null — в подсказке об этом ни слова', () => {
+    const zero = panel({ dropped_findings: 0 })
+    openHint()
+    expect(screen.getByTestId('ai-check-hint')).not.toHaveTextContent('отбросил')
+    zero.unmount()
     panel({ dropped_findings: null })
-    expect(screen.queryByTestId('ai-check-dropped')).not.toBeInTheDocument()
+    openHint()
+    expect(screen.getByTestId('ai-check-hint')).not.toHaveTextContent('отбросил')
   })
 })

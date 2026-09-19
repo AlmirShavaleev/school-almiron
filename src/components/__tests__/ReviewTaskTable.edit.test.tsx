@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import type { AiJobRow, AiTaskRow } from '@/lib/aiHomeworkCheck'
@@ -97,18 +97,29 @@ const rowByNo = (no: string) =>
   screen.getAllByTestId('review-task-row').find(r => r.dataset.no === no)!
 
 describe('ReviewTaskTable — правка таблицы', () => {
-  it('вердикт строки — выпадающий список из четырёх значений', () => {
+  beforeEach(() => { sessionStorage.clear() })
+
+  it('§207. Вердикт — компактная кнопка, список из четырёх значений по клику', () => {
     table()
-    const select = within(rowByNo('2')).getByTestId('review-task-verdict') as HTMLSelectElement
-    expect(select.tagName).toBe('SELECT')
-    expect([...select.options].map(o => o.value)).toEqual(['correct', 'wrong', 'partial', 'unchecked'])
-    expect(select.value).toBe('wrong')
+    const trigger = within(rowByNo('2')).getByTestId('review-task-verdict')
+    expect(trigger.tagName).toBe('BUTTON')
+    expect(trigger).toHaveTextContent('неверно')
+    // Закрытый список не занимает места и не держит слово целиком.
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
+    fireEvent.click(trigger)
+    const menu = screen.getByTestId('review-task-verdict-menu')
+    expect(within(menu).getAllByRole('option').map(o => o.textContent)).toEqual([
+      'верно', 'неверно', 'частично', 'не сверено',
+    ])
   })
 
   it('смена вердикта сохраняется сразу', () => {
     const { onPatchTask } = table()
-    fireEvent.change(within(rowByNo('2')).getByTestId('review-task-verdict'), { target: { value: 'partial' } })
+    fireEvent.click(within(rowByNo('2')).getByTestId('review-task-verdict'))
+    fireEvent.click(screen.getByTestId('review-task-verdict-option-partial'))
     expect(onPatchTask).toHaveBeenCalledWith('r2', { verdict: 'partial' })
+    // Выбор закрывает список — иначе он перекрывает соседние строки.
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
   })
 
   it('сводка и балл считаются по таблице преподавателя, а не по слепку ИИ', () => {
@@ -136,7 +147,10 @@ describe('ReviewTaskTable — правка таблицы', () => {
   })
 
   it('заметка сохраняется по уходу из поля, а не на каждую букву', () => {
+    // Верных в этой таблице одна — порог свёртки (три) не сработал, строка
+    // видна сразу.
     const { onPatchTask } = table()
+    expect(screen.queryByTestId('review-tasks-correct-pack')).not.toBeInTheDocument()
     const note = within(rowByNo('1')).getByTestId('review-task-note')
     fireEvent.change(note, { target: { value: 'Проверь единицы' } })
     expect(onPatchTask).not.toHaveBeenCalled()
@@ -193,6 +207,11 @@ describe('ReviewTaskTable — правка таблицы', () => {
     fireEvent.change(no, { target: { value: '  ' } })
     fireEvent.blur(no)
     expect(onPatchTask).not.toHaveBeenCalled()
+  })
+
+  it('§207. Плейсхолдера у заметки нет — пустое поле молчит', () => {
+    table()
+    expect(within(rowByNo('2')).getByTestId('review-task-note')).not.toHaveAttribute('placeholder')
   })
 
   it('строку можно добавить и удалить', () => {

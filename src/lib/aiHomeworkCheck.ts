@@ -304,6 +304,8 @@ export function findingsToRegions(
   rect: { x: number; y: number; w: number; h: number }
   category: AiFindingCategory
   text: string
+  sourceId: string
+  jobId: string | null
 }> {
   const out = []
   for (const f of findings) {
@@ -315,6 +317,10 @@ export function findingsToRegions(
       rect: { x: f.rect_x, y: f.rect_y, w: f.rect_w, h: f.rect_h },
       category: f.category,
       text: f.text,
+      // §207. Пометка источника едет вместе с рамкой: по ней повторный перенос
+      // узнаёт свои прежние рамки и заменяет их, а не кладёт вторым слоем.
+      sourceId: f.id,
+      jobId: f.job_id ?? null,
     })
   }
   return out
