@@ -18,6 +18,7 @@
 
 import { TASK_VERDICT_LABEL } from './aiHomeworkCheck'
 import type { ReviewTaskRow, ReviewTaskVerdict } from './homeworkReviewTasks'
+import { answerView, expectedOnlyView, notesOfTask, type ReviewNote } from './reviewNotes'
 
 /** Лист A4 в логических пикселях при 96 dpi. */
 export const REPORT_PAGE_WIDTH = 794
@@ -46,6 +47,8 @@ export interface AttemptPdfComment {
   categoryLabel: string
   color: string
   text: string
+  /** §209. Задание, к которому привязано замечание; null — ничьё. */
+  taskNo?: string | null
 }
 
 export interface AttemptPdfReport {
@@ -61,6 +64,12 @@ export interface AttemptPdfReport {
   scoreMax?: number | null
   comment?: string | null
   tasks?: readonly ReviewTaskRow[]
+  /**
+   * §209. Кому файл. У ученика в разборе не печатается его собственный ответ:
+   * ИИ читает почерк с ошибками, и «твой ответ: 0,375», когда он написал
+   * другое, — спор на ровном месте. Преподаватель скачивает своё целиком.
+   */
+  audience?: 'staff' | 'student'
 }
 
 /**
@@ -76,6 +85,7 @@ export function attemptPdfReportFrom(input: {
   review: { decision: 'accepted' | 'returned_for_revision'; comment: string | null; score: number | null; created_at: string } | null
   scoreMax: number | null
   tasks: readonly ReviewTaskRow[]
+  audience?: 'staff' | 'student'
 }): AttemptPdfReport {
   return {
     studentName: input.studentName,
@@ -88,6 +98,7 @@ export function attemptPdfReportFrom(input: {
     scoreMax: input.scoreMax,
     comment: input.review?.comment ?? null,
     tasks: input.tasks,
+    audience: input.audience ?? 'staff',
   }
 }
 
@@ -207,18 +218,27 @@ interface FlowSection {
   items: FlowItem[]
 }
 
-const TASK_COLUMNS = [40, 92, 180, 180] as const
-const TASK_NOTE_WIDTH = REPORT_CONTENT_WIDTH - TASK_COLUMNS.reduce((a, b) => a + b, 0)
-const TASK_COLUMN_X = (() => {
+/**
+ * §209. Колонки разбора по заданиям. У преподавателя их четыре (номер, итог,
+ * ответ ученика, правильный), у ученика — три: своего ответа он не видит.
+ * Замечания печатаются отдельными строками ПОД строкой задания, а не пятой
+ * колонкой: замечаний на задание бывает несколько, и в колонку шириной с
+ * палец они не лезли.
+ */
+const TASK_COLUMNS_STAFF = [40, 92, 200] as const
+const TASK_COLUMNS_STUDENT = [40, 92] as const
+
+function taskColumns(audience: 'staff' | 'student'): { widths: readonly number[]; xs: number[]; last: number } {
+  const widths = audience === 'student' ? TASK_COLUMNS_STUDENT : TASK_COLUMNS_STAFF
   const xs: number[] = []
   let x = REPORT_MARGIN
-  for (const width of TASK_COLUMNS) {
+  for (const width of widths) {
     xs.push(x)
     x += width
   }
   xs.push(x)
-  return xs
-})()
+  return { widths, xs, last: REPORT_CONTENT_WIDTH + REPORT_MARGIN - x }
+}
 
 function textBlock(
   text: string,
@@ -303,17 +323,48 @@ function buildCommentSection(report: AttemptPdfReport, measure: TextMeasure): Fl
   }
 }
 
-function taskRowItem(row: ReviewTaskRow, measure: TextMeasure): FlowItem {
+/**
+ * §209. Строка задания и ЕГО ЗАМЕЧАНИЯ — вместе, одним неразрывным куском.
+ *
+ * Замечания берутся оттуда же, откуда их берёт экран: из рамок на работе
+ * (плюс легаси-поле `note`). Если бы файл собирал разбор только из колонки
+ * `note`, экспорт молча обеднел бы ровно на то, что преподаватель написал
+ * после §209, — а заметил бы это ученик, а не мы.
+ */
+function taskRowItem(
+  row: ReviewTaskRow,
+  notes: readonly ReviewNote[],
+  audience: 'staff' | 'student',
+  measure: TextMeasure,
+): FlowItem {
+  const { widths, xs, last } = taskColumns(audience)
+  const answers = audience === 'student'
+    ? [expectedOnlyView(row.expected_answer)]
+    : (() => {
+      const view = answerView(row.student_answer, row.expected_answer)
+      return [view.student, view.expected ?? '']
+    })()
   const cells = [
-    { text: row.no || '—', width: TASK_COLUMNS[0], bold: true, color: INK },
-    { text: TASK_VERDICT_LABEL[row.verdict], width: TASK_COLUMNS[1], bold: true, color: TASK_TONE[row.verdict] },
-    { text: (row.student_answer ?? '').trim() || '—', width: TASK_COLUMNS[2], bold: false, color: INK },
-    { text: (row.expected_answer ?? '').trim() || '—', width: TASK_COLUMNS[3], bold: false, color: INK },
-    { text: (row.note ?? '').trim() || '', width: TASK_NOTE_WIDTH, bold: false, color: MUTED },
+    { text: row.no || '—', width: widths[0], bold: true, color: INK },
+    { text: TASK_VERDICT_LABEL[row.verdict], width: widths[1], bold: true, color: TASK_TONE[row.verdict] },
+    ...(audience === 'student'
+      ? [{ text: answers[0], width: last, bold: false, color: INK }]
+      : [
+        { text: answers[0], width: widths[2], bold: false, color: INK },
+        { text: answers[1], width: last, bold: false, color: INK },
+      ]),
   ]
   const wrapped = cells.map(cell => wrapText(cell.text, cell.width - 10, 11, cell.bold, measure))
-  const lines = Math.max(...wrapped.map(list => list.length))
-  const height = lines * 15 + 10
+  const headLines = Math.max(...wrapped.map(list => list.length))
+  const noteLines = notes.map(note => wrapText(
+    note.page != null ? `${note.text} (стр. ${note.page})` : note.text,
+    REPORT_CONTENT_WIDTH - 26,
+    11,
+    false,
+    measure,
+  ))
+  const noteHeight = noteLines.reduce((sum, lines) => sum + lines.length * 14, 0)
+  const height = headLines * 15 + 10 + noteHeight + (noteHeight > 0 ? 4 : 0)
   return {
     height,
     draw: top => {
@@ -325,7 +376,7 @@ function taskRowItem(row: ReviewTaskRow, measure: TextMeasure): FlowItem {
           if (!line) return
           parts.push({
             kind: 'text',
-            x: TASK_COLUMN_X[index] + 2,
+            x: xs[index] + 2,
             y: top + 5 + lineIndex * 15 + 11,
             text: line,
             size: 11,
@@ -334,31 +385,60 @@ function taskRowItem(row: ReviewTaskRow, measure: TextMeasure): FlowItem {
           })
         })
       })
+      let y = top + headLines * 15 + 8
+      noteLines.forEach(lines => {
+        lines.forEach(line => {
+          parts.push({ kind: 'text', x: REPORT_MARGIN + 24, y: y + 11, text: line, size: 11, bold: false, color: MUTED })
+          y += 14
+        })
+      })
       return parts
     },
   }
 }
 
-const TASK_HEAD: FlowItem = {
-  height: 26,
-  draw: top => {
-    const titles = ['№', 'Вердикт', 'Ответ ученика', 'Правильный ответ', 'Заметка']
-    const parts: ReportDraw[] = [
-      { kind: 'rect', x: REPORT_MARGIN, y: top, w: REPORT_CONTENT_WIDTH, h: 22, fill: '#f1f5f9' },
-    ]
-    titles.forEach((title, index) => {
-      parts.push({ kind: 'text', x: TASK_COLUMN_X[index] + 2, y: top + 15, text: title, size: 10, bold: true, color: MUTED })
-    })
-    return parts
-  },
+function taskHead(audience: 'staff' | 'student'): FlowItem {
+  return {
+    height: 26,
+    draw: top => {
+      const { xs } = taskColumns(audience)
+      const titles = audience === 'student'
+        ? ['№', 'Итог', 'Правильный ответ']
+        : ['№', 'Вердикт', 'Ответ ученика', 'Правильный ответ']
+      const parts: ReportDraw[] = [
+        { kind: 'rect', x: REPORT_MARGIN, y: top, w: REPORT_CONTENT_WIDTH, h: 22, fill: '#f1f5f9' },
+      ]
+      titles.forEach((title, index) => {
+        parts.push({ kind: 'text', x: xs[index] + 2, y: top + 15, text: title, size: 10, bold: true, color: MUTED })
+      })
+      return parts
+    },
+  }
 }
 
-function buildTaskSection(report: AttemptPdfReport, measure: TextMeasure): FlowSection | null {
+/** Замечания одного задания: рамки на работе плюс легаси-поле `note`. */
+export function notesForTaskRow(row: ReviewTaskRow, notes: readonly ReviewNote[]): ReviewNote[] {
+  const own = notesOfTask(notes, row.no)
+  const legacy = (row.note ?? '').trim()
+  if (!legacy) return own
+  return [...own, { id: `legacy:${row.id}`, taskNo: row.no, text: legacy, page: null, type: null, categoryLabel: 'Заметка' }]
+}
+
+function buildTaskSection(
+  report: AttemptPdfReport,
+  notes: readonly ReviewNote[],
+  measure: TextMeasure,
+): FlowSection | null {
   const rows = report.tasks ?? []
   if (rows.length === 0) return null
+  const audience = report.audience ?? 'staff'
   return {
     title: 'Разбор по заданиям',
-    items: [TASK_HEAD, ...rows.map(row => taskRowItem(row, measure)), { height: 14, draw: () => [] }],
+    items: [
+      taskHead(audience),
+      ...rows.map(row => taskRowItem(row, notesForTaskRow(row, notes), audience, measure)),
+      { height: 14, draw: () => [] },
+    ],
   }
 }
 
@@ -410,10 +490,22 @@ export function buildReportPages(
   comments: readonly AttemptPdfComment[],
   measure: TextMeasure,
 ): ReportDraw[][] {
+  // §209. Замечания под заданиями — те же рамки, что нарисованы на страницах
+  // работы: один источник, а не два. Список «Замечания на страницах работы»
+  // остаётся: в нём нумерация, совпадающая с кружками на страницах, и в него
+  // попадают рамки, не привязанные ни к какому заданию.
+  const notes: ReviewNote[] = comments.map(comment => ({
+    id: String(comment.number),
+    taskNo: comment.taskNo ?? null,
+    text: comment.text,
+    page: comment.globalPage,
+    type: null,
+    categoryLabel: comment.categoryLabel,
+  }))
   const sections = [
     buildHeaderSection(report, measure),
     buildCommentSection(report, measure),
-    buildTaskSection(report, measure),
+    buildTaskSection(report, notes, measure),
     buildCommentsSection(comments, measure),
   ].filter((section): section is FlowSection => section !== null)
 

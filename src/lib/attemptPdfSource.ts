@@ -41,6 +41,11 @@ export interface AttemptExportRegion {
   categoryLabel: string
   color: string
   text: string
+  /**
+   * §209. Задание, к которому привязано замечание. Нужно последней странице:
+   * разбор в файле печатает замечания под теми же заданиями, что экран.
+   */
+  taskNo?: string | null
 }
 
 export interface AttemptExportSnapshot {

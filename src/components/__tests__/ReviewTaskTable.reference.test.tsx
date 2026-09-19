@@ -37,7 +37,6 @@ const panel = (over: Partial<AiJobRow> = {}) => render(
     running={false}
     error={null}
     onRun={async () => {}}
-    onApplyFrames={async () => 0}
   />,
 )
 

@@ -8,9 +8,14 @@ import { cn } from '@/utils/cn'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
-import type { ImportedRegion } from '@/components/SubmissionReviewer'
-import { CONFIDENCE_LABEL, aiTasksOf, findingsToRegions } from '@/lib/aiHomeworkCheck'
-import { reviewTasksScore } from '@/lib/homeworkReviewTasks'
+import type {
+  AttemptNotesApi, AttemptNotesSnapshot, ImportedRegion,
+} from '@/components/SubmissionReviewer'
+import {
+  CONFIDENCE_LABEL, aiTasksOf, findingsToRegions, taskNoOfFinding, type AiFindingRow,
+} from '@/lib/aiHomeworkCheck'
+import { reviewTasksScore, type ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
+import { noteTypeOfCategory, type ReviewNote } from '@/lib/reviewNotes'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewTasks } from '@/hooks/useHomeworkReviewTasks'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
@@ -542,64 +547,96 @@ export function HomeworkReviewQueuePage() {
   const dedupeFramesRef = useRef<(() => Promise<number>) | null>(null)
   const [duplicateFrames, setDuplicateFrames] = useState(0)
   const [fillRequest, setFillRequest] = useState<{ comment?: string } | null>(null)
+  /**
+   * §209. Мост между таблицей заданий и разметкой работы. Замечание — это
+   * рамка, а рамками владеет аннотатор: он один знает страницы и умеет их
+   * сохранять. Поэтому наружу едет слепок (что сейчас нарисовано), а внутрь —
+   * ручки (нарисовать, удалить, показать).
+   */
+  const notesApiRef = useRef<AttemptNotesApi | null>(null)
+  const [notesSnapshot, setNotesSnapshot] = useState<AttemptNotesSnapshot>(
+    { notes: [], dismissedFindings: [] },
+  )
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
+  /** Находка становится рамкой на своей странице — путь берём по file_id. */
+  const pathOfFinding = (finding: AiFindingRow) =>
+    attemptFiles.find(f => f.id === finding.file_id)?.storage_path ?? null
 
-  async function applyAiFrames(): Promise<number> {
-    const importRegions = importRegionsRef.current
-    if (!importRegions) throw new Error('Разбор ещё не готов — попробуйте через секунду')
-    // Находка ссылается на файл по id, аннотатор адресует страницы по пути.
-    const pathById = Object.fromEntries(attemptFiles.map(f => [f.id, f.storage_path]))
-    const count = await importRegions(findingsToRegions(ai.findings, pathById))
-    if (count > 0 && ai.job) {
-      // Отметка «черновик забрали» — для статистики пользы ИИ, а не для логики.
-      // Её сбой не должен выглядеть как несработавший перенос.
-      try { await ai.markAccepted(ai.job.id) } catch { /* рамки уже перенесены */ }
+  const notes: ReviewNote[] = useMemo(() => notesSnapshot.notes.map(note => ({
+    id: note.id,
+    taskNo: note.taskNo,
+    text: note.text,
+    page: note.page,
+    type: noteTypeOfCategory(note.category),
+    categoryLabel: note.categoryLabel,
+  })), [notesSnapshot.notes])
+
+  const takenFindingIds = useMemo(
+    () => notesSnapshot.notes.map(note => note.findingId).filter((id): id is string => id != null),
+    [notesSnapshot.notes],
+  )
+
+  /**
+   * §209. «Взять» — находка становится замечанием преподавателя вместе с
+   * рамкой. Отметка `accepted_at` ставится на первом принятом предложении:
+   * это мера пользы ИИ, и её сбой не должен выглядеть как несработавшее
+   * нажатие.
+   */
+  async function takeFinding(finding: AiFindingRow) {
+    const api = notesApiRef.current
+    const filePath = pathOfFinding(finding)
+    if (!api || !filePath) return false
+    const region: ImportedRegion = {
+      filePath,
+      page: finding.page,
+      rect: { x: finding.rect_x, y: finding.rect_y, w: finding.rect_w, h: finding.rect_h },
+      category: finding.category,
+      text: finding.text,
+      sourceId: finding.id,
+      jobId: finding.job_id ?? null,
+      task: taskNoOfFinding(finding) ? finding.task ?? taskNoOfFinding(finding) : null,
     }
-    return count
+    const ok = await api.takeFinding(region)
+    if (ok && ai.job && !ai.job.accepted_at) {
+      try { await ai.markAccepted(ai.job.id) } catch { /* рамка уже легла */ }
+    }
+    return ok
+  }
+
+  async function skipFinding(finding: AiFindingRow) {
+    const api = notesApiRef.current
+    const filePath = pathOfFinding(finding)
+    if (!api || !filePath) return false
+    return api.dismissFinding({ findingId: finding.id, filePath, page: finding.page })
+  }
+
+  /** §209. «Все не сверенные — верные»: одно нажатие вместо пяти. */
+  async function bulkVerdict(ids: string[], verdict: ReviewTaskVerdict) {
+    for (const id of ids) await reviewTasks.patchRow(id, { verdict })
+    return true
   }
 
   /**
-   * Черновик ИИ переносится в разметку САМ, как только работа открыта.
+   * §209. Рамки ИИ БОЛЬШЕ НЕ ПЕРЕНОСЯТСЯ САМИ.
    *
-   * Раньше это была вторая кнопка: сначала «Проверить с ИИ», потом «Перенести
-   * рамки». Второе нажатие ничего не решало — отказаться от переноса всё равно
-   * никто не отказывался, а рамки черновые и ученику до публикации не видны.
-   * Поэтому переносим молча и один раз: признак «уже забрали» — accepted_at
-   * у задачи, его же читает список очереди.
+   * До §209 находки молча ложились на работу при открытии: «отказаться всё
+   * равно никто не отказывается». На деле отказывались — глазами, и экран
+   * зарастал чужими рамками, от которых владелец и просил избавиться. Теперь
+   * каждая находка стоит под своим заданием предложением: «взять» делает её
+   * замечанием, «мимо» убирает навсегда. Ручка переноса (`importRegionsRef`)
+   * оставлена аннотатору: ею пользуется «взять».
    *
-   * Аннотатор выставляет importRegionsRef после монтирования, а оно ленивое
-   * (pdfjs грузится отдельным чанком). Поэтому не одна попытка, а несколько с
-   * паузой — иначе на медленном канале перенос молча не случался бы.
+   * Что осталось автоматическим — подстановка РАЗБОРА в комментарий: это
+   * текст вердикта, а не пометки на работе, и §207/§208 на ней стоят.
    */
-  const autoAppliedRef = useRef<string | null>(null)
+  const autoFilledRef = useRef<string | null>(null)
   useEffect(() => {
     const job = ai.job
-    if (!openAttemptId || !job || job.status !== 'done' || job.accepted_at) return
-    if (ai.findings.length === 0) return
-    if (autoAppliedRef.current === job.id) return
-    if (reviewing?.locked) return
-
-    autoAppliedRef.current = job.id
-    let cancelled = false
-    let tries = 0
-
-    async function attempt() {
-      while (!cancelled && tries < 20) {
-        if (importRegionsRef.current) {
-          try {
-            await applyAiFrames()
-            if (!cancelled) setFillRequest({ comment: job!.summary ?? undefined })
-          } catch { /* причина уже показана панелью разбора */ }
-          return
-        }
-        tries += 1
-        await new Promise(resolve => setTimeout(resolve, 300))
-      }
-    }
-
-    void attempt()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openAttemptId, ai.job?.id, ai.job?.status, ai.findings.length, reviewing?.locked])
+    if (!openAttemptId || !job || job.status !== 'done' || !job.summary) return
+    if (autoFilledRef.current === job.id) return
+    autoFilledRef.current = job.id
+    setFillRequest({ comment: job.summary })
+  }, [openAttemptId, ai.job])
 
   return (
     <div className="space-y-5">
@@ -901,6 +938,12 @@ export function HomeworkReviewQueuePage() {
           importRegionsRef={importRegionsRef}
           dedupeFramesRef={dedupeFramesRef}
           onDuplicateFramesChange={setDuplicateFrames}
+          // §209. Один список вместо двух: колонка «Комментарии» не рисуется,
+          // замечания живут под строками заданий в таблице проверки.
+          notesInTaskList
+          notesApiRef={notesApiRef}
+          onNotesChange={setNotesSnapshot}
+          onSelectedNoteChange={setActiveNoteId}
           footer={!verdictForm ? () => (
             <VerdictSummary
               review={latestReview(reviews, reviewing.row.attempt.id)}
@@ -941,7 +984,6 @@ export function HomeworkReviewQueuePage() {
                   running={ai.running}
                   error={ai.error}
                   onRun={ai.runCheck}
-                  onApplyFrames={applyAiFrames}
                   duplicateFrames={duplicateFrames}
                   onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
                   // Новый объект на каждое нажатие: вставить один и тот же
@@ -958,6 +1000,19 @@ export function HomeworkReviewQueuePage() {
                   onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
                   onPatchTask={reviewTasks.patchRow}
                   onRemoveTask={reviewTasks.removeRow}
+                  // §209. Замечания, предложения ИИ и клавиатура — всё в одном
+                  // списке: единственная сущность на экране это задание.
+                  notes={notes}
+                  activeNoteId={activeNoteId}
+                  dismissedFindings={notesSnapshot.dismissedFindings}
+                  takenFindingIds={takenFindingIds}
+                  onStartNote={no => notesApiRef.current?.startNote(no)}
+                  onFocusNote={id => notesApiRef.current?.focusNote(id)}
+                  onDeleteNote={id => { void notesApiRef.current?.deleteNote(id) }}
+                  onEditNote={(id, text) => { void notesApiRef.current?.updateNote(id, text) }}
+                  onTakeFinding={takeFinding}
+                  onSkipFinding={skipFinding}
+                  onBulkVerdict={bulkVerdict}
                 />
                 </>
               }

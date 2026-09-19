@@ -95,8 +95,9 @@ describe('buildReportPages', () => {
     expect(text).toContain('Разбор по заданиям')
     expect(text).toContain('Ответ ученика')
     expect(text).toContain('Правильный ответ')
-    expect(text).toContain('Заметка')
     expect(text).toContain('неверно')
+    // §209. Заметка печатается строкой ПОД заданием, а не пятой колонкой:
+    // замечаний на задание бывает несколько, и в колонку они не лезли.
     expect(text).toContain('знак')
   })
 
@@ -167,5 +168,66 @@ describe('имя файла и правило показа кнопки', () => 
     expect(canDownloadAttemptPdf('student', { ...BASE, decision: 'returned_for_revision' })).toBe(true)
     expect(canDownloadAttemptPdf('staff', draft)).toBe(true)
     expect(canDownloadAttemptPdf('staff', null)).toBe(false)
+  })
+})
+
+/**
+ * §209. Последняя страница файла обязана показывать ТЕ ЖЕ замечания, что
+ * экран, и под теми же заданиями. Иначе экспорт молча беднеет ровно на то,
+ * что преподаватель написал после §209, — а заметит это ученик, а не мы.
+ */
+describe('§209 — замечания в разборе PDF', () => {
+  const bound = (number: number, text: string, taskNo: string): AttemptPdfComment => ({
+    number, globalPage: 2, categoryLabel: 'Ошибка', color: '#dc2626', text, taskNo,
+  })
+
+  it('замечание-рамка печатается под своим заданием', () => {
+    const pages = buildReportPages(
+      { ...BASE, tasks: [task('13', { verdict: 'wrong', student_answer: '12', expected_answer: '30' })] },
+      [bound(1, 'Ошибка в отборе корней', '13')],
+      measure,
+    )
+    const text = allText(pages)
+    expect(text).toContain('Разбор по заданиям')
+    expect(text).toContain('Ошибка в отборе корней')
+  })
+
+  it('старое поле note печатается вместе с рамками — оно тоже замечание', () => {
+    const pages = buildReportPages(
+      { ...BASE, tasks: [task('13', { note: 'старая заметка' })] },
+      [bound(1, 'Новое замечание', '13')],
+      measure,
+    )
+    const text = allText(pages)
+    expect(text).toContain('старая заметка')
+    expect(text).toContain('Новое замечание')
+  })
+
+  it('ученику печатается правильный ответ, но НЕ его собственный', () => {
+    const pages = buildReportPages(
+      {
+        ...BASE,
+        audience: 'student',
+        tasks: [task('13', { verdict: 'wrong', student_answer: '0,375', expected_answer: '30' })],
+      },
+      [],
+      measure,
+    )
+    const text = allText(pages)
+    expect(text).toContain('Правильный ответ')
+    expect(text).not.toContain('Ответ ученика')
+    expect(text).not.toContain('0,375')
+    expect(text).toContain('30')
+  })
+
+  it('преподаватель скачивает своё целиком — ответ ученика на месте', () => {
+    const pages = buildReportPages(
+      { ...BASE, tasks: [task('13', { verdict: 'wrong', student_answer: '0,375', expected_answer: '30' })] },
+      [],
+      measure,
+    )
+    const text = allText(pages)
+    expect(text).toContain('Ответ ученика')
+    expect(text).toContain('0,375')
   })
 })

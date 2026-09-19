@@ -87,7 +87,6 @@ const panel = (over: Partial<AiJobRow> = {}, findings: AiFindingRow[] = FINDINGS
     running={false}
     error={null}
     onRun={() => {}}
-    onApplyFrames={async () => 0}
   />,
 )
 
@@ -212,22 +211,17 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
     expect(screen.queryAllByTestId('review-task-remove')).toHaveLength(0)
   })
 
-  it('§199. Списка находок в панели больше нет — он дублировал «Комментарии»', () => {
+  it('§199 + §209. Отдельного списка находок нет, и общего переноса рамок тоже', () => {
     panel()
     expect(screen.queryAllByTestId('ai-check-finding')).toHaveLength(0)
-    // Перенос рамок при этом остался: тексты читаются в правой колонке.
-    expect(screen.getByTestId('ai-check-apply-frames')).toBeInTheDocument()
+    // §209: решение принимается по каждой находке отдельно — «взять»/«мимо».
+    expect(screen.queryByTestId('ai-check-apply-frames')).not.toBeInTheDocument()
   })
 
-  it('§199. Заметка свёрнута в строку, полная — по клику', () => {
+  it('§199. Заметка слепка видна под строкой', () => {
     panel()
     const wrong = screen.getAllByTestId('ai-task-row').find(r => r.dataset.verdict === 'wrong')!
-    const note = within(wrong).getByTestId('review-task-note-text')
-    expect(note.dataset.open).toBeUndefined()
-    expect(note.className).toContain('truncate')
-    fireEvent.click(note)
-    expect(note.dataset.open).toBe('true')
-    expect(note.className).not.toContain('truncate')
+    expect(wrong).toHaveTextContent('Знак ускорения')
   })
 
   it('§207. «Вставить в комментарий» пережила блок «Резюме ИИ»', () => {
@@ -241,7 +235,6 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
         running={false}
         error={null}
         onRun={() => {}}
-        onApplyFrames={async () => 0}
         onUseText={onUseText}
       />,
     )
@@ -271,12 +264,12 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
 
   it('§207. Пояснений на экране нет, но под знаком вопроса они есть', () => {
     const { container } = panel()
-    expect(container.textContent).not.toContain('Тексты находок')
     expect(container.textContent).not.toContain('может ошибиться')
+    expect(container.textContent).not.toContain('Клавиши')
     fireEvent.click(screen.getByTestId('ai-check-hint-toggle'))
     const hint = screen.getByTestId('ai-check-hint')
-    expect(hint).toHaveTextContent('Тексты находок')
     expect(hint).toHaveTextContent('может ошибиться')
+    expect(hint).toHaveTextContent('Клавиши')
   })
 
   it('при низкой уверенности балл в сводке молчит, как и в шапке', () => {
@@ -290,14 +283,14 @@ describe('ReviewTaskTable — проверка старее v17', () => {
   it('без таблицы блока нет, а панель работает как раньше', () => {
     panel({ tasks: null })
     expect(screen.queryByTestId('ai-check-tasks')).not.toBeInTheDocument()
-    expect(screen.getByTestId('ai-check-apply-frames')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-check-run')).toBeInTheDocument()
   })
 
   it('столбца tasks в строке нет вовсе — тоже без блока и без падения', () => {
     const legacy = job()
     delete legacy.tasks
     render(
-      <ReviewTaskTable job={legacy} findings={FINDINGS} running={false} error={null} onRun={() => {}} onApplyFrames={async () => 0} />,
+      <ReviewTaskTable job={legacy} findings={FINDINGS} running={false} error={null} onRun={() => {}} />,
     )
     expect(screen.queryByTestId('ai-check-tasks')).not.toBeInTheDocument()
     expect(screen.getByTestId('ai-check-panel')).toBeInTheDocument()

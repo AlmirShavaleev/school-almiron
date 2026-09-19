@@ -23,6 +23,10 @@ const openFirstNote = `(() => { const el = document.querySelector('[data-testid=
 const toWatchBadge = `(document.querySelector('[data-testid="video-watched-badge"]') ?? document.querySelector('iframe[title="Видео темы"]'))?.scrollIntoView({ block: 'center' })`
 // §199: блок «По заданиям» в разборе работы у ученика.
 const toStudentTasks = `document.querySelector('[data-testid="student-review-tasks"]')?.scrollIntoView({ block: 'center' })`
+// §209: предложение ИИ и спор вердикта с замечанием — оба под своей строкой.
+const toSuggestion = `document.querySelector('[data-testid="ai-finding-suggestion"]')?.scrollIntoView({ block: 'center' })`
+const toConflict = `document.querySelector('[data-testid="review-task-row"][data-conflict="true"]')?.scrollIntoView({ block: 'center' })`
+const toFirstPage = `document.querySelector('[data-testid="review-page-1"]')?.scrollIntoView({ block: 'center' })`
 // §202 (board/054): печатный лист прокручивается к МЕЛКОЙ иллюстрации — рядом с
 // ней на листе стоит задача с крупным чертежом, на этой паре и видно полосу
 // ширин. Прокрутка по элементу, а не по пикселю: высота листа зависит как раз
@@ -265,9 +269,21 @@ export const scenes = [
     { persona: 'owner', name: 'o06-review-tasks-correct-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: openCorrectPack }, { wait: 500 }], full: false },
     // §207: пачка «не сверено» раскрыта — то же самое для одинаковых заметок.
     { persona: 'owner', name: 'o06-review-tasks-unchecked-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="review-tasks-unchecked-toggle"]' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="review-tasks-unchecked-pack"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
-    // Правая колонка «Комментарии»: похвалы спрятаны, переключатель виден.
-    { persona: 'owner', name: 'o06-review-praise-off', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
-    { persona: 'owner', name: 'o06-review-praise-on', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="comment-list-praise-toggle"] input' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
+  ]),
+
+  // ── §209 (board/060): один список — задания с замечаниями ──
+  // Колонки «Комментарии» на этих снимках нет вовсе: всё, что в ней было,
+  // стоит под строками заданий. Сцены про переключатель похвал убраны
+  // вместе с колонкой — прятать стало нечего.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    // Предложение ИИ: «взять» / «мимо» под своей строкой.
+    { persona: 'owner', name: 'o06-review-ai-suggestion', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toSuggestion }, { wait: 600 }], full: false },
+    // Расхождение: у верного задания есть замечание.
+    { persona: 'owner', name: 'o06-review-conflict', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toConflict }, { wait: 600 }], full: false },
+    // Создание заметки, шаг 1: нажали «+ Заметка» — включилось рисование.
+    { persona: 'owner', name: 'o06-review-note-draw', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toConflict }, { wait: 400 }, { clickSel: '[data-testid="review-task-add-note"]' }, { wait: 500 }], full: false },
+    // Шаг 2: обвели место — выбор типа и текст замечания.
+    { persona: 'owner', name: 'o06-review-note-editor', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toConflict }, { wait: 400 }, { clickSel: '[data-testid="review-task-add-note"]' }, { wait: 400 }, { eval: toFirstPage }, { wait: 600 }, { drag: { sel: '[data-testid="review-overlay-1"]', from: [0.18, 0.37], to: [0.68, 0.43] } }, { wait: 500 }, { fill: ['[data-testid="comment-editor-text"]', 'Потерян второй корень'] }, { wait: 400 }], full: false },
   ]),
 
   // ── §208 (board/059): шапка, граница колонок, поле комментария ──

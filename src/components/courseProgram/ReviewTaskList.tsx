@@ -1,30 +1,49 @@
 import { ClipboardList } from 'lucide-react'
-import { ReadOnlyTaskLine } from './ReviewTaskTable'
+import { CheckCircle2, HelpCircle, MinusCircle, XCircle } from 'lucide-react'
+import { TASK_VERDICT_LABEL, type AiTaskVerdict } from '@/lib/aiHomeworkCheck'
 import { sortReviewTasks, type ReviewTaskRow } from '@/lib/homeworkReviewTasks'
+import { expectedOnlyView, notesOfTask, orphanNotes, type ReviewNote } from '@/lib/reviewNotes'
 import { cn } from '@/utils/cn'
+
+const VERDICT_ICON: Record<AiTaskVerdict, { icon: typeof CheckCircle2; tone: string }> = {
+  correct: { icon: CheckCircle2, tone: 'text-emerald-600' },
+  wrong: { icon: XCircle, tone: 'text-red-600' },
+  partial: { icon: MinusCircle, tone: 'text-amber-600' },
+  unchecked: { icon: HelpCircle, tone: 'text-gray-400' },
+}
 
 /**
  * «По заданиям» глазами ученика (§199).
  *
  * Решение владельца: таблицу после проверки видит ученик. До проверки — нет, и
  * это держит политика (`topic_homework_review_tasks_student_select`: свои
- * строки и только при наличии вердикта), а не этот компонент: строк просто не
- * приходит. Компонент лишь честно молчит, когда их нет, — у старых работ и у
- * работ без ИИ-проверки таблицы не будет, и экран должен выглядеть как раньше.
+ * строки и только при наличии вердикта), а не этот компонент.
  *
- * Разметка — та же, что в панели преподавателя (`ReadOnlyTaskLine`): на широком
- * экране строки укладываются в столбцы, на телефоне складываются в карточку.
- * Второй, «мобильной» копии нет намеренно (§186).
+ * §209. Здесь два правила, которые легко потерять при слиянии списков.
+ *
+ * 1. **Замечания — те же, что у преподавателя.** С §209 замечание это рамка
+ *    на работе, привязанная к заданию, а не поле `note`. Если бы этот блок
+ *    продолжал показывать только `note`, ученик перестал бы видеть всё, что
+ *    преподаватель написал после §209, — и узнал бы об этом не он, а никто.
+ *    Старое поле `note` показывается по-прежнему: у сотен работ это
+ *    единственный текст проверки.
+ * 2. **Своего ответа ученик не видит.** ИИ читает почерк с ошибками, и
+ *    «твой ответ: 0,375», когда он написал другое, — спор на ровном месте.
+ *    Ученику остаются номер, итог, правильный ответ и замечания.
  */
 export function ReviewTaskList({
   rows,
+  notes = [],
   className,
 }: {
   rows: readonly ReviewTaskRow[]
+  /** §209. Замечания-рамки этой попытки (опубликованные). */
+  notes?: readonly ReviewNote[]
   className?: string
 }) {
-  if (rows.length === 0) return null
+  if (rows.length === 0 && notes.length === 0) return null
   const ordered = sortReviewTasks(rows)
+  const orphans = orphanNotes(notes, ordered)
 
   return (
     <section
@@ -36,30 +55,58 @@ export function ReviewTaskList({
         По заданиям
       </div>
 
-      {/* Шапка столбцов — только там, где строка в столбцы укладывается. */}
-      <div className="mt-2 hidden px-1 text-[10px] uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-[2.5rem_7.5rem_minmax(0,1fr)_minmax(0,1.2fr)_1.75rem] sm:gap-2">
-        <span>№</span>
-        <span>Итог</span>
-        <span>Твой ответ → правильный</span>
-        <span>Замечание</span>
-        <span />
-      </div>
-
       <ul className="mt-1 divide-y divide-gray-100">
-        {ordered.map(row => (
-          <ReadOnlyTaskLine
-            key={row.id}
-            testId="student-review-task-row"
-            task={{
-              no: row.no,
-              verdict: row.verdict,
-              student_answer: row.student_answer ?? '',
-              expected_answer: row.expected_answer ?? '',
-              note: row.note ?? '',
-            }}
-          />
-        ))}
+        {ordered.map(row => {
+          const own = notesOfTask(notes, row.no)
+          const legacy = String(row.note ?? '').trim()
+          const style = VERDICT_ICON[row.verdict]
+          const Icon = style.icon
+          return (
+            <li key={row.id} data-testid="student-review-task-row" data-no={row.no} data-verdict={row.verdict}>
+              <div className="flex items-start gap-2 py-1.5">
+                <span className={cn('mt-0.5 shrink-0', style.tone)} title={TASK_VERDICT_LABEL[row.verdict]}>
+                  <Icon size={14} />
+                </span>
+                <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-600">{row.no}</span>
+                <span
+                  data-testid="student-review-task-answer"
+                  className="min-w-0 flex-1 break-words text-[11px] leading-5 text-gray-700"
+                >
+                  {expectedOnlyView(row.expected_answer)}
+                </span>
+              </div>
+              {(own.length > 0 || legacy) && (
+                <ul className="pb-1.5 pl-11">
+                  {own.map(note => (
+                    <li key={note.id} data-testid="student-review-task-note" className="text-[11px] leading-5 text-gray-600">
+                      {note.text}
+                      {note.page != null && <span className="ml-1 text-[10px] text-gray-400">стр. {note.page}</span>}
+                    </li>
+                  ))}
+                  {legacy && (
+                    <li data-testid="student-review-task-note" className="text-[11px] leading-5 text-gray-600">{legacy}</li>
+                  )}
+                </ul>
+              )}
+            </li>
+          )
+        })}
       </ul>
+
+      {/* Замечание, не привязанное ни к одному заданию, тоже адресовано
+          ученику — молчать о нём нельзя. */}
+      {orphans.length > 0 && (
+        <div data-testid="student-review-orphan-notes" className="mt-2 border-t border-gray-100 pt-2">
+          <ul>
+            {orphans.map(note => (
+              <li key={note.id} data-testid="student-review-task-note" className="text-[11px] leading-5 text-gray-600">
+                {note.text}
+                {note.page != null && <span className="ml-1 text-[10px] text-gray-400">стр. {note.page}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   )
 }

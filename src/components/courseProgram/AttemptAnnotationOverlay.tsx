@@ -1,5 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import type { ImportedRegion } from '@/components/SubmissionReviewer'
+import type {
+  AttemptNotesApi, AttemptNotesSnapshot, ImportedRegion,
+} from '@/components/SubmissionReviewer'
 import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
@@ -149,6 +151,10 @@ export function AttemptAnnotationOverlay({
   solutionTopicId,
   pdfAudience = 'staff',
   pdfReport,
+  notesInTaskList = false,
+  notesApiRef,
+  onNotesChange,
+  onSelectedNoteChange,
   onClose,
 }: {
   attemptId: string
@@ -203,6 +209,16 @@ export function AttemptAnnotationOverlay({
    * кнопки: файл без разбора обещал бы не то, что в нём лежит.
    */
   pdfReport?: AttemptPdfReport | null
+  /**
+   * §209. Замечания показывает таблица заданий снаружи — колонку
+   * «Комментарии» внутри разбора тогда не рисуем. Передаёт только экран
+   * проверки: в «Пометках учителя» и в «Указать ошибки рамками» таблицы рядом
+   * нет, и без списка замечания стали бы невидимы.
+   */
+  notesInTaskList?: boolean
+  notesApiRef?: MutableRefObject<AttemptNotesApi | null>
+  onNotesChange?: (snapshot: AttemptNotesSnapshot) => void
+  onSelectedNoteChange?: (id: string | null) => void
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -504,6 +520,10 @@ export function AttemptAnnotationOverlay({
               onDuplicateFramesChange={onDuplicateFramesChange}
               onMarksCleared={onMarksCleared}
               exportSourceRef={exportSourceRef}
+              notesInTaskList={notesInTaskList}
+              notesApiRef={notesApiRef}
+              onNotesChange={onNotesChange}
+              onSelectedNoteChange={onSelectedNoteChange}
             />
           </Suspense>
         )}

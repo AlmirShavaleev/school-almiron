@@ -20,23 +20,47 @@ import type { AttemptExportSourceRef } from '@/lib/attemptPdfSource'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
-type Category = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
+/**
+ * §209. Категорий стало восемь, но новых из них три: `error`, `inaccuracy`,
+ * `good` — «Ошибка», «Неточность», «Хорошо». Остальные пять остались, чтобы
+ * рамки, нарисованные до §209, и находки ИИ (у которых своя пятёрка категорий
+ * в базе) продолжали рисоваться и называться как прежде. Выбрать старую
+ * категорию для НОВОГО замечания нельзя — их нет в списке типов.
+ */
+type Category = 'error' | 'inaccuracy' | 'good' | 'comment' | 'calc' | 'logic' | 'format' | 'praise'
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; w: number; h: number }
 /**
  * §207. `source` — откуда рамка. Ставится только при переносе находок ИИ и
  * только нами; у рамки, нарисованной руками, его нет и не появится. На этом
  * различии держится идемпотентность переноса: заменяем ровно свои.
+ *
+ * §209. `task` — номер задания, к которому привязано замечание. Место в jsonb
+ * есть, миграции не нужно. Пусто — рамка без задания (все рамки до §209).
  */
-type Region = { id: string; type: 'region'; rect: Rect; category: Category; text: string; source?: FrameSource | null }
-type Draft = { filePath: string; page: number; globalPage: number; fileIndex: number; rect: Rect; category: Category; text: string }
+type Region = {
+  id: string
+  type: 'region'
+  rect: Rect
+  category: Category
+  text: string
+  source?: FrameSource | null
+  task?: string | null
+}
+type Draft = { filePath: string; page: number; globalPage: number; fileIndex: number; rect: Rect; category: Category; text: string; task?: string | null }
 type LegacyMark =
   | { id: string; type: 'stroke'; points: Point[]; color: string; width: number }
   | { id: string; type: 'highlight'; points: Point[]; color: string; width: number }
   | { id: string; type: 'stamp'; value: '✓' | '✕'; x: number; y: number; color: string; size: number }
   | { id: string; type: 'text'; text: string; x: number; y: number; color: string; size: number }
 type Mark = Region | LegacyMark
-type PageData = { version: 2; objects: Mark[] }
+/**
+ * §209. `dismissed` — id находок ИИ, по которым нажали «мимо». Лежит рядом с
+ * объектами в том же jsonb (миграция не нужна): отказ обязан переживать
+ * закрытие работы, иначе отклонённое предложение возвращается при каждом
+ * открытии — ровно тот мусор, от которого просили избавиться.
+ */
+type PageData = { version: 2; objects: Mark[]; dismissed?: string[] }
 type Row = { page: number; file_path: string; data: unknown; status: 'draft' | 'published'; author_id?: string | null }
 type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string }
 type PageMetrics = { width: number; height: number; ratio: number }
@@ -147,6 +171,72 @@ interface BaseProps {
    * функцию, отдающую страницы и рамки, — собирает файл отдельный модуль.
    */
   exportSourceRef?: AttemptExportSourceRef
+  /**
+   * §209. Замечания показывает таблица заданий снаружи, а не колонка
+   * «Комментарии» внутри. Тогда правая колонка не рисуется вовсе: она была
+   * второй жизнью тех же данных, и из-за неё экран читался как два документа.
+   *
+   * Проп, а не безусловное поведение: ту же колонку показывают ученику в
+   * «Пометках учителя» и преподавателю в модалке «Указать ошибки рамками» —
+   * там таблицы заданий рядом нет, и без списка замечания стали бы невидимы.
+   */
+  notesInTaskList?: boolean
+  /** §209. Свежий список замечаний и отказов — для таблицы заданий. */
+  onNotesChange?: (snapshot: AttemptNotesSnapshot) => void
+  /** §209. Клик по рамке на работе — подсветить строку задания. */
+  onSelectedNoteChange?: (id: string | null) => void
+  /** §209. Ручки управления замечаниями для таблицы заданий. */
+  notesApiRef?: MutableRefObject<AttemptNotesApi | null>
+}
+
+/**
+ * §209. Замечание глазами того, кто рисует таблицу заданий: рамка на работе
+ * плюс номер задания. Отдельный тип, а не `RegionItem`, потому что наружу
+ * незачем отдавать ни геометрию, ни ключи страниц — таблице нужны текст,
+ * место и привязка.
+ */
+export interface AttemptNoteRegion {
+  id: string
+  /** Номер задания; null — рамка без задания (все рамки до §209). */
+  taskNo: string | null
+  text: string
+  /** Сквозная страница работы — то же число, что в «стр. N». */
+  page: number
+  category: string
+  categoryLabel: string
+  color: string
+  /** id находки ИИ, из которой рамка сделана (§207); null — ручная. */
+  findingId: string | null
+}
+
+/** Что таблица заданий знает о пометках работы прямо сейчас. */
+export interface AttemptNotesSnapshot {
+  notes: AttemptNoteRegion[]
+  /** id находок ИИ, по которым нажали «мимо». */
+  dismissedFindings: string[]
+}
+
+/**
+ * Ручки, которыми таблица заданий управляет пометками.
+ *
+ * Ref, а не пропсы вниз, по той же причине, что у переноса рамок (§207):
+ * страницами владеет аннотатор, он один умеет их сохранять, и дублировать
+ * это знание в очереди проверок значило бы завести вторую правду о том, что
+ * лежит в `annotation_sets`.
+ */
+export interface AttemptNotesApi {
+  /** Включить рисование рамки под замечание к заданию. */
+  startNote: (taskNo: string) => void
+  /** Убрать замечание (рамку), не трогая задание. */
+  deleteNote: (id: string) => Promise<boolean>
+  /** Переписать текст замечания — единственное, что в строке вообще правится. */
+  updateNote: (id: string, text: string) => Promise<boolean>
+  /** Прокрутить работу к рамке и выделить её. */
+  focusNote: (id: string) => void
+  /** «Взять» находку ИИ: её рамка становится замечанием преподавателя. */
+  takeFinding: (region: ImportedRegion) => Promise<boolean>
+  /** «Мимо»: отказ запоминается и предложение больше не возвращается. */
+  dismissFinding: (input: { findingId: string; filePath: string; page: number }) => Promise<boolean>
 }
 
 /** Рамка, приходящая извне (черновик ИИ), до превращения в обычную пометку. */
@@ -163,6 +253,8 @@ export interface ImportedRegion {
   sourceId: string
   /** id прогона ИИ — видно, из какой проверки рамка. */
   jobId?: string | null
+  /** §209. Номер задания, если находка его назвала (`findings.task`). */
+  task?: string | null
 }
 
 type Props = BaseProps & AnnotationTarget
@@ -188,6 +280,12 @@ const REGION_TOP_GAP = 0.15
 const REGION_MIN_GAP = 16
 const EMPTY: PageData = { version: 2, objects: [] }
 const CATEGORIES: Record<Category, { label: string; short: string; color: string; bg: string; ring: string; phrases: string[] }> = {
+  // §209. Три типа замечания — то, из чего выбирают, рисуя новую рамку.
+  error: { label: 'Ошибка', short: '!', color: '#dc2626', bg: 'bg-red-50', ring: 'ring-red-500/35', phrases: [] },
+  inaccuracy: { label: 'Неточность', short: '~', color: '#d97706', bg: 'bg-amber-50', ring: 'ring-amber-500/35', phrases: [] },
+  good: { label: 'Хорошо', short: '✓', color: '#16a34a', bg: 'bg-emerald-50', ring: 'ring-emerald-500/35', phrases: [] },
+  // Ниже — категории до §209: их ставили руками и их же присылает ИИ. Новыми
+  // рамками не заполняются, но нарисоваться и назваться должны.
   comment: { label: 'Комментарий', short: 'K', color: '#2563eb', bg: 'bg-blue-50', ring: 'ring-blue-500/35', phrases: [] },
   calc: { label: 'Вычислительная ошибка', short: 'В', color: '#dc2626', bg: 'bg-red-50', ring: 'ring-red-500/35', phrases: ['Ошибка в вычислениях', 'Проверь знаки', 'Арифметическая ошибка'] },
   logic: { label: 'Логическая ошибка', short: 'Л', color: '#7c3aed', bg: 'bg-violet-50', ring: 'ring-violet-500/35', phrases: ['Неверный ход решения', 'Пропущен шаг', 'Не следует из предыдущего'] },
@@ -204,16 +302,42 @@ const parsePageKey = (key: string) => {
   return { filePath, page: Number(page) }
 }
 const cleanData = (data: unknown): PageData => {
-  const value = data as { objects?: unknown[] } | null
-  return { version: 2, objects: Array.isArray(value?.objects) ? value.objects as Mark[] : [] }
+  const value = data as { objects?: unknown[]; dismissed?: unknown[] } | null
+  const dismissed = Array.isArray(value?.dismissed)
+    ? value.dismissed.filter((id): id is string => typeof id === 'string')
+    : []
+  return {
+    version: 2,
+    objects: Array.isArray(value?.objects) ? value.objects as Mark[] : [],
+    ...(dismissed.length > 0 ? { dismissed } : {}),
+  }
 }
+/** Категория рамки; неизвестная (чужая или будущая) не должна ронять экран. */
+const categoryOf = (category: Category) => CATEGORIES[category] ?? CATEGORIES.comment
+/**
+ * §209. Из чего выбирают, заводя замечание на экране проверки: три типа, не
+ * пять. «Больше градаций — больше думать на каждом клике», а разница между
+ * «вычислительной» и «логической» ошибкой на скорость проверки не влияет.
+ */
+const NOTE_CATEGORIES: Category[] = ['error', 'inaccuracy', 'good']
+/** Прежние пять — там, где §209 не действует: ученические пометки, легаси-контур. */
+const LEGACY_CATEGORIES: Category[] = ['comment', 'calc', 'logic', 'format', 'praise']
 const normalizeRect = (start: Point, end: Point): Rect => ({
   x: Math.min(start.x, end.x),
   y: Math.min(start.y, end.y),
   w: Math.abs(end.x - start.x),
   h: Math.abs(end.y - start.y),
 })
-const pageWithVersion = (objects: Mark[]): PageData => ({ version: 2, objects })
+/**
+ * Страница с новым набором пометок. `base` нужен ради одного поля: отказы от
+ * находок ИИ (§209) лежат в той же записи, и правка рамок не должна их
+ * обнулять — иначе «мимо» возвращалось бы после первого же нажатия рядом.
+ */
+const pageWithVersion = (objects: Mark[], base?: PageData): PageData => ({
+  version: 2,
+  objects,
+  ...(base?.dismissed?.length ? { dismissed: base.dismissed } : {}),
+})
 /**
  * Тот же ли набор пометок. Сравнение по id и порядку: перенос и уборка
  * повторов только добавляют и убирают объекты, не правя их внутри, — а полное
@@ -282,6 +406,10 @@ export function SubmissionReviewer({
   onDuplicateFramesChange,
   onMarksCleared,
   exportSourceRef,
+  notesInTaskList = false,
+  onNotesChange,
+  onSelectedNoteChange,
+  notesApiRef,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -351,6 +479,13 @@ export function SubmissionReviewer({
   const [editPreview, setEditPreview] = useState<EditPreview>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [visiblePages, setVisiblePages] = useState<Set<string>>(new Set())
+  /**
+   * §209. Задание, под замечание к которому сейчас ждут рамку. Нажали
+   * «+ Заметка» — включилось рисование; обвели место — открылся выбор типа и
+   * текст. Отдельное состояние, а не флаг «рисуем»: номер задания надо
+   * донести до сохранённой рамки, и потерять его по дороге нельзя.
+   */
+  const [noteTarget, setNoteTarget] = useState<string | null>(null)
 
   // §156. «Очистить пометки». Числа для кнопки и подтверждения считает база
   // (dry run той же RPC): находки ИИ лежат по всем задачам попытки, а рамки
@@ -447,13 +582,60 @@ export function SubmissionReviewer({
         number: index + 1,
         globalPage: region.globalPage,
         rect: region.rect,
-        categoryLabel: CATEGORIES[region.category].label,
-        color: CATEGORIES[region.category].color,
+        categoryLabel: categoryOf(region.category).label,
+        color: categoryOf(region.category).color,
         text: region.text,
+        // §209. Номер задания едет в экспорт вместе с рамкой: последняя
+        // страница PDF обязана показывать те же замечания под теми же
+        // заданиями, что экран, иначе файл молча беднее того, что видели.
+        taskNo: region.task ?? null,
       })),
     })
     return () => { exportSourceRef.current = null }
   }, [exportSourceRef, regions, surfaces])
+
+  /**
+   * §209. Замечания и отказы наружу — в таблицу заданий.
+   *
+   * Слепок считается из тех же `pages`, из которых рисуются рамки: одна
+   * правда о том, что на работе. Отказы собираются по всем страницам разом —
+   * находка живёт на своей, а вопрос «показывать ли предложение» общий.
+   */
+  const notesSnapshot = useMemo<AttemptNotesSnapshot>(() => ({
+    notes: regions.map(region => ({
+      id: region.id,
+      taskNo: region.task ?? null,
+      text: region.text,
+      page: region.globalPage,
+      category: region.category,
+      categoryLabel: categoryOf(region.category).label,
+      color: categoryOf(region.category).color,
+      findingId: region.source?.kind === 'ai' ? region.source.finding : null,
+    })),
+    dismissedFindings: Array.from(
+      new Set(Object.values(pages).flatMap(page => page.dismissed ?? [])),
+    ),
+  }), [pages, regions])
+
+  /**
+   * Наружу уходит только ИЗМЕНЕНИЕ, а не каждый пересчёт.
+   *
+   * Иначе получается кольцо: снаружи от слепка меняется состояние экрана,
+   * экран перерисовывается, вниз приходит новый массив файлов (он собирается
+   * фильтром на каждом рендере), от него пересобирается `normalizedPaths`,
+   * эффект чтения страниц срабатывает заново и кладёт в `pages` новый объект
+   * с тем же содержимым — и слепок «меняется» опять. На харнессе это давало
+   * «Maximum update depth exceeded». Сравниваем по содержимому: список
+   * замечаний — десятки строк, дешевле любой другой развязки.
+   */
+  const notesDigest = useMemo(() => JSON.stringify(notesSnapshot), [notesSnapshot])
+  const notesDigestRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (notesDigestRef.current === notesDigest) return
+    notesDigestRef.current = notesDigest
+    onNotesChange?.(notesSnapshot)
+  }, [notesDigest, notesSnapshot, onNotesChange])
+  useEffect(() => { onSelectedNoteChange?.(selectedId) }, [onSelectedNoteChange, selectedId])
 
   useEffect(() => {
     if (!surfaces.length) return
@@ -728,7 +910,7 @@ export function SubmissionReviewer({
     const pageData = pages[key] ?? EMPTY
     const nextData = pageWithVersion(pageData.objects.map(mark => (
       mark.id === regionId && isRegion(mark) ? { ...mark, rect } : mark
-    )))
+    )), pageData)
     // Оптимистично: иначе рамка на время запроса прыгала бы обратно на старое
     // место. При отказе возвращаем прежнюю страницу — savePage уже показал тост.
     setPages(value => ({ ...value, [key]: nextData }))
@@ -787,7 +969,19 @@ export function SubmissionReviewer({
     setDragState(null)
     if (nextRect.w < MIN_REGION_SIZE || nextRect.h < MIN_REGION_SIZE) return
     setCurrentPage(surface.globalPage)
-    setDraft({ filePath: surface.filePath, page: surface.page, globalPage: surface.globalPage, fileIndex: surface.fileIndex, rect: nextRect, category: 'comment', text: '' })
+    setDraft({
+      filePath: surface.filePath,
+      page: surface.page,
+      globalPage: surface.globalPage,
+      fileIndex: surface.fileIndex,
+      rect: nextRect,
+      // §209. Под замечание к заданию рисование включили кнопкой «+ Заметка»,
+      // и тип по умолчанию — «Ошибка»: рамку ставят, когда что-то не так.
+      // Свободная рамка вне таблицы остаётся прежним «Комментарием».
+      category: noteTarget != null ? 'error' : 'comment',
+      text: '',
+      task: noteTarget,
+    })
   }
 
   // Explicit user actions (Сохранить / delete) persist immediately, awaited
@@ -801,22 +995,30 @@ export function SubmissionReviewer({
   async function saveDraft() {
     if (!draft) return
     const text = draft.text.trim()
-    if (!text && draft.category !== 'praise') return
-    const region: Region = { id: id(), type: 'region', rect: draft.rect, category: draft.category, text }
+    if (!text && draft.category !== 'praise' && draft.category !== 'good') return
+    const region: Region = {
+      id: id(),
+      type: 'region',
+      rect: draft.rect,
+      category: draft.category,
+      text,
+      ...(draft.task ? { task: draft.task } : {}),
+    }
     const key = pageKey(draft.filePath, draft.page)
     const pageData = pages[key] ?? EMPTY
-    const nextData = pageWithVersion([...pageData.objects, region])
+    const nextData = pageWithVersion([...pageData.objects, region], pageData)
     const ok = await savePage(draft.filePath, draft.page, nextData)
     if (!ok) return
     setPages(value => ({ ...value, [key]: nextData }))
     setActiveId(region.id)
     setDraft(null)
+    setNoteTarget(null)
   }
 
   async function deleteRegion(item: RegionItem) {
     const key = pageKey(item.filePath, item.page)
     const pageData = pages[key] ?? EMPTY
-    const nextData = pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id))
+    const nextData = pageWithVersion(pageData.objects.filter(mark => mark.id !== item.id), pageData)
     const ok = await savePage(item.filePath, item.page, nextData)
     if (!ok) return
     setPages(value => ({ ...value, [key]: nextData }))
@@ -927,7 +1129,7 @@ export function SubmissionReviewer({
         if (rectsEqual(nextRect, current.rect)) return value
         const nextData = pageWithVersion(pageData.objects.map(mark => (
           mark.id === id && isRegion(mark) ? { ...mark, rect: nextRect } : mark
-        )))
+        )), pageData)
         pendingNudgeRef.current = { filePath: item.filePath, page: item.page, data: nextData }
         return { ...value, [key]: nextData }
       })
@@ -1069,6 +1271,7 @@ export function SubmissionReviewer({
         category: item.category,
         text,
         source: { kind: 'ai', finding: item.sourceId, job: item.jobId ?? null },
+        ...(item.task ? { task: item.task } : {}),
       })
       byPage.set(key, bucket)
     }
@@ -1093,7 +1296,7 @@ export function SubmissionReviewer({
         imported += bucket?.regions.length ?? 0
         continue
       }
-      const nextData = pageWithVersion(nextObjects)
+      const nextData = pageWithVersion(nextObjects, base)
       const ok = await savePage(filePath, page, nextData)
       // Сбой на одной странице не должен отменять уже перенесённые: они уже
       // в базе, и «откатить» их значило бы стереть заодно ручные пометки.
@@ -1123,7 +1326,7 @@ export function SubmissionReviewer({
     for (const [key, data] of Object.entries(pages)) {
       const kept = withoutDuplicateFrames(data.objects as Region[])
       if (kept.length === data.objects.length) continue
-      const nextData = pageWithVersion(kept)
+      const nextData = pageWithVersion(kept, data)
       const { filePath, page } = parsePageKey(key)
       if (!(await savePage(filePath, page, nextData))) continue
       nextPages[key] = nextData
@@ -1148,6 +1351,107 @@ export function SubmissionReviewer({
     if (!dedupeFramesRef) return
     dedupeFramesRef.current = pagesLoaded ? removeDuplicateFrames : null
     return () => { dedupeFramesRef.current = null }
+  })
+
+  /**
+   * §209. «Взять» — одна находка ИИ становится замечанием преподавателя.
+   *
+   * Отдельно от `importRegions`, и это не дублирование: тот заменяет ВЕСЬ
+   * слой рамок ИИ разом (иначе повторный перенос множил дубли, §207), а
+   * здесь добавляется ровно одна — остальные предложения ещё ждут решения, и
+   * стирать уже принятые было бы прямой потерей работы.
+   */
+  async function takeFinding(item: ImportedRegion): Promise<boolean> {
+    if (readOnly) return false
+    const text = item.text.trim()
+    if (!text) return false
+    const key = pageKey(item.filePath, item.page)
+    const base = pages[key] ?? EMPTY
+    // Та же находка уже лежит рамкой — второе нажатие не должно её удваивать.
+    if (base.objects.some(mark => isRegion(mark) && mark.source?.finding === item.sourceId)) return true
+    const region: Region = {
+      id: id(),
+      type: 'region',
+      rect: item.rect,
+      category: item.category,
+      text,
+      source: { kind: 'ai', finding: item.sourceId, job: item.jobId ?? null },
+      ...(item.task ? { task: item.task } : {}),
+    }
+    const nextData = pageWithVersion([...base.objects, region], base)
+    if (!(await savePage(item.filePath, item.page, nextData))) return false
+    setPages(value => ({ ...value, [key]: nextData }))
+    return true
+  }
+
+  /**
+   * §209. «Мимо» — отказ от находки. Помним его в том же jsonb: без памяти
+   * отклонённое предложение возвращалось бы при каждом открытии работы, и
+   * «мимо» не значило бы ничего.
+   */
+  async function dismissFinding(
+    { findingId, filePath, page }: { findingId: string; filePath: string; page: number },
+  ): Promise<boolean> {
+    if (readOnly) return false
+    const key = pageKey(filePath, page)
+    const base = pages[key] ?? EMPTY
+    if ((base.dismissed ?? []).includes(findingId)) return true
+    const nextData: PageData = { ...base, version: 2, dismissed: [...(base.dismissed ?? []), findingId] }
+    if (!(await savePage(filePath, page, nextData))) return false
+    setPages(value => ({ ...value, [key]: nextData }))
+    return true
+  }
+
+  /**
+   * §209. Текст замечания правится прямо в таблице заданий: это единственное
+   * место строки, где правка вообще возможна (номер и ответы — справка из
+   * слепка модели). Рамка при этом не двигается — её место человек уже выбрал.
+   */
+  async function updateNote(regionId: string, text: string): Promise<boolean> {
+    const item = regions.find(region => region.id === regionId)
+    if (!item) return false
+    const next = text.trim()
+    if (!next || next === item.text) return false
+    const key = pageKey(item.filePath, item.page)
+    const pageData = pages[key] ?? EMPTY
+    const nextData = pageWithVersion(pageData.objects.map(mark => (
+      mark.id === regionId && isRegion(mark) ? { ...mark, text: next } : mark
+    )), pageData)
+    if (!(await savePage(item.filePath, item.page, nextData))) return false
+    setPages(value => ({ ...value, [key]: nextData }))
+    return true
+  }
+
+  async function deleteNote(regionId: string): Promise<boolean> {
+    const item = regions.find(region => region.id === regionId)
+    if (!item) return false
+    await deleteRegion(item)
+    return true
+  }
+
+  function focusNote(regionId: string) {
+    const item = regions.find(region => region.id === regionId)
+    if (item) activateRegion(item)
+  }
+
+  useEffect(() => {
+    if (!notesApiRef) return
+    // Ручки появляются только после чтения страниц — по той же причине, что у
+    // переноса рамок (§207): запись из непрочитанного состояния стирает работу.
+    notesApiRef.current = pagesLoaded && !readOnly
+      ? {
+          startNote: (taskNo: string) => {
+            setDraft(null)
+            setNoteTarget(taskNo)
+          },
+          deleteNote,
+          updateNote,
+          focusNote,
+          takeFinding,
+          dismissFinding,
+        }
+      : null
+    return () => { notesApiRef.current = null }
   })
 
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>
@@ -1200,6 +1504,24 @@ export function SubmissionReviewer({
             Работу уже смотрел другой преподаватель
           </span>
         )}
+        {/*
+          §209. «Очистить пометки» жила в шапке колонки «Комментарии». Колонки
+          на экране проверки больше нет, а кнопка нужна — переезжает в тулбар
+          разбора, к остальным действиям над работой целиком.
+        */}
+        {notesInTaskList && canClearMarks && (
+          <button
+            type="button"
+            data-testid="clear-marks-button"
+            onClick={() => { void openClearDialog() }}
+            disabled={!hasAnyMarks(markCounts) && regions.length === 0}
+            title="Удалить все пометки на работе: находки ИИ и рамки проверяющих"
+            className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:pointer-events-none disabled:opacity-40"
+          >
+            <Eraser size={13} />
+            Очистить пометки
+          </button>
+        )}
         {!readOnly && <div className="flex items-center gap-2">
           <SaveStatePill saving={saving} saveState={saveState} />
           {!hideToolbarPublish && <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>}
@@ -1222,8 +1544,36 @@ export function SubmissionReviewer({
           (телефон с открытой клавиатурой) — тем более, там min-width. Колонка
           комментариев те же 22rem, что и на xl: уже неё не помещаются заголовок
           и «Очистить пометки», они начинают наезжать друг на друга. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] overflow-hidden [@media(min-width:700px)_and_(max-height:600px)]:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] [@media(min-width:700px)_and_(max-height:600px)]:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]">
-      <div ref={frameRef} data-testid="review-document-scroll-area" className="min-h-0 overflow-auto p-3 sm:p-4">
+      <div className={cn(
+        'relative grid min-h-0 flex-1 overflow-hidden',
+        // §209. Замечания живут в таблице заданий — вторая колонка не нужна,
+        // и работа получает всю ширину. Это и есть «один список вместо двух».
+        notesInTaskList
+          ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
+          : 'grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] [@media(min-width:700px)_and_(max-height:600px)]:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] [@media(min-width:700px)_and_(max-height:600px)]:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]',
+      )}>
+      <div ref={frameRef} data-testid="review-document-scroll-area" className="relative min-h-0 overflow-auto p-3 sm:p-4">
+        {/*
+          §209. Полоса рисования: нажали «+ Заметка» у задания — обводим место
+          в работе. Без неё нажатие ничего видимого не делает, и человек жмёт
+          второй раз, заводя два замечания.
+        */}
+        {notesInTaskList && noteTarget != null && !draft && (
+          <div
+            data-testid="note-draw-hint"
+            className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-sm"
+          >
+            <span>Обведите место в работе — замечание к заданию {noteTarget}</span>
+            <button
+              type="button"
+              data-testid="note-draw-cancel"
+              onClick={() => setNoteTarget(null)}
+              className="rounded-lg border border-blue-200 bg-white px-2 py-1 font-medium text-blue-800 hover:border-blue-300"
+            >
+              Отмена
+            </button>
+          </div>
+        )}
         {error ? <div className="flex min-h-60 items-center justify-center rounded-xl bg-white text-sm text-red-600">{error}</div> :
         <div className="mx-auto flex min-h-full w-full flex-col gap-4">
           {surfaces.map(surface => {
@@ -1289,20 +1639,45 @@ export function SubmissionReviewer({
         </div>}
       </div>
       {/* Граница переезжает вслед за раскладкой: когда колонка комментариев
-          стоит сбоку, черта сверху рисовала бы линию поперёк пустого места. */}
-      <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white [@media(min-width:700px)_and_(max-height:600px)]:border-l [@media(min-width:700px)_and_(max-height:600px)]:border-t-0 lg:border-l lg:border-t-0">
-        <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
-          {clearDialog && (
-            <ClearMarksDialog
-              text={clearMarksPrompt(markCounts)}
-              busy={clearing}
-              onConfirm={() => { void confirmClearMarks() }}
-              onCancel={() => setClearDialog(false)}
+          стоит сбоку, черта сверху рисовала бы линию поперёк пустого места.
+          §209: на экране проверки колонки нет вовсе — замечания показывает
+          таблица заданий, и вторая их жизнь тут была бы тем самым дублем. */}
+      {!notesInTaskList && (
+        <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white [@media(min-width:700px)_and_(max-height:600px)]:border-l [@media(min-width:700px)_and_(max-height:600px)]:border-t-0 lg:border-l lg:border-t-0">
+          <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)} categories={LEGACY_CATEGORIES}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
+          </div>
+        </aside>
+      )}
+      {/*
+        §209. Черновик замечания на экране проверки — плавающая карточка над
+        работой, а не колонка: колонки больше нет, а форма нужна ровно на те
+        несколько секунд, пока выбирают тип и пишут текст.
+      */}
+      {notesInTaskList && draft && (
+        <div
+          data-testid="note-draft-panel"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-end p-3 sm:p-4"
+        >
+          <div className="pointer-events-auto flex max-h-[70%] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_32px_rgba(15,23,42,.24)] outline outline-1 outline-black/10">
+            <CommentEditor
+              draft={draft}
+              setDraft={setDraft}
+              onSave={saveDraft}
+              onCancel={() => { setDraft(null); setNoteTarget(null) }}
+              categories={NOTE_CATEGORIES}
             />
-          )}
+          </div>
         </div>
-      </aside>
+      )}
+      {clearDialog && (
+        <ClearMarksDialog
+          text={clearMarksPrompt(markCounts)}
+          busy={clearing}
+          onConfirm={() => { void confirmClearMarks() }}
+          onCancel={() => setClearDialog(false)}
+        />
+      )}
     </div>
   </section>
 }
@@ -1501,7 +1876,7 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
   onBeginEdit?: (mode: 'move' | 'resize', handle: ResizeHandle | null, event: React.PointerEvent<SVGElement>) => void
 }) {
   if (mark.type === 'region') {
-    const category = CATEGORIES[mark.category]
+    const category = categoryOf(mark.category)
     const rect = rectOverride ?? mark.rect
     const handleW = HANDLE_UNIT
     const handleH = HANDLE_UNIT * aspect
@@ -1552,20 +1927,27 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
   return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} dominantBaseline="hanging">{mark.text}</text>
 }
 
-function CommentEditor({ draft, setDraft, onSave, onCancel }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft | null>>; onSave: () => void; onCancel: () => void }) {
-  const category = CATEGORIES[draft.category]
-  const canSave = draft.category === 'praise' || draft.text.trim().length > 0
+function CommentEditor({ draft, setDraft, onSave, onCancel, categories }: {
+  draft: Draft
+  setDraft: React.Dispatch<React.SetStateAction<Draft | null>>
+  onSave: () => void
+  onCancel: () => void
+  /** §209. Из чего выбирать тип: три на экране проверки, пять в старых дверях. */
+  categories: Category[]
+}) {
+  const category = categoryOf(draft.category)
+  const canSave = draft.category === 'praise' || draft.category === 'good' || draft.text.trim().length > 0
   return <div data-testid="comment-editor" className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
       <div>
         <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <MessageSquare size={13} className="text-slate-400" />
-          Комментарий к области
+          {draft.task ? `Замечание к заданию ${draft.task}` : 'Комментарий к области'}
         </div>
-        <div className="mb-3 text-xs text-slate-400">Выберите категорию, затем при необходимости допишите комментарий.</div>
+        <div className="mb-3 text-xs text-slate-400">Выберите тип, затем напишите замечание.</div>
         <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(CATEGORIES) as Category[]).map(value => {
-            const item = CATEGORIES[value]
+          {categories.map(value => {
+            const item = categoryOf(value)
             return <button key={value} data-testid={`comment-category-${value}`} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
               <span className="mr-1 font-bold" style={{ color: item.color }}>{item.short}</span>{item.label}
             </button>
@@ -1686,7 +2068,7 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
     </label>}
     {shown.length ? <div className="min-h-0 flex-1 overflow-auto p-2">
       {shown.map(item => {
-        const category = CATEGORIES[item.category]
+        const category = categoryOf(item.category)
         return <div data-testid="comment-list-item" key={item.id} onMouseEnter={() => onHover(item.id)} className={cn('group mb-2 rounded-xl p-2.5 ring-1 transition-[background-color,box-shadow,transform]', activeId === item.id ? `${category.bg} ${category.ring} ring-2 shadow-sm` : 'bg-white ring-slate-200 hover:bg-slate-50 hover:shadow-sm')}>
           <button type="button" onClick={() => onActivate(item)} className="block w-full text-left">
             <div className="mb-1 flex items-center gap-2 text-xs">

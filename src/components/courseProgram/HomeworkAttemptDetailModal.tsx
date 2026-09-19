@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { X, Loader2, AlertCircle, Paperclip, SquareDashed } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { getSignedFileUrl } from '@/lib/storage'
+import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { viewersOfAttempt } from '@/lib/reviewPresence'
 import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
+import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import {
   ATTEMPT_STATUS_TONE,
@@ -186,6 +187,21 @@ export function HomeworkAttemptDetailModal({
    */
   const attemptIds = useMemo(() => attempts.map(a => a.id), [attempts])
   const reviewTasks = useReviewTasksOfAttempts(attemptIds)
+  /**
+   * §209. Замечания — рамки на работе. Преподавателю здесь показываем и
+   * черновик: в этой двери он их и рисует, и прятать до публикации значило бы
+   * показывать ему меньше, чем он только что написал.
+   */
+  const notesOfAttempt = useAttemptNotes(
+    attemptIds,
+    useCallback(
+      (id: string) => splitAnnotatableFiles(files.filter(f => f.attempt_id === id))
+        .annotatable
+        .map(f => extractStoragePath(f.storage_path, TOPIC_HOMEWORK_ATTEMPTS_BUCKET) ?? f.storage_path),
+      [files],
+    ),
+    { publishedOnly: false },
+  )
 
   const courseIds = useMemo(() => [courseId], [courseId])
   const { viewers } = useReviewPresence({ courseIds, attemptId: annotating?.attempt.id ?? null })
@@ -360,6 +376,7 @@ export function HomeworkAttemptDetailModal({
                       {/* §199. Разбор по заданиям. Строк нет — блока нет. */}
                       <ReviewTaskList
                         rows={reviewTasks.filter(t => t.attempt_id === attempt.id)}
+                        notes={notesOfAttempt(attempt.id)}
                         className="mt-3"
                       />
                     </div>

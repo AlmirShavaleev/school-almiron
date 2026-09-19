@@ -10,6 +10,7 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
+import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { plural } from '@/lib/plural'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import { useAuthStore } from '@/store/authStore'
@@ -35,7 +36,7 @@ import {
 } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { FileChip } from '@/components/shared/FileChip'
-import { getSignedFileUrl } from '@/lib/storage'
+import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
 import type { RejectedHomeworkFile, TopicHomeworkAttemptFileRow } from '@/lib/topicHomework'
 
 /**
@@ -137,6 +138,22 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
    */
   const reviewTaskIds = useMemo(() => (attemptIdsKey ? attemptIdsKey.split(',') : []), [attemptIdsKey])
   const reviewTasks = useReviewTasksOfAttempts(reviewTaskIds)
+  /**
+   * §209. Замечания преподавателя — это рамки на работе, привязанные к
+   * заданиям. Без них блок «По заданиям» показывал бы ученику только старое
+   * поле `note`, то есть всё написанное после §209 пропало бы у него с
+   * экрана. Только опубликованные: черновик проверки ученику не показывают
+   * нигде, и здесь то же правило, что в аннотаторе.
+   */
+  const notesOfAttempt = useAttemptNotes(
+    reviewTaskIds,
+    useCallback(
+      (id: string) => attemptFiles
+        .filter(f => f.attempt_id === id)
+        .map(f => extractStoragePath(f.storage_path, TOPIC_HOMEWORK_ATTEMPTS_BUCKET) ?? f.storage_path),
+      [attemptFiles],
+    ),
+  )
   /** §206. Своё имя — для шапки скачиваемого PDF и для имени файла. */
   const myName = useAuthStore(s => s.profile?.full_name) || 'Ученик'
 
@@ -815,6 +832,7 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
                       */}
                       <ReviewTaskList
                         rows={reviewTasks.filter(t => t.attempt_id === a.id)}
+                        notes={notesOfAttempt(a.id)}
                         className="mt-2.5"
                       />
 
@@ -859,6 +877,10 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
             review: latestReview(reviews, viewingMarks) ?? null,
             scoreMax: gradeMax,
             tasks: reviewTasks.filter(t => t.attempt_id === viewingMarks),
+            // §209. Свой ответ ученику не печатается — ни на экране, ни в
+            // файле: ИИ читает почерк с ошибками, и «твой ответ: 0,375», когда
+            // он написал другое, — спор на ровном месте.
+            audience: 'student',
           })}
           onClose={() => setViewingMarks(null)}
         />

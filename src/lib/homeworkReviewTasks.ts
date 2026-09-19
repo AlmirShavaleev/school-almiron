@@ -204,15 +204,37 @@ const noteKey = (note: string | null | undefined) => String(note ?? '').trim()
  */
 export function groupReviewTasks<Row extends GroupableRow>(
   rows: readonly Row[],
+  options?: {
+    /**
+     * §209. Строка, которую нельзя прятать ни в какую пачку. Нужна ровно для
+     * одного случая: у верного задания есть замечание. Спрятать его — значит
+     * спрятать то самое расхождение, ради которого таблицу и открывают.
+     */
+    keepVisible?: (row: Row) => boolean
+    /**
+     * §209. Чем считать «одинаковую заметку» при свёртке «не сверено».
+     * По умолчанию — поле `note`; экран проверки передаёт сюда ещё и тексты
+     * замечаний-рамок, иначе пять разных причин слиплись бы в одну строку.
+     */
+    noteOf?: (row: Row) => string
+  },
 ): Array<ReviewTableItem<Row>> {
+  const keepVisible = options?.keepVisible ?? (() => false)
+  const noteOf = options?.noteOf ?? ((row: Row) => noteKey(row.note))
   const items: Array<ReviewTableItem<Row>> = []
   let correct: Row[] | null = null
   // Считаем заранее: решение «сворачивать или нет» одно на всю таблицу, а
   // узнать его по ходу, встретив первое верное, нельзя.
-  const packCorrect = rows.filter(row => row.verdict === 'correct').length >= CORRECT_PACK_MIN
+  const packCorrect = rows
+    .filter(row => row.verdict === 'correct' && !keepVisible(row)).length >= CORRECT_PACK_MIN
 
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]
+
+    if (keepVisible(row)) {
+      items.push({ kind: 'row', row })
+      continue
+    }
 
     if (packCorrect && row.verdict === 'correct') {
       if (correct) correct.push(row)
@@ -224,10 +246,10 @@ export function groupReviewTasks<Row extends GroupableRow>(
     }
 
     if (row.verdict === 'unchecked') {
-      const note = noteKey(row.note)
+      const note = noteOf(row)
       const pack: Row[] = [row]
       let j = i + 1
-      while (j < rows.length && rows[j].verdict === 'unchecked' && noteKey(rows[j].note) === note) {
+      while (j < rows.length && rows[j].verdict === 'unchecked' && !keepVisible(rows[j]) && noteOf(rows[j]) === note) {
         pack.push(rows[j])
         j += 1
       }

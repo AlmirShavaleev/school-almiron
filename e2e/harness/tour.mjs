@@ -50,6 +50,20 @@ for (const s of scenes) {
         if (a.frameEval) await page.frames().find(f => f.name() === 'mobile-preview')?.evaluate(a.frameEval)
         if (a.fill) await page.locator(a.fill[0]).first().fill(a.fill[1], { timeout: 4000 })
         if (a.focus) await page.locator(a.focus).first().focus({ timeout: 4000 })
+        // §209. Обвести область на работе: рамку под замечание рисуют мышью,
+        // и снять «создание заметки» иначе нечем.
+        if (a.drag) {
+          const box = await page.locator(a.drag.sel).first().boundingBox({ timeout: 4000 })
+          if (box) {
+            const at = ([fx, fy]) => [box.x + box.width * fx, box.y + box.height * fy]
+            const [x1, y1] = at(a.drag.from)
+            const [x2, y2] = at(a.drag.to)
+            await page.mouse.move(x1, y1)
+            await page.mouse.down()
+            await page.mouse.move(x2, y2, { steps: 8 })
+            await page.mouse.up()
+          }
+        }
         if (a.scroll) await page.evaluate((y) => window.scrollTo(0, y), a.scroll)
         if (a.wait) await page.waitForTimeout(a.wait)
         if (a.eval) await page.evaluate(a.eval)

@@ -251,6 +251,7 @@ export function commentsFromRegions(regions: readonly AttemptExportRegion[]): At
     categoryLabel: region.categoryLabel,
     color: region.color,
     text: region.text,
+    taskNo: region.taskNo ?? null,
   }))
 }
 

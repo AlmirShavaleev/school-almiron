@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { ReviewTaskList } from '@/components/courseProgram/ReviewTaskList'
 import type { ReviewTaskRow } from '@/lib/homeworkReviewTasks'
+import type { ReviewNote } from '@/lib/reviewNotes'
 
 /**
  * §199. «По заданиям» глазами ученика — решение владельца: таблицу после
@@ -45,26 +46,38 @@ describe('ReviewTaskList', () => {
     expect(screen.getAllByTestId('student-review-task-row').map(r => r.dataset.no)).toEqual(['1', '2', '3'])
   })
 
-  it('в строке — номер, вердикт, свой ответ, правильный ответ и заметка', () => {
+  it('§209. В строке — номер, итог, правильный ответ и замечания; своего ответа НЕТ', () => {
+    // ИИ читает почерк с ошибками, и «твой ответ: 0,375», когда он написал
+    // другое, — спор на ровном месте.
     render(<ReviewTaskList rows={[
-      row({ id: 'r2', no: '2', verdict: 'wrong', student_answer: '−2', expected_answer: '2', note: NOTE }),
+      row({ id: 'r2', no: '2', verdict: 'wrong', student_answer: '0,375', expected_answer: '2', note: NOTE }),
     ]} />)
     const line = screen.getByTestId('student-review-task-row')
     expect(line.dataset.no).toBe('2')
     expect(line.dataset.verdict).toBe('wrong')
-    expect(line).toHaveTextContent('неверно')
-    expect(line).toHaveTextContent('−2')
-    expect(line).toHaveTextContent('2')
+    expect(within(line).getByTestId('student-review-task-answer')).toHaveTextContent('2')
+    expect(line).not.toHaveTextContent('0,375')
     expect(line).toHaveTextContent('знак ускорения')
   })
 
-  it('длинная заметка свёрнута в строку, полная — по клику', () => {
-    render(<ReviewTaskList rows={[row({ note: NOTE })]} />)
-    const note = within(screen.getByTestId('student-review-task-row')).getByTestId('review-task-note-text')
-    expect(note.className).toContain('truncate')
-    fireEvent.click(note)
-    expect(note.dataset.open).toBe('true')
-    expect(note.className).not.toContain('truncate')
+  it('§209. Ученик видит замечания-рамки, а не только старое поле note', () => {
+    // Главная ловушка слияния списков: замечание теперь рамка, и если бы этот
+    // блок читал только `note`, ученик перестал бы видеть работу проверяющего.
+    const notes: ReviewNote[] = [
+      { id: 'n1', taskNo: '2', text: 'Ошибка в отборе корней', page: 3, type: 'error', categoryLabel: 'Ошибка' },
+    ]
+    render(<ReviewTaskList rows={[row({ id: 'r2', no: '2', verdict: 'wrong' })]} notes={notes} />)
+    const line = screen.getByTestId('student-review-task-row')
+    expect(within(line).getByTestId('student-review-task-note')).toHaveTextContent('Ошибка в отборе корней')
+    expect(within(line).getByTestId('student-review-task-note')).toHaveTextContent('стр. 3')
+  })
+
+  it('§209. Замечание без задания тоже доходит до ученика', () => {
+    const notes: ReviewNote[] = [
+      { id: 'n2', taskNo: null, text: 'Подпиши оси', page: 1, type: null, categoryLabel: 'Комментарий' },
+    ]
+    render(<ReviewTaskList rows={[row()]} notes={notes} />)
+    expect(screen.getByTestId('student-review-orphan-notes')).toHaveTextContent('Подпиши оси')
   })
 
   it('ученик ничего не правит: ни списков вердикта, ни кнопок удаления', () => {

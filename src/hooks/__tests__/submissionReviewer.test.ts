@@ -101,7 +101,8 @@ describe('submission annotation reviewer', () => {
     expect(reviewer).toContain('onPointerDown={pointerDown}')
     expect(reviewer).toContain("'cursor-crosshair'")
     expect(reviewer).toContain("type: 'region'")
-    expect(reviewer).toContain("type Category = 'comment' | 'calc' | 'logic' | 'format' | 'praise'")
+    // §209: к прежним пяти категориям добавлены три типа замечания.
+    expect(reviewer).toContain("type Category = 'error' | 'inaccuracy' | 'good' | 'comment' | 'calc' | 'logic' | 'format' | 'praise'")
     expect(reviewer).toContain('MIN_REGION_SIZE = 0.015')
     expect(reviewer).toContain('version: 2')
   })

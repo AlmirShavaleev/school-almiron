@@ -72,7 +72,6 @@ function table(props: Partial<React.ComponentProps<typeof ReviewTaskTable>> = {}
       running={false}
       error={null}
       onRun={() => {}}
-      onApplyFrames={async () => 0}
       tasks={ROWS_21}
       gradeScale="five"
       onPatchTask={vi.fn(async () => true)}
@@ -239,22 +238,17 @@ describe('ReviewTaskTable — «Убрать повторы»', () => {
     await waitFor(() => expect(onRemoveDuplicates).toHaveBeenCalledTimes(1))
   })
 
-  it('перенос рамок можно повторить: кнопка не гаснет после первого нажатия', async () => {
-    const onApplyFrames = vi.fn(async () => 2)
+  it('§209. Общей кнопки «Перенести рамки» больше нет — решение по каждой находке', () => {
+    // Её роль взяли «взять»/«мимо» у каждого предложения: молча тащить все
+    // находки на работу — это и был тот мусор, от которого просили избавиться.
     table({
-      onApplyFrames,
       findings: [{
         id: 'f1', job_id: 'j1', file_id: 'file1', page: 1,
         rect_x: 0.1, rect_y: 0.1, rect_w: 0.2, rect_h: 0.1,
         category: 'calc', text: 'Знак', position: 0,
       }],
     })
-    const button = screen.getByTestId('ai-check-apply-frames')
-    fireEvent.click(button)
-    await waitFor(() => expect(screen.getByTestId('ai-check-frames-applied')).toHaveTextContent('2'))
-    expect(button).toBeEnabled()
-    fireEvent.click(button)
-    await waitFor(() => expect(onApplyFrames).toHaveBeenCalledTimes(2))
+    expect(screen.queryByTestId('ai-check-apply-frames')).not.toBeInTheDocument()
   })
 })
 
