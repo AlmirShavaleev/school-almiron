@@ -269,7 +269,28 @@ export const annotationSets = [{
       { id: 'a4', type: 'region', category: 'praise', text: 'Верное решение', rect: { x: 0.14, y: 0.3, w: 0.32, h: 0.05 } },
     ],
   },
-}]
+},
+// §206. Опубликованные пометки на СВОЕЙ работе ученика (попытка 1, две
+// страницы) — без них у ученика нет ни кнопки «Пометки учителя», ни разбора,
+// который скачивается в PDF. Две страницы здесь не для красоты: скачанный
+// файл обязан сохранить порядок страниц, и на одной это не проверить.
+...[1, 2].map(page => ({
+  id: U('d', 210 + page), attempt_id: IDS.attempt(1), submission_id: null,
+  file_path: topic_homework_attempt_files.filter(f => f.attempt_id === IDS.attempt(1))[page - 1].storage_path,
+  page: 1, status: 'published', author_id: IDS.owner, created_at: ago(21), updated_at: ago(21),
+  data: {
+    version: 2,
+    objects: page === 1
+      ? [
+          { id: `p${page}-1`, type: 'region', category: 'calc', text: 'Задача 3: знак ускорения при торможении отрицательный — пересчитай проекцию на ось движения.', rect: { x: 0.1, y: 0.18, w: 0.62, h: 0.09 } },
+          { id: `p${page}-2`, type: 'region', category: 'praise', text: 'Аккуратное оформление «Дано»', rect: { x: 0.12, y: 0.42, w: 0.34, h: 0.06 } },
+        ]
+      : [
+          { id: `p${page}-1`, type: 'region', category: 'logic', text: 'Задача 7: ответ верный, но график v(t) не построен — условие просит развёрнутое решение с рисунком.', rect: { x: 0.11, y: 0.3, w: 0.66, h: 0.1 } },
+          { id: `p${page}-2`, type: 'region', category: 'format', text: 'Нет единиц измерения', rect: { x: 0.14, y: 0.66, w: 0.4, h: 0.06 } },
+        ],
+  },
+}))]
 
 // ── tests / variants ─────────────────────────────────────────────────────────
 export const topic_tests = [1, 2].map(i => ({ id: IDS.test(i), title: i === 1 ? 'Тест по кинематике: 12 заданий с кратким ответом и таблицей соответствия' : 'Тест: динамика', description: null, is_published: true, created_by: IDS.owner, created_at: ago(300), updated_at: ago(300), topic_test_items: [{ count: 12 }], topic_test_assignments: [{ count: 1 }] }))

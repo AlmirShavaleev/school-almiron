@@ -3,6 +3,9 @@ import type { ImportedRegion } from '@/components/SubmissionReviewer'
 import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
+import { AttemptPdfButton, type AttemptPdfAudience } from './AttemptPdfButton'
+import type { AttemptPdfReport } from '@/lib/attemptPdfReport'
+import type { AttemptExportSnapshot } from '@/lib/attemptPdfSource'
 import { cn } from '@/utils/cn'
 import { FileChip } from '@/components/shared/FileChip'
 import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
@@ -140,6 +143,8 @@ export function AttemptAnnotationOverlay({
   importRegionsRef,
   onMarksCleared,
   solutionTopicId,
+  pdfAudience = 'staff',
+  pdfReport,
   onClose,
 }: {
   attemptId: string
@@ -173,9 +178,22 @@ export function AttemptAnnotationOverlay({
    * про которую легко забыть.
    */
   solutionTopicId?: string | null
+  /**
+   * §206. Кто скачивает работу. У ученика кнопка появляется только после
+   * вердикта: до него он смотрит черновик проверки (правило §199).
+   */
+  pdfAudience?: AttemptPdfAudience
+  /**
+   * Данные для последней страницы файла: вердикт, балл, комментарий, таблица
+   * по заданиям. Их знает экран снаружи, а не разбор. Нет данных — нет и
+   * кнопки: файл без разбора обещал бы не то, что в нём лежит.
+   */
+  pdfReport?: AttemptPdfReport | null
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
+  /** Заполняет аннотатор; читает кнопка «Скачать PDF» в момент нажатия. */
+  const exportSourceRef = useRef<(() => AttemptExportSnapshot) | null>(null)
   // Мягкая защита = тот же режим чтения, что и обычный readOnly: рисовать
   // нельзя, вердикт не ставится. Разница только в баннере и кнопке выхода.
   const viewOnly = readOnly || locked
@@ -237,6 +255,9 @@ export function AttemptAnnotationOverlay({
           {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {paths.length > 0 && (
+            <AttemptPdfButton audience={pdfAudience} report={pdfReport ?? null} sourceRef={exportSourceRef} />
+          )}
           {hasSolution && (
             <button
               type="button"
@@ -407,6 +428,7 @@ export function AttemptAnnotationOverlay({
               publishRef={publishRef}
               importRegionsRef={importRegionsRef}
               onMarksCleared={onMarksCleared}
+              exportSourceRef={exportSourceRef}
             />
           </Suspense>
         )}

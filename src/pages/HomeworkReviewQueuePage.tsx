@@ -23,9 +23,10 @@ import {
 } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
 import {
-  ATTEMPT_STATUS_TONE, TEACHER_ATTEMPT_STATUS_LABEL, latestReview,
+  ATTEMPT_STATUS_TONE, TEACHER_ATTEMPT_STATUS_LABEL, gradeScaleMax, latestReview,
   type TopicHomeworkAttemptFileRow, type TopicHomeworkAttemptRow, type TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
+import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import type { QueueAiJob } from '@/hooks/useQueueAiJobs'
 
 /** Дата ушла в заголовок дня, в строке остаётся только время сдачи. */
@@ -872,6 +873,18 @@ export function HomeworkReviewQueuePage() {
           onMarksCleared={() => { void ai.reload(); reloadAi() }}
           locked={reviewing.locked}
           onForceEdit={() => setReviewing(r => (r ? { ...r, locked: false } : r))}
+          // §206. Скачивается то, что сейчас на экране: у проверяющего это
+          // может быть неопубликованный черновик пометок — его файл, его дело.
+          pdfAudience="staff"
+          pdfReport={attemptPdfReportFrom({
+            studentName: studentNames[reviewing.row.attempt.student_id] ?? 'Ученик',
+            homeworkTitle: reviewing.row.homeworkTitle,
+            topicTitle: reviewing.row.topicTitle,
+            submittedAt: reviewing.row.attempt.submitted_at,
+            review: latestReview(reviews, reviewing.row.attempt.id) ?? null,
+            scoreMax: gradeScaleMax(reviewing.row.gradeScale),
+            tasks: reviewTasks.rows,
+          })}
           // Решение принимает форма вердикта ниже — своя кнопка публикации в
           // тулбаре только путала: две зелёные кнопки читались как одно действие.
           // У принятой работы формы нет, и кнопка возвращается: дополнить

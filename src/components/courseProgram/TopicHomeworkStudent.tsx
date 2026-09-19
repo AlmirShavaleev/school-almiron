@@ -11,6 +11,8 @@ import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { plural } from '@/lib/plural'
+import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
+import { useAuthStore } from '@/store/authStore'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
@@ -135,6 +137,8 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
    */
   const reviewTaskIds = useMemo(() => (attemptIdsKey ? attemptIdsKey.split(',') : []), [attemptIdsKey])
   const reviewTasks = useReviewTasksOfAttempts(reviewTaskIds)
+  /** §206. Своё имя — для шапки скачиваемого PDF и для имени файла. */
+  const myName = useAuthStore(s => s.profile?.full_name) || 'Ученик'
 
   useEffect(() => {
     const ids = attemptIdsKey ? attemptIdsKey.split(',') : []
@@ -845,6 +849,17 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
           title={homework.title}
           subtitle="Пометки учителя — нажмите на рамку, чтобы прочитать замечание"
           readOnly
+          // §206. Ученику кнопка «Скачать PDF» доступна только после вердикта:
+          // решает `canDownloadAttemptPdf` по самому разбору, а не этот экран.
+          pdfAudience="student"
+          pdfReport={attemptPdfReportFrom({
+            studentName: myName,
+            homeworkTitle: homework.title,
+            submittedAt: attempts.find(a => a.id === viewingMarks)?.submitted_at ?? null,
+            review: latestReview(reviews, viewingMarks) ?? null,
+            scoreMax: gradeMax,
+            tasks: reviewTasks.filter(t => t.attempt_id === viewingMarks),
+          })}
           onClose={() => setViewingMarks(null)}
         />
       )}

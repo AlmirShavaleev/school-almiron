@@ -7,6 +7,7 @@ import { viewersOfAttempt } from '@/lib/reviewPresence'
 import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
+import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -379,6 +380,17 @@ export function HomeworkAttemptDetailModal({
           viewers={viewersOf(annotating.attempt.id)}
           locked={annotating.locked}
           onForceEdit={() => setAnnotating(a => (a ? { ...a, locked: false } : a))}
+          // §206. Преподаватель скачивает то, что видит, включая ещё не
+          // опубликованные пометки.
+          pdfAudience="staff"
+          pdfReport={attemptPdfReportFrom({
+            studentName,
+            homeworkTitle,
+            submittedAt: annotating.attempt.submitted_at,
+            review: latestReview(reviews, annotating.attempt.id) ?? null,
+            scoreMax,
+            tasks: reviewTasks.filter(t => t.attempt_id === annotating.attempt.id),
+          })}
           // Единственная кнопка публикации — в футере, под объяснением, что она
           // делает. Дубль в тулбаре убран: две зелёные кнопки рядом читались как
           // одно действие и создавали ощущение, что работа куда-то отправлена.

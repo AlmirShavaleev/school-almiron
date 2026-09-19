@@ -387,6 +387,15 @@ export const scenes = [
     { persona: 'owner', name: 'o07-student-video', url: `/students/${S.otherStudent(0)}`, width, height, actions: [{ wait: 1200 }, { eval: `document.querySelector('[data-testid="student-video-watch"]')?.scrollIntoView({ block: 'center' })` }, { wait: 400 }], full: false },
   ]),
 
+  // ── §206 (board/057): кнопка «Скачать PDF» в разборе работы ──
+  // Кнопка одна на обе двери, поэтому и сцен две: преподаватель в очереди
+  // проверок и ученик в своих пометках. У ученика попытка возвращена на
+  // доработку, то есть вердикт есть — без вердикта кнопки быть не должно.
+  ...[[390, 844], [1280, 800]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-review-pdf', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    { persona: 'student', name: 's04-topic-hw-pdf', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1500 }, { clickSel: '[data-testid="hw-view-marks-button"]' }, { wait: 2500 }], full: false },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

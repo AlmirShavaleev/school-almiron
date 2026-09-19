@@ -12,6 +12,7 @@ import {
   EMPTY_MARK_COUNTS, clearAttemptMarks, clearMarksPrompt, countAttemptMarks, hasAnyMarks, type MarkCounts,
 } from '@/lib/attemptMarks'
 import type { MutableRefObject, ReactNode } from 'react'
+import type { AttemptExportSourceRef } from '@/lib/attemptPdfSource'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -122,6 +123,12 @@ interface BaseProps {
    * покажет старое число. Только для нового контура (attemptId).
    */
   onMarksCleared?: () => void
+  /**
+   * §206. Слепок того, что сейчас на экране, для кнопки «Скачать PDF».
+   * Аннотатор про экспорт больше ничего не знает: он только кладёт сюда
+   * функцию, отдающую страницы и рамки, — собирает файл отдельный модуль.
+   */
+  exportSourceRef?: AttemptExportSourceRef
 }
 
 /** Рамка, приходящая извне (черновик ИИ), до превращения в обычную пометку. */
@@ -239,6 +246,7 @@ export function SubmissionReviewer({
   publishRef,
   importRegionsRef,
   onMarksCleared,
+  exportSourceRef,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -366,6 +374,34 @@ export function SubmissionReviewer({
       .filter(isRegion)
       .map(region => ({ ...region, filePath: surface.filePath, page: surface.page, globalPage: surface.globalPage, fileIndex: surface.fileIndex, fileLabel: surface.fileLabel, surfaceKey: surface.surfaceKey })))
     .sort((a, b) => a.globalPage - b.globalPage), [pages, surfaces])
+
+  /**
+   * §206. Слепок для «Скачать PDF». Номера рамок берутся из ЭТОГО порядка —
+   * того же, в котором идёт список комментариев, — поэтому цифра в кружке на
+   * странице и номер пункта в разборе в конце файла всегда совпадают.
+   */
+  useEffect(() => {
+    if (!exportSourceRef) return
+    exportSourceRef.current = () => ({
+      surfaces: surfaces.map(surface => ({
+        globalPage: surface.globalPage,
+        kind: surface.kind,
+        url: surface.url,
+        page: surface.page,
+        ratio: surface.metrics?.ratio ?? 1 / 1.414,
+        pdf: surface.kind === 'pdf' ? pdfRefs.current[surface.filePath] ?? null : null,
+      })),
+      regions: regions.map((region, index) => ({
+        number: index + 1,
+        globalPage: region.globalPage,
+        rect: region.rect,
+        categoryLabel: CATEGORIES[region.category].label,
+        color: CATEGORIES[region.category].color,
+        text: region.text,
+      })),
+    })
+    return () => { exportSourceRef.current = null }
+  }, [exportSourceRef, regions, surfaces])
 
   useEffect(() => {
     if (!surfaces.length) return
