@@ -868,10 +868,10 @@ export function HomeworkReviewQueuePage() {
           attemptId={reviewing.row.attempt.id}
           files={filesOf(reviewing.row.attempt.id)}
           title={reviewing.row.homeworkTitle}
-          subtitle={
-            `${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.topicTitle}`
-            + (isSubmittedLate(reviewing.row) ? ' · сдано с опозданием' : '')
-          }
+          // §208. Крупной строкой — чья работа и по какой теме: остальное в
+          // шапке проверяющему нужно куда реже.
+          lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.topicTitle}`}
+          subtitle={isSubmittedLate(reviewing.row) ? 'сдано с опозданием' : undefined}
           viewers={viewersOf(reviewing.row.attempt.id)}
           solutionTopicId={reviewing.row.topicId}
           // §156. После «Очистить пометки» находок в базе нет — панель ИИ и

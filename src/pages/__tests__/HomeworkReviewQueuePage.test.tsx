@@ -33,9 +33,10 @@ vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
 
 // Аннотатор тянет pdfjs — в этом тесте нас интересует только то, ЧТО открылось.
 vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
-  AttemptAnnotationOverlay: ({ title, subtitle, footer }: { title: string; subtitle?: string; footer?: any }) => (
+  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer }: { title: string; lead?: string; subtitle?: string; footer?: any }) => (
     <div data-testid="attempt-annotation-overlay">
       <span>{title}</span>
+      <span data-testid="overlay-lead">{lead}</span>
       <span>{subtitle}</span>
       {footer?.({ publishing: false, published: false, publishAnnotations: async () => true })}
     </div>
@@ -148,8 +149,10 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     const overlay = screen.getByTestId('attempt-annotation-overlay')
     expect(overlay).toBeInTheDocument()
     // В шапке разбора — работа, от кого, тема, и отметка об опоздании.
+    // §208: «от кого и по какой теме» уехало в крупную строку, остальное рядом.
     expect(overlay).toHaveTextContent('Домашнее задание')
-    expect(overlay).toHaveTextContent('Ученик · Новая тема1 · сдано с опозданием')
+    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик · Новая тема1')
+    expect(overlay).toHaveTextContent('сдано с опозданием')
   })
 
   it('повторную попытку помечает номером, первую — нет', () => {

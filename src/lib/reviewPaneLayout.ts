@@ -21,7 +21,7 @@ export const MIN_SOLUTION_FRACTION = 0.25
 export const MAX_SOLUTION_FRACTION = 0.6
 
 /**
- * С этой ширины окна панель занимает долю и её можно тянуть. Ниже — фиксированная
+ * С этой ширины окна панель занимает долю ПО УМОЛЧАНИЮ. Ниже — фиксированная
  * узкая колонка (20rem), ещё ниже 1024 — полоса сверху (см.
  * `SolutionReferencePanel`).
  *
@@ -32,6 +32,16 @@ export const MAX_SOLUTION_FRACTION = 0.6
  * На 1920 доля включается и даёт эталону 768 px против прежних 384.
  */
 export const SPLIT_MIN_WIDTH = 1536
+
+/**
+ * §208. С этой ширины границу можно ТЯНУТЬ. Порог ниже, чем у доли по
+ * умолчанию, и это не противоречие: владелец работает на 1280–1440, и до §208
+ * граница там не показывалась вовсе — подвинуть панель было нечем. Умолчание
+ * при этом остаётся прежним (см. `SPLIT_MIN_WIDTH`): само по себе открытие
+ * работы на ноутбуке ширину панели не меняет, её меняет только человек.
+ * Ниже 1024 колонки идут друг под другом — делить нечего.
+ */
+export const SPLIT_DRAG_MIN_WIDTH = 1024
 
 export const SOLUTION_FRACTION_STORAGE_KEY = 'review:solution-pane-fraction'
 
@@ -55,17 +65,31 @@ export function fractionFromPointer(clientX: number, rect: { left: number; width
 }
 
 /**
+ * Ширина, которую человек выставил сам, или `null`, если он её не трогал.
+ *
+ * Отличать «не трогал» от «выставил ровно умолчание» приходится потому, что от
+ * этого зависит раскладка на ноутбуке (§208): пока владелец границу не двигал,
+ * между 1024 и 1536 панель остаётся фиксированной по причинам §140; как только
+ * подвинул — его доля действует и там.
+ */
+export function readStoredSolutionFraction(storage?: Pick<Storage, 'getItem'>): number | null {
+  try {
+    const raw = (storage ?? window.localStorage).getItem(SOLUTION_FRACTION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = Number.parseFloat(raw)
+    if (!Number.isFinite(parsed)) return null
+    return clampSolutionFraction(parsed)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Запомненная ширина. Хранилище может быть недоступно (приватное окно,
  * запрет на сайт) — тогда просто работаем с умолчанием, а не падаем.
  */
 export function readSolutionFraction(storage?: Pick<Storage, 'getItem'>): number {
-  try {
-    const raw = (storage ?? window.localStorage).getItem(SOLUTION_FRACTION_STORAGE_KEY)
-    if (!raw) return DEFAULT_SOLUTION_FRACTION
-    return clampSolutionFraction(Number.parseFloat(raw))
-  } catch {
-    return DEFAULT_SOLUTION_FRACTION
-  }
+  return readStoredSolutionFraction(storage) ?? DEFAULT_SOLUTION_FRACTION
 }
 
 export function writeSolutionFraction(fraction: number, storage?: Pick<Storage, 'setItem'>): void {

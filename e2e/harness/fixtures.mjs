@@ -143,6 +143,19 @@ export const topic_material_items = [
     size_bytes: kind === 'file' ? 120000 : null, lesson_id: null, source_topic_material_id: null,
     created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
   })),
+  // §208 (board/059): авторское решение темы 3 — той самой, чью работу
+  // проверяют в очереди. Без него панель «Решение задания» на экране проверки
+  // не появляется вовсе, а вместе с ней не появляется и граница между
+  // колонками — то есть главную правку §208 нечем показать на снимке.
+  // Картинка, а не PDF: pdfjs на харнессе не рисует (§206.1), и панель была бы
+  // пустой. Скрытый материал — так решение и лежит на проде до разбора.
+  {
+    id: IDS.material(40), topic_id: IDS.topic(3), kind: 'file', title: 'Авторское решение',
+    content: null, position: 30, is_visible: false, section: 'solution', url: null,
+    storage_path: 'course-materials/topic-3/figure.png', file_name: 'figure.png',
+    mime_type: 'image/png', size_bytes: 82000, lesson_id: null, source_topic_material_id: null,
+    created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
+  },
 ]
 
 // ── homework ─────────────────────────────────────────────────────────────────

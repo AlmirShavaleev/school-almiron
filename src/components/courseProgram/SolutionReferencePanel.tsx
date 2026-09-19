@@ -3,6 +3,7 @@ import { ExternalLink, FileText, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
 import { SignedImage } from '@/components/ui/SignedImage'
+import { cn } from '@/utils/cn'
 
 /**
  * Просмотрщик страниц грузится лениво: pdfjs весит ~450 КБ, а панель решения
@@ -67,7 +68,7 @@ export function useTopicSolutionMaterials(topicId: string | null | undefined) {
 }
 
 export function SolutionReferencePanel({
-  topicId, materials, loading, widthPercent,
+  topicId, materials, loading, widthPercent, widthFromLaptop = false,
 }: {
   topicId: string
   materials: TopicMaterial[]
@@ -78,6 +79,12 @@ export function SolutionReferencePanel({
    * полоса сверху.
    */
   widthPercent?: string
+  /**
+   * §208. Долю применять уже с ноутбучных 1024, а не только с 1536. Так
+   * экран открывается, когда человек сам подвинул границу: его выбор важнее
+   * нашего умолчания. Пока не подвинул — раскладка прежняя.
+   */
+  widthFromLaptop?: boolean
 }) {
   return (
     <aside
@@ -88,7 +95,12 @@ export function SolutionReferencePanel({
       // остаётся фиксированной (там документ уже делит место с колонкой
       // комментариев, и доля съела бы его), а ниже 1024 — полоса сверху.
       style={widthPercent ? { ['--solution-pane-w' as string]: widthPercent } : undefined}
-      className="flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:w-80 lg:border-b-0 lg:border-r 2xl:w-[var(--solution-pane-w,40%)]"
+      className={cn(
+        'flex max-h-64 min-h-0 shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white lg:max-h-none lg:border-b-0 lg:border-r',
+        widthFromLaptop
+          ? 'lg:w-[var(--solution-pane-w,40%)]'
+          : 'lg:w-80 2xl:w-[var(--solution-pane-w,40%)]',
+      )}
     >
       <div className="shrink-0 border-b border-slate-100 px-4 py-2.5">
         <p className="text-sm font-semibold text-gray-900">Решение задания</p>

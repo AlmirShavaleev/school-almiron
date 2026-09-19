@@ -3,6 +3,8 @@ import { Check, ChevronDown, ChevronRight, Loader2, Paperclip, RotateCcw, Users 
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { HintNote } from '@/components/shared/HintNote'
+import { useAutoGrowTextarea } from '@/hooks/useAutoGrowTextarea'
+import { COMMENT_ROWS } from '@/lib/reviewCommentBox'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -91,6 +93,7 @@ export function ReviewActions({
   fillRequest?: { comment?: string; score?: number | null } | null
 }) {
   const [comment, setComment] = useState('')
+  const commentRef = useAutoGrowTextarea(comment)
   const [score, setScore] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,14 +161,21 @@ export function ReviewActions({
           {disabledReason}
         </p>
       )}
+      {/*
+        §208. Шесть строк вместо двух и рост под содержимое: в это поле
+        подставляется разбор ИИ, и владелец его ПРАВИТ, а не пишет с нуля —
+        править то, из чего видно две строки, невозможно. Потолок и уголок
+        изменения размера — в `useAutoGrowTextarea`.
+      */}
       <textarea
+        ref={commentRef}
         data-testid="review-comment-input"
         value={comment}
         onChange={e => setComment(e.target.value)}
         disabled={blocked}
         placeholder="Комментарий (обязателен при возврате на доработку)"
         aria-label="Комментарий к работе"
-        rows={2}
+        rows={COMMENT_ROWS}
         className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
       />
 

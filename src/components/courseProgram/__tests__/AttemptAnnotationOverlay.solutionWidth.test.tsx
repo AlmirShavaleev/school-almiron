@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { SOLUTION_FRACTION_STORAGE_KEY } from '@/lib/reviewPaneLayout'
 
 /**
@@ -15,8 +15,12 @@ const materials = [{
 }]
 
 vi.mock('@/components/courseProgram/SolutionReferencePanel', () => ({
-  SolutionReferencePanel: ({ widthPercent }: { widthPercent?: string }) => (
-    <div data-testid="solution-reference-panel" data-width={widthPercent} />
+  SolutionReferencePanel: ({ widthPercent, widthFromLaptop }: { widthPercent?: string; widthFromLaptop?: boolean }) => (
+    <div
+      data-testid="solution-reference-panel"
+      data-width={widthPercent}
+      data-from-laptop={widthFromLaptop ? 'true' : 'false'}
+    />
   ),
   useTopicSolutionMaterials: () => ({ materials, loading: false }),
 }))
@@ -101,12 +105,36 @@ describe('ширина панели решения', () => {
     expect(screen.getByTestId('solution-reference-panel')).toHaveAttribute('data-width', '25.0%')
   })
 
-  it('границу видно только там, где панель занимает долю', () => {
+  it('границу видно с ноутбука и не видно на узком экране', () => {
     renderOverlay()
-    // Ниже 1536 панель фиксированной ширины: тянуть нечего, ручка спрятана
-    // классом, а не удалена — состояние ширины при этом не теряется.
+    // §208. Ниже 1024 колонки идут друг под другом — там делить нечего, и
+    // ручка спрятана классом, а не удалена: состояние ширины не теряется.
+    // Выше — граница есть, владелец работает как раз на 1280–1440.
     expect(screen.getByTestId('solution-split-handle').className).toContain('hidden')
-    expect(screen.getByTestId('solution-split-handle').className).toContain('2xl:block')
+    expect(screen.getByTestId('solution-split-handle').className).toContain('lg:block')
+    expect(screen.getByTestId('solution-split-handle').className).not.toContain('2xl:block')
+  })
+
+  it('пока границу не двигали, на ноутбуке раскладка прежняя', () => {
+    renderOverlay()
+    // §140: между 1024 и 1536 доля в 40 % отдала бы документу ~436 px. Само
+    // открытие работы раскладку не меняет — её меняет только человек.
+    expect(screen.getByTestId('solution-reference-panel')).toHaveAttribute('data-from-laptop', 'false')
+  })
+
+  it('подвинутая граница действует и на ноутбуке, и в следующий раз', () => {
+    renderOverlay()
+    fireEvent.keyDown(screen.getByTestId('solution-split-handle'), { key: 'ArrowRight' })
+
+    const panel = screen.getByTestId('solution-reference-panel')
+    expect(panel).toHaveAttribute('data-width', '42.0%')
+    expect(panel).toHaveAttribute('data-from-laptop', 'true')
+
+    cleanup()
+    renderOverlay()
+    const again = screen.getByTestId('solution-reference-panel')
+    expect(again).toHaveAttribute('data-width', '42.0%')
+    expect(again).toHaveAttribute('data-from-laptop', 'true')
   })
 
   it('кнопка «Решение» прячет и панель, и границу', () => {

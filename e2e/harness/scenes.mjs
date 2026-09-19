@@ -32,6 +32,12 @@ const toSmallFigure = `document.querySelector('.print-document img[alt*="мел�
 // пикселю — высота листа зависит ровно от правила, которое проверяем.
 const toPrintTop = `document.querySelector('.print-document img.math-display')?.scrollIntoView({ block: 'center' })`
 const toShortSystem = `document.querySelector('.print-document img[alt*="система и три"]')?.scrollIntoView({ block: 'center' })`
+// §208 (board/059): поле комментария стоит в форме вердикта внизу колонки
+// документа — до него надо доскроллить, иначе на снимке страницы работы.
+const toCommentBox = `document.querySelector('[data-testid="review-comment-input"]')?.scrollIntoView({ block: 'center' })`
+// §208: граница колонок — ползунок, и двигаем мы её так же, как человек без
+// мыши: стрелками с клавиатуры. Шесть шагов по 2 % = с 40 % до 52 %.
+const moveSplitRight = `(() => { const h = document.querySelector('[data-testid="solution-split-handle"]'); if (!h) return; h.focus(); for (let i = 0; i < 6; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })()`
 
 export const scenes = [
   // ── guest ──
@@ -263,6 +269,26 @@ export const scenes = [
     { persona: 'owner', name: 'o06-review-praise-off', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
     { persona: 'owner', name: 'o06-review-praise-on', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="comment-list-praise-toggle"] input' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="comment-list"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
   ]),
+
+  // ── §208 (board/059): шапка, граница колонок, поле комментария ──
+  // 1440 добавлен намеренно: между 1024 и 1536 граница панели решения до §208
+  // не показывалась вовсе, а владелец работает именно здесь.
+  ...[[390, 844], [1280, 800], [1440, 900]].flatMap(([width, height]) => [
+    // Шапка: крупно «кто и по какой теме», полосы с именами файлов нет.
+    { persona: 'owner', name: 'o06-review-head', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    // Та же шапка с раскрытой полосой файлов — оригиналы никуда не делись.
+    { persona: 'owner', name: 'o06-review-files-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="attempt-files-toggle"]' }, { wait: 500 }], full: false },
+    // Пустое поле: видно стартовые шесть строк вместо прежних двух.
+    { persona: 'owner', name: 'o06-review-comment', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toCommentBox }, { wait: 600 }], full: false },
+    // То же поле с разбором ИИ. Текст приходит НЕ с клавиатуры — кнопка
+    // подставляет его целиком, и высота обязана пересчитаться и в этом случае.
+    { persona: 'owner', name: 'o06-review-comment-ai', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="ai-check-use-text"]' }, { wait: 500 }, { eval: toCommentBox }, { wait: 600 }], full: false },
+  ]),
+  // Граница колонок сдвинута с клавиатуры. На 390 колонки идут друг под
+  // другом — там границы нет и снимать нечего.
+  ...[[1280, 800], [1440, 900]].map(([width, height]) => (
+    { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
+  )),
 
   { persona: 'owner', name: 'o07-students', url: '/students' },
   { persona: 'owner', name: 'o07-students-invites', url: '/students', actions: [{ clickRole: ['button', 'Приглашения'] }, { wait: 600 }] },

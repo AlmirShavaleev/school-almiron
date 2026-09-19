@@ -376,7 +376,9 @@ export function HomeworkAttemptDetailModal({
           attemptId={annotating.attempt.id}
           files={files.filter(f => f.attempt_id === annotating.attempt.id)}
           title={homeworkTitle}
-          subtitle={studentName}
+          // §208. Модалка открывается из карточки темы, поэтому тема тут и так
+          // на виду; крупной строкой остаётся ученик.
+          lead={studentName}
           viewers={viewersOf(annotating.attempt.id)}
           locked={annotating.locked}
           onForceEdit={() => setAnnotating(a => (a ? { ...a, locked: false } : a))}
