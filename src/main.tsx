@@ -1,3 +1,7 @@
+// Первым импортом и не «заодно»: pdf.js 6.1 зовёт Map.prototype.getOrInsertComputed
+// прямо на пути render(), а этого метода нет ни в одном браузере — без строки
+// ниже ни одна страница PDF в приложении не рисуется. Подробности — в модуле.
+import './lib/pdfjsCompat'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
