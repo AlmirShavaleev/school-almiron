@@ -80,9 +80,14 @@ async function snapshotOf(paths: string[]): Promise<AttemptExportSnapshot> {
       exportSourceRef={ref}
     />,
   )
+  // §209.1. Ждём именно ГОТОВНОСТИ, а не «появилась хоть одна страница».
+  // Фотографии приезжают сразу, страницы PDF — позже, и промежуточный слепок
+  // выглядит целым. Под нагрузкой тест ловил как раз этот промежуток и падал
+  // с [1,2] вместо [1,2,3,4] — тем же способом, каким кнопка «Скачать PDF»
+  // могла отдать файл без половины работы.
   await waitFor(() => {
     const snapshot = ref.current?.()
-    expect(snapshot && snapshot.surfaces.length).toBeTruthy()
+    expect(snapshot?.ready).toBe(true)
   })
   return ref.current!()
 }

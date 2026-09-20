@@ -66,6 +66,9 @@ const REPORT: AttemptPdfReport = {
 function snapshot(): AttemptExportSnapshot {
   const pdf = fakePdfDocument()
   return {
+    // §209.1. Здесь проверяется сборка уже готового слепка; неготовый до
+    // сборщика не доходит вовсе — его отсекает кнопка.
+    ready: true,
     surfaces: [
       { globalPage: 1, kind: 'image', url: 'signed://a.jpg', page: 1, ratio: 0.75, pdf: null },
       { globalPage: 2, kind: 'pdf', url: 'signed://b.pdf', page: 1, ratio: 0.7, pdf },

@@ -590,9 +590,14 @@ export function SubmissionReviewer({
         // заданиями, что экран, иначе файл молча беднее того, что видели.
         taskNo: region.task ?? null,
       })),
+      // §209.1. Пока файлы читаются, `surfaces` содержит только фотографии:
+      // страницы PDF появляются позже. Слепок в этот момент выглядит целым,
+      // хотя половины работы в нём нет, — поэтому готовность едет наружу
+      // отдельным признаком, а не угадывается по длине списка.
+      ready: !loading && surfaces.length > 0,
     })
     return () => { exportSourceRef.current = null }
-  }, [exportSourceRef, regions, surfaces])
+  }, [exportSourceRef, loading, regions, surfaces])
 
   /**
    * §209. Замечания и отказы наружу — в таблицу заданий.

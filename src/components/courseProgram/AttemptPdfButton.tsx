@@ -42,7 +42,12 @@ export function AttemptPdfButton({
   async function download() {
     if (busyRef.current || !report) return
     const snapshot = sourceRef.current?.()
-    if (!snapshot || snapshot.surfaces.length === 0) {
+    // §209.1. Не только «есть ли хоть что-то», но и «всё ли открылось».
+    // Фотографии появляются сразу, страницы PDF — через секунду-две, и в
+    // этот промежуток слепок выглядит исправным, хотя половины работы в нём
+    // нет. Отдать такой файл молча — хуже честного «подождите»: пропажу
+    // заметит уже ученик, а преподаватель будет уверен, что отправил всё.
+    if (!snapshot || snapshot.surfaces.length === 0 || !snapshot.ready) {
       toast.error('Страницы работы ещё не загрузились — подождите пару секунд и попробуйте снова')
       return
     }

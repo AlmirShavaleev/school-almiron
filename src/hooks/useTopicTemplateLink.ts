@@ -41,20 +41,31 @@ export function useTopicTemplateLink(topicId: string | undefined | null) {
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (alive?: () => boolean) => {
     if (!topicId) { setLink(EMPTY); return }
     try {
       const { data, error: err } = await db.rpc('topic_template_link', { p_topic_id: topicId })
       if (err) throw new Error(err.message)
+      if (alive && !alive()) return
       // Не персонал курса — RPC вернёт пусто; экран просто не покажет плашку.
       setLink(data ? { ...EMPTY, ...data } : EMPTY)
     } catch {
+      if (alive && !alive()) return
       // Сорвавшаяся подпись не должна ронять окно темы.
       setLink(EMPTY)
     }
   }, [topicId])
 
-  useEffect(() => { void load() }, [load])
+  // §209.2. Ответ RPC приходит и после закрытия окна темы — тогда setLink
+  // попадает в уже размонтированный компонент. В приложении это тихо, а в
+  // тестах роняет весь прогон необработанным отказом «window is not defined»
+  // (все файлы при этом зелёные, но код возврата 1 и CI красный). Флажок
+  // жизни закрывает и то и другое.
+  useEffect(() => {
+    let alive = true
+    void load(() => alive)
+    return () => { alive = false }
+  }, [load])
 
   /** Кнопка «Повторить» на плашке расхождений. */
   const repeat = useCallback(async () => {
