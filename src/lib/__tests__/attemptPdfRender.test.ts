@@ -70,9 +70,9 @@ function snapshot(): AttemptExportSnapshot {
     // сборщика не доходит вовсе — его отсекает кнопка.
     ready: true,
     surfaces: [
-      { globalPage: 1, kind: 'image', url: 'signed://a.jpg', page: 1, ratio: 0.75, pdf: null },
-      { globalPage: 2, kind: 'pdf', url: 'signed://b.pdf', page: 1, ratio: 0.7, pdf },
-      { globalPage: 3, kind: 'pdf', url: 'signed://b.pdf', page: 2, ratio: 0.7, pdf },
+      { globalPage: 1, kind: 'image', url: 'signed://a.jpg', page: 1, ratio: 0.75, quarter: 0, pdf: null },
+      { globalPage: 2, kind: 'pdf', url: 'signed://b.pdf', page: 1, ratio: 0.7, quarter: 0, pdf },
+      { globalPage: 3, kind: 'pdf', url: 'signed://b.pdf', page: 2, ratio: 0.7, quarter: 0, pdf },
     ],
     regions: [
       { number: 1, globalPage: 1, rect: { x: 0.1, y: 0.1, w: 0.2, h: 0.1 }, categoryLabel: 'Вычислительная ошибка', color: '#dc2626', text: 'Знак' },

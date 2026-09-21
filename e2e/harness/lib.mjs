@@ -277,6 +277,10 @@ function pickAsset(rest, assetsDir) {
   if (lower.includes('small')) return path.join(assetsDir, 'figure-small.png')
   if (lower.includes('table')) return path.join(assetsDir, 'table.png')
   if (lower.includes('wide') || lower.includes('formula')) return path.join(assetsDir, 'formula.png')
+  // §211: страница, снятая боком, — до общего правила про 'photo', иначе
+  // она подменилась бы обычной прямой фотографией и поворачивать было бы
+  // нечего.
+  if (lower.includes('sideways')) return path.join(assetsDir, 'photo-sideways.png')
   if (lower.includes('photo') || lower.includes('homework') || lower.includes('submission')) return path.join(assetsDir, 'photo.png')
   return path.join(assetsDir, 'figure.png')
 }

@@ -185,9 +185,19 @@ export const topic_homework_reviews = [
   { id: IDS.review(14), attempt_id: IDS.attempt(14), reviewer_id: IDS.owner, decision: 'accepted', score: 87, comment: null, created_at: ago(30) },
 ]
 for (const r of topic_homework_reviews) topic_homework_attempts.find(a => a.id === r.attempt_id).topic_homework_reviews.push(r)
+// §211 (board/062): вторая страница той работы, которую открывает «Проверить»
+// в очереди, снята БОКОМ — именно так половина работ и приезжает. Поворот
+// снимается ровно на ней, а первая страница остаётся прямой: на одном экране
+// видно и выправленную страницу, и нетронутую соседку. Остальные работы не
+// трогаем — на них стоят снимки прежних разделов.
+const sidewaysPage = (attemptId, n) => attemptId === IDS.attempt(15) && n === 2
 export const topic_homework_attempt_files = topic_homework_attempts.flatMap((a, i) => [1, 2].map(n => ({
-  id: IDS.file(i * 2 + n), attempt_id: a.id, storage_path: `homeworks/${a.student_id}/${a.id}/photo-${n}.jpg`, file_name: `IMG_2026091${n}_очень_длинное_имя_файла_с_телефона_${n}.jpg`,
-  mime_type: 'image/jpeg', size_bytes: 2400000, width: 1200, height: 1600, page_number: n, position: n, rotation: 0, sha256: null, metadata: {}, created_at: a.created_at,
+  id: IDS.file(i * 2 + n), attempt_id: a.id,
+  storage_path: `homeworks/${a.student_id}/${a.id}/photo-${n}${sidewaysPage(a.id, n) ? '-sideways' : ''}.jpg`,
+  file_name: `IMG_2026091${n}_очень_длинное_имя_файла_с_телефона_${n}.jpg`,
+  mime_type: 'image/jpeg', size_bytes: 2400000,
+  width: sidewaysPage(a.id, n) ? 1600 : 1200, height: sidewaysPage(a.id, n) ? 1200 : 1600,
+  page_number: n, position: n, rotation: 0, sha256: null, metadata: {}, created_at: a.created_at,
 })))
 
 // ── ИИ-проверка ДЗ (§180 v17 + §186) ─────────────────────────────────────────
@@ -306,6 +316,25 @@ export const annotationSets = [{
       // никто — отличить такой дубль от ручной рамки нечем.
       { id: 'a1-dup1', type: 'region', category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.', rect: { x: 0.121, y: 0.452, w: 0.6, h: 0.08 } },
       { id: 'a1-dup2', type: 'region', category: 'calc', text: 'В задаче 3 знак ускорения: при торможении a направлено против скорости, значит a < 0.', rect: { x: 0.12, y: 0.45, w: 0.601, h: 0.08 } },
+    ],
+  },
+},
+// §211 (board/062). Пометки на ВТОРОЙ странице той же работы очереди — той
+// самой, что снята боком. Без них поворот не на чем проверить глазами: вся
+// цена вопроса в том, едут ли рамки вместе со страницей или остаются лежать
+// там, где были, уводя работу преподавателя.
+{
+  id: U('d', 205), attempt_id: IDS.attempt(15), submission_id: null,
+  file_path: topic_homework_attempt_files.filter(f => f.attempt_id === IDS.attempt(15))[1].storage_path,
+  page: 1, status: 'draft', author_id: IDS.owner, created_at: ago(1), updated_at: ago(1),
+  data: {
+    version: 2,
+    objects: [
+      // Координаты — доли ИСХОДНОЙ (лежащей набок) страницы: рамки
+      // накрывают строки решения и блок «Дано». На повёрнутой странице они
+      // обязаны оказаться на тех же строках — это и видно на паре снимков.
+      { id: 'b1', type: 'region', category: 'error', task: '15', text: 'Потерян процент во втором шаге — пересчитай от новой цены.', rect: { x: 0.30, y: 0.45, w: 0.15, h: 0.45 } },
+      { id: 'b2', type: 'region', category: 'good', text: 'Верно выписано «Дано»', rect: { x: 0.045, y: 0.42, w: 0.085, h: 0.28 } },
     ],
   },
 },

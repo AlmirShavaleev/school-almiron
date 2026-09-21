@@ -45,9 +45,19 @@ const moveSplitRight = `(() => { const h = document.querySelector('[data-testid=
 // §210: вторая граница — между работой и таблицей проверки. Двигаем тоже с
 // клавиатуры: шесть шагов влево = таблица с 37 % до 49 %.
 const moveReviewSplitLeft = `(() => { const h = document.querySelector('[data-testid="review-split-handle"]'); if (!h) return; h.focus(); for (let i = 0; i < 6; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })) })()`
-// §210: прокрутка ТОЛЬКО таблицы. Если колонки общие, вместе с ней уедет и
-// работа — на снимке это видно сразу.
-const scrollTableDown = `(() => { const el = document.querySelector('[data-testid="review-actions-above"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
+// §210/§211: прокрутка ТОЛЬКО третьей колонки. Если колонки общие, вместе с
+// ней уедет и работа — на снимке это видно сразу. С §211 прокручивается вся
+// колонка целиком (форма вердикта вернулась в поток, за таблицу), поэтому и
+// свиток теперь колонкин, а не таблицын.
+const scrollTableDown = `(() => { const el = document.querySelector('[data-testid="review-side-scroll-area"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
+// §211 (board/062): страница, снятая боком, — вторая в первой работе очереди.
+const toSidewaysPage = `document.querySelector('[data-testid="review-page-2"]')?.scrollIntoView({ block: 'center' })`
+// §211: доворот той же страницы кнопкой у её угла — ровно то, что делает рукой
+// преподаватель. Ждать сохранения не надо: на экране страница разворачивается
+// сразу, запись уходит следом.
+const rotateSidewaysPage = `document.querySelector('[data-testid="review-rotate-2"]')?.click()`
+// §211: увеличили работу «плюсом» — по ширине колонки она больше не влезает.
+const zoomInTwice = `(() => { const b = document.querySelector('[title="Увеличить"]'); b?.click(); b?.click() })()`
 // §210: ниже 1024 колонки идут друг под другом, и таблица лежит третьим
 // блоком — до неё мотают всю полосу. Сцена показывает, что порядок прежний:
 // решение, работа, таблица.
@@ -315,6 +325,23 @@ export const scenes = [
   ...[[1280, 800], [1440, 900]].map(([width, height]) => (
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
+
+  // ── §211 (board/062): поворот страницы, «по ширине», вердикт в потоке ──
+  // Пары до/после на одной и той же странице: вторая страница первой работы
+  // снята боком (так приезжает половина работ). На «после» видно, что
+  // страница встала прямо, а рамка преподавателя осталась на своём месте, —
+  // ради этого поворот и пересчитывает координаты.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-rotate-before', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toSidewaysPage }, { wait: 800 }], full: false },
+    { persona: 'owner', name: 'o06-rotate-after', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toSidewaysPage }, { wait: 800 }, { eval: rotateSidewaysPage }, { wait: 900 }, { eval: toSidewaysPage }, { wait: 500 }], full: false },
+    // «По ширине»: увеличенная работа возвращается в колонку одним щелчком.
+    { persona: 'owner', name: 'o06-fit-before', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: zoomInTwice }, { wait: 700 }], full: false },
+    { persona: 'owner', name: 'o06-fit-after', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: zoomInTwice }, { wait: 500 }, { clickSel: '[data-testid="review-fit-width"]' }, { wait: 700 }], full: false },
+    // Вердикт вернулся в поток: сверху колонки его не видно, он доезжает
+    // прокруткой — и все освободившиеся строки достались таблице.
+    { persona: 'owner', name: 'o06-verdict-flow-top', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    { persona: 'owner', name: 'o06-verdict-flow-bottom', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: scrollTableDown }, { wait: 700 }], full: false },
+  ]),
 
   // ── §210 (board/061): три колонки — решение, работа, таблица ──
   // Главное на этих снимках: таблица проверки стоит СБОКУ от работы, а не под

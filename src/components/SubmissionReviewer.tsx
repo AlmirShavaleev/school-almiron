@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertCircle, Eraser } from 'lucide-react'
+import { Loader2, Save, Trash2, ZoomIn, ZoomOut, FileText, MessageSquare, AlertCircle, Eraser, RotateCw } from 'lucide-react'
 import * as pdfjs from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { extractStoragePath, getSignedFileUrl, type PrivateBucket } from '@/lib/storage'
 import { HANDLE_CURSOR, moveRect, rectsEqual, resizeRect, type ResizeHandle } from '@/lib/annotationGeometry'
+import {
+  nextQuarter, normalizeQuarter, rotateRatio, rotateRect, rotationDegrees, unrotateRect, type Quarter,
+} from '@/lib/pageRotation'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import {
@@ -60,9 +63,22 @@ type Mark = Region | LegacyMark
  * закрытие работы, иначе отклонённое предложение возвращается при каждом
  * открытии — ровно тот мусор, от которого просили избавиться.
  */
-type PageData = { version: 2; objects: Mark[]; dismissed?: string[] }
+/**
+ * §211. `rotation` — на сколько четвертей по часовой стрелке довёрнута
+ * страница. Лежит в том же jsonb, что и пометки (миграция не нужна), и это
+ * свойство СТРАНИЦЫ, а не смотрящего: выправили один раз — ровно у всех,
+ * включая ученика. Сами рамки хранятся в координатах исходной страницы и
+ * поворотом не переписываются (см. `lib/pageRotation`).
+ */
+type PageData = { version: 2; objects: Mark[]; dismissed?: string[]; rotation?: Quarter }
 type Row = { page: number; file_path: string; data: unknown; status: 'draft' | 'published'; author_id?: string | null }
-type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string }
+/**
+ * §211. `displayRect` — рамка в координатах ПОВЁРНУТОЙ страницы, то есть та,
+ * что видна на экране и уезжает в скачиваемый PDF. `rect` остаётся хранимым,
+ * исходным: одно из двух всегда не то, что нужно, поэтому оба лежат рядом и
+ * подписаны.
+ */
+type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string; displayRect: Rect; quarter: Quarter }
 type PageMetrics = { width: number; height: number; ratio: number }
 type DragState = { surfaceKey: string; rect: Rect } | null
 /** Правка существующей рамки: перенос целиком или растягивание за одну ручку. */
@@ -76,7 +92,7 @@ type RegionEdit = {
   startPoint: Point
   startRect: Rect
 }
-/** Что показываем поверх сохранённой рамки, пока её тянут. */
+/** Что показываем поверх сохранённой рамки, пока её тянут (экранные доли). */
 type EditPreview = { id: string; surfaceKey: string; rect: Rect } | null
 type SourceFile = { filePath: string; url: string; ext: string; kind: 'pdf' | 'image' }
 type DocumentSurface = {
@@ -261,6 +277,17 @@ type Props = BaseProps & AnnotationTarget
 
 const MIN_REGION_SIZE = 0.015
 /**
+ * §211. Масштаб «по ширине». Коробка страницы на экране — это ширина колонки,
+ * умноженная на масштаб (см. `PdfPageSurface`/`ImagePageSurface`), поэтому
+ * вписанная в колонку страница и есть единица. Число вынесено, чтобы кнопка
+ * «По ширине», начальное значение и проверка «мы сейчас по ширине» говорили
+ * об одном и том же.
+ */
+const FIT_WIDTH_ZOOM = 1
+const MIN_ZOOM = 0.6
+const MAX_ZOOM = 3
+const ZOOM_STEP = 0.2
+/**
  * Размер ручки — доля ШИРИНЫ страницы. По высоте домножаем на соотношение
  * сторон: viewBox 0 0 1 1 с preserveAspectRatio="none" растягивает оси
  * по-разному, и одинаковые числа дали бы вытянутые прямоугольники вместо
@@ -302,14 +329,18 @@ const parsePageKey = (key: string) => {
   return { filePath, page: Number(page) }
 }
 const cleanData = (data: unknown): PageData => {
-  const value = data as { objects?: unknown[]; dismissed?: unknown[] } | null
+  const value = data as { objects?: unknown[]; dismissed?: unknown[]; rotation?: unknown } | null
   const dismissed = Array.isArray(value?.dismissed)
     ? value.dismissed.filter((id): id is string => typeof id === 'string')
     : []
+  // §211. Угол пишем в запись только когда он есть: у подавляющего
+  // большинства страниц его нет, и лишнее поле в каждом jsonb ни к чему.
+  const rotation = normalizeQuarter(value?.rotation)
   return {
     version: 2,
     objects: Array.isArray(value?.objects) ? value.objects as Mark[] : [],
     ...(dismissed.length > 0 ? { dismissed } : {}),
+    ...(rotation !== 0 ? { rotation } : {}),
   }
 }
 /** Категория рамки; неизвестная (чужая или будущая) не должна ронять экран. */
@@ -337,6 +368,10 @@ const pageWithVersion = (objects: Mark[], base?: PageData): PageData => ({
   version: 2,
   objects,
   ...(base?.dismissed?.length ? { dismissed: base.dismissed } : {}),
+  // §211. Угол страницы переживает любую правку рамок: страница пишется
+  // целиком, и забыть его здесь значит развернуть работу обратно боком при
+  // первом же сохранённом замечании.
+  ...(base?.rotation ? { rotation: base.rotation } : {}),
 })
 /**
  * Тот же ли набор пометок. Сравнение по id и порядку: перенос и уборка
@@ -444,7 +479,24 @@ export function SubmissionReviewer({
   const [error, setError] = useState('')
   const [pageCount, setPageCount] = useState(1)
   const [currentPage, setCurrentPage] = useState(1)
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState(FIT_WIDTH_ZOOM)
+  /**
+   * §211. «По ширине» — режим, а не разовое нажатие. Страница рисуется
+   * шириной колонки, умноженной на масштаб, поэтому «вписана в ширину» — это
+   * ровно `FIT_WIDTH_ZOOM`; но держать режим всё равно нужно, потому что
+   * колонку тянут границей, а страницу поворачивают, и после каждого такого
+   * движения подгонку надо применить заново — к НОВОМУ отношению сторон.
+   * Плюс и минус из режима выходят: дальше масштаб выбирает человек.
+   */
+  const [fitToWidth, setFitToWidth] = useState(true)
+  const setManualZoom = useCallback((next: (value: number) => number) => {
+    setFitToWidth(false)
+    setZoom(value => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(next(value).toFixed(2)))))
+  }, [])
+  const applyFitToWidth = useCallback(() => {
+    setFitToWidth(true)
+    setZoom(FIT_WIDTH_ZOOM)
+  }, [])
   const [frameWidth, setFrameWidth] = useState(0)
   const [imageRatios, setImageRatios] = useState<Record<string, number>>({})
   const [pageMetrics, setPageMetrics] = useState<Record<string, PageMetrics>>({})
@@ -556,10 +608,35 @@ export function SubmissionReviewer({
 
   const surfaceByKey = useMemo(() => Object.fromEntries(surfaces.map(surface => [surface.surfaceKey, surface])), [surfaces])
 
+  /**
+   * §211. Угол страницы живёт в `pages`, а не в `surfaces`, и это не лень.
+   * `surfaces` пересобираются от списка файлов, и на них висит эффект,
+   * сбрасывающий прокрутку на первую страницу; добавь туда зависимость от
+   * пометок — и каждое сохранённое замечание отматывало бы работу в начало.
+   */
+  const quarterOf = useCallback(
+    (filePath: string, page: number) => normalizeQuarter(pages[pageKey(filePath, page)]?.rotation),
+    [pages],
+  )
+
   const regions = useMemo(() => surfaces
-    .flatMap(surface => (pages[pageKey(surface.filePath, surface.page)] ?? EMPTY).objects
-      .filter(isRegion)
-      .map(region => ({ ...region, filePath: surface.filePath, page: surface.page, globalPage: surface.globalPage, fileIndex: surface.fileIndex, fileLabel: surface.fileLabel, surfaceKey: surface.surfaceKey })))
+    .flatMap(surface => {
+      const pageData = pages[pageKey(surface.filePath, surface.page)] ?? EMPTY
+      const quarter = normalizeQuarter(pageData.rotation)
+      return pageData.objects
+        .filter(isRegion)
+        .map(region => ({
+          ...region,
+          filePath: surface.filePath,
+          page: surface.page,
+          globalPage: surface.globalPage,
+          fileIndex: surface.fileIndex,
+          fileLabel: surface.fileLabel,
+          surfaceKey: surface.surfaceKey,
+          quarter,
+          displayRect: rotateRect(region.rect, quarter),
+        }))
+    })
     .sort((a, b) => a.globalPage - b.globalPage), [pages, surfaces])
 
   /**
@@ -570,18 +647,27 @@ export function SubmissionReviewer({
   useEffect(() => {
     if (!exportSourceRef) return
     exportSourceRef.current = () => ({
-      surfaces: surfaces.map(surface => ({
-        globalPage: surface.globalPage,
-        kind: surface.kind,
-        url: surface.url,
-        page: surface.page,
-        ratio: surface.metrics?.ratio ?? 1 / 1.414,
-        pdf: surface.kind === 'pdf' ? pdfRefs.current[surface.filePath] ?? null : null,
-      })),
+      surfaces: surfaces.map(surface => {
+        // §211. Страницу выправили на экране — файл обязан уехать таким же.
+        // Иначе преподаватель поправил у себя, ученику ушло боком, и узнает
+        // об этом только тот, кто откроет файл.
+        const quarter = quarterOf(surface.filePath, surface.page)
+        return {
+          globalPage: surface.globalPage,
+          kind: surface.kind,
+          url: surface.url,
+          page: surface.page,
+          ratio: rotateRatio(surface.metrics?.ratio ?? 1 / 1.414, quarter),
+          quarter,
+          pdf: surface.kind === 'pdf' ? pdfRefs.current[surface.filePath] ?? null : null,
+        }
+      }),
       regions: regions.map((region, index) => ({
         number: index + 1,
         globalPage: region.globalPage,
-        rect: region.rect,
+        // Доли ПОВЁРНУТОЙ страницы: лист в файле повёрнут, рамка обязана
+        // лечь на то же место, что на экране.
+        rect: region.displayRect,
         categoryLabel: categoryOf(region.category).label,
         color: categoryOf(region.category).color,
         text: region.text,
@@ -597,7 +683,7 @@ export function SubmissionReviewer({
       ready: !loading && surfaces.length > 0,
     })
     return () => { exportSourceRef.current = null }
-  }, [exportSourceRef, loading, regions, surfaces])
+  }, [exportSourceRef, loading, quarterOf, regions, surfaces])
 
   /**
    * §209. Замечания и отказы наружу — в таблицу заданий.
@@ -900,7 +986,8 @@ export function SubmissionReviewer({
       mode,
       handle,
       startPoint: pointOn(svg, event),
-      startRect: region.rect,
+      // §211. Жест меряется по экрану, значит и рамка в нём — экранная.
+      startRect: rotateRect(region.rect, quarterOf(surface.filePath, surface.page)),
     }
     void flushNudge()
     setActiveId(region.id)
@@ -909,10 +996,17 @@ export function SubmissionReviewer({
     setEditPreview({ id: region.id, surfaceKey: surface.surfaceKey, rect: region.rect })
   }
 
-  /** Новая геометрия рамки: сразу в состояние, следом — в базу. */
-  async function commitRegionRect(filePath: string, page: number, regionId: string, rect: Rect) {
+  /**
+   * Новая геометрия рамки: сразу в состояние, следом — в базу.
+   *
+   * §211. Приходит то, что видно на экране, то есть доли ПОВЁРНУТОЙ
+   * страницы. В базу кладём исходные: хранимые координаты поворотом не
+   * переписываются (см. `lib/pageRotation`).
+   */
+  async function commitRegionRect(filePath: string, page: number, regionId: string, displayRect: Rect) {
     const key = pageKey(filePath, page)
     const pageData = pages[key] ?? EMPTY
+    const rect = unrotateRect(displayRect, pageData.rotation)
     const nextData = pageWithVersion(pageData.objects.map(mark => (
       mark.id === regionId && isRegion(mark) ? { ...mark, rect } : mark
     )), pageData)
@@ -921,6 +1015,30 @@ export function SubmissionReviewer({
     setPages(value => ({ ...value, [key]: nextData }))
     const ok = await savePage(filePath, page, nextData)
     if (!ok) setPages(value => ({ ...value, [key]: pageData }))
+  }
+
+  /**
+   * §211. Довернуть страницу на 90° по часовой.
+   *
+   * Три вещи, ради которых это не одна строка:
+   *  - `pagesLoaded`: запись из непрочитанного состояния сохранила бы
+   *    страницу ЦЕЛИКОМ из пустого объекта, то есть стёрла бы чужие рамки
+   *    (та же причина, что у переноса находок, §207);
+   *  - сохраняем оптимистично, а при отказе возвращаем прежний угол —
+   *    страница, крутнувшаяся и молча отъехавшая назад при перезагрузке,
+   *    хуже, чем не крутнувшаяся вовсе;
+   *  - в режиме «по ширине» подгонку применяем заново: у повёрнутой
+   *    страницы другое отношение сторон.
+   */
+  async function rotatePage(filePath: string, page: number) {
+    if (readOnly || !pagesLoaded) return
+    const key = pageKey(filePath, page)
+    const base = pages[key] ?? EMPTY
+    const nextData: PageData = { ...base, version: 2, rotation: nextQuarter(base.rotation) }
+    setPages(value => ({ ...value, [key]: nextData }))
+    if (fitToWidth) setZoom(FIT_WIDTH_ZOOM)
+    const ok = await savePage(filePath, page, nextData)
+    if (!ok) setPages(value => ({ ...value, [key]: base }))
   }
 
   async function flushNudge() {
@@ -979,7 +1097,8 @@ export function SubmissionReviewer({
       page: surface.page,
       globalPage: surface.globalPage,
       fileIndex: surface.fileIndex,
-      rect: nextRect,
+      // §211. Обвели место на повёрнутой странице — храним исходные доли.
+      rect: unrotateRect(nextRect, quarterOf(surface.filePath, surface.page)),
       // §209. Под замечание к заданию рисование включили кнопкой «+ Заметка»,
       // и тип по умолчанию — «Ошибка»: рамку ставят, когда что-то не так.
       // Свободная рамка вне таблицы остаётся прежним «Комментарием».
@@ -1053,8 +1172,8 @@ export function SubmissionReviewer({
     const areaRect = area.getBoundingClientRect()
     const pageRect = node.getBoundingClientRect()
     if (!pageRect.height || !areaRect.height) return
-    const regionTop = pageRect.top + item.rect.y * pageRect.height
-    const regionHeight = item.rect.h * pageRect.height
+    const regionTop = pageRect.top + item.displayRect.y * pageRect.height
+    const regionHeight = item.displayRect.h * pageRect.height
     const gap = Math.max(REGION_MIN_GAP, Math.min(areaRect.height * REGION_TOP_GAP, (areaRect.height - regionHeight) / 2))
     const top = Math.max(0, area.scrollTop + (regionTop - areaRect.top) - gap)
     if (typeof area.scrollTo === 'function') area.scrollTo({ top, behavior })
@@ -1128,10 +1247,16 @@ export function SubmissionReviewer({
         const pageData = value[key] ?? EMPTY
         const current = pageData.objects.find(mark => mark.id === id)
         if (!current || !isRegion(current)) return value
-        const nextRect = event.shiftKey
-          ? resizeRect(current.rect, dx !== 0 ? 'e' : 's', dx * NUDGE_STEP, dy * NUDGE_STEP, MIN_REGION_SIZE)
-          : moveRect(current.rect, dx * NUDGE_STEP, dy * NUDGE_STEP)
-        if (rectsEqual(nextRect, current.rect)) return value
+        // §211. «Влево» — это влево на экране. Считаем сдвиг в координатах
+        // повёрнутой страницы и только потом переводим обратно в хранимые,
+        // иначе на боком лежащей работе стрелки двигали бы рамку поперёк.
+        const quarter = normalizeQuarter(pageData.rotation)
+        const shown = rotateRect(current.rect, quarter)
+        const nextShown = event.shiftKey
+          ? resizeRect(shown, dx !== 0 ? 'e' : 's', dx * NUDGE_STEP, dy * NUDGE_STEP, MIN_REGION_SIZE)
+          : moveRect(shown, dx * NUDGE_STEP, dy * NUDGE_STEP)
+        if (rectsEqual(nextShown, shown)) return value
+        const nextRect = unrotateRect(nextShown, quarter)
         const nextData = pageWithVersion(pageData.objects.map(mark => (
           mark.id === id && isRegion(mark) ? { ...mark, rect: nextRect } : mark
         )), pageData)
@@ -1495,9 +1620,28 @@ export function SubmissionReviewer({
           <span className="min-w-14 text-center tabular-nums">{currentPage} / {pageCount}</span>
         </div>
         <div className="flex items-center rounded-full border border-slate-200 bg-slate-50 px-1">
-          <ToolButton disabled={zoom <= .6} title="Уменьшить" onClick={() => setZoom(z => Math.max(.6, z - .2))}><ZoomOut size={17}/></ToolButton>
-          <span className="w-12 text-center text-xs font-semibold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
-          <ToolButton disabled={zoom >= 2} title="Увеличить" onClick={() => setZoom(z => Math.min(2, z + .2))}><ZoomIn size={17}/></ToolButton>
+          <ToolButton disabled={zoom <= MIN_ZOOM} title="Уменьшить" onClick={() => setManualZoom(z => z - ZOOM_STEP)}><ZoomOut size={17}/></ToolButton>
+          <span data-testid="review-zoom-value" className="w-12 text-center text-xs font-semibold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
+          <ToolButton disabled={zoom >= MAX_ZOOM} title="Увеличить" onClick={() => setManualZoom(z => z + ZOOM_STEP)}><ZoomIn size={17}/></ToolButton>
+          {/*
+            §211. «По ширине» — один щелчок вместо пяти по минусу. В узкой
+            колонке трёхколоночного экрана проверки вписанная в ширину
+            страница нужна почти всегда, и возвращаться к ней приходится
+            после каждого разглядывания мелочей.
+          */}
+          <button
+            type="button"
+            data-testid="review-fit-width"
+            aria-pressed={fitToWidth}
+            onClick={applyFitToWidth}
+            title="Вписать страницу в ширину колонки"
+            className={cn(
+              'ml-0.5 min-h-8 rounded-full px-2.5 text-xs font-medium transition-colors',
+              fitToWidth ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-white',
+            )}
+          >
+            По ширине
+          </button>
         </div>
         {!readOnly && hasOtherAuthor && (
           <span
@@ -1584,6 +1728,7 @@ export function SubmissionReviewer({
           {surfaces.map(surface => {
             const key = pageKey(surface.filePath, surface.page)
             const pageData = pages[key] ?? EMPTY
+            const quarter = normalizeQuarter(pageData.rotation)
             const shouldRender = visiblePages.has(surface.surfaceKey) || currentPage === surface.globalPage || draft?.filePath === surface.filePath && draft.page === surface.page
             const dragRect = dragState?.surfaceKey === surface.surfaceKey ? dragState.rect : null
             const edit = editPreview?.surfaceKey === surface.surfaceKey ? editPreview : null
@@ -1595,9 +1740,28 @@ export function SubmissionReviewer({
               data-testid={`review-page-${surface.globalPage}`}
               className="relative"
             >
+              {/*
+                §211. Кнопка поворота — у КАЖДОЙ страницы, а не одна на
+                работу: ученик фотографирует листы по одному и разворачивает
+                телефон как придётся, боком приезжает обычно не вся работа.
+              */}
+              {!readOnly && (
+                <button
+                  type="button"
+                  data-testid={`review-rotate-${surface.globalPage}`}
+                  disabled={!pagesLoaded}
+                  onClick={() => { void rotatePage(surface.filePath, surface.page) }}
+                  title="Повернуть страницу на 90° по часовой стрелке"
+                  aria-label={`Повернуть страницу ${surface.globalPage}`}
+                  className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-[0_2px_8px_rgba(15,23,42,.18)] outline outline-1 outline-black/10 backdrop-blur transition-[transform,background-color,color] hover:bg-white hover:text-slate-900 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <RotateCw size={16} />
+                </button>
+              )}
               {surface.kind === 'pdf'
                 ? <PdfPageSurface
                     surface={surface}
+                    quarter={quarter}
                     pdf={pdfRefs.current[surface.filePath] ?? null}
                     pageData={pageData}
                     activeId={activeId}
@@ -1616,6 +1780,7 @@ export function SubmissionReviewer({
                   />
                 : <ImagePageSurface
                     surface={surface}
+                    quarter={quarter}
                     pageData={pageData}
                     activeId={activeId}
                     selectedId={selectedId}
@@ -1702,19 +1867,25 @@ type RegionLayerProps = {
   onActivate: (id: string | null) => void
 }
 
-function RegionLayer({ surface, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate }: RegionLayerProps & {
+function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate }: RegionLayerProps & {
   surface: DocumentSurface
+  quarter: Quarter
   pageData: PageData
   readOnly: boolean
 }) {
-  const aspect = surface.metrics?.ratio ?? 1 / 1.414
+  // §211. Ручки правки должны остаться квадратными — значит соотношение
+  // сторон берём у ПОВЁРНУТОЙ страницы, той, что сейчас на экране.
+  const aspect = rotateRatio(surface.metrics?.ratio ?? 1 / 1.414, quarter)
   return <>{pageData.objects.map(mark => <Shape
     key={mark.id}
     mark={mark}
     active={mark.id === activeId}
     selected={!readOnly && mark.id === selectedId}
     aspect={aspect}
-    rectOverride={edit?.id === mark.id ? edit.rect : null}
+    // §211. Хранимая рамка — в координатах исходной страницы; рисуется
+    // всегда повёрнутая. Пока её тянут, сверху ложится жест — он уже в
+    // экранных координатах.
+    rectOverride={edit?.id === mark.id ? edit.rect : (isRegion(mark) ? rotateRect(mark.rect, quarter) : null)}
     onActivate={() => isRegion(mark) && onActivate(mark.id)}
     onBeginEdit={readOnly ? undefined : (mode, handle, event) => {
       if (isRegion(mark)) onBeginRegionEdit(surface, mark, mode, handle, event)
@@ -1724,6 +1895,7 @@ function RegionLayer({ surface, pageData, readOnly, activeId, selectedId, edit, 
 
 function PdfPageSurface({
   surface,
+  quarter,
   pdf,
   pageData,
   activeId,
@@ -1741,6 +1913,7 @@ function PdfPageSurface({
   onActivate,
 }: RegionLayerProps & {
   surface: DocumentSurface
+  quarter: Quarter
   pdf: pdfjs.PDFDocumentProxy | null
   pageData: PageData
   dragRect: Rect | null
@@ -1756,7 +1929,9 @@ function PdfPageSurface({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
   const width = frameWidth > 0 ? frameWidth * zoom : undefined
-  const ratio = surface.metrics?.ratio ?? 1 / 1.414
+  // §211. Коробка страницы живёт по ПОВЁРНУТОМУ отношению сторон: на 90° и
+  // 270° лист ложится набок, и прежняя пропорция обрезала бы его.
+  const ratio = rotateRatio(surface.metrics?.ratio ?? 1 / 1.414, quarter)
 
   useEffect(() => {
     if (!pdf || !canvasRef.current || !surface.metrics || !shouldRender || !frameWidth) return
@@ -1764,10 +1939,17 @@ function PdfPageSurface({
     const metrics = surface.metrics
     pdf.getPage(surface.page).then(pdfPage => {
       if (cancelled || !canvasRef.current) return
-      const baseScale = Math.max(0.1, (frameWidth - 2) / metrics.width)
-      const viewport = pdfPage.getViewport({ scale: baseScale * zoom })
+      // Ширина коробки делится на ширину ПОВЁРНУТОЙ страницы: у лежащего
+      // набок листа это его высота.
+      const sideAlongWidth = quarter % 2 === 1 ? metrics.height : metrics.width
+      const baseScale = Math.max(0.1, (frameWidth - 2) / sideAlongWidth)
+      // `rotation` у pdf.js ЗАМЕНЯЕТ собственный угол страницы, а не
+      // складывается с ним: складываем сами, иначе лежащий набок исходный
+      // PDF при первом же нажатии встал бы «прямо», а не довернулся.
+      const rotation = (pdfPage.rotate ?? 0) + rotationDegrees(quarter)
+      const viewport = pdfPage.getViewport({ scale: baseScale * zoom, rotation })
       const dpr = window.devicePixelRatio || 1
-      const renderViewport = pdfPage.getViewport({ scale: baseScale * zoom * dpr })
+      const renderViewport = pdfPage.getViewport({ scale: baseScale * zoom * dpr, rotation })
       const canvas = canvasRef.current
       canvas.width = renderViewport.width
       canvas.height = renderViewport.height
@@ -1782,9 +1964,13 @@ function PdfPageSurface({
       cancelled = true
       renderTaskRef.current?.cancel()
     }
-  }, [frameWidth, pdf, shouldRender, surface.metrics, surface.page, zoom])
+  }, [frameWidth, pdf, quarter, shouldRender, surface.metrics, surface.page, zoom])
 
-  return <div className="mx-auto" style={{ width: width ? `${width}px` : undefined, maxWidth: '100%' }}>
+  // §211. `maxWidth: 100%` здесь больше нет: он обрезал увеличенную страницу
+  // по ширине колонки, и «+» показывал не увеличенную работу, а её левый
+  // верхний угол. Теперь страница честно вылезает, а колонка прокручивается
+  // вбок — за что и отвечает кнопка «По ширине», возвращающая всё на место.
+  return <div className="mx-auto" style={{ width: width ? `${width}px` : undefined }}>
     <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: ratio }}>
       {shouldRender
         ? <canvas ref={canvasRef} className="block max-w-none" data-testid={`review-canvas-${surface.globalPage}`}/>
@@ -1799,7 +1985,7 @@ function PdfPageSurface({
         onPointerUp={event => onPointerUp(surface, event)}
         onPointerCancel={event => onPointerUp(surface, event)}
       >
-        <RegionLayer surface={surface} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
+        <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
         {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
       </svg>
     </div>
@@ -1808,6 +1994,7 @@ function PdfPageSurface({
 
 function ImagePageSurface({
   surface,
+  quarter,
   pageData,
   activeId,
   selectedId,
@@ -1826,6 +2013,7 @@ function ImagePageSurface({
   onActivate,
 }: RegionLayerProps & {
   surface: DocumentSurface
+  quarter: Quarter
   pageData: PageData
   dragRect: Rect | null
   zoom: number
@@ -1839,14 +2027,31 @@ function ImagePageSurface({
   onPointerUp: (surface: DocumentSurface, event: React.PointerEvent<SVGSVGElement>) => void
   onActivate: (id: string | null) => void
 }) {
+  const naturalRatio = surface.metrics?.ratio ?? 1 / 1.414
+  const ratio = rotateRatio(naturalRatio, quarter)
+  /**
+   * §211. Повёрнутая фотография. Коробка уже имеет пропорцию лежащего набок
+   * листа, а сама картинка внутри неё разворачивается `rotate()` вокруг
+   * центра — поэтому на четверть оборота ей надо задать МЕНЯННЫЕ местами
+   * стороны коробки: ширина в процентах от ширины коробки — это её высота, и
+   * наоборот. Иначе повёрнутая картинка торчала бы за рамку страницы.
+   */
+  const rotatedStyle = quarter % 2 === 1
+    ? { width: `${naturalRatio * 100}%`, height: `${100 / naturalRatio}%` }
+    : { width: '100%', height: '100%' }
   return (
-    <div className="mx-auto" style={{ width: frameWidth > 0 ? `${frameWidth * zoom}px` : undefined, maxWidth: '100%' }}>
-      <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: surface.metrics?.ratio ?? 1 / 1.414 }}>
+    <div className="mx-auto" style={{ width: frameWidth > 0 ? `${frameWidth * zoom}px` : undefined }}>
+      <div className="relative overflow-hidden bg-white shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10" style={{ aspectRatio: ratio }}>
         <img
           src={surface.url}
           alt="Работа ученика"
           draggable={false}
-          className="block h-auto w-full select-none"
+          data-testid={`review-image-${surface.globalPage}`}
+          className={cn('select-none', quarter === 0 ? 'block h-auto w-full' : 'absolute left-1/2 top-1/2 block max-w-none')}
+          style={quarter === 0 ? undefined : {
+            ...rotatedStyle,
+            transform: `translate(-50%, -50%) rotate(${rotationDegrees(quarter)}deg)`,
+          }}
           onLoad={event => onLoaded(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)}
           onError={onError}
         />
@@ -1860,7 +2065,7 @@ function ImagePageSurface({
           onPointerUp={event => onPointerUp(surface, event)}
           onPointerCancel={event => onPointerUp(surface, event)}
         >
-          <RegionLayer surface={surface} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
+          <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
           {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008" />}
         </svg>
         {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
@@ -1905,6 +2110,7 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
     ]
     return <g>
       <rect
+        data-testid={`region-${mark.id}`}
         x={rect.x} y={rect.y} width={rect.w} height={rect.h}
         fill={category.color} fillOpacity={active || selected ? 0.24 : 0.14}
         stroke={category.color} strokeWidth={active || selected ? 0.005 : 0.003}

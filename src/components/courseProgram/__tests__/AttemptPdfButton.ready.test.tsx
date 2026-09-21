@@ -45,6 +45,7 @@ function surface(globalPage: number) {
   return {
     globalPage,
     kind: 'image' as const,
+    quarter: 0 as const,
     url: `signed://p${globalPage}.jpg`,
     page: 1,
     ratio: 0.7,

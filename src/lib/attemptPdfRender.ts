@@ -25,6 +25,7 @@ import {
   type TextMeasure,
 } from './attemptPdfReport'
 import type { AttemptExportRegion, AttemptExportSnapshot, AttemptExportSurface } from './attemptPdfSource'
+import { normalizeQuarter, rotationDegrees } from './pageRotation'
 
 /**
  * Длинная сторона страницы работы в пикселях. Больше не нужно — это
@@ -161,17 +162,47 @@ function drawRegions(
   }
 }
 
+/**
+ * §211. Рисует повёрнутую картинку в уже повёрнутый холст.
+ *
+ * Холст заводится по размеру ПОВЁРНУТОЙ страницы (на четверть оборота
+ * стороны меняются местами), начало координат переносится в его середину, и
+ * картинка кладётся от центра — так одна и та же формула работает для всех
+ * четырёх углов, и не надо помнить, какой из них что сдвигает.
+ */
+function drawRotatedImage(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  quarter: number,
+  /** Размер холста: он уже заведён по повёрнутой странице. */
+  canvasWidth: number,
+  canvasHeight: number,
+  drawWidth: number,
+  drawHeight: number,
+) {
+  ctx.save()
+  ctx.translate(canvasWidth / 2, canvasHeight / 2)
+  ctx.rotate((rotationDegrees(quarter) * Math.PI) / 180)
+  ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+  ctx.restore()
+}
+
 async function renderWorkPage(
   surface: AttemptExportSurface,
   regions: readonly AttemptExportRegion[],
 ): Promise<PdfJpegPage> {
+  const quarter = normalizeQuarter(surface.quarter)
+  const sideways = quarter % 2 === 1
   if (surface.kind === 'pdf') {
     const pdf = surface.pdf
     if (!pdf) throw new Error(`Страница ${surface.globalPage} не открыта движком PDF`)
     const page = await pdf.getPage(surface.page)
     const base = page.getViewport({ scale: 1 })
     const scale = Math.max(1, Math.min(MAX_PAGE_SIDE_PX / Math.max(base.width, base.height), 3))
-    const viewport = page.getViewport({ scale })
+    // `rotation` у pdf.js ЗАМЕНЯЕТ собственный угол страницы, а не
+    // складывается с ним — складываем сами, как и на экране.
+    const rotation = ((page as { rotate?: number }).rotate ?? 0) + rotationDegrees(quarter)
+    const viewport = page.getViewport({ scale, rotation })
     const canvas = makeCanvas(viewport.width, viewport.height)
     const ctx = context2d(canvas)
     fillWhite(ctx, canvas.width, canvas.height)
@@ -181,22 +212,31 @@ async function renderWorkPage(
       jpeg: await canvasToJpeg(canvas),
       widthPx: canvas.width,
       heightPx: canvas.height,
-      // Лист остаётся ровно таким, каким он был в исходном PDF: A4 — значит A4.
-      widthPt: base.width,
-      heightPt: base.height,
+      // Лист остаётся ровно таким, каким он был в исходном PDF: A4 — значит
+      // A4. Довернули на четверть — A4 набок, то есть стороны местами.
+      widthPt: sideways ? base.height : base.width,
+      heightPt: sideways ? base.width : base.height,
     }
   }
 
   const { image, width, height, release } = await loadImage(surface.url)
   try {
     const scale = Math.min(1, MAX_PAGE_SIDE_PX / Math.max(width, height))
-    const canvas = makeCanvas(width * scale, height * scale)
+    const drawWidth = width * scale
+    const drawHeight = height * scale
+    const canvas = makeCanvas(sideways ? drawHeight : drawWidth, sideways ? drawWidth : drawHeight)
     const ctx = context2d(canvas)
     fillWhite(ctx, canvas.width, canvas.height)
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    drawRotatedImage(ctx, image, quarter, canvas.width, canvas.height, drawWidth, drawHeight)
     drawRegions(ctx, canvas.width, canvas.height, regions)
-    const { widthPt, heightPt } = pageSizeFor(width, height)
-    return { jpeg: await canvasToJpeg(canvas), widthPx: canvas.width, heightPx: canvas.height, widthPt, heightPt }
+    const size = pageSizeFor(width, height)
+    return {
+      jpeg: await canvasToJpeg(canvas),
+      widthPx: canvas.width,
+      heightPx: canvas.height,
+      widthPt: sideways ? size.heightPt : size.widthPt,
+      heightPt: sideways ? size.widthPt : size.heightPt,
+    }
   } finally {
     release()
   }

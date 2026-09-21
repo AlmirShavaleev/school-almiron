@@ -677,7 +677,15 @@ export function AttemptAnnotationOverlay({
             style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction) }}
             className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-slate-200 bg-slate-100 lg:h-full lg:w-[var(--review-side-w,37%)] lg:border-l lg:border-t-0"
           >
-            <div className="flex min-h-0 flex-col p-3 sm:p-4 lg:flex-1 lg:overflow-hidden">
+            {/*
+              §211. Прокручивается вся колонка целиком, а не только таблица
+              внутри неё: форма вердикта вернулась в поток и стоит за
+              таблицей, а не прижата к низу (§210 делал наоборот).
+            */}
+            <div
+              data-testid="review-side-scroll-area"
+              className="flex min-h-0 flex-col p-3 sm:p-4 lg:flex-1 lg:overflow-y-auto"
+            >
               {reviewPanel?.({ publishAnnotations })}
             </div>
           </aside>

@@ -12,6 +12,16 @@ const logPath = path.resolve('screenshots/harness/tour.log')
 fs.writeFileSync(logPath, '')
 
 const filter = process.argv[2] // substring of scene name, optional
+/*
+ * §211. Необязательный второй фильтр — ширина. Нужен там, где сцена ПИШЕТ в
+ * базу: фикстуры — это обычные экспортируемые массивы, один на процесс, и
+ * запись из сцены на 1280 видна сцене с тем же именем на 390. Для «до/после»
+ * это смертельно: «до» на второй ширине приезжает уже «после». Прогон каждой
+ * ширины своим процессом разводит их по разным наборам фикстур:
+ *   node e2e/harness/tour.mjs o06-rotate 1280
+ *   node e2e/harness/tour.mjs o06-rotate 390
+ */
+const widthFilter = process.argv[3] ? Number(process.argv[3]) : null
 const browser = await chromium.launch()
 const contexts = {}
 async function ctxFor(persona, width, height) {
@@ -33,6 +43,7 @@ async function ctxFor(persona, width, height) {
 for (const s of scenes) {
   if (filter && !s.name.includes(filter)) continue
   const width = s.width ?? 390, height = s.height ?? 844
+  if (widthFilter && width !== widthFilter) continue
   const { page, lines } = await ctxFor(s.persona, width, height)
   lines.length = 0
   try {

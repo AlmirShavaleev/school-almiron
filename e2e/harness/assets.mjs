@@ -20,6 +20,25 @@ const pages = {
       <div style="margin-top:60px">Ответ: t ≈ 0,45 с; S ≈ 0,68 м</div>
       <div style="margin-top:200px;opacity:.25;font-size:30px">линия сгиба · тетрадь в клетку</div>
     </div>` },
+  // §211 (board/062): та же тетрадь, но СНЯТАЯ БОКОМ — ученик держал телефон
+  // поперёк. Именно такие страницы и разворачивает кнопка поворота. Наклон
+  // против часовой выбран не случайно: кнопка крутит ПО часовой, и такая
+  // страница выправляется одним нажатием — как оно и бывает чаще всего.
+  'photo-sideways.png': { w: 1600, h: 1200, html: `
+    <div style="width:1600px;height:1200px;background:#f4efe6;position:relative;overflow:hidden">
+      <div style="position:absolute;left:50%;top:50%;width:1200px;height:1600px;transform:translate(-50%,-50%) rotate(-90deg);font-family:'Segoe Script','Comic Sans MS',cursive;padding:80px;box-sizing:border-box;color:#2b2b6b;font-size:44px;line-height:1.6;background:#f4efe6">
+        <div style="opacity:.8">Дано: m = 2 кг, v₀ = 3 м/с, α = 30°</div>
+        <div>Найти: t, S</div>
+        <div style="margin-top:40px">Решение:</div>
+        <div>1) Ox: max = −mg·sinα − μ·N</div>
+        <div>2) N = mg·cosα ⇒ a = −g(sinα + μ·cosα)</div>
+        <div>3) a = −9,8·(0,5 + 0,2·0,87) ≈ −6,6 м/с²</div>
+        <div>4) t = v₀ / |a| = 3 / 6,6 ≈ 0,45 с</div>
+        <div>5) S = v₀² / (2|a|) = 9 / 13,2 ≈ 0,68 м</div>
+        <div style="margin-top:60px">Ответ: t ≈ 0,45 с; S ≈ 0,68 м</div>
+        <div style="margin-top:200px;opacity:.25;font-size:30px">снято боком · телефон поперёк</div>
+      </div>
+    </div>` },
   'table.png': { w: 700, h: 220, html: `
     <table style="border-collapse:collapse;font-family:Arial;font-size:22px;background:#fff">
       <tr><th style="border:1px solid #333;padding:6px 14px">t, с</th><td style="border:1px solid #333;padding:6px 14px">0</td><td style="border:1px solid #333;padding:6px 14px">1</td><td style="border:1px solid #333;padding:6px 14px">2</td><td style="border:1px solid #333;padding:6px 14px">3</td><td style="border:1px solid #333;padding:6px 14px">4</td><td style="border:1px solid #333;padding:6px 14px">5</td><td style="border:1px solid #333;padding:6px 14px">6</td></tr>

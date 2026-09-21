@@ -13,6 +13,7 @@
  */
 
 import type { PDFDocumentProxy } from 'pdfjs-dist'
+import type { Quarter } from './pageRotation'
 
 export interface AttemptExportSurface {
   /** Сквозной номер страницы: файл за файлом, страница за страницей. */
@@ -24,6 +25,13 @@ export interface AttemptExportSurface {
   page: number
   /** Ширина к высоте — запасной вариант, если размер страницы иначе не узнать. */
   ratio: number
+  /**
+   * §211. На сколько четвертей по часовой стрелке страницу довернули на
+   * экране. В файл она обязана лечь ровно так же: преподаватель выправил
+   * боком снятый лист у себя — значит ученик получит его выправленным, а не
+   * узнает о повороте, только открыв файл.
+   */
+  quarter: Quarter
   /** Уже загруженный документ pdfjs; у картинок null. */
   pdf: PDFDocumentProxy | null
 }
@@ -36,7 +44,11 @@ export interface AttemptExportRegion {
    */
   number: number
   globalPage: number
-  /** Доли страницы, 0..1 — ровно те числа, которыми рамка рисуется на экране. */
+  /**
+   * Доли страницы, 0..1 — ровно те числа, которыми рамка рисуется на экране.
+   * §211: у повёрнутой страницы это доли ПОВЁРНУТОГО листа, потому что и в
+   * файл она ложится повёрнутой.
+   */
   rect: { x: number; y: number; w: number; h: number }
   categoryLabel: string
   color: string

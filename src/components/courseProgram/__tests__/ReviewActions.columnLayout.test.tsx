@@ -4,12 +4,13 @@ import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import type { TopicHomeworkAttemptRow } from '@/lib/topicHomework'
 
 /**
- * §210. Форма вердикта в своей колонке.
+ * §211. Форма вердикта в своей колонке — в ПОТОКЕ, за таблицей.
  *
- * Смысл проверки один: таблица (`above`) прокручивается сама, а комментарий,
- * балл и кнопки остаются внизу колонки. До этого таблица и форма шли одним
- * куском под работой, и до «Принять» в конце каждой работы приходилось
- * мотать вниз.
+ * §210 прижимал комментарий, балл и кнопки к низу колонки и отдавал таблице
+ * отдельный свиток над ними. Владелец посмотрел вживую и попросил иначе:
+ * блок стоит внизу колонки, за таблицей, и доезжает прокруткой — те самые
+ * 60–70 px возвращаются таблице. Прокручивается колонка целиком, поэтому
+ * своего свитка внутри формы больше нет ни в одной раскладке.
  */
 
 const attempt = {
@@ -38,23 +39,37 @@ function renderForm(columnLayout: boolean) {
 }
 
 describe('форма вердикта в колонке', () => {
-  it('кнопки стоят ВНЕ прокручиваемой части — таблица едет, решение остаётся', () => {
+  it('таблица и вердикт идут одним потоком: отдельного свитка у таблицы нет', () => {
     renderForm(true)
     const above = screen.getByTestId('review-actions-above')
 
     expect(above.contains(screen.getByTestId('fake-table'))).toBe(true)
-    expect(above.contains(screen.getByTestId('review-accept-button'))).toBe(false)
-    expect(above.contains(screen.getByTestId('review-return-button'))).toBe(false)
-    expect(above.contains(screen.getByTestId('review-comment-input'))).toBe(false)
-    expect(above.className).toContain('overflow-y-auto')
+    expect(above.className).not.toContain('overflow-y-auto')
+    // Ничего не прижато к низу: панель не превращается в колонку высотой
+    // во всю доступную высоту с двумя частями.
+    expect(screen.getByTestId('review-actions').className).not.toContain('h-full')
   })
 
-  it('без колонки всё как было — один поток, отдельного свитка у таблицы нет', () => {
+  it('вердикт стоит ЗА таблицей — значит доезжает прокруткой колонки', () => {
+    renderForm(true)
+    const panel = screen.getByTestId('review-actions')
+    const above = screen.getByTestId('review-actions-above')
+    const accept = screen.getByTestId('review-accept-button')
+
+    expect(above.contains(accept)).toBe(false)
+    // DOCUMENT_POSITION_FOLLOWING: кнопка идёт в разметке ПОСЛЕ таблицы.
+    expect(above.compareDocumentPosition(accept) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(panel.contains(above)).toBe(true)
+    expect(panel.contains(accept)).toBe(true)
+  })
+
+  it('без колонки всё как было — один поток и отступ сверху', () => {
     renderForm(false)
     const above = screen.getByTestId('review-actions-above')
 
     expect(above.contains(screen.getByTestId('fake-table'))).toBe(true)
     expect(above.className).not.toContain('overflow-y-auto')
+    expect(screen.getByTestId('review-actions').className).toContain('mt-3')
     expect(screen.getByTestId('review-actions').className).not.toContain('h-full')
   })
 
