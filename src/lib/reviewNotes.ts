@@ -174,6 +174,49 @@ export function verdictConflictsWithNotes(
 
 export const VERDICT_CONFLICT_LABEL = 'вердикт и замечание расходятся'
 
+/**
+ * §212. Ответ разошёлся с эталоном.
+ *
+ * Отличается от `answerView().expected != null` одним случаем, и он важный:
+ * когда эталона нет вовсе, `answerView` печатает прочерк — это отсутствие
+ * сведений, а не расхождение, и подсвечивать такую строку красным значило бы
+ * звать смотреть туда, где смотреть не на что.
+ */
+export function answersDiverge(
+  student: string | null | undefined,
+  expected: string | null | undefined,
+): boolean {
+  const s = String(student ?? '').trim()
+  const e = String(expected ?? '').trim()
+  if (!s || !e) return false
+  return !answersMatch(s, e)
+}
+
+/** Чем подсвечена строка задания: ничем, расхождением или спором. */
+export type ReviewRowTone = 'none' | 'mismatch' | 'conflict'
+
+/**
+ * §212. Вся строка красится, а не один значок.
+ *
+ * Владелец: три проблемных задания из двадцати должны цепляться глазом без
+ * чтения. Спор вердикта с замечанием выше расхождения ответов: он реже и
+ * требует решения человека, а расхождение ответов часто и так видно в
+ * колонке «12 → 30».
+ *
+ * «Неверно» красится и тогда, когда ответы сошлись: вердикт поставил человек,
+ * и он главнее сверки чисел — ошибка могла быть в ходе решения.
+ */
+export function reviewRowTone(
+  row: { verdict: string; student_answer?: string | null; expected_answer?: string | null },
+  notes: readonly ReviewNote[],
+): ReviewRowTone {
+  if (verdictConflictsWithNotes(row.verdict, notes)) return 'conflict'
+  if (row.verdict === 'wrong' || answersDiverge(row.student_answer, row.expected_answer)) {
+    return 'mismatch'
+  }
+  return 'none'
+}
+
 // ---------------------------------------------------------------------------
 // Находки ИИ — предложения, а не замечания
 // ---------------------------------------------------------------------------

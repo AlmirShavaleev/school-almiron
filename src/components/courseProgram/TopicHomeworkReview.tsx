@@ -80,8 +80,8 @@ export function ReviewActions({
    * преподаватель не вписал своё число — подставляется в поле сам и едет за
    * таблицей при каждой правке вердикта строки. Как только число введено
    * руками, подстановка прекращается: балл — решение человека, и подменять
-   * его на ходу нельзя. Вместо подмены рядом появляется «по таблице
-   * получается N» и кнопка «Взять из таблицы».
+   * его на ходу нельзя. §212: вместо подмены рядом стоит справка
+   * «рекомендуемый балл N» — кнопки «Взять из таблицы» больше нет.
    */
   tableScore?: number | null
   /**
@@ -209,8 +209,16 @@ export function ReviewActions({
         className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
       />
 
+      {/*
+        §212. Балл и подпись — в одной строке, кнопки «Взять из таблицы»
+        больше нет. Кнопка решала задачу, которой не было: поле и так
+        заполнено баллом из таблицы, пока его не тронули руками, а если
+        тронули — человек уже решил, и звать его обратно нечем. Осталась
+        справка «рекомендуемый балл N»: она отвечает на единственный вопрос,
+        ради которого сюда смотрели.
+      */}
       {scoreMax != null && (
-        <div className="mb-2">
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <input
             data-testid="review-score-input"
             type="number"
@@ -221,30 +229,25 @@ export function ReviewActions({
             aria-label={`Балл (0–${scoreMax})`}
             min="0"
             max={scoreMax}
-            className="w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+            className="w-28 rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
-          {/* §199. Своё число преподавателя не подменяем — говорим, что даёт
-              таблица, и предлагаем взять. Пока число из таблицы и есть в
-              поле, говорить нечего. */}
-          {tableScore != null && String(tableScore) !== score.trim() && (
-            <p data-testid="review-score-from-table" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              По таблице получается {tableScore}
-              <button
-                type="button"
-                data-testid="review-score-take-table"
-                onClick={() => { setScoreByHand(false); setScore(String(tableScore)) }}
-                className="font-medium text-primary-600 underline-offset-2 hover:underline"
-              >
-                Взять из таблицы
-              </button>
-            </p>
+          {tableScore != null && (
+            <span data-testid="review-score-from-table" className="text-xs text-gray-500">
+              рекомендуемый балл <b className="font-semibold text-gray-700">{tableScore}</b>
+            </span>
           )}
         </div>
       )}
 
       {error && <div className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</div>}
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/*
+        §212. Решения — своей строкой под полем балла и на одном уровне.
+        Пояснения переехали под них: раньше «Для возврата нужен комментарий»
+        стояло в том же ряду и на узкой колонке сталкивало кнопки на разные
+        строки, из-за чего «Вернуть» выглядело второстепенным действием.
+      */}
+      <div data-testid="review-decision-row" className="flex flex-wrap items-center gap-2">
         <Button data-testid="review-accept-button" size="sm" variant="success" onClick={() => run('accepted')} loading={busy} disabled={busy || !canAccept}>
           <Check size={14} />
           Принять
@@ -260,13 +263,17 @@ export function ReviewActions({
           <RotateCcw size={14} />
           Вернуть на доработку
         </Button>
-        {!canReturn && !blocked && (
-          <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>
-        )}
-        {scoreMax != null && !scoreValid && score !== '' && (
-          <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
-        )}
       </div>
+      {((!canReturn && !blocked) || (scoreMax != null && !scoreValid && score !== '')) && (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {!canReturn && !blocked && (
+            <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>
+          )}
+          {scoreMax != null && !scoreValid && score !== '' && (
+            <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
+          )}
+        </div>
+      )}
       </div>
     </div>
   )

@@ -11,8 +11,15 @@ const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scr
 // §207: строка про отброшенные находки и оба абзаца пояснений ушли под знак
 // вопроса в заголовке блока — снимаем его раскрытым.
 const openAiHint = `(() => { const b = document.querySelector('[data-testid="ai-check-hint-toggle"]'); b?.click(); b?.scrollIntoView({ block: 'center' }) })()`
-// §207: пачка верных заданий раскрывается по клику.
-const openCorrectPack = `(() => { const b = document.querySelector('[data-testid="review-tasks-correct-toggle"]'); b?.click(); b?.scrollIntoView({ block: 'start' }) })()`
+// §212: счётчик-фильтр. Оставляем в списке только неверные.
+const filterWrong = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-wrong"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
+// §212: список статусов открывается кликом по кружку и живёт в body —
+// прокрутка колонки его не обрезает. Берём кружок НИЖНЕЙ видимой строки:
+// именно там обрезание и было видно.
+const toLastRow = `(() => { const rows = [...document.querySelectorAll('[data-testid="review-task-row"]')]; rows[rows.length - 1]?.scrollIntoView({ block: 'center' }) })()`
+const openStatusPicker = `(() => { const rows = [...document.querySelectorAll('[data-testid="review-task-row"]')]; rows[rows.length - 1]?.querySelector('[data-testid="review-task-verdict"]')?.click() })()`
+// §212: правка замечания — клик по самому тексту.
+const editFirstNote = `(() => { const el = document.querySelector('[data-testid="review-task-note-text"]'); el?.scrollIntoView({ block: 'center' }); el?.click() })()`
 const openSecondAttempt = `[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Проверить')[1]?.click()`
 // §199: таблица проверки — то, ради чего панель теперь открывают.
 const toReviewTasks = `(document.querySelector('[data-testid="ai-check-tasks"]') ?? document.querySelector('[data-testid="ai-check-panel"]'))?.scrollIntoView({ block: 'start' })`
@@ -285,10 +292,12 @@ export const scenes = [
     { persona: 'owner', name: 'o06-review-tasks', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 600 }], full: false },
     // Длинная заметка: в таблице одна строка, в фокусе — целиком.
     { persona: 'owner', name: 'o06-review-tasks-note', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: openFirstNote }, { wait: 400 }], full: false },
-    // §207: пачка верных раскрыта — видно, что строки никуда не делись.
-    { persona: 'owner', name: 'o06-review-tasks-correct-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: openCorrectPack }, { wait: 500 }], full: false },
-    // §207: пачка «не сверено» раскрыта — то же самое для одинаковых заметок.
-    { persona: 'owner', name: 'o06-review-tasks-unchecked-open', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="review-tasks-unchecked-toggle"]' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="review-tasks-unchecked-pack"]')?.scrollIntoView({ block: 'start' })` }, { wait: 400 }], full: false },
+    // §212: включённый фильтр «неверно» — в списке остались только неверные.
+    { persona: 'owner', name: 'o06-review-tasks-filter', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: filterWrong }, { wait: 500 }], full: false },
+    // §212: список статусов открыт у нижней строки — он в body и не обрезан.
+    { persona: 'owner', name: 'o06-review-tasks-status', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: toLastRow }, { wait: 500 }, { eval: openStatusPicker }, { wait: 500 }], full: false },
+    // §212: правка замечания начинается кликом по самому тексту.
+    { persona: 'owner', name: 'o06-review-tasks-note-edit', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: editFirstNote }, { wait: 500 }], full: false },
   ]),
 
   // ── §209 (board/060): один список — задания с замечаниями ──

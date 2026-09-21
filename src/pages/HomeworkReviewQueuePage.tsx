@@ -12,7 +12,8 @@ import type {
   AttemptNotesApi, AttemptNotesSnapshot, ImportedRegion,
 } from '@/components/SubmissionReviewer'
 import {
-  CONFIDENCE_LABEL, aiTasksOf, findingsToRegions, taskNoOfFinding, type AiFindingRow,
+  CONFIDENCE_LABEL, aiTasksOf, findingTransferRect, findingsToRegions, taskNoOfFinding,
+  type AiFindingRow,
 } from '@/lib/aiHomeworkCheck'
 import { reviewTasksScore, type ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import { noteTypeOfCategory, type ReviewNote } from '@/lib/reviewNotes'
@@ -589,7 +590,13 @@ export function HomeworkReviewQueuePage() {
     const region: ImportedRegion = {
       filePath,
       page: finding.page,
-      rect: { x: finding.rect_x, y: finding.rect_y, w: finding.rect_w, h: finding.rect_h },
+      /*
+        §212. Когда ИИ поставила заданию «неверно» и нашла на нём несколько
+        мест, рамкой становится описанный вокруг них прямоугольник. Границ
+        задания модель не возвращает — это не «вся задача», а место, где она
+        нашла ошибки, и подписано оно так же честно.
+      */
+      rect: findingTransferRect(finding, ai.findings, aiTasksOf(ai.job)),
       category: finding.category,
       text: finding.text,
       sourceId: finding.id,

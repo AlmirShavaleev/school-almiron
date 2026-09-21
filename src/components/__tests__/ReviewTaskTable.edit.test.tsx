@@ -115,6 +115,57 @@ describe('ReviewTaskTable — правка таблицы', () => {
     expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
   })
 
+  it('§212. Список закрывается по Esc и кликом вне', () => {
+    table()
+    const trigger = within(rowByNo('2')).getByTestId('review-task-verdict')
+    fireEvent.click(trigger)
+    expect(screen.getByTestId('review-task-verdict-menu')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
+
+    fireEvent.click(trigger)
+    expect(screen.getByTestId('review-task-verdict-menu')).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
+  })
+
+  it('§212. Список живёт в body — прокрутка колонки его не обрежет', () => {
+    // С §210 таблица стоит в своей прокручиваемой колонке: список, нарисованный
+    // внутри строки, у нижних заданий обрезался её краем.
+    table()
+    fireEvent.click(within(rowByNo('2')).getByTestId('review-task-verdict'))
+    const menu = screen.getByTestId('review-task-verdict-menu')
+    expect(menu.closest('[data-testid="review-tasks-list"]')).toBeNull()
+    expect(menu.parentElement).toBe(document.body)
+  })
+
+  it('§212. Прокрутка колонки список не закрывает — он едет за кружком', () => {
+    // Закрывать по любому колесу нельзя: браузер сам прокручивает колонку,
+    // наводя фокус на выбранный вариант, и список схлопывался бы при открытии.
+    table()
+    fireEvent.click(within(rowByNo('2')).getByTestId('review-task-verdict'))
+    fireEvent.scroll(window)
+    expect(screen.getByTestId('review-task-verdict-menu')).toBeInTheDocument()
+  })
+
+  it('§212. Кружок уехал за край окна — список закрывается', () => {
+    table()
+    const trigger = within(rowByNo('2')).getByTestId('review-task-verdict')
+    fireEvent.click(trigger)
+    expect(screen.getByTestId('review-task-verdict-menu')).toBeInTheDocument()
+    trigger.getBoundingClientRect = () => ({ top: -120, bottom: -96, left: 0, right: 24 }) as DOMRect
+    fireEvent.scroll(window)
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
+  })
+
+  it('§209/§212. Клавиши 1–4 ставят вердикт без открытия списка', () => {
+    const { onPatchTask } = table()
+    const list = screen.getByTestId('review-tasks-list')
+    fireEvent.keyDown(list, { key: '2' })
+    expect(onPatchTask).toHaveBeenCalledWith('r1', { verdict: 'wrong' })
+    expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
+  })
+
   it('сводка и балл считаются по таблице преподавателя, а не по слепку ИИ', () => {
     table({
       tasks: [
@@ -123,16 +174,15 @@ describe('ReviewTaskTable — правка таблицы', () => {
         row({ id: 'r3', no: '3', verdict: 'partial', position: 30 }),
       ],
     })
-    const summary = screen.getByTestId('ai-check-tasks-summary')
-    expect(summary).toHaveTextContent('верно 2')
-    expect(summary).toHaveTextContent('частично 1')
+    expect(screen.getByTestId('review-tasks-filter-correct')).toHaveTextContent('2 верно')
+    expect(screen.getByTestId('review-tasks-filter-partial')).toHaveTextContent('1 частично')
     expect(screen.getByTestId('ai-check-tasks-score')).toHaveTextContent('4')
     expect(screen.getByTestId('ai-check-score')).toHaveTextContent('3')
   })
 
   it('все несверены — балла из таблицы нет: ноль вслепую хуже отсутствия', () => {
     table({ tasks: [row({ id: 'r1', no: '1', verdict: 'unchecked' })] })
-    expect(screen.getByTestId('ai-check-tasks-summary')).toHaveTextContent('не сверено 1')
+    expect(screen.getByTestId('review-tasks-filter-unchecked')).toHaveTextContent('1 не сверено')
     expect(screen.queryByTestId('ai-check-tasks-score')).not.toBeInTheDocument()
   })
 

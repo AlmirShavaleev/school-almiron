@@ -127,9 +127,9 @@ describe('ReviewTaskTable — плашка вместо балла', () => {
     expect(unchecked[0]).toHaveTextContent('задание отсутствует')
   })
 
-  it('балл в сводке по заданиям тоже молчит', () => {
+  it('балл в полосе счётчиков тоже молчит', () => {
     panel()
-    expect(screen.getByTestId('ai-check-tasks-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('review-tasks-filters')).toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-tasks-score')).not.toBeInTheDocument()
   })
 

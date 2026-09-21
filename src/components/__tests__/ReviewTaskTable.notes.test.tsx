@@ -131,11 +131,36 @@ describe('§209 — замечания под строкой задания', ()
     expect(rowByNo('13')).toBeInTheDocument()
   })
 
-  it('клик по замечанию ведёт к рамке в работе', () => {
+  it('§212. «стр. N» ведёт к рамке в работе, а клик по тексту открывает правку', () => {
+    // До §212 клик по тексту вёл к рамке, а правка пряталась за двойным
+    // кликом: два действия на одном слове, и оба угадываются.
     const onFocusNote = vi.fn()
-    table({ notes: [note({ id: 'n1' })], onFocusNote })
-    fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
+    const onEditNote = vi.fn(async () => true)
+    table({ notes: [note({ id: 'n1' })], onFocusNote, onEditNote })
+    fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-page'))
     expect(onFocusNote).toHaveBeenCalledWith('n1')
+    fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
+    expect(within(rowByNo('13')).getByTestId('review-task-note-input')).toBeInTheDocument()
+    expect(onFocusNote).toHaveBeenCalledTimes(1)
+  })
+
+  it('§212. Enter сохраняет правку, Esc отменяет', () => {
+    const onEditNote = vi.fn(async () => true)
+    const { unmount } = table({ notes: [note({ id: 'n1' })], onEditNote })
+    fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
+    const input = within(rowByNo('13')).getByTestId('review-task-note-input')
+    fireEvent.change(input, { target: { value: 'Потерян второй корень' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onEditNote).toHaveBeenCalledWith('n1', 'Потерян второй корень')
+    unmount()
+
+    const second = vi.fn(async () => true)
+    table({ notes: [note({ id: 'n1' })], onEditNote: second })
+    fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
+    const again = within(rowByNo('13')).getByTestId('review-task-note-input')
+    fireEvent.change(again, { target: { value: 'мимо' } })
+    fireEvent.keyDown(again, { key: 'Escape' })
+    expect(second).not.toHaveBeenCalled()
   })
 
   it('«+ Заметка» просит рамку именно для этого задания', () => {
@@ -231,11 +256,13 @@ describe('§209 — расхождение вердикта и замечани�
     expect(rowByNo('7').dataset.conflict).toBeUndefined()
   })
 
-  it('спорная строка не прячется в пачку верных', () => {
+  it('спорная строка видна и под фильтром «верно»', () => {
     table({
       tasks: [row('1', 'correct'), row('2', 'correct'), row('3', 'correct'), row('4', 'wrong')],
       notes: [note({ id: 'n1', taskNo: '2' })],
     })
+    expect(screen.queryAllByTestId('review-task-row').map(r => r.dataset.no)).toContain('2')
+    fireEvent.click(screen.getByTestId('review-tasks-filter-correct'))
     expect(screen.queryAllByTestId('review-task-row').map(r => r.dataset.no)).toContain('2')
   })
 })

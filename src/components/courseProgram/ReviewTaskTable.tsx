@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactElement } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   HelpCircle,
   Loader2,
   MinusCircle,
@@ -16,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import {
+  FINDING_UNION_LABEL,
   aiTasksOf,
   isPartialCheck,
   partialCheckReason,
@@ -35,10 +34,11 @@ import {
 import {
   REVIEW_TASK_VERDICTS,
   aiCheckIsNewerThanTable,
-  groupReviewTasks,
+  filterReviewTasks,
   reviewTasksScore,
   summarizeReviewTasks,
-  type ReviewTableItem,
+  toggleReviewTaskFilter,
+  type ReviewTaskFilter,
   type ReviewTaskPatch,
   type ReviewTaskRow,
   type ReviewTaskVerdict,
@@ -46,10 +46,12 @@ import {
 import {
   VERDICT_CONFLICT_LABEL,
   answerView,
+  answersDiverge,
   noteTaskKey,
   notesOfTask,
   orphanNotes,
   pendingFindings,
+  reviewRowTone,
   uncheckedIds,
   verdictConflictsWithNotes,
   type ReviewNote,
@@ -98,7 +100,8 @@ const NO_IDS: readonly string[] = []
  * бесполезно, пока о нём не сказано.
  */
 const TABLE_HINTS = [
-  'Замечание — это рамка на работе. «+ Заметка» включает рисование: обведите место, выберите тип, напишите текст.',
+  'Счётчики сверху — фильтры: «неверно» оставляет в списке только неверные, повторное нажатие или «все» возвращает остальные.',
+  'Замечание — это рамка на работе. «Заметка» в строке включает рисование: обведите место, выберите тип, напишите текст. Текст правится кликом по нему, «стр. N» ведёт к рамке.',
   'Клавиши: ↑ ↓ — по строкам, 1 верно, 2 неверно, 3 частично, 4 не сверено, Enter — новое замечание, Esc — выйти.',
   'ИИ может ошибиться в чтении почерка и в самом решении. Таблицу выше вы правите, и ученик увидит именно её — вместе с вашим вердиктом.',
 ]
@@ -539,20 +542,97 @@ function SaveMark({ state }: { state: ReviewTasksSaveState }) {
     </span>
   )
 }
+/** Подписи фильтров-счётчиков. Слово рядом с числом, как в макете. */
+const FILTER_LABEL: Record<ReviewTaskFilter, string> = {
+  correct: 'верно',
+  wrong: 'неверно',
+  partial: 'частично',
+  unchecked: 'не сверено',
+  all: 'все',
+}
+
+/** Цвет числа в счётчике — тот же, что у значка вердикта в строке. */
+const FILTER_TONE: Record<ReviewTaskVerdict, string> = {
+  correct: 'text-emerald-700',
+  wrong: 'text-red-700',
+  partial: 'text-amber-700',
+  unchecked: 'text-gray-600',
+}
+
+const FILTER_KINDS: readonly ReviewTaskVerdict[] = ['correct', 'wrong', 'partial', 'unchecked']
 
 /**
- * §207. Раскрыты ли верные задания — на время сессии вкладки.
+ * §212. Счётчики стали фильтрами.
  *
- * `sessionStorage`, а не состояние экрана: очередь размонтирует панель при
- * переходе к следующей работе. Обращение в try — приватный режим и
- * запрещённые сайту хранилища не должны ронять экран проверки.
+ * До §212 та же строка была надписью — «верно 9 · неверно 3 · …», — и рядом с
+ * ней жили две свёртки §207 (пачка верных, пачка одинаковых «не сверено»).
+ * Двумя механиками решалась одна задача: убрать с глаз то, на что сейчас не
+ * смотрят. Экран от этого читался как каша, а строка могла спрятаться прямо
+ * под курсором — за это §207 и пришлось чинить отдельным «только что
+ * тронутые остаются видны».
+ *
+ * Счётчик-кнопка делает ту же работу и вдобавок отвечает на прямой вопрос
+ * «покажи только неверные», который свёртка задать не давала. Ноль —
+ * выключено: кнопка, после которой список пуст, обманывает.
  */
-const CORRECT_OPEN_KEY = 'review-tasks-correct-open'
-function readCorrectOpen(): boolean {
-  try { return sessionStorage.getItem(CORRECT_OPEN_KEY) === '1' } catch { return false }
-}
-function writeCorrectOpen(open: boolean) {
-  try { sessionStorage.setItem(CORRECT_OPEN_KEY, open ? '1' : '0') } catch { /* необязательное удобство */ }
+function TaskFilters({
+  summary,
+  score,
+  filter,
+  onFilter,
+}: {
+  summary: AiTasksSummary
+  score: number | null
+  filter: ReviewTaskFilter
+  onFilter: (next: ReviewTaskFilter) => void
+}) {
+  const chip = (kind: ReviewTaskFilter, count: number | null) => {
+    const pressed = filter === kind
+    return (
+      <button
+        key={kind}
+        type="button"
+        data-testid={`review-tasks-filter-${kind}`}
+        data-kind={kind}
+        aria-pressed={pressed}
+        disabled={count === 0}
+        onClick={() => onFilter(toggleReviewTaskFilter(filter, kind))}
+        className={cn(
+          'inline-flex items-baseline gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
+          pressed
+            ? 'border-violet-400 bg-violet-100 text-violet-800'
+            : 'border-transparent bg-gray-100 text-gray-600 hover:border-gray-300',
+          count === 0 && 'cursor-default opacity-40 hover:border-transparent',
+        )}
+      >
+        {count != null && (
+          <span className={cn('font-semibold tabular-nums', pressed ? 'text-violet-800' : FILTER_TONE[kind as ReviewTaskVerdict])}>
+            {count}
+          </span>
+        )}
+        {' '}
+        {FILTER_LABEL[kind]}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      data-testid="review-tasks-filters"
+      className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 bg-gray-50/80 px-2.5 py-2"
+    >
+      {FILTER_KINDS.map(kind => chip(kind, summary[kind]))}
+      {chip('all', null)}
+      {score != null && (
+        <span
+          data-testid="ai-check-tasks-score"
+          className="ml-auto inline-flex items-baseline gap-1 text-[11px] text-gray-500"
+        >
+          → балл <b className="text-[13px] font-semibold tabular-nums text-gray-900">{score}</b>
+        </span>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -606,12 +686,8 @@ function TaskSection({
   onBulkVerdict?: (ids: string[], verdict: ReviewTaskVerdict) => Promise<boolean> | void
 }) {
   const showAi = rows.length === 0 && aiTasks != null
-  const [correctOpen, setCorrectOpen] = useState(readCorrectOpen)
-  /**
-   * Строки, которым преподаватель только что поставил вердикт. Без этого
-   * строка, помеченная «верно», исчезала бы прямо из-под курсора.
-   */
-  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set())
+  /** §212. Какое состояние сейчас показывает список. */
+  const [filter, setFilter] = useState<ReviewTaskFilter>('all')
   /** §209. Строка под клавиатурой. -1 — курсора нет, экран ведут мышью. */
   const [cursor, setCursor] = useState(-1)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -632,40 +708,26 @@ function TaskSection({
     return map
   }, [suggestions])
 
-  const items = useMemo(() => groupReviewTasks(rows, {
-    // §209. Не прячем две вещи: верное задание с замечанием (расхождение —
-    // ровно то, ради чего таблицу открывают) и строку, по которой ИИ ждёт
-    // решения (спрятанное предложение не предложение). Остальные замечания
-    // свёртке не мешают: они видны, когда пачку раскрывают.
-    keepVisible: row => verdictConflictsWithNotes(row.verdict, noteMap.get(row.id) ?? [])
-      || (suggestionsByTask.get(noteTaskKey(row.no))?.length ?? 0) > 0,
-    // Свёртка «не сверено» считает одинаковость по всему, что под строкой
-    // написано, а не по одному легаси-полю.
-    noteOf: row => (noteMap.get(row.id) ?? []).map(note => note.text.trim()).join('|'),
-  }), [noteMap, rows, suggestionsByTask])
-
-  /** Строки в том порядке, в каком они видны, — по ним и ходят стрелки. */
-  const navRows = useMemo(() => rows, [rows])
+  /** Видимые строки — они же те, по которым ходят стрелки. */
+  const navRows = useMemo(() => filterReviewTasks(rows, filter), [filter, rows])
+  const visibleAi = useMemo(
+    () => (aiTasks ? filterReviewTasks(aiTasks, filter) : []),
+    [aiTasks, filter],
+  )
 
   if (rows.length === 0 && !showAi && !onAddTask) return null
 
-  const toggleCorrect = () => {
-    setCorrectOpen(open => {
-      writeCorrectOpen(!open)
-      return !open
-    })
-  }
-
-  const patch = (id: string, value: ReviewTaskPatch) => {
-    if (value.verdict) setTouched(prev => new Set(prev).add(id))
-    return onPatchTask?.(id, value)
-  }
+  const patch = (id: string, value: ReviewTaskPatch) => onPatchTask?.(id, value)
 
   /**
    * §209. Клавиатура. Обработчик на блоке, а не на окне, и с остановкой
    * всплытия: аннотатор ловит стрелки на окне, чтобы двигать выделенную рамку,
    * — два хозяина у одной клавиши дали бы прыгающую рамку при ходьбе по
    * строкам.
+   *
+   * §212. Цифры работают и без открытого списка статусов — в этом весь смысл
+   * клавиатуры: двадцать заданий это двадцать нажатий, а не сорок «открыть
+   * список → выбрать». Список статусов свои клавиши глушит сам.
    */
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!editable || navRows.length === 0) return
@@ -750,25 +812,18 @@ function TaskSection({
     return !key || !knownTasks.has(key)
   })
 
+  const shown = showAi ? visibleAi.length : navRows.length
+
   return (
-    <section data-testid="ai-check-tasks" className="mt-3 rounded-lg border border-violet-200 bg-white p-2.5">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-xs font-semibold text-violet-900">По заданиям</span>
-        {summary && (
-          <span data-testid="ai-check-tasks-summary" className="text-[11px] text-gray-600">
-            верно {summary.correct} · неверно {summary.wrong} · частично {summary.partial}
-            {' '}· не сверено {summary.unchecked}
-          </span>
-        )}
-        {summary && score != null && (
-          <span
-            data-testid="ai-check-tasks-score"
-            className="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-900"
-          >
-            → балл {score}
-          </span>
-        )}
-      </div>
+    <section
+      data-testid="ai-check-tasks"
+      // §212. Рамка на экране одна — у панели. Пять рамок на строку и дали ту
+      // самую рябь, из-за которой таблицу просили «разгрузить».
+      className="mt-3 overflow-hidden rounded-lg border border-violet-200 bg-white"
+    >
+      {summary && (
+        <TaskFilters summary={summary} score={score} filter={filter} onFilter={setFilter} />
+      )}
 
       <div
         ref={listRef}
@@ -779,14 +834,20 @@ function TaskSection({
         aria-label={editable ? 'Задания работы' : undefined}
         data-testid="review-tasks-list"
         onKeyDown={onKeyDown}
-        className="mt-1 outline-none focus-visible:ring-1 focus-visible:ring-violet-300"
+        className="outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-violet-300"
       >
         <ul className="divide-y divide-gray-100">
           {showAi
-            ? aiTasks!.map(task => <ReadOnlyTaskLine key={task.no} task={task} testId="ai-task-row" />)
-            : items.map(item => renderItem(item, { line, correctOpen, toggleCorrect, touched }))}
+            ? visibleAi.map(task => <ReadOnlyTaskLine key={task.no} task={task} testId="ai-task-row" />)
+            : navRows.map(line)}
         </ul>
       </div>
+
+      {shown === 0 && (
+        <p data-testid="review-tasks-empty" className="px-2.5 py-6 text-center text-[11px] text-gray-400">
+          Заданий с таким состоянием нет
+        </p>
+      )}
 
       {/*
         §209. Замечания, не попавшие ни в одно задание: рамки, нарисованные до
@@ -794,7 +855,7 @@ function TaskSection({
         работа преподавателя, и ученик их увидит.
       */}
       {(orphans.length > 0 || orphanSuggestions.length > 0) && (
-        <div data-testid="review-tasks-orphan-notes" className="mt-2 border-t border-gray-100 pt-2">
+        <div data-testid="review-tasks-orphan-notes" className="border-t border-gray-100 px-2.5 py-2">
           <div className="text-[11px] font-medium text-gray-500">Замечания без задания</div>
           <ul className="mt-1">
             {orphans.map(note => (
@@ -819,7 +880,7 @@ function TaskSection({
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-2.5 py-2">
         {showAi && onSeedTasks && (
           <button
             type="button"
@@ -851,14 +912,7 @@ function TaskSection({
           <button
             type="button"
             data-testid="review-tasks-bulk-correct"
-            onClick={() => {
-              setTouched(prev => {
-                const next = new Set(prev)
-                for (const id of unchecked) next.add(id)
-                return next
-              })
-              void onBulkVerdict(unchecked, 'correct')
-            }}
+            onClick={() => { void onBulkVerdict(unchecked, 'correct') }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-50"
           >
             <CheckCircle2 size={12} />
@@ -867,81 +921,6 @@ function TaskSection({
         )}
       </div>
     </section>
-  )
-}
-
-/** Одна позиция списка: обычная строка, пачка «не сверено» или пачка верных. */
-function renderItem(
-  item: ReviewTableItem<ReviewTaskRow>,
-  ctx: {
-    line: (row: ReviewTaskRow) => ReactElement
-    correctOpen: boolean
-    toggleCorrect: () => void
-    touched: ReadonlySet<string>
-  },
-): ReactElement {
-  if (item.kind === 'row') return ctx.line(item.row)
-
-  if (item.kind === 'unchecked') {
-    return <UncheckedPack key={item.key} label={item.label} rows={item.rows} line={ctx.line} />
-  }
-
-  // Верные. Свёрнуты по умолчанию (решение владельца): при проверке смотрят
-  // на ошибки. Строки, которым вердикт поставили только что, остаются видны.
-  const justTouched = item.rows.filter(row => ctx.touched.has(row.id))
-  return (
-    <li key={item.key} data-testid="review-tasks-correct-pack">
-      <button
-        type="button"
-        data-testid="review-tasks-correct-toggle"
-        aria-expanded={ctx.correctOpen}
-        onClick={ctx.toggleCorrect}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 text-left text-[11px] font-medium text-emerald-800 hover:bg-emerald-50/60"
-      >
-        {ctx.correctOpen ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-        <CheckCircle2 size={12} className="shrink-0" />
-        {item.rows.length} {plural(item.rows.length, 'верное', 'верных', 'верных')}
-      </button>
-      {ctx.correctOpen
-        ? <ul className="divide-y divide-gray-100">{item.rows.map(ctx.line)}</ul>
-        : justTouched.length > 0
-          ? <ul className="divide-y divide-gray-100">{justTouched.map(ctx.line)}</ul>
-          : null}
-    </li>
-  )
-}
-
-/**
- * §207. Подряд идущие «не сверено» с одинаковой заметкой — одной строкой.
- *
- * Пятнадцать одинаковых «нет на фото» — это одна мысль, записанная пятнадцать
- * раз. Раскрытие по клику: номера заданий всё-таки нужны при правке.
- */
-function UncheckedPack({
-  label,
-  rows,
-  line,
-}: {
-  label: string
-  rows: ReviewTaskRow[]
-  line: (row: ReviewTaskRow) => ReactElement
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <li data-testid="review-tasks-unchecked-pack" data-count={rows.length}>
-      <button
-        type="button"
-        data-testid="review-tasks-unchecked-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen(value => !value)}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 text-left text-[11px] text-gray-600 hover:bg-gray-50"
-      >
-        {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-        <HelpCircle size={12} className="shrink-0 text-gray-400" />
-        <span className="min-w-0 break-words">{label}</span>
-      </button>
-      {open && <ul className="divide-y divide-gray-100">{rows.map(line)}</ul>}
-    </li>
   )
 }
 
@@ -963,16 +942,25 @@ function asAiTask(row: ReviewTaskRow): AiTaskRow {
  * сравнение нормализует запятую и точку, пробелы и разные минусы, иначе
  * `3,5` и `3.5` показывались расхождением, и преподаватель разбирал глазами
  * различия, которых нет.
+ *
+ * §212. Моноширинный шрифт с `tabular-nums`: ответы — это числа, и в столбце
+ * из двадцати строк они должны стоять колонкой, иначе расхождение приходится
+ * искать чтением. Эталон при настоящем расхождении выделен красным — это
+ * второе место (после полосы слева), где цвет несёт смысл.
  */
 function Answers({ student, expected, className }: { student: string | null; expected: string | null; className?: string }) {
   const view = answerView(student, expected)
+  const diverged = answersDiverge(student, expected)
   return (
-    <span data-testid="review-task-answers" className={cn('min-w-0 break-words text-[11px] leading-5 text-gray-500', className)}>
+    <span
+      data-testid="review-task-answers"
+      className={cn('min-w-0 break-words font-mono text-[11px] leading-5 tabular-nums text-gray-600', className)}
+    >
       {view.student}
       {view.expected != null && (
         <>
           <span className="px-1 text-gray-300">→</span>
-          <span className="text-gray-700">{view.expected}</span>
+          <span className={cn(diverged ? 'font-semibold text-red-600' : 'text-gray-500')}>{view.expected}</span>
         </>
       )}
     </span>
@@ -1009,6 +997,18 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
  * Слово ушло из закрытого состояния: в столбце из двадцати строк оно
  * повторяется двадцать раз и ничего не добавляет к цвету и форме значка. В
  * списке, где ВЫБИРАЮТ, слова остались — там они и нужны.
+ *
+ * §212. Список переехал в `body` и стоит на `position: fixed`.
+ *
+ * Причина не косметическая: с §210 таблица живёт в своей прокручиваемой
+ * колонке, и список, нарисованный внутри строки, у нижних заданий обрезался
+ * её краем — выбрать «не сверено» было нечем. Фиксированные координаты
+ * считаются от кружка при открытии, а прокрутка колонки список закрывает:
+ * висящее на прежнем месте меню хуже закрытого.
+ *
+ * Клавиши списка глушатся здесь же. React пропускает события портала по
+ * дереву компонентов, а не по DOM, — без этого `1`–`4` внутри открытого
+ * списка доехали бы до обработчика таблицы и поставили вердикт дважды.
  */
 function VerdictPicker({
   verdict,
@@ -1020,72 +1020,141 @@ function VerdictPicker({
   onPick: (verdict: ReviewTaskVerdict) => void
 }) {
   const [open, setOpen] = useState(false)
-  const boxRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLUListElement | null>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const style = VERDICT_STYLE[verdict]
   const Icon = style.icon
+
+  /**
+   * Координаты списка. Считаются после отрисовки: до неё не известна его
+   * высота, а от неё зависит, ляжет он под кружком или над ним.
+   *
+   * Прокрутка колонки список не закрывает, а переставляет за кружком — иначе
+   * он закрывался бы от любого касания колеса, в том числе от прокрутки,
+   * которую делает сам браузер, наводя фокус на выбранный вариант. Уехал
+   * кружок за край окна — список закрываем: висеть в пустоте ему незачем.
+   */
+  const place = useCallback(() => {
+    const anchor = buttonRef.current?.getBoundingClientRect()
+    if (!anchor) return
+    if (anchor.bottom < 0 || anchor.top > window.innerHeight) { setOpen(false); return }
+    const height = menuRef.current?.offsetHeight ?? 0
+    const below = anchor.bottom + 6
+    const above = anchor.top - height - 6
+    const fitsBelow = below + height <= window.innerHeight - 8
+    setPos({
+      left: Math.max(8, Math.min(anchor.left, window.innerWidth - 160)),
+      top: fitsBelow || above < 8 ? below : above,
+    })
+  }, [])
+
+  // Пересчёт до отрисовки: старые координаты в кадр не попадают — закрытый
+  // список не рисуется вовсе, а открытый получает место здесь же.
+  useLayoutEffect(() => {
+    if (open) place()
+  }, [open, place])
 
   useEffect(() => {
     if (!open) return
     const onDown = (event: MouseEvent) => {
-      if (!boxRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    // Колонка таблицы прокручивается сама — ловим на фазе перехвата.
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
     }
-  }, [open])
+  }, [open, place])
+
+  /** Стрелки внутри списка — иначе с клавиатуры до вариантов не дойти. */
+  function onMenuKeyDown(event: React.KeyboardEvent<HTMLUListElement>) {
+    event.stopPropagation()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setOpen(false)
+      buttonRef.current?.focus()
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const items = Array.from(menuRef.current?.querySelectorAll('button') ?? [])
+    if (items.length === 0) return
+    const at = items.indexOf(document.activeElement as HTMLButtonElement)
+    const step = event.key === 'ArrowDown' ? 1 : -1
+    const next = (at + step + items.length) % items.length
+    items[next]?.focus()
+  }
+
+  const menu = (
+    <ul
+      ref={menuRef}
+      role="listbox"
+      data-testid="review-task-verdict-menu"
+      aria-label={`Вердикт задания ${no}`}
+      onKeyDown={onMenuKeyDown}
+      style={{ position: 'fixed', left: pos?.left ?? -9999, top: pos?.top ?? -9999 }}
+      // Выше оверлея работы (`z-[60]`): список лежит в `body`, а оверлей —
+      // тоже. Без этого он честно рисуется, но под ним.
+      className="z-[90] w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-0.5 shadow-lg"
+    >
+      {REVIEW_TASK_VERDICTS.map(value => {
+        const option = VERDICT_STYLE[value]
+        const OptionIcon = option.icon
+        return (
+          <li key={value}>
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === verdict}
+              data-testid={`review-task-verdict-option-${value}`}
+              autoFocus={value === verdict}
+              onClick={() => { setOpen(false); onPick(value); buttonRef.current?.focus() }}
+              className={cn(
+                'flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px]',
+                value === verdict ? 'font-semibold text-violet-800' : 'font-normal text-gray-700',
+                'hover:bg-gray-50 focus:bg-gray-50 focus:outline-none',
+              )}
+            >
+              <OptionIcon size={11} className={cn('shrink-0', option.tone)} />
+              {TASK_VERDICT_LABEL[value]}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
 
   return (
-    <div ref={boxRef} className="relative shrink-0">
+    <>
       <button
+        ref={buttonRef}
         type="button"
         data-testid="review-task-verdict"
         data-value={verdict}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Вердикт задания ${no}: ${TASK_VERDICT_LABEL[verdict]}`}
-        title={TASK_VERDICT_LABEL[verdict]}
+        title={`${TASK_VERDICT_LABEL[verdict]} — нажмите, чтобы сменить`}
         onClick={() => setOpen(value => !value)}
-        className={cn('flex h-6 w-6 items-center justify-center rounded-md hover:bg-gray-100', style.tone)}
+        className={cn(
+          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-gray-100',
+          style.tone,
+        )}
       >
         <Icon size={15} />
       </button>
-      {open && (
-        <ul
-          role="listbox"
-          data-testid="review-task-verdict-menu"
-          aria-label={`Вердикт задания ${no}`}
-          className="absolute left-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg"
-        >
-          {REVIEW_TASK_VERDICTS.map(value => {
-            const option = VERDICT_STYLE[value]
-            const OptionIcon = option.icon
-            return (
-              <li key={value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={value === verdict}
-                  data-testid={`review-task-verdict-option-${value}`}
-                  onClick={() => { setOpen(false); onPick(value) }}
-                  className={cn(
-                    'flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px]',
-                    value === verdict ? 'font-semibold' : 'font-normal',
-                    'hover:bg-gray-50',
-                  )}
-                >
-                  <OptionIcon size={11} className={cn('shrink-0', option.tone)} />
-                  {TASK_VERDICT_LABEL[value]}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </div>
+      {open && createPortal(menu, document.body)}
+    </>
   )
 }
 
@@ -1097,6 +1166,18 @@ function VerdictPicker({
  * называл «перегружено». Номер, ответ и ожидаемый теперь справка, а не форма:
  * править их незачем — они пришли из слепка модели, а результат проверки
  * складывается из статуса и замечаний.
+ *
+ * §212. Три правила вида, и все три про одно — чтобы проблемное задание
+ * цеплялось глазом:
+ *
+ * 1. Красится ВСЯ строка и полоса слева, а не один значок. Три спорных
+ *    задания из двадцати иначе приходится искать чтением.
+ * 2. Вторая строка появляется, только когда есть что сказать, — замечание,
+ *    предложение ИИ или «нет на фото». У верного задания её нет вовсе, и
+ *    двадцать пустых вторых строк больше не растягивают панель.
+ * 3. Редкие действия («убрать задание», «+ Заметка», корзина у замечания)
+ *    проявляются при наведении: висеть всегда им незачем. Ниже 768 px они
+ *    видны постоянно — на телефоне наведения нет.
  */
 function TaskLine({
   row,
@@ -1130,7 +1211,9 @@ function TaskLine({
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
 }) {
   const conflict = verdictConflictsWithNotes(row.verdict, notes)
+  const tone = reviewRowTone(row, notes)
   const highlighted = notes.some(note => note.id === activeNoteId)
+  const hasUnder = conflict || notes.length > 0 || suggestions.length > 0
 
   return (
     <li
@@ -1139,65 +1222,76 @@ function TaskLine({
       data-verdict={row.verdict}
       data-current={current ? 'true' : undefined}
       data-conflict={conflict ? 'true' : undefined}
+      data-tone={tone}
       className={cn(
-        'rounded-md px-0.5',
-        current && 'bg-violet-50 ring-1 ring-violet-200',
+        // `group` — на нём висят редкие действия строки.
+        'group border-l-[3px] px-1.5 py-0.5',
+        tone === 'mismatch' && 'border-l-red-400 bg-red-50/50',
+        tone === 'conflict' && 'border-l-amber-400 bg-amber-50/60',
+        tone === 'none' && 'border-l-transparent',
         highlighted && !current && 'bg-sky-50',
-        conflict && 'border-l-2 border-amber-400',
+        current && 'border-l-violet-500 bg-violet-50',
       )}
     >
-      <div className="flex items-start gap-2 px-1 py-1.5">
+      <div className="flex items-center gap-2 py-1">
         <VerdictPicker
           verdict={row.verdict}
           no={row.no}
           onPick={verdict => { void onPatch({ verdict }) }}
         />
-        <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-600">{row.no}</span>
+        <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-700">{row.no}</span>
         <Answers student={row.student_answer} expected={row.expected_answer} className="flex-1" />
-        <RowMenu no={row.no} onRemove={onRemove} />
+        <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+          {onStartNote && (
+            <button
+              type="button"
+              data-testid="review-task-add-note"
+              title="Обвести место на работе и написать замечание"
+              aria-label={`Замечание к заданию ${row.no}`}
+              onClick={() => onStartNote(row.no)}
+              className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+            >
+              <Plus size={11} />
+              Заметка
+            </button>
+          )}
+          <RowMenu no={row.no} onRemove={onRemove} />
+        </span>
       </div>
 
-      {conflict && (
-        <p data-testid="review-task-conflict" className="px-1 pb-1 pl-10 text-[11px] font-medium text-amber-700">
-          {VERDICT_CONFLICT_LABEL}
-        </p>
-      )}
+      {hasUnder && (
+        <div data-testid="review-task-under" className="pb-1 pl-9">
+          {conflict && (
+            <p data-testid="review-task-conflict" className="pb-0.5 text-[11px] font-medium text-amber-700">
+              {VERDICT_CONFLICT_LABEL}
+            </p>
+          )}
 
-      {notes.length > 0 && (
-        <ul className="pb-0.5 pl-9">
-          {notes.map(note => (
-            <NoteLine
-              key={note.id}
-              note={note}
-              active={note.id === activeNoteId}
-              onFocus={onFocusNote}
-              onDelete={note.legacy ? undefined : onDeleteNote}
-              onEdit={note.legacy ? undefined : onEditNote}
-              onDropLegacy={note.legacy ? onDropLegacyNote : undefined}
+          {notes.length > 0 && (
+            <ul>
+              {notes.map(note => (
+                <NoteLine
+                  key={note.id}
+                  note={note}
+                  active={note.id === activeNoteId}
+                  onFocus={onFocusNote}
+                  onDelete={note.legacy ? undefined : onDeleteNote}
+                  onEdit={note.legacy ? undefined : onEditNote}
+                  onDropLegacy={note.legacy ? onDropLegacyNote : undefined}
+                />
+              ))}
+            </ul>
+          )}
+
+          {suggestions.map(finding => (
+            <FindingSuggestion
+              key={finding.id}
+              finding={finding}
+              onTake={onTakeFinding}
+              onSkip={onSkipFinding}
             />
           ))}
-        </ul>
-      )}
-
-      {suggestions.map(finding => (
-        <FindingSuggestion
-          key={finding.id}
-          finding={finding}
-          onTake={onTakeFinding}
-          onSkip={onSkipFinding}
-        />
-      ))}
-
-      {onStartNote && (
-        <button
-          type="button"
-          data-testid="review-task-add-note"
-          onClick={() => onStartNote(row.no)}
-          className="ml-9 mb-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
-        >
-          <Plus size={11} />
-          Заметка
-        </button>
+        </div>
       )}
     </li>
   )
@@ -1242,7 +1336,7 @@ function NoteLine({
       data-testid="review-task-note"
       data-note-id={note.id}
       data-legacy={note.legacy ? 'true' : undefined}
-      className={cn('flex items-start gap-1.5 rounded-md px-1 py-0.5', active && 'bg-sky-100')}
+      className={cn('group/note flex items-start gap-1.5 rounded-md px-1 py-0.5', active && 'bg-sky-100')}
     >
       <span
         aria-hidden
@@ -1267,32 +1361,35 @@ function NoteLine({
           className="min-w-0 flex-1 rounded-md border border-violet-200 px-1.5 py-1 text-[11px] leading-5 text-gray-800 focus:border-violet-300 focus:outline-none"
         />
       ) : (
+        /*
+          §212. Правится то, что правится по смыслу, — и правка начинается
+          там же, где стоит текст. До §212 клик по тексту вёл к рамке, а
+          правка пряталась за двойным кликом и карандашом: два действия на
+          одном слове, и оба угадываются. Теперь клик по тексту правит, а к
+          рамке ведёт номер страницы — он и есть «место в работе».
+        */
         <button
           type="button"
           data-testid="review-task-note-text"
-          title={note.page != null ? 'Показать место в работе' : 'Заметка без места в работе'}
-          onClick={() => { if (note.page != null) onFocus?.(note.id) }}
-          onDoubleClick={() => { if (onEdit) setEditing(true) }}
-          className="min-w-0 flex-1 break-words text-left text-[11px] leading-5 text-gray-700 hover:text-gray-900"
+          title={onEdit ? 'Нажмите, чтобы поправить' : 'Старая заметка — её можно только удалить'}
+          onClick={() => { if (onEdit) setEditing(true) }}
+          className={cn(
+            'min-w-0 flex-1 break-words rounded px-0.5 text-left text-[11px] leading-5 text-gray-700',
+            onEdit ? 'hover:bg-gray-100 hover:text-gray-900' : 'cursor-default',
+          )}
         >
           {note.text || note.categoryLabel}
         </button>
       )}
       {note.page != null && (
-        <span data-testid="review-task-note-page" className="shrink-0 text-[10px] tabular-nums text-gray-400">
-          стр. {note.page}
-        </span>
-      )}
-      {onEdit && !editing && (
         <button
           type="button"
-          data-testid="review-task-note-edit"
-          aria-label="Изменить замечание"
-          title="Изменить текст"
-          onClick={() => setEditing(true)}
-          className="shrink-0 rounded p-0.5 text-[10px] text-gray-400 hover:text-gray-700"
+          data-testid="review-task-note-page"
+          title="Показать место в работе"
+          onClick={() => onFocus?.(note.id)}
+          className="shrink-0 rounded px-0.5 text-[10px] tabular-nums text-gray-400 hover:bg-gray-100 hover:text-gray-700"
         >
-          ✎
+          стр. {note.page}
         </button>
       )}
       {(onDelete || onDropLegacy) && (
@@ -1302,7 +1399,7 @@ function NoteLine({
           aria-label="Удалить замечание"
           title="Удалить замечание"
           onClick={() => { if (onDropLegacy) onDropLegacy(); else void onDelete?.(note.id) }}
-          className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+          className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover/note:opacity-100 max-md:opacity-100"
         >
           <Trash2 size={11} />
         </button>
@@ -1334,13 +1431,16 @@ function FindingSuggestion({
     <div
       data-testid="ai-finding-suggestion"
       data-finding-id={finding.id}
-      className="ml-9 mb-1 flex flex-wrap items-start gap-x-2 gap-y-1 rounded-md bg-gray-50 px-1.5 py-1 text-[11px] text-gray-500"
+      className="mb-1 flex flex-wrap items-start gap-x-2 gap-y-1 rounded-md bg-gray-50 px-1.5 py-1 text-[11px] text-gray-500"
     >
-      <span className="min-w-0 flex-1 break-words">ИИ: {finding.text}</span>
+      <span className="min-w-0 flex-1 break-words"><span className="font-semibold text-violet-700">ИИ:</span> {finding.text}</span>
       {onTake && (
         <button
           type="button"
           data-testid="ai-finding-take"
+          // §212. Честная подпись: границ задания модель не возвращает, и
+          // обещать «обведём всю задачу» нельзя.
+          title={`Рамкой встанет ${FINDING_UNION_LABEL}`}
           disabled={busy}
           onClick={async () => { setBusy(true); try { await onTake(finding) } finally { setBusy(false) } }}
           className="shrink-0 rounded border border-violet-200 bg-white px-1.5 py-0.5 font-medium text-violet-700 hover:border-violet-300 disabled:opacity-60"

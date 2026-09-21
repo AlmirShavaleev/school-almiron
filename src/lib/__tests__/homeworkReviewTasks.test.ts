@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   aiCheckIsNewerThanTable,
   compareTaskNo,
-  groupReviewTasks,
+  filterReviewTasks,
   fiveFromRatio,
   nextPosition,
   nextTaskNo,
   reviewTasksFromAi,
-  uncheckedPackLabel,
+  toggleReviewTaskFilter,
   reviewTasksScore,
   sortReviewTasks,
   summarizeReviewTasks,
@@ -190,104 +190,41 @@ describe('aiCheckIsNewerThanTable', () => {
   })
 })
 
-/** §207. Свёртка таблицы: пачка «не сверено» и пачка верных. */
-describe('groupReviewTasks', () => {
-  const r = (no: string, verdict: ReviewTaskRow['verdict'], note: string | null = null) =>
-    row({ id: `r${no}`, no, verdict, note })
+/**
+ * §212. Фильтр-счётчик вместо двух свёрток §207.
+ *
+ * Правило, которое легко потерять: повторное нажатие по включённому счётчику
+ * снимает фильтр. Без него выйти из «только неверные» можно было бы лишь
+ * через «все», и кнопка, которую только что нажали, ничего бы не делала.
+ */
+describe('filterReviewTasks / toggleReviewTaskFilter', () => {
+  const rows = [
+    row({ id: 'r1', no: '1', verdict: 'correct' }),
+    row({ id: 'r2', no: '2', verdict: 'wrong' }),
+    row({ id: 'r3', no: '3', verdict: 'partial' }),
+    row({ id: 'r4', no: '4', verdict: 'unchecked' }),
+    row({ id: 'r5', no: '5', verdict: 'wrong' }),
+  ]
 
-  it('подряд идущие «не сверено» с одинаковой заметкой — одна пачка', () => {
-    const items = groupReviewTasks([
-      r('16', 'wrong', 'Знак'),
-      r('17', 'unchecked', 'нет на фото'),
-      r('18', 'unchecked', 'нет на фото'),
-      r('19', 'unchecked', 'нет на фото'),
-    ])
-    expect(items.map(i => i.kind)).toEqual(['row', 'unchecked'])
-    const pack = items[1] as Extract<typeof items[number], { kind: 'unchecked' }>
-    expect(pack.rows.map(x => x.no)).toEqual(['17', '18', '19'])
-    expect(pack.label).toBe('Задания 17–19 не сверены: нет на фото')
+  it('«все» — все строки и в том же порядке', () => {
+    expect(filterReviewTasks(rows, 'all').map(r => r.no)).toEqual(['1', '2', '3', '4', '5'])
   })
 
-  it('заметки разные — строки остаются как есть', () => {
-    const items = groupReviewTasks([
-      r('17', 'unchecked', 'нет на фото'),
-      r('18', 'unchecked', 'не разобрал почерк'),
-      r('19', 'unchecked', 'нет на фото'),
-    ])
-    expect(items.map(i => i.kind)).toEqual(['row', 'row', 'row'])
+  it('каждое состояние оставляет только своё', () => {
+    expect(filterReviewTasks(rows, 'wrong').map(r => r.no)).toEqual(['2', '5'])
+    expect(filterReviewTasks(rows, 'correct').map(r => r.no)).toEqual(['1'])
+    expect(filterReviewTasks(rows, 'partial').map(r => r.no)).toEqual(['3'])
+    expect(filterReviewTasks(rows, 'unchecked').map(r => r.no)).toEqual(['4'])
   })
 
-  it('одна «не сверено» подряд — это не пачка', () => {
-    const items = groupReviewTasks([r('17', 'unchecked', 'нет на фото'), r('18', 'wrong')])
-    expect(items.map(i => i.kind)).toEqual(['row', 'row'])
+  it('нажатие включает фильтр, повторное — снимает', () => {
+    expect(toggleReviewTaskFilter('all', 'wrong')).toBe('wrong')
+    expect(toggleReviewTaskFilter('wrong', 'wrong')).toBe('all')
+    expect(toggleReviewTaskFilter('wrong', 'correct')).toBe('correct')
   })
 
-  it('пустые заметки тоже одинаковы — и пачка называется без двоеточия', () => {
-    const items = groupReviewTasks([r('20', 'unchecked'), r('21', 'unchecked', '   ')])
-    const pack = items[0] as Extract<typeof items[number], { kind: 'unchecked' }>
-    expect(pack.kind).toBe('unchecked')
-    expect(pack.label).toBe('Задания 20 и 21 не сверены')
-  })
-
-  it('верные — одна пачка на месте первого верного, остальные строки целы', () => {
-    const items = groupReviewTasks([
-      r('1', 'correct'),
-      r('2', 'wrong', 'Знак'),
-      r('3', 'correct'),
-      r('4', 'partial'),
-      r('5', 'correct'),
-    ])
-    expect(items.map(i => i.kind)).toEqual(['correct', 'row', 'row'])
-    const pack = items[0] as Extract<typeof items[number], { kind: 'correct' }>
-    expect(pack.rows.map(x => x.no)).toEqual(['1', '3', '5'])
-  })
-
-  /**
-   * Порог. Пачка «1 верное» занимает столько же места, сколько само задание,
-   * и не экономит ничего — только прячет. Сворачиваем с трёх.
-   */
-  it('верных меньше трёх — не сворачиваем, показываем как есть', () => {
-    expect(groupReviewTasks([r('1', 'correct'), r('2', 'wrong')]).map(i => i.kind))
-      .toEqual(['row', 'row'])
-    expect(groupReviewTasks([r('1', 'correct'), r('2', 'correct'), r('3', 'wrong')]).map(i => i.kind))
-      .toEqual(['row', 'row', 'row'])
-  })
-
-  it('ровно три верных — уже пачка', () => {
-    const items = groupReviewTasks([r('1', 'correct'), r('2', 'correct'), r('3', 'correct'), r('4', 'wrong')])
-    expect(items.map(i => i.kind)).toEqual(['correct', 'row'])
-  })
-
-  it('верных нет — пачки нет, и ни одна строка не потеряна', () => {
-    const items = groupReviewTasks([r('1', 'wrong'), r('2', 'partial')])
-    expect(items.map(i => i.kind)).toEqual(['row', 'row'])
-  })
-
-  it('спрятанное верное между «не сверено» не склеивает соседей', () => {
-    // Подряд считается по таблице, а не по видимой её части: иначе пачка
-    // сообщала бы, что задания идут одно за другим, когда это не так.
-    const items = groupReviewTasks([
-      r('1', 'unchecked', 'нет на фото'),
-      r('2', 'correct'), r('4', 'correct'), r('5', 'correct'),
-      r('3', 'unchecked', 'нет на фото'),
-    ])
-    expect(items.map(i => i.kind)).toEqual(['row', 'correct', 'row'])
-  })
-
-  it('каждая строка попадает в ответ ровно один раз', () => {
-    const rows = [
-      r('1', 'correct'), r('2', 'correct'), r('3', 'wrong'),
-      r('4', 'unchecked', 'нет'), r('5', 'unchecked', 'нет'),
-      r('6', 'correct'),
-    ]
-    const flat = groupReviewTasks(rows).flatMap(i => (i.kind === 'row' ? [i.row] : i.rows))
-    expect(flat.map(x => x.no).sort()).toEqual(['1', '2', '3', '4', '5', '6'])
-  })
-})
-
-describe('uncheckedPackLabel', () => {
-  it('две — через «и», больше — диапазоном', () => {
-    expect(uncheckedPackLabel(['17', '18'], 'нет на фото')).toBe('Задания 17 и 18 не сверены: нет на фото')
-    expect(uncheckedPackLabel(['17', '18', '19', '20', '21'], '')).toBe('Задания 17–21 не сверены')
+  it('«все» всегда возвращает всё, даже если оно уже включено', () => {
+    expect(toggleReviewTaskFilter('all', 'all')).toBe('all')
+    expect(toggleReviewTaskFilter('partial', 'all')).toBe('all')
   })
 })

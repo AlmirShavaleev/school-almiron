@@ -283,6 +283,66 @@ export function findingsOfTask(findings: readonly AiFindingRow[], no: string): A
   return findings.filter(f => taskNoOfFinding(f) === target)
 }
 
+// ---------------------------------------------------------------------------
+// §212. Рамка, которая едет на работу за находкой
+// ---------------------------------------------------------------------------
+
+export interface FindingRect { x: number; y: number; w: number; h: number }
+
+/** Описанный прямоугольник по находкам; null — считать не по чему. */
+export function unionFindingRect(
+  findings: readonly Pick<AiFindingRow, 'rect_x' | 'rect_y' | 'rect_w' | 'rect_h'>[],
+): FindingRect | null {
+  if (findings.length === 0) return null
+  let left = Infinity; let top = Infinity; let right = -Infinity; let bottom = -Infinity
+  for (const f of findings) {
+    const x = Number(f.rect_x); const y = Number(f.rect_y)
+    const w = Number(f.rect_w); const h = Number(f.rect_h)
+    if (![x, y, w, h].every(Number.isFinite)) continue
+    left = Math.min(left, x); top = Math.min(top, y)
+    right = Math.max(right, x + w); bottom = Math.max(bottom, y + h)
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return null
+  return { x: left, y: top, w: right - left, h: bottom - top }
+}
+
+/**
+ * §212. Какой прямоугольник поставить на работу, когда нажали «взять».
+ *
+ * Владелец просил обводить задание целиком, но границ задания модель не
+ * возвращает — обещать их нельзя. Дешёвый и честный путь: когда ИИ поставила
+ * «неверно» и нашла на этом задании НЕСКОЛЬКО мест, рамкой становится
+ * описанный вокруг них прямоугольник, и подписан он «место, где ИИ нашла
+ * ошибки», а не «задача». Одна находка — рамка ровно та, что была: описывать
+ * прямоугольник вокруг самого себя незачем.
+ *
+ * Объединяются только находки одного файла и одной страницы: рамка живёт на
+ * странице, и прямоугольник через разворот не имеет смысла.
+ *
+ * §211. Считается всё в координатах ИСХОДНОЙ страницы — тех же, в которых
+ * приходят находки и в которых хранится `region.rect`. Поворот страницы сюда
+ * не заходит вовсе: `rotateRect` применяется на показе, и смешивать экранные
+ * доли с исходными нельзя — объединение поехало бы на повёрнутой работе.
+ */
+export function findingTransferRect(
+  finding: AiFindingRow,
+  findings: readonly AiFindingRow[],
+  tasks: readonly AiTaskRow[] | null | undefined,
+): FindingRect {
+  const own: FindingRect = { x: finding.rect_x, y: finding.rect_y, w: finding.rect_w, h: finding.rect_h }
+  const no = taskNoOfFinding(finding)
+  if (!no) return own
+  const task = (tasks ?? []).find(t => normalizeTaskNo(t.no) === no)
+  if (task?.verdict !== 'wrong') return own
+  const siblings = findings.filter(f =>
+    taskNoOfFinding(f) === no && f.file_id === finding.file_id && f.page === finding.page)
+  if (siblings.length < 2) return own
+  return unionFindingRect(siblings) ?? own
+}
+
+/** Подпись объединённой рамки: что мы про неё знаем на самом деле. */
+export const FINDING_UNION_LABEL = 'место, где ИИ нашла ошибки'
+
 /** Идёт ли прогон прямо сейчас — для блокировки кнопки и спиннера. */
 export function isRunning(job: AiJobRow | null): boolean {
   return job != null && (job.status === 'pending' || job.status === 'processing')

@@ -168,123 +168,38 @@ export function aiCheckIsNewerThanTable(
   return done > newest
 }
 
-/** Что рисует таблица: строка, свёрнутая пачка «не сверено» или пачка верных. */
-export type ReviewTableItem<Row> =
-  | { kind: 'row'; row: Row }
-  | { kind: 'unchecked'; key: string; rows: Row[]; note: string; label: string }
-  | { kind: 'correct'; key: string; rows: Row[] }
-
-interface GroupableRow {
-  id: string
-  no: string
-  verdict: ReviewTaskVerdict
-  note: string | null
-}
-
-/** Заметка для сравнения: пусто и пробелы — одно и то же. */
-const noteKey = (note: string | null | undefined) => String(note ?? '').trim()
-
 /**
- * §207. Свёртка таблицы проверки.
+ * §212. Что показывает таблица: всё или одно состояние.
  *
- * Две пачки, и обе — ответ на одну жалобу владельца: «слишком перегружено».
- *
- * 1. Подряд идущие «не сверено» с ОДИНАКОВОЙ заметкой — одной строкой
- *    «Задания 17–21 не сверены: нет на фото». Одинаковость проверяется, а не
- *    предполагается: пять «не сверено» с разными причинами — это пять разных
- *    фактов, и слепить их значило бы соврать. Подряд — по порядку таблицы, до
- *    любой свёртки: иначе спрятанные верные склеивали бы соседей, которые в
- *    работе идут через задание.
- * 2. Верные — одной строкой «13 верных». Решение владельца: при проверке
- *    смотрят на ошибки, а верные строки оттесняют их вниз. Пачка ставится
- *    туда, где в таблице стоит ПЕРВОЕ верное задание, — так порядок остаётся
- *    узнаваемым, а не уезжает в конец списка. Меньше `CORRECT_PACK_MIN`
- *    верных не сворачиваются вовсе: строка «1 верное» занимает столько же
- *    места, сколько само задание, и не экономит ничего — только прячет.
+ * Пришло на смену двум свёрткам §207 (пачка верных и пачка одинаковых «не
+ * сверено»). Свёртки решали ту же задачу — убрать с глаз то, что сейчас не
+ * смотрят, — но своим способом: механик стало две, обе с памятью состояния,
+ * и строка могла спрятаться прямо под курсором. Фильтр делает ту же работу
+ * одной механикой, и она же отвечает на обратный вопрос («покажи только
+ * неверные»), на который свёртка ответить не умела.
  */
-export function groupReviewTasks<Row extends GroupableRow>(
+export type ReviewTaskFilter = ReviewTaskVerdict | 'all'
+
+/** Строки, которые видны при этом фильтре. */
+export function filterReviewTasks<Row extends { verdict: ReviewTaskVerdict }>(
   rows: readonly Row[],
-  options?: {
-    /**
-     * §209. Строка, которую нельзя прятать ни в какую пачку. Нужна ровно для
-     * одного случая: у верного задания есть замечание. Спрятать его — значит
-     * спрятать то самое расхождение, ради которого таблицу и открывают.
-     */
-    keepVisible?: (row: Row) => boolean
-    /**
-     * §209. Чем считать «одинаковую заметку» при свёртке «не сверено».
-     * По умолчанию — поле `note`; экран проверки передаёт сюда ещё и тексты
-     * замечаний-рамок, иначе пять разных причин слиплись бы в одну строку.
-     */
-    noteOf?: (row: Row) => string
-  },
-): Array<ReviewTableItem<Row>> {
-  const keepVisible = options?.keepVisible ?? (() => false)
-  const noteOf = options?.noteOf ?? ((row: Row) => noteKey(row.note))
-  const items: Array<ReviewTableItem<Row>> = []
-  let correct: Row[] | null = null
-  // Считаем заранее: решение «сворачивать или нет» одно на всю таблицу, а
-  // узнать его по ходу, встретив первое верное, нельзя.
-  const packCorrect = rows
-    .filter(row => row.verdict === 'correct' && !keepVisible(row)).length >= CORRECT_PACK_MIN
-
-  for (let i = 0; i < rows.length; i += 1) {
-    const row = rows[i]
-
-    if (keepVisible(row)) {
-      items.push({ kind: 'row', row })
-      continue
-    }
-
-    if (packCorrect && row.verdict === 'correct') {
-      if (correct) correct.push(row)
-      else {
-        correct = [row]
-        items.push({ kind: 'correct', key: `correct-${row.id}`, rows: correct })
-      }
-      continue
-    }
-
-    if (row.verdict === 'unchecked') {
-      const note = noteOf(row)
-      const pack: Row[] = [row]
-      let j = i + 1
-      while (j < rows.length && rows[j].verdict === 'unchecked' && !keepVisible(rows[j]) && noteOf(rows[j]) === note) {
-        pack.push(rows[j])
-        j += 1
-      }
-      if (pack.length > 1) {
-        items.push({
-          kind: 'unchecked',
-          key: `unchecked-${row.id}`,
-          rows: pack,
-          note,
-          label: uncheckedPackLabel(pack.map(r => r.no), note),
-        })
-        i = j - 1
-        continue
-      }
-    }
-
-    items.push({ kind: 'row', row })
-  }
-
-  return items
+  filter: ReviewTaskFilter,
+): Row[] {
+  if (filter === 'all') return [...rows]
+  return rows.filter(row => row.verdict === filter)
 }
 
 /**
- * Со скольких верных заданий пачка окупается. Две строки прячутся в одну —
- * экономия ноль, а найти задание становится труднее.
+ * Нажали на счётчик. Повторное нажатие по включённому снимает фильтр: иначе
+ * выйти из «только неверные» можно было бы лишь через «все», и кнопка,
+ * которую только что нажали, ничего бы не делала.
  */
-export const CORRECT_PACK_MIN = 3
-
-/** «Задания 17–21 не сверены: нет на фото». */
-export function uncheckedPackLabel(nos: readonly string[], note: string): string {
-  const range = nos.length === 2
-    ? `${nos[0]} и ${nos[1]}`
-    : `${nos[0]}–${nos[nos.length - 1]}`
-  const head = `Задания ${range} не сверены`
-  return note ? `${head}: ${note}` : head
+export function toggleReviewTaskFilter(
+  current: ReviewTaskFilter,
+  clicked: ReviewTaskFilter,
+): ReviewTaskFilter {
+  if (clicked === 'all') return 'all'
+  return current === clicked ? 'all' : clicked
 }
 
 /**

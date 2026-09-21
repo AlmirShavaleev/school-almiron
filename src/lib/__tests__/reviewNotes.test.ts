@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerView,
+  answersDiverge,
   answersMatch,
   expectedOnlyView,
   normalizeAnswer,
@@ -8,6 +9,7 @@ import {
   notesOfTask,
   orphanNotes,
   pendingFindings,
+  reviewRowTone,
   uncheckedIds,
   verdictConflictsWithNotes,
   type ReviewNote,
@@ -167,5 +169,60 @@ describe('пакетное действие', () => {
       { id: 'b', verdict: 'correct' },
       { id: 'c', verdict: 'unchecked' },
     ])).toEqual(['a', 'c'])
+  })
+})
+
+/**
+ * §212. Чем красится строка задания.
+ *
+ * Владелец: три проблемных задания из двадцати должны цепляться глазом без
+ * чтения. Значит, красится вся строка, а не значок, — и красится только по
+ * делу: отсутствие эталона не расхождение, а отсутствие сведений.
+ */
+describe('answersDiverge', () => {
+  it('разные записи одного числа расхождением не считаются', () => {
+    expect(answersDiverge('3,5', '3.5')).toBe(false)
+    expect(answersDiverge('−2', '-2')).toBe(false)
+  })
+
+  it('настоящее расхождение', () => {
+    expect(answersDiverge('12', '30')).toBe(true)
+  })
+
+  it('чего-то из двух нет — это не расхождение', () => {
+    expect(answersDiverge(null, '30')).toBe(false)
+    expect(answersDiverge('12', null)).toBe(false)
+    expect(answersDiverge('  ', '30')).toBe(false)
+  })
+})
+
+describe('reviewRowTone', () => {
+  const errorNote: ReviewNote = {
+    id: 'n1', taskNo: '1', text: 'Ход решения неверен', page: 2,
+    type: 'error', categoryLabel: 'Ошибка',
+  }
+
+  it('спор вердикта с замечанием сильнее расхождения ответов', () => {
+    expect(reviewRowTone(
+      { verdict: 'correct', student_answer: '12', expected_answer: '30' },
+      [errorNote],
+    )).toBe('conflict')
+  })
+
+  it('ответ разошёлся — расхождение, даже если вердикт ещё не поставлен', () => {
+    expect(reviewRowTone({ verdict: 'partial', student_answer: '12', expected_answer: '30' }, []))
+      .toBe('mismatch')
+  })
+
+  it('«неверно» красится и при сошедшихся ответах — вердикт ставил человек', () => {
+    expect(reviewRowTone({ verdict: 'wrong', student_answer: '12', expected_answer: '12' }, []))
+      .toBe('mismatch')
+  })
+
+  it('верное задание без замечаний не подсвечено', () => {
+    expect(reviewRowTone({ verdict: 'correct', student_answer: '12', expected_answer: '12' }, []))
+      .toBe('none')
+    expect(reviewRowTone({ verdict: 'unchecked', student_answer: null, expected_answer: '16,5' }, []))
+      .toBe('none')
   })
 })

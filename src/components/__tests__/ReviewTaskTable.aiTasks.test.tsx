@@ -178,13 +178,12 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
     expect(rows.map(r => r.dataset.no)).toEqual(['3', '1', '2', '4'])
   })
 
-  it('сводка считает вердикты и показывает балл, из которого они сложились', () => {
+  it('счётчики считают вердикты и показывают балл, из которого они сложились', () => {
     panel()
-    const summary = screen.getByTestId('ai-check-tasks-summary')
-    expect(summary).toHaveTextContent('верно 1')
-    expect(summary).toHaveTextContent('неверно 1')
-    expect(summary).toHaveTextContent('частично 1')
-    expect(summary).toHaveTextContent('не сверено 1')
+    expect(screen.getByTestId('review-tasks-filter-correct')).toHaveTextContent('1 верно')
+    expect(screen.getByTestId('review-tasks-filter-wrong')).toHaveTextContent('1 неверно')
+    expect(screen.getByTestId('review-tasks-filter-partial')).toHaveTextContent('1 частично')
+    expect(screen.getByTestId('review-tasks-filter-unchecked')).toHaveTextContent('1 не сверено')
     expect(screen.getByTestId('ai-check-tasks-score')).toHaveTextContent('4')
   })
 
@@ -249,7 +248,7 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
 
   it('§207. Счётчик на экране один — табличный; второго ряда от ИИ нет', () => {
     panel()
-    expect(screen.getByTestId('ai-check-tasks-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('review-tasks-filters')).toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-summary-counts')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-summary-toggle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-summary')).not.toBeInTheDocument()
@@ -272,9 +271,9 @@ describe('ReviewTaskTable — слепок ИИ в блоке «По задан�
     expect(hint).toHaveTextContent('Клавиши')
   })
 
-  it('при низкой уверенности балл в сводке молчит, как и в шапке', () => {
+  it('при низкой уверенности балл в полосе счётчиков молчит, как и в шапке', () => {
     panel({ confidence: 'low' })
-    expect(screen.getByTestId('ai-check-tasks-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('review-tasks-filters')).toBeInTheDocument()
     expect(screen.queryByTestId('ai-check-tasks-score')).not.toBeInTheDocument()
   })
 })
