@@ -42,6 +42,16 @@ const toCommentBox = `document.querySelector('[data-testid="review-comment-input
 // §208: граница колонок — ползунок, и двигаем мы её так же, как человек без
 // мыши: стрелками с клавиатуры. Шесть шагов по 2 % = с 40 % до 52 %.
 const moveSplitRight = `(() => { const h = document.querySelector('[data-testid="solution-split-handle"]'); if (!h) return; h.focus(); for (let i = 0; i < 6; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })()`
+// §210: вторая граница — между работой и таблицей проверки. Двигаем тоже с
+// клавиатуры: шесть шагов влево = таблица с 37 % до 49 %.
+const moveReviewSplitLeft = `(() => { const h = document.querySelector('[data-testid="review-split-handle"]'); if (!h) return; h.focus(); for (let i = 0; i < 6; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })) })()`
+// §210: прокрутка ТОЛЬКО таблицы. Если колонки общие, вместе с ней уедет и
+// работа — на снимке это видно сразу.
+const scrollTableDown = `(() => { const el = document.querySelector('[data-testid="review-actions-above"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
+// §210: ниже 1024 колонки идут друг под другом, и таблица лежит третьим
+// блоком — до неё мотают всю полосу. Сцена показывает, что порядок прежний:
+// решение, работа, таблица.
+const scrollStripDown = `(() => { const el = document.querySelector('[data-testid="attempt-split-row"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
 
 export const scenes = [
   // ── guest ──
@@ -305,6 +315,27 @@ export const scenes = [
   ...[[1280, 800], [1440, 900]].map(([width, height]) => (
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
+
+  // ── §210 (board/061): три колонки — решение, работа, таблица ──
+  // Главное на этих снимках: таблица проверки стоит СБОКУ от работы, а не под
+  // ней, и кнопки вердикта видны сразу, без прокрутки.
+  ...[[1280, 800], [1440, 900], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-3col', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    // Решение выключено — колонок две, и работа сразу шире.
+    { persona: 'owner', name: 'o06-3col-nosolution', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { clickSel: '[data-testid="attempt-solution-toggle"]' }, { wait: 600 }], full: false },
+    // Прокрутили таблицу до конца: работа слева осталась на месте.
+    { persona: 'owner', name: 'o06-3col-table-scrolled', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: scrollTableDown }, { wait: 600 }], full: false },
+    // Ученик: класть в третью колонку нечего, и колонок у него столько же,
+    // сколько было, — проверка, что ничего не поехало.
+    { persona: 'student', name: 's04-hw-marks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1200 }, { clickSel: '[data-testid="hw-view-marks-button"]' }, { wait: 2500 }], full: false },
+  ]),
+  // Вторая граница сдвинута с клавиатуры. Ниже 1024 её нет — снимать нечего.
+  ...[[1280, 800], [1440, 900]].map(([width, height]) => (
+    { persona: 'owner', name: 'o06-3col-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveReviewSplitLeft }, { wait: 600 }], full: false }
+  )),
+  // 390: домотали полосу до конца — таблица и вердикт стоят третьим блоком,
+  // порядок тот же, что был.
+  { persona: 'owner', name: 'o06-3col-strip-bottom', url: '/homework-queue', actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: scrollStripDown }, { wait: 800 }], full: false },
 
   { persona: 'owner', name: 'o07-students', url: '/students' },
   { persona: 'owner', name: 'o07-students-invites', url: '/students', actions: [{ clickRole: ['button', 'Приглашения'] }, { wait: 600 }] },

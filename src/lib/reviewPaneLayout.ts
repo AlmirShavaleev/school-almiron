@@ -102,3 +102,114 @@ export function writeSolutionFraction(fraction: number, storage?: Pick<Storage, 
     /* ширина панели не стоит того, чтобы ронять разбор работы */
   }
 }
+
+/* ─── §210. Вторая граница: работа | таблица проверки ─────────────────────── */
+
+/**
+ * Доля таблицы проверки, считая от ПРАВОГО края рабочей области.
+ *
+ * Умолчание 37 % — из требования владельца «на 1280 решение 26 %, работа 37 %,
+ * таблица 37 %». Решение между 1024 и 1536 остаётся фиксированным (20rem, см.
+ * `SPLIT_MIN_WIDTH`), и на 1280 это ровно 25 % — то самое «примерно 26». Тогда
+ * работе достаётся 1280 − 320 − 474 − 12 ≈ 474 px: тесно, но читаемо, а кому
+ * нужно шире — выключает решение кнопкой в шапке.
+ */
+export const DEFAULT_TABLE_FRACTION = 0.37
+
+/**
+ * Границы перетаскивания второй ручки. Уже 22 % — таблица проверки перестаёт
+ * быть таблицей: на 1280 это 280 px, куда не помещаются номер задания, вердикт
+ * и балл в одну строку. Шире 50 % — работа ученика становится щелью даже с
+ * выключенным решением.
+ */
+export const MIN_TABLE_FRACTION = 0.22
+export const MAX_TABLE_FRACTION = 0.5
+
+/**
+ * Сколько рабочей области обязано остаться самой работе. Без этого вторая
+ * ручка «съедала» бы колонку с фотографией до нуля, и ставить рамки стало бы
+ * некуда — а рамки и есть смысл экрана.
+ */
+export const MIN_WORK_FRACTION = 0.2
+
+export const TABLE_FRACTION_STORAGE_KEY = 'review:table-pane-fraction'
+
+/**
+ * Подрезка доли таблицы. `solutionFraction` — сколько сейчас занимает панель
+ * решения (0, если она выключена): от неё зависит, насколько далеко влево
+ * вообще можно утащить вторую границу, не схлопнув работу.
+ */
+export function clampTableFraction(value: number, solutionFraction = 0): number {
+  const left = Number.isFinite(solutionFraction) ? Math.max(0, solutionFraction) : 0
+  // Верхний предел никогда не опускается ниже минимума: при очень широкой
+  // панели решения выбор «или работа, или таблица» решается в пользу таблицы,
+  // а не в пользу отрицательной ширины.
+  const max = Math.max(MIN_TABLE_FRACTION, Math.min(MAX_TABLE_FRACTION, 1 - left - MIN_WORK_FRACTION))
+  if (!Number.isFinite(value)) return Math.min(DEFAULT_TABLE_FRACTION, max)
+  return Math.min(max, Math.max(MIN_TABLE_FRACTION, value))
+}
+
+/**
+ * Доля таблицы из положения указателя. Считается от правого края области:
+ * вторая ручка стоит между работой и таблицей, и тянут её именно за правую
+ * колонку.
+ */
+export function tableFractionFromPointer(
+  clientX: number,
+  rect: { left: number; width: number },
+  solutionFraction = 0,
+): number {
+  if (!rect.width) return clampTableFraction(DEFAULT_TABLE_FRACTION, solutionFraction)
+  return clampTableFraction((rect.left + rect.width - clientX) / rect.width, solutionFraction)
+}
+
+/** Своя пара `fractionToPercent`: у таблицы другой диапазон подрезки. */
+export function tableFractionToPercent(fraction: number, solutionFraction = 0): string {
+  return `${(clampTableFraction(fraction, solutionFraction) * 100).toFixed(1)}%`
+}
+
+export function readStoredTableFraction(storage?: Pick<Storage, 'getItem'>): number | null {
+  try {
+    const raw = (storage ?? window.localStorage).getItem(TABLE_FRACTION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = Number.parseFloat(raw)
+    if (!Number.isFinite(parsed)) return null
+    return clampTableFraction(parsed)
+  } catch {
+    return null
+  }
+}
+
+export function readTableFraction(storage?: Pick<Storage, 'getItem'>): number {
+  return readStoredTableFraction(storage) ?? DEFAULT_TABLE_FRACTION
+}
+
+export function writeTableFraction(fraction: number, storage?: Pick<Storage, 'setItem'>): void {
+  try {
+    (storage ?? window.localStorage).setItem(
+      TABLE_FRACTION_STORAGE_KEY,
+      String(clampTableFraction(fraction)),
+    )
+  } catch {
+    /* см. writeSolutionFraction: ширина колонки не стоит упавшего экрана */
+  }
+}
+
+/**
+ * Какую долю рабочей области СЕЙЧАС занимает панель решения.
+ *
+ * Знать это нужно второй ручке: пока человек не двигал первую границу, между
+ * 1024 и 1536 панель фиксированная (20rem), а не 40 %, и считать её по доле
+ * значило бы запрещать таблице ширину, которая на самом деле свободна.
+ */
+export const SOLUTION_FIXED_WIDTH = 320
+
+export function solutionShareOf(
+  { shown, fraction, chosen, areaWidth }:
+  { shown: boolean; fraction: number; chosen: boolean; areaWidth: number },
+): number {
+  if (!shown) return 0
+  if (chosen || areaWidth >= SPLIT_MIN_WIDTH) return clampSolutionFraction(fraction)
+  if (!areaWidth) return clampSolutionFraction(fraction)
+  return Math.min(1, SOLUTION_FIXED_WIDTH / areaWidth)
+}

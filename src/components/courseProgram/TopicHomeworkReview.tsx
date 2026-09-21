@@ -55,6 +55,7 @@ export function ReviewActions({
   tableScore,
   fillRequest,
   disabledReason,
+  columnLayout = false,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -91,6 +92,15 @@ export function ReviewActions({
    * который преподаватель дальше правит сам.
    */
   fillRequest?: { comment?: string; score?: number | null } | null
+  /**
+   * §210. Форма стоит в своей колонке (экран проверки), а не в потоке под
+   * работой. Тогда `above` (таблица проверки) прокручивается сам, а
+   * комментарий, балл и кнопки остаются внизу колонки и видны без прокрутки:
+   * мотать вниз к «Принять» в конце каждой работы — ровно та усталость, из-за
+   * которой карточка и заведена. В карточке ученика на странице темы колонки
+   * нет, и там всё как было.
+   */
+  columnLayout?: boolean
 }) {
   const [comment, setComment] = useState('')
   const commentRef = useAutoGrowTextarea(comment)
@@ -141,8 +151,25 @@ export function ReviewActions({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
-      {above && <div className="mb-3">{above}</div>}
+    <div
+      data-testid="review-actions"
+      className={cn(
+        'rounded-xl border border-gray-200 bg-gray-50/60 p-3',
+        // §210. В своей колонке форма занимает её целиком и делится на две
+        // части: таблица прокручивается, решение остаётся на виду. Иначе до
+        // «Принять» в конце каждой работы приходилось мотать вниз.
+        columnLayout ? 'flex h-full min-h-0 flex-col' : 'mt-3',
+      )}
+    >
+      {above && (
+        <div
+          data-testid="review-actions-above"
+          className={cn('mb-3', columnLayout && 'min-h-0 flex-1 overflow-y-auto')}
+        >
+          {above}
+        </div>
+      )}
+      <div className={cn(columnLayout && 'shrink-0')}>
       {/*
         §207. Подсказка про публикацию пометок — под знаком вопроса, а не
         абзацем. Она верная и новому человеку нужна, но висела над формой при
@@ -236,6 +263,7 @@ export function ReviewActions({
         {scoreMax != null && !scoreValid && score !== '' && (
           <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
         )}
+      </div>
       </div>
     </div>
   )

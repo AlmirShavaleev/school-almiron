@@ -13,12 +13,20 @@ import { FileChip } from '@/components/shared/FileChip'
 import { viewersLabel, type PresenceMeta } from '@/lib/reviewPresence'
 import {
   MAX_SOLUTION_FRACTION,
+  MAX_TABLE_FRACTION,
   MIN_SOLUTION_FRACTION,
+  MIN_TABLE_FRACTION,
+  clampTableFraction,
   fractionFromPointer,
   fractionToPercent,
   readSolutionFraction,
   readStoredSolutionFraction,
+  readTableFraction,
+  solutionShareOf,
+  tableFractionFromPointer,
+  tableFractionToPercent,
   writeSolutionFraction,
+  writeTableFraction,
 } from '@/lib/reviewPaneLayout'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
@@ -124,11 +132,30 @@ export type AttemptAnnotationFooter = (context: {
 }) => React.ReactNode
 
 /**
+ * §210. Третья колонка справа: таблица проверки и форма вердикта.
+ *
+ * Отдельный проп, а не `footer`, ровно потому, что это не футер: содержимое
+ * стоит РЯДОМ с работой, а не под ней, и своего свитка работы не делит.
+ * `publishing`/`published` сюда не передаются намеренно — они живут внутри
+ * аннотатора, а колонке нужна только сама публикация, которую она зовёт из
+ * обработчика вердикта.
+ */
+export type AttemptReviewPanel = (context: {
+  publishAnnotations: (targetStatus?: 'checked' | 'revision') => Promise<boolean>
+}) => React.ReactNode
+
+/**
  * Полноэкранный разбор работы ученика: фото/PDF с рамками поверх.
  * Одна и та же вьюха и для модалки аккордеона курса
  * (HomeworkAttemptDetailModal), и для «Очереди проверок ДЗ»
- * (HomeworkReviewQueuePage) — разница только в футере: там подпись+кнопка
- * публикации пометок, тут полная форма вердикта.
+ * (HomeworkReviewQueuePage), и для ученика (TopicHomeworkStudent).
+ *
+ * Разница — в том, что каждый экран передаёт рядом с работой:
+ *  - модалка аккордеона: `footer` — подпись и кнопка публикации пометок,
+ *    одна строка под работой, колонки она не стоит;
+ *  - очередь проверок: `reviewPanel` — таблица проверки и форма вердикта
+ *    ТРЕТЬЕЙ колонкой справа (§210), со своим свитком;
+ *  - ученик: ни того, ни другого — у него разбор, и колонок остаётся две.
  */
 export function AttemptAnnotationOverlay({
   attemptId,
@@ -141,6 +168,7 @@ export function AttemptAnnotationOverlay({
   locked = false,
   onForceEdit,
   footer,
+  reviewPanel,
   footerPublishLabel,
   publishButtonLabel = 'Опубликовать пометки',
   hideToolbarPublish = false,
@@ -178,6 +206,12 @@ export function AttemptAnnotationOverlay({
   locked?: boolean
   onForceEdit?: () => void
   footer?: AttemptAnnotationFooter
+  /**
+   * §210. Третья колонка. Передаёт только экран проверки: у ученика и в
+   * «Пометках учителя» класть в неё нечего, и там колонок остаётся столько
+   * же, сколько было.
+   */
+  reviewPanel?: AttemptReviewPanel
   footerPublishLabel?: string
   publishButtonLabel?: string
   hideToolbarPublish?: boolean
@@ -254,6 +288,29 @@ export function AttemptAnnotationOverlay({
   const [fractionChosen, setFractionChosen] = useState(() => readStoredSolutionFraction() != null)
   const [dragging, setDragging] = useState(false)
 
+  /**
+   * §210. Третья колонка — только когда есть что в неё положить и когда её
+   * содержимое вообще имеет смысл. В режиме чтения (свой `readOnly` или чужое
+   * присутствие) вердикт не ставится, и пустая колонка отняла бы у работы
+   * треть экрана ни за что — ровно как и раньше не рисовался футер.
+   */
+  const showReviewPanel = Boolean(reviewPanel) && !viewOnly
+
+  /** Ширина третьей колонки — своя доля, со своей памятью (§210). */
+  const [tableFraction, setTableFraction] = useState(() => readTableFraction())
+  const [tableDragging, setTableDragging] = useState(false)
+
+  /**
+   * Сколько рабочей области занимает решение прямо сейчас. Вторая граница
+   * обязана это знать: иначе она разрешила бы таблице ширину, которой на
+   * экране нет, и работа схлопнулась бы в щель.
+   */
+  function currentSolutionShare(areaWidth: number) {
+    return solutionShareOf({
+      shown: showSolution, fraction: solutionFraction, chosen: fractionChosen, areaWidth,
+    })
+  }
+
   function chooseFraction(next: number) {
     setSolutionFraction(next)
     setFractionChosen(true)
@@ -263,6 +320,19 @@ export function AttemptAnnotationOverlay({
     const rect = splitRef.current?.getBoundingClientRect()
     if (!rect) return
     chooseFraction(fractionFromPointer(clientX, rect))
+  }
+
+  function moveTableSplit(clientX: number) {
+    const rect = splitRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setTableFraction(tableFractionFromPointer(clientX, rect, currentSolutionShare(rect.width)))
+  }
+
+  function stepTableSplit(step: number) {
+    const width = splitRef.current?.getBoundingClientRect().width ?? 0
+    const next = clampTableFraction(tableFraction + step, currentSolutionShare(width))
+    setTableFraction(next)
+    writeTableFraction(next)
   }
 
   useEffect(() => {
@@ -413,8 +483,21 @@ export function AttemptAnnotationOverlay({
 
       {/* Решение слева, работа справа: сравнивать удобнее, когда оба на
           экране, а не в двух вкладках. На узком экране панель уезжает наверх —
-          «сначала решение, потом фото» сохраняется и там. */}
-      <div ref={splitRef} className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          «сначала решение, потом фото» сохраняется и там.
+
+          §210. С третьей колонкой ниже 1024 блоков становится три, и в один
+          экран они не влезают — там вся полоса прокручивается целиком, сверху
+          вниз: решение, работа, таблица. Без третьей колонки (ученик,
+          «Пометки учителя») раскладка остаётся ровно прежней — прокрутки у
+          полосы нет, и у ученика ничего не едет. */}
+      <div
+        ref={splitRef}
+        data-testid="attempt-split-row"
+        className={cn(
+          'flex min-h-0 flex-1 flex-col lg:flex-row',
+          showReviewPanel && 'overflow-y-auto lg:overflow-hidden',
+        )}
+      >
         {showSolution && (
           <SolutionReferencePanel
             topicId={solutionTopicId ?? ''}
@@ -478,7 +561,19 @@ export function AttemptAnnotationOverlay({
             убираем ровно в этом случае. Условие то же, что у раскладки разбора
             в SubmissionReviewer; на компьютере и на вертикальном телефоне поля
             прежние. */}
-        <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 [@media(min-width:700px)_and_(max-height:600px)]:p-0">
+        <div
+          data-testid="attempt-work-column"
+          className={cn(
+            'min-h-0 overflow-auto p-3 sm:p-4 [@media(min-width:700px)_and_(max-height:600px)]:p-0',
+            // §210. Ниже 1024 с тремя блоками работе нужна СВОЯ высота: иначе
+            // она либо съест таблицу, либо схлопнется под неё. 70vh — экран
+            // минус шапка, примерно столько же, сколько было до третьей
+            // колонки. С 1024 колонка снова делит ширину, а не высоту.
+            showReviewPanel
+              ? 'h-[70vh] shrink-0 lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink'
+              : 'flex-1',
+          )}
+        >
         {paths.length === 0 ? (
           // Размечать нечего (только .docx, .zip и т.п. или файлов нет вовсе),
           // но вердикт поставить всё равно нужно — иначе такая работа осталась
@@ -528,6 +623,65 @@ export function AttemptAnnotationOverlay({
           </Suspense>
         )}
         </div>
+
+        {/*
+          §210. Вторая граница — между работой и таблицей проверки. Устроена
+          так же, как первая (§208): Pointer Events на мышь и палец, стрелки с
+          клавиатуры, с 1024 и выше. Разница одна: доля считается от ПРАВОГО
+          края, поэтому «стрелка вправо» делает таблицу уже — ручка едет туда,
+          куда показывает стрелка.
+        */}
+        {showReviewPanel && (
+          <div
+            data-testid="review-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Ширина колонки проверки"
+            aria-valuemin={Math.round(MIN_TABLE_FRACTION * 100)}
+            aria-valuemax={Math.round(MAX_TABLE_FRACTION * 100)}
+            aria-valuenow={Math.round(tableFraction * 100)}
+            tabIndex={0}
+            onPointerDown={e => {
+              (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+              setTableDragging(true)
+            }}
+            onPointerMove={e => { if (tableDragging) moveTableSplit(e.clientX) }}
+            onPointerUp={() => {
+              if (!tableDragging) return
+              setTableDragging(false)
+              writeTableFraction(tableFraction)
+            }}
+            onPointerCancel={() => setTableDragging(false)}
+            onKeyDown={e => {
+              const step = e.key === 'ArrowLeft' ? 0.02 : e.key === 'ArrowRight' ? -0.02 : 0
+              if (!step) return
+              e.preventDefault()
+              stepTableSplit(step)
+            }}
+            className={cn(
+              'hidden w-1.5 shrink-0 cursor-col-resize touch-none bg-slate-200 transition-colors lg:block',
+              'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
+              tableDragging && 'bg-primary-400',
+            )}
+          />
+        )}
+
+        {/*
+          Третья колонка: таблица проверки и форма вердикта. Свой свиток —
+          в этом и был смысл переезда: раньше колесо в таблице уводило работу,
+          потому что таблица лежала в одном свитке со страницами.
+        */}
+        {showReviewPanel && (
+          <aside
+            data-testid="review-side-column"
+            style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction) }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-slate-200 bg-slate-100 lg:h-full lg:w-[var(--review-side-w,37%)] lg:border-l lg:border-t-0"
+          >
+            <div className="flex min-h-0 flex-col p-3 sm:p-4 lg:flex-1 lg:overflow-hidden">
+              {reviewPanel?.({ publishAnnotations })}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   )

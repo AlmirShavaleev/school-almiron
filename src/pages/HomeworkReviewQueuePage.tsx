@@ -944,17 +944,24 @@ export function HomeworkReviewQueuePage() {
           notesApiRef={notesApiRef}
           onNotesChange={setNotesSnapshot}
           onSelectedNoteChange={setActiveNoteId}
-          footer={!verdictForm ? () => (
-            <VerdictSummary
-              review={latestReview(reviews, reviewing.row.attempt.id)}
-              gradeScale={reviewing.row.gradeScale}
-              status={reviewing.row.attempt.status}
-              history={reviewing.row.history}
-              reviews={reviews}
-              attemptId={reviewing.row.attempt.id}
-            />
+          // §210. Таблица проверки и форма вердикта — в СВОЕЙ колонке справа,
+          // а не под работой: владелец сверяет разом три вещи (решение,
+          // работа, таблица), и очередь «сверху вниз» этого не давала. Заодно
+          // у колонки свой свиток — колесо в таблице больше не уводит работу.
+          reviewPanel={!verdictForm ? () => (
+            <div className="min-h-0 overflow-y-auto lg:flex-1">
+              <VerdictSummary
+                review={latestReview(reviews, reviewing.row.attempt.id)}
+                gradeScale={reviewing.row.gradeScale}
+                status={reviewing.row.attempt.status}
+                history={reviewing.row.history}
+                reviews={reviews}
+                attemptId={reviewing.row.attempt.id}
+              />
+            </div>
           ) : ({ publishAnnotations }) => (
             <ReviewActions
+              columnLayout
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."

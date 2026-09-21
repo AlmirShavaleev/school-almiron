@@ -32,13 +32,20 @@ vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
 }))
 
 // Аннотатор тянет pdfjs — в этом тесте нас интересует только то, ЧТО открылось.
+// §210: таблица проверки и форма вердикта приходят третьей колонкой
+// (`reviewPanel`), а не футером под работой.
 vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
-  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer }: { title: string; lead?: string; subtitle?: string; footer?: any }) => (
+  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer, reviewPanel }: {
+    title: string; lead?: string; subtitle?: string; footer?: any; reviewPanel?: any
+  }) => (
     <div data-testid="attempt-annotation-overlay">
       <span>{title}</span>
       <span data-testid="overlay-lead">{lead}</span>
       <span>{subtitle}</span>
       {footer?.({ publishing: false, published: false, publishAnnotations: async () => true })}
+      <div data-testid="overlay-review-panel">
+        {reviewPanel?.({ publishAnnotations: async () => true })}
+      </div>
     </div>
   ),
   splitAnnotatableFiles: (files: any[]) => ({ annotatable: files, other: [] }),
