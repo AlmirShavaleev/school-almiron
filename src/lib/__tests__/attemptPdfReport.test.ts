@@ -231,3 +231,28 @@ describe('§209 — замечания в разборе PDF', () => {
     expect(text).toContain('0,375')
   })
 })
+
+/**
+ * §214 (board/066). Пятый вердикт доезжает до скачиваемого файла.
+ *
+ * Разбор в PDF — это то, что ученик читает вместо экрана, и слова там обязаны
+ * совпадать: «не решено» в таблице проверки не имеет права превратиться в
+ * «не сверено» на бумаге.
+ */
+describe('§214 — «не решено» в разборе PDF', () => {
+  it('печатается своими словами, отдельно от «не сверено»', () => {
+    const text = allText(buildReportPages(
+      {
+        ...BASE,
+        tasks: [
+          task('6', { verdict: 'unsolved', student_answer: '', expected_answer: '12 м/с' }),
+          task('7', { verdict: 'unchecked', student_answer: '', expected_answer: '' }),
+        ],
+      },
+      [],
+      measure,
+    ))
+    expect(text).toContain('не решено')
+    expect(text).toContain('не сверено')
+  })
+})

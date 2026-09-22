@@ -92,7 +92,7 @@ const rowByNo = (no: string) =>
 describe('ReviewTaskTable — правка таблицы', () => {
   beforeEach(() => { sessionStorage.clear() })
 
-  it('§209. Вердикт — значок без слова, список из четырёх по клику', () => {
+  it('§209/§214. Вердикт — значок без слова, список из пяти по клику', () => {
     table()
     const trigger = within(rowByNo('2')).getByTestId('review-task-verdict')
     expect(trigger.tagName).toBe('BUTTON')
@@ -102,8 +102,9 @@ describe('ReviewTaskTable — правка таблицы', () => {
     expect(screen.queryByTestId('review-task-verdict-menu')).not.toBeInTheDocument()
     fireEvent.click(trigger)
     const menu = screen.getByTestId('review-task-verdict-menu')
+    // §214: пятым стало «не решено» — оно отделилось от «не сверено».
     expect(within(menu).getAllByRole('option').map(o => o.textContent)).toEqual([
-      'верно', 'неверно', 'частично', 'не сверено',
+      'верно', 'неверно', 'частично', 'не сверено', 'не решено',
     ])
   })
 

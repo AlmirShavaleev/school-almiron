@@ -16,7 +16,7 @@
  * Растр может быть плотнее: `attemptPdfRender` домножает на свой масштаб.
  */
 
-import { TASK_VERDICT_LABEL } from './aiHomeworkCheck'
+import { REVIEW_TASK_VERDICT_LABEL } from './homeworkReviewTasks'
 import type { ReviewTaskRow, ReviewTaskVerdict } from './homeworkReviewTasks'
 import { answerView, expectedOnlyView, notesOfTask, type ReviewNote } from './reviewNotes'
 
@@ -37,6 +37,9 @@ const TASK_TONE: Record<ReviewTaskVerdict, string> = {
   wrong: '#b91c1c',
   partial: '#b45309',
   unchecked: '#64748b',
+  // §214. Тот же синий, что у значка «не решено» в таблице и в разборе у
+  // ученика: файл обязан читаться так же, как экран, с которого он собран.
+  unsolved: '#0369a1',
 }
 
 export interface AttemptPdfComment {
@@ -346,7 +349,7 @@ function taskRowItem(
     })()
   const cells = [
     { text: row.no || '—', width: widths[0], bold: true, color: INK },
-    { text: TASK_VERDICT_LABEL[row.verdict], width: widths[1], bold: true, color: TASK_TONE[row.verdict] },
+    { text: REVIEW_TASK_VERDICT_LABEL[row.verdict], width: widths[1], bold: true, color: TASK_TONE[row.verdict] },
     ...(audience === 'student'
       ? [{ text: answers[0], width: last, bold: false, color: INK }]
       : [

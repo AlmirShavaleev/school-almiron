@@ -13,6 +13,10 @@ const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scr
 const openAiHint = `(() => { const b = document.querySelector('[data-testid="ai-check-hint-toggle"]'); b?.click(); b?.scrollIntoView({ block: 'center' }) })()`
 // §212: счётчик-фильтр. Оставляем в списке только неверные.
 const filterWrong = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-wrong"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
+// §214 (board/066): включённый фильтр «не решено» — пятый счётчик в полосе.
+const filterUnsolved = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-unsolved"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
+// §214: открытый список вердиктов — в нём должно быть видно все пять.
+const openVerdictMenu = `(() => { const row = document.querySelector('[data-testid="review-task-row"][data-verdict="unsolved"]') ?? document.querySelector('[data-testid="review-task-row"]'); row?.scrollIntoView({ block: 'center' }); row?.querySelector('[data-testid="review-task-verdict"]')?.click() })()`
 // §212: список статусов открывается кликом по кружку и живёт в body —
 // прокрутка колонки его не обрезает. Берём кружок НИЖНЕЙ видимой строки:
 // именно там обрезание и было видно.
@@ -339,6 +343,15 @@ export const scenes = [
   ...[[1280, 800], [1440, 900]].map(([width, height]) => (
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
+
+  // ── §214 (board/066): пятый вердикт «не решено» ──
+  // «Не сверено» тащило два смысла — «ИИ не смогла сверить» и «ученик не
+  // делал». На снимках: открытый список из пяти значений и включённый фильтр
+  // «не решено», по которому остаются только несделанные задания.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-unsolved-menu', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: openVerdictMenu }, { wait: 600 }], full: false },
+    { persona: 'owner', name: 'o06-unsolved-filter', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: toReviewTasks }, { wait: 400 }, { eval: filterUnsolved }, { wait: 600 }], full: false },
+  ]),
 
   // ── §213 (board/064): «Переписать по таблице» ──
   // Пара до/после: кнопка у поля комментария и результат ПРЕДЛОЖЕНИЕМ над

@@ -11,6 +11,8 @@ import {
   reviewTasksScore,
   sortReviewTasks,
   summarizeReviewTasks,
+  REVIEW_TASK_VERDICTS,
+  REVIEW_TASK_VERDICT_LABEL,
   type ReviewTaskRow,
 } from '@/lib/homeworkReviewTasks'
 import type { AiTaskRow } from '@/lib/aiHomeworkCheck'
@@ -38,13 +40,14 @@ const row = (over: Partial<ReviewTaskRow> = {}): ReviewTaskRow => ({
 })
 
 describe('summarizeReviewTasks', () => {
-  it('считает по вердиктам, включая несверенные', () => {
+  it('считает по вердиктам, включая несверенные и нерешённые', () => {
     expect(summarizeReviewTasks([
       row({ verdict: 'correct' }),
       row({ verdict: 'wrong' }),
       row({ verdict: 'partial' }),
       row({ verdict: 'unchecked' }),
-    ])).toEqual({ correct: 1, wrong: 1, partial: 1, unchecked: 1, total: 4 })
+      row({ verdict: 'unsolved' }),
+    ])).toEqual({ correct: 1, wrong: 1, partial: 1, unchecked: 1, unsolved: 1, total: 5 })
   })
 })
 
@@ -226,5 +229,102 @@ describe('filterReviewTasks / toggleReviewTaskFilter', () => {
   it('«все» всегда возвращает всё, даже если оно уже включено', () => {
     expect(toggleReviewTaskFilter('all', 'all')).toBe('all')
     expect(toggleReviewTaskFilter('partial', 'all')).toBe('all')
+  })
+})
+
+/**
+ * §214 (board/066). Пятый вердикт: «не решено» отдельно от «не сверено».
+ *
+ * Разница между ними целиком в знаменателе балла, и она не декоративная:
+ * «не сверено» — мы про задание ничего не знаем, «не решено» — задание не
+ * сделано. Первое балл не понижает, второе понижает.
+ */
+describe('§214 — «не решено» в рекомендуемом балле', () => {
+  it('считается как «неверно»: в знаменателе, с нулём', () => {
+    const rows = [
+      row({ verdict: 'correct' }),
+      row({ verdict: 'correct' }),
+      row({ verdict: 'unsolved' }),
+      row({ verdict: 'unsolved' }),
+    ]
+    const score = reviewTasksScore(rows, 'hundred')
+    expect(score.counted).toBe(4)
+    expect(score.score).toBe(50)
+  })
+
+  it('«не сверено» и «не решено» дают РАЗНЫЙ балл на одних и тех же строках', () => {
+    const base = [row({ no: '1' }), row({ no: '2' }), row({ no: '3', verdict: 'wrong' })]
+    const unchecked = [...base, row({ no: '4', verdict: 'unchecked' })]
+    const unsolved = [...base, row({ no: '4', verdict: 'unsolved' })]
+
+    // Несверенное вне знаменателя: 2 из 3.
+    expect(reviewTasksScore(unchecked, 'hundred').counted).toBe(3)
+    expect(reviewTasksScore(unchecked, 'hundred').score).toBe(67)
+    // Нерешённое в знаменателе: 2 из 4.
+    expect(reviewTasksScore(unsolved, 'hundred').counted).toBe(4)
+    expect(reviewTasksScore(unsolved, 'hundred').score).toBe(50)
+  })
+
+  it('работа из харнесса: перевод пяти строк в «не решено» роняет 4 на 3', () => {
+    // 13 верных, 2 неверных, 1 частично, 5 не сверено — то, что на экране
+    // сейчас. Владельца об этой перемене предупреждаем заранее.
+    const made = (verdict: ReviewTaskRow['verdict'], n: number, from: number) =>
+      Array.from({ length: n }, (_v, i) => row({ no: String(from + i), verdict }))
+    const before = [
+      ...made('correct', 13, 1),
+      ...made('wrong', 2, 14),
+      ...made('partial', 1, 16),
+      ...made('unchecked', 5, 17),
+    ]
+    expect(reviewTasksScore(before, 'five').score).toBe(4)
+
+    const after = before.map(r => (r.verdict === 'unchecked' ? { ...r, verdict: 'unsolved' as const } : r))
+    expect(reviewTasksScore(after, 'five').score).toBe(3)
+  })
+
+  it('таблица из одних «не решено» даёт 2, а не null: это известный факт', () => {
+    // Отличие от «не сверено», где балла нет вовсе (§149): там нечего
+    // считать, здесь — посчитано.
+    expect(reviewTasksScore([row({ verdict: 'unsolved' })], 'five').score).toBe(2)
+    expect(reviewTasksScore([row({ verdict: 'unchecked' })], 'five').score).toBeNull()
+  })
+})
+
+describe('§214 — пятое значение в списках и фильтрах', () => {
+  it('вердиктов пять, и «не решено» последнее', () => {
+    expect(REVIEW_TASK_VERDICTS).toEqual(['correct', 'wrong', 'partial', 'unchecked', 'unsolved'])
+  })
+
+  it('у каждого вердикта есть слово, и «не решено» отличается от «не сверено»', () => {
+    expect(REVIEW_TASK_VERDICT_LABEL.unsolved).toBe('не решено')
+    expect(REVIEW_TASK_VERDICT_LABEL.unchecked).toBe('не сверено')
+    for (const verdict of REVIEW_TASK_VERDICTS) {
+      expect(REVIEW_TASK_VERDICT_LABEL[verdict]).toBeTruthy()
+    }
+  })
+
+  it('фильтр по «не решено» отбирает только их', () => {
+    const rows = [
+      row({ id: 'r1', verdict: 'unsolved' }),
+      row({ id: 'r2', verdict: 'unchecked' }),
+      row({ id: 'r3', verdict: 'unsolved' }),
+    ]
+    expect(filterReviewTasks(rows, 'unsolved').map(r => r.id)).toEqual(['r1', 'r3'])
+    expect(filterReviewTasks(rows, 'unchecked').map(r => r.id)).toEqual(['r2'])
+  })
+
+  it('повторное нажатие по включённому счётчику снимает фильтр — как у остальных', () => {
+    expect(toggleReviewTaskFilter('all', 'unsolved')).toBe('unsolved')
+    expect(toggleReviewTaskFilter('unsolved', 'unsolved')).toBe('all')
+    expect(toggleReviewTaskFilter('unsolved', 'wrong')).toBe('wrong')
+  })
+
+  it('перенос находок ИИ пятого значения не создаёт', () => {
+    // ИИ по-прежнему ставит только unchecked: учить её различать — отдельная
+    // работа (после §220). Граница проходит здесь.
+    const ai: AiTaskRow[] = [
+      { no: '1', verdict: 'unchecked', student_answer: '', expected_answer: '', note: 'нет на фото' },
+    ]
+    expect(reviewTasksFromAi(ai)[0].verdict).toBe('unchecked')
   })
 })

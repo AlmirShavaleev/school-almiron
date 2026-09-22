@@ -1,15 +1,23 @@
 import { ClipboardList } from 'lucide-react'
-import { CheckCircle2, HelpCircle, MinusCircle, XCircle } from 'lucide-react'
-import { TASK_VERDICT_LABEL, type AiTaskVerdict } from '@/lib/aiHomeworkCheck'
-import { sortReviewTasks, type ReviewTaskRow } from '@/lib/homeworkReviewTasks'
+import { CheckCircle2, CircleSlash, HelpCircle, MinusCircle, XCircle } from 'lucide-react'
+import {
+  REVIEW_TASK_VERDICT_LABEL,
+  sortReviewTasks,
+  type ReviewTaskRow,
+  type ReviewTaskVerdict,
+} from '@/lib/homeworkReviewTasks'
 import { expectedOnlyView, notesOfTask, orphanNotes, type ReviewNote } from '@/lib/reviewNotes'
 import { cn } from '@/utils/cn'
 
-const VERDICT_ICON: Record<AiTaskVerdict, { icon: typeof CheckCircle2; tone: string }> = {
+const VERDICT_ICON: Record<ReviewTaskVerdict, { icon: typeof CheckCircle2; tone: string }> = {
   correct: { icon: CheckCircle2, tone: 'text-emerald-600' },
   wrong: { icon: XCircle, tone: 'text-red-600' },
   partial: { icon: MinusCircle, tone: 'text-amber-600' },
   unchecked: { icon: HelpCircle, tone: 'text-gray-400' },
+  // §214. «Не решено» ученику важнее всех остальных: это единственная строка,
+  // по которой ему надо не разбираться, а сесть и сделать. Поэтому свой знак
+  // и свой цвет, а не оттенок серого «не сверено».
+  unsolved: { icon: CircleSlash, tone: 'text-sky-600' },
 }
 
 /**
@@ -64,7 +72,7 @@ export function ReviewTaskList({
           return (
             <li key={row.id} data-testid="student-review-task-row" data-no={row.no} data-verdict={row.verdict}>
               <div className="flex items-start gap-2 py-1.5">
-                <span className={cn('mt-0.5 shrink-0', style.tone)} title={TASK_VERDICT_LABEL[row.verdict]}>
+                <span className={cn('mt-0.5 shrink-0', style.tone)} title={REVIEW_TASK_VERDICT_LABEL[row.verdict]}>
                   <Icon size={14} />
                 </span>
                 <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-600">{row.no}</span>

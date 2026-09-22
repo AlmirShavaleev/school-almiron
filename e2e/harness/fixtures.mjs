@@ -277,8 +277,15 @@ export const topic_homework_review_tasks = [
   reviewTaskRow(14, IDS.attempt(15), { no: '14', verdict: 'wrong', student_answer: '−2 м/с²', expected_answer: '2 м/с²', note: 'Ошибка в решении: при торможении знак ускорения противоположен скорости — в выражении должен стоять минус, иначе модуль сходится, а направление нет.' }),
   reviewTaskRow(15, IDS.attempt(15), { no: '15', verdict: 'wrong', student_answer: 'в 144 рубля', expected_answer: 'в 160 рублей', note: 'Правильный ход, но потерян процент во втором шаге' }),
   reviewTaskRow(16, IDS.attempt(15), { no: '16', verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Ответ верный, хода решения нет' }),
-  ...['17', '18', '19', '20', '21'].map((no, i) => reviewTaskRow(17 + i, IDS.attempt(15), {
+  // §214 (board/066). Пятёрка «не разобранных» разошлась на два состояния, и
+  // это ровно тот случай, из-за которого карточка и заведена: 17–19 ИИ не
+  // смогла сверить (страница снята не полностью — надо смотреть глазами),
+  // а 20 и 21 ученик не делал вовсе. До §214 и те и другие были «не сверено».
+  ...['17', '18', '19'].map((no, i) => reviewTaskRow(17 + i, IDS.attempt(15), {
     no, verdict: 'unchecked', note: 'нет на фото',
+  })),
+  ...['20', '21'].map((no, i) => reviewTaskRow(20 + i, IDS.attempt(15), {
+    no, verdict: 'unsolved', note: 'задание не начато',
   })),
   // ── работа ученика, уже проверенная ──
   reviewTaskRow(11, IDS.attempt(1), { no: '1', verdict: 'correct', student_answer: '4 м/с²', expected_answer: '4 м/с²' }),

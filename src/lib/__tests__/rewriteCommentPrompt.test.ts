@@ -122,7 +122,7 @@ describe('§213 — что уезжает в модель', () => {
       ],
       notes: [],
     })
-    expect(input.summary).toEqual({ correct: 2, wrong: 1, partial: 1, unchecked: 1, total: 5 })
+    expect(input.summary).toEqual({ correct: 2, wrong: 1, partial: 1, unchecked: 1, unsolved: 0, total: 5 })
   })
 
   it('замечания-рамки ложатся под свои задания', () => {
@@ -251,5 +251,72 @@ describe('§213 — повторы', () => {
     })
     expect(input.tasks[0].notes).toEqual(['Нет единиц измерения'])
     expect(input.tasks[1].notes).toEqual(['Нет единиц измерения'])
+  })
+})
+
+/**
+ * §214 (board/066). Пятый вердикт в переписывании комментария.
+ *
+ * Причина карточки ровно в этом месте: пока значение было одно, функция
+ * физически не могла отличить «не разобрали» от «не делал», и переписанный
+ * комментарий сообщил владельцу, что несделанные задания «выполнены с
+ * ошибками».
+ */
+describe('§214 — «не решено» доходит до модели расшифрованным', () => {
+  it('пятое значение проходит белый список и не превращается в «не сверено»', () => {
+    const input = buildModelInput({ ...SOURCE, tasks: [row({ no: '6', verdict: 'unsolved' })], notes: [] })
+    expect(input.tasks[0].verdict).toBe('unsolved')
+  })
+
+  it('рядом с фактами едет расшифровка, и она говорит «не ошибка»', () => {
+    const input = buildModelInput({ ...SOURCE, tasks: [row({ no: '6', verdict: 'unsolved' })], notes: [] })
+    const serialized = userMessage(input)
+
+    expect(input.verdict_meaning.unsolved).toContain('не делал')
+    expect(input.verdict_meaning.unsolved).toContain('не ошибка')
+    expect(serialized).toContain('verdict_meaning')
+    expect(serialized).toContain('не делал')
+  })
+
+  it('«не сверено» и «не решено» расшифрованы по-разному', () => {
+    const input = buildModelInput({
+      ...SOURCE,
+      tasks: [row({ no: '6', verdict: 'unsolved' }), row({ no: '7', verdict: 'unchecked' })],
+      notes: [],
+    })
+    expect(input.verdict_meaning.unsolved).not.toBe(input.verdict_meaning.unchecked)
+    expect(input.verdict_meaning.unchecked).toContain('ещё не сверял')
+  })
+
+  it('расшифровываются только встретившиеся статусы — лишние токены не платим', () => {
+    const input = buildModelInput({
+      ...SOURCE,
+      tasks: [row({ no: '1', verdict: 'correct' }), row({ no: '2', verdict: 'unsolved' })],
+      notes: [],
+    })
+    expect(Object.keys(input.verdict_meaning).sort()).toEqual(['correct', 'unsolved'])
+  })
+
+  it('пятое значение считается в сводке своим счётчиком', () => {
+    const input = buildModelInput({
+      ...SOURCE,
+      tasks: [
+        row({ no: '1', verdict: 'correct' }),
+        row({ no: '2', verdict: 'unsolved' }),
+        row({ no: '3', verdict: 'unsolved' }),
+        row({ no: '4', verdict: 'unchecked' }),
+      ],
+      notes: [],
+    })
+    expect(input.summary).toEqual({ correct: 1, wrong: 0, partial: 0, unchecked: 1, unsolved: 2, total: 4 })
+  })
+
+  it('и ответы ученика по-прежнему не едут — правило §213 пятым значением не ослаблено', () => {
+    const serialized = userMessage(buildModelInput({
+      ...SOURCE,
+      tasks: [row({ no: '6', verdict: 'unsolved' })],
+      notes: [],
+    }))
+    expect(serialized).not.toContain('ОТВЕТ-УЧЕНИКА-144')
   })
 })

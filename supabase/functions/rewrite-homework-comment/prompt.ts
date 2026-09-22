@@ -28,10 +28,34 @@
  * Замечания берутся из рамок (`annotation_sets`, §209) — это текст человека.
  */
 
-/** Вердикт строки таблицы проверки — те же четыре, что в базе (§199). */
-export type RewriteVerdict = 'correct' | 'wrong' | 'partial' | 'unchecked'
+/**
+ * Вердикт строки таблицы проверки — те же значения, что в базе (§199, §214).
+ * С §214 их пять: «не сверено» и «не решено» разошлись.
+ */
+export type RewriteVerdict = 'correct' | 'wrong' | 'partial' | 'unchecked' | 'unsolved'
 
-export const REWRITE_VERDICTS: readonly RewriteVerdict[] = ['correct', 'wrong', 'partial', 'unchecked']
+export const REWRITE_VERDICTS: readonly RewriteVerdict[] = ['correct', 'wrong', 'partial', 'unchecked', 'unsolved']
+
+/**
+ * §214. Расшифровка вердиктов для модели.
+ *
+ * Едет ВМЕСТЕ С ФАКТАМИ, а не в системном промпте, и это не случайность:
+ * значения приходят из базы, и словарь обязан жить рядом с ними — добавили
+ * шестое, дописали строку здесь, и промпт трогать не нужно.
+ *
+ * Зачем вообще: до §214 «не сверено» тащило два смысла, и модель честно не
+ * могла отличить «не разобрали» от «не делал» — владелец поймал это на живой
+ * работе, где задания 6 и 9 ученик не делал, а комментарий сообщил, что они
+ * «выполнены с ошибками». Теперь значения два, и каждое названо словами:
+ * догадываться модели больше не о чем.
+ */
+export const VERDICT_MEANING: Record<RewriteVerdict, string> = {
+  correct: 'задание выполнено верно',
+  wrong: 'ответ не совпал с правильным',
+  partial: 'засчитано частично: ответ верный, но решение неполное',
+  unchecked: 'преподаватель это задание ещё не сверял — про него ничего не известно, ошибкой это НЕ считается',
+  unsolved: 'ученик задание не делал, решения нет вовсе; это не ошибка в решении, а несделанная работа',
+}
 
 /**
  * ПОЛЯ, КОТОРЫЕ УЕЗЖАЮТ В МОДЕЛЬ. Список намеренно короткий и назван здесь
@@ -52,6 +76,7 @@ export interface RewriteSummary {
   wrong: number
   partial: number
   unchecked: number
+  unsolved: number
   total: number
 }
 
@@ -65,6 +90,8 @@ export interface RewriteModelTask {
 }
 
 export interface RewriteModelInput {
+  /** §214. Что значит каждый статус — словами, рядом с самими статусами. */
+  verdict_meaning: Record<string, string>
   homework: string | null
   topic: string | null
   grade_scale: 'five' | 'hundred' | null
@@ -116,7 +143,7 @@ export function taskKey(raw: unknown): string {
 }
 
 export function summarize(tasks: readonly { verdict: RewriteVerdict }[]): RewriteSummary {
-  const summary: RewriteSummary = { correct: 0, wrong: 0, partial: 0, unchecked: 0, total: tasks.length }
+  const summary: RewriteSummary = { correct: 0, wrong: 0, partial: 0, unchecked: 0, unsolved: 0, total: tasks.length }
   for (const task of tasks) summary[task.verdict] += 1
   return summary
 }
@@ -184,7 +211,17 @@ export function buildModelInput(source: RewriteSource): RewriteModelInput {
     if (!known.has(key)) general.push(...bucket)
   }
 
+  // Расшифровываем только те статусы, которые на этой работе встретились:
+  // словарь на пять строк там, где в таблице два значения, — платные токены
+  // за то, чего модель всё равно не увидит.
+  const used = new Set(tasks.map(task => task.verdict))
+  const meaning: Record<string, string> = {}
+  for (const verdict of REWRITE_VERDICTS) {
+    if (used.has(verdict)) meaning[verdict] = VERDICT_MEANING[verdict]
+  }
+
   return {
+    verdict_meaning: meaning,
     homework: text(source.homeworkTitle, MAX_TITLE_CHARS) || null,
     topic: text(source.topicTitle, MAX_TITLE_CHARS) || null,
     grade_scale: source.gradeScale === 'five' || source.gradeScale === 'hundred' ? source.gradeScale : null,

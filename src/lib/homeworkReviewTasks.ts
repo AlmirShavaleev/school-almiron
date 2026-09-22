@@ -13,10 +13,25 @@
  * месте на клиент, и менять её нужно вместе с функцией.
  */
 
-import type { AiTaskRow, AiTaskVerdict, AiTasksSummary } from './aiHomeworkCheck'
+import { TASK_VERDICT_LABEL, type AiTaskRow, type AiTaskVerdict, type AiTasksSummary } from './aiHomeworkCheck'
 import type { GradeScale } from './topicHomework'
 
-export type ReviewTaskVerdict = AiTaskVerdict
+/**
+ * §214. Вердикт преподавателя — ПЯТЬ значений, у ИИ их по-прежнему четыре.
+ *
+ * До §214 это был псевдоним `AiTaskVerdict`, и «не сверено» тащило два разных
+ * смысла: «ИИ не смогла сверить — надо посмотреть глазами» и «ученик не
+ * решал — надо садиться и делать». Для преподавателя это разные действия, для
+ * ученика — разные комментарии, а переписывание комментария (§213) физически
+ * не могло их отличить: владелец поймал это на живой работе, где задания 6 и
+ * 9 ученик не делал, а комментарий сообщил, что они «выполнены с ошибками».
+ *
+ * Типы разошлись НАМЕРЕННО, и это главное в §214. `AiTaskVerdict` остался
+ * четырёхзначным, поэтому `unsolved` не может прийти из ответа модели ни
+ * через `aiTasksOf`, ни через перенос находок: «не решено» ставит человек.
+ * Учить этому различию саму проверку — отдельная работа, после §220.
+ */
+export type ReviewTaskVerdict = AiTaskVerdict | 'unsolved'
 
 /** Строка таблицы проверки, как она лежит в `topic_homework_review_tasks`. */
 export interface ReviewTaskRow {
@@ -45,7 +60,23 @@ export const REVIEW_TASK_VERDICTS: readonly ReviewTaskVerdict[] = [
   'wrong',
   'partial',
   'unchecked',
+  'unsolved',
 ]
+
+/**
+ * §214. Слова вердиктов на всю пятёрку — их показывают три места сразу:
+ * таблица проверки, разбор у ученика и последняя страница PDF. Собрано из
+ * четвёрки ИИ (`TASK_VERDICT_LABEL`), чтобы «верно» и «частично» не
+ * разъехались между экранами при первой же правке.
+ *
+ * «Не решено» против «не сверено»: у первого решения нет вовсе, у второго оно
+ * есть, но не сверено. Слова выбраны так, чтобы разницу было видно в списке,
+ * не читая подсказку.
+ */
+export const REVIEW_TASK_VERDICT_LABEL: Record<ReviewTaskVerdict, string> = {
+  ...TASK_VERDICT_LABEL,
+  unsolved: 'не решено',
+}
 
 /**
  * Порядок строк — `position`, а при равных — номер задания по-человечески:
@@ -65,9 +96,19 @@ export function compareTaskNo(a: string, b: string): number {
   return String(a).localeCompare(String(b), 'ru')
 }
 
+/**
+ * §214. Сводка по таблице преподавателя — своя, с пятым счётчиком.
+ *
+ * `AiTasksSummary` остался четырёхзначным: у слепка модели пятого значения
+ * нет и не будет, и лишний вечный ноль в нём только сбивал бы с толку.
+ */
+export interface ReviewTasksSummary extends AiTasksSummary {
+  unsolved: number
+}
+
 /** Сводка по вердиктам — она же объяснение балла. */
-export function summarizeReviewTasks(rows: readonly { verdict: ReviewTaskVerdict }[]): AiTasksSummary {
-  const summary: AiTasksSummary = { correct: 0, wrong: 0, partial: 0, unchecked: 0, total: rows.length }
+export function summarizeReviewTasks(rows: readonly { verdict: ReviewTaskVerdict }[]): ReviewTasksSummary {
+  const summary: ReviewTasksSummary = { correct: 0, wrong: 0, partial: 0, unchecked: 0, unsolved: 0, total: rows.length }
   for (const row of rows) summary[row.verdict] += 1
   return summary
 }
@@ -85,7 +126,7 @@ export function fiveFromRatio(ratio: number): number {
 }
 
 export interface ReviewTaskScore {
-  /** Заданий в знаменателе: всё, кроме `unchecked`. */
+  /** Заданий в знаменателе: всё, кроме `unchecked` (§214: `unsolved` входит). */
   counted: number
   /** Доля верных с учётом половинок; null — считать не по чему. */
   ratio: number | null
@@ -95,7 +136,23 @@ export interface ReviewTaskScore {
 
 /**
  * Балл из таблицы преподавателя: `(correct + 0,5·partial) / (всего −
- * unchecked)` → шкала. `unchecked` не считаются ни за, ни против.
+ * unchecked)` → шкала.
+ *
+ * §214. Кто в знаменателе, а кто нет, — тут вся разница между двумя «не»:
+ *
+ *  * `unchecked` («не сверено») из знаменателя ВЫКИНУТ: про это задание мы
+ *    просто ничего не знаем, и считать незнание ошибкой нельзя. Балл от него
+ *    не падает — так было и до §214;
+ *  * `unsolved` («не решено») считается как `wrong` — входит в знаменатель с
+ *    нулём. Задание не сделано, и это не незнание проверяющего, а факт
+ *    работы.
+ *
+ * Практическое следствие, о котором надо знать заранее: как только
+ * преподаватель переставит строку с «не сверено» на «не решено»,
+ * рекомендуемый балл УПАДЁТ. На работе из харнесса (13 верных, 2 неверных, 1
+ * частично, 5 не сверено) сейчас выходит 4; если те же пять станут «не
+ * решено» — 3. Это не побочный эффект, а то, ради чего значение и заводилось,
+ * но увидеть его человек должен не задним числом.
  *
  * Пустая таблица и таблица из одних `unchecked` дают `null`, а не 0: ноль
  * вслепую хуже отсутствия балла (§149) — преподаватель должен поставить его
@@ -106,7 +163,7 @@ export function reviewTasksScore(
   scale: GradeScale | null,
 ): ReviewTaskScore {
   const summary = summarizeReviewTasks(rows)
-  const counted = summary.correct + summary.partial + summary.wrong
+  const counted = summary.correct + summary.partial + summary.wrong + summary.unsolved
   if (counted === 0 || scale == null) return { counted, ratio: null, score: null }
   const ratio = (summary.correct + 0.5 * summary.partial) / counted
   const score = scale === 'five' ? fiveFromRatio(ratio) : Math.round(ratio * 100)

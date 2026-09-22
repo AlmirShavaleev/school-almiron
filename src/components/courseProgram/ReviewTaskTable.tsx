@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleSlash,
   HelpCircle,
   Loader2,
   MinusCircle,
@@ -21,18 +22,16 @@ import {
   referenceNotice,
   shouldShowScore,
   summarizeTasks,
-  TASK_VERDICT_LABEL,
   taskNoOfFinding,
   worksheetNotice,
   aiErrorMessage,
   type AiFindingRow,
   type AiJobRow,
   type AiTaskRow,
-  type AiTasksSummary,
-  type AiTaskVerdict,
 } from '@/lib/aiHomeworkCheck'
 import {
   REVIEW_TASK_VERDICTS,
+  REVIEW_TASK_VERDICT_LABEL,
   aiCheckIsNewerThanTable,
   filterReviewTasks,
   reviewTasksScore,
@@ -42,6 +41,7 @@ import {
   type ReviewTaskPatch,
   type ReviewTaskRow,
   type ReviewTaskVerdict,
+  type ReviewTasksSummary,
 } from '@/lib/homeworkReviewTasks'
 import {
   VERDICT_CONFLICT_LABEL,
@@ -71,11 +71,19 @@ import { cn } from '@/utils/cn'
  * остались там, где выбирают, — в списке вердиктов и в подсказке под знаком
  * вопроса, так что неразличающий цвет человек их по-прежнему получает.
  */
-const VERDICT_STYLE: Record<AiTaskVerdict, { icon: typeof CheckCircle2; className: string; tone: string }> = {
+const VERDICT_STYLE: Record<ReviewTaskVerdict, { icon: typeof CheckCircle2; className: string; tone: string }> = {
   correct: { icon: CheckCircle2, className: 'text-emerald-700 bg-emerald-50 border-emerald-200', tone: 'text-emerald-600' },
   wrong: { icon: XCircle, className: 'text-red-700 bg-red-50 border-red-200', tone: 'text-red-600' },
   partial: { icon: MinusCircle, className: 'text-amber-700 bg-amber-50 border-amber-200', tone: 'text-amber-600' },
   unchecked: { icon: HelpCircle, className: 'text-gray-600 bg-gray-100 border-gray-200', tone: 'text-gray-400' },
+  /*
+   * §214. «Не решено» — не оттенок «не сверено», а другое состояние, и
+   * отличаться оно обязано на глаз, а не по подписи: значок перечёркнутого
+   * круга («решения нет») и свой цвет. Серый занят «не сверено», красный —
+   * «неверно», янтарный — «частично»; синий свободен и читается как
+   * «замечание к работе», а не как ошибка ученика в ответе.
+   */
+  unsolved: { icon: CircleSlash, className: 'text-sky-700 bg-sky-50 border-sky-200', tone: 'text-sky-600' },
 }
 
 /** §209. Одна клавиша — один вердикт. Мнемоника названа в подсказке. */
@@ -84,6 +92,8 @@ const VERDICT_KEYS: Record<string, ReviewTaskVerdict> = {
   '2': 'wrong',
   '3': 'partial',
   '4': 'unchecked',
+  // §214. Пятая в тот же ряд: порядок клавиш повторяет порядок в списке.
+  '5': 'unsolved',
 }
 
 const NO_ROWS: ReviewTaskRow[] = []
@@ -215,7 +225,12 @@ export function ReviewTaskTable({
    * пересчёт по той же формуле, что у ИИ (§180). Слепок ИИ — его собственный
    * балл и его же правило молчания (`shouldShowScore`).
    */
-  const summary = rows.length > 0 ? summarizeReviewTasks(rows) : aiSummary
+  // §214. У слепка модели пятого вердикта нет и быть не может, поэтому в
+  // режиме «показываем ИИ» счётчик «не решено» стоит нулём — и кнопка с нулём
+  // выключена ровно тем же правилом, что и остальные.
+  const summary: ReviewTasksSummary | null = rows.length > 0
+    ? summarizeReviewTasks(rows)
+    : (aiSummary ? { ...aiSummary, unsolved: 0 } : null)
   const sectionScore = rows.length > 0
     ? tableScore.score
     : (job && shouldShowScore(job) ? job.suggested_score : null)
@@ -544,10 +559,7 @@ function SaveMark({ state }: { state: ReviewTasksSaveState }) {
 }
 /** Подписи фильтров-счётчиков. Слово рядом с числом, как в макете. */
 const FILTER_LABEL: Record<ReviewTaskFilter, string> = {
-  correct: 'верно',
-  wrong: 'неверно',
-  partial: 'частично',
-  unchecked: 'не сверено',
+  ...REVIEW_TASK_VERDICT_LABEL,
   all: 'все',
 }
 
@@ -557,9 +569,11 @@ const FILTER_TONE: Record<ReviewTaskVerdict, string> = {
   wrong: 'text-red-700',
   partial: 'text-amber-700',
   unchecked: 'text-gray-600',
+  unsolved: 'text-sky-700',
 }
 
-const FILTER_KINDS: readonly ReviewTaskVerdict[] = ['correct', 'wrong', 'partial', 'unchecked']
+/** §214. Пятый счётчик — в том же порядке, что клавиши и список вердиктов. */
+const FILTER_KINDS: readonly ReviewTaskVerdict[] = REVIEW_TASK_VERDICTS
 
 /**
  * §212. Счётчики стали фильтрами.
@@ -581,7 +595,7 @@ function TaskFilters({
   filter,
   onFilter,
 }: {
-  summary: AiTasksSummary
+  summary: ReviewTasksSummary
   score: number | null
   filter: ReviewTaskFilter
   onFilter: (next: ReviewTaskFilter) => void
@@ -667,7 +681,7 @@ function TaskSection({
   rows: ReviewTaskRow[]
   aiTasks: AiTaskRow[] | null
   editable: boolean
-  summary: AiTasksSummary | null
+  summary: ReviewTasksSummary | null
   score: number | null
   notesOf: (row: ReviewTaskRow) => ReviewNote[]
   allNotes: readonly ReviewNote[]
@@ -924,11 +938,17 @@ function TaskSection({
   )
 }
 
-/** Строка таблицы проверки в виде строки слепка — для чтения. */
+/**
+ * Строка таблицы проверки в виде строки слепка — для чтения.
+ *
+ * §214. У слепка модели вердиктов четыре, и «не решено» среди них нет: для
+ * чтения такая строка показывается как «не сверено». Значение при этом не
+ * трогается — `asAiTask` только отдаёт вид, а не правит таблицу.
+ */
 function asAiTask(row: ReviewTaskRow): AiTaskRow {
   return {
     no: row.no,
-    verdict: row.verdict,
+    verdict: row.verdict === 'unsolved' ? 'unchecked' : row.verdict,
     student_answer: row.student_answer ?? '',
     expected_answer: row.expected_answer ?? '',
     note: row.note ?? '',
@@ -979,7 +999,7 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
           className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium', style.className)}
         >
           <Icon size={11} className="shrink-0" />
-          {TASK_VERDICT_LABEL[task.verdict]}
+          {REVIEW_TASK_VERDICT_LABEL[task.verdict]}
         </span>
         <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-500">{task.no}</span>
         <Answers student={task.student_answer} expected={task.expected_answer} className="flex-1" />
@@ -1126,7 +1146,7 @@ function VerdictPicker({
               )}
             >
               <OptionIcon size={11} className={cn('shrink-0', option.tone)} />
-              {TASK_VERDICT_LABEL[value]}
+              {REVIEW_TASK_VERDICT_LABEL[value]}
             </button>
           </li>
         )
@@ -1143,8 +1163,8 @@ function VerdictPicker({
         data-value={verdict}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Вердикт задания ${no}: ${TASK_VERDICT_LABEL[verdict]}`}
-        title={`${TASK_VERDICT_LABEL[verdict]} — нажмите, чтобы сменить`}
+        aria-label={`Вердикт задания ${no}: ${REVIEW_TASK_VERDICT_LABEL[verdict]}`}
+        title={`${REVIEW_TASK_VERDICT_LABEL[verdict]} — нажмите, чтобы сменить`}
         onClick={() => setOpen(value => !value)}
         className={cn(
           'flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-gray-100',
