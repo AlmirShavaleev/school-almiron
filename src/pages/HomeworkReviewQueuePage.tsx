@@ -976,6 +976,10 @@ export function HomeworkReviewQueuePage() {
               // вердикт этой попытке база не примет, а пустой карточки без
               // объяснения хватило бы, чтобы решить, что экран сломан.
               disabledReason={verdictKind === 'blocked' ? newerAttemptReason(reviewing.row) : null}
+              // §213. Переписывать комментарий есть из чего только при
+              // непустой таблице. Строки уже прочитаны — второй запрос ради
+              // одной кнопки не нужен.
+              canRewriteComment={reviewTasks.rows.length > 0}
               above={
                 <>
                 {/* Пересданная работа: прошлый вердикт выше формы — иначе

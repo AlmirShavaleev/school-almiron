@@ -57,6 +57,11 @@ const moveReviewSplitLeft = `(() => { const h = document.querySelector('[data-te
 // колонка целиком (форма вердикта вернулась в поток, за таблицу), поэтому и
 // свиток теперь колонкин, а не таблицын.
 const scrollTableDown = `(() => { const el = document.querySelector('[data-testid="review-side-scroll-area"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
+// §213 (board/064): кнопка «Переписать по таблице» стоит у поля комментария —
+// это низ третьей колонки, до него надо домотать.
+const toRewriteButton = `document.querySelector('[data-testid="review-rewrite-button"]')?.scrollIntoView({ block: 'center' })`
+// §213: и предложение, и поле под ним должны попасть в кадр целиком.
+const toRewriteSuggestion = `document.querySelector('[data-testid="review-rewrite-suggestion"]')?.scrollIntoView({ block: 'center' })`
 // §211 (board/062): страница, снятая боком, — вторая в первой работе очереди.
 const toSidewaysPage = `document.querySelector('[data-testid="review-page-2"]')?.scrollIntoView({ block: 'center' })`
 // §211: доворот той же страницы кнопкой у её угла — ровно то, что делает рукой
@@ -334,6 +339,15 @@ export const scenes = [
   ...[[1280, 800], [1440, 900]].map(([width, height]) => (
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
+
+  // ── §213 (board/064): «Переписать по таблице» ──
+  // Пара до/после: кнопка у поля комментария и результат ПРЕДЛОЖЕНИЕМ над
+  // полем. На «после» видно главное: в поле остался текст преподавателя, а
+  // предложение ждёт «Вставить» или «Отмена».
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o06-rewrite-button', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { fill: ['[data-testid="review-comment-input"]', 'Мой черновик комментария — его нельзя затирать молча.'] }, { wait: 300 }, { eval: toRewriteButton }, { wait: 500 }], full: false },
+    { persona: 'owner', name: 'o06-rewrite-suggestion', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { fill: ['[data-testid="review-comment-input"]', 'Мой черновик комментария — его нельзя затирать молча.'] }, { wait: 300 }, { clickSel: '[data-testid="review-rewrite-button"]' }, { wait: 1200 }, { eval: toRewriteSuggestion }, { wait: 500 }], full: false },
+  ]),
 
   // ── §211 (board/062): поворот страницы, «по ширине», вердикт в потоке ──
   // Пары до/после на одной и той же странице: вторая страница первой работы

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Check, ChevronDown, ChevronRight, Loader2, Paperclip, RotateCcw, Users } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, Paperclip, RotateCcw, Sparkles, Users } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { HintNote } from '@/components/shared/HintNote'
 import { useAutoGrowTextarea } from '@/hooks/useAutoGrowTextarea'
 import { COMMENT_ROWS } from '@/lib/reviewCommentBox'
+import { rewriteCommentByTable } from '@/lib/rewriteComment'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
@@ -55,6 +56,7 @@ export function ReviewActions({
   tableScore,
   fillRequest,
   disabledReason,
+  canRewriteComment = false,
   columnLayout = false,
 }: {
   attempt: TopicHomeworkAttemptRow
@@ -93,6 +95,16 @@ export function ReviewActions({
    */
   fillRequest?: { comment?: string; score?: number | null } | null
   /**
+   * §213. Есть ли из чего переписывать комментарий — то есть непустая ли
+   * таблица проверки. Считает вызывающий: таблицу он уже прочитал, и второй
+   * запрос ради одной кнопки не нужен.
+   *
+   * Проп, а не безусловная кнопка: в карточке ученика на странице темы
+   * таблицы рядом нет вовсе, и кнопка, которая заведомо ответит «переписывать
+   * не из чего», там была бы обещанием без содержания.
+   */
+  canRewriteComment?: boolean
+  /**
    * §210 / §211. Форма стоит в своей колонке (экран проверки), а не в потоке
    * под работой.
    *
@@ -116,6 +128,28 @@ export function ReviewActions({
   const [error, setError] = useState<string | null>(null)
   /** Балл введён руками — дальше таблица его не трогает. */
   const [scoreByHand, setScoreByHand] = useState(false)
+  /**
+   * §213. «Переписать по таблице». Результат живёт ПРЕДЛОЖЕНИЕМ, а не сразу в
+   * поле: в поле лежит текст преподавателя, и затирать его молча нельзя —
+   * даже если он сам нажал кнопку, он мог нажать её, уже дописав своё.
+   */
+  const [rewriting, setRewriting] = useState(false)
+  const [suggestion, setSuggestion] = useState<string | null>(null)
+  const [rewriteError, setRewriteError] = useState<string | null>(null)
+
+  async function rewriteComment() {
+    setRewriting(true)
+    setRewriteError(null)
+    setSuggestion(null)
+    try {
+      const result = await rewriteCommentByTable(attempt.id)
+      setSuggestion(result.text)
+    } catch (e: any) {
+      setRewriteError(e?.message ?? 'Не удалось переписать комментарий')
+    } finally {
+      setRewriting(false)
+    }
+  }
 
   useEffect(() => {
     if (!fillRequest) return
@@ -190,6 +224,66 @@ export function ReviewActions({
         >
           {disabledReason}
         </p>
+      )}
+      {/*
+        §213. «Переписать по таблице». Комментарий ИИ пишет сразу после
+        проверки, по своей таблице; преподаватель потом эту таблицу правит —
+        и комментарий начинает ей противоречить: в нём «задания 3 и 5 не
+        совпадают с эталоном», а в таблице они уже верные. Кнопка просит
+        модель написать текст заново, по исправленным данным.
+      */}
+      {canRewriteComment && !blocked && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Button
+            data-testid="review-rewrite-button"
+            size="sm"
+            variant="secondary"
+            onClick={() => { void rewriteComment() }}
+            disabled={rewriting}
+          >
+            {rewriting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {rewriting ? 'Пишу…' : 'Переписать по таблице'}
+          </Button>
+          <span className="text-xs text-gray-500">по исправленной таблице заданий</span>
+        </div>
+      )}
+      {/*
+        Отказ показываем рядом с кнопкой и НЕ трогаем поле: человек в этот
+        момент, возможно, уже что-то написал.
+      */}
+      {rewriteError && (
+        <div data-testid="review-rewrite-error" className="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+          {rewriteError}
+        </div>
+      )}
+      {suggestion != null && (
+        <div
+          data-testid="review-rewrite-suggestion"
+          className="mb-2 rounded-xl border border-violet-200 bg-violet-50/70 p-2.5"
+        >
+          <div className="mb-1.5 text-xs font-semibold text-violet-900">Предложение по таблице</div>
+          <p data-testid="review-rewrite-suggestion-text" className="whitespace-pre-line text-sm text-gray-800">
+            {suggestion}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              data-testid="review-rewrite-apply"
+              size="sm"
+              variant="primary"
+              onClick={() => { setComment(suggestion); setSuggestion(null) }}
+            >
+              Вставить
+            </Button>
+            <Button
+              data-testid="review-rewrite-cancel"
+              size="sm"
+              variant="secondary"
+              onClick={() => setSuggestion(null)}
+            >
+              Отмена
+            </Button>
+          </div>
+        </div>
       )}
       {/*
         §208. Шесть строк вместо двух и рост под содержимое: в это поле
