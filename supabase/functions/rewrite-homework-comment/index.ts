@@ -48,7 +48,7 @@ const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
  * Недорогая текстовая модель по умолчанию: читать почерк здесь не надо, и
  * платить за зрительную модель не за что.
  */
-const DEFAULT_MODEL = 'qwen/qwen3-30b-a3b-instruct'
+const DEFAULT_MODEL = 'qwen/qwen3-30b-a3b-instruct-2507'
 const MAX_TOKENS = 500
 
 const CORS = {
