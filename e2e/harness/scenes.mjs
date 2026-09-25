@@ -35,6 +35,18 @@ const pasteMockSample = `(() => {
   td.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
 })()`
 const toMockReport = `document.querySelector('[data-testid="mock-grid-report"]')?.scrollIntoView({ block: 'start' })`
+// §219. Прокрутка таблицы вправо до столбца «Ученику» (на 390 он не
+// закреплён) и к полосе «Уведомить всех» под таблицей.
+const toMockNotifyCol = `(() => {
+  const sc = document.querySelector('[data-testid="mock-grid-scroll"]')
+  if (sc) sc.scrollLeft = sc.scrollWidth
+})()`
+const toMockNotifyBar = `document.querySelector('[data-testid="mock-grid-notify-bar"]')?.scrollIntoView({ block: 'center' })`
+// «Уведомить» у Абрамовой — первая строка, итог не отправлялся.
+const clickFirstNotify = `(() => {
+  const b = [...document.querySelectorAll('[data-testid="mock-grid-notify"]')].find(x => !x.disabled)
+  b?.click()
+})()`
 // Красная клетка: Абрамова, №14 = 4 при максимуме 3 — и «Сохранить».
 const typeMockOver = `(() => {
   const input = document.getElementById('mx-c-0-13')
@@ -387,6 +399,18 @@ export const scenes = [
     { persona: 'owner', name: 'o15-mock-paste', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: pasteMockSample }, { wait: 500 }, { eval: toMockReport }, { wait: 300 }] },
     { persona: 'owner', name: 'o15-mock-red', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: typeMockOver }, { wait: 500 }] },
     { persona: 'owner', name: 'o15-mock-template', url: '/mock-exams/templates', width, height, actions: [{ wait: 1000 }] },
+  ]),
+
+  // ── §219 (071): уведомление кнопкой ──
+  // Строки: «Уведомить» (итог не отправлялся), «отправлено …» (Каримова),
+  // «итог изменён после отправки» (Никитина), недоступная кнопка у тех, у
+  // кого итога нет. Затем — нажата «Уведомить» в строке, и подтверждение
+  // «Уведомить всех» внутри страницы. Сцены пишут в фикстуры — гонять по
+  // ширине отдельным процессом (README, §211).
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o15-mock-notify-rows', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: toMockNotifyCol }, { wait: 300 }] },
+    { persona: 'owner', name: 'o15-mock-notify-sent', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: toMockNotifyCol }, { eval: clickFirstNotify }, { wait: 700 }] },
+    { persona: 'owner', name: 'o15-mock-notify-all', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid="mock-grid-notify-all"]' }, { wait: 400 }, { eval: toMockNotifyBar }, { wait: 300 }] },
   ]),
 
   // ── §214 (board/066): пятый вердикт «не решено» ──

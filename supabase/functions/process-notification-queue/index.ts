@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildLinkButton,
+  buildMockExamResultTelegramMessage,
   buildVariantAssignedTelegramMessage,
   buildVariantDeadlineTelegramMessage,
   classifyTelegramError,
@@ -333,6 +334,11 @@ function buildMessage(item: QueueItem, appUrl: string) {
       }, appUrl)
       return { text, replyMarkup }
     }
+
+    // §219. Результат пробника по кнопке «Уведомить» — сборка текста в
+    // `_shared/variant-telegram.ts`, там же и тест.
+    case 'mock_exam_result':
+      return buildMockExamResultTelegramMessage(p)
 
     default:
       return {

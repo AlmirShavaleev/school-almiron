@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Loader2, Save } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, Loader2, Save, Send } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDate } from '@/utils/format'
@@ -20,6 +20,7 @@ import {
   type Grid,
   type PasteReport,
 } from '@/lib/mockExamGrid'
+import { canNotify, formatSentAt, notifyState, pendingRecipients, type NotifyState, type NotifySummary } from '@/lib/mockExamNotify'
 
 /**
  * §218. Пробник по номерам заданий — таблица как в Excel.
@@ -33,7 +34,9 @@ import {
  *     под таблицей, и его строка не вставлена никуда;
  *  2. сохранение — всё или ничего: хоть одна красная клетка — не пишем
  *     ничего, в базе задания и итоги пишутся одной транзакцией;
- *  3. уведомление ученику — только если его итог появился или изменился.
+ *  3. сохранение — черновик (§219): никто ничего не получает. Ученику
+ *     уходит его результат только по кнопке — «Уведомить» в строке или
+ *     «Уведомить всех» внизу, и один и тот же итог дважды не уходит.
  */
 
 const HEAT = [
@@ -52,11 +55,17 @@ const cellId = (s: number, t: number) => `mx-c-${s}-${t}`
  * Ширина фиксированная, иначе смещения `right` не сходятся.
  */
 const TOT_W = 'w-[66px] min-w-[66px] max-w-[66px] overflow-hidden'
-const TOT_STICKY = ['sm:sticky sm:right-[198px]', 'sm:sticky sm:right-[132px]', 'sm:sticky sm:right-[66px]', 'sm:sticky sm:right-0'] as const
+/**
+ * §219. Самый правый столбец — «Уведомить» (владелец: «справа кнопка
+ * нужна»). Закреплён вместе с итогами, итоги сдвинуты на его ширину.
+ */
+const NOTE_W = 'w-[104px] min-w-[104px] max-w-[104px]'
+const NOTE_STICKY = 'sm:sticky sm:right-0'
+const TOT_STICKY = ['sm:sticky sm:right-[302px]', 'sm:sticky sm:right-[236px]', 'sm:sticky sm:right-[170px]', 'sm:sticky sm:right-[104px]'] as const
 
 export function MockExamGridPage() {
   const { id } = useParams<{ id: string }>()
-  const { exam, students, points, loading, error, save } = useMockExamGrid(id)
+  const { exam, students, points, results, resultsError, loading, error, save, notify } = useMockExamGrid(id)
   const template = exam?.template ?? null
   const maxPts = template?.max_points ?? []
   const p1End = template?.part1_last ?? 0
@@ -76,12 +85,26 @@ export function MockExamGridPage() {
   const [report, setReport] = useState<PasteReport | { mode: 'cleared' } | null>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  /** Кому сейчас уходит уведомление: id ученика, 'all' или никому. */
+  const [sending, setSending] = useState<string | 'all' | null>(null)
+  /** Открыто подтверждение «Отправить N ученикам?» (внутри страницы, без confirm()). */
+  const [confirmAll, setConfirmAll] = useState(false)
 
   const totals = useMemo(() => grid.map(r => rowTotals(r, maxPts, p1End, template?.score_scale)), [grid, maxPts, p1End, template])
   const stats = useMemo(() => taskStats(grid, maxPts), [grid, maxPts])
   const avg = useMemo(() => averageTotals(totals), [totals])
   const maxPrimary = maxPts.reduce((a, b) => a + b, 0)
   const dirty = useMemo(() => JSON.stringify(gridToPoints(grid)) !== JSON.stringify(points) || gridErrors(grid).length > 0, [grid, points])
+  // Строка, в которой есть несохранённое: уведомление ушло бы с СОХРАНЁННЫМ
+  // итогом, а на экране стоит другой — кнопку в такой строке гасим.
+  const dirtyRows = useMemo(() => {
+    const now = gridToPoints(grid)
+    return new Set(grid.map((row, s) => (row.some(c => c.err) || JSON.stringify(now[s]) !== JSON.stringify(points[s] ?? null) ? s : -1)).filter(s => s >= 0))
+  }, [grid, points])
+  const states = useMemo(() => students.map(st => notifyState(results[st.id])), [students, results])
+  const pending = useMemo(() => pendingRecipients(students, results), [students, results])
+  const withTotal = states.filter(x => x.kind !== 'none').length
+  const alreadySent = states.filter(x => x.kind === 'sent').length
 
   // Ссылка на актуальную таблицу для обработчика вставки на документе.
   const gridRef = useRef(grid)
@@ -169,13 +192,24 @@ export function MockExamGridPage() {
       return
     }
     setSaving(true)
-    const { error: err, notified } = await save(gridToPoints(grid))
+    const { error: err } = await save(gridToPoints(grid))
     setSaving(false)
     if (err) { setStatus({ kind: 'error', text: `Не сохранено: ${err}` }); return }
     setUndo(null)
     setReport(null)
     setGrid(null)
-    setStatus({ kind: 'ok', text: notified ? `Сохранено. Уведомлено учеников: ${notified} — у них итог появился или изменился.` : 'Сохранено. Итоги ни у кого не изменились — уведомлений нет.' })
+    setConfirmAll(false)
+    setStatus({ kind: 'ok', text: 'Сохранено. Ученики ничего не получили — это черновик. Отправить результат: «Уведомить» в строке или «Уведомить всех» под таблицей.' })
+  }
+
+  async function onNotify(target: string | 'all') {
+    setSending(target)
+    setStatus(null)
+    const { error: err, summary } = await notify(target === 'all' ? null : [target])
+    setSending(null)
+    setConfirmAll(false)
+    if (err) { setStatus({ kind: 'error', text: `Не отправлено: ${err}` }); return }
+    setStatus({ kind: 'ok', text: sentText(summary, target === 'all' ? null : students.find(s => s.id === target)?.name ?? null) })
   }
 
   if (loading) {
@@ -246,6 +280,7 @@ export function MockExamGridPage() {
               {['1 часть', '2 часть', 'Первичный', 'Тестовый'].map((h, k) => (
                 <th key={h} scope="col" className={cn('sticky top-0 z-30 border-b border-r border-slate-200 bg-white px-0.5 text-[11px] font-normal leading-tight text-graphite-500', TOT_W, TOT_STICKY[k], k === 0 && 'border-l-2 border-l-graphite-400')}>{h}</th>
               ))}
+              <th scope="col" className={cn('sticky top-0 z-30 border-b border-slate-200 bg-white px-1 text-[11px] font-normal leading-tight text-graphite-500', NOTE_W, NOTE_STICKY)}>Ученику</th>
             </tr>
           </thead>
           <tbody>
@@ -301,6 +336,17 @@ export function MockExamGridPage() {
                   <td className={cn('z-10 border-b border-r border-slate-200 bg-white font-mono text-sm', TOT_W, TOT_STICKY[1])}>{tot?.p2 ?? ''}</td>
                   <td className={cn('z-10 border-b border-r border-slate-200 bg-white font-mono text-sm font-bold', TOT_W, TOT_STICKY[2])} data-testid="mock-grid-primary">{tot?.primary ?? ''}</td>
                   <td className={cn('z-10 border-b border-r border-slate-200 bg-white font-mono text-sm font-bold', TOT_W, TOT_STICKY[3])} data-testid="mock-grid-test">{tot ? (tot.test ?? '—') : ''}</td>
+                  <td className={cn('z-10 border-b border-slate-200 bg-white px-1 py-0.5 text-left', NOTE_W, NOTE_STICKY)} data-testid="mock-grid-notify-cell">
+                    <NotifyCell
+                      state={states[s]}
+                      unavailable={resultsError != null}
+                      dirty={dirtyRows.has(s)}
+                      noProfile={!students[s].profileId}
+                      busy={sending === students[s].id || sending === 'all'}
+                      disabled={sending != null}
+                      onClick={() => onNotify(students[s].id)}
+                    />
+                  </td>
                 </tr>
               )
             })}
@@ -325,6 +371,9 @@ export function MockExamGridPage() {
                   {avg && avg[k] != null ? `ср. ${avg[k]}` : '—'}
                 </td>
               ))}
+              <td className={cn('sticky bottom-0 z-30 border-t-2 border-slate-200 border-t-graphite-400 bg-white px-1 py-1.5 text-left text-[11px] leading-tight text-graphite-500', NOTE_W, NOTE_STICKY)}>
+                {withTotal ? `отпр. ${alreadySent} из ${withTotal}` : ''}
+              </td>
             </tr>
           </tfoot>
         </table>
@@ -338,6 +387,47 @@ export function MockExamGridPage() {
         <Legend cls="bg-white shadow-[inset_0_0_0_2px_theme(colors.red.500)]">балл выше максимума или не число</Legend>
         <span>Пустая клетка — нет данных, 0 — решал и не получил. Заполнено строк: {filledCount} из {roster.length}.</span>
       </div>
+
+      <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="mock-grid-notify-bar">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-[16rem] flex-1 text-sm text-graphite-600">
+            <b className="text-graphite-900">Результат ученикам.</b>{' '}
+            {resultsError
+              ? <>Не удалось прочитать, кому что отправлено ({resultsError}) — отправка недоступна.</>
+              : <>Итог сохранён у {withTotal} из {roster.length} · уже отправлено {alreadySent} · ждут отправки {pending.length}. Уходит на сайт и в Telegram, если ученик его подключил; в тексте — итог и части, без баллов по заданиям.</>}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => { setConfirmAll(true); setStatus(null) }}
+            disabled={resultsError != null || pending.length === 0 || dirty || sending != null}
+            title={dirty ? 'Сначала сохраните таблицу — отправляется сохранённый итог' : pending.length === 0 ? 'Отправлять некому: всем, у кого есть итог, он уже отправлен' : undefined}
+            data-testid="mock-grid-notify-all"
+          >
+            <Send size={14} />Уведомить всех
+          </Button>
+        </div>
+        {dirty && !resultsError && pending.length > 0 && (
+          <p className="mt-2 text-xs text-amber-800" data-testid="mock-grid-notify-dirty">В таблице есть несохранённые правки — сначала «Сохранить»: отправляется сохранённый итог.</p>
+        )}
+        {confirmAll && (
+          <div className="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5" role="alertdialog" aria-labelledby="mock-notify-confirm-title" data-testid="mock-grid-notify-confirm">
+            <p id="mock-notify-confirm-title" className="text-sm font-semibold text-graphite-900">
+              Отправить {pending.length} {plural(pending.length, 'ученику', 'ученикам', 'ученикам')}?
+            </p>
+            <p className="mt-1 text-sm text-graphite-700">
+              Каждый получит только свой результат.
+              {alreadySent > 0 && ` Тем, кому этот итог уже отправлен (${alreadySent}), повторно не уйдёт.`}
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => onNotify('all')} loading={sending === 'all'} data-testid="mock-grid-notify-send">
+                <Send size={14} />Отправить
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setConfirmAll(false)} disabled={sending != null} data-testid="mock-grid-notify-cancel">Отмена</Button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {report && (
         <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" aria-live="polite" data-testid="mock-grid-report">
@@ -435,6 +525,80 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
       <Link to="/mock-exams" className="inline-flex items-center gap-1 text-sm text-graphite-500 hover:text-primary-700"><ArrowLeft size={14} />Пробники</Link>
       <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
       <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertCircle size={16} className="mt-0.5 shrink-0" />{children}</p>
+    </div>
+  )
+}
+
+/** Что сказать после отправки — по ответу базы, а не по тому, что ждали. */
+function sentText(r: NotifySummary | null, name: string | null): string {
+  if (!r) return 'Отправлено.'
+  if (r.sent === 0) {
+    if (r.already > 0) return name ? `${name}: этот итог уже отправлен — повторно не ушло.` : 'Никому не ушло: всем, у кого есть итог, он уже отправлен.'
+    if (r.no_result > 0) return 'Не отправлено: у ученика нет сохранённого итога.'
+    if (r.no_profile > 0) return 'Не отправлено: у ученика нет учётной записи.'
+    return 'Отправлять некому.'
+  }
+  const who = name ? `${name}: результат отправлен.` : `Отправлено ${r.sent} ${plural(r.sent, 'ученику', 'ученикам', 'ученикам')}.`
+  const tg = r.telegram > 0
+    ? ` В Telegram — ${r.sent === r.telegram && name ? 'тоже' : `${r.telegram} из ${r.sent}`}, в течение пяти минут.`
+    : ' Telegram не подключён — только на сайте.'
+  const skipped = r.already > 0 && !name ? ` Уже отправленный итог повторно не ушёл: ${r.already}.` : ''
+  return who + tg + skipped
+}
+
+/**
+ * Клетка «Ученику» в строке. Четыре состояния — из `notifyState`: итога нет
+ * (кнопка недоступна), итог не отправлялся, отправлен этот же итог (кнопки
+ * нет — повторно тот же итог не шлём), итог изменился после отправки
+ * (кнопка снова доступна и сказано почему).
+ */
+function NotifyCell({ state, unavailable, dirty, noProfile, busy, disabled, onClick }: {
+  state: NotifyState
+  unavailable: boolean
+  dirty: boolean
+  noProfile: boolean
+  busy: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  if (unavailable) return <span className="text-xs text-graphite-400">—</span>
+  if (state.kind === 'sent') {
+    return (
+      <span className="flex items-start gap-1 text-[11px] leading-tight text-emerald-800" data-testid="mock-grid-notified" title="Этот итог ученику уже отправлен">
+        <Check size={12} className="mt-px shrink-0" aria-hidden />
+        <span>отправлено {formatSentAt(state.at)}</span>
+      </span>
+    )
+  }
+  const reason = state.kind === 'none'
+    ? 'Нет сохранённого итога — отправлять нечего'
+    : dirty ? 'В строке несохранённые правки — сначала «Сохранить»'
+    : noProfile ? 'У ученика нет учётной записи'
+    : undefined
+  const off = !canNotify(state) || dirty || noProfile || disabled
+  return (
+    <div className="flex flex-col items-start">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={off}
+        title={reason}
+        data-testid="mock-grid-notify"
+        className={cn(
+          'inline-flex h-6 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+          off
+            ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-graphite-400'
+            : 'border-primary-200 bg-white text-primary-700 hover:bg-primary-50',
+        )}
+      >
+        {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} aria-hidden />}
+        Уведомить
+      </button>
+      {state.kind === 'changed' && (
+        <span className="mt-0.5 text-[10px] leading-tight text-amber-800" data-testid="mock-grid-notify-changed" title={`Отправлен ${formatSentAt(state.at)}, с тех пор итог изменился`}>
+          итог изменён после отправки
+        </span>
+      )}
     </div>
   )
 }

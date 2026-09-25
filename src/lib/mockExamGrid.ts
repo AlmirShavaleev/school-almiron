@@ -397,23 +397,3 @@ export function checkScale(scale: number[], maxPrimary: number): string | null {
   }
   return null
 }
-
-/* ─────────────────────────────── Уведомления ─────────────────────────── */
-
-export interface SavedTotal { student_id: string; old_score: number | null; score: number | null }
-
-/**
- * Кому слать «результат пробника» после сохранения: только тем, у кого итог
- * ПОЯВИЛСЯ или ИЗМЕНИЛСЯ. Раньше слалось всем заполненным строкам при каждом
- * сохранении — правка одной опечатки будила всю группу. Итог стёрли — не
- * шлём: «ваш результат удалён» никто не просил.
- *
- * Старое значение приходит ИЗ БАЗЫ, из той же транзакции, что записала
- * новое (`save_mock_exam_grid`), а не из памяти экрана: экран мог открыться
- * до того, как соседний преподаватель сохранил свою правку.
- */
-export function totalsToNotify(saved: SavedTotal[]): { student_id: string; score: number }[] {
-  return saved
-    .filter((r): r is SavedTotal & { score: number } => r.score != null && r.score !== r.old_score)
-    .map(r => ({ student_id: r.student_id, score: r.score }))
-}

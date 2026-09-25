@@ -193,6 +193,68 @@ export function buildVariantDeadlineTelegramMessage(
   }
 }
 
+/**
+ * §219. Результат пробника — производитель `notify_mock_exam_results` (SQL),
+ * по кнопке «Уведомить» / «Уведомить всех» на экране пробника. Числа
+ * приходят числами, но payload — jsonb, поэтому разбираем осторожно.
+ */
+export interface MockExamResultTelegramPayload {
+  title?: unknown
+  exam_date?: unknown
+  score?: unknown
+  max_score?: unknown
+  primary_score?: unknown
+  primary_max?: unknown
+  part1_score?: unknown
+  part1_max?: unknown
+  part2_score?: unknown
+  part2_max?: unknown
+}
+
+function intOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+export function buildMockExamResultTelegramMessage(payload: MockExamResultTelegramPayload) {
+  // Сквозные решения карточек (2026-08-03): исход в заголовке, к читателю не
+  // обращаемся, подробности одной строкой через «·», даты по-русски.
+  // Баллов по заданиям здесь нет намеренно (карточка 071): только итог и
+  // части. Кнопки нет: страницы «мои пробники» у ученика нет (§215, пункт
+  // меню закрыт) — вести кнопкой некуда.
+  const of = (v: number, max: number | null) => (max != null ? `${v} из ${max}` : `${v}`)
+  const score = intOrNull(payload.score)
+  const max = intOrNull(payload.max_score)
+  const primary = intOrNull(payload.primary_score)
+  const primaryMax = intOrNull(payload.primary_max)
+  const p1 = intOrNull(payload.part1_score)
+  const p2 = intOrNull(payload.part2_score)
+  const p1max = intOrNull(payload.part1_max)
+  const p2max = intOrNull(payload.part2_max)
+
+  const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : 'Пробник'
+  const day = payload.exam_date ? formatDay(payload.exam_date) : ''
+
+  const lines = [
+    score != null
+      ? `📊 <b>Результат пробника — ${escapeHtml(of(score, max))}</b>`
+      : `📊 <b>Результат пробника</b>`,
+    '',
+    `«${escapeHtml(title)}»` + (day ? ` · ${escapeHtml(day)}` : ''),
+  ]
+  const parts = [
+    p1 != null ? `1 часть — ${of(p1, p1max)}` : null,
+    p2 != null ? `2 часть — ${of(p2, p2max)}` : null,
+  ].filter(Boolean) as string[]
+  if (parts.length) lines.push(escapeHtml(parts.join(' · ')))
+  // С таблицей перевода итог — тестовый, а части — первичные: без строки
+  // «первичный» 10 + 8 рядом с «72» выглядело бы ошибкой.
+  if (primary != null && primary !== score) lines.push(`Первичный балл — ${escapeHtml(of(primary, primaryMax))}`)
+
+  return { text: lines.join('\n'), replyMarkup: null }
+}
+
 export interface TgErrorInfo {
   isPermanent: boolean
   isBotBlocked: boolean
@@ -242,6 +304,9 @@ export function isTelegramPreferenceEnabled(
     case 'homework_reviewed':
     // Вердикт по ДЗ нового контура — та же настройка «проверено», что у легаси
     case 'topic_homework_reviewed':
+    // §219. Результат пробника — тоже «проверено»: своей галочки у пробников
+    // нет, а по смыслу это итог проверки. Выключил «Проверка ДЗ» — не шлём.
+    case 'mock_exam_result':
       return prefs.checked ?? true
     // Сдача работы адресована персоналу, а галочки «сдачи» у преподавателя в
     // настройках нет — шлём всегда. Ветка заведена явно, чтобы это решение

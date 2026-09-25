@@ -28,7 +28,6 @@ import {
   rowTotals,
   taskStats,
   toTestScore,
-  totalsToNotify,
   type Grid,
   type NamedPasteReport,
   type PositionalPasteReport,
@@ -304,20 +303,5 @@ describe('таблица перевода из Excel', () => {
   })
   it('не число — ошибка', () => {
     expect(parseScale('0\nабв\n2\n3', maxPrimary).error).toMatch(/не целое/)
-  })
-})
-
-describe('уведомления — только если итог появился или изменился', () => {
-  it('новый итог — шлём, тот же — нет, изменился — шлём, стёрт — нет', () => {
-    expect(totalsToNotify([
-      { student_id: 'a', old_score: null, score: 14 },
-      { student_id: 'b', old_score: 20, score: 20 },
-      { student_id: 'c', old_score: 20, score: 21 },
-      { student_id: 'd', old_score: 20, score: null },
-      { student_id: 'e', old_score: null, score: null },
-    ])).toEqual([{ student_id: 'a', score: 14 }, { student_id: 'c', score: 21 }])
-  })
-  it('итог 0 — тоже итог', () => {
-    expect(totalsToNotify([{ student_id: 'a', old_score: null, score: 0 }])).toEqual([{ student_id: 'a', score: 0 }])
   })
 })

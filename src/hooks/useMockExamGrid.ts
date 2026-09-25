@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { notifyMockExamResult } from '@/utils/notify'
-import { totalsToNotify, type SavedTotal } from '@/lib/mockExamGrid'
+import type { MockExamResultNotifyRow, NotifySummary } from '@/lib/mockExamNotify'
 
 /**
  * §218. Данные экрана «пробник по номерам»: пробник, его шаблон, ученики
@@ -11,7 +10,14 @@ import { totalsToNotify, type SavedTotal } from '@/lib/mockExamGrid'
  * Новых таблиц в сгенерированных типах нет (миграция не применена, типы
  * руками не дописываем — CLAUDE.md), поэтому обращение идёт через узкий
  * вид клиента, как в §215–§217.
+ *
+ * §219. Сохранение — черновик: никому ничего не шлёт. Уведомляет только
+ * `notify` (кнопки «Уведомить» / «Уведомить всех»), через
+ * `notify_mock_exam_results`. Для кнопок хук держит сохранённые итоги с
+ * отметкой «что и когда отправлено» (`mock_exam_results.notified_*`).
  */
+
+const RESULT_COLUMNS = 'student_id, score, part1_score, part2_score, notified_at, notified_score, notified_part1_score, notified_part2_score'
 
 export interface MockExamTemplate {
   id: string
@@ -49,12 +55,6 @@ interface DbLike {
 }
 const db = supabase as unknown as DbLike
 
-/** Максимум, который пойдёт в уведомление: тестовый потолок таблицы перевода, без неё — первичный. */
-export function templateMaxScore(t: MockExamTemplate): number {
-  if (t.score_scale && t.score_scale.length) return t.score_scale[t.score_scale.length - 1]
-  return t.max_points.reduce((a, b) => a + b, 0)
-}
-
 export function useMockExamGrid(examId: string | undefined) {
   const [exam, setExam] = useState<GridExam | null>(null)
   const [students, setStudents] = useState<GridStudent[]>([])
@@ -63,6 +63,27 @@ export function useMockExamGrid(examId: string | undefined) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
+  /** Сохранённые итоги по student_id — с отметкой об отправке. */
+  const [results, setResults] = useState<Record<string, MockExamResultNotifyRow>>({})
+  /**
+   * Итоги не прочитались. Таблицу это не ломает (баллы по заданиям свои), но
+   * кнопки уведомлений без этих данных вести себя честно не могут — экран
+   * их гасит и говорит почему. Так же выглядит ветка, влитая раньше
+   * PENDING_219.sql: колонок notified_* ещё нет.
+   */
+  const [resultsError, setResultsError] = useState<string | null>(null)
+
+  const loadResults = useCallback(async (id: string) => {
+    const { data, error: rErr } = await db
+      .from<MockExamResultNotifyRow[]>('mock_exam_results')
+      .select(RESULT_COLUMNS)
+      .eq('mock_exam_id', id)
+    if (rErr) { setResultsError(rErr.message || 'Не удалось загрузить итоги'); return }
+    setResultsError(null)
+    const map: Record<string, MockExamResultNotifyRow> = {}
+    for (const r of data ?? []) map[r.student_id] = r
+    setResults(map)
+  }, [])
 
   useEffect(() => {
     if (!examId) return
@@ -122,41 +143,50 @@ export function useMockExamGrid(examId: string | undefined) {
           pts[s][r.task_number - 1] = Number(r.points)
         }
       }
+      if (ex.group_id && template) await loadResults(ex.id)
+      if (cancelled) return
       setExam(ex)
       setStudents(roster)
       setPoints(pts)
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [examId, tick])
+  }, [examId, tick, loadResults])
 
   /**
-   * Всё или ничего: одна RPC пишет и баллы по заданиям, и итоги. Уведомление
-   * — только тем, у кого итог появился или изменился; старое значение итога
-   * функция читает в той же транзакции.
+   * Всё или ничего: одна RPC пишет и баллы по заданиям, и итоги. Никого НЕ
+   * уведомляет (§219): преподаватель сохраняет сколько угодно раз, пока
+   * проверяет, а отправляет, когда готов, — кнопкой.
    */
-  const save = useCallback(async (next: (number | null)[][]): Promise<{ error: string | null; notified: number }> => {
-    if (!exam?.template) return { error: 'У пробника нет шаблона', notified: 0 }
+  const save = useCallback(async (next: (number | null)[][]): Promise<{ error: string | null }> => {
+    if (!exam?.template) return { error: 'У пробника нет шаблона' }
     const p_rows = students.map((s, i) => ({ student_id: s.id, points: next[i] }))
-    const { data, error: rpcErr } = await db.rpc<{ rows: SavedTotal[] }>('save_mock_exam_grid', {
+    const { error: rpcErr } = await db.rpc('save_mock_exam_grid', {
       p_mock_exam_id: exam.id,
       p_rows,
     })
-    if (rpcErr) return { error: rpcErr.message || 'Не удалось сохранить', notified: 0 }
+    if (rpcErr) return { error: rpcErr.message || 'Не удалось сохранить' }
     setPoints(next)
-    const profileOf = new Map(students.map(s => [s.id, s.profileId]))
-    const max = templateMaxScore(exam.template)
-    let notified = 0
-    for (const r of totalsToNotify(data?.rows ?? [])) {
-      const pid = profileOf.get(r.student_id)
-      if (!pid) continue
-      notified++
-      void notifyMockExamResult(pid, exam.title, r.score, max)
-    }
-    return { error: null, notified }
-  }, [exam, students])
+    await loadResults(exam.id)
+    return { error: null }
+  }, [exam, students, loadResults])
+
+  /**
+   * Отправить результат: `studentIds = null` — «Уведомить всех», иначе —
+   * выбранным. Кому этот итог уже отправлен, база второй раз не шлёт.
+   */
+  const notify = useCallback(async (studentIds: string[] | null): Promise<{ error: string | null; summary: NotifySummary | null }> => {
+    if (!exam) return { error: 'Пробник не загружен', summary: null }
+    const { data, error: rpcErr } = await db.rpc<NotifySummary>('notify_mock_exam_results', {
+      p_mock_exam_id: exam.id,
+      p_student_ids: studentIds,
+    })
+    if (rpcErr) return { error: rpcErr.message || 'Не удалось отправить', summary: null }
+    await loadResults(exam.id)
+    return { error: null, summary: data }
+  }, [exam, loadResults])
 
   const reload = useCallback(() => setTick(t => t + 1), [])
 
-  return { exam, students, points, loading, error, save, reload }
+  return { exam, students, points, results, resultsError, loading, error, save, notify, reload }
 }

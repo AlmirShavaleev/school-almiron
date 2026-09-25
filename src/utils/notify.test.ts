@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase', () => ({
 }))
 
 import { supabase } from '@/lib/supabase'
-import { notifyHomeworkChecked, notifyMockExamResult } from './notify'
+import { notifyHomeworkChecked } from './notify'
 
 const mockInsert = vi.fn().mockResolvedValue({ data: null, error: null })
 
@@ -69,53 +69,6 @@ describe('notifyHomeworkChecked', () => {
 
     expect(mockInsert).toHaveBeenCalledWith([
       expect.objectContaining({ message: '«ДЗ» — 0/100 б.' }),
-    ])
-  })
-})
-
-describe('notifyMockExamResult', () => {
-  it('sends success when score >= 80%', async () => {
-    await notifyMockExamResult('user-1', 'Пробник №1', 85, 100)
-
-    expect(mockInsert).toHaveBeenCalledWith([
-      {
-        user_id: 'user-1',
-        title: '📊 Результат пробника',
-        message: '«Пробник №1» — 85/100 б. (85%)',
-        type: 'success',
-      },
-    ])
-  })
-
-  it('sends info when score 60-79%', async () => {
-    await notifyMockExamResult('user-1', 'Пробник №2', 70, 100)
-
-    expect(mockInsert).toHaveBeenCalledWith([
-      expect.objectContaining({ type: 'info' }),
-    ])
-  })
-
-  it('sends warning when score < 60%', async () => {
-    await notifyMockExamResult('user-1', 'Пробник №3', 50, 100)
-
-    expect(mockInsert).toHaveBeenCalledWith([
-      expect.objectContaining({ type: 'warning' }),
-    ])
-  })
-
-  it('calculates percentage correctly', async () => {
-    await notifyMockExamResult('user-1', 'Пробник', 3, 4)
-
-    expect(mockInsert).toHaveBeenCalledWith([
-      expect.objectContaining({ message: expect.stringContaining('(75%)') }),
-    ])
-  })
-
-  it('rounds percentage', async () => {
-    await notifyMockExamResult('user-1', 'Пробник', 1, 3)
-
-    expect(mockInsert).toHaveBeenCalledWith([
-      expect.objectContaining({ message: expect.stringContaining('(33%)') }),
     ])
   })
 })

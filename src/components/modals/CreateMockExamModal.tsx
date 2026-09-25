@@ -52,19 +52,22 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
     if (!open || !profile) return
     setLoadingData(true)
     async function load() {
-      // Teacher id
+      // §219. Строку `teachers` ищем по профилю НЕЗАВИСИМО от роли: у
+      // владельца роль в профиле — admin, а строка `teachers` есть (§73).
+      // Раньше поиск стоял под `role === 'teacher'`, и пробник владельца
+      // ложился с created_by = null — в режиме учителя его потом не было
+      // видно, и казалось, что он не сохранился.
+      const { data: tc } = await supabase.from('teachers').select('id').eq('profile_id', profile!.id).maybeSingle()
+      setTeacherId(tc?.id || null)
       if (profile!.role === 'teacher') {
-        const { data } = await supabase.from('teachers').select('id').eq('profile_id', profile!.id).single()
-        setTeacherId(data?.id || null)
         // Teacher's groups
-        if (data?.id) {
-          const { data: gs } = await supabase.from('groups').select('id, name').eq('teacher_id', data.id)
+        if (tc?.id) {
+          const { data: gs } = await supabase.from('groups').select('id, name').eq('teacher_id', tc.id)
           setGroups(gs || [])
         }
       } else {
         const { data: gs } = await supabase.from('groups').select('id, name').order('name')
         setGroups(gs || [])
-        setTeacherId(null)
       }
       setLoadingData(false)
     }

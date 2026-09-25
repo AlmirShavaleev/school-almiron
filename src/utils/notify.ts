@@ -133,21 +133,10 @@ export async function notifyHomeworkChecked(
   }
 }
 
-/** Добавлен результат пробного экзамена */
-export async function notifyMockExamResult(
-  profileId: string,
-  examTitle: string,
-  score:     number,
-  maxScore:  number,
-) {
-  const pct = Math.round(score / maxScore * 100)
-  await send([{
-    user_id: profileId,
-    title:   '📊 Результат пробника',
-    message: `«${examTitle}» — ${score}/${maxScore} б. (${pct}%)`,
-    type:    pct >= 80 ? 'success' : pct >= 60 ? 'info' : 'warning',
-  }])
-}
+// Результат пробника (§219) отсюда больше не шлётся: уведомление ученику
+// уходит кнопкой на экране пробника через SQL-функцию
+// notify_mock_exam_results — она же ставит Telegram (event mock_exam_result)
+// и помнит, какой итог отправлен, чтобы не слать его дважды.
 
 /** Занятие перенесено: уведомить всех студентов группы */
 export async function notifyLessonRescheduled(

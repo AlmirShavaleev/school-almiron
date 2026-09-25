@@ -5,11 +5,15 @@
  *   * красная клетка блокирует сохранение ЦЕЛИКОМ — в базу не уходит ничего;
  *   * «Отменить вставку» возвращает таблицу как была;
  *   * баллы строки, чью фамилию не узнали, не попадают никуда;
- *   * уведомление уходит только тому, у кого итог появился или изменился.
+ *   * §219: сохранение никому ничего не шлёт; «Уведомить» шлёт одному;
+ *     «Уведомить всех» — после подтверждения внутри страницы и не тому, кому
+ *     этот итог уже отправлен; после изменения итога — снова можно.
  *
- * База подменена маленькой имитацией `save_mock_exam_grid`: она хранит итоги
- * между сохранениями и отдаёт `old_score` так же, как настоящая функция, —
- * иначе «итог не изменился» проверять было бы не на чем.
+ * База подменена маленькой имитацией `save_mock_exam_grid` и
+ * `notify_mock_exam_results`: итоги и отметки «что отправлено» живут между
+ * вызовами. Правило «тот же итог второй раз не уходит» в имитации — копия
+ * правила SQL-функции (PENDING_219.sql, пробы — PROJECT_STATE §219); здесь
+ * проверяется, что экран показывает и отправляет ровно по нему.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -26,10 +30,16 @@ const ROSTER = [
 
 let exam: Record<string, unknown> | null
 let stored: { student_id: string; task_number: number; points: number }[]
-/** Итоги «в базе» — то, что читает отчёт §217 и от чего считается old_score. */
-let totalsDb: Map<string, number>
+interface ResultRow {
+  student_id: string; score: number; part1_score: number; part2_score: number
+  notified_at: string | null; notified_score: number | null; notified_part1_score: number | null; notified_part2_score: number | null
+}
+/** Итоги «в базе» — mock_exam_results с отметкой об отправке (§219). */
+let resultsDb: Map<string, ResultRow>
 let rpcCalls: { p_mock_exam_id: string; p_rows: { student_id: string; points: (number | null)[] }[] }[]
 let rpcError: { message: string } | null
+/** Вызовы notify_mock_exam_results и кому по ним «ушло». */
+let notifyCalls: { p_student_ids: string[] | null; sentTo: string[] }[]
 
 function thenable<T>(value: T) {
   const chain: Record<string, unknown> = {
@@ -52,28 +62,54 @@ vi.mock('@/lib/supabase', () => ({
         })
       }
       if (table === 'mock_exam_task_scores') return thenable({ data: stored, error: null })
+      if (table === 'mock_exam_results') return thenable({ data: [...resultsDb.values()].map(r => ({ ...r })), error: null })
+      if (table === 'notifications' || table === 'notification_queue') throw new Error(`экран не пишет в ${table} сам — только через notify_mock_exam_results`)
       throw new Error(`неожиданная таблица ${table}`)
     },
-    rpc: (fn: string, args: { p_mock_exam_id: string; p_rows: { student_id: string; points: (number | null)[] }[] }) => {
+    rpc: (fn: string, args: { p_mock_exam_id: string; p_rows?: unknown; p_student_ids?: string[] | null }) => {
+      if (fn === 'notify_mock_exam_results') return fakeNotify({ p_mock_exam_id: args.p_mock_exam_id, p_student_ids: args.p_student_ids ?? null })
       if (fn !== 'save_mock_exam_grid') throw new Error(fn)
       rpcCalls.push(JSON.parse(JSON.stringify(args)))
       if (rpcError) return Promise.resolve({ data: null, error: rpcError })
-      const rows = args.p_rows.map(r => {
+      const rows = (args.p_rows as { student_id: string; points: (number | null)[] }[]).map(r => {
         const filled = r.points.filter((p): p is number => p != null)
         const score = filled.length ? filled.reduce((a, b) => a + b, 0) : null
-        const old = totalsDb.get(r.student_id) ?? null
-        if (score == null) totalsDb.delete(r.student_id); else totalsDb.set(r.student_id, score)
-        return { student_id: r.student_id, old_score: old, score }
+        const prev = resultsDb.get(r.student_id)
+        if (score == null) resultsDb.delete(r.student_id)
+        else {
+          // Шаблон теста: №1–2 — первая часть.
+          const p1 = (r.points[0] ?? 0) + (r.points[1] ?? 0)
+          resultsDb.set(r.student_id, {
+            notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null,
+            ...prev, student_id: r.student_id, score, part1_score: p1, part2_score: score - p1,
+          })
+        }
+        return { student_id: r.student_id, old_score: prev?.score ?? null, score }
       })
       return Promise.resolve({ data: { rows }, error: null })
     },
   },
 }))
 
-const notifyMockExamResult = vi.fn()
-vi.mock('@/utils/notify', () => ({
-  notifyMockExamResult: (...args: unknown[]) => notifyMockExamResult(...args),
-}))
+/** Имитация notify_mock_exam_results: копия правила SQL-функции. */
+function fakeNotify(args: { p_mock_exam_id: string; p_student_ids: string[] | null }) {
+  const at = '2026-09-25T17:40:00Z'
+  const sentTo: string[] = []
+  let already = 0, noResult = 0
+  const ids = args.p_student_ids ?? ROSTER.map(r => r.id)
+  for (const id of ids) {
+    const r = resultsDb.get(id)
+    if (!r) { if (args.p_student_ids) noResult++; continue }
+    if (r.notified_at && r.notified_score === r.score && r.notified_part1_score === r.part1_score && r.notified_part2_score === r.part2_score) { already++; continue }
+    resultsDb.set(id, { ...r, notified_at: at, notified_score: r.score, notified_part1_score: r.part1_score, notified_part2_score: r.part2_score })
+    sentTo.push(id)
+  }
+  notifyCalls.push({ p_student_ids: args.p_student_ids, sentTo })
+  return Promise.resolve({
+    data: { sent: sentTo.length, telegram: sentTo.filter(id => id === 's-bel').length, already, no_result: noResult, no_profile: 0, rows: sentTo.map(student_id => ({ student_id, notified_at: at })) },
+    error: null,
+  })
+}
 
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
 
@@ -101,10 +137,10 @@ beforeEach(() => {
     { student_id: 's-bel', task_number: 3, points: 2 },
     { student_id: 's-bel', task_number: 4, points: 1 },
   ]
-  totalsDb = new Map([['s-bel', 4]])
+  resultsDb = new Map([['s-bel', { student_id: 's-bel', score: 4, part1_score: 1, part2_score: 3, notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null }]])
   rpcCalls = []
   rpcError = null
-  notifyMockExamResult.mockReset()
+  notifyCalls = []
 })
 
 async function ready() { await screen.findByLabelText('Белов Артём, задание 1') }
@@ -149,7 +185,7 @@ describe('MockExamGridPage — всё или ничего', () => {
     expect(status.textContent).toMatch(/Не сохранено ничего: 1 клетка/)
     expect(status.textContent).toMatch(/Сафин Амир, №3/)
     expect(rpcCalls).toHaveLength(0)
-    expect(notifyMockExamResult).not.toHaveBeenCalled()
+    expect(notifyCalls).toHaveLength(0)
     // Введённое не потеряно.
     expect(cell('Иванов Кирилл', 1).value).toBe('1')
   })
@@ -174,7 +210,7 @@ describe('MockExamGridPage — всё или ничего', () => {
     save()
     expect((await screen.findByTestId('mock-grid-status')).textContent).toMatch(/Не сохранено: За задание №4/)
     expect(cell('Сафин Амир', 1).value).toBe('1')
-    expect(notifyMockExamResult).not.toHaveBeenCalled()
+    expect(notifyCalls).toHaveLength(0)
   })
 })
 
@@ -232,46 +268,104 @@ describe('MockExamGridPage — вставка из Excel', () => {
   })
 })
 
-describe('MockExamGridPage — уведомления', () => {
-  it('только тем, у кого итог появился или изменился', async () => {
+const rowOf = (name: string) => screen.getAllByTestId('mock-grid-row').find(r => r.textContent?.includes(name))!
+const notifyBtn = (name: string) => within(rowOf(name)).queryByTestId('mock-grid-notify') as HTMLButtonElement | null
+
+describe('MockExamGridPage — уведомления кнопкой (§219)', () => {
+  it('сохранение — черновик: никому ничего, и это сказано', async () => {
     open(); await ready()
-    // Сафин — итог появился (0 → 3); Иванов Кирилл — тоже (1); Белов — не тронут.
     fireEvent.change(cell('Сафин Амир', 4), { target: { value: '3' } })
     fireEvent.change(cell('Иванов Кирилл', 1), { target: { value: '1' } })
     save()
     await waitFor(() => expect(rpcCalls).toHaveLength(1))
-    await waitFor(() => expect(notifyMockExamResult).toHaveBeenCalledTimes(2))
-    const who = notifyMockExamResult.mock.calls.map(c => c[0]).sort()
-    expect(who).toEqual(['p-ivk', 'p-saf'])
-    // Максимум в уведомлении — первичный шаблона (таблицы перевода нет): 1+1+2+3.
-    expect(notifyMockExamResult).toHaveBeenCalledWith('p-saf', 'Пробник №3', 3, 7)
-  })
-
-  it('правка без изменения итога никого не будит', async () => {
-    open(); await ready()
-    // Белов: 1,0,2,1 → 0,1,2,1 — сумма та же, 4.
-    fireEvent.change(cell('Белов Артём', 1), { target: { value: '0' } })
-    fireEvent.change(cell('Белов Артём', 2), { target: { value: '1' } })
-    save()
-    await waitFor(() => expect(rpcCalls).toHaveLength(1))
-    await screen.findByText(/Итоги ни у кого не изменились/)
-    expect(notifyMockExamResult).not.toHaveBeenCalled()
-  })
-
-  it('второе сохранение подряд — тишина: сохранённое стало точкой отсчёта', async () => {
-    open(); await ready()
-    fireEvent.change(cell('Белов Артём', 4), { target: { value: '3' } })
-    save()
-    await waitFor(() => expect(notifyMockExamResult).toHaveBeenCalledTimes(1))
-    // Кнопка гаснет: менять нечего. Меняем и возвращаем — итог тот же.
-    fireEvent.change(cell('Белов Артём', 1), { target: { value: '0' } })
-    fireEvent.change(cell('Белов Артём', 1), { target: { value: '1' } })
-    expect((screen.getByTestId('mock-grid-save') as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.change(cell('Белов Артём', 2), { target: { value: '1' } })
-    fireEvent.change(cell('Белов Артём', 1), { target: { value: '0' } })
+    expect((await screen.findByTestId('mock-grid-status')).textContent).toMatch(/Ученики ничего не получили — это черновик/)
+    expect(notifyCalls).toHaveLength(0)
+    // Второе сохранение — тоже тишина.
+    fireEvent.change(cell('Сафин Амир', 3), { target: { value: '2' } })
     await act(async () => { save() })
     await waitFor(() => expect(rpcCalls).toHaveLength(2))
-    expect(notifyMockExamResult).toHaveBeenCalledTimes(1)
+    expect(notifyCalls).toHaveLength(0)
+  })
+
+  it('у ученика без сохранённого итога «Уведомить» недоступна', async () => {
+    open(); await ready()
+    const btn = notifyBtn('Сафин Амир')!
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toMatch(/Нет сохранённого итога/)
+    // Ввёл, но не сохранил — всё ещё недоступна: итога в базе нет.
+    fireEvent.change(cell('Сафин Амир', 1), { target: { value: '1' } })
+    expect(notifyBtn('Сафин Амир')!.disabled).toBe(true)
+  })
+
+  it('«Уведомить» в строке шлёт одному — и строка показывает «отправлено»', async () => {
+    open(); await ready()
+    const btn = notifyBtn('Белов Артём')!
+    expect(btn.disabled).toBe(false)
+    fireEvent.click(btn)
+    await waitFor(() => expect(notifyCalls).toHaveLength(1))
+    expect(notifyCalls[0].p_student_ids).toEqual(['s-bel'])
+    expect(notifyCalls[0].sentTo).toEqual(['s-bel'])
+    expect((await within(rowOf('Белов Артём')).findByTestId('mock-grid-notified')).textContent).toMatch(/отправлено 25\.09, 20:40/)
+    // Кнопки больше нет: тот же итог второй раз не шлём.
+    expect(notifyBtn('Белов Артём')).toBeNull()
+    expect(screen.getByTestId('mock-grid-status').textContent).toMatch(/Белов Артём: результат отправлен\. В Telegram — тоже/)
+  })
+
+  it('несохранённая правка в строке — кнопка ждёт сохранения: ушёл бы старый итог', async () => {
+    open(); await ready()
+    fireEvent.change(cell('Белов Артём', 4), { target: { value: '3' } })
+    expect(notifyBtn('Белов Артём')!.disabled).toBe(true)
+    expect(notifyBtn('Белов Артём')!.title).toMatch(/сначала «Сохранить»/)
+    expect((screen.getByTestId('mock-grid-notify-all') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('«Уведомить всех»: подтверждение на странице, повтор не шлёт тем же, после изменения итога — снова', async () => {
+    // Дано: итоги у Белова (4) и Сафина (уже внесён и сохранён).
+    open(); await ready()
+    fireEvent.change(cell('Сафин Амир', 4), { target: { value: '3' } })
+    save()
+    await screen.findByText(/это черновик/)
+
+    // Подтверждение — внутри страницы, не window.confirm.
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    fireEvent.click(screen.getByTestId('mock-grid-notify-all'))
+    const dlg = await screen.findByTestId('mock-grid-notify-confirm')
+    expect(dlg.textContent).toMatch(/Отправить 2 ученикам\?/)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    fireEvent.click(within(dlg).getByTestId('mock-grid-notify-send'))
+    await waitFor(() => expect(notifyCalls).toHaveLength(1))
+    expect(notifyCalls[0].p_student_ids).toBeNull()
+    expect(notifyCalls[0].sentTo.sort()).toEqual(['s-bel', 's-saf'])
+    await waitFor(() => expect(screen.queryByTestId('mock-grid-notify-confirm')).toBeNull())
+    expect(screen.getByTestId('mock-grid-status').textContent).toMatch(/Отправлено 2 ученикам/)
+
+    // Всем, у кого итог есть, он уже отправлен — «Уведомить всех» гаснет.
+    await waitFor(() => expect((screen.getByTestId('mock-grid-notify-all') as HTMLButtonElement).disabled).toBe(true))
+
+    // Итог Сафина поменялся — в строке пометка и снова кнопка; «всех» — только ему.
+    fireEvent.change(cell('Сафин Амир', 3), { target: { value: '1' } })
+    await act(async () => { save() })
+    await waitFor(() => expect(rpcCalls).toHaveLength(2))
+    expect(await within(rowOf('Сафин Амир')).findByTestId('mock-grid-notify-changed')).toBeTruthy()
+    expect(notifyBtn('Сафин Амир')!.disabled).toBe(false)
+    expect(within(rowOf('Белов Артём')).getByTestId('mock-grid-notified')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('mock-grid-notify-all'))
+    const dlg2 = await screen.findByTestId('mock-grid-notify-confirm')
+    expect(dlg2.textContent).toMatch(/Отправить 1 ученику\?/)
+    expect(dlg2.textContent).toMatch(/уже отправлен \(1\), повторно не уйдёт/)
+    fireEvent.click(within(dlg2).getByTestId('mock-grid-notify-send'))
+    await waitFor(() => expect(notifyCalls).toHaveLength(2))
+    expect(notifyCalls[1].sentTo).toEqual(['s-saf'])
+    confirmSpy.mockRestore()
+  })
+
+  it('«Отмена» в подтверждении — ничего не уходит', async () => {
+    open(); await ready()
+    fireEvent.click(screen.getByTestId('mock-grid-notify-all'))
+    fireEvent.click(await screen.findByTestId('mock-grid-notify-cancel'))
+    expect(screen.queryByTestId('mock-grid-notify-confirm')).toBeNull()
+    expect(notifyCalls).toHaveLength(0)
   })
 })
 

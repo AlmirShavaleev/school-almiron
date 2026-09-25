@@ -180,7 +180,14 @@ export const mock_exam_task_scores = Object.entries(MOCK_SEED).flatMap(([name, p
   pts.map((points, t) => ({ mock_exam_id: MOCK_EXAM, student_id: mockStudent(MOCK_ROSTER.indexOf(name)), task_number: t + 1, points })))
 const mockTotals = Object.entries(MOCK_SEED).map(([name, pts]) => {
   const p1 = pts.slice(0, 12).reduce((a, b) => a + b, 0), p2 = pts.slice(12).reduce((a, b) => a + b, 0)
-  return { id: U('c', 740 + MOCK_ROSTER.indexOf(name)), mock_exam_id: MOCK_EXAM, student_id: mockStudent(MOCK_ROSTER.indexOf(name)), score: p1 + p2, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(24), students: mockGroupStudents[MOCK_ROSTER.indexOf(name)].students }
+  // §219. Отметка «что отправлено»: Каримовой отправлен этот же итог,
+  // Никитиной — отправлялся другой (итог потом поправили), остальным — нет.
+  const notified = name === 'Каримова Алсу'
+    ? { notified_at: '2026-09-25T17:40:00Z', notified_score: p1 + p2, notified_part1_score: p1, notified_part2_score: p2 }
+    : name === 'Никитина Полина'
+      ? { notified_at: '2026-09-24T15:05:00Z', notified_score: p1 + p2 - 2, notified_part1_score: p1, notified_part2_score: p2 - 2 }
+      : { notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null }
+  return { id: U('c', 740 + MOCK_ROSTER.indexOf(name)), mock_exam_id: MOCK_EXAM, student_id: mockStudent(MOCK_ROSTER.indexOf(name)), score: p1 + p2, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(24), ...notified, students: mockGroupStudents[MOCK_ROSTER.indexOf(name)].students }
 })
 // Отдельным массивом: общий `mock_exam_results` висит embed-ом на физическом
 // пробнике, и строки математики иначе показались бы и там.
@@ -205,6 +212,27 @@ function saveMockExamGrid(body) {
     return { student_id: r.student_id, old_score: prev ? prev.score : null, score }
   })
   return { rows }
+}
+/**
+ * §219. Имитация `notify_mock_exam_results`: тот же итог второй раз не
+ * уходит; отметка ставится в «базе», чтобы экран после отправки показал
+ * «отправлено». Telegram «подключён» у каждого второго — для текста статуса.
+ */
+function notifyMockExamResults(body) {
+  const at = new Date().toISOString()
+  const ids = body.p_student_ids ?? mockTotals.map(r => r.student_id)
+  let sent = 0, already = 0, telegram = 0
+  const rows = []
+  for (const id of ids) {
+    const r = mockTotals.find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === id)
+    if (!r) continue
+    if (r.notified_at && r.notified_score === r.score && r.notified_part1_score === r.part1_score && r.notified_part2_score === r.part2_score) { already++; continue }
+    Object.assign(r, { notified_at: at, notified_score: r.score, notified_part1_score: r.part1_score, notified_part2_score: r.part2_score })
+    sent++
+    if (sent % 2) telegram++
+    rows.push({ student_id: id, notified_at: at })
+  }
+  return { sent, telegram, already, no_result: 0, no_profile: 0, rows }
 }
 
 // ── materials ────────────────────────────────────────────────────────────────
@@ -1030,6 +1058,7 @@ export function baseFixtures(persona) {
       // Отчёт отдаётся только по ученику карточки: чужой ученик получает
       // пустоту, а не чужие числа.
       save_mock_exam_grid: saveMockExamGrid,
+      notify_mock_exam_results: notifyMockExamResults,
       student_progress_report: (body) =>
         body.p_student_id === IDS.otherStudent(0) ? progressReport : null,
       topic_homework_ai_expire_stale_jobs: null,
