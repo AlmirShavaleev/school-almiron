@@ -10,6 +10,7 @@ import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships
 import { useGroups } from '@/hooks/useGroups'
 import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
+import { StudentSubjectTargets } from '@/components/student/StudentSubjectTargets'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -173,6 +174,14 @@ export function StudentProfilePage() {
         факт «ученик ничего не сдал», хотя данных не было вовсе. Работу
         честно делает секция ниже — на живом контуре.
       */}
+      {/*
+        §216. Цель по баллу — по строке на предмет, сразу под карточкой.
+        Плашка «Цель: 80» в шапке осталась: она показывает старое поле
+        students.target_score, которое §216 намеренно не трогает — его читают
+        «Мой прогресс» и настройки ученика, и снимать его будем отдельно.
+      */}
+      {s.student_id && <StudentSubjectTargets studentId={s.student_id} />}
+
       {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
 
       {/* Enrolled courses */}

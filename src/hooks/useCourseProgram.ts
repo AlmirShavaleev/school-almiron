@@ -12,6 +12,12 @@ export interface Topic {
   available_from: string | null
   /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
   is_open: boolean | null
+  /**
+   * §216. Номера заданий ЕГЭ, которые разбирает тема. Пустой массив — не
+   * проставлено. Поле необязательное: пока миграция §216 не применена, старая
+   * база отдаёт строку темы без него, и экран обязан это пережить.
+   */
+  ege_task_numbers?: number[] | null
 }
 
 export interface Module {
@@ -152,7 +158,12 @@ export function useCourseProgram() {
   }
 
   async function saveTopic(id: string, values: Partial<Topic>) {
-    const { error } = await supabase.from('topics').update(values).eq('id', id)
+    // `as any` — как у saveCourse выше: сгенерированные типы базы
+    // (src/types/database.ts) отстают от схемы, и колонки ege_task_numbers
+    // (§216) там ещё нет. Руками её туда не дописываем — типы перегенерирует
+    // оркестратор MCP после применения миграции (правило CLAUDE.md).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabase.from('topics').update(values as any).eq('id', id)
     if (error) throw error
   }
 

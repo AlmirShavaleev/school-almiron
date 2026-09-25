@@ -71,16 +71,23 @@ const TOPIC_TITLES = [
   'Основы МКТ. Уравнение Менделеева—Клапейрона и изопроцессы',
   'Первый закон термодинамики',
 ]
+// §216. Номера заданий ЕГЭ у темы. Нарочно РАЗНОЙ полноты: у одной темы
+// список из двух номеров, у одной — один, у остальных пусто. Пустые нужны не
+// меньше заполненных: владельцу предстоит проставлять номера руками, и на
+// снимке должно быть видно, как выглядит непроставленная тема.
+const TOPIC_EGE_NUMBERS = [[1, 2], [1], [2], [], [], [], [], []]
 export const topics = [
   ...TOPIC_TITLES.map((title, i) => ({
     id: IDS.topic(i + 1), module_id: i < 6 ? IDS.module : IDS.module2, title, order_index: i + 1, max_score: 100,
     is_open: i < 5, available_from: i < 5 ? ago(24 * (30 - i * 5)) : '2026-10-20T06:00:00Z', source_template_id: null, created_at: ago(24 * 80),
+    ege_task_numbers: TOPIC_EGE_NUMBERS[i] ?? [],
     modules: i < 6 ? modules[0] : modules[1],
   })),
   // темы каркаса (§174) — три первые темы механики
   ...TOPIC_TITLES.slice(0, 3).map((title, i) => ({
     id: IDS.topic(20 + i + 1), module_id: IDS.moduleTemplate, title, order_index: i + 1, max_score: 100,
-    is_open: null, available_from: null, source_template_id: null, created_at: ago(24 * 80), modules: modules[2],
+    is_open: null, available_from: null, source_template_id: null, created_at: ago(24 * 80),
+    ege_task_numbers: [], modules: modules[2],
   })),
 ]
 
@@ -102,6 +109,10 @@ export const group_students = [
   { id: U('f', 100), group_id: IDS.group, student_id: IDS.studentRow, joined_at: ago(24 * 20) },
   ...[0, 1, 2, 3, 4, 5, 6].map(k => ({ id: U('f', 101 + k), group_id: IDS.group, student_id: IDS.otherStudent(k), joined_at: ago(24 * (20 - k)) })),
   { id: U('f', 120), group_id: IDS.group2, student_id: IDS.otherStudent(7), joined_at: ago(24 * 5) },
+  // §216. Тот же ученик учится и физике, и математике — иначе блок целей по
+  // предметам нечем показать: смысл раздела ровно в том, что предметов два и
+  // цели у них разные.
+  { id: U('f', 121), group_id: IDS.group2, student_id: IDS.otherStudent(0), joined_at: ago(24 * 12) },
 ].map(gs => ({ ...gs, groups: groups.find(g => g.id === gs.group_id), students: studentById(gs.student_id) }))
 groups[0].group_students = group_students.filter(g => g.group_id === IDS.group).map(g => ({ student_id: g.student_id, students: g.students, count: undefined }))
 groups[1].group_students = group_students.filter(g => g.group_id === IDS.group2).map(g => ({ student_id: g.student_id, students: g.students }))
@@ -771,6 +782,15 @@ export const video_watch_daily = [
   { student_id: IDS.profile(0), item_id: IDS.material(25), day: moscowDay(0), seconds: 420, max_position: 300, duration_seconds: 1200, updated_at: ago(2) },
 ]
 
+// §216. Цели по баллу — по строке на ПРЕДМЕТ. У ученика карточки
+// (`o07-student-profile`) физика задана, а математика нет: на снимке должно
+// быть видно и заполненное поле, и пустое («цель не задана» — прочерк, а не
+// ноль).
+export const student_subject_targets = [
+  { id: U('f', 216), student_id: IDS.otherStudent(0), subject: 'physics', exam_type: 'ege', target_score: 82, updated_by: IDS.owner, created_at: ago(24 * 10), updated_at: ago(24 * 2) },
+  { id: U('f', 217), student_id: IDS.studentRow, subject: 'physics', exam_type: 'ege', target_score: 85, updated_by: IDS.owner, created_at: ago(24 * 10), updated_at: ago(24 * 2) },
+]
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
@@ -785,6 +805,7 @@ export function baseFixtures(persona) {
       ],
       catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math, ...catalog_tasks_formula], catalog_task_assets: [...catalog_task_assets, ...catalog_task_assets_formula], catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
+      student_subject_targets,
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,

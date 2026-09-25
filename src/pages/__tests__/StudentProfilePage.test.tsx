@@ -48,6 +48,15 @@ vi.mock('@/hooks/useStudentNumberStats', () => ({
   useStudentNumberStats: () => ({ rows: [], loading: false, error: null }),
 }))
 
+// §216. Блок целей по предметам ходит в базу своим хуком; здесь проверяется
+// страница, а не он. Свои проверки у блока — в
+// src/components/student/__tests__/StudentSubjectTargets.test.tsx.
+vi.mock('@/hooks/useStudentSubjectTargets', () => ({
+  useStudentSubjectTargets: () => ({
+    targets: [], loading: false, error: null, reload: vi.fn(), save: vi.fn(),
+  }),
+}))
+
 // Секция анализа ходит в базу своими хуками; здесь проверяется страница, а не
 // она. Заглушка — чтобы её запросы не оседали unhandled rejection'ами и не
 // роняли код выхода всего прогона (урок §88.5).

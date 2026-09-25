@@ -15,6 +15,7 @@ import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvailability'
+import { formatEgeNumbers, parseEgeNumbersInput, parseEgeNumbersFromTitle } from '@/lib/egeTaskNumbers'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
@@ -513,7 +514,13 @@ interface Props {
   availableFrom?: string | null
   /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
   isOpen?: boolean | null
-  onSaveTopicMeta?: (values: { available_from?: string | null; is_open?: boolean | null }) => Promise<void>
+  /** §216. Номера заданий ЕГЭ темы. Пусто — не проставлено. */
+  egeTaskNumbers?: number[] | null
+  onSaveTopicMeta?: (values: {
+    available_from?: string | null
+    is_open?: boolean | null
+    ege_task_numbers?: number[]
+  }) => Promise<void>
   /** Открыть все темы курса до этой включительно. Возвращает, сколько открылось. */
   onOpenUntilHere?: () => Promise<number>
   lessonDate?: string | null
@@ -525,12 +532,17 @@ interface Props {
   initialTile?: string | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, egeTaskNumbers = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
   const [dateVal, setDateVal] = useState(availableFrom || '')
   const [savingDate, setSavingDate] = useState(false)
+  // §216. Номера заданий ЕГЭ. Держим строкой, а не массивом: человек печатает
+  // «13, 14, 15», и запятая с пробелом — часть его ввода, а не результат.
+  const [numbersVal, setNumbersVal] = useState(formatEgeNumbers(egeTaskNumbers))
+  const [numbersError, setNumbersError] = useState<string | null>(null)
+  const [savingNumbers, setSavingNumbers] = useState(false)
   const [savingOpen, setSavingOpen] = useState(false)
   const [bulkNote, setBulkNote] = useState<string | null>(null)
   const [activeTile, setActiveTile] = useState<TopicSection | null>(null)
@@ -544,6 +556,14 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   useEffect(() => {
     setDateVal(availableFrom || '')
   }, [availableFrom, open, topicId])
+
+  useEffect(() => {
+    setNumbersVal(formatEgeNumbers(egeTaskNumbers))
+    setNumbersError(null)
+    // Строка зависит от массива — сравниваем по его печатному виду, иначе
+    // новая ссылка на тот же массив затирала бы набранное на каждом рендере.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formatEgeNumbers(egeTaskNumbers), open, topicId])
 
   // Возврат из каталога открывает окно сразу на своей рубрике (§164).
   useEffect(() => {
@@ -612,6 +632,31 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     }
   }
 
+  /**
+   * §216. Номера заданий ЕГЭ. Сохраняем по уходу из поля — тем же способом,
+   * что и дату рядом: в окне нет кнопки «Сохранить», она бы здесь врала.
+   * Ошибку разбора показываем ПОД полем и в базу не идём: тост исчезает, а
+   * «оптика» в поле остаётся, и человек не понимает, почему не сохранилось.
+   */
+  async function handleNumbersBlur() {
+    if (!canEdit || !onSaveTopicMeta) return
+    const parsed = parseEgeNumbersInput(numbersVal)
+    if (parsed.error) { setNumbersError(parsed.error); return }
+    setNumbersError(null)
+    const next = formatEgeNumbers(parsed.numbers)
+    setNumbersVal(next)
+    if (next === formatEgeNumbers(egeTaskNumbers)) return
+    setSavingNumbers(true)
+    try {
+      await onSaveTopicMeta({ ege_task_numbers: parsed.numbers })
+      toast.saved()
+    } catch (e) {
+      saveFailed(e)
+    } finally {
+      setSavingNumbers(false)
+    }
+  }
+
   /** Вернуть теме автоматику по дате: is_open снова null. */
   async function handleBackToSchedule() {
     if (!canEdit || !onSaveTopicMeta) return
@@ -639,6 +684,15 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
       setSavingOpen(false)
     }
   }
+
+  // Подсказка из названия: почти у половины тем номер уже написан в
+  // заголовке, и заново набирать его руками — лишняя работа. Предлагаем
+  // только когда поле пустое: перебивать проставленное подсказкой нельзя.
+  const numbersFromTitle = parseEgeNumbersFromTitle(topicTitle)
+  const suggestFromTitle =
+    numbersVal.trim() === '' && numbersFromTitle.length > 0
+      ? formatEgeNumbers(numbersFromTitle)
+      : null
 
   /*
     Карточки рубрик собираются из общего списка (§100). Своим перечнем они
@@ -769,6 +823,52 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
         {canEdit && (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/*
+              §216. Номера заданий ЕГЭ — первым блоком, до плиток рубрик.
+              Владельцу предстоит проставить их у сотни тем по ходу работы, и
+              поле, спрятанное внутрь рубрики, он открывал бы по два клика на
+              каждую тему.
+            */}
+            <div data-testid="topic-ege-numbers" className="rounded-2xl border border-gray-200 bg-white p-4">
+              <label htmlFor="topic-ege-numbers-input" className="block text-sm font-semibold text-gray-900">
+                Номера заданий ЕГЭ
+              </label>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <input
+                    id="topic-ege-numbers-input"
+                    data-testid="topic-ege-numbers-input"
+                    type="text"
+                    inputMode="numeric"
+                    value={numbersVal}
+                    placeholder="например 13, 14, 15"
+                    onChange={e => { setNumbersVal(e.target.value); setNumbersError(null) }}
+                    onBlur={() => { void handleNumbersBlur() }}
+                    className={cn(
+                      'h-10 w-full rounded-xl border bg-white px-3 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2',
+                      numbersError
+                        ? 'border-red-300 focus:ring-red-300'
+                        : 'border-gray-200 focus:ring-primary-400',
+                    )}
+                  />
+                  {savingNumbers && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
+                </div>
+                {suggestFromTitle && (
+                  <button
+                    type="button"
+                    data-testid="topic-ege-numbers-from-title"
+                    onClick={() => { setNumbersVal(suggestFromTitle); setNumbersError(null) }}
+                    className="h-10 shrink-0 rounded-xl border border-primary-200 bg-primary-50 px-3 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                  >
+                    Из названия: {suggestFromTitle}
+                  </button>
+                )}
+              </div>
+              {numbersError
+                ? <div data-testid="topic-ege-numbers-error" className="mt-1.5 text-xs text-red-600">{numbersError}</div>
+                : <div className="mt-1.5 text-xs text-gray-400">Через запятую — номеров может быть несколько: «13, 14, 15» или «22-23». Пусто — номера не проставлены.</div>}
+            </div>
+
             {/* Каркас и его отражения (§172): куда уедет правка — или откуда
                 приехало то, что здесь показано. */}
             <TopicTemplateBanner topicId={topicId} />

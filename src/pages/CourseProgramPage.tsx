@@ -2416,6 +2416,7 @@ export function CourseProgramPage() {
       moduleTitle={matTopic?.moduleTitle ?? ''}
       availableFrom={matTopic?.topic.available_from ?? null}
       isOpen={matTopic?.topic.is_open ?? null}
+      egeTaskNumbers={matTopic?.topic.ege_task_numbers ?? null}
       onSaveTopicMeta={async values => {
         if (!matTopic?.topic.id) return
         await handleSaveTopic(matTopic.topic.id, values)
