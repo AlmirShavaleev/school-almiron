@@ -22,7 +22,7 @@ const filter = process.argv[2] // substring of scene name, optional
  *   node e2e/harness/tour.mjs o06-rotate 390
  */
 const widthFilter = process.argv[3] ? Number(process.argv[3]) : null
-const browser = await chromium.launch()
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 const contexts = {}
 async function ctxFor(persona, width, height) {
   const key = `${persona}:${width}x${height}`

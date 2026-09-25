@@ -132,7 +132,7 @@ function sysSvg(w, h, rows, step, fontSize, firstBaseline) {
 }
 for (const [name, body] of Object.entries(svgFormulas)) fs.writeFileSync(path.join(out, name), body)
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 const page = await browser.newPage()
 for (const [name, { w, h, html }] of Object.entries(pages)) {
   await page.setViewportSize({ width: w, height: h })

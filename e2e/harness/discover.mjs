@@ -20,7 +20,7 @@ const routes = {
 }
 
 const only = process.argv[2] // optional persona filter
-const browser = await chromium.launch()
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 for (const [name, persona] of Object.entries(personas)) {
   if (only && only !== name) continue
   const session = persona.user ? makeSession(persona.user) : null

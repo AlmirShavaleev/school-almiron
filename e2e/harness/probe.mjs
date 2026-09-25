@@ -7,7 +7,7 @@ import { scenes } from './scenes.mjs'
 
 const names = process.argv.slice(2)
 const assetsDir = path.resolve('screenshots/harness/assets')
-const browser = await chromium.launch()
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 for (const s of scenes.filter(x => names.includes(x.name) && !x.width)) {
   const p = personas[s.persona]
   const session = p.user ? makeSession(p.user) : null

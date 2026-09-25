@@ -30,6 +30,8 @@ const TeacherDetailPage = lazyPage('TeacherDetailPage', () => import('@/pages/Te
 const LessonDetailPage = lazyPage('LessonDetailPage', () => import('@/pages/LessonDetailPage').then(m => ({ default: m.LessonDetailPage })))
 const StudentJournalPage = lazyPage('StudentJournalPage', () => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
+const MockExamGridPage = lazyPage('MockExamGridPage', () => import('@/pages/MockExamGridPage').then(m => ({ default: m.MockExamGridPage })))
+const MockExamTemplatesPage = lazyPage('MockExamTemplatesPage', () => import('@/pages/MockExamTemplatesPage').then(m => ({ default: m.MockExamTemplatesPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotificationsPage = lazyPage('NotificationsPage', () => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
 const CourseProgramPage = lazyPage('CourseProgramPage', () => import('@/pages/CourseProgramPage').then(m => ({ default: m.CourseProgramPage })))
@@ -182,6 +184,11 @@ export default function AppRoutes() {
         <Route path="/homework-templates/new" element={<RoleGuard allow={['teacher','admin','owner']}><HomeworkTemplateBuilderPage /></RoleGuard>} />
         <Route path="/my-homeworks" element={<RoleGuard allow={['student']} preview="stub"><MyHomeworksV2Page /></RoleGuard>} />
         <Route path="/mock-exams" element={<MockExamsPage />} />
+        {/* §218. Таблица по номерам заданий и шаблоны. Статический сегмент
+            `templates` бьёт динамический `:id` по рангу маршрута. Ученику —
+            нет: читать результаты пробников ему не дают и права в базе. */}
+        <Route path="/mock-exams/templates" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamTemplatesPage /></RoleGuard>} />
+        <Route path="/mock-exams/:id" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamGridPage /></RoleGuard>} />
 
         {/* Обёртка каталога — режим подбора задач к уроку (§164). Вне режима не
             рисует ничего; страницы каталога о нём не знают. */}

@@ -7,22 +7,26 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
-import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { useMockExamTemplates } from '@/hooks/useMockExamTemplates'
 
+/**
+ * §218. Пробник заводится ОТ ШАБЛОНА: предмет, тип экзамена и максимум
+ * берутся из него, а не вводятся руками. Иначе «макс. балл 100» в форме
+ * расходился бы с 32 первичными шаблона, и итог «18 из 100» врал бы.
+ * Группа обязательна по-прежнему: без неё нет списка учеников.
+ */
 const schema = z.object({
-  title:     z.string().min(2, 'Введите название'),
-  subject:   z.string().min(1, 'Выберите предмет'),
-  exam_type: z.string().min(1, 'Выберите тип'),
-  date:      z.string().min(1, 'Укажите дату'),
-  group_id:  z.string().min(1, 'Выберите группу'),
-  max_score: z.coerce.number().min(1).max(500),
+  title:       z.string().min(2, 'Введите название'),
+  date:        z.string().min(1, 'Укажите дату'),
+  group_id:    z.string().min(1, 'Выберите группу'),
+  template_id: z.string().min(1, 'Выберите шаблон'),
 })
 type FormValues = z.infer<typeof schema>
 
 interface Props {
   open:      boolean
   onClose:   () => void
-  onCreated: (examId: string, groupId: string, maxScore: number, title: string) => void
+  onCreated: (examId: string) => void
 }
 
 export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
@@ -34,14 +38,14 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     mode: 'onChange',
-    defaultValues: { max_score: 100 },
   })
+  const { templates, loading: loadingTemplates } = useMockExamTemplates(open)
 
   // Reset the form only on the open transition (false→true), not on every
   // re-run of the data-loading effect below — a background token refresh
   // must never wipe whatever the user has already typed into an open modal.
   useEffect(() => {
-    if (open) reset({ max_score: 100 })
+    if (open) reset({})
   }, [open, reset])
 
   useEffect(() => {
@@ -68,34 +72,37 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
   }, [open, profile?.id, profile?.role])
 
   async function onSubmit(values: FormValues) {
+    const template = templates.find(t => t.id === values.template_id)
+    if (!template) return
     const { data, error } = await supabase
       .from('mock_exams')
       .insert({
-        title:      values.title,
-        subject:    values.subject,
-        exam_type:  values.exam_type,
-        date:       values.date,
-        group_id:   values.group_id,
-        max_score:  values.max_score,
-        created_by: teacherId,
+        title:       values.title,
+        subject:     template.subject,
+        exam_type:   template.exam_type,
+        date:        values.date,
+        group_id:    values.group_id,
+        template_id: template.id,
+        // max_score база перепишет из шаблона (триггер mock_exams_template_guard);
+        // здесь то же число, чтобы строка была верной и до триггера.
+        max_score:   template.score_scale?.length
+          ? template.score_scale[template.score_scale.length - 1]
+          : template.max_points.reduce((a, b) => a + b, 0),
+        created_by:  teacherId,
       } as any)
       .select()
       .single()
 
     if (error) { alert(error.message); return }
-    onCreated(data.id, values.group_id, values.max_score, values.title)
+    onCreated(data.id)
     onClose()
   }
 
   if (!open) return null
 
-  const subjectOptions = [
-    { value: '', label: '— Предмет' },
-    ...Object.entries(SUBJECT_LABELS).map(([v, l]) => ({ value: v, label: l })),
-  ]
-  const examTypeOptions = [
-    { value: '', label: '— Тип экзамена' },
-    ...Object.entries(EXAM_LABELS).map(([v, l]) => ({ value: v, label: l })),
+  const templateOptions = [
+    { value: '', label: templates.length ? '— Шаблон' : 'Шаблонов нет — заведите на странице «Шаблоны»' },
+    ...templates.map(t => ({ value: t.id, label: `${t.title} · ${t.year}` })),
   ]
   const groupOptions = [
     { value: '', label: '— Группа' },
@@ -111,7 +118,7 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
 
-        {loadingData ? (
+        {loadingData || loadingTemplates ? (
           <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
             <Loader2 size={18} className="animate-spin" />Загрузка…
           </div>
@@ -119,22 +126,16 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
           <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-4">
             <Input label="Название" placeholder="Пробник ЕГЭ #3" error={errors.title?.message} {...register('title')} />
 
-            <div className="grid grid-cols-2 gap-3">
-              <Select label="Предмет" options={subjectOptions} error={errors.subject?.message} {...register('subject')} />
-              <Select label="Тип" options={examTypeOptions} error={errors.exam_type?.message} {...register('exam_type')} />
-            </div>
+            <Select label="Шаблон" options={templateOptions} error={errors.template_id?.message} {...register('template_id')} />
 
             <Select label="Группа" options={groupOptions} error={errors.group_id?.message} {...register('group_id')} />
 
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Дата" type="date" error={errors.date?.message} {...register('date')} />
-              <Input label="Макс. балл" type="number" min={1} max={500} error={errors.max_score?.message} {...register('max_score')} />
-            </div>
+            <Input label="Дата" type="date" error={errors.date?.message} {...register('date')} />
 
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>Отмена</Button>
               <Button type="submit" className="flex-1" loading={isSubmitting}>
-                Создать и внести результаты →
+                Создать и открыть таблицу →
               </Button>
             </div>
           </form>

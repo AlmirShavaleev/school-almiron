@@ -40,6 +40,13 @@ Supabase, Vercel Analytics, шрифты, видео-плеер), молча о�
    ```bash
    node e2e/harness/assets.mjs
    ```
+   **Готовый Chromium (§218).** Если `npx playwright install` недоступен
+   (облачная среда: прокси отдаёт 403), укажите уже лежащий браузер
+   переменной `CHROMIUM_PATH` — её читают все четыре скрипта:
+   ```bash
+   CHROMIUM_PATH=/opt/pw-browsers/chromium node e2e/harness/tour.mjs o15-mock
+   ```
+   Без переменной поведение прежнее: Playwright берёт свой браузер.
 4. Прогнать все сцены или отфильтровать по подстроке имени:
    ```bash
    node e2e/harness/tour.mjs

@@ -3,6 +3,13 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
 
+/**
+ * §218. К пробнику — его шаблон и баллы по заданиям: без них выгрузка в
+ * Excel не знала бы, сколько набрано по каждому номеру. У старых пробников
+ * шаблона нет, и оба поля приходят пустыми — список это переживает.
+ */
+const EXAM_SELECT = '*, groups(name), mock_exam_templates(title, max_points, part1_last), mock_exam_task_scores(student_id,task_number,points), mock_exam_results(student_id,score,primary_score,part1_score,part2_score,notes,students(profiles(full_name)))'
+
 export function useMockExams(tick = 0) {
   const profile = useAuthStore(s => s.profile)
   // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя видит
@@ -42,7 +49,7 @@ export function useMockExams(tick = 0) {
 
           const { data } = await supabase
             .from('mock_exams')
-            .select('*, groups(name), mock_exam_results(student_id,score,part1_score,part2_score,notes,students(profiles(full_name)))')
+            .select(EXAM_SELECT)
             .eq('created_by', tc.id)
             .order('date', { ascending: false })
           setExams(data || [])
@@ -50,7 +57,7 @@ export function useMockExams(tick = 0) {
         } else {
           const { data } = await supabase
             .from('mock_exams')
-            .select('*, groups(name), mock_exam_results(student_id,score,part1_score,part2_score,notes,students(profiles(full_name)))')
+            .select(EXAM_SELECT)
             .order('date', { ascending: false })
           setExams(data || [])
         }

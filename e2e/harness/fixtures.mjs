@@ -146,6 +146,67 @@ export const mock_exam_results = [
 mock_exams[0].mock_exam_results = mock_exam_results
 mock_exams[1].mock_exam_results = []
 
+// ── §218: пробник по номерам заданий ─────────────────────────────────────────
+// Ростер и баллы — из утверждённого макета (МАКЕТ-ПРОБНИКА.html), выдумка
+// целиком. Отдельная группа «11А профиль» со своими двенадцатью учениками:
+// в общие `students`/`profiles` они НЕ добавлены, чтобы не сдвинуть счётчики
+// на чужих снимках, — экран пробника берёт их через embed `group_students`.
+// Половина группы уже внесена (шесть строк из двенадцати), как в макете.
+export const MOCK_GROUP = U('f', 300)
+export const MOCK_EXAM = U('c', 720)
+const MOCK_ROSTER = [
+  'Абрамова Дарья', 'Белов Артём', 'Гарипов Тимур', 'Ёлкина Мария', 'Иванов Иван', 'Иванов Кирилл',
+  'Каримова Алсу', 'Лебедев Максим', 'Мухаметзянов Ренат', 'Никитина Полина', 'Сафин Амир', 'Шарипова Лейла',
+]
+const mockStudent = (k) => U('b', 300 + k)
+export const mock_exam_templates = [{
+  id: U('c', 730), title: 'ЕГЭ математика, профиль', subject: 'math', exam_type: 'ege', year: 2027,
+  max_points: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 2, 2, 3, 4, 4], part1_last: 12, score_scale: null,
+}]
+const mockGroupStudents = MOCK_ROSTER.map((name, k) => ({
+  id: U('f', 310 + k), group_id: MOCK_GROUP, student_id: mockStudent(k), joined_at: ago(24 * 30),
+  students: { id: mockStudent(k), profile_id: U('a', 300 + k), profiles: { id: U('a', 300 + k), full_name: name, avatar_url: null } },
+}))
+group_students.push(...mockGroupStudents)
+const MOCK_SEED = {
+  'Каримова Алсу':      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 2, 1],
+  'Лебедев Максим':     [1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 2, 0, 0, 0],
+  'Мухаметзянов Ренат': [1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 2, 1, 0, 1, 0, 0, 0],
+  'Никитина Полина':    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 2, 2, 2, 3, 2],
+  'Шарипова Лейла':     [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0],
+  'Гарипов Тимур':      [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 1, 1, 2, 1, 1, 0],
+}
+export const mock_exam_task_scores = Object.entries(MOCK_SEED).flatMap(([name, pts]) =>
+  pts.map((points, t) => ({ mock_exam_id: MOCK_EXAM, student_id: mockStudent(MOCK_ROSTER.indexOf(name)), task_number: t + 1, points })))
+const mockTotals = Object.entries(MOCK_SEED).map(([name, pts]) => {
+  const p1 = pts.slice(0, 12).reduce((a, b) => a + b, 0), p2 = pts.slice(12).reduce((a, b) => a + b, 0)
+  return { id: U('c', 740 + MOCK_ROSTER.indexOf(name)), mock_exam_id: MOCK_EXAM, student_id: mockStudent(MOCK_ROSTER.indexOf(name)), score: p1 + p2, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(24), students: mockGroupStudents[MOCK_ROSTER.indexOf(name)].students }
+})
+// Отдельным массивом: общий `mock_exam_results` висит embed-ом на физическом
+// пробнике, и строки математики иначе показались бы и там.
+mock_exams.unshift({
+  id: MOCK_EXAM, title: 'Пробник №3', subject: 'math', exam_type: 'ege', group_id: MOCK_GROUP, template_id: mock_exam_templates[0].id,
+  date: '2026-10-18T09:00:00Z', max_score: 32, created_by: IDS.teacherRow, created_at: ago(24 * 2),
+  groups: { name: '11А профиль' }, mock_exam_templates: mock_exam_templates[0],
+  mock_exam_results: mockTotals, mock_exam_task_scores,
+})
+// Один из девяти образцов прода: без группы — таблица не открывается, и
+// список обязан сказать это словами.
+mock_exams.push({
+  id: U('c', 721), title: 'Образец: пробник без группы', subject: 'math', exam_type: 'ege', group_id: null, template_id: null,
+  date: ago(24 * 90), max_score: 100, created_by: null, created_at: ago(24 * 90), groups: null, mock_exam_results: [],
+})
+/** Имитация `save_mock_exam_grid`: итог = сумма клеток, old_score — из «базы». */
+function saveMockExamGrid(body) {
+  const rows = (body.p_rows ?? []).map(r => {
+    const filled = r.points.filter(p => p != null)
+    const score = filled.length ? filled.reduce((a, b) => a + b, 0) : null
+    const prev = mockTotals.find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === r.student_id)
+    return { student_id: r.student_id, old_score: prev ? prev.score : null, score }
+  })
+  return { rows }
+}
+
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
 
@@ -935,7 +996,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results, lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals], mock_exam_templates, mock_exam_task_scores, lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {
@@ -968,6 +1029,7 @@ export function baseFixtures(persona) {
       // §217. Отчёт приходит ОДНИМ вызовом — ровно так же, как на проде.
       // Отчёт отдаётся только по ученику карточки: чужой ученик получает
       // пустоту, а не чужие числа.
+      save_mock_exam_grid: saveMockExamGrid,
       student_progress_report: (body) =>
         body.p_student_id === IDS.otherStudent(0) ? progressReport : null,
       topic_homework_ai_expire_stale_jobs: null,

@@ -55,6 +55,10 @@ export interface MockExamExportRow {
   part2:      number | null
   /** §215. Колонка `notes` таблицы; прежнего `feedback` в базе не было. */
   notes:      string
+  /** §218. Первичный балл (у пробника с шаблоном); null — у старых пробников его нет. */
+  primary?:   number | null
+  /** §218. Баллы по заданиям: tasks[0] — №1. null — клетка пустая (нет данных), не ноль. */
+  tasks?:     (number | null)[]
 }
 
 export function exportMockExams(rows: MockExamExportRow[]) {
@@ -72,6 +76,10 @@ export function exportMockExams(rows: MockExamExportRow[]) {
     '1 часть':         r.part1 ?? '',
     '2 часть':         r.part2 ?? '',
     'Заметка':         r.notes,
+    // §218. Первичный и баллы по номерам — ради них пробник и вводится по
+    // заданиям. Пустая клетка остаётся пустой: «нет данных» ≠ 0.
+    ...(r.tasks ? { 'Первичный': r.primary ?? '' } : {}),
+    ...Object.fromEntries((r.tasks ?? []).map((v, t) => [`№${t + 1}`, v ?? ''])),
   }))
 
   const ws = XLSX.utils.json_to_sheet(data)

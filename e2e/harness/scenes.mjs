@@ -13,17 +13,37 @@ const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scr
 const openAiHint = `(() => { const b = document.querySelector('[data-testid="ai-check-hint-toggle"]'); b?.click(); b?.scrollIntoView({ block: 'center' }) })()`
 // §212: счётчик-фильтр. Оставляем в списке только неверные.
 const filterWrong = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-wrong"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
-// §215 (board/067): открыть форму результатов первого пробника в списке.
-const openMockResults = `document.querySelector('[data-testid="mock-exam-results-open"]')?.click()`
-// §215: ошибка ввода — балл выше максимума. Вводим как человек: в поле, потом
-// «Сохранить». React слышит programmatic value только через нативный сеттер.
-const typeBadScore = `(() => {
-  const input = document.querySelector('[data-testid="mock-exam-results-modal"] input[type=number]')
+// §218: пробник по номерам. Пример владельца из макета — «нарочно с
+// подвохами»: «Елкина» через «е», двое Ивановых, лишние пробелы, ученик не с
+// этого курса и балл выше максимума. Вставляется в клетку столбца «Ученик»
+// настоящим событием paste — тем же, что даёт Ctrl + V.
+const MOCK_SAMPLE = [
+  'Абрамова Д.\t1\t1\t1\t0\t1\t1\t1\t1\t0\t1\t1\t1\t2\t1\t2\t0\t1\t0\t0',
+  'Белов Артём\t1\t1\t1\t1\t1\t1\t0\t1\t1\t1\t1\t1\t1\t2\t1\t1\t0\t1\t0',
+  'Елкина Мария\t1\t1\t0\t1\t1\t1\t1\t1\t1\t0\t1\t1\t2\t3\t2\t2\t1\t2\t1',
+  'Иванов К.\t1\t1\t1\t1\t0\t1\t1\t0\t1\t1\t1\t0\t0\t1\t0\t1\t0\t0\t0',
+  'Иванов\t1\t0\t1\t1\t1\t1\t1\t1\t1\t1\t0\t1\t2\t2\t1\t1\t1\t0\t0',
+  'Петров Олег\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t2\t3\t2\t2\t3\t4\t4',
+  '  Сафин   Амир \t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t2\t4\t2\t2\t2\t1\t1',
+].join('\n')
+const pasteMockSample = `(() => {
+  const td = document.querySelector('[data-testid="mock-grid-name"]')
+  if (!td) return
+  td.focus()
+  const dt = new DataTransfer()
+  dt.setData('text/plain', ${JSON.stringify(MOCK_SAMPLE)})
+  td.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+})()`
+const toMockReport = `document.querySelector('[data-testid="mock-grid-report"]')?.scrollIntoView({ block: 'start' })`
+// Красная клетка: Абрамова, №14 = 4 при максимуме 3 — и «Сохранить».
+const typeMockOver = `(() => {
+  const input = document.getElementById('mx-c-0-13')
   if (!input) return
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-  setter.call(input, '101')
+  setter.call(input, '4')
   input.dispatchEvent(new Event('input', { bubbles: true }))
-  document.querySelector('[data-testid="mock-exam-save"]')?.click()
+  document.querySelector('[data-testid="mock-grid-save"]')?.click()
+  window.scrollTo(0, 0)
 })()`
 // §214 (board/066): включённый фильтр «не решено» — пятый счётчик в полосе.
 const filterUnsolved = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-unsolved"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
@@ -356,15 +376,17 @@ export const scenes = [
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
 
-  // ── §215 (board/067): пробники — ввод результатов ──
-  // Экран существовал и был наполовину сломан: модалка писала в колонку
-  // `feedback`, которой в таблице нет, и за три месяца при девяти пробниках
-  // в базе осталось ноль строк. На снимках: список, форма с уже внесённой
-  // половиной группы (значит, подхват работает) и понятная ошибка ввода.
+  // ── §215 → §218: пробники ──
+  // Модалка §215 заменена таблицей по номерам заданий (§218). На снимках:
+  // список (образец без группы говорит «нет группы» словами), таблица с
+  // заполненной половиной группы, отчёт о вставке примера владельца с «не
+  // найден» и «неоднозначно», красная клетка при сохранении, экран шаблона.
   ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
     { persona: 'owner', name: 'o15-mock-exams', url: '/mock-exams', width, height, actions: [{ wait: 1200 }] },
-    { persona: 'owner', name: 'o15-mock-results', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { eval: openMockResults }, { wait: 900 }], full: false },
-    { persona: 'owner', name: 'o15-mock-error', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { eval: openMockResults }, { wait: 900 }, { eval: typeBadScore }, { wait: 600 }], full: false },
+    { persona: 'owner', name: 'o15-mock-grid', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }] },
+    { persona: 'owner', name: 'o15-mock-paste', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: pasteMockSample }, { wait: 500 }, { eval: toMockReport }, { wait: 300 }] },
+    { persona: 'owner', name: 'o15-mock-red', url: '/mock-exams/c000000-0000-4000-8000-000000000720', width, height, actions: [{ wait: 1200 }, { eval: typeMockOver }, { wait: 500 }] },
+    { persona: 'owner', name: 'o15-mock-template', url: '/mock-exams/templates', width, height, actions: [{ wait: 1000 }] },
   ]),
 
   // ── §214 (board/066): пятый вердикт «не решено» ──

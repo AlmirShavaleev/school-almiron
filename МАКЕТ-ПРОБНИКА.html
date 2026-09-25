@@ -1,0 +1,495 @@
+<title>Пробник по номерам</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Mono&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --ground:#F1EFEA; --paper:#FCFBF8; --ink:#1B2430; --ink-2:#4B5663; --ink-3:#7D8793;
+  --rule:#DAD6CC; --rule-2:#C4BEB2; --cell:#FFFFFF; --cell-alt:#F8F7F3;
+  --accent:#2C5E8A; --accent-soft:#E2EBF3; --focus:#2C5E8A;
+  --good:#2F7A55; --good-soft:#E3F0E8;
+  --warn:#A8691F; --warn-soft:#F7EDDD;
+  --bad:#B23B3B;  --bad-soft:#F7E3E1;
+  --heat-0:#F7E3E1; --heat-1:#F7EDDD; --heat-2:#EEF1E4; --heat-3:#E3F0E8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ground:#12161B; --paper:#1A2027; --ink:#E9E6DF; --ink-2:#B3BAC3; --ink-3:#86909A;
+    --rule:#313A44; --rule-2:#44505D; --cell:#1F262E; --cell-alt:#1C232A;
+    --accent:#86B6DC; --accent-soft:#1E2C39; --focus:#86B6DC;
+    --good:#7FC6A0; --good-soft:#1B2B22;
+    --warn:#E2AE6E; --warn-soft:#2D2519;
+    --bad:#E59191;  --bad-soft:#2F1F1F;
+    --heat-0:#3A2323; --heat-1:#352B1C; --heat-2:#262E22; --heat-3:#1D3326;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#12161B; --paper:#1A2027; --ink:#E9E6DF; --ink-2:#B3BAC3; --ink-3:#86909A;
+  --rule:#313A44; --rule-2:#44505D; --cell:#1F262E; --cell-alt:#1C232A;
+  --accent:#86B6DC; --accent-soft:#1E2C39; --focus:#86B6DC;
+  --good:#7FC6A0; --good-soft:#1B2B22;
+  --warn:#E2AE6E; --warn-soft:#2D2519;
+  --bad:#E59191;  --bad-soft:#2F1F1F;
+  --heat-0:#3A2323; --heat-1:#352B1C; --heat-2:#262E22; --heat-3:#1D3326;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:'PT Sans','Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.5; padding-block:0 48px}
+.wrap{max-width:1240px; margin:0 auto; padding:0 16px}
+.num{font-family:'PT Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+header.top{padding-block:22px 14px; display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end}
+.crumb{font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
+h1{margin:2px 0 0; font-size:24px; line-height:1.2; text-wrap:balance}
+.meta{color:var(--ink-2); font-size:14px}
+.tag{display:inline-block; font-size:12px; padding:2px 8px; border-radius:4px; background:var(--warn-soft); color:var(--warn); margin-left:6px; vertical-align:2px}
+.spacer{flex:1}
+.btn{font:inherit; font-size:14px; padding:7px 14px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--rule-2); background:var(--paper); color:var(--ink)}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0E1620}
+.btn:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+
+.panel{background:var(--paper); border:1px solid var(--rule); border-radius:8px}
+.hint{display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:12px 14px; margin-bottom:12px}
+.hint p{margin:0; flex:1 1 420px; color:var(--ink-2); font-size:14px}
+.hint b{color:var(--ink)}
+
+.gridwrap{overflow-x:auto; border:1px solid var(--rule); border-radius:8px; background:var(--paper)}
+table.g{border-collapse:separate; border-spacing:0; min-width:100%}
+.g th,.g td{border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); padding:0; text-align:center}
+.g thead th{position:sticky; top:0; background:var(--paper); z-index:2; font-weight:400}
+.g th.task{min-width:37px; padding:6px 1px 5px}
+.g th.task .n{display:block; font-family:'PT Mono',monospace; font-size:13px; color:var(--ink)}
+.g th.task .m{display:block; font-size:11px; color:var(--ink-3)}
+.g th.partsep, .g td.partsep{border-left:2px solid var(--ink-3)}
+.g .name{position:sticky; left:0; z-index:1; background:var(--paper); text-align:left;
+  padding:0 10px; min-width:176px; white-space:nowrap; font-size:14px}
+.g thead .name{z-index:3; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+.g tbody tr:nth-child(even) td.cellwrap{background:var(--cell-alt)}
+.g td.cellwrap{background:var(--cell)}
+.g input{width:37px; height:32px; border:0; background:transparent; text-align:center;
+  font-family:'PT Mono',monospace; font-size:14px; color:var(--ink); padding:0}
+.g input:focus{outline:2px solid var(--focus); outline-offset:-2px; background:var(--accent-soft)}
+.g td.over input, .g td.bad input{color:var(--bad); font-weight:700}
+.g td.over, .g td.bad{box-shadow:inset 0 0 0 2px var(--bad)}
+.g td.flash{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:var(--accent-soft)}to{}}
+@media (prefers-reduced-motion: reduce){ .g td.flash{animation:none} }
+.g th.tot, .g td.tot{min-width:52px; font-family:'PT Mono',monospace; font-size:14px; padding:0 6px; background:var(--paper)}
+.g td.tot.big{font-weight:700}
+.g th.tot{font-size:12px; color:var(--ink-3); font-family:'PT Sans',sans-serif}
+.g th.totsep, .g td.totsep{border-left:2px solid var(--ink-3)}
+.g tfoot td{position:sticky; bottom:0; background:var(--paper); font-family:'PT Mono',monospace; font-size:12px; padding:6px 2px; border-top:2px solid var(--ink-3)}
+.g tfoot td.name{font-family:'PT Sans',sans-serif; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+.g tfoot td.h0{background:var(--heat-0)} .g tfoot td.h1{background:var(--heat-1)}
+.g tfoot td.h2{background:var(--heat-2)} .g tfoot td.h3{background:var(--heat-3)}
+.g td.name .dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px; background:var(--rule-2); vertical-align:1px}
+.g tr.filled td.name .dot{background:var(--good)}
+.legend{font-size:12px; color:var(--ink-3); padding:8px 2px 0; display:flex; gap:16px; flex-wrap:wrap}
+.sw{display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-2px; margin-right:5px; border:1px solid var(--rule)}
+
+.report{margin-top:14px; padding:14px 16px}
+.report[hidden]{display:none!important}
+.report h3{margin:0 0 8px; font-size:15px}
+.report .row{display:flex; gap:10px; align-items:baseline; padding:5px 0; border-top:1px solid var(--rule); font-size:14px}
+.report .row:first-of-type{border-top:0}
+.badge{font-size:12px; padding:1px 7px; border-radius:4px; white-space:nowrap}
+.badge.ok{background:var(--good-soft); color:var(--good)}
+.badge.warn{background:var(--warn-soft); color:var(--warn)}
+.badge.bad{background:var(--bad-soft); color:var(--bad)}
+.report .actions{display:flex; gap:10px; margin-top:12px; flex-wrap:wrap}
+
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px}
+@media (max-width:820px){ .cols{grid-template-columns:1fr} }
+.box{padding:14px 16px}
+.box h3{margin:0 0 4px; font-size:15px}
+.box p{margin:0 0 10px; font-size:13px; color:var(--ink-2)}
+.box textarea{width:100%; min-height:150px; font-family:'PT Mono',monospace; font-size:12px; line-height:1.5;
+  border:1px solid var(--rule); border-radius:6px; padding:8px; background:var(--cell); color:var(--ink); resize:vertical; white-space:pre; overflow-x:auto}
+.struct{display:flex; flex-wrap:wrap; gap:6px}
+.struct label{display:flex; flex-direction:column; align-items:center; font-size:11px; color:var(--ink-3); width:40px}
+.struct input{width:40px; height:30px; text-align:center; border:1px solid var(--rule); border-radius:4px;
+  background:var(--cell); color:var(--ink); font-family:'PT Mono',monospace; font-size:13px}
+.struct .p2 input{border-color:var(--ink-3)}
+.srow{display:flex; gap:10px; align-items:center; margin-top:10px; font-size:13px; color:var(--ink-2); flex-wrap:wrap}
+.srow input{width:52px; height:30px; text-align:center; border:1px solid var(--rule); border-radius:4px; background:var(--cell); color:var(--ink); font-family:'PT Mono',monospace}
+.note{font-size:13px; color:var(--ink-3); margin:14px 2px 0}
+.toast{margin-left:10px; font-size:13px; color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="crumb">Пробники · Математика ЕГЭ, профиль · группа 11А</div>
+      <h1>Пробник №3 — 18 октября <span class="tag">макет, данные вымышленные</span></h1>
+      <div class="meta" id="meta"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-clear" type="button">Очистить таблицу</button>
+    <button class="btn primary" id="btn-save" type="button">Сохранить</button>
+    <span class="toast" id="toast" role="status"></span>
+  </header>
+
+  <div class="panel hint">
+    <p><b>Как вставить из Excel.</b> В своей таблице выдели блок вместе со столбцом фамилий — от фамилии первого ученика до балла за последнее задание. Скопируй, встань в любую клетку столбца «Ученик» и нажми <b>Ctrl + V</b>. Строки сопоставятся по фамилиям, а кого система не узнала — появится списком ниже. Без фамилий вставка идёт как в Excel: от выбранной клетки вправо и вниз.</p>
+    <button class="btn" id="btn-copy" type="button">Скопировать пример из Excel</button>
+  </div>
+
+  <div class="gridwrap">
+    <table class="g" id="grid"></table>
+  </div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--heat-0)"></span>по номеру набрано меньше 40 %</span>
+    <span><span class="sw" style="background:var(--heat-1)"></span>40–60 %</span>
+    <span><span class="sw" style="background:var(--heat-2)"></span>60–80 %</span>
+    <span><span class="sw" style="background:var(--heat-3)"></span>80 % и выше</span>
+    <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--bad)"></span>балл выше максимума или не число</span>
+  </div>
+
+  <section class="panel report" id="report" hidden aria-live="polite"></section>
+
+  <div class="cols">
+    <section class="panel box">
+      <h3>Пример из Excel</h3>
+      <p>Нарочно с подвохами: «Елкина» через «е», двое Ивановых, лишние пробелы, ученик не с этого курса и балл выше максимума. Скопируй кнопкой выше или выдели вручную.</p>
+      <textarea id="sample" spellcheck="false" aria-label="Пример данных из Excel"></textarea>
+    </section>
+    <section class="panel box">
+      <h3>Структура пробника</h3>
+      <p>Максимальный балл за каждое задание. Задаётся один раз на экзамен и год. <b>Здесь черновик — проверь по демоверсии.</b></p>
+      <div class="struct" id="struct"></div>
+      <div class="srow">
+        <span>Первая часть — задания с 1 по</span>
+        <input id="p1end" type="number" min="1" max="30" value="12" aria-label="Последнее задание первой части">
+        <span id="struct-sum"></span>
+      </div>
+      <p style="margin-top:12px">Тестовый балл считается по таблице перевода первичных баллов. <b>В макете стоит образец</b> — в жизни ты один раз вносишь официальную таблицу на год.</p>
+    </section>
+  </div>
+
+  <p class="note">Макет проверяет две вещи: удобно ли вводить баллы по номерам и правильно ли разливается вставка из Excel. Ничего не сохраняется, ученики и баллы выдуманы.</p>
+</div>
+
+<script>
+(function(){
+  // ── Структура: черновик профильной математики, проверяется преподавателем ──
+  var maxPts = [1,1,1,1,1,1,1,1,1,1,1,1, 2,3,2,2,3,4,4];
+  var p1End = 12;
+
+  // Образец таблицы перевода первичный → тестовый. НЕ официальная.
+  function toTest(primary, maxPrimary){
+    if (primary == null) return null;
+    var r = primary / maxPrimary;
+    return Math.round(100 * (1 - Math.pow(1 - r, 1.35)));
+  }
+
+  var roster = [
+    'Абрамова Дарья','Белов Артём','Гарипов Тимур','Ёлкина Мария','Иванов Иван','Иванов Кирилл',
+    'Каримова Алсу','Лебедев Максим','Мухаметзянов Ренат','Никитина Полина','Сафин Амир','Шарипова Лейла'
+  ];
+
+  // data[s][t] = { raw: '', v: number|null }
+  var data = roster.map(function(){ return maxPts.map(function(){ return {raw:'', v:null}; }); });
+
+  // Часть группы уже заполнена — чтобы итоги и «сколько набираем» были видны сразу.
+  var seed = {
+    'Каримова Алсу':       [1,1,1,1,1,1,1,1,1,1,1,1, 2,2,2,1,1,2,1],
+    'Лебедев Максим':      [1,1,0,1,1,1,1,0,1,1,1,0, 1,0,1,2,0,0,0],
+    'Мухаметзянов Ренат':  [1,1,1,1,0,1,1,1,1,0,1,1, 2,1,0,1,0,0,0],
+    'Никитина Полина':     [1,1,1,1,1,1,1,1,1,1,1,1, 2,3,2,2,2,3,2],
+    'Шарипова Лейла':      [1,0,1,1,1,0,1,1,0,1,1,1, 0,1,1,0,0,0,0],
+    'Гарипов Тимур':       [1,1,1,0,1,1,1,1,1,1,0,1, 2,1,1,2,1,1,0]
+  };
+  roster.forEach(function(n, s){ if (seed[n]) seed[n].forEach(function(v,t){ data[s][t] = {raw:String(v), v:v}; }); });
+
+  var sampleText = [
+    'Абрамова Д.\t1\t1\t1\t0\t1\t1\t1\t1\t0\t1\t1\t1\t2\t1\t2\t0\t1\t0\t0',
+    'Белов Артём\t1\t1\t1\t1\t1\t1\t0\t1\t1\t1\t1\t1\t1\t2\t1\t1\t0\t1\t0',
+    'Елкина Мария\t1\t1\t0\t1\t1\t1\t1\t1\t1\t0\t1\t1\t2\t3\t2\t2\t1\t2\t1',
+    'Иванов К.\t1\t1\t1\t1\t0\t1\t1\t0\t1\t1\t1\t0\t0\t1\t0\t1\t0\t0\t0',
+    'Иванов\t1\t0\t1\t1\t1\t1\t1\t1\t1\t1\t0\t1\t2\t2\t1\t1\t1\t0\t0',
+    'Петров Олег\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t2\t3\t2\t2\t3\t4\t4',
+    '  Сафин   Амир \t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t2\t4\t2\t2\t2\t1\t1'
+  ].join('\n');
+
+  var grid = document.getElementById('grid');
+  var reportEl = document.getElementById('report');
+  var toast = document.getElementById('toast');
+  var undoSnap = null;
+
+  function maxPrimary(){ return maxPts.reduce(function(a,b){return a+b;},0); }
+
+  function parseVal(raw, t){
+    var s = String(raw == null ? '' : raw).trim().replace(',', '.');
+    if (s === '') return {raw:'', v:null, err:null};
+    var n = Number(s);
+    if (!isFinite(n) || n < 0 || Math.round(n) !== n) return {raw:s, v:null, err:'bad'};
+    if (n > maxPts[t]) return {raw:s, v:n, err:'over'};
+    return {raw:s, v:n, err:null};
+  }
+
+  function build(){
+    var h = '<thead><tr><th class="name" scope="col">Ученик</th>';
+    maxPts.forEach(function(m, t){
+      h += '<th class="task' + (t === p1End ? ' partsep' : '') + '" scope="col"><span class="n">№' + (t+1) + '</span><span class="m">макс ' + m + '</span></th>';
+    });
+    h += '<th class="tot totsep" scope="col">1 часть</th><th class="tot" scope="col">2 часть</th><th class="tot" scope="col">Первичный</th><th class="tot" scope="col">Тестовый</th></tr></thead><tbody>';
+    roster.forEach(function(name, s){
+      h += '<tr data-s="' + s + '"><td class="name"><span class="dot"></span>' + name + '</td>';
+      maxPts.forEach(function(m, t){
+        h += '<td class="cellwrap' + (t === p1End ? ' partsep' : '') + '" data-t="' + t + '"><input inputmode="numeric" autocomplete="off" id="c-' + s + '-' + t + '" aria-label="' + name + ', задание ' + (t+1) + '"></td>';
+      });
+      h += '<td class="tot totsep" data-k="p1"></td><td class="tot" data-k="p2"></td><td class="tot big" data-k="pr"></td><td class="tot big" data-k="ts"></td></tr>';
+    });
+    h += '</tbody><tfoot><tr><td class="name">Набрано по номеру</td>';
+    maxPts.forEach(function(m, t){ h += '<td data-f="' + t + '"' + (t === p1End ? ' class="partsep"' : '') + '></td>'; });
+    h += '<td class="totsep" data-f="p1"></td><td data-f="p2"></td><td data-f="pr"></td><td data-f="ts"></td></tr></tfoot>';
+    grid.innerHTML = h;
+
+    roster.forEach(function(name, s){
+      maxPts.forEach(function(m, t){
+        var inp = document.getElementById('c-' + s + '-' + t);
+        inp.value = data[s][t].raw;
+        inp.addEventListener('input', function(){ data[s][t] = parseVal(inp.value, t); paintCell(s,t); recalc(); });
+        inp.addEventListener('keydown', onKey);
+        inp.addEventListener('paste', onPaste);
+        inp.addEventListener('focus', function(){ inp.select(); });
+      });
+    });
+    // Вставка с фамилиями — в столбец «Ученик».
+    Array.prototype.forEach.call(grid.querySelectorAll('tbody td.name'), function(td){
+      td.tabIndex = 0;
+      td.addEventListener('paste', onPaste);
+    });
+    roster.forEach(function(n,s){ maxPts.forEach(function(m,t){ paintCell(s,t); }); });
+    recalc();
+    document.getElementById('meta').textContent =
+      roster.length + ' учеников · ' + maxPts.length + ' заданий · максимум ' + maxPrimary() + ' первичных баллов';
+  }
+
+  function paintCell(s, t){
+    var td = document.getElementById('c-' + s + '-' + t).parentNode;
+    td.classList.toggle('over', data[s][t].err === 'over');
+    td.classList.toggle('bad', data[s][t].err === 'bad');
+    td.title = data[s][t].err === 'over' ? 'Больше максимума: за задание ' + (t+1) + ' можно не больше ' + maxPts[t]
+             : data[s][t].err === 'bad' ? 'Не число' : '';
+  }
+
+  function sums(s){
+    var p1 = 0, p2 = 0, any = false;
+    data[s].forEach(function(c, t){
+      if (c.v != null && c.err !== 'bad'){ any = true; var v = Math.min(c.v, maxPts[t]); if (t < p1End) p1 += v; else p2 += v; }
+    });
+    return any ? {p1:p1, p2:p2, pr:p1+p2, ts:toTest(p1+p2, maxPrimary())} : null;
+  }
+
+  function recalc(){
+    var filled = [];
+    roster.forEach(function(n, s){
+      var row = grid.querySelector('tr[data-s="' + s + '"]');
+      var r = sums(s);
+      row.classList.toggle('filled', !!r);
+      ['p1','p2','pr','ts'].forEach(function(k){ row.querySelector('[data-k="' + k + '"]').textContent = r ? r[k] : ''; });
+      if (r) filled.push(r);
+    });
+    maxPts.forEach(function(m, t){
+      var got = 0, cnt = 0;
+      roster.forEach(function(n, s){ var c = data[s][t]; if (c.v != null && c.err !== 'bad'){ got += Math.min(c.v, m); cnt++; } });
+      var td = grid.querySelector('tfoot [data-f="' + t + '"]');
+      td.classList.remove('h0','h1','h2','h3');
+      if (!cnt){ td.textContent = '—'; return; }
+      var pct = Math.round(got / (cnt * m) * 100);
+      td.textContent = pct + '%';
+      td.classList.add(pct < 40 ? 'h0' : pct < 60 ? 'h1' : pct < 80 ? 'h2' : 'h3');
+      td.title = 'Задание ' + (t+1) + ': набрано ' + got + ' из ' + (cnt*m) + ' у ' + cnt + ' учеников';
+    });
+    ['p1','p2','pr','ts'].forEach(function(k){
+      var td = grid.querySelector('tfoot [data-f="' + k + '"]');
+      if (!filled.length){ td.textContent = '—'; return; }
+      var avg = filled.reduce(function(a, r){ return a + r[k]; }, 0) / filled.length;
+      td.textContent = 'ср. ' + Math.round(avg);
+    });
+  }
+
+  // ── Навигация как в Excel ──
+  function onKey(e){
+    var id = e.target.id.split('-'); var s = +id[1], t = +id[2];
+    var ns = s, nt = t;
+    if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) nt++;
+    else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) nt--;
+    else if (e.key === 'ArrowDown' || e.key === 'Enter') ns++;
+    else if (e.key === 'ArrowUp') ns--;
+    else return;
+    if (ns < 0 || ns >= roster.length || nt < 0 || nt >= maxPts.length) return;
+    e.preventDefault();
+    document.getElementById('c-' + ns + '-' + nt).focus();
+  }
+
+  // ── Сопоставление по фамилии ──
+  function norm(x){ return String(x).toLowerCase().replace(/ё/g,'е').replace(/[.,]/g,' ').replace(/\s+/g,' ').trim(); }
+  var rosterN = roster.map(function(n){ var p = norm(n).split(' '); return {sur:p[0], first:p[1] || ''}; });
+
+  function match(name){
+    var p = norm(name).split(' '); var sur = p[0], first = p[1] || '';
+    var byS = [];
+    rosterN.forEach(function(r, i){ if (r.sur === sur) byS.push(i); });
+    if (!byS.length) return {kind:'none'};
+    if (byS.length === 1) return {kind:'ok', i:byS[0]};
+    if (!first) return {kind:'ambiguous', options:byS};
+    var byF = byS.filter(function(i){ return rosterN[i].first.indexOf(first) === 0; });
+    if (byF.length === 1) return {kind:'ok', i:byF[0]};
+    return {kind:'ambiguous', options:byS};
+  }
+
+  function isNumberLike(x){ var s = String(x).trim().replace(',', '.'); return s === '' || isFinite(Number(s)); }
+
+  function snapshot(){ return data.map(function(r){ return r.map(function(c){ return {raw:c.raw, v:c.v, err:c.err}; }); }); }
+
+  function onPaste(e){
+    var text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!text) return;
+    var rows = text.replace(/\r/g,'').split('\n').filter(function(r){ return r.trim() !== ''; }).map(function(r){ return r.split('\t'); });
+    if (!rows.length) return;
+    e.preventDefault();
+    undoSnap = snapshot();
+    var withNames = !isNumberLike(rows[0][0]);
+    if (withNames) pasteNamed(rows); else pastePositional(rows, e.target);
+  }
+
+  function setCell(s, t, raw){
+    data[s][t] = parseVal(raw, t);
+    var inp = document.getElementById('c-' + s + '-' + t);
+    inp.value = data[s][t].raw;
+    paintCell(s, t);
+    var td = inp.parentNode; td.classList.remove('flash'); void td.offsetWidth; td.classList.add('flash');
+  }
+
+  function pasteNamed(rows){
+    var ok = [], none = [], amb = [], over = [], extra = 0, seen = {};
+    rows.forEach(function(r){
+      var name = r[0].trim(), vals = r.slice(1);
+      var m = match(name);
+      if (m.kind === 'none'){ none.push(name); return; }
+      if (m.kind === 'ambiguous'){ amb.push({name:name, options:m.options.map(function(i){ return roster[i]; })}); return; }
+      if (seen[m.i]){ amb.push({name:name, options:[roster[m.i] + ' (уже вставлен строкой выше)']}); return; }
+      seen[m.i] = true;
+      if (vals.length > maxPts.length) extra = Math.max(extra, vals.length - maxPts.length);
+      vals.slice(0, maxPts.length).forEach(function(v, t){
+        setCell(m.i, t, v);
+        if (data[m.i][t].err) over.push(roster[m.i] + ', №' + (t+1) + ': ' + (data[m.i][t].err === 'over' ? v + ' при максимуме ' + maxPts[t] : '«' + v + '» — не число'));
+      });
+      ok.push({from:name, to:roster[m.i]});
+    });
+    recalc();
+    showReport(ok, none, amb, over, extra);
+  }
+
+  function pastePositional(rows, target){
+    var id = (target.id || '').split('-');
+    var s0 = id.length === 3 ? +id[1] : 0, t0 = id.length === 3 ? +id[2] : 0;
+    var cnt = 0, over = [];
+    rows.forEach(function(r, dr){
+      r.forEach(function(v, dt){
+        var s = s0 + dr, t = t0 + dt;
+        if (s < roster.length && t < maxPts.length){
+          setCell(s, t, v); cnt++;
+          if (data[s][t].err) over.push(roster[s] + ', №' + (t+1) + ': ' + v);
+        }
+      });
+    });
+    recalc();
+    showReport([], [], [], over, 0, cnt);
+  }
+
+  function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function showReport(ok, none, amb, over, extra, positional){
+    var h = '<h3>Что произошло со вставкой</h3>';
+    if (positional != null){
+      h += '<div class="row"><span class="badge ok">вставлено</span><span>' + positional + ' клеток — по порядку, от выбранной клетки. Фамилий в блоке не было, поэтому строки не сверялись.</span></div>';
+    } else {
+      h += '<div class="row"><span class="badge ok">сопоставлено ' + ok.length + ' из ' + (ok.length + none.length + amb.length) + '</span><span>' +
+           ok.map(function(o){ return norm(o.from) === norm(o.to) ? esc(o.to) : esc(o.from.trim()) + ' → ' + esc(o.to); }).join(' · ') + '</span></div>';
+      if (none.length) h += '<div class="row"><span class="badge bad">не найдены</span><span>' + none.map(esc).join(' · ') +
+           ' — таких нет на курсе. Их баллы <b>не вставлены никуда</b>.</span></div>';
+      amb.forEach(function(a){
+        h += '<div class="row"><span class="badge warn">неоднозначно</span><span>«' + esc(a.name) + '» — подходят: ' + a.options.map(esc).join(', ') +
+             '. Добавь в Excel имя или первую букву имени и вставь эту строку заново.</span></div>';
+      });
+    }
+    if (over.length) h += '<div class="row"><span class="badge bad">проверь</span><span>' + over.map(esc).join(' · ') + ' — клетки обведены красным.</span></div>';
+    if (extra) h += '<div class="row"><span class="badge warn">лишние столбцы</span><span>В строках на ' + extra + ' значений больше, чем заданий в пробнике. Лишнее отброшено — проверь, что первый столбец после фамилии это задание №1.</span></div>';
+    h += '<div class="actions"><button class="btn" id="btn-undo" type="button">Отменить вставку</button></div>';
+    reportEl.innerHTML = h;
+    reportEl.hidden = false;
+    document.getElementById('btn-undo').addEventListener('click', function(){
+      if (!undoSnap) return;
+      data = undoSnap; undoSnap = null;
+      roster.forEach(function(n,s){ maxPts.forEach(function(m,t){ document.getElementById('c-'+s+'-'+t).value = data[s][t].raw; paintCell(s,t); }); });
+      recalc();
+      reportEl.hidden = true;
+    });
+  }
+
+  // ── Структура ──
+  function buildStruct(){
+    var box = document.getElementById('struct'); box.innerHTML = '';
+    maxPts.forEach(function(m, t){
+      var l = document.createElement('label'); if (t >= p1End) l.className = 'p2';
+      l.innerHTML = '№' + (t+1);
+      var i = document.createElement('input'); i.type = 'number'; i.min = 0; i.max = 10; i.value = m; i.id = 'mx-' + t;
+      i.setAttribute('aria-label', 'Максимум за задание ' + (t+1));
+      i.addEventListener('change', function(){
+        var v = Math.max(0, Math.min(10, parseInt(i.value, 10) || 0)); i.value = v; maxPts[t] = v;
+        roster.forEach(function(n,s){ data[s][t] = parseVal(data[s][t].raw, t); });
+        build(); structSum();
+      });
+      l.appendChild(i); box.appendChild(l);
+    });
+    structSum();
+  }
+  function structSum(){
+    var a = 0, b = 0; maxPts.forEach(function(m,t){ if (t < p1End) a += m; else b += m; });
+    document.getElementById('struct-sum').textContent = '· первая часть ' + a + ' б., вторая ' + b + ' б., всего ' + (a+b);
+  }
+  document.getElementById('p1end').addEventListener('change', function(e){
+    p1End = Math.max(1, Math.min(maxPts.length - 1, parseInt(e.target.value, 10) || 12)); e.target.value = p1End;
+    build(); buildStruct();
+  });
+
+  // ── Кнопки ──
+  var sampleEl = document.getElementById('sample'); sampleEl.value = sampleText;
+  document.getElementById('btn-copy').addEventListener('click', function(){
+    var done = function(){ say('Пример скопирован. Встань в клетку столбца «Ученик» и нажми Ctrl + V.'); };
+    try {
+      navigator.clipboard.writeText(sampleText).then(done, function(){ sampleEl.focus(); sampleEl.select(); say('Текст выделен — нажми Ctrl + C.'); });
+    } catch(err){ sampleEl.focus(); sampleEl.select(); say('Текст выделен — нажми Ctrl + C.'); }
+  });
+  document.getElementById('btn-clear').addEventListener('click', function(){
+    undoSnap = snapshot();
+    data = roster.map(function(){ return maxPts.map(function(){ return {raw:'', v:null}; }); });
+    build(); reportEl.hidden = true; say('Таблица очищена.');
+  });
+  document.getElementById('btn-save').addEventListener('click', function(){
+    var bad = 0; data.forEach(function(r){ r.forEach(function(c){ if (c.err) bad++; }); });
+    say(bad ? 'Не сохранено: ' + bad + ' клеток обведены красным. Исправь их — сохранять половину не будем.' : 'В макете ничего не сохраняется — это проверка ввода и вставки.');
+  });
+  var tt; function say(m){ toast.textContent = m; clearTimeout(tt); tt = setTimeout(function(){ toast.textContent = ''; }, 6000); }
+
+  // Запасной путь: если клетка «Ученик» не получила событие вставки сама,
+  // ловим его на документе — пока фокус не внутри поля ввода.
+  document.addEventListener('paste', function(e){
+    if (e.defaultPrevented) return;
+    var a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+    onPaste(e);
+  });
+
+  build(); buildStruct();
+})();
+</script>

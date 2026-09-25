@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { BookOpen, TrendingUp, Plus, ClipboardList, Download } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { BookOpen, TrendingUp, Plus, Table2, Download, Layers } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -7,7 +8,6 @@ import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useMockExams } from '@/hooks/useMockExams'
 import { CreateMockExamModal } from '@/components/modals/CreateMockExamModal'
-import { MockExamResultsModal } from '@/components/modals/MockExamResultsModal'
 import { formatDate, SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { exportMockExams } from '@/utils/exportExcel'
 import {
@@ -24,9 +24,7 @@ export function MockExamsPage() {
   const { exams, myResults, loading } = useMockExams(tick)
 
   const [showCreate, setShowCreate]   = useState(false)
-  const [resultsTarget, setResultsTarget] = useState<{
-    examId: string; groupId: string; maxScore: number; title: string
-  } | null>(null)
+  const navigate = useNavigate()
 
   if (loading) {
     return (
@@ -72,12 +70,23 @@ export function MockExamsPage() {
                   part1:       r.part1_score ?? null,
                   part2:       r.part2_score ?? null,
                   notes:       r.notes || '',
+                  // §218. Баллы по номерам заданий — у пробников с шаблоном.
+                  ...(e.mock_exam_templates ? {
+                    primary: r.primary_score ?? null,
+                    tasks: taskRow(e, r.student_id),
+                  } : {}),
                 }))
               )
               exportMockExams(rows)
             }}>
               <Download size={15} className="mr-1.5" />Excel
             </Button>
+          )}
+          {canCreate && (
+            <Link to="/mock-exams/templates" data-testid="mock-templates-link"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
+              <Layers size={15} />Шаблоны
+            </Link>
           )}
           {canCreate && (
             <Button size="sm" onClick={() => setShowCreate(true)}>
@@ -267,22 +276,7 @@ export function MockExamsPage() {
                         )}
                         <Badge variant="default" className="mt-1">{results.length} уч.</Badge>
                       </div>
-                      {canCreate && exam.group_id && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          data-testid="mock-exam-results-open"
-                          onClick={() => setResultsTarget({
-                            examId:   exam.id,
-                            groupId:  exam.group_id,
-                            maxScore: exam.max_score,
-                            title:    exam.title,
-                          })}
-                        >
-                          <ClipboardList size={14} className="mr-1" />
-                          Результаты
-                        </Button>
-                      )}
+                      {canCreate && <GridEntry exam={exam} />}
                     </div>
                   </div>
                   {results.length > 0 && (
@@ -303,27 +297,51 @@ export function MockExamsPage() {
       </Card>
       {/* Modals */}
       {canCreate && (
-        <>
-          <CreateMockExamModal
-            open={showCreate}
-            onClose={() => setShowCreate(false)}
-            onCreated={(examId, groupId, maxScore, title) => {
-              setShowCreate(false)
-              setResultsTarget({ examId, groupId, maxScore, title })
-              reload()
-            }}
-          />
-          <MockExamResultsModal
-            open={resultsTarget != null}
-            onClose={() => setResultsTarget(null)}
-            onSaved={reload}
-            examId={resultsTarget?.examId ?? null}
-            groupId={resultsTarget?.groupId ?? null}
-            maxScore={resultsTarget?.maxScore ?? 100}
-            examTitle={resultsTarget?.title}
-          />
-        </>
+        <CreateMockExamModal
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={(examId) => {
+            setShowCreate(false)
+            reload()
+            // §218. Сразу в таблицу по номерам: пробник заводят, чтобы вносить баллы.
+            navigate(`/mock-exams/${examId}`)
+          }}
+        />
       )}
     </div>
   )
+}
+
+/**
+ * §218. Вход в таблицу по номерам. У пробника без группы или без шаблона
+ * таблицы нет, и это говорится словами, а не пропавшей кнопкой: все девять
+ * образцов на проде заведены с `group_id = null`, и молча спрятанная кнопка
+ * выглядела бы как поломка.
+ */
+function GridEntry({ exam }: { exam: any }) {
+  if (!exam.group_id) {
+    return <span className="max-w-[180px] text-right text-xs text-amber-800" data-testid="mock-exam-no-group">нет группы — результаты не ввести</span>
+  }
+  if (!exam.template_id) {
+    return <span className="max-w-[180px] text-right text-xs text-graphite-500" data-testid="mock-exam-no-template">старый пробник без шаблона — таблицы по номерам нет</span>
+  }
+  return (
+    <Link
+      to={`/mock-exams/${exam.id}`}
+      data-testid="mock-exam-grid-open"
+      className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
+    >
+      <Table2 size={14} />Таблица
+    </Link>
+  )
+}
+
+/** Баллы ученика по заданиям в порядке номеров; пустая клетка — null. */
+function taskRow(exam: any, studentId: string): (number | null)[] {
+  const n: number = exam.mock_exam_templates?.max_points?.length ?? 0
+  const row: (number | null)[] = Array(n).fill(null)
+  for (const s of exam.mock_exam_task_scores ?? []) {
+    if (s.student_id === studentId && s.task_number >= 1 && s.task_number <= n) row[s.task_number - 1] = Number(s.points)
+  }
+  return row
 }
