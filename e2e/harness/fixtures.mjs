@@ -117,6 +117,35 @@ export const group_students = [
 groups[0].group_students = group_students.filter(g => g.group_id === IDS.group).map(g => ({ student_id: g.student_id, students: g.students, count: undefined }))
 groups[1].group_students = group_students.filter(g => g.group_id === IDS.group2).map(g => ({ student_id: g.student_id, students: g.students }))
 
+// ── пробники (§215, board/067) ───────────────────────────────────────────────
+// Два пробника одной группы: у первого половина группы уже внесена — на нём и
+// снимается «сохранение частями подхватывается». Выдумка целиком: и названия,
+// и баллы. Максимум 100, чтобы «101» на снимке ошибки читался сразу.
+export const mock_exams = [
+  {
+    id: U('c', 700), title: 'Пробник ЕГЭ №3 · механика', subject: 'physics', exam_type: 'ege',
+    group_id: IDS.group, date: ago(24 * 6), max_score: 100, created_by: IDS.teacherRow, created_at: ago(24 * 7),
+  },
+  {
+    id: U('c', 701), title: 'Пробник ЕГЭ №2 · кинематика', subject: 'physics', exam_type: 'ege',
+    group_id: IDS.group, date: ago(24 * 34), max_score: 100, created_by: IDS.teacherRow, created_at: ago(24 * 35),
+  },
+].map(e => ({ ...e, groups: groups.find(g => g.id === e.group_id) }))
+
+/** Половина группы первого пробника: четыре строки из восьми. */
+export const mock_exam_results = [
+  { student_id: IDS.studentRow,     score: 78, part1_score: 40, part2_score: 38, notes: 'вторая часть слабее, разобрать задачу на графики' },
+  { student_id: IDS.otherStudent(0), score: 64, part1_score: 38, part2_score: 26, notes: null },
+  { student_id: IDS.otherStudent(1), score: 91, part1_score: 45, part2_score: 46, notes: 'лучший результат группы' },
+  { student_id: IDS.otherStudent(2), score: 52, part1_score: 34, part2_score: 18, notes: null },
+].map((r, i) => ({
+  id: U('c', 710 + i), mock_exam_id: U('c', 700), created_at: ago(24 * 5),
+  ...r,
+  students: studentById(r.student_id),
+}))
+mock_exams[0].mock_exam_results = mock_exam_results
+mock_exams[1].mock_exam_results = []
+
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
 
@@ -906,7 +935,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exam_results: [], lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results, lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {

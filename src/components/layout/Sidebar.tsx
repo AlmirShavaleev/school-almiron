@@ -80,7 +80,10 @@ const navItems: NavItem[] = [
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
-  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'], hidden: true },
+  // §215. Открыт преподавателю, админу и владельцу: экран заработал, когда
+  // починили запись результатов. Ученический пункт (выше, раздел «Учёба»)
+  // пока закрыт — откроем, когда в таблице появятся настоящие данные.
+  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['teacher', 'admin', 'owner'] },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
 ]

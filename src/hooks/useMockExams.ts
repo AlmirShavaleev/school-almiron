@@ -42,7 +42,7 @@ export function useMockExams(tick = 0) {
 
           const { data } = await supabase
             .from('mock_exams')
-            .select('*, groups(name), mock_exam_results(student_id,score,students(profiles(full_name)))')
+            .select('*, groups(name), mock_exam_results(student_id,score,part1_score,part2_score,notes,students(profiles(full_name)))')
             .eq('created_by', tc.id)
             .order('date', { ascending: false })
           setExams(data || [])
@@ -50,7 +50,7 @@ export function useMockExams(tick = 0) {
         } else {
           const { data } = await supabase
             .from('mock_exams')
-            .select('*, groups(name), mock_exam_results(student_id,score,students(profiles(full_name)))')
+            .select('*, groups(name), mock_exam_results(student_id,score,part1_score,part2_score,notes,students(profiles(full_name)))')
             .order('date', { ascending: false })
           setExams(data || [])
         }

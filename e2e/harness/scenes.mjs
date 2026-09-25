@@ -13,6 +13,18 @@ const toAiPanel = `document.querySelector('[data-testid="ai-check-panel"]')?.scr
 const openAiHint = `(() => { const b = document.querySelector('[data-testid="ai-check-hint-toggle"]'); b?.click(); b?.scrollIntoView({ block: 'center' }) })()`
 // §212: счётчик-фильтр. Оставляем в списке только неверные.
 const filterWrong = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-wrong"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
+// §215 (board/067): открыть форму результатов первого пробника в списке.
+const openMockResults = `document.querySelector('[data-testid="mock-exam-results-open"]')?.click()`
+// §215: ошибка ввода — балл выше максимума. Вводим как человек: в поле, потом
+// «Сохранить». React слышит programmatic value только через нативный сеттер.
+const typeBadScore = `(() => {
+  const input = document.querySelector('[data-testid="mock-exam-results-modal"] input[type=number]')
+  if (!input) return
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(input, '101')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  document.querySelector('[data-testid="mock-exam-save"]')?.click()
+})()`
 // §214 (board/066): включённый фильтр «не решено» — пятый счётчик в полосе.
 const filterUnsolved = `(() => { const b = document.querySelector('[data-testid="review-tasks-filter-unsolved"]'); b?.click(); document.querySelector('[data-testid="ai-check-tasks"]')?.scrollIntoView({ block: 'start' }) })()`
 // §214: открытый список вердиктов — в нём должно быть видно все пять.
@@ -343,6 +355,17 @@ export const scenes = [
   ...[[1280, 800], [1440, 900]].map(([width, height]) => (
     { persona: 'owner', name: 'o06-review-split-moved', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: moveSplitRight }, { wait: 600 }], full: false }
   )),
+
+  // ── §215 (board/067): пробники — ввод результатов ──
+  // Экран существовал и был наполовину сломан: модалка писала в колонку
+  // `feedback`, которой в таблице нет, и за три месяца при девяти пробниках
+  // в базе осталось ноль строк. На снимках: список, форма с уже внесённой
+  // половиной группы (значит, подхват работает) и понятная ошибка ввода.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o15-mock-exams', url: '/mock-exams', width, height, actions: [{ wait: 1200 }] },
+    { persona: 'owner', name: 'o15-mock-results', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { eval: openMockResults }, { wait: 900 }], full: false },
+    { persona: 'owner', name: 'o15-mock-error', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { eval: openMockResults }, { wait: 900 }, { eval: typeBadScore }, { wait: 600 }], full: false },
+  ]),
 
   // ── §214 (board/066): пятый вердикт «не решено» ──
   // «Не сверено» тащило два смысла — «ИИ не смогла сверить» и «ученик не

@@ -50,7 +50,11 @@ export interface MockExamExportRow {
   score:      number
   maxScore:   number
   pct:        number
-  feedback:   string
+  /** §215. Части пробника; null — деления у этого пробника нет. */
+  part1:      number | null
+  part2:      number | null
+  /** §215. Колонка `notes` таблицы; прежнего `feedback` в базе не было. */
+  notes:      string
 }
 
 export function exportMockExams(rows: MockExamExportRow[]) {
@@ -63,11 +67,15 @@ export function exportMockExams(rows: MockExamExportRow[]) {
     'Балл':            r.score,
     'Макс. балл':      r.maxScore,
     'Результат, %':    r.pct,
-    'Комментарий':     r.feedback,
+    // §215. Части — из тех же колонок, что теперь заполняет модалка; без них
+    // выгрузка противоречила бы тому, что преподаватель только что ввёл.
+    '1 часть':         r.part1 ?? '',
+    '2 часть':         r.part2 ?? '',
+    'Заметка':         r.notes,
   }))
 
   const ws = XLSX.utils.json_to_sheet(data)
-  setColWidths(ws, [30, 14, 16, 20, 30, 8, 12, 14, 35])
+  setColWidths(ws, [30, 14, 16, 20, 30, 8, 12, 14, 10, 10, 35])
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Пробники')

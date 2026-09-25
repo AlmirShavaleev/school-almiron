@@ -67,7 +67,11 @@ export function MockExamsPage() {
                   score:       r.score,
                   maxScore:    e.max_score,
                   pct:         Math.round(r.score / e.max_score * 100),
-                  feedback:    r.feedback || '',
+                  // §215. В базе это `notes`; `feedback` там нет, и выгрузка
+                  // молча печатала пустой столбец.
+                  part1:       r.part1_score ?? null,
+                  part2:       r.part2_score ?? null,
+                  notes:       r.notes || '',
                 }))
               )
               exportMockExams(rows)
@@ -214,9 +218,15 @@ export function MockExamsPage() {
                     <span>{pct}%</span>
                     <span>{exam.max_score} баллов</span>
                   </div>
-                  {r.feedback && (
+                  {(r.part1_score != null || r.part2_score != null) && (
+                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                      {r.part1_score != null && <span>1 часть: <b className="text-gray-700">{r.part1_score}</b></span>}
+                      {r.part2_score != null && <span>2 часть: <b className="text-gray-700">{r.part2_score}</b></span>}
+                    </div>
+                  )}
+                  {r.notes && (
                     <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                      <strong>Комментарий:</strong> {r.feedback}
+                      <strong>Заметка:</strong> {r.notes}
                     </div>
                   )}
                 </div>
@@ -261,6 +271,7 @@ export function MockExamsPage() {
                         <Button
                           size="sm"
                           variant="secondary"
+                          data-testid="mock-exam-results-open"
                           onClick={() => setResultsTarget({
                             examId:   exam.id,
                             groupId:  exam.group_id,
