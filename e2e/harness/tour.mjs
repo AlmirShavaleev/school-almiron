@@ -46,6 +46,14 @@ for (const s of scenes) {
   if (widthFilter && width !== widthFilter) continue
   const { page, lines } = await ctxFor(s.persona, width, height)
   lines.length = 0
+  /*
+   * §217. Печатный вид. Лист для родителя живёт в портале `document.body` и
+   * показывается только правилами `@media print` — без переключения носителя
+   * снимок печати неотличим от снимка экрана. Контексты общие на персону и
+   * ширину, поэтому носитель ставится КАЖДОЙ сцене, а не только печатной:
+   * иначе печатная сцена оставила бы `print` следующей за ней.
+   */
+  await page.emulateMedia({ media: s.media ?? 'screen' }).catch(() => {})
   try {
     if (s.url) await page.goto(BASE + s.url, { waitUntil: 'networkidle', timeout: 30000 })
     for (const a of s.actions ?? []) {

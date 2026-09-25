@@ -1,0 +1,425 @@
+<title>Лист для родителя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400&family=PT+Sans:wght@400;700&family=PT+Mono&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --paper:#FBFAF7; --ground:#EFEDE7; --ink:#17212B; --ink-2:#4A5560; --ink-3:#7C8792;
+  --rule:#DCD7CD; --rule-2:#C6C0B4;
+  --accent:#1F5C8B; --accent-soft:#E3ECF3;
+  --good:#2F7A55; --good-soft:#E4F0E9;
+  --warn:#B8762B; --warn-soft:#F7EEE0;
+  --bad:#A83B3B;  --bad-soft:#F6E5E3;
+  --shadow:0 1px 2px rgba(23,33,43,.07), 0 8px 24px rgba(23,33,43,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --paper:#1C222A; --ground:#12161C; --ink:#EDE9E2; --ink-2:#B2BAC3; --ink-3:#848D97;
+    --rule:#333C47; --rule-2:#46515E;
+    --accent:#7FB3DA; --accent-soft:#1E2B37;
+    --good:#7FC6A0; --good-soft:#1B2A22;
+    --warn:#E0AA6A; --warn-soft:#2C2418;
+    --bad:#E08D8D;  --bad-soft:#2E1E1E;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --paper:#1C222A; --ground:#12161C; --ink:#EDE9E2; --ink-2:#B2BAC3; --ink-3:#848D97;
+  --rule:#333C47; --rule-2:#46515E;
+  --accent:#7FB3DA; --accent-soft:#1E2B37;
+  --good:#7FC6A0; --good-soft:#1B2A22;
+  --warn:#E0AA6A; --warn-soft:#2C2418;
+  --bad:#E08D8D;  --bad-soft:#2E1E1E;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:'PT Sans','Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.55;
+  padding-block:0 48px;
+}
+.wrap{max-width:900px; margin:0 auto; padding:0 16px}
+.bar{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:9;
+  background:color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--rule);
+  padding-block:12px; margin-bottom:22px;
+}
+.bar .wrap{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+.brand{font-family:'PT Serif',Georgia,serif; font-weight:700; font-size:17px; letter-spacing:.01em}
+.brand span{color:var(--ink-3); font-family:'PT Sans',sans-serif; font-weight:400; font-size:13px; margin-left:8px}
+.seg{display:flex; border:1px solid var(--rule-2); border-radius:7px; overflow:hidden; margin-left:auto}
+.seg button{
+  font:inherit; font-size:13px; padding:6px 13px; border:0; cursor:pointer;
+  background:transparent; color:var(--ink-2);
+}
+.seg button+button{border-left:1px solid var(--rule-2)}
+.seg button[aria-pressed="true"]{background:var(--accent); color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+
+.sheet{
+  background:var(--paper); border:1px solid var(--rule); border-radius:3px;
+  box-shadow:var(--shadow); padding:34px 36px 30px; margin-bottom:22px;
+}
+.sheet-tag{
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  margin-bottom:6px;
+}
+h1{font-family:'PT Serif',Georgia,serif; font-size:26px; line-height:1.2; margin:0 0 3px; text-wrap:balance}
+.sub{color:var(--ink-2); font-size:14px; margin:0}
+.hdr{display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;
+     border-bottom:2px solid var(--ink); padding-bottom:14px; margin-bottom:22px}
+.hdr .right{margin-left:auto; text-align:right; font-size:13px; color:var(--ink-2)}
+.num{font-family:'PT Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+.subj{border-top:1px solid var(--rule); padding-top:18px; margin-top:20px}
+.subj:first-of-type{border-top:0; padding-top:0; margin-top:0}
+.subj-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+.subj-head h2{font-family:'PT Serif',Georgia,serif; font-size:19px; margin:0}
+.goal{font-size:13px; color:var(--ink-2)}
+.goal b{font-family:'PT Mono',monospace; color:var(--ink)}
+
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0; border:1px solid var(--rule)}
+.cell{padding:11px 13px; border-right:1px solid var(--rule)}
+.cell:last-child{border-right:0}
+.cell .k{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3)}
+.cell .v{font-family:'PT Mono',monospace; font-size:23px; line-height:1.25; margin-top:2px}
+.cell .n{font-size:12px; color:var(--ink-3); margin-top:1px}
+.cell .n.dash{color:var(--warn)}
+.delta{font-size:13px; font-family:'PT Mono',monospace}
+.up{color:var(--good)} .down{color:var(--bad)}
+
+.spark{margin-top:14px; display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap}
+.spark figcaption{font-size:12px; color:var(--ink-3); margin-bottom:5px}
+
+table{width:100%; border-collapse:collapse; font-size:14px}
+th,td{text-align:left; padding:7px 9px; border-bottom:1px solid var(--rule)}
+th{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); font-weight:400}
+td.n,th.n{text-align:right; font-family:'PT Mono',monospace; font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+
+.topics{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+@media (max-width:640px){ .topics{grid-template-columns:1fr} .sheet{padding:24px 18px} }
+.topics h3, .block h3{
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  margin:0 0 8px; font-weight:400;
+}
+.trow{display:flex; gap:9px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--rule)}
+.trow:last-child{border-bottom:0}
+.tag{
+  font-family:'PT Mono',monospace; font-size:12px; padding:1px 6px; border-radius:3px;
+  background:var(--accent-soft); color:var(--accent); white-space:nowrap;
+}
+.tag.none{background:transparent; color:var(--ink-3); border:1px dashed var(--rule-2)}
+.tname{flex:1; min-width:0}
+.tname small{display:block; color:var(--ink-3); font-size:12px}
+.pct{font-family:'PT Mono',monospace; font-variant-numeric:tabular-nums}
+.pct.low{color:var(--bad)} .pct.high{color:var(--good)}
+
+.next{border:1px solid var(--rule); border-left:3px solid var(--accent); padding:14px 16px; margin-top:22px}
+.next ol{margin:8px 0 0; padding-left:20px}
+.next li{margin-bottom:5px}
+.foot{margin-top:24px; padding-top:10px; border-top:1px solid var(--rule);
+      font-size:12px; color:var(--ink-3); display:flex; gap:12px; flex-wrap:wrap}
+.foot .r{margin-left:auto}
+
+.teacher{background:var(--warn-soft); border:1px dashed var(--warn); padding:12px 14px; margin-top:18px}
+.teacher .lab{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--warn); margin-bottom:4px}
+.teacher p{margin:0; font-size:14px}
+.note{font-size:13px; color:var(--ink-3); margin:18px 0 0}
+.legend{font-size:12px; color:var(--ink-3); margin-top:6px}
+.block{margin-top:22px}
+</style>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="brand">Школа Almiron<span>макет отчёта — данные вымышленные</span></div>
+    <div class="seg" role="group" aria-label="Вид">
+      <button id="b-screen" aria-pressed="false">Экран в кабинете</button>
+      <button id="b-print" aria-pressed="true">Лист для родителя</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ЛИСТ 1 -->
+<section class="sheet">
+  <div class="hdr">
+    <div>
+      <div class="sheet-tag">Лист 1 из 2</div>
+      <h1>Нурмухаметова Алина</h1>
+      <p class="sub">11А класс · подготовка к ЕГЭ</p>
+    </div>
+    <div class="right">
+      Период: <span class="num">01.09 — 25.09.2026</span><br>
+      Отчёт составлен <span class="num">25.09.2026</span>
+    </div>
+  </div>
+
+  <!-- ФИЗИКА -->
+  <div class="subj">
+    <div class="subj-head">
+      <h2>Физика</h2>
+      <span class="goal">цель на экзамене — <b>75</b> баллов</span>
+    </div>
+    <div class="grid">
+      <div class="cell">
+        <div class="k">Средний балл</div>
+        <div class="v">62 %</div>
+        <div class="n">по 7 проверенным работам</div>
+      </div>
+      <div class="cell">
+        <div class="k">Среднее по группе</div>
+        <div class="v">58 %</div>
+        <div class="n">9 человек в группе</div>
+      </div>
+      <div class="cell">
+        <div class="k">Работы</div>
+        <div class="v">9</div>
+        <div class="n">принято 7 · на доработке 1 · ждёт проверки 1</div>
+      </div>
+      <div class="cell">
+        <div class="k">Последний пробник</div>
+        <div class="v">61 <span class="delta up">+6</span></div>
+        <div class="n">12.06 · часть 1 — 38 · часть 2 — 23</div>
+      </div>
+    </div>
+    <figure class="spark" style="margin:14px 0 0">
+      <div>
+        <figcaption>Средний балл по неделям</figcaption>
+        <svg width="320" height="62" viewBox="0 0 320 62" role="img" aria-label="Средний балл по неделям: 55, 60, 58, 66, 62 процента">
+          <line x1="0" y1="52" x2="320" y2="52" stroke="var(--rule)" stroke-width="1"/>
+          <line x1="0" y1="20" x2="320" y2="20" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+          <text x="322" y="23" font-size="9" fill="var(--ink-3)" text-anchor="end" opacity="0">75</text>
+          <polyline points="16,36 92,26 168,30 244,14 306,22"
+                    fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="16" cy="36" r="3" fill="var(--accent)"/>
+          <circle cx="92" cy="26" r="3" fill="var(--accent)"/>
+          <circle cx="168" cy="30" r="3" fill="var(--accent)"/>
+          <circle cx="244" cy="14" r="3" fill="var(--accent)"/>
+          <circle cx="306" cy="22" r="4" fill="var(--paper)" stroke="var(--accent)" stroke-width="2.5"/>
+          <text x="16"  y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">55</text>
+          <text x="92"  y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">60</text>
+          <text x="168" y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">58</text>
+          <text x="244" y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">66</text>
+          <text x="306" y="61" font-size="10" fill="var(--ink)"   text-anchor="middle">62</text>
+        </svg>
+      </div>
+    </figure>
+  </div>
+
+  <!-- МАТЕМАТИКА -->
+  <div class="subj">
+    <div class="subj-head">
+      <h2>Математика, профиль</h2>
+      <span class="goal">цель на экзамене — <b>80</b> баллов</span>
+    </div>
+    <div class="grid">
+      <div class="cell">
+        <div class="k">Средний балл</div>
+        <div class="v">74 %</div>
+        <div class="n">по 4 проверенным работам</div>
+      </div>
+      <div class="cell">
+        <div class="k">Среднее по группе</div>
+        <div class="v">—</div>
+        <div class="n dash">в группе 4 человека, среднее не печатаем</div>
+      </div>
+      <div class="cell">
+        <div class="k">Работы</div>
+        <div class="v">5</div>
+        <div class="n">принято 4 · ждёт проверки 1</div>
+      </div>
+      <div class="cell">
+        <div class="k">Последний пробник</div>
+        <div class="v">71 <span class="delta up">+13</span></div>
+        <div class="n">10.06 · часть 1 — 52 · часть 2 — 19</div>
+      </div>
+    </div>
+    <figure class="spark" style="margin:14px 0 0">
+      <div>
+        <figcaption>Средний балл по неделям</figcaption>
+        <svg width="320" height="62" viewBox="0 0 320 62" role="img" aria-label="Средний балл по неделям: 68, 70, 72, 74 процента">
+          <line x1="0" y1="52" x2="320" y2="52" stroke="var(--rule)" stroke-width="1"/>
+          <polyline points="16,32 112,27 208,22 306,17"
+                    fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="16" cy="32" r="3" fill="var(--accent)"/>
+          <circle cx="112" cy="27" r="3" fill="var(--accent)"/>
+          <circle cx="208" cy="22" r="3" fill="var(--accent)"/>
+          <circle cx="306" cy="17" r="4" fill="var(--paper)" stroke="var(--accent)" stroke-width="2.5"/>
+          <text x="16"  y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">68</text>
+          <text x="112" y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">70</text>
+          <text x="208" y="61" font-size="10" fill="var(--ink-3)" text-anchor="middle">72</text>
+          <text x="306" y="61" font-size="10" fill="var(--ink)"   text-anchor="middle">74</text>
+        </svg>
+      </div>
+    </figure>
+  </div>
+
+  <div class="next">
+    <h3>Что делать до следующей встречи</h3>
+    <ol>
+      <li>Физика, термодинамика (№24): разобрать восемь задач из МЕГАДЗ — это самая слабая тема, 41 % верных.</li>
+      <li>Математика, тригонометрические уравнения (№13): дело не в формулах, а в отборе корней. Отдельная папка задач выдана.</li>
+      <li>Две работы по физике сданы позже срока. Договориться о постоянном дне сдачи — например, воскресенье.</li>
+    </ol>
+  </div>
+
+  <div class="teacher" id="teacher-block">
+    <div class="lab">Видно только преподавателю — на лист родителю не попадает</div>
+    <p>Алина считает быстро, но бросает задачу на середине, если не выходит с первого подхода. На занятии давать по одной длинной задаче и не подсказывать первые пять минут.</p>
+  </div>
+
+  <div class="foot">
+    <span>Школа Almiron · alminion.ru</span>
+    <span class="r">Лист 1 из 2</span>
+  </div>
+</section>
+
+<!-- ЛИСТ 2 -->
+<section class="sheet">
+  <div class="hdr">
+    <div>
+      <div class="sheet-tag">Лист 2 из 2</div>
+      <h1>Подробности</h1>
+      <p class="sub">Нурмухаметова Алина · 11А · <span class="num">01.09 — 25.09.2026</span></p>
+    </div>
+  </div>
+
+  <div class="block">
+    <h3>Пробные экзамены</h3>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Дата</th><th>Предмет</th><th class="n">Балл</th><th class="n">Часть 1</th><th class="n">Часть 2</th><th class="n">Среднее по группе</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="num">25.04</td><td>Физика</td><td class="n">48</td><td class="n">32</td><td class="n">16</td><td class="n">45</td></tr>
+          <tr><td class="num">23.05</td><td>Физика</td><td class="n">55</td><td class="n">35</td><td class="n">20</td><td class="n">51</td></tr>
+          <tr><td class="num">12.06</td><td>Физика</td><td class="n">61</td><td class="n">38</td><td class="n">23</td><td class="n">54</td></tr>
+          <tr><td class="num">30.04</td><td>Математика</td><td class="n">62</td><td class="n">45</td><td class="n">17</td><td class="n">—</td></tr>
+          <tr><td class="num">28.05</td><td>Математика</td><td class="n">58</td><td class="n">44</td><td class="n">14</td><td class="n">—</td></tr>
+          <tr><td class="num">10.06</td><td>Математика</td><td class="n">71</td><td class="n">52</td><td class="n">19</td><td class="n">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="legend">Прочерк в последнем столбце — в группе меньше шести человек, среднее по ней не печатается.</p>
+
+    <figure style="margin:18px 0 0">
+      <figcaption style="font-size:12px;color:var(--ink-3);margin-bottom:6px">Баллы пробников и цель</figcaption>
+      <svg width="100%" height="180" viewBox="0 0 560 180" preserveAspectRatio="xMidYMid meet" role="img"
+           aria-label="График пробников. Физика: 48, 55, 61 при цели 75. Математика: 62, 58, 71 при цели 80.">
+        <!-- оси -->
+        <line x1="42" y1="12" x2="42" y2="142" stroke="var(--rule-2)" stroke-width="1"/>
+        <line x1="42" y1="142" x2="540" y2="142" stroke="var(--rule-2)" stroke-width="1"/>
+        <!-- сетка 0 40 60 80 100 -->
+        <g font-size="10" fill="var(--ink-3)" font-family="PT Mono, monospace">
+          <line x1="42" y1="142" x2="540" y2="142" stroke="var(--rule)"/>
+          <text x="36" y="145" text-anchor="end">0</text>
+          <line x1="42" y1="90"  x2="540" y2="90"  stroke="var(--rule)"/>
+          <text x="36" y="93"  text-anchor="end">40</text>
+          <line x1="42" y1="64"  x2="540" y2="64"  stroke="var(--rule)"/>
+          <text x="36" y="67"  text-anchor="end">60</text>
+          <line x1="42" y1="38"  x2="540" y2="38"  stroke="var(--rule)"/>
+          <text x="36" y="41"  text-anchor="end">80</text>
+          <line x1="42" y1="12"  x2="540" y2="12"  stroke="var(--rule)"/>
+          <text x="36" y="15"  text-anchor="end">100</text>
+        </g>
+        <!-- цели -->
+        <line x1="42" y1="44.5" x2="540" y2="44.5" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="6 4"/>
+        <text x="538" y="41" font-size="10" fill="var(--warn)" text-anchor="end" font-family="PT Mono, monospace">цель физика 75</text>
+        <line x1="42" y1="38" x2="540" y2="38" stroke="var(--good)" stroke-width="1.5" stroke-dasharray="6 4" opacity="0"/>
+        <!-- физика: 48 55 61 -->
+        <polyline points="120,79.6 300,70.5 480,62.7" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+        <g fill="var(--accent)">
+          <circle cx="120" cy="79.6" r="4"/><circle cx="300" cy="70.5" r="4"/><circle cx="480" cy="62.7" r="5"/>
+        </g>
+        <g font-size="11" font-family="PT Mono, monospace" fill="var(--accent)" text-anchor="middle">
+          <text x="120" y="72">48</text><text x="300" y="63">55</text><text x="480" y="54">61</text>
+        </g>
+        <!-- математика: 62 58 71 -->
+        <polyline points="150,61.4 330,66.6 510,49.7" fill="none" stroke="var(--good)" stroke-width="2.5" stroke-dasharray="7 3"/>
+        <g fill="var(--good)">
+          <circle cx="150" cy="61.4" r="4"/><circle cx="330" cy="66.6" r="4"/><circle cx="510" cy="49.7" r="5"/>
+        </g>
+        <g font-size="11" font-family="PT Mono, monospace" fill="var(--good)" text-anchor="middle">
+          <text x="150" y="81">62</text><text x="330" y="86">58</text><text x="510" y="69">71</text>
+        </g>
+        <!-- подписи дат -->
+        <g font-size="10" fill="var(--ink-3)" font-family="PT Mono, monospace" text-anchor="middle">
+          <text x="135" y="158">апрель</text><text x="315" y="158">май</text><text x="495" y="158">июнь</text>
+        </g>
+        <!-- легенда -->
+        <g font-size="11" font-family="PT Sans, sans-serif">
+          <line x1="42" y1="173" x2="66" y2="173" stroke="var(--accent)" stroke-width="2.5"/>
+          <text x="72" y="177" fill="var(--ink-2)">Физика</text>
+          <line x1="140" y1="173" x2="164" y2="173" stroke="var(--good)" stroke-width="2.5" stroke-dasharray="7 3"/>
+          <text x="170" y="177" fill="var(--ink-2)">Математика</text>
+        </g>
+      </svg>
+    </figure>
+  </div>
+
+  <div class="block">
+    <h3>Темы</h3>
+    <div class="topics">
+      <div>
+        <h3>Проседает</h3>
+        <div class="trow"><span class="tag">№24</span><span class="tname">Термодинамика<small>физика · посчитано на 9 заданиях</small></span><span class="pct low">41 %</span></div>
+        <div class="trow"><span class="tag">№13</span><span class="tname">Тригонометрические уравнения, отбор корней<small>математика · 18 заданий</small></span><span class="pct low">54 %</span></div>
+        <div class="trow"><span class="tag">№23</span><span class="tname">Электромагнитная индукция<small>физика · 6 заданий</small></span><span class="pct low">47 %</span></div>
+        <div class="trow"><span class="tag">№15</span><span class="tname">Неравенства<small>математика · 10 заданий</small></span><span class="pct low">60 %</span></div>
+        <div class="trow"><span class="tag none">без номера</span><span class="tname">Кинематика. Баллистика<small>физика · 12 заданий</small></span><span class="pct low">52 %</span></div>
+      </div>
+      <div>
+        <h3>Получается</h3>
+        <div class="trow"><span class="tag">№2</span><span class="tname">Координатная плоскость, векторы<small>математика · 16 заданий</small></span><span class="pct high">95 %</span></div>
+        <div class="trow"><span class="tag">№18</span><span class="tname">Верные и неверные утверждения<small>физика · 13 заданий</small></span><span class="pct high">92 %</span></div>
+        <div class="trow"><span class="tag">№7</span><span class="tname">Тригонометрия, формулы приведения<small>математика · 9 заданий</small></span><span class="pct high">89 %</span></div>
+        <div class="trow"><span class="tag none">без номера</span><span class="tname">Кинематика. Равноускоренное движение<small>физика · 21 задание</small></span><span class="pct high">88 %</span></div>
+      </div>
+    </div>
+    <p class="legend">«Без номера» — тема, которой ещё не проставлен номер задания ЕГЭ. Такие темы попадают только в список по темам.</p>
+  </div>
+
+  <div class="block">
+    <h3>Активность за период</h3>
+    <div class="grid">
+      <div class="cell"><div class="k">Сдано вовремя</div><div class="v">12 / 14</div><div class="n">две работы с опозданием</div></div>
+      <div class="cell"><div class="k">Видео</div><div class="v">3 ч 20 м</div><div class="n">48 минут за последнюю неделю</div></div>
+      <div class="cell"><div class="k">Материалы</div><div class="v">34</div><div class="n">конспектов и разборов открыто</div></div>
+      <div class="cell"><div class="k">Задачи каталога</div><div class="v">12</div><div class="n">решено самостоятельно</div></div>
+    </div>
+    <p class="legend">Активность — про дисциплину, а не про знания: время в записях само по себе баллов не прибавляет.</p>
+  </div>
+
+  <div class="foot">
+    <span>Школа Almiron · alminion.ru</span>
+    <span>Вопросы — преподавателю на собрании или в кабинете</span>
+    <span class="r">Лист 2 из 2</span>
+  </div>
+</section>
+
+<p class="note">Данные на макете вымышленные. Ученица, баллы, пробники и темы придуманы, чтобы показать раскладку.</p>
+</div>
+
+<script>
+(function(){
+  var bs = document.getElementById('b-screen');
+  var bp = document.getElementById('b-print');
+  var teacher = document.getElementById('teacher-block');
+  function set(screen){
+    bs.setAttribute('aria-pressed', screen ? 'true' : 'false');
+    bp.setAttribute('aria-pressed', screen ? 'false' : 'true');
+    teacher.hidden = !screen;
+  }
+  bs.addEventListener('click', function(){ set(true); });
+  bp.addEventListener('click', function(){ set(false); });
+  set(false);
+})();
+</script>

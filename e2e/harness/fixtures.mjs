@@ -791,6 +791,102 @@ export const student_subject_targets = [
   { id: U('f', 217), student_id: IDS.studentRow, subject: 'physics', exam_type: 'ege', target_score: 85, updated_by: IDS.owner, created_at: ago(24 * 10), updated_at: ago(24 * 2) },
 ]
 
+// §217. Отчёт об успеваемости. Считает его база одной функцией
+// (`student_progress_report`), поэтому в харнессе это ГОТОВЫЙ ответ, а не
+// набор таблиц: собирать его здесь заново значило бы завести вторую
+// реализацию расчёта, которая разойдётся с настоящей и покажет на снимке то,
+// чего на экране не будет.
+//
+// Набор подобран так, чтобы на снимке были видны ВСЕ правила сразу:
+//   * физика — группа из девяти человек, среднее по группе печатается;
+//   * математика — группа из четырёх, среднее ПРОЧЕРК с пояснением;
+//   * цель по математике не задана — тоже прочерк, а не ноль;
+//   * тема «Кинематика» без номера ЕГЭ, тема «Оптика» сразу на два номера;
+//   * средний балл везде стоит рядом с числом проверенных работ.
+export const student_report_next_steps = [
+  {
+    id: U('f', 218), student_id: IDS.otherStudent(0),
+    period_from: '2026-09-01', period_to: '2026-09-25',
+    steps: [
+      'Физика, термодинамика (№24): разобрать восемь задач — это самая слабая тема, 41 % верных.',
+      'Математика, тригонометрические уравнения (№13): дело не в формулах, а в отборе корней.',
+      'Две работы по физике сданы позже срока. Договориться о постоянном дне сдачи.',
+    ],
+    updated_by: IDS.owner, created_at: ago(24 * 2), updated_at: ago(24 * 2),
+  },
+]
+
+export const progressReport = {
+  student: { id: IDS.otherStudent(0), full_name: NAMES[1], grade: 11, groups: ['11А физика', 'Матгруппа'] },
+  period: { from: '2026-09-01', to: '2026-09-25' },
+  generated_at: '2026-09-25T09:00:00+00:00',
+  min_group_for_avg: 6,
+  min_tasks_for_topic: 3,
+  subjects: [
+    {
+      subject: 'physics', exam_type: 'ege', course_titles: 'Физика ЕГЭ',
+      target: 75, avg_percent: 62, graded_works: 7,
+      group_size: 9, group_avg_percent: 58,
+      works: { submitted: 9, accepted: 7, revision: 1, pending: 1, with_due: 9, on_time: 7, late: 2 },
+      weeks: [
+        { week_start: '2026-08-31', avg_percent: 55, works: 2 },
+        { week_start: '2026-09-07', avg_percent: 60, works: 2 },
+        { week_start: '2026-09-14', avg_percent: 66, works: 2 },
+        { week_start: '2026-09-21', avg_percent: 62, works: 1 },
+      ],
+      last_mock: { date: '2026-06-12', title: 'Пробник №3', score: 61, part1: 38, part2: 23, group_avg: 54, group_size: 9, delta: 6 },
+    },
+    {
+      subject: 'math', exam_type: 'ege', course_titles: 'Математика профиль',
+      target: null, avg_percent: 74, graded_works: 4,
+      group_size: 4, group_avg_percent: null,
+      works: { submitted: 5, accepted: 4, revision: 0, pending: 1, with_due: 5, on_time: 5, late: 0 },
+      weeks: [
+        { week_start: '2026-09-07', avg_percent: 70, works: 2 },
+        { week_start: '2026-09-14', avg_percent: 74, works: 2 },
+      ],
+      last_mock: { date: '2026-06-10', title: 'Пробник профиль', score: 71, part1: 52, part2: 19, group_avg: null, group_size: 4, delta: 13 },
+    },
+  ],
+  mocks: [
+    { date: '2026-04-25', title: 'Пробник №1', subject: 'physics', exam_type: 'ege', score: 48, part1: 32, part2: 16, group_avg: 45, group_size: 9, delta: null },
+    { date: '2026-05-23', title: 'Пробник №2', subject: 'physics', exam_type: 'ege', score: 55, part1: 35, part2: 20, group_avg: 51, group_size: 9, delta: 7 },
+    { date: '2026-06-10', title: 'Пробник профиль', subject: 'math', exam_type: 'ege', score: 71, part1: 52, part2: 19, group_avg: null, group_size: 4, delta: 13 },
+    { date: '2026-06-12', title: 'Пробник №3', subject: 'physics', exam_type: 'ege', score: 61, part1: 38, part2: 23, group_avg: 54, group_size: 9, delta: 6 },
+  ],
+  topics: {
+    weak: [
+      { topic_id: IDS.topic(1), title: 'Термодинамика', subject: 'physics', ege_numbers: [24], tasks_counted: 9, correct_percent: 41 },
+      { topic_id: IDS.topic(2), title: 'Тригонометрические уравнения, отбор корней', subject: 'math', ege_numbers: [13], tasks_counted: 18, correct_percent: 54 },
+      { topic_id: IDS.topic(3), title: 'Кинематика. Баллистика', subject: 'physics', ege_numbers: [], tasks_counted: 12, correct_percent: 52 },
+    ],
+    strong: [
+      { topic_id: IDS.topic(4), title: 'Оптика: геометрическая и волновая', subject: 'physics', ege_numbers: [6, 7], tasks_counted: 16, correct_percent: 95 },
+      { topic_id: IDS.topic(5), title: 'Верные и неверные утверждения', subject: 'physics', ege_numbers: [18], tasks_counted: 13, correct_percent: 92 },
+    ],
+    without_number: 1,
+  },
+  ege_numbers: [
+    { number: 6, tasks_counted: 16, correct_percent: 95 },
+    { number: 7, tasks_counted: 16, correct_percent: 95 },
+    { number: 13, tasks_counted: 18, correct_percent: 54 },
+    { number: 18, tasks_counted: 13, correct_percent: 92 },
+    { number: 24, tasks_counted: 9, correct_percent: 41 },
+  ],
+  activity: {
+    video_seconds: 12000, video_seconds_last_week: 2880,
+    materials: 34, catalog_tasks: 12,
+    with_due: 14, on_time: 12, late: 2,
+  },
+  next_steps: student_report_next_steps[0].steps,
+  // Внутренняя заметка. На ЛИСТЕ её быть не должно — ради этого она здесь и
+  // лежит: на снимке печатного вида её отсутствие видно глазом.
+  teacher_note: {
+    body: 'Считает быстро, но бросает задачу на середине, если не выходит с первого подхода. На занятии давать по одной длинной задаче и не подсказывать первые пять минут.',
+    created_at: ago(24 * 3),
+  },
+}
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
@@ -805,7 +901,7 @@ export function baseFixtures(persona) {
       ],
       catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math, ...catalog_tasks_formula], catalog_task_assets: [...catalog_task_assets, ...catalog_task_assets_formula], catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
-      student_subject_targets,
+      student_subject_targets, student_report_next_steps,
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
@@ -840,6 +936,11 @@ export function baseFixtures(persona) {
         lessons: Array.from({ length: 6 }, (_, i) => ({ id: U('c', 1500 + i), title: i % 2 ? 'Занятие: динамика, наклонная плоскость, трение — разбор домашней работы и контрольная' : 'Занятие', scheduled_at: ago(24 * (2 + i * 3)), duration_minutes: 90, status: i === 0 ? 'scheduled' : 'completed', format: 'online', group_name: groups[0].name, planned_topic: TOPIC_TITLES[i], actual_topic: i ? TOPIC_TITLES[i] : null, lesson_summary: i === 2 ? 'Разобрали задачи 1–8, домашнее задание выдано.' : null, recommendations: null, attendance_status: i === 0 ? null : ['present', 'late', 'absent', 'present', 'present', 'present'][i], attendance_note: null })),
         assignments: [], trend: Array.from({ length: 8 }, (_, i) => ({ week_start: ago(24 * 7 * (8 - i)).slice(0, 10), lessons_completed: 2, submitted: i % 3, accepted: i % 2 })) },
       get_student_number_stats: [],
+      // §217. Отчёт приходит ОДНИМ вызовом — ровно так же, как на проде.
+      // Отчёт отдаётся только по ученику карточки: чужой ученик получает
+      // пустоту, а не чужие числа.
+      student_progress_report: (body) =>
+        body.p_student_id === IDS.otherStudent(0) ? progressReport : null,
       topic_homework_ai_expire_stale_jobs: null,
       // §199: строки уже есть — настоящая RPC в этом случае возвращает 0 и
       // ничего не трогает, чтобы правки преподавателя не затирались слепком.

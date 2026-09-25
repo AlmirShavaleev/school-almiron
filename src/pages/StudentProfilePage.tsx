@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Users, Star,
+  ArrowLeft, Users,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef } from 'react'
@@ -11,6 +11,7 @@ import { useGroups } from '@/hooks/useGroups'
 import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 import { StudentSubjectTargets } from '@/components/student/StudentSubjectTargets'
+import { StudentReportTab } from '@/components/report/StudentReportTab'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
@@ -54,6 +55,10 @@ export function StudentProfilePage() {
   // board/023 (§171): переход со строки курса — сразу открыть блок этого
   // курса, а не заставлять преподавателя искать его в списке заново.
   const focusCourseId = searchParams.get('course')
+  // §217. Вкладка отчёта живёт в адресе (`?tab=report`): преподаватель
+  // открывает отчёт по ссылке из переписки и попадает сразу в него, а не на
+  // карточку, которую надо переключать руками.
+  const tab = searchParams.get('tab') === 'report' ? 'report' : 'card'
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
   const [groupsExpanded, setGroupsExpanded] = useState(false)
@@ -111,13 +116,21 @@ export function StudentProfilePage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0">
+            {/*
+              §217. Плашка «Цель: 80» снята (решение оркестратора 25.09).
+              Она читала старое `students.target_score` — ОДНУ цель на
+              человека, — а прямо под шапкой теперь стоит блок целей ПО
+              ПРЕДМЕТАМ (§216). Два источника одной и той же величины на
+              одном экране расходятся при первом же вводе: преподаватель
+              правит цель по физике, а плашка продолжает показывать старое
+              число из другого поля.
+
+              Само поле `students.target_score` НЕ тронуто: его читают «Мой
+              прогресс» и настройки ученика, и снимать его будем отдельной
+              работой после переноса данных.
+            */}
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight text-graphite-950">{s.full_name}</h1>
-              {s.target_score && (
-                <span className="flex items-center gap-1 rounded-full bg-gold-50 px-2.5 py-1 text-xs font-semibold text-gold-800 ring-1 ring-gold-100">
-                  <Star size={12} className="shrink-0" />Цель: {s.target_score}
-                </span>
-              )}
             </div>
 
             <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
@@ -165,6 +178,46 @@ export function StudentProfilePage() {
         </div>
       </Card>
 
+      {/* §217. Две вкладки: рабочая карточка и отчёт, который распечатывают
+          родителю. Одним списком они не уживаются — отчёт занимает два листа
+          и имеет свой период. */}
+      {s.student_id && (
+        <div className="flex gap-1 border-b border-graphite-200" role="tablist" aria-label="Разделы карточки ученика">
+          <button
+            role="tab"
+            aria-selected={tab === 'card'}
+            data-testid="student-tab-card"
+            onClick={() => navigate(`/students/${id}`, { replace: true })}
+            className={cn(
+              'px-3 py-2 text-sm font-medium transition-colors',
+              tab === 'card'
+                ? 'border-b-2 border-primary-600 text-graphite-950'
+                : 'text-graphite-500 hover:text-graphite-800',
+            )}
+          >
+            Карточка
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === 'report'}
+            data-testid="student-tab-report"
+            onClick={() => navigate(`/students/${id}?tab=report`, { replace: true })}
+            className={cn(
+              'px-3 py-2 text-sm font-medium transition-colors',
+              tab === 'report'
+                ? 'border-b-2 border-primary-600 text-graphite-950'
+                : 'text-graphite-500 hover:text-graphite-800',
+            )}
+          >
+            Отчёт для родителя
+          </button>
+        </div>
+      )}
+
+      {s.student_id && tab === 'report' && <StudentReportTab studentId={s.student_id} />}
+
+      {tab === 'card' && (
+      <>
       {/*
         Плитки посещаемости, ДЗ и пробников сняты 2026-08-09 (§111, решение
         оркестратора): они стояли на мёртвых таблицах — `attendance` 0
@@ -176,9 +229,10 @@ export function StudentProfilePage() {
       */}
       {/*
         §216. Цель по баллу — по строке на предмет, сразу под карточкой.
-        Плашка «Цель: 80» в шапке осталась: она показывает старое поле
-        students.target_score, которое §216 намеренно не трогает — его читают
-        «Мой прогресс» и настройки ученика, и снимать его будем отдельно.
+        §217: плашка «Цель: 80» из шапки СНЯТА — она показывала старое поле
+        students.target_score, и два источника одной величины на одном экране
+        расходились. Само поле не тронуто: его читают «Мой прогресс» и
+        настройки ученика.
       */}
       {s.student_id && <StudentSubjectTargets studentId={s.student_id} />}
 
@@ -200,6 +254,8 @@ export function StudentProfilePage() {
           loading={numberStats.loading}
           error={numberStats.error}
         />
+      )}
+      </>
       )}
 
     </div>

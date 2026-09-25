@@ -404,6 +404,14 @@ export const scenes = [
   { persona: 'owner', name: 'o07-students-invites', url: '/students', actions: [{ clickRole: ['button', 'Приглашения'] }, { wait: 600 }] },
   { persona: 'owner', name: 'o07-students-distribute', url: '/students', actions: [{ clickRole: ['button', 'Новые ученики'] }, { wait: 600 }, { clickRole: ['button', 'Распределить'] }, { wait: 800 }] },
   { persona: 'owner', name: 'o07-student-profile', url: `/students/${S.otherStudent(0)}` },
+  // §217 (board/069). Отчёт об успеваемости: экран в кабинете и лист для
+  // родителя. Разница между ними ровно одна — внутренняя заметка
+  // преподавателя, и на паре снимков `-report` / `-report-print` она должна
+  // быть видна: в первом блок с жёлтой полосой есть, во втором его нет.
+  // `media: 'print'` переключает носитель — без него печатный вид снять
+  // нечем: лист живёт в портале и показывается правилами @media print.
+  { persona: 'owner', name: 'o07-student-report', url: `/students/${S.otherStudent(0)}?tab=report`, actions: [{ wait: 900 }] },
+  { persona: 'owner', name: 'o07-student-report-print', url: `/students/${S.otherStudent(0)}?tab=report`, media: 'print', actions: [{ wait: 900 }] },
   { persona: 'owner', name: 'o07-student-journal', url: `/students/${S.otherStudent(0)}/journal` },
   { persona: 'owner', name: 'o08-variants', url: '/variants' },
   { persona: 'owner', name: 'o08-variants-list', url: '/variants/all' },
@@ -500,6 +508,8 @@ export const scenes = [
   // теми же именами; здесь дубли только по ширине.
   { persona: 'owner', name: 'o03-course-program-topic', url: `/course-program?course=${S.course}`, width: 1280, height: 800, actions: [{ click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { click: 'Равноускоренное прямолинейное' }, { wait: 1200 }], full: false },
   { persona: 'owner', name: 'o07-student-profile', url: `/students/${S.otherStudent(0)}`, width: 1280, height: 800, actions: [{ wait: 900 }] },
+  { persona: 'owner', name: 'o07-student-report', url: `/students/${S.otherStudent(0)}?tab=report`, width: 1280, height: 800, actions: [{ wait: 900 }] },
+  { persona: 'owner', name: 'o07-student-report-print', url: `/students/${S.otherStudent(0)}?tab=report`, media: 'print', width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'owner', name: 'o07-student-journal', url: `/students/${S.otherStudent(0)}/journal`, width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'owner', name: 'o12-groups', url: `/groups/${S.group}`, width: 1280, height: 800, actions: [{ wait: 900 }] },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 1280, height: 800, actions: [{ wait: 900 }] },

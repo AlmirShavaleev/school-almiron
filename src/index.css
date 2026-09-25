@@ -644,3 +644,74 @@ body {
   --fab-right: auto;
   --fab-left: var(--fab-edge);
 }
+
+/* ── §217. Отчёт об успеваемости: экран и лист для родителя ────────────────
+ *
+ * Печатает браузер, своей кнопки печати у отчёта нет. Лист уезжает в портал
+ * `.print-portal-wrapper` (document.body), потому что `@media print` выше
+ * гасит весь `#root` — тот же приём, что у печати вариантов.
+ *
+ * Требование владельца к печати: чёрно-белый принтер. Значит, ни один факт
+ * на листе не должен различаться ТОЛЬКО цветом — у каждой пометки есть слово
+ * («без номера», «среднее не печатаем») или форма (пунктирная рамка,
+ * штриховая линия на графике). Фоны-заливки на печати снимаются: на лазернике
+ * они превращаются в серый прямоугольник поверх текста.
+ */
+.report-document { color: #172033; }
+
+@media print {
+  /* Лист — по листу на страницу. Второй начинается с новой. */
+  .print-portal-wrapper .report-sheet {
+    break-inside: auto;
+    page-break-inside: auto;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+  .print-portal-wrapper .report-sheet + .report-sheet {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0;
+  }
+
+  .print-portal-wrapper .report-document {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #000;
+  }
+
+  /* Ни одной заливки: чёрное по белому. Рамки остаются — они несут смысл
+     (сетка показателей, пунктир «без номера»). */
+  .print-portal-wrapper .report-document * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+  .print-portal-wrapper .report-document svg { color: #000; }
+
+  /* Блок предмета и строка темы не рвутся посреди себя: «Средний балл» на
+     одной странице, а «по 7 проверенным работам» на другой — это ровно та
+     цифра без подписи, от которой правило и защищает. */
+  .print-portal-wrapper .report-subject,
+  .print-portal-wrapper .report-cell,
+  .print-portal-wrapper .report-topic-row,
+  .print-portal-wrapper .report-next,
+  .print-portal-wrapper .report-spark,
+  .print-portal-wrapper .report-chart {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Сетка показателей на бумаге всегда в четыре колонки: телефонные две
+     растянули бы лист 1 на две страницы. */
+  .print-portal-wrapper .report-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .print-portal-wrapper .report-document table { width: 100%; border-collapse: collapse; }
+  .print-portal-wrapper .report-document th,
+  .print-portal-wrapper .report-document td { border-bottom: 1px solid #999; }
+}

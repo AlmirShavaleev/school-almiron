@@ -66,6 +66,15 @@ vi.mock('@/components/student/StudentInsightSection', () => ({
   ),
 }))
 
+// §217. Вкладка отчёта ходит в базу своим хуком; здесь проверяется страница,
+// а не она. Свои проверки у вкладки — в
+// src/components/report/__tests__/StudentReportTab.test.tsx.
+vi.mock('@/components/report/StudentReportTab', () => ({
+  StudentReportTab: ({ studentId }: { studentId: string }) => (
+    <div data-testid="student-report-tab">{studentId}</div>
+  ),
+}))
+
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector({ profile: { role: 'teacher' } }),
 }))
@@ -292,5 +301,53 @@ describe('StudentProfilePage — снятые мёртвые показател�
       await screen.findByText('Физика ЕГЭ')
       expect(scrollIntoViewMock).not.toHaveBeenCalled()
     })
+  })
+})
+
+/**
+ * §217. Плашка «Цель: 80» снята из шапки (решение оркестратора 25.09).
+ *
+ * Она читала старое `students.target_score` — одну цель на человека, — а под
+ * шапкой с §216 стоит блок целей ПО ПРЕДМЕТАМ. Два источника одной величины
+ * на одном экране расходятся при первом же вводе. Само поле в базе не
+ * тронуто: его читают «Мой прогресс» и настройки ученика.
+ */
+describe('StudentProfilePage — цель по баллу', () => {
+  beforeEach(() => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+  })
+
+  it('старой плашки «Цель: 80» в шапке нет', () => {
+    renderPage()
+    expect(screen.queryByText(/Цель: 80/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Цель: /)).not.toBeInTheDocument()
+  })
+
+  it('имя ученика в шапке на месте — сняли плашку, а не шапку', () => {
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'Almir Shavaleev' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * §217. Отчёт для родителя — вторая вкладка карточки, с адресом `?tab=report`.
+ */
+describe('StudentProfilePage — вкладка отчёта', () => {
+  beforeEach(() => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+  })
+
+  it('по умолчанию открыта карточка, отчёта на экране нет', () => {
+    renderPage()
+    expect(screen.getByTestId('student-insight-section')).toBeInTheDocument()
+    expect(screen.queryByTestId('student-report-tab')).not.toBeInTheDocument()
+  })
+
+  it('с ?tab=report открыт отчёт, а блоки карточки не рисуются', () => {
+    renderPage('/students/student-1?tab=report')
+    expect(screen.getByTestId('student-report-tab')).toHaveTextContent('student-1')
+    expect(screen.queryByTestId('student-insight-section')).not.toBeInTheDocument()
   })
 })
