@@ -224,7 +224,17 @@ export function makeHandler({ fixtures, session, log, assetsDir }) {
       note(`STORAGE ${method} ${rest}`)
       return json(route, {})
     }
-    if (p.startsWith('/functions/v1/')) { note(`FN ${method} ${p}`); return json(route, fixtures.functions?.[p.slice('/functions/v1/'.length)] ?? {}) }
+    if (p.startsWith('/functions/v1/')) {
+      // §232: заглушка функции может быть функцией от тела запроса — как у
+      // RPC. Нужно, когда один вызов отвечает по-разному (снимок и тепловая
+      // карта у `bunny-video-stats`).
+      const name = p.slice('/functions/v1/'.length)
+      let body = {}
+      try { body = JSON.parse(request.postData() || '{}') } catch {}
+      note(`FN ${method} ${p} ${JSON.stringify(body).slice(0, 140)}`)
+      const fn = fixtures.functions?.[name]
+      return json(route, typeof fn === 'function' ? fn(body) : (fn ?? {}))
+    }
     if (p.startsWith('/realtime/')) return route.abort()
     note(`?? ${method} ${p}`)
     return json(route, [])

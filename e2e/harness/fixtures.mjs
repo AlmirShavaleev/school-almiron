@@ -43,6 +43,10 @@ export const personas = {
   // «Ученик + телефон» (жёлтая полоса §178 внутри телефона).
   ownerMobile: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'admin', mobilePreview: true },
   ownerPreviewMobile: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'student', mobilePreview: true },
+  // §232: тот же владелец, но у функции статистики видео не задан ключ
+  // библиотеки физики (BUNNY_PHYSICS_API_KEY). Отдельная персона, потому что
+  // заглушка функции решает по персоне, а контекст один на персону и ширину.
+  ownerNoPhysicsKey: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
   guest: { user: null },
 }
 
@@ -1458,6 +1462,70 @@ export const progressReport = {
   },
 }
 
+// ── §232: статистика видео Bunny по библиотекам ─────────────────────────────
+//
+// Ответ функции `bunny-video-stats` нового вида: `libraries` — математика
+// (726880) и физика (763334), у каждой свои уроки и свои числа за период.
+// Для персоны `ownerNoPhysicsKey` физика приходит «ключ не задан». Все
+// названия и числа выдуманы; guid — штампы `U()`.
+const V232 = (n) => U('b2', n)
+function lesson232(n, topicTitle, courses, views, lengthSec, avgWatchSec, extra = {}) {
+  return {
+    videoId: V232(n), topicTitle, bunnyTitle: `Видеоконспект ${n}`, courses, placements: courses.length || 1,
+    onlyInTemplate: courses.length === 0, missingInBunny: false, views, lengthSec,
+    totalWatchSec: views * avgWatchSec, avgWatchSec, ...extra,
+  }
+}
+const MATH232 = ['Математика ОГЭ']
+const PHYS232 = ['Физика ЕГЭ 10А', 'Физика ЕГЭ 11А']
+function period232(views, watchSec) {
+  return { days: 30, since: ago(24 * 29), until: ago(-24), views, watchTimeRaw: watchSec, points: 30, viewsChart: [], watchTimeChart: [], ok: true }
+}
+function bunnyVideoStats232(persona) {
+  const math = {
+    id: '726880', label: 'Математика', primary: true, status: 'ok', attachedVideos: 7,
+    lessons: [
+      lesson232(1, 'Векторы на плоскости', MATH232, 11, 1159, 179),
+      lesson232(2, 'Проценты и пропорции', MATH232, 4, 842, 410),
+      lesson232(3, 'Квадратные уравнения', MATH232, 2, 1320, 655),
+      lesson232(4, 'Площади фигур', MATH232, 1, 960, 120),
+      lesson232(5, 'Теория вероятностей: классическое определение', MATH232, 0, 1010, 0),
+      lesson232(6, 'Системы неравенств', MATH232, 0, 1400, 0),
+      lesson232(7, 'Прогрессии', MATH232, 0, 0, 0, { missingInBunny: true }),
+    ],
+    unattachedInLibrary: 54, libraryTotalItems: 181, period: period232(18, 5154), partial: false,
+    fetched_at: ago(2), source: 'cache', throttled: false,
+  }
+  const physics = persona === 'ownerNoPhysicsKey'
+    ? {
+        id: '763334', label: 'Физика', primary: false, status: 'not_configured', error: 'not_configured', attachedVideos: 58,
+        message: 'Ключ библиотеки физики не задан (BUNNY_PHYSICS_API_KEY). Статистика появится, когда его добавят в переменные проекта.',
+      }
+    : {
+        id: '763334', label: 'Физика', primary: false, status: 'ok', attachedVideos: 58,
+        lessons: [
+          lesson232(21, 'Равноускоренное прямолинейное движение', PHYS232, 23, 1480, 640),
+          lesson232(22, 'Законы Ньютона', PHYS232, 17, 1725, 980),
+          lesson232(23, 'Закон сохранения импульса', PHYS232, 9, 1190, 402),
+          lesson232(24, 'Движение по окружности', PHYS232, 6, 905, 530),
+          lesson232(25, 'Работа, мощность, энергия', PHYS232, 3, 1310, 215),
+          lesson232(26, 'Статика. Момент силы', PHYS232, 0, 1102, 0),
+          lesson232(27, 'Первый закон термодинамики', PHYS232, 0, 1560, 0),
+        ],
+        unattachedInLibrary: 0, libraryTotalItems: 58, period: period232(58, 21480), partial: false,
+        fetched_at: ago(1), source: 'bunny', throttled: false,
+      }
+  return (body) => {
+    if (body?.heatmap) {
+      // Карта с разгоном и спадом — «падает вдвое» где-то посередине.
+      const heatmap = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [String(i), Math.max(0, Math.round(100 - i * 1.6 + (i % 7 === 0 ? 8 : 0)))]))
+      return { videoId: body.heatmap, library: body.library ?? '726880', heatmap, fetched_at: ago(1), source: 'cache' }
+    }
+    const legacy = { lessons: math.lessons, unattachedInLibrary: math.unattachedInLibrary, libraryTotalItems: math.libraryTotalItems, period: math.period, partial: false, fetched_at: math.fetched_at, source: math.source, throttled: false }
+    return { ...legacy, libraries: [math, physics], unknownLibraries: [], meta: { library_ids_in_db: ['726880', '763334'] } }
+  }
+}
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
@@ -1538,6 +1606,8 @@ export function baseFixtures(persona) {
       video_watch_add: null,
     },
     functions: {
+      // §232: статистика видео по двум библиотекам Bunny (выдуманные числа).
+      'bunny-video-stats': bunnyVideoStats232(persona),
       // §213 (board/064). Заглушка «Переписать по таблице». Это НЕ ответ
       // модели: харнесс её не вызывает и вызывать не должен — сцене нужно
       // показать, как результат приходит предложением над полем. Текст

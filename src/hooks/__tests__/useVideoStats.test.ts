@@ -48,14 +48,18 @@ describe('useVideoStats', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.error).toBeNull()
-    expect(result.current.lessons).toHaveLength(1)
-    expect(result.current.lessons[0].topicTitle).toBe('Векторы')
-    expect(result.current.lessons[0].views).toBe(11)
-    expect(result.current.unattachedInLibrary).toBe(54)
-    expect(result.current.libraryTotal).toBe(181)
+    // Прежний вид ответа (функция до §232) — одна библиотека, математика.
+    expect(result.current.libraries).toHaveLength(1)
+    const math = result.current.libraries[0]
+    expect(math).toMatchObject({ id: '726880', label: 'Математика', primary: true, status: 'ok' })
+    expect(math.lessons).toHaveLength(1)
+    expect(math.lessons[0].topicTitle).toBe('Векторы')
+    expect(math.lessons[0].views).toBe(11)
+    expect(math.unattachedInLibrary).toBe(54)
+    expect(math.libraryTotal).toBe(181)
     // watchTimeRaw → watchSec: единица (секунды) проверена разведкой.
-    expect(result.current.period).toEqual({ days: 30, views: 19, watchSec: 5154, points: 31 })
-    expect(result.current.fromCache).toBe(false)
+    expect(math.period).toEqual({ days: 30, views: 19, watchSec: 5154, points: 31 })
+    expect(math.fromCache).toBe(false)
   })
 
   it('отказ телом (200 + error) показывается словами, а не нулями', async () => {
@@ -69,8 +73,7 @@ describe('useVideoStats', () => {
 
     expect(result.current.error).toContain('Bunny отклонил ключ')
     // Числа обнуляются НАМЕРЕННО, но экран показывает ошибку, а не таблицу.
-    expect(result.current.lessons).toEqual([])
-    expect(result.current.period).toBeNull()
+    expect(result.current.libraries).toEqual([])
   })
 
   it('сетевая ошибка тоже даёт сообщение, а не пустую таблицу', async () => {
@@ -79,7 +82,7 @@ describe('useVideoStats', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.error).toBe('Failed to fetch')
-    expect(result.current.lessons).toEqual([])
+    expect(result.current.libraries).toEqual([])
   })
 
   it('признаки кэша и троттлинга доезжают до экрана', async () => {
@@ -90,8 +93,8 @@ describe('useVideoStats', () => {
     const { result } = renderHook(() => useVideoStats())
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.fromCache).toBe(true)
-    expect(result.current.throttled).toBe(true)
+    expect(result.current.libraries[0].fromCache).toBe(true)
+    expect(result.current.libraries[0].throttled).toBe(true)
   })
 
   it('первый заход идёт без force, «Обновить» — с force', async () => {
@@ -104,6 +107,65 @@ describe('useVideoStats', () => {
     await act(async () => { result.current.reload() })
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(invoke).toHaveBeenLastCalledWith('bunny-video-stats', { body: { force: true } })
+  })
+})
+
+describe('useVideoStats — несколько библиотек (§232)', () => {
+  const MULTI = {
+    // Основная упала: верхний уровень несёт её отказ для прежнего клиента.
+    error: 'bad_key', message: 'Bunny отклонил ключ библиотеки «Математика» (726880)…',
+    libraries: [
+      { id: '726880', label: 'Математика', primary: true, status: 'error', error: 'bad_key',
+        message: 'Bunny отклонил ключ библиотеки «Математика» (726880)…', attachedVideos: 127 },
+      { ...OK_BODY, id: '763334', label: 'Физика', primary: false, status: 'ok', attachedVideos: 1, source: 'cache' },
+    ],
+    unknownLibraries: [{ libraryId: '111111', videos: 2 }],
+  }
+
+  it('библиотеки разбираются по отдельности; отказ основной — не отказ всей вкладки', async () => {
+    invoke.mockResolvedValue({ data: MULTI, error: null })
+    const { result } = renderHook(() => useVideoStats())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.error).toBeNull()
+    const [math, phys] = result.current.libraries
+    expect(math).toMatchObject({ id: '726880', status: 'error', attachedVideos: 127, lessons: [] })
+    expect(math.message).toContain('Bunny отклонил ключ')
+    expect(phys).toMatchObject({ id: '763334', label: 'Физика', status: 'ok', fromCache: true, message: null })
+    expect(phys.lessons[0].topicTitle).toBe('Векторы')
+    expect(result.current.unknownLibraries).toEqual([{ libraryId: '111111', videos: 2 }])
+  })
+
+  it('«ключ не задан» доезжает статусом not_configured, а не ошибкой', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        ...OK_BODY,
+        libraries: [
+          { ...OK_BODY, id: '726880', label: 'Математика', primary: true, status: 'ok' },
+          { id: '763334', label: 'Физика', primary: false, status: 'not_configured', error: 'not_configured',
+            message: 'Ключ библиотеки физики не задан (BUNNY_PHYSICS_API_KEY).', attachedVideos: 58 },
+        ],
+      },
+      error: null,
+    })
+    const { result } = renderHook(() => useVideoStats())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.libraries[1]).toMatchObject({
+      status: 'not_configured', attachedVideos: 58, message: 'Ключ библиотеки физики не задан (BUNNY_PHYSICS_API_KEY).',
+    })
+  })
+
+  it('не-2xx функции (нет прав): причина берётся из тела, а не «non-2xx status code»', async () => {
+    const context = { json: async () => ({ error: 'forbidden', message: 'Статистику просмотра видео видит только администратор.' }) }
+    invoke.mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error('Edge Function returned a non-2xx status code'), { context }),
+    })
+    const { result } = renderHook(() => useVideoStats())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBe('Статистику просмотра видео видит только администратор.')
   })
 })
 
@@ -122,6 +184,14 @@ describe('useVideoHeatmap', () => {
     expect(invoke).toHaveBeenCalledWith('bunny-video-stats', { body: { heatmap: 'a' } })
     expect(result.current.heatmap).toEqual({ '0': 100 })
     expect(result.current.videoId).toBe('a')
+  })
+
+  it('карта ролика физики просится у библиотеки физики', async () => {
+    invoke.mockResolvedValue({ data: { videoId: 'p', library: '763334', heatmap: { '0': 100 } }, error: null })
+    const { result } = renderHook(() => useVideoHeatmap())
+    await act(async () => { await result.current.load('p', '763334') })
+    expect(invoke).toHaveBeenCalledWith('bunny-video-stats', { body: { heatmap: 'p', library: '763334' } })
+    expect(result.current.heatmap).toEqual({ '0': 100 })
   })
 
   it('отказ по карте показывается словами', async () => {

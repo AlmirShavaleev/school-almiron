@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { VideoLesson } from '@/lib/videoStats'
+import { BUNNY_DEFAULT_LIBRARY_ID } from '@/lib/bunnyVideoUrl'
 
 /**
  * Статистика просмотра видеоуроков из Bunny Stream (вкладка «Видео»).
@@ -25,7 +26,26 @@ export interface VideoPeriod {
   points: number
 }
 
-export interface VideoStatsData {
+/**
+ * Состояние библиотеки (§232).
+ *   `ok`             — числа есть;
+ *   `not_configured` — дополнительной библиотеке не дали ключ: спокойная
+ *                      пометка, не поломка;
+ *   `error`          — Bunny отказал (ключ, номер библиотеки, сеть) — словами.
+ */
+export type VideoLibraryStatus = 'ok' | 'not_configured' | 'error'
+
+/** Числа одной библиотеки Bunny: математика и физика живут в разных. */
+export interface VideoLibraryStats {
+  id:      string
+  /** «Математика», «Физика» — подпись переключателя. */
+  label:   string
+  primary: boolean
+  status:  VideoLibraryStatus
+  /** Текст пометки или отказа; у `ok` — null. */
+  message: string | null
+  /** Сколько разных роликов этой библиотеки привязано к темам (по адресам). */
+  attachedVideos: number
   lessons: VideoLesson[]
   /** Ролики библиотеки, не привязанные ни к одной теме. */
   unattachedInLibrary: number
@@ -39,10 +59,19 @@ export interface VideoStatsData {
   partial: boolean
 }
 
-const EMPTY: VideoStatsData = {
-  lessons: [], unattachedInLibrary: 0, libraryTotal: 0, period: null,
-  fetchedAt: null, fromCache: false, throttled: false, partial: false,
+export interface VideoStatsData {
+  libraries: VideoLibraryStats[]
+  /**
+   * Материалы ссылаются на библиотеку, которой функция не знает (нет в
+   * секретах). Показываются строкой, а не прячутся и не приписываются чужой.
+   */
+  unknownLibraries: Array<{ libraryId: string; videos: number }>
 }
+
+const EMPTY: VideoStatsData = { libraries: [], unknownLibraries: [] }
+
+/** Подпись основной библиотеки, если функция ответила прежним (до §232) видом. */
+const LEGACY_PRIMARY = { id: BUNNY_DEFAULT_LIBRARY_ID, label: 'Математика', primary: true }
 
 function toLesson(row: Record<string, unknown>): VideoLesson {
   return {
@@ -60,12 +89,96 @@ function toLesson(row: Record<string, unknown>): VideoLesson {
   }
 }
 
-/** Отказ приезжает телом с полем `error` — это НЕ ноль просмотров. */
+function toPeriod(raw: unknown): VideoPeriod | null {
+  if (!raw || typeof raw !== 'object') return null
+  const p = raw as Record<string, unknown>
+  return {
+    days:     Number(p.days ?? 0),
+    views:    Number(p.views ?? 0),
+    watchSec: Number(p.watchTimeRaw ?? 0),
+    points:   Number(p.points ?? 0),
+  }
+}
+
+/** Числа библиотеки из куска ответа — одинаково для нового и прежнего вида. */
+function toLibrary(
+  row: Record<string, unknown>,
+  ident: { id: string; label: string; primary: boolean },
+): VideoLibraryStats {
+  const status: VideoLibraryStatus =
+    row.status === 'not_configured' ? 'not_configured'
+      : row.status === 'error' ? 'error'
+        : 'ok'
+  const lessons = Array.isArray(row.lessons)
+    ? (row.lessons as Array<Record<string, unknown>>).map(toLesson)
+    : []
+  return {
+    ...ident,
+    status,
+    message: status === 'ok' ? null : String(row.message ?? 'Статистика библиотеки недоступна'),
+    attachedVideos: Number(row.attachedVideos ?? new Set(lessons.map(l => l.videoId)).size),
+    lessons,
+    unattachedInLibrary: Number(row.unattachedInLibrary ?? 0),
+    libraryTotal: Number(row.libraryTotalItems ?? 0),
+    period: toPeriod(row.period),
+    fetchedAt: typeof row.fetched_at === 'string' ? row.fetched_at : null,
+    fromCache: row.source === 'cache',
+    throttled: row.throttled === true,
+    partial:   row.partial === true,
+  }
+}
+
+/**
+ * Ответ функции → библиотеки. Новый вид (§232) — массив `libraries`;
+ * прежний — одна библиотека на верхнем уровне (функция ещё не выкачена).
+ */
+export function parseVideoStats(body: Record<string, unknown> | null): VideoStatsData {
+  if (body && Array.isArray(body.libraries)) {
+    const libraries = (body.libraries as Array<Record<string, unknown>>).map(row => toLibrary(row, {
+      id:      String(row.id ?? ''),
+      label:   String(row.label ?? row.id ?? ''),
+      primary: row.primary === true,
+    }))
+    const unknownLibraries = Array.isArray(body.unknownLibraries)
+      ? (body.unknownLibraries as Array<Record<string, unknown>>).map(u => ({
+          libraryId: String(u.libraryId ?? ''),
+          videos:    Number(u.videos ?? 0),
+        }))
+      : []
+    return { libraries, unknownLibraries }
+  }
+  return { libraries: [toLibrary(body ?? {}, LEGACY_PRIMARY)], unknownLibraries: [] }
+}
+
+/**
+ * Отказ всей функции приезжает телом с полем `error` — это НЕ ноль просмотров.
+ * В новом виде `error` на верхнем уровне относится к основной библиотеке
+ * (для прежнего клиента), а не ко всей функции — его разбирает `libraries`.
+ */
 function refusalMessage(body: Record<string, unknown> | null): string | null {
-  if (body && typeof body.error === 'string') {
+  if (body && typeof body.error === 'string' && !Array.isArray(body.libraries)) {
     return String(body.message ?? 'Статистика видео недоступна')
   }
   return null
+}
+
+/**
+ * На не-2xx supabase-js кладёт в `error` только «non-2xx status code», а
+ * причина («видит только администратор») лежит телом ответа. Тот же приём,
+ * что в `rewriteComment.ts`.
+ */
+async function functionErrorMessage(fnError: unknown, fallback: string): Promise<string> {
+  const err = fnError as { message?: string; context?: { json?: () => Promise<unknown> } }
+  const res = err?.context
+  if (res && typeof res.json === 'function') {
+    try {
+      const body = await res.json() as { message?: unknown } | null
+      if (body && typeof body.message === 'string' && body.message) return body.message
+    } catch {
+      // тело не JSON — остаётся общая формулировка
+    }
+  }
+  return err?.message || fallback
 }
 
 export function useVideoStats() {
@@ -89,10 +202,9 @@ export function useVideoStats() {
       if (cancelled) return
 
       if (fnErr) {
-        // Функция уже перевела отказ на человеческий («ключ отклонён»,
-        // «библиотека не найдена»), но при сетевой ошибке сюда придёт голое
-        // сообщение.
-        setError(fnErr.message || 'Не удалось получить статистику видео')
+        const message = await functionErrorMessage(fnErr, 'Не удалось получить статистику видео')
+        if (cancelled) return
+        setError(message)
         setData(EMPTY)
         setLoading(false)
         return
@@ -107,26 +219,7 @@ export function useVideoStats() {
         return
       }
 
-      const periodRaw = body?.period as Record<string, unknown> | null | undefined
-      setData({
-        lessons: Array.isArray(body?.lessons)
-          ? (body.lessons as Array<Record<string, unknown>>).map(toLesson)
-          : [],
-        unattachedInLibrary: Number(body?.unattachedInLibrary ?? 0),
-        libraryTotal: Number(body?.libraryTotalItems ?? 0),
-        period: periodRaw
-          ? {
-              days:     Number(periodRaw.days ?? 0),
-              views:    Number(periodRaw.views ?? 0),
-              watchSec: Number(periodRaw.watchTimeRaw ?? 0),
-              points:   Number(periodRaw.points ?? 0),
-            }
-          : null,
-        fetchedAt: typeof body?.fetched_at === 'string' ? body.fetched_at : null,
-        fromCache: body?.source === 'cache',
-        throttled: body?.throttled === true,
-        partial:   body?.partial === true,
-      })
+      setData(parseVideoStats(body))
       setLoading(false)
     }
 
@@ -165,23 +258,26 @@ export function useVideoHeatmap() {
     setError(null)
   }, [])
 
-  const load = useCallback(async (id: string) => {
+  /**
+   * `libraryId` — библиотека ролика (§232): карта физики лежит в библиотеке
+   * физики и читается её ключом. Без номера функция берёт основную.
+   */
+  const load = useCallback(async (id: string, libraryId?: string) => {
     setVideoId(id)
     setHeatmap(null)
     setError(null)
     setLoading(true)
     try {
       const { data: raw, error: fnErr } = await supabase.functions.invoke('bunny-video-stats', {
-        body: { heatmap: id },
+        body: libraryId ? { heatmap: id, library: libraryId } : { heatmap: id },
       })
       if (fnErr) {
-        setError(fnErr.message || 'Не удалось получить тепловую карту')
+        setError(await functionErrorMessage(fnErr, 'Не удалось получить тепловую карту'))
         return
       }
       const body = raw as Record<string, unknown> | null
-      const refusal = refusalMessage(body)
-      if (refusal) {
-        setError(refusal)
+      if (body && typeof body.error === 'string') {
+        setError(String(body.message ?? 'Не удалось получить тепловую карту'))
         return
       }
       const map = body?.heatmap

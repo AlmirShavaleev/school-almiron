@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { RefreshCw, Play, EyeOff, Activity, AlertTriangle } from 'lucide-react'
+import { RefreshCw, Play, EyeOff, Activity, AlertTriangle, KeyRound } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import type { VideoStatsData } from '@/hooks/useVideoStats'
+import { plural } from '@/lib/plural'
+import type { VideoLibraryStats, VideoStatsData } from '@/hooks/useVideoStats'
 import { useVideoHeatmap, useVideoStats } from '@/hooks/useVideoStats'
 import {
   attentionHalvesAt, formatClock, heatmapSeries, missingLessons, neverWatched,
@@ -47,14 +48,18 @@ export function VideoStatsTab() {
   return <VideoStats {...stats} />
 }
 
+/**
+ * §232. Библиотек две — математика и физика, у каждой свой ключ Bunny. Они
+ * показываются ПЕРЕКЛЮЧАТЕЛЕМ, а не одной общей таблицей: плитки «за 30 дней»
+ * приходят из статистики библиотеки целиком, и сложенные вместе они уже не
+ * отвечали бы на вопрос «как смотрят физику». Отказ одной библиотеки виден
+ * только на её вкладке; «ключ не задан» — спокойная пометка, а не красная
+ * ошибка: это «ещё не подключили», а не поломка.
+ */
 export function VideoStats(props: VideoStatsProps) {
-  const {
-    lessons, unattachedInLibrary, libraryTotal, period,
-    fetchedAt, fromCache, throttled, partial,
-    loading, error, reload,
-  } = props
+  const { libraries, unknownLibraries, loading, error, reload } = props
 
-  const [sort, setSort] = useState<LessonSort>('views')
+  const [picked, setPicked] = useState<string | null>(null)
   const heat = useVideoHeatmap()
 
   if (loading) {
@@ -66,8 +71,9 @@ export function VideoStats(props: VideoStatsProps) {
   }
 
   if (error) {
-    // «Ключ отклонён» и «библиотека не найдена» приходят словами из функции.
-    // Нули здесь показывать нельзя: они читаются как «никто не смотрел».
+    // Отказ ВСЕЙ функции (нет прав, сеть). Отказы Bunny по библиотеке —
+    // ниже, на вкладке этой библиотеки. Нули здесь показывать нельзя: они
+    // читаются как «никто не смотрел».
     return (
       <div
         data-testid="video-stats-error"
@@ -79,9 +85,16 @@ export function VideoStats(props: VideoStatsProps) {
     )
   }
 
-  const watched = watchedLessons(lessons, sort)
-  const untouched = neverWatched(lessons)
-  const missing = missingLessons(lessons)
+  const current = libraries.find(l => l.id === picked)
+    ?? libraries.find(l => l.primary)
+    ?? libraries[0]
+    ?? null
+
+  const choose = (id: string) => {
+    if (id === current?.id) return
+    heat.clear()
+    setPicked(id)
+  }
 
   return (
     <div className="space-y-4" data-testid="video-stats">
@@ -90,11 +103,13 @@ export function VideoStats(props: VideoStatsProps) {
           <p className="text-sm text-slate-500">
             Просмотры видеоуроков по данным Bunny.
           </p>
-          <p className="mt-1 text-xs text-slate-400" data-testid="video-stats-freshness">
-            {fetchedAt ? `Данные на ${formatTime(fetchedAt)}` : 'Время получения неизвестно'}
-            {fromCache && ' · из кэша'}
-            {libraryTotal > 0 && ` · в библиотеке ${libraryTotal} роликов`}
-          </p>
+          {current?.status === 'ok' && (
+            <p className="mt-1 text-xs text-slate-400" data-testid="video-stats-freshness">
+              {current.fetchedAt ? `Данные на ${formatTime(current.fetchedAt)}` : 'Время получения неизвестно'}
+              {current.fromCache && ' · из кэша'}
+              {current.libraryTotal > 0 && ` · в библиотеке ${current.libraryTotal} роликов`}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -116,6 +131,138 @@ export function VideoStats(props: VideoStatsProps) {
         а курсы перечислены.
       </p>
 
+      {libraries.length > 1 && current && (
+        <LibrarySwitch libraries={libraries} currentId={current.id} onPick={choose} />
+      )}
+
+      {unknownLibraries.length > 0 && (
+        <p
+          data-testid="video-stats-unknown-libraries"
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500"
+        >
+          {unknownLibraries.map(u => `${u.videos} ${plural(u.videos, 'ролик', 'ролика', 'роликов')} из библиотеки ${u.libraryId}`).join(', ')}
+          {' '}привязаны к темам, но статистика эту библиотеку не знает — её номера и ключа нет в
+          переменных проекта.
+        </p>
+      )}
+
+      {!current ? (
+        <p className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
+          Функция не вернула ни одной библиотеки.
+        </p>
+      ) : current.status === 'not_configured' ? (
+        <NotConfigured library={current} />
+      ) : current.status === 'error' ? (
+        <div
+          data-testid="video-library-error"
+          role="alert"
+          className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800"
+        >
+          {current.message}
+        </div>
+      ) : (
+        <LibraryPanel library={current} heat={heat} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * «Математика / Физика». Состояние библиотеки видно прямо на кнопке —
+ * серой подписью, без красного: чтобы отказ физики не нужно было искать
+ * кликом, но и чтобы он не кричал поверх рабочей математики.
+ */
+function LibrarySwitch({
+  libraries, currentId, onPick,
+}: {
+  libraries: VideoLibraryStats[]
+  currentId: string
+  onPick: (id: string) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Библиотека видео"
+      data-testid="video-library-switch"
+      className="flex w-full gap-1 rounded-xl bg-slate-100 p-1 sm:w-auto sm:inline-flex"
+    >
+      {libraries.map(lib => {
+        const active = lib.id === currentId
+        const note = lib.status === 'not_configured' ? 'не подключена'
+          : lib.status === 'error' ? 'ошибка'
+            : null
+        return (
+          <button
+            key={lib.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onPick(lib.id)}
+            className={cn(
+              // На телефоне пометка встаёт под названием, а не переносится по слову.
+              'flex min-h-11 flex-1 flex-col items-center justify-center rounded-lg px-4 py-1 text-sm leading-tight transition-colors sm:flex-none sm:flex-row sm:gap-1.5',
+              active ? 'bg-white font-semibold text-graphite-900 shadow-sm' : 'text-slate-500 hover:text-graphite-900',
+            )}
+          >
+            {lib.label}
+            {note && (
+              <span className="whitespace-nowrap text-xs font-normal text-slate-400">
+                <span className="hidden sm:inline">· </span>{note}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Дополнительной библиотеке не дали ключ. Это не поломка — функция работает,
+ * математика считается, — поэтому серым, без `role="alert"`. Число роликов,
+ * которые ждут ключа, посчитано по адресам материалов: видно, что видео
+ * физики уже узнаются, и после ключа статистика просто появится.
+ */
+function NotConfigured({ library }: { library: VideoLibraryStats }) {
+  return (
+    <div
+      data-testid="video-library-not-configured"
+      className="rounded-2xl border border-slate-200 bg-white p-5"
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 text-slate-400"><KeyRound size={18} /></span>
+        <div className="min-w-0 space-y-1.5">
+          <h3 className="text-sm font-semibold text-graphite-950">
+            {library.label}: статистика ещё не подключена
+          </h3>
+          <p className="text-sm text-slate-500">{library.message}</p>
+          {library.attachedVideos > 0 && (
+            <p className="text-xs text-slate-400" data-testid="video-library-waiting">
+              К темам уже привязано {library.attachedVideos} {plural(library.attachedVideos, 'ролик', 'ролика', 'роликов')} из
+              библиотеки {library.id} — их просмотры появятся здесь сразу после подключения.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Числа одной библиотеки — то, что до §232 было всей вкладкой. */
+function LibraryPanel({
+  library, heat,
+}: {
+  library: VideoLibraryStats
+  heat: ReturnType<typeof useVideoHeatmap>
+}) {
+  const { lessons, unattachedInLibrary, period, throttled, partial } = library
+  const [sort, setSort] = useState<LessonSort>('views')
+
+  const watched = watchedLessons(lessons, sort)
+  const untouched = neverWatched(lessons)
+  const missing = missingLessons(lessons)
+
+  return (
+    <div className="space-y-4" data-testid={`video-library-${library.id}`}>
       {throttled && (
         <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Обновляли только что — показаны прежние данные. Bunny опрашивается не чаще раза в минуту.
@@ -145,7 +292,7 @@ export function VideoStats(props: VideoStatsProps) {
         sort={sort}
         onSort={setSort}
         selectedId={heat.videoId}
-        onSelect={id => (heat.videoId === id ? heat.clear() : heat.load(id))}
+        onSelect={id => (heat.videoId === id ? heat.clear() : heat.load(id, library.id))}
       />
 
       {heat.videoId && (

@@ -836,6 +836,15 @@ export const scenes = [
     ]
   }),
 
+  // §232: вкладка «Видео» с двумя библиотеками Bunny — математика и физика с
+  // данными; физика без ключа (персона ownerNoPhysicsKey) — спокойная пометка.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'v232-video-math', url: '/admin', width, height, actions: [{ clickRole: ['button', 'Видео'] }, { wait: 1200 }] },
+    { persona: 'owner', name: 'v232-video-physics', url: '/admin', width, height, actions: [{ clickRole: ['button', 'Видео'] }, { wait: 1200 }, { clickSel: '[data-testid="video-library-switch"] button:has-text("Физика")' }, { wait: 400 }] },
+    { persona: 'owner', name: 'v232-video-physics-heat', url: '/admin', width, height, actions: [{ clickRole: ['button', 'Видео'] }, { wait: 1200 }, { clickSel: '[data-testid="video-library-switch"] button:has-text("Физика")' }, { wait: 400 }, { click: 'Законы Ньютона' }, { wait: 800 }] },
+    { persona: 'ownerNoPhysicsKey', name: 'v232-video-nokey', url: '/admin', width, height, actions: [{ clickRole: ['button', 'Видео'] }, { wait: 1200 }, { clickSel: '[data-testid="video-library-switch"] button:has-text("Физика")' }, { wait: 400 }] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },
