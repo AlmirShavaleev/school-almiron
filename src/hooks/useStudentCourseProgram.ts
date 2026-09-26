@@ -12,6 +12,7 @@ import {
   type TopicSection, type TopicHwStatus, type TopicTestStatus,
 } from '@/lib/studentProgram'
 import type { MockLessonListRow } from '@/lib/mockExamLesson'
+import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
 
 /**
  * Программа курса глазами ученика.
@@ -71,20 +72,16 @@ async function loadTaskProgress(courseId: string): Promise<Map<string, { total: 
 }
 
 /**
- * §221. Пробники-уроки группы — одной RPC `my_mock_exams`. Ошибку глотаем,
- * как у задач к уроку: падение здесь уронило бы всю программу курса.
- * §224: все пробники группы со временем — в отдельном разделе «Пробники»,
- * а не внутри разделов курса; в счётчики тем не входят.
+ * §221/§224: пробники группы — отдельным разделом «Пробники», в счётчики тем
+ * не входят. §224.2: загрузка вынесена в `lib/myMockExams.ts` — тот же
+ * список нужен странице темы, «Мои курсы» и кабинету; в предпросмотре
+ * персонала — расписание из `mock_exams` (раньше в предпросмотре пробников не
+ * было вовсе, и владелец в режиме «Ученик» их не видел).
  */
-async function loadMockExams(groupId: string): Promise<MockLessonListRow[]> {
-  try {
-    const { data, error } = await db.rpc('my_mock_exams', { p_group_id: groupId })
-    if (error) throw new Error(error.message ?? 'Не удалось загрузить пробники')
-    return (data ?? []) as MockLessonListRow[]
-  } catch (e) {
-    console.warn('Не удалось загрузить пробники курса', e)
-    return []
-  }
+function loadMockExams(groupId: string, preview: boolean): Promise<MockLessonListRow[]> {
+  return preview
+    ? loadPreviewMockExams([groupId]).then(r => r[groupId] ?? [])
+    : loadMyMockExams(groupId)
 }
 
 export interface TopicProgress {
@@ -261,7 +258,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
 
       const topicIds = (mods || []).flatMap((m: any) => m.topics.map((t: any) => t.id))
       if (topicIds.length === 0) {
-        const onlyMocks = preview ? [] : await loadMockExams(group.id)
+        const onlyMocks = await loadMockExams(group.id, preview)
         setMockExams(onlyMocks)
         setModules((mods || []).map((m: any) => ({
           id: m.id, title: m.title, order_index: m.order_index, topics: [], done: 0, total: 0,
@@ -302,9 +299,9 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         preview
           ? Promise.resolve(new Map<string, { total: number; closed: number }>())
           : loadTaskProgress(course.id),
-        // Пробник у ученика свой (бланк, сдача, результат) — в предпросмотре
-        // персоналу показывать нечего, как и попытки ДЗ (§178).
-        preview ? Promise.resolve([] as MockLessonListRow[]) : loadMockExams(group.id),
+        // Пробник у ученика свой (бланк, сдача, результат); в предпросмотре —
+        // только расписание, без чужих бланков (§178, §224.2).
+        loadMockExams(group.id, preview),
       ])
 
       // 5. Попытки ученика: ДЗ и тесты. В предпросмотре — не читаем: у

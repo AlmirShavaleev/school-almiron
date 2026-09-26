@@ -12,6 +12,9 @@ import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { getSubjectColor } from '@/lib/subjectColors'
 import { pluralTopics } from '@/lib/plural'
+import { useMyMockExams } from '@/hooks/useMyMockExams'
+import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { mockAlert, type MockLessonListRow } from '@/lib/mockExamLesson'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,71 +65,81 @@ function ProgressRing({ pct, size = 52 }: { pct: number; size?: number }) {
 
 // ─── Course card ──────────────────────────────────────────────────────────────
 
-function CourseItem({ card }: { card: CourseCard }) {
+function CourseItem({ card, mockExams }: { card: CourseCard; mockExams: MockLessonListRow[] }) {
   const { from, to, icon } = getSubjectColor(card.subject)
   const pct = card.totalTopics > 0 ? Math.round(card.doneTopics / card.totalTopics * 100) : 0
 
+  // §224.2. Карточка — ссылка на курс, а у полосы пробника своя ссылка на
+  // пробник; ссылка в ссылке — невалидная разметка, поэтому рамка карточки
+  // вынесена на обёртку, а полоса стоит рядом со ссылкой курса, не внутри.
   return (
-    <Link
-      to={`/my-course/${card.groupId}`}
-      className="group block rounded-2xl overflow-hidden border border-gray-200 hover:border-primary-300 hover:shadow-lg transition-all duration-200"
-    >
-      {/* Top gradient band */}
-      <div className={cn('bg-gradient-to-br p-5 text-white', from, to)}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-2xl leading-none">{icon}</span>
-              <span className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                {SUBJECT_LABELS[card.subject] || card.subject}
-              </span>
-              <span className="text-xs bg-white/15 px-2 py-0.5 rounded-full">
-                {EXAM_LABELS[card.examType] || card.examType}
-              </span>
+    <div className="overflow-hidden rounded-2xl border border-gray-200 transition-all duration-200 hover:border-primary-300 hover:shadow-lg" data-testid="course-card">
+      <Link
+        to={`/my-course/${card.groupId}`}
+        className="group block"
+      >
+        {/* Top gradient band */}
+        <div className={cn('bg-gradient-to-br p-5 text-white', from, to)}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-2xl leading-none">{icon}</span>
+                <span className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                  {SUBJECT_LABELS[card.subject] || card.subject}
+                </span>
+                <span className="text-xs bg-white/15 px-2 py-0.5 rounded-full">
+                  {EXAM_LABELS[card.examType] || card.examType}
+                </span>
+              </div>
+              <h3 className="text-lg font-bold leading-tight group-hover:opacity-90 transition-opacity">
+                {card.courseTitle}
+              </h3>
+              <div className="flex items-center gap-1.5 text-xs text-white/75 mt-1.5">
+                <Users size={11} />
+                {card.groupName}
+              </div>
             </div>
-            <h3 className="text-lg font-bold leading-tight group-hover:opacity-90 transition-opacity">
-              {card.courseTitle}
-            </h3>
-            <div className="flex items-center gap-1.5 text-xs text-white/75 mt-1.5">
-              <Users size={11} />
-              {card.groupName}
-            </div>
+            <ProgressRing pct={pct} />
           </div>
-          <ProgressRing pct={pct} />
         </div>
-      </div>
 
-      {/* Bottom info row */}
-      <div className="bg-white px-5 py-3.5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
-          <span className="flex items-center gap-1.5">
-            <CheckCircle size={12} className="text-green-500" />
-            {/* Слово согласуется со ВТОРЫМ числом — именно оно стоит рядом
-                с ним: «2 / 24 темы открыто». */}
-            <span data-testid="course-card-topics">
-              {card.doneTopics} / {pluralTopics(card.totalTopics)} открыто
-            </span>
-          </span>
-          {card.startDate && (
+        {/* Bottom info row */}
+        <div className="bg-white px-5 py-3.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
             <span className="flex items-center gap-1.5">
-              <Calendar size={12} />
-              {formatDate(card.startDate)}
-              {card.endDate && ` — ${formatDate(card.endDate)}`}
+              <CheckCircle size={12} className="text-green-500" />
+              {/* Слово согласуется со ВТОРЫМ числом — именно оно стоит рядом
+                  с ним: «2 / 24 темы открыто». */}
+              <span data-testid="course-card-topics">
+                {card.doneTopics} / {pluralTopics(card.totalTopics)} открыто
+              </span>
             </span>
-          )}
-          {!card.startDate && (
-            <span className="flex items-center gap-1.5">
-              <Clock size={12} />Без ограничений
-            </span>
-          )}
+            {card.startDate && (
+              <span className="flex items-center gap-1.5">
+                <Calendar size={12} />
+                {formatDate(card.startDate)}
+                {card.endDate && ` — ${formatDate(card.endDate)}`}
+              </span>
+            )}
+            {!card.startDate && (
+              <span className="flex items-center gap-1.5">
+                <Clock size={12} />Без ограничений
+              </span>
+            )}
+          </div>
+          <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-500 transition-colors shrink-0" />
         </div>
-        <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-500 transition-colors shrink-0" />
-      </div>
-    </Link>
+      </Link>
+      <MockExamAlert exams={mockExams} groupId={card.groupId} variant="strip" />
+    </div>
   )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+function isMockOpen(exams: MockLessonListRow[] | undefined): boolean {
+  return !!exams?.length && mockAlert(exams, Date.now())?.kind === 'open'
+}
 
 /**
  * Предпросмотр глазами ученика (§178): вместо зачислений — группы курсов, где
@@ -177,6 +190,8 @@ export function MyCoursesPage() {
   const preview  = usePreviewMode()
   const [cards,   setCards]   = useState<CourseCard[]>([])
   const [loading, setLoading] = useState(true)
+  // §224.2. Идущий пробник — прямо на карточке курса.
+  const mocksByGroup = useMyMockExams(cards.map(c => c.groupId))
 
   useEffect(() => {
     if (!profile) return
@@ -276,8 +291,10 @@ export function MyCoursesPage() {
       </div>
 
       <div className="space-y-4">
-        {cards.map(card => (
-          <CourseItem key={card.groupId} card={card} />
+        {/* §224.2. Курс, где пробник идёт прямо сейчас, — первым: третья
+            карточка на телефоне уже под сгибом. Остальные — в прежнем порядке. */}
+        {[...cards].sort((a, b) => Number(isMockOpen(mocksByGroup[b.groupId])) - Number(isMockOpen(mocksByGroup[a.groupId]))).map(card => (
+          <CourseItem key={card.groupId} card={card} mockExams={mocksByGroup[card.groupId] ?? []} />
         ))}
       </div>
     </div>

@@ -7,6 +7,8 @@ import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
 import { StudentTodoList } from '@/components/student/StudentTodoList'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
+import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import { ATTEMPT_STATUS_LABEL, ATTEMPT_STATUS_TONE, gradeScaleMax } from '@/lib/topicHomework'
@@ -31,6 +33,8 @@ export function StudentDashboard() {
     courses: 0, hwTotal: 0, hwAccepted: 0, hwWaiting: 0, hwRevision: 0,
     testsAvailable: 0, testsCompleted: 0,
   }
+  // §224.2. Идущий пробник — первым на первом экране после входа.
+  const mocksByGroup = useMyMockExams(courses.map(c => c.groupId))
 
   if (loading) {
     return (
@@ -60,6 +64,12 @@ export function StudentDashboard() {
           </p>
         </div>
       </div>
+
+      {/* §224.2. Идущий / ближайший пробник — над списком дел: это главное
+          действие дня, пока окно открыто. Подпись курса — курсов бывает два. */}
+      {courses.map(c => (
+        <MockExamAlert key={c.groupId} exams={mocksByGroup[c.groupId] ?? []} groupId={c.groupId} context={c.courseTitle} />
+      ))}
 
       {/* Что сдать — до плиток и курсов */}
       <StudentTodoList todo={todo} loading={todoLoading} error={todoError} />

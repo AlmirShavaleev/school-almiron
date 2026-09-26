@@ -344,6 +344,9 @@ function lessonState(id) {
   }
 }
 function lessonList(body) {
+  // §224.2: песочница владельца — своя группа, свой список.
+  const sandbox = sandboxMockList(body)
+  if (sandbox) return sandbox
   if (body.p_group_id !== LESSON.group) return []
   const rows = LESSON_EXAMS.map(([id, , pos]) => {
     const s = lessonState(id)
@@ -460,6 +463,41 @@ export const liveRpcs = {
     }
   },
   mock_exam_ping: { pinged: true },
+}
+
+// ── §224.2: сценарий владельца 26.09 — «ученик ничего не видит» ──────────────
+// Курс «Песочница — пробник (тест)»: ОДИН раздел «Основной», в нём ОДНА пустая
+// тема, и онлайн-пробник «№1» без раздела (module_id = null), который идёт
+// прямо сейчас — осталось 7 минут. Ученик-персона записан в группу. Группа
+// лежит и в общей `groups` — иначе владелец в предпросмотре «Ученик» курса не
+// увидит (предпросмотр читает группы под RLS персонала). Выдумка целиком.
+export const SANDBOX = { course: U('d', 70), module: U('e', 70), group: U('f', 70), topic: U('1', 70), exam: U('c', 1670) }
+const sandboxCourse = { ...course2, id: SANDBOX.course, title: 'Песочница — пробник (тест)', subject: 'math', exam_type: 'ege', start_date: null, end_date: null, is_default_for_direction: false }
+const sandboxTopic = { id: SANDBOX.topic, module_id: SANDBOX.module, title: 'Урок перед пробником (пустой)', order_index: 1, max_score: 100, is_open: true, available_from: ago(24), source_template_id: null, created_at: ago(24), ege_task_numbers: [] }
+const sandboxModule = { id: SANDBOX.module, course_id: SANDBOX.course, title: 'Основной', order_index: 1, created_at: ago(24), courses: sandboxCourse }
+modules.push({ ...sandboxModule, topics: [sandboxTopic] })
+topics.push({ ...sandboxTopic, modules: sandboxModule })
+const sandboxGroup = { id: SANDBOX.group, name: 'Песочница', course_id: SANDBOX.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 5, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24), teachers: teachers[0], curators: null, courses: sandboxCourse }
+groups.push(sandboxGroup)
+group_students.push({ id: U('f', 700), group_id: SANDBOX.group, student_id: IDS.studentRow, joined_at: ago(24), groups: sandboxGroup, students: studentById(IDS.studentRow) })
+// Осталось 7 минут: начало — 233 минуты назад от настоящего «сейчас» прогона.
+const SANDBOX_START_MIN = -233
+{
+  const w = lessonWindow(SANDBOX_START_MIN)
+  mock_exams.push({
+    id: SANDBOX.exam, title: '№1', subject: 'math', exam_type: 'ege', group_id: SANDBOX.group, template_id: tpl.id,
+    date: w.starts_at, max_score: 32, created_by: IDS.teacherRow, created_at: ago(2),
+    module_id: null, module_position: 0, starts_at: w.starts_at, duration_minutes: 240, photo_grace_minutes: 15,
+    condition_path: null, solution_path: null,
+    groups: { name: sandboxGroup.name, course_id: SANDBOX.course }, mock_exam_templates: tpl,
+    mock_exam_results: [], mock_exam_task_scores: [],
+  })
+}
+/** `my_mock_exams` песочницы: бланка нет — ученик страницу пробника не открывал. */
+export function sandboxMockList(body) {
+  if (body.p_group_id !== SANDBOX.group) return null
+  const w = lessonWindow(SANDBOX_START_MIN)
+  return [{ id: SANDBOX.exam, title: '№1', module_id: null, module_position: 0, ...w, duration_minutes: 240, submitted_at: null, has_work: false, notified: false, score: null, max_score: null, server_now: new Date().toISOString() }]
 }
 
 // ── materials ────────────────────────────────────────────────────────────────

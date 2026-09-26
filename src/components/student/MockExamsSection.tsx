@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { ChevronRight, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/utils/cn'
+import { useServerNow } from '@/hooks/useServerNow'
 import {
-  clockOffset, mockSectionItems, mskDayLong, mskTime,
+  mockSectionItems, mskDayLong, mskTime,
   type MockLessonListRow, type MockLessonStatus, type MockSectionItem,
 } from '@/lib/mockExamLesson'
 import { formatSpan } from '@/lib/mockExamLive'
@@ -19,14 +19,22 @@ import { formatSpan } from '@/lib/mockExamLive'
  * часам базы (`server_now`), не телефона.
  *
  * Раздела нет вовсе, если у группы нет пробников со временем.
+ *
+ * §224.2: над страницей курса стоит баннер «Идёт пробник» (`MockExamAlert`)
+ * с той же главной кнопкой. Чтобы главная кнопка была одна, страница
+ * передаёт `primaryInBanner` — тогда у идущего пробника здесь тихая ссылка.
  */
-export function MockExamsSection({ exams, onOpen }: {
+export function MockExamsSection({ exams, onOpen, now: outerNow, primaryInBanner = false }: {
   exams: MockLessonListRow[]
   onOpen: (examId: string) => void
+  now?: number
+  primaryInBanner?: boolean
 }) {
-  const now = useServerTicker(exams[0]?.server_now ?? null)
+  const ownNow = useServerNow(exams[0]?.server_now ?? null, 30_000)
+  const now = outerNow ?? ownNow
   if (exams.length === 0) return null
   const items = mockSectionItems(exams, now)
+  if (primaryInBanner) for (const i of items) i.primary = false
   return (
     <section data-testid="mock-exams-section" aria-labelledby="mock-exams-title">
       <h2 id="mock-exams-title" className="mb-2 flex items-center gap-2 text-base font-bold text-gray-900">
@@ -147,15 +155,4 @@ function actionLabel(e: MockLessonListRow, st: MockLessonStatus): string {
     case 'result': return 'Разбор'
     default: return 'Открыть'
   }
-}
-
-/** «Сейчас» по часам базы, раз в 30 секунд — разделу хватает минут. */
-function useServerTicker(serverNow: string | null): number {
-  const [offset] = useState(() => (serverNow ? clockOffset(serverNow, Date.now()) : 0))
-  const [now, setNow] = useState(() => Date.now() + offset)
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now() + offset), 30_000)
-    return () => clearInterval(id)
-  }, [offset])
-  return now
 }

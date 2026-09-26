@@ -26,6 +26,8 @@ import {
 import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
 import { useMyTopicHomeworkState, TOPIC_HOMEWORK_STATE_LABEL } from '@/hooks/useMyTopicHomeworkState'
 import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
+import { useMyMockExams } from '@/hooks/useMyMockExams'
+import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,6 +118,12 @@ export function TopicPage() {
 
   // Состояние моей работы — словами, для ряда «Домашнее задание».
   const homeworkState = useMyTopicHomeworkState(topicId ?? null)
+
+  // §224.2. Пробники группы — для баннера «Идёт пробник» сверху. Скриншот
+  // жалобы владельца 26.09 был именно отсюда: ученик дошёл до темы, а про
+  // идущий пробник тема не говорила ничего.
+  const mockByGroup = useMyMockExams([groupId])
+  const mockExams = (groupId && mockByGroup[groupId]) || []
 
   // ── Load data ────────────────────────────────────────────────────────────────
 
@@ -221,7 +229,9 @@ export function TopicPage() {
   )
 
   if (isLocked) return (
-    <div className="max-w-2xl mx-auto mt-12 text-center space-y-4">
+    <div className="max-w-2xl mx-auto space-y-4">
+      {groupId && <MockExamAlert exams={mockExams} groupId={groupId} className="text-left" />}
+      <div className="mt-12 text-center space-y-4">
       <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
         <Lock size={28} className="text-gray-400" />
       </div>
@@ -232,6 +242,7 @@ export function TopicPage() {
           : 'Откроется позже'}
       </p>
       <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">← Назад</button>
+      </div>
     </div>
   )
 
@@ -405,6 +416,8 @@ export function TopicPage() {
 
   return (
     <div className="max-w-3xl space-y-6 pb-10">
+
+      {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
 
       {/* ── Header ── */}
       <div>

@@ -1,4 +1,4 @@
-import { IDS, LESSON, LIVE } from './fixtures.mjs'
+import { IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -654,6 +654,23 @@ export const scenes = [
     { persona: 'student', name: 's224-section', url: `/my-course/${LESSON.group}`, width, height, actions: [{ wait: 1500 }] },
     { persona: 'owner', name: 'o224-setup', url: `/mock-exams/${LESSON.up}/setup`, width, height, actions: [{ wait: 1500 }] },
     { persona: 'owner', name: 'o224-list-groups', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid="mock-group-chip"]:has-text("11Б")' }, { wait: 500 }] },
+  ]),
+
+  // ── §224.2: сценарий владельца 26.09 — «ученик пробник не видит» ──
+  // Курс с ОДНИМ разделом и одной пустой темой, пробник «№1» без раздела идёт,
+  // осталось 7 минут. Каждый вход ученика в курс: «Мои курсы», кабинет, главная
+  // курса, открытый раздел, страница темы (скриншот владельца был с неё), и то
+  // же у владельца в предпросмотре «Ученик». Настройка — время «на сейчас».
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'student', name: 's2242-my-courses', url: '/my-course', width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 's2242-dashboard', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 's2242-course', url: `/my-course/${SANDBOX.group}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 's2242-course-module', url: `/my-course/${SANDBOX.group}`, width, height, actions: [{ wait: 1200 }, { clickSel: 'button:has-text("Основной")' }, { wait: 600 }] },
+    { persona: 'student', name: 's2242-topic', url: `/my-course/${SANDBOX.group}/topic/${SANDBOX.topic}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'ownerPreview', name: 'p2242-course', url: `/my-course/${SANDBOX.group}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'ownerPreview', name: 'p2242-topic', url: `/my-course/${SANDBOX.group}/topic/${SANDBOX.topic}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'o2242-setup-now', url: `/mock-exams/${SANDBOX.exam}/setup`, width, height,
+      actions: [{ wait: 1500 }, { fill: ['[data-testid="mock-setup-start"]', new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 16)] }, { wait: 400 }], full: false },
   ]),
 
   // ── 360 narrow check on the densest screens ──

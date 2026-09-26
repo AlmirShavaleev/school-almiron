@@ -21,6 +21,9 @@ import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { plural, pluralTopics } from '@/lib/plural'
 import { MockExamsSection } from '@/components/student/MockExamsSection'
+import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { useServerNow } from '@/hooks/useServerNow'
+import { mockAlert } from '@/lib/mockExamLesson'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -952,6 +955,11 @@ export function StudentCoursePage() {
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
 
+  // §224.2. Одно «сейчас» по часам базы на баннер и раздел «Пробники»: у
+  // идущего пробника главная кнопка — в баннере, в разделе — тихая ссылка.
+  const mockNow = useServerNow(mockExams[0]?.server_now ?? null)
+  const mockBannerOpen = mockAlert(mockExams, mockNow)?.kind === 'open'
+
   // Курс = сумма разделов по тому же правилу, иначе цифры на двух уровнях
   // разойдутся (§141).
   const courseCounters = sumCounters(modules.map(module => module.counters))
@@ -984,6 +992,12 @@ export function StudentCoursePage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+
+      {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
+          открытом разделе тоже. Раньше раздел «Пробники» стоял только на
+          главной курса: в курсе с одним разделом ученик открывал раздел, потом
+          тему — и пробник не встречал нигде (жалоба владельца 26.09). */}
+      {groupId && <MockExamAlert exams={mockExams} groupId={groupId} now={mockNow} />}
 
       {/* ── Back navigation ── */}
       {activeMod ? (
@@ -1053,7 +1067,7 @@ export function StudentCoursePage() {
 
       {/* §224. Раздел «Пробники» — над разделами курса и над планом недели:
           идущий пробник — главное действие экрана. Нет пробников — нет раздела. */}
-      {!activeMod && <MockExamsSection exams={mockExams} onOpen={openMock} />}
+      {!activeMod && <MockExamsSection exams={mockExams} onOpen={openMock} now={mockNow} primaryInBanner={mockBannerOpen} />}
 
       {/* «Эта неделя» — RPC `student_week_plan()` считает от `auth_student_id()`;
           у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}

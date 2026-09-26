@@ -285,3 +285,107 @@ export function mockPhotoPath(examId: string, studentId: string, fileName: strin
 export function mockExamFilePath(examId: string, kind: 'condition' | 'solution', fileName: string, now: number = Date.now()): string {
   return `${examId}/${kind}/${now}_${sanitizeStorageFileName(fileName)}`
 }
+
+// ─── §224.2. Идущий пробник — заметен везде, куда ученик попадает ──────────
+
+const DAY_MS = 24 * 3600_000
+
+export type MockAlertKind =
+  /** Идёт, можно писать — громкий баннер с одной главной кнопкой. */
+  | 'open'
+  /** Начнётся меньше чем через сутки — тихая строка с отсчётом. */
+  | 'soon'
+
+export interface MockAlert<E> {
+  exam: E
+  kind: MockAlertKind
+  /** Сколько осталось: до конца окна (`open`) или до начала (`soon`). */
+  leftMs: number
+}
+
+/**
+ * §224.2. Что сказать ученику о пробниках группы одной строкой сверху —
+ * на странице курса (в любом её состоянии), на странице темы, на карточке
+ * курса в «Мои курсы» и в кабинете. Порядок тот же, что у раздела
+ * «Пробники» (`mockSectionItems`): сначала тот, что можно писать прямо
+ * сейчас; иначе ближайший, если до него меньше суток. Остальное — только в
+ * разделе. Время — по часам базы, как везде.
+ */
+export function mockAlert<E extends StatusInput & { starts_at: string; ends_at: string }>(exams: E[], nowMs: number): MockAlert<E> | null {
+  const items = mockSectionItems(exams, nowMs)
+  const open = items.find(i => i.status === 'open')
+  if (open) return { exam: open.exam, kind: 'open', leftMs: (ms(open.exam.ends_at) ?? nowMs) - nowMs }
+  const soon = items.find(i => i.status === 'upcoming' && (ms(i.exam.starts_at) ?? Infinity) - nowMs < DAY_MS)
+  if (soon) return { exam: soon.exam, kind: 'soon', leftMs: (ms(soon.exam.starts_at) ?? nowMs) - nowMs }
+  return null
+}
+
+/**
+ * Название пробника в фразе: «№1» → «пробник «№1»»; если слово «пробник» уже
+ * в названии («Пробник №3»), второй раз его не повторяем.
+ */
+export function mockTitlePhrase(title: string): string {
+  const t = title.trim()
+  return /^пробн/i.test(t) ? `«${t}»` : `пробник «${t}»`
+}
+
+/** Порог «время уже наступило»: очередь уведомлений не успеет за меньший срок. */
+export const START_NOTICE_GRACE_MS = 2 * 60_000
+
+/**
+ * §224.2. Предупреждение у поля «Начало» в настройке пробника. Напоминания
+ * ставит триггер `mock_exams_schedule_notifications` при сохранении, и
+ * ПРОШЕДШИЕ моменты он не ставит (так задумано §224): «за час» — только если
+ * до начала больше часа, «Пробник начался» — только если начало впереди.
+ * Владелец сохранил время «на сейчас» — и ученикам не пришло ничего, а экран
+ * об этом молчал. Сохранение не блокируется: пробник на сайте появится и так.
+ */
+export function startNoticeWarning(startsIso: string | null, nowMs: number): string | null {
+  const s = ms(startsIso)
+  if (s == null) return null
+  const left = s - nowMs
+  if (left < START_NOTICE_GRACE_MS) {
+    return 'Уведомление «Пробник начался» не уйдёт — время уже наступило. Напоминание «за час» — тоже. На сайте ученики пробник увидят.'
+  }
+  if (left <= 3600_000) {
+    return `Напоминание «за час» не уйдёт — до начала меньше часа. «Пробник начался» уйдёт в ${mskTime(startsIso)}.`
+  }
+  return null
+}
+
+/** Строка `mock_exams`, которую видит персонал в предпросмотре «Ученик». */
+export interface MockScheduleRow {
+  id: string
+  title: string
+  group_id: string | null
+  starts_at: string | null
+  duration_minutes: number | null
+  photo_grace_minutes: number | null
+}
+
+/**
+ * §224.2. Предпросмотр глазами ученика (§178): `my_mock_exams` персоналу
+ * отдаёт пустой список (своего бланка у него нет), и владелец в режиме
+ * «Ученик» не видел пробник нигде — ровно то, на что он жаловался. Здесь
+ * пробник показывается ПО РАСПИСАНИЮ: окно из строки `mock_exams` (та же
+ * арифметика, что у раздела «Пробники» преподавателя, §224), без бланка,
+ * сдачи и итога — их у персонала нет. Прошедшие не показываем: «не сдан»
+ * про чужую работу было бы неправдой.
+ */
+export function previewMockRows(rows: MockScheduleRow[], nowMs: number): MockLessonListRow[] {
+  const out: MockLessonListRow[] = []
+  for (const r of rows) {
+    const s = ms(r.starts_at)
+    if (s == null) continue
+    const dur = r.duration_minutes ?? 240
+    const ends = s + dur * 60_000
+    if (nowMs >= ends) continue
+    out.push({
+      id: r.id, title: r.title, starts_at: new Date(s).toISOString(), ends_at: new Date(ends).toISOString(),
+      photos_until: new Date(ends + (r.photo_grace_minutes ?? 15) * 60_000).toISOString(),
+      duration_minutes: dur, submitted_at: null, has_work: false, notified: false,
+      server_now: new Date(nowMs).toISOString(),
+    })
+  }
+  return out.sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+}

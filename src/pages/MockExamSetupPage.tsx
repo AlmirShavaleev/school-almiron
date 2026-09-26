@@ -1,4 +1,4 @@
-import { useMemo, useState, type ClipboardEvent } from 'react'
+import { useEffect, useMemo, useState, type ClipboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, FileText, Loader2, Save, Table2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -8,7 +8,7 @@ import { useMockExamTemplates } from '@/hooks/useMockExamTemplates'
 import { fileNameFromStoragePath } from '@/lib/storage'
 import { plural } from '@/lib/plural'
 import {
-  MOCK_EXAMS_BUCKET, fromMskInput, mskTime, parseKeyPaste, toMskInput,
+  MOCK_EXAMS_BUCKET, fromMskInput, mskTime, parseKeyPaste, startNoticeWarning, toMskInput,
 } from '@/lib/mockExamLesson'
 import { cn } from '@/utils/cn'
 
@@ -82,9 +82,21 @@ function SettingsPanel({ exam, templates, hasScores, onSave }: {
   const [duration, setDuration] = useState(String(exam.duration_minutes))
   const [templateId, setTemplateId] = useState(exam.template_id ?? '')
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'warn'; text: string } | null>(null)
+  // Часы для предупреждения о напоминаниях: время «на сейчас» становится
+  // прошедшим, пока человек заполняет остальное.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const startsIso = fromMskInput(start)
+  // §224.2. Предупреждаем только о НОВОМ времени: напоминания ставятся при
+  // сохранении изменённого начала. У уже сохранённого прошедшего времени
+  // «не уйдёт» было бы неправдой — они могли уйти вовремя.
+  const startChanged = (startsIso ? Date.parse(startsIso) : null) !== (exam.starts_at ? Date.parse(exam.starts_at) : null)
+  const noticeWarning = startChanged ? startNoticeWarning(startsIso, nowMs) : null
   const mins = Number(duration)
   const endsIso = startsIso && Number.isFinite(mins) ? new Date(new Date(startsIso).getTime() + mins * 60000).toISOString() : null
   const photosIso = endsIso ? new Date(new Date(endsIso).getTime() + exam.photo_grace_minutes * 60000).toISOString() : null
@@ -95,12 +107,17 @@ function SettingsPanel({ exam, templates, hasScores, onSave }: {
     if (start && !startsIso) { setStatus({ kind: 'error', text: 'Начало — дата и время целиком' }); return }
     if (!Number.isInteger(mins) || mins < 10 || mins > 720) { setStatus({ kind: 'error', text: 'Длительность — от 10 до 720 минут' }); return }
     if (startsIso && !templateId) { setStatus({ kind: 'error', text: 'Онлайн-пробнику нужен шаблон: по нему строится бланк' }); return }
+    // Что скажем после сохранения: поле перестанет быть «изменённым», и
+    // предупреждение у него исчезнет — поэтому оно переезжает в статус.
+    const savedWarning = startChanged ? startNoticeWarning(startsIso, Date.now()) : null
     setBusy(true)
     const r = await onSave({
       title, starts_at: startsIso, duration_minutes: mins, template_id: templateId || null,
     })
     setBusy(false)
-    setStatus(r.error ? { kind: 'error', text: `Не сохранено: ${r.error}` } : { kind: 'ok', text: 'Сохранено.' })
+    setStatus(r.error ? { kind: 'error', text: `Не сохранено: ${r.error}` }
+      : savedWarning ? { kind: 'warn', text: `Сохранено. ${savedWarning}` }
+        : { kind: 'ok', text: 'Сохранено.' })
   }
 
   return (
@@ -119,6 +136,12 @@ function SettingsPanel({ exam, templates, hasScores, onSave }: {
           <span id="mx-start-hint" className="text-sm text-graphite-500" data-testid="mock-setup-start-hint">
             {exam.groupName ? `Появится у группы ${exam.groupName} в разделе «Пробники»` : 'Появится у группы в разделе «Пробники»'}
           </span>
+          {noticeWarning && (
+            <span role="status" data-testid="mock-setup-start-warning"
+              className="flex w-full items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-sm text-amber-900">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden />{noticeWarning}
+            </span>
+          )}
         </span>
 
         <label htmlFor="mx-dur" className="text-sm text-graphite-600">Длительность</label>
@@ -150,7 +173,7 @@ function SettingsPanel({ exam, templates, hasScores, onSave }: {
           <span className="text-sm text-graphite-600">Окно: {mskTime(startsIso)}–{mskTime(endsIso)}, фото до {mskTime(photosIso)}.</span>
         )}
         {status && (
-          <span role="status" className={cn('text-sm', status.kind === 'error' ? 'text-red-700' : 'text-emerald-700')} data-testid="mock-setup-status">{status.text}</span>
+          <span role="status" className={cn('text-sm', status.kind === 'error' ? 'text-red-700' : status.kind === 'warn' ? 'text-amber-800' : 'text-emerald-700')} data-testid="mock-setup-status">{status.text}</span>
         )}
       </div>
     </Panel>

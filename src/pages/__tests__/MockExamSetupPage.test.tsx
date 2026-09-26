@@ -94,3 +94,42 @@ describe('настройка пробника-урока', () => {
     expect(updates[0]).not.toHaveProperty('module_position')
   })
 })
+
+/** «Сейчас + минуты» в формате поля `datetime-local` по Москве (UTC+3). */
+const mskInput = (offsetMin: number) => new Date(Date.now() + offsetMin * 60_000 + 3 * 3600_000).toISOString().slice(0, 16)
+
+describe('§224.2: время начала «на сейчас» — напоминания в Telegram не уйдут', () => {
+  it('время в прошлом: предупреждение у поля; сохранение не блокируется, статус повторяет предупреждение', async () => {
+    mount()
+    const start = await screen.findByTestId('mock-setup-start')
+    expect(screen.queryByTestId('mock-setup-start-warning')).toBeNull()
+    fireEvent.change(start, { target: { value: mskInput(-5) } })
+    expect(screen.getByTestId('mock-setup-start-warning')).toHaveTextContent('Уведомление «Пробник начался» не уйдёт — время уже наступило')
+    expect(screen.getByTestId('mock-setup-start-warning')).toHaveTextContent('«за час»')
+    await act(async () => { fireEvent.click(screen.getByTestId('mock-setup-save')) })
+    await waitFor(() => expect(updates).toHaveLength(1))
+    expect(screen.getByTestId('mock-setup-status')).toHaveTextContent('Сохранено. Уведомление «Пробник начался» не уйдёт')
+  })
+
+  it('«на сейчас» (через минуту) — тоже «время уже наступило»', async () => {
+    mount()
+    fireEvent.change(await screen.findByTestId('mock-setup-start'), { target: { value: mskInput(1) } })
+    expect(screen.getByTestId('mock-setup-start-warning')).toHaveTextContent('время уже наступило')
+  })
+
+  it('меньше часа до начала — не уйдёт только «за час»', async () => {
+    mount()
+    fireEvent.change(await screen.findByTestId('mock-setup-start'), { target: { value: mskInput(40) } })
+    const w = screen.getByTestId('mock-setup-start-warning')
+    expect(w).toHaveTextContent('Напоминание «за час» не уйдёт')
+    expect(w).not.toHaveTextContent('время уже наступило')
+  })
+
+  it('больше часа или время не меняли — предупреждения нет', async () => {
+    mount()
+    const start = await screen.findByTestId('mock-setup-start')
+    expect(screen.queryByTestId('mock-setup-start-warning')).toBeNull()
+    fireEvent.change(start, { target: { value: mskInput(180) } })
+    expect(screen.queryByTestId('mock-setup-start-warning')).toBeNull()
+  })
+})
