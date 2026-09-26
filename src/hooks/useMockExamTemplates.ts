@@ -21,7 +21,7 @@ const db = supabase as unknown as { from<T = unknown>(table: string): Chain<T> }
 
 export type TemplateDraft = Omit<MockExamTemplate, 'id'> & { id?: string }
 
-function normalize(t: any): MockExamTemplate {
+export function normalize(t: any): MockExamTemplate {
   return {
     ...t,
     year: Number(t.year),

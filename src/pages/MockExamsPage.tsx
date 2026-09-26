@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, TrendingUp, Plus, Table2, Download, Layers } from 'lucide-react'
+import { BookOpen, TrendingUp, Plus, Table2, Download, Layers, Settings2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -326,13 +326,23 @@ function GridEntry({ exam }: { exam: any }) {
     return <span className="max-w-[180px] text-right text-xs text-graphite-500" data-testid="mock-exam-no-template">старый пробник без шаблона — таблицы по номерам нет</span>
   }
   return (
-    <Link
-      to={`/mock-exams/${exam.id}`}
-      data-testid="mock-exam-grid-open"
-      className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
-    >
-      <Table2 size={14} />Таблица
-    </Link>
+    <span className="inline-flex flex-wrap justify-end gap-1.5">
+      {/* §221: онлайн-окно, условие, решение, ключ, место в программе курса. */}
+      <Link
+        to={`/mock-exams/${exam.id}/setup`}
+        data-testid="mock-exam-setup-open"
+        className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
+      >
+        <Settings2 size={14} />{exam.starts_at ? 'Онлайн' : 'Настройка'}
+      </Link>
+      <Link
+        to={`/mock-exams/${exam.id}`}
+        data-testid="mock-exam-grid-open"
+        className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
+      >
+        <Table2 size={14} />Таблица
+      </Link>
+    </span>
   )
 }
 

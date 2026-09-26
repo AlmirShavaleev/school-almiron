@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { removeIfOrphan } from '@/lib/storageRefs'
-import { UPLOAD_CACHE_CONTROL_S } from '@/lib/storage'
+import { uploadToStorage } from '@/lib/storageUpload'
 import { useAuthStore } from '@/store/authStore'
 import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
 import { toast } from '@/store/toastStore'
@@ -217,36 +217,8 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       const upload = await compressImageFile(file, MATERIAL_IMAGE_PRESET)
       const path = buildHomeworkFilePath(topicId, upload.name)
 
-      const { data: signed, error: signErr } = await supabase.storage
-        .from(TOPIC_HOMEWORK_BUCKET)
-        .createSignedUploadUrl(path)
-
-      if (signErr || !signed) {
-        // Фолбэк: обычная загрузка без прогресса
-        const up = await supabase.storage
-          .from(TOPIC_HOMEWORK_BUCKET)
-          .upload(path, upload, { contentType: upload.type, upsert: false, cacheControl: UPLOAD_CACHE_CONTROL_S })
-        if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
-      } else {
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-          xhr.open('PUT', signed.signedUrl)
-          xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
-          xhr.setRequestHeader('x-upsert', 'false')
-        // Без этого заголовка объект приезжает с `no-cache`, и подписанная
-        // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
-        xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
-          xhr.upload.onprogress = e => {
-            if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
-          }
-          xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-            ? resolve()
-            : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
-          xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-          xhr.send(upload)
-        })
-        onProgress?.(100)
-      }
+      await uploadToStorage(TOPIC_HOMEWORK_BUCKET, path, upload, onProgress)
+      onProgress?.(100)
 
       const { data, error: err } = await supabase
         .from('topic_homework_files')
@@ -347,35 +319,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         const upload = await compressImageFile(incoming[i], HOMEWORK_PHOTO_PRESET)
         const path = buildAttemptFilePath(attemptId, upload.name)
 
-        const { data: signed, error: signErr } = await supabase.storage
-          .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-          .createSignedUploadUrl(path)
-
-        if (signErr || !signed) {
-          // Фолбэк: обычная загрузка, но уже без процентов.
-          const up = await supabase.storage
-            .from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET)
-            .upload(path, upload, { contentType: upload.type, upsert: false, cacheControl: UPLOAD_CACHE_CONTROL_S })
-          if (up.error) throw new Error('Ошибка загрузки: ' + up.error.message)
-        } else {
-          await new Promise<void>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('PUT', signed.signedUrl)
-            xhr.setRequestHeader('content-type', upload.type || 'application/octet-stream')
-            xhr.setRequestHeader('x-upsert', 'false')
-        // Без этого заголовка объект приезжает с `no-cache`, и подписанная
-        // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
-        xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
-            xhr.upload.onprogress = e => {
-              if (e.lengthComputable && onProgress) onProgress(i, Math.round((e.loaded / e.total) * 100))
-            }
-            xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-              ? resolve()
-              : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
-            xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-            xhr.send(upload)
-          })
-        }
+        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, p) : undefined)
         onProgress?.(i, 100)
 
         const { data, error: err } = await supabase

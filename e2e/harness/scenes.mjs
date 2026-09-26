@@ -1,4 +1,4 @@
-import { IDS } from './fixtures.mjs'
+import { IDS, LESSON } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -615,6 +615,31 @@ export const scenes = [
   ...[[390, 844], [1280, 800]].flatMap(([width, height]) => [
     { persona: 'owner', name: 'o06-review-pdf', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
     { persona: 'student', name: 's04-topic-hw-pdf', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1500 }, { clickSel: '[data-testid="hw-view-marks-button"]' }, { wait: 2500 }], full: false },
+  ]),
+
+  // ── §221 (072): пробник как урок в курсе ──
+  // Ученик: раздел курса с четырьмя пробниками в разных состояниях (на своих
+  // местах среди тем), затем каждый пробник — до начала, идёт (таймер от
+  // server_now), подтверждение сдачи с пустым №9, отклонённый .dng, сдан,
+  // результат. Преподаватель: настройка (окно, место, файлы, ключ) и таблица
+  // §218 с авто-клетками первой части и работами учеников.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'student', name: 's221-program', url: `/my-course/${LESSON.group}`, width, height,
+      actions: [{ clickSel: 'button:has-text("Первый блок")' }, { wait: 800 }, { clickSel: '[data-testid="view-toggle-list"]' }, { wait: 600 }] },
+    { persona: 'student', name: 's221-upcoming', url: `/my-course/${LESSON.group}/mock/${LESSON.up}`, width, height, actions: [{ wait: 1200 }] },
+    { persona: 'student', name: 's221-open', url: `/my-course/${LESSON.group}/mock/${LESSON.open}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 's221-open-confirm', url: `/my-course/${LESSON.group}/mock/${LESSON.open}`, width, height,
+      actions: [{ wait: 1200 }, { clickSel: '[data-testid="mock-lesson-submit"]' }, { wait: 400 }, { eval: `document.querySelector('[data-testid="mock-lesson-confirm"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }], full: false },
+    { persona: 'student', name: 's221-open-dng', url: `/my-course/${LESSON.group}/mock/${LESSON.open}`, width, height,
+      actions: [{ wait: 1200 }, { files: ['raw.dng'] }, { wait: 800 }, { eval: `document.querySelector('[data-testid="mock-lesson-photos"]')?.scrollIntoView({ block: 'center' })` }, { wait: 300 }], full: false },
+    { persona: 'student', name: 's221-submitted', url: `/my-course/${LESSON.group}/mock/${LESSON.sub}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 's221-result', url: `/my-course/${LESSON.group}/mock/${LESSON.res}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'o221-setup', url: `/mock-exams/${LESSON.up}/setup`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'o221-grid', url: `/mock-exams/${LESSON.res}`, width, height, actions: [{ wait: 1500 }] },
+    // Та же таблица, прокрученная к границе частей: авто-клетки №1–12, ручная
+    // исправленная №11 во второй строке и ручная вторая часть.
+    { persona: 'owner', name: 'o221-grid-parts', url: `/mock-exams/${LESSON.res}`, width, height,
+      actions: [{ wait: 1500 }, { eval: `(() => { const sc = document.querySelector('[data-testid="mock-grid-scroll"]'); const c = document.getElementById('mx-c-0-7'); if (sc && c) sc.scrollLeft = c.closest('td').offsetLeft - sc.clientWidth / 3 })()` }, { wait: 300 }], full: false },
   ]),
 
   // ── 360 narrow check on the densest screens ──

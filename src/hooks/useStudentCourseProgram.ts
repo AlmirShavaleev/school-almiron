@@ -11,6 +11,7 @@ import {
   homeworkMax, testStatus, topicProgress,
   type TopicSection, type TopicHwStatus, type TopicTestStatus,
 } from '@/lib/studentProgram'
+import type { MockLessonListRow } from '@/lib/mockExamLesson'
 
 /**
  * Программа курса глазами ученика.
@@ -69,6 +70,22 @@ async function loadTaskProgress(courseId: string): Promise<Map<string, { total: 
   return map
 }
 
+/**
+ * §221. Пробники-уроки группы — одной RPC `my_mock_exams`. Ошибку глотаем,
+ * как у задач к уроку: до применения PENDING_221.sql функции на проде нет, и
+ * падение здесь уронило бы всю программу курса.
+ */
+async function loadMockExams(groupId: string): Promise<MockLessonListRow[]> {
+  try {
+    const { data, error } = await db.rpc('my_mock_exams', { p_group_id: groupId })
+    if (error) throw new Error(error.message ?? 'Не удалось загрузить пробники')
+    return (data ?? []) as MockLessonListRow[]
+  } catch (e) {
+    console.warn('Не удалось загрузить пробники курса', e)
+    return []
+  }
+}
+
 export interface TopicProgress {
   id:             string
   title:          string
@@ -117,6 +134,11 @@ export interface ModuleProgress {
    * двух десятках открытых тем.
    */
   counters:    CourseCounters
+  /**
+   * §221. Пробники этого раздела. В счётчики тем не входят: пробник — не
+   * тема, «тема пройдена» (§152) и открытость (§59) к нему не относятся.
+   */
+  mockExams?:  MockLessonListRow[]
 }
 
 export interface StaffInfo {
@@ -241,15 +263,16 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
 
       const topicIds = (mods || []).flatMap((m: any) => m.topics.map((t: any) => t.id))
       if (topicIds.length === 0) {
+        const onlyMocks = preview ? [] : await loadMockExams(group.id)
         setModules((mods || []).map((m: any) => ({
           id: m.id, title: m.title, order_index: m.order_index, topics: [], done: 0, total: 0,
-          counters: countTopics([]),
+          counters: countTopics([]), mockExams: onlyMocks.filter(e => e.module_id === m.id),
         })))
         return
       }
 
       // 4. Рубрики материалов + ДЗ темы + привязанные тесты + задачи к уроку
-      const [materialRows, homeworkRows, assignmentRows, taskProgress] = await Promise.all([
+      const [materialRows, homeworkRows, assignmentRows, taskProgress, mockExams] = await Promise.all([
         fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>((from, to) =>
           supabase
             .from('topic_material_items')
@@ -280,6 +303,9 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         preview
           ? Promise.resolve(new Map<string, { total: number; closed: number }>())
           : loadTaskProgress(course.id),
+        // Пробник у ученика свой (бланк, сдача, результат) — в предпросмотре
+        // персоналу показывать нечего, как и попытки ДЗ (§178).
+        preview ? Promise.resolve([] as MockLessonListRow[]) : loadMockExams(group.id),
       ])
 
       // 5. Попытки ученика: ДЗ и тесты. В предпросмотре — не читаем: у
@@ -411,7 +437,10 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           hwStatus: topic.hw_status,
         })))
 
-        return { id: m.id, title: m.title, order_index: m.order_index, topics, done, total, counters }
+        return {
+          id: m.id, title: m.title, order_index: m.order_index, topics, done, total, counters,
+          mockExams: mockExams.filter(e => e.module_id === m.id),
+        }
       })
 
       setModules(result)

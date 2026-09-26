@@ -31,6 +31,8 @@ const LessonDetailPage = lazyPage('LessonDetailPage', () => import('@/pages/Less
 const StudentJournalPage = lazyPage('StudentJournalPage', () => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
 const MockExamGridPage = lazyPage('MockExamGridPage', () => import('@/pages/MockExamGridPage').then(m => ({ default: m.MockExamGridPage })))
+const MockExamSetupPage = lazyPage('MockExamSetupPage', () => import('@/pages/MockExamSetupPage').then(m => ({ default: m.MockExamSetupPage })))
+const MockExamLessonPage = lazyPage('MockExamLessonPage', () => import('@/pages/student/MockExamLessonPage').then(m => ({ default: m.MockExamLessonPage })))
 const MockExamTemplatesPage = lazyPage('MockExamTemplatesPage', () => import('@/pages/MockExamTemplatesPage').then(m => ({ default: m.MockExamTemplatesPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const NotificationsPage = lazyPage('NotificationsPage', () => import('@/pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })))
@@ -189,6 +191,7 @@ export default function AppRoutes() {
             нет: читать результаты пробников ему не дают и права в базе. */}
         <Route path="/mock-exams/templates" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamTemplatesPage /></RoleGuard>} />
         <Route path="/mock-exams/:id" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamGridPage /></RoleGuard>} />
+        <Route path="/mock-exams/:id/setup" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamSetupPage /></RoleGuard>} />
 
         {/* Обёртка каталога — режим подбора задач к уроку (§164). Вне режима не
             рисует ничего; страницы каталога о нём не знают. */}
@@ -255,6 +258,7 @@ export default function AppRoutes() {
         <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
+        <Route path="/my-course/:groupId/mock/:examId" element={<RoleGuard allow={['student']} preview="stub"><MockExamLessonPage /></RoleGuard>} />
         {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт).
             В предпросмотре — заглушка: здесь личные работы ученика. */}
         <Route path="/my-homework" element={<RoleGuard allow={['student']} preview="stub"><MyTopicHomeworkPage /></RoleGuard>} />

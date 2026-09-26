@@ -235,6 +235,142 @@ function notifyMockExamResults(body) {
   return { sent, telegram, already, no_result: 0, no_profile: 0, rows }
 }
 
+// ── §221: пробник как урок в курсе ───────────────────────────────────────────
+// Отдельный курс математики со своей группой: ученик-персона учится и в нём.
+// Четыре пробника одного раздела в четырёх состояниях — до начала, идёт,
+// сдан, с результатом. Время — от НАСТОЯЩЕГО «сейчас» прогона (а не NOW
+// фикстур): страница считает таймер от server_now, и «идёт, осталось 2:47»
+// должно быть правдой в момент снимка. Выдумка целиком.
+export const LESSON = {
+  course: U('d', 50), module: U('e', 50), group: U('f', 50),
+  up: U('c', 761), open: U('c', 762), sub: U('c', 763), res: U('c', 764),
+}
+const mathCourse = { ...course2, id: LESSON.course, title: 'Математика ЕГЭ, профиль · 11А', subject: 'math', exam_type: 'ege', is_default_for_direction: false }
+const lessonGroup = { id: LESSON.group, name: '11А · профиль', course_id: LESSON.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 12, schedule_days: ['saturday'], schedule_time: '10:00', type: 'group', created_at: ago(24 * 40), teachers: teachers[0], curators: null, courses: mathCourse }
+const lessonTopics = ['Планиметрия: треугольники и окружности', 'Производная и исследование функции', 'Текстовые задачи на движение и работу'].map((title, i) => ({
+  id: U('1', 50 + i), module_id: LESSON.module, title, order_index: i + 1, max_score: 100, is_open: true, available_from: ago(24 * (20 - i * 5)), source_template_id: null, created_at: ago(24 * 40), ege_task_numbers: [],
+}))
+modules.push({ id: LESSON.module, course_id: LESSON.course, title: 'Первый блок: планиметрия, производная, текстовые задачи', order_index: 1, created_at: ago(24 * 40), courses: mathCourse, topics: lessonTopics })
+const LESSON_ROSTER = [IDS.studentRow, IDS.otherStudent(0), IDS.otherStudent(1), IDS.otherStudent(2), IDS.otherStudent(3)]
+group_students.push(...LESSON_ROSTER.map((sid, k) => ({ id: U('f', 500 + k), group_id: LESSON.group, student_id: sid, joined_at: ago(24 * 30), groups: lessonGroup, students: studentById(sid) })))
+const MIN = 60e3
+// Число — минуты от «сейчас»; строка — точный момент (10:00 по Москве в
+// нужный день, чтобы подпись «откроется 29.09 в 10:00» была круглой).
+const mskTen = (days) => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days, 7, 0)).toISOString() }
+const lessonWindow = (startOffsetMin) => {
+  const s = typeof startOffsetMin === 'string' ? Date.parse(startOffsetMin) : Date.now() + startOffsetMin * MIN
+  return { starts_at: new Date(s).toISOString(), ends_at: new Date(s + 240 * MIN).toISOString(), photos_until: new Date(s + 255 * MIN).toISOString() }
+}
+const LESSON_EXAMS = [
+  // [id, название, место (после темы с этим order_index), начало от «сейчас», мин]
+  [LESSON.res, 'Пробник №1', 0, mskTen(-8)],
+  [LESSON.sub, 'Пробник №2', 1, -120],
+  [LESSON.open, 'Пробник №3', 2, -73],
+  [LESSON.up, 'Пробник №4', 3, mskTen(3)],
+]
+const tpl = mock_exam_templates[0]
+for (const [id, title, pos, off] of LESSON_EXAMS) {
+  const w = lessonWindow(off)
+  mock_exams.push({
+    id, title, subject: 'math', exam_type: 'ege', group_id: LESSON.group, template_id: tpl.id,
+    date: w.starts_at, max_score: 32, created_by: IDS.teacherRow, created_at: ago(24 * 10),
+    module_id: LESSON.module, module_position: pos, starts_at: w.starts_at, duration_minutes: 240, photo_grace_minutes: 15,
+    condition_path: `${id}/condition/1_variant.pdf`, solution_path: `${id}/solution/1_variant-reshenie.pdf`,
+    groups: { name: lessonGroup.name, course_id: LESSON.course }, mock_exam_templates: tpl,
+    mock_exam_results: [], mock_exam_task_scores: [],
+  })
+}
+// Ключ и ответы — из утверждённого макета.
+const LESSON_KEY = ['12', '0,75', '-3', '49', '0,2', '6', '27', '5', '3', '144', '0,25', '4']
+const MY_ANSWERS = ['12', '0,75', '-3', '49', '0,2', '6', '27', '5', '', '144', '0,35', '4']
+export const mock_exam_answer_keys = [LESSON.up, LESSON.res].map(id => ({ mock_exam_id: id, answers: LESSON_KEY, updated_by: IDS.owner, updated_at: ago(24) }))
+// Таблица §218 проверенного пробника: первая часть — по ключу (auto_points =
+// points), вторая — руками. У второго ученика №11 ключ дал 0, преподаватель
+// исправил на 1 — клетка ручная.
+const LESSON_P2 = [[2, 1, 2, 2, 1, 0, 0], [2, 2, 1, 1, 1, 1, 0], [1, 0, 2, 0, 0, 0, 0], [2, 3, 2, 2, 2, 2, 1], null]
+const LESSON_P1 = [
+  MY_ANSWERS.map((a, i) => (a && a === LESSON_KEY[i] ? 1 : 0)),
+  [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
+  [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  null,
+]
+const lessonScores = LESSON_ROSTER.flatMap((sid, k) => {
+  if (!LESSON_P1[k]) return []
+  return [
+    ...LESSON_P1[k].map((p, t) => ({ mock_exam_id: LESSON.res, student_id: sid, task_number: t + 1, points: k === 1 && t === 10 ? 1 : p, auto_points: p })),
+    ...LESSON_P2[k].map((p, t) => ({ mock_exam_id: LESSON.res, student_id: sid, task_number: 13 + t, points: p, auto_points: null })),
+  ]
+})
+mock_exam_task_scores.push(...lessonScores)
+const lessonTotals = LESSON_ROSTER.flatMap((sid, k) => {
+  const rows = lessonScores.filter(r => r.student_id === sid)
+  if (!rows.length) return []
+  const p1 = rows.filter(r => r.task_number <= 12).reduce((a, r) => a + r.points, 0)
+  const p2 = rows.filter(r => r.task_number > 12).reduce((a, r) => a + r.points, 0)
+  const sent = k === 0 ? { notified_at: ago(-24 * 12), notified_score: p1 + p2, notified_part1_score: p1, notified_part2_score: p2 } : { notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null }
+  return [{ id: U('c', 770 + k), mock_exam_id: LESSON.res, student_id: sid, score: p1 + p2, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(24), ...sent, students: studentById(sid) }]
+})
+const resWindow = lessonWindow(mskTen(-8))
+export const mock_exam_sheets = LESSON_ROSTER.slice(0, 4).map((sid, k) => ({
+  mock_exam_id: LESSON.res, student_id: sid, answers: k === 0 ? MY_ANSWERS : LESSON_KEY,
+  submitted_at: k === 2 ? null : new Date(Date.parse(resWindow.starts_at) + (150 + k * 20) * MIN).toISOString(),
+}))
+export const mock_exam_photos = LESSON_ROSTER.slice(0, 4).flatMap((sid, k) => Array.from({ length: [3, 2, 1, 4][k] }, (_, i) => ({
+  id: U('c', 780 + k * 10 + i), mock_exam_id: LESSON.res, student_id: sid,
+  storage_path: `${LESSON.res}/photos/${sid}/${i}_stranica-${i + 1}.webp`, file_name: `стр ${i + 1}.webp`, position: i,
+})))
+const myPhotos = (id, n) => Array.from({ length: n }, (_, i) => ({
+  id: U('c', 800 + i), storage_path: `${id}/photos/${IDS.studentRow}/${i}_stranica-${i + 1}.webp`, file_name: `стр ${i + 1}.webp`, mime_type: 'image/webp', size_bytes: 410000, position: i, created_at: ago(1),
+}))
+function lessonState(id) {
+  const e = mock_exams.find(x => x.id === id)
+  if (!e || e.group_id !== LESSON.group) return null
+  const off = LESSON_EXAMS.find(x => x[0] === id)[3]
+  const w = lessonWindow(off)
+  const started = Date.now() >= Date.parse(w.starts_at)
+  const sub = id === LESSON.sub ? new Date(Date.now() - 40 * MIN).toISOString() : id === LESSON.res ? mock_exam_sheets[0].submitted_at : null
+  return {
+    id, title: e.title, group_id: LESSON.group, student_id: IDS.studentRow, template_title: tpl.title,
+    task_count: 19, part1_last: 12, part2_max: tpl.max_points.slice(12),
+    ...w, server_now: new Date().toISOString(),
+    condition_path: started ? e.condition_path : null,
+    answers: id === LESSON.up ? [] : id === LESSON.sub ? MY_ANSWERS.map(a => a || '8') : MY_ANSWERS,
+    submitted_at: sub, updated_at: started ? new Date(Date.now() - 2 * MIN).toISOString() : null,
+    notified: id === LESSON.res,
+    photos: id === LESSON.open ? myPhotos(id, 3) : id === LESSON.sub ? myPhotos(id, 2) : id === LESSON.res ? myPhotos(id, 3) : [],
+  }
+}
+function lessonList(body) {
+  if (body.p_group_id !== LESSON.group) return []
+  return LESSON_EXAMS.map(([id, , pos]) => {
+    const s = lessonState(id)
+    return { id, title: s.title, module_id: LESSON.module, module_position: pos, starts_at: s.starts_at, ends_at: s.ends_at, photos_until: s.photos_until, submitted_at: s.submitted_at, has_work: id !== LESSON.up, notified: s.notified, server_now: s.server_now }
+  })
+}
+function lessonResult(body) {
+  if (body.p_mock_exam_id !== LESSON.res) return { status: 'pending' }
+  const mine = lessonScores.filter(r => r.student_id === IDS.studentRow)
+  const tot = lessonTotals[0]
+  return {
+    status: 'ready', title: 'Пробник №1', notified_at: tot.notified_at, score: tot.score, max_score: 32,
+    primary_score: tot.primary_score, part1_score: tot.part1_score, part2_score: tot.part2_score, part1_last: 12,
+    solution_path: `${LESSON.res}/solution/1_variant-reshenie.pdf`,
+    tasks: tpl.max_points.map((m, t) => ({ n: t + 1, max: m, points: mine.find(r => r.task_number === t + 1)?.points ?? null, answer: t < 12 ? (MY_ANSWERS[t] || null) : null, correct: t < 12 ? LESSON_KEY[t] : null })),
+  }
+}
+export const lessonRpcs = {
+  my_mock_exams: lessonList,
+  my_mock_exam: (body) => lessonState(body.p_mock_exam_id),
+  my_mock_exam_result: lessonResult,
+  save_mock_exam_answer: (body) => ({ task: body.p_task, answer: body.p_answer, saved_at: new Date().toISOString() }),
+  submit_mock_exam: () => ({ submitted_at: new Date().toISOString() }),
+  add_mock_exam_photo: (body) => ({ id: U('c', 899), storage_path: body.p_storage_path, file_name: body.p_file_name, mime_type: body.p_mime_type, size_bytes: body.p_size_bytes, position: 9, created_at: new Date().toISOString() }),
+  grade_mock_exam_part1: { graded_students: 4, changed_cells: 0 },
+  save_mock_exam_key: { not_checkable: [], grade: { graded_students: 4, changed_cells: 0 } },
+}
+export { lessonTotals }
+
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
 
@@ -1024,7 +1160,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals], mock_exam_templates, mock_exam_task_scores, lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets, mock_exam_photos, lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {
@@ -1059,6 +1195,8 @@ export function baseFixtures(persona) {
       // пустоту, а не чужие числа.
       save_mock_exam_grid: saveMockExamGrid,
       notify_mock_exam_results: notifyMockExamResults,
+      // §221: пробник-урок — ученические функции и проверка по ключу.
+      ...lessonRpcs,
       student_progress_report: (body) =>
         body.p_student_id === IDS.otherStudent(0) ? progressReport : null,
       topic_homework_ai_expire_stale_jobs: null,

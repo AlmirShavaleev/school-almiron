@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Check, Loader2, Save, Send } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, Images, Loader2, Save, Send, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDate } from '@/utils/format'
-import { useMockExamGrid } from '@/hooks/useMockExamGrid'
+import { useMockExamGrid, type GridLesson, type GridStudent, type GridWork } from '@/hooks/useMockExamGrid'
+import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { MOCK_EXAMS_BUCKET, mskDay, mskTime } from '@/lib/mockExamLesson'
 import { plural } from '@/lib/plural'
 import {
   applyPaste,
@@ -65,7 +67,8 @@ const TOT_STICKY = ['sm:sticky sm:right-[302px]', 'sm:sticky sm:right-[236px]', 
 
 export function MockExamGridPage() {
   const { id } = useParams<{ id: string }>()
-  const { exam, students, points, results, resultsError, loading, error, save, notify } = useMockExamGrid(id)
+  const { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify } = useMockExamGrid(id)
+  const lesson = exam?.lesson ?? null
   const template = exam?.template ?? null
   const maxPts = template?.max_points ?? []
   const p1End = template?.part1_last ?? 0
@@ -242,12 +245,20 @@ export function MockExamGridPage() {
         </div>
         <div className="flex-1" />
         <div className="flex flex-wrap items-center gap-2">
+          <Link to={`/mock-exams/${exam.id}/setup`} data-testid="mock-grid-setup-link"
+            className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
+            <Settings2 size={14} />{lesson ? 'Онлайн: ключ и файлы' : 'Настройка'}
+          </Link>
           <Button variant="secondary" size="sm" onClick={clearAll} data-testid="mock-grid-clear">Очистить таблицу</Button>
           <Button size="sm" onClick={onSave} loading={saving} disabled={!dirty} data-testid="mock-grid-save">
             <Save size={14} />Сохранить
           </Button>
         </div>
       </header>
+
+      {gradeNote && (
+        <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-graphite-700" data-testid="mock-grid-grade-note">{gradeNote}</p>
+      )}
 
       {status && (
         <p
@@ -274,7 +285,7 @@ export function MockExamGridPage() {
               {maxPts.map((m, t) => (
                 <th key={t} scope="col" className={cn('sticky top-0 z-20 min-w-[35px] whitespace-nowrap border-b border-r border-slate-200 bg-white px-px pb-1 pt-1.5 font-normal', t === p1End && 'border-l-2 border-l-graphite-400')}>
                   <span className="block font-mono text-[13px] text-graphite-900">№{t + 1}</span>
-                  <span className="block text-[10px] leading-tight text-graphite-500">макс {m}</span>
+                  <span className="block text-[10px] leading-tight text-graphite-500">{lesson && t < p1End ? 'авто' : `макс ${m}`}</span>
                 </th>
               ))}
               {['1 часть', '2 часть', 'Первичный', 'Тестовый'].map((h, k) => (
@@ -301,16 +312,20 @@ export function MockExamGridPage() {
                   {maxPts.map((m, t) => {
                     const c = grid[s]?.[t]
                     const err = c?.err
+                    // §221: «авто» — пока клетку не тронули и в базе points =
+                    // auto_points. Исправил — обычная клетка, как поставленная вручную.
+                    const isAuto = !!auto[s]?.[t] && c?.raw === String(points[s]?.[t] ?? '')
                     return (
                       <td
                         key={t}
+                        data-auto={isAuto || undefined}
                         className={cn(
                           'border-b border-r border-slate-200 p-0',
-                          s % 2 ? 'bg-slate-50/70' : 'bg-white',
+                          isAuto ? 'bg-slate-200/70' : s % 2 ? 'bg-slate-50/70' : 'bg-white',
                           t === p1End && 'border-l-2 border-l-graphite-400',
                           err && 'shadow-[inset_0_0_0_2px_theme(colors.red.500)]',
                         )}
-                        title={err === 'over' ? `Больше максимума: за задание ${t + 1} можно не больше ${m}` : err === 'bad' ? 'Не число' : undefined}
+                        title={err === 'over' ? `Больше максимума: за задание ${t + 1} можно не больше ${m}` : err === 'bad' ? 'Не число' : isAuto ? 'Проверено по ключу. Исправь, если в ключе опечатка — клетка станет ручной' : undefined}
                         data-err={err ?? undefined}
                       >
                         <input
@@ -385,6 +400,8 @@ export function MockExamGridPage() {
         <Legend cls={HEAT[2]}>60–80 %</Legend>
         <Legend cls={HEAT[3]}>80 % и выше</Legend>
         <Legend cls="bg-white shadow-[inset_0_0_0_2px_theme(colors.red.500)]">балл выше максимума или не число</Legend>
+        {lesson && <Legend cls="bg-slate-200/70">часть 1 — проверено по ключу</Legend>}
+        {lesson && <Legend cls="bg-white">поставлено или исправлено вручную</Legend>}
         <span>Пустая клетка — нет данных, 0 — решал и не получил. Заполнено строк: {filledCount} из {roster.length}.</span>
       </div>
 
@@ -428,6 +445,8 @@ export function MockExamGridPage() {
           </div>
         )}
       </section>
+
+      {lesson && <WorksSection lesson={lesson} students={students} works={works} />}
 
       {report && (
         <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" aria-live="polite" data-testid="mock-grid-report">
@@ -600,5 +619,57 @@ function NotifyCell({ state, unavailable, dirty, noProfile, busy, disabled, onCl
         </span>
       )}
     </div>
+  )
+}
+
+/**
+ * §221. Работы учеников онлайн-пробника: кто сдал и когда, фото второй
+ * части. Отдельно от таблицы §218 — таблица осталась какой была, а фото
+ * открываются подписанной ссылкой (бакет mock-exams закрыт).
+ */
+function WorksSection({ lesson, students, works }: { lesson: GridLesson; students: GridStudent[]; works: Record<string, GridWork> }) {
+  const now = Date.now()
+  const open = now < new Date(lesson.ends_at).getTime()
+  const photosOpen = now < new Date(lesson.photos_until).getTime()
+  const submitted = students.filter(s => works[s.id]?.submitted_at).length
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="mock-grid-works">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-graphite-900">Работы учеников — фото второй части</h3>
+        <span className="text-xs text-graphite-500">
+          {mskDay(lesson.starts_at)}, {mskTime(lesson.starts_at)}–{mskTime(lesson.ends_at)}, фото до {mskTime(lesson.photos_until)}
+          {open ? ' · идёт' : photosOpen ? ' · догружают фото' : ''} · сдали {submitted} из {students.length}
+        </span>
+      </div>
+      <div className="mt-2 divide-y divide-slate-100">
+        {students.map(st => {
+          const w = works[st.id]
+          const badge = w?.submitted_at
+            ? { text: `сдал(а) ${mskTime(w.submitted_at)}`, cls: 'bg-emerald-50 text-emerald-800' }
+            : w
+              ? { text: open ? 'пишет' : 'время вышло', cls: open ? 'bg-primary-50 text-primary-800' : 'bg-amber-50 text-amber-800' }
+              : { text: open ? 'не начинал(а)' : 'не сдал(а)', cls: 'bg-red-50 text-red-800' }
+          return (
+            <div key={st.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm" data-testid="mock-grid-work-row">
+              <span className="min-w-[10rem] text-graphite-900">{st.name}</span>
+              <span className={cn('whitespace-nowrap rounded px-1.5 py-px text-xs', badge.cls)}>{badge.text}</span>
+              {w && w.photos.length > 0 ? (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <Images size={13} className="text-graphite-400" aria-hidden />
+                  {w.photos.map((p, i) => (
+                    <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} sensitive
+                      className="rounded border border-slate-200 px-1.5 py-px text-xs text-primary-700 hover:bg-primary-50">
+                      стр. {i + 1}
+                    </SignedFileLink>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-xs text-graphite-400">фото нет</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }

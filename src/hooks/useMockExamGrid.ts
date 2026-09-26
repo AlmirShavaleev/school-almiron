@@ -32,6 +32,19 @@ export interface MockExamTemplate {
 
 export interface GridStudent { id: string; profileId: string | null; name: string }
 
+/** §221. Онлайн-окно пробника-урока; null — пробник без окна (как до §221). */
+export interface GridLesson {
+  starts_at: string
+  ends_at: string
+  photos_until: string
+}
+
+/** §221. Работа ученика онлайн-пробника: сдача и фото второй части. */
+export interface GridWork {
+  submitted_at: string | null
+  photos: { id: string; storage_path: string; file_name: string; position: number }[]
+}
+
 export interface GridExam {
   id: string
   title: string
@@ -41,6 +54,7 @@ export interface GridExam {
   group_id: string | null
   groupName: string | null
   template: MockExamTemplate | null
+  lesson: GridLesson | null
 }
 
 type Resp<T> = Promise<{ data: T | null; error: { message?: string; code?: string } | null }>
@@ -60,6 +74,14 @@ export function useMockExamGrid(examId: string | undefined) {
   const [students, setStudents] = useState<GridStudent[]>([])
   /** points[s][t] — сохранённое; null — клетка пустая («нет данных»). */
   const [points, setPoints] = useState<(number | null)[][]>([])
+  /**
+   * §221. auto[s][t] — клетку поставила проверка по ключу и её никто не
+   * правил (points = auto_points). Исправленная преподавателем — false.
+   */
+  const [auto, setAuto] = useState<boolean[][]>([])
+  const [works, setWorks] = useState<Record<string, GridWork>>({})
+  /** Что сказать про проверку по ключу при открытии (или null — молчать). */
+  const [gradeNote, setGradeNote] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -109,21 +131,37 @@ export function useMockExamGrid(examId: string | undefined) {
         part1_last: Number(t.part1_last),
         score_scale: t.score_scale ? t.score_scale.map(Number) : null,
       } : null
+      // §221. Окно — отдельным запросом: до применения PENDING_221.sql колонок
+      // нет, и общий select уронил бы таблицу §218 целиком.
+      const lesson = await loadLesson(e.id)
+      if (cancelled) return
       const ex: GridExam = {
         id: e.id, title: e.title, date: e.date, subject: e.subject, exam_type: e.exam_type,
-        group_id: e.group_id ?? null, groupName: e.groups?.name ?? null, template,
+        group_id: e.group_id ?? null, groupName: e.groups?.name ?? null, template, lesson,
+      }
+
+      // §221. Первая часть законченных бланков — по ключу, в базе, до чтения
+      // баллов: таблица сразу показывает проверенное. Ручные клетки функция не
+      // трогает; без ключа или прав — просто молчит, таблица работает как была.
+      let note: string | null = null
+      if (lesson && template && ex.group_id) {
+        const { data: g, error: gErr } = await db.rpc<{ changed_cells: number; skipped?: string }>('grade_mock_exam_part1', { p_mock_exam_id: ex.id })
+        if (cancelled) return
+        if (gErr) note = `Проверка первой части по ключу не выполнена: ${gErr.message || 'ошибка'}`
+        else if (g?.skipped === 'no_key') note = 'Ключ первой части не внесён — первая часть по ключу не проверена. Ключ — в «Настройке» пробника.'
+        else if (g && g.changed_cells > 0) note = `Первая часть проверена по ключу: обновлено клеток — ${g.changed_cells}.`
       }
 
       let roster: GridStudent[] = []
       let pts: (number | null)[][] = []
+      let au: boolean[][] = []
+      let wk: Record<string, GridWork> = {}
       if (ex.group_id && template) {
         const [{ data: gs }, { data: scores, error: sErr }] = await Promise.all([
           db.from<any[]>('group_students')
             .select('student_id, students(id, profile_id, profiles(full_name))')
             .eq('group_id', ex.group_id),
-          db.from<{ student_id: string; task_number: number; points: number }[]>('mock_exam_task_scores')
-            .select('student_id, task_number, points')
-            .eq('mock_exam_id', ex.id),
+          loadScores(ex.id),
         ])
         if (cancelled) return
         if (sErr) { setError(sErr.message || 'Не удалось загрузить баллы'); setLoading(false); return }
@@ -137,17 +175,24 @@ export function useMockExamGrid(examId: string | undefined) {
         roster.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
         const at = new Map(roster.map((s, i) => [s.id, i]))
         pts = roster.map(() => template.max_points.map(() => null))
+        au = roster.map(() => template.max_points.map(() => false))
         for (const r of scores ?? []) {
           const s = at.get(r.student_id)
           if (s == null || r.task_number < 1 || r.task_number > template.max_points.length) continue
           pts[s][r.task_number - 1] = Number(r.points)
+          au[s][r.task_number - 1] = r.auto_points != null && Number(r.auto_points) === Number(r.points)
         }
+        if (lesson) wk = await loadWorks(ex.id)
+        if (cancelled) return
       }
       if (ex.group_id && template) await loadResults(ex.id)
       if (cancelled) return
       setExam(ex)
       setStudents(roster)
       setPoints(pts)
+      setAuto(au)
+      setWorks(wk)
+      setGradeNote(note)
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -167,6 +212,16 @@ export function useMockExamGrid(examId: string | undefined) {
     })
     if (rpcErr) return { error: rpcErr.message || 'Не удалось сохранить' }
     setPoints(next)
+    // §221: отметка «авто» — из базы (points = auto_points), не из памяти.
+    const { data: sc } = await loadScores(exam.id)
+    const at = new Map(students.map((st, i) => [st.id, i]))
+    const au = students.map(() => exam.template!.max_points.map(() => false))
+    for (const r of sc ?? []) {
+      const i = at.get(r.student_id)
+      if (i == null || r.task_number < 1 || r.task_number > au[i].length) continue
+      au[i][r.task_number - 1] = r.auto_points != null && Number(r.auto_points) === Number(r.points)
+    }
+    setAuto(au)
     await loadResults(exam.id)
     return { error: null }
   }, [exam, students, loadResults])
@@ -188,5 +243,51 @@ export function useMockExamGrid(examId: string | undefined) {
 
   const reload = useCallback(() => setTick(t => t + 1), [])
 
-  return { exam, students, points, results, resultsError, loading, error, save, notify, reload }
+  return { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, reload }
+}
+
+type ScoreRow = { student_id: string; task_number: number; points: number; auto_points?: number | null }
+
+/**
+ * Баллы по заданиям с отметкой «авто» (§221). Колонки `auto_points` до
+ * применения PENDING_221.sql нет — тогда читаем как в §218, без отметок.
+ */
+async function loadScores(examId: string): Promise<{ data: ScoreRow[] | null; error: { message?: string } | null }> {
+  const withAuto = await db.from<ScoreRow[]>('mock_exam_task_scores')
+    .select('student_id, task_number, points, auto_points')
+    .eq('mock_exam_id', examId)
+  if (!withAuto.error) return withAuto
+  return db.from<ScoreRow[]>('mock_exam_task_scores')
+    .select('student_id, task_number, points')
+    .eq('mock_exam_id', examId)
+}
+
+async function loadLesson(examId: string): Promise<GridLesson | null> {
+  const { data, error } = await db.from<{ starts_at: string | null; duration_minutes: number; photo_grace_minutes: number }>('mock_exams')
+    .select('starts_at, duration_minutes, photo_grace_minutes')
+    .eq('id', examId)
+    .maybeSingle()
+  if (error || !data?.starts_at) return null
+  const starts = new Date(data.starts_at).getTime()
+  const ends = starts + Number(data.duration_minutes ?? 240) * 60000
+  return {
+    starts_at: data.starts_at,
+    ends_at: new Date(ends).toISOString(),
+    photos_until: new Date(ends + Number(data.photo_grace_minutes ?? 15) * 60000).toISOString(),
+  }
+}
+
+async function loadWorks(examId: string): Promise<Record<string, GridWork>> {
+  const [sh, ph] = await Promise.all([
+    db.from<{ student_id: string; submitted_at: string | null }[]>('mock_exam_sheets').select('student_id, submitted_at').eq('mock_exam_id', examId),
+    db.from<{ id: string; student_id: string; storage_path: string; file_name: string; position: number }[]>('mock_exam_photos')
+      .select('id, student_id, storage_path, file_name, position').eq('mock_exam_id', examId),
+  ])
+  const out: Record<string, GridWork> = {}
+  for (const r of sh.data ?? []) out[r.student_id] = { submitted_at: r.submitted_at, photos: [] }
+  for (const p of (ph.data ?? []).slice().sort((a, b) => a.position - b.position)) {
+    const w = out[p.student_id] ?? (out[p.student_id] = { submitted_at: null, photos: [] })
+    w.photos.push({ id: p.id, storage_path: p.storage_path, file_name: p.file_name, position: p.position })
+  }
+  return out
 }

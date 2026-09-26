@@ -20,6 +20,8 @@ import { testPercent } from '@/lib/studentProgram'
 import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { plural, pluralTopics } from '@/lib/plural'
+import { placeInModule } from '@/lib/mockExamLesson'
+import { MockExamProgramRow } from '@/components/student/MockExamProgramRow'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -930,6 +932,8 @@ export function StudentCoursePage() {
 
   // Сдача ДЗ и прохождение теста живут на странице темы — сюда ведут все кнопки
   const openTopic = (topic: TopicProgress) => navigate(`/my-course/${groupId}/topic/${topic.id}`)
+  // §221: пробник — урок раздела; бланк, сдача и результат — на его странице.
+  const openMock = (examId: string) => navigate(`/my-course/${groupId}/mock/${examId}`)
 
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
@@ -1075,23 +1079,29 @@ export function StudentCoursePage() {
 
           {view === 'list' ? (
             <div className="space-y-2" data-testid="topics-list-view">
-              {activeMod.topics.map((topic, i) => (
+              {/* §221: пробники раздела — на своём месте среди тем. Номер
+                  темы считает только темы: пробник нумерацию не сдвигает. */}
+              {placeInModule(activeMod.topics, activeMod.mockExams ?? []).map(item => item.kind === 'exam' ? (
+                <MockExamProgramRow key={`mock-${item.exam.id}`} exam={item.exam} variant="row" onOpen={() => openMock(item.exam.id)} />
+              ) : (
                 <TopicListRow
-                  key={topic.id}
-                  topic={topic}
-                  index={i}
-                  onOpen={() => openTopic(topic)}
-                  onOpenHomework={() => openTopic(topic)}
+                  key={item.topic.id}
+                  topic={item.topic}
+                  index={activeMod.topics.indexOf(item.topic)}
+                  onOpen={() => openTopic(item.topic)}
+                  onOpenHomework={() => openTopic(item.topic)}
                 />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="topics-cards-view">
-              {activeMod.topics.map((topic, i) => (
+              {placeInModule(activeMod.topics, activeMod.mockExams ?? []).map(item => item.kind === 'exam' ? (
+                <MockExamProgramRow key={`mock-${item.exam.id}`} exam={item.exam} variant="card" onOpen={() => openMock(item.exam.id)} />
+              ) : (
                 <TopicCard
-                  key={topic.id}
-                  topic={topic}
-                  index={i}
+                  key={item.topic.id}
+                  topic={item.topic}
+                  index={activeMod.topics.indexOf(item.topic)}
                   moduleTitle={activeMod.title}
                   groupId={groupId ?? ''}
                   onOpenTopic={openTopic}

@@ -1,0 +1,370 @@
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:106: NOTICE:  trigger "mock_exams_lesson_guard" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:164: NOTICE:  policy "mock_exam_answer_keys_staff_select" for relation "public.mock_exam_answer_keys" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:169: NOTICE:  policy "mock_exam_answer_keys_manage_insert" for relation "public.mock_exam_answer_keys" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:174: NOTICE:  policy "mock_exam_answer_keys_manage_update" for relation "public.mock_exam_answer_keys" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:180: NOTICE:  policy "mock_exam_answer_keys_manage_delete" for relation "public.mock_exam_answer_keys" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:209: NOTICE:  policy "mock_exam_sheets_own_select" for relation "public.mock_exam_sheets" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:214: NOTICE:  policy "mock_exam_sheets_staff_select" for relation "public.mock_exam_sheets" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:239: NOTICE:  policy "mock_exam_photos_own_select" for relation "public.mock_exam_photos" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:244: NOTICE:  policy "mock_exam_photos_staff_select" for relation "public.mock_exam_photos" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:895: NOTICE:  policy "mock_exam_files_read" for relation "storage.objects" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:900: NOTICE:  policy "mock_exam_files_insert" for relation "storage.objects" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:905: NOTICE:  policy "mock_exam_files_delete" for relation "storage.objects" does not exist, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "module_id" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "module_position" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "starts_at" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "duration_minutes" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "photo_grace_minutes" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "condition_path" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:52: NOTICE:  column "solution_path" of relation "mock_exams" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:69: NOTICE:  relation "mock_exams_module_idx" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:156: NOTICE:  relation "mock_exam_answer_keys" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:199: NOTICE:  relation "mock_exam_sheets" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:204: NOTICE:  relation "mock_exam_sheets_student_idx" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:229: NOTICE:  relation "mock_exam_photos" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:234: NOTICE:  relation "mock_exam_photos_exam_student_idx" already exists, skipping
+psql:/home/claude/agents/a221/repo/supabase/migrations/PENDING_221.sql:259: NOTICE:  column "auto_points" of relation "mock_exam_task_scores" already exists, skipping
+PENDING_221 applied twice: ok
+=================== A. ДО НАЧАЛА (starts_at = now() + 1 ч) ===================
+UPDATE 1
+SET
+--- A1. ученик: страница пробника — условия нет (condition_path = null)
+ no_condition | has_start | before_start 
+--------------+-----------+--------------
+ t            | t         | t
+
+--- A2. ученик: файл условия в хранилище — не выдаётся (0 строк = не подписать ссылку)
+ condition_objects 
+-------------------
+                 0
+
+--- A3. ученик: ответ в бланк до начала
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:23: ERROR:  Пробник ещё не начался
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 16 at RAISE
+PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 8 at assignment
+--- A4. ученик: сдать до начала
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:25: ERROR:  Пробник ещё не начался
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 16 at RAISE
+PL/pgSQL function submit_mock_exam(uuid) line 7 at assignment
+--- A5. ученик: загрузить фото до начала
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:27: ERROR:  new row violates row-level security policy for table "objects"
+RESET
+=================== B. ИДЁТ (начался час назад, до конца 3 ч) ===================
+UPDATE 1
+SET
+--- B1. ученик S1 пишет бланк; ответ сохранения — только поле, ответ и время
+            saved            
+-----------------------------
+ {"task": 1, "answer": "12"}
+
+             saved             
+-------------------------------
+ {"task": 2, "answer": "0.75"}
+
+            saved            
+-----------------------------
+ {"task": 3, "answer": "-3"}
+
+ count 
+-------
+     8
+
+--- B2. номер вне первой части и слишком длинный ответ
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:39: ERROR:  В бланке первой части поля №1–№12
+CONTEXT:  PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 13 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:40: ERROR:  Ответ длиннее 40 знаков — в бланк пишется только ответ
+CONTEXT:  PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 17 at RAISE
+--- B3. ученик: условие теперь есть, решения нет; ключа в ответе нет
+                     condition_path                      |                                   answers                                   | has_key | has_correct 
+---------------------------------------------------------+-----------------------------------------------------------------------------+---------+-------------
+ 50000000-0000-0000-0000-000000000003/condition/1_v3.pdf | ["12", "0.75", "-3", "49", "0,2", "6", "27", "5", null, "144", "0,35", "4"] | f       | f
+
+                          name                           
+---------------------------------------------------------
+ 50000000-0000-0000-0000-000000000003/condition/1_v3.pdf
+
+--- B4. ученик: ключ — ни таблицей, ни записью
+ key_rows 
+----------
+        0
+
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:47: ERROR:  new row violates row-level security policy for table "mock_exam_answer_keys"
+--- B4b. ученик: проверка по ключу и запись ключа функцией — отказ
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:49: ERROR:  Нет доступа к результатам этого пробника
+CONTEXT:  PL/pgSQL function grade_mock_exam_part1(uuid) line 24 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:50: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function save_mock_exam_key(uuid,text[]) line 9 at RAISE
+--- B5. ученик: бланк мимо функции — ни вставить, ни поправить, ни сдать задним числом
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:52: ERROR:  permission denied for table mock_exam_sheets
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:53: ERROR:  permission denied for table mock_exam_sheets
+--- B6. ученик: баллы и итоги по-прежнему не видны (политики §218/§215 не тронуты)
+ task_scores | results 
+-------------+---------
+           0 |       0
+
+--- B7. фото: в свою папку — да, в чужую — нет; регистрация чужого пути и несуществующего файла — нет
+INSERT 0 1
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:58: ERROR:  new row violates row-level security policy for table "objects"
+ file_name | position 
+-----------+----------
+ стр 1.jpg | 0
+
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:61: ERROR:  Файл не из вашей папки этого пробника
+CONTEXT:  PL/pgSQL function add_mock_exam_photo(uuid,text,text,text,bigint) line 11 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:62: ERROR:  Файл не найден в хранилище — загрузите заново
+CONTEXT:  PL/pgSQL function add_mock_exam_photo(uuid,text,text,text,bigint) line 14 at RAISE
+--- B8. S1 сдаёт; после сдачи бланк не пишется, фото — можно
+ submitted 
+-----------
+ t
+
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:65: ERROR:  Работа уже сдана — ответы не меняются
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 25 at RAISE
+PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 8 at assignment
+INSERT 0 1
+ position 
+----------
+ 1
+
+--- B9. S2 и S4 пишут, не сдают
+ count 
+-------
+     3
+
+ count 
+-------
+     2
+
+--- B10. S2 видит только свой бланк и ни одного чужого фото
+              student_id              |                          answers                           
+--------------------------------------+------------------------------------------------------------
+ 20000000-0000-0000-0000-000000000052 | {12,"0,75",3,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL}
+
+--- B10b. S2 пытается убрать фото S1
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:77: ERROR:  Фото не найдено
+CONTEXT:  PL/pgSQL function remove_mock_exam_photo(uuid) line 8 at RAISE
+RESET
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:80: ERROR:  Это не ваше фото
+CONTEXT:  PL/pgSQL function remove_mock_exam_photo(uuid) line 12 at RAISE
+SET
+ photos_visible 
+----------------
+              0
+
+ photo_objects_visible 
+-----------------------
+                     0
+
+--- B11. ученик 11Б (не из группы): ничего
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:86: ERROR:  Этот пробник не ваш
+CONTEXT:  PL/pgSQL function my_mock_exam(uuid) line 11 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:87: ERROR:  Этот пробник не ваш
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 9 at RAISE
+PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 8 at assignment
+ sheets | photos | objects 
+--------+--------+---------
+      0 |      0 |       0
+
+--- B12. чужой преподаватель (11Б): ничего не видит и ничего не может
+ sheets | photos | keys | objects 
+--------+--------+------+---------
+      0 |      0 |    0 |       0
+
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:95: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function save_mock_exam_key(uuid,text[]) line 9 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:96: ERROR:  Нет доступа к результатам этого пробника
+CONTEXT:  PL/pgSQL function grade_mock_exam_part1(uuid) line 24 at RAISE
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:97: ERROR:  new row violates row-level security policy for table "objects"
+--- B13. преподаватель группы: ключ; не поддающийся автопроверке ответ назван; проверен только сданный бланк (S1)
+                              save_mock_exam_key                               
+-------------------------------------------------------------------------------
+ {"grade": {"changed_cells": 11, "graded_students": 1}, "not_checkable": [12]}
+
+              student_id              | task_number | points | auto_points 
+--------------------------------------+-------------+--------+-------------
+ 20000000-0000-0000-0000-000000000051 |           1 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           2 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           3 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           4 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           5 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           6 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           7 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           8 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           9 |      0 |           0
+ 20000000-0000-0000-0000-000000000051 |          10 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |          11 |      0 |           0
+
+              student_id              | score | primary_score | part1_score | part2_score 
+--------------------------------------+-------+---------------+-------------+-------------
+ 20000000-0000-0000-0000-000000000051 |     9 |             9 |           9 |           0
+
+--- B14. S1 сдал, но результат не отправлен: результата и решения нет
+  my_mock_exam_result  
+-----------------------
+ {"status": "pending"}
+
+ solution_objects 
+------------------
+                0
+
+RESET
+=================== C. КОНЕЦ + 5 МИН (фото ещё 10 мин) ===================
+UPDATE 1
+SET
+--- C1. S2: бланк закрыт, сдать нельзя
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:113: ERROR:  Время пробника вышло — бланк закрыт
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 20 at RAISE
+PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 8 at assignment
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:114: ERROR:  Время пробника вышло — бланк закрыт
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 20 at RAISE
+PL/pgSQL function submit_mock_exam(uuid) line 7 at assignment
+--- C2. S2: фото ещё принимаются
+INSERT 0 1
+ file_name  
+------------
+ поздно.jpg
+
+RESET
+=================== D. КОНЕЦ + 16 МИН ===================
+UPDATE 1
+SET
+--- D1. S2: фото не принимаются — ни хранилищем, ни регистрацией, ни удалением
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:124: ERROR:  new row violates row-level security policy for table "objects"
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:125: ERROR:  Время загрузки фото вышло
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 29 at RAISE
+PL/pgSQL function add_mock_exam_photo(uuid,text,text,text,bigint) line 9 at assignment
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:126: ERROR:  Время загрузки фото вышло
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 29 at RAISE
+PL/pgSQL function remove_mock_exam_photo(uuid) line 10 at assignment
+DELETE 0
+ still_there 
+-------------
+           1
+
+--- D2. преподаватель: теперь проверены и несданные бланки (окно кончилось); повтор — ноль изменений
+            grade_mock_exam_part1            
+---------------------------------------------
+ {"changed_cells": 22, "graded_students": 3}
+
+           grade_mock_exam_part1            
+--------------------------------------------
+ {"changed_cells": 0, "graded_students": 3}
+
+              student_id              | task_number | points | auto_points 
+--------------------------------------+-------------+--------+-------------
+ 20000000-0000-0000-0000-000000000051 |           1 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           2 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           3 |      1 |           1
+ 20000000-0000-0000-0000-000000000051 |           9 |      0 |           0
+ 20000000-0000-0000-0000-000000000051 |          11 |      0 |           0
+ 20000000-0000-0000-0000-000000000052 |           1 |      1 |           1
+ 20000000-0000-0000-0000-000000000052 |           2 |      1 |           1
+ 20000000-0000-0000-0000-000000000052 |           3 |      0 |           0
+ 20000000-0000-0000-0000-000000000052 |           9 |      0 |           0
+ 20000000-0000-0000-0000-000000000052 |          11 |      0 |           0
+ 20000000-0000-0000-0000-000000000054 |           1 |      1 |           1
+ 20000000-0000-0000-0000-000000000054 |           2 |      1 |           1
+ 20000000-0000-0000-0000-000000000054 |           3 |      0 |           0
+ 20000000-0000-0000-0000-000000000054 |           9 |      0 |           0
+ 20000000-0000-0000-0000-000000000054 |          11 |      0 |           0
+
+--- D3. преподаватель исправил авто-клетку S1 №11 (опечатка в ключе) и поставил №13
+                                       ?column?                                        
+---------------------------------------------------------------------------------------
+ [{"score": 12, "old_score": 9, "student_id": "20000000-0000-0000-0000-000000000051"}]
+
+ task_number | points | auto_points | is_auto 
+-------------+--------+-------------+---------
+          10 |      1 |           1 | t
+          11 |      1 |           0 | f
+          13 |      2 |             | 
+
+--- D4. ключ поправлен (№11 = 0,35): ручная клетка не тронута, авто-клетки пересчитаны
+                  ?column?                  
+--------------------------------------------
+ {"changed_cells": 3, "graded_students": 3}
+
+              student_id              | task_number | points | auto_points 
+--------------------------------------+-------------+--------+-------------
+ 20000000-0000-0000-0000-000000000051 |          11 |      1 |           0
+ 20000000-0000-0000-0000-000000000051 |          12 |      1 |           1
+ 20000000-0000-0000-0000-000000000052 |          11 |      0 |           0
+ 20000000-0000-0000-0000-000000000052 |          12 |      0 |           0
+ 20000000-0000-0000-0000-000000000054 |          11 |      0 |           0
+ 20000000-0000-0000-0000-000000000054 |          12 |      0 |           0
+
+              student_id              | score | part1_score | part2_score 
+--------------------------------------+-------+-------------+-------------
+ 20000000-0000-0000-0000-000000000051 |    13 |          11 |           2
+ 20000000-0000-0000-0000-000000000052 |     2 |           2 |           0
+ 20000000-0000-0000-0000-000000000054 |     2 |           2 |           0
+
+--- D5. куратор курса: видит бланки, но проверить по ключу и сохранить ключ не может
+ sheets_visible 
+----------------
+              3
+
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:147: ERROR:  Нет доступа к результатам этого пробника
+CONTEXT:  PL/pgSQL function grade_mock_exam_part1(uuid) line 24 at RAISE
+--- D6. «Уведомить» S1; S1 видит результат и решение, S2 — нет
+                                 ?column?                                  
+---------------------------------------------------------------------------
+ {"sent": 1, "already": 0, "telegram": 1, "no_result": 0, "no_profile": 0}
+
+ status | score | p1 | p2 |                          solution                          
+--------+-------+----+----+------------------------------------------------------------
+ ready  | 13    | 11 | 2  | 50000000-0000-0000-0000-000000000003/solution/1_v3-sol.pdf
+
+ n  | answer | correct | points | max 
+----+--------+---------+--------+-----
+ 1  | 12     | 12      | 1      | 1
+ 2  | 0.75   | 0,75    | 1      | 1
+ 9  |        | 3       | 0      | 1
+ 11 | 0,35   | 0,35    | 1      | 1
+ 12 | 4      | 4       | 1      | 1
+ 13 |        |         | 2      | 2
+ 14 |        |         |        | 3
+
+ solution_objects 
+------------------
+                1
+
+ key_rows_after_notify 
+-----------------------
+                     0
+
+  my_mock_exam_result  
+-----------------------
+ {"status": "pending"}
+
+ solution_objects 
+------------------
+                0
+
+--- D7. программа курса: у S1 пробник есть со статусом; у ученика 11Б в его группе — пусто
+       title       |              module_id               | pos | submitted | has_work | notified 
+-------------------+--------------------------------------+-----+-----------+----------+----------
+ Пробник №3 онлайн | 60000000-0000-0000-0000-000000000001 | 1   | t         | true     | true
+
+ s11b_own_group | s11b_foreign_group 
+----------------+--------------------
+ []             | []
+
+--- D8. чужой бакет с «кривым» путём — политики mock-exams его не роняют
+INSERT 0 1
+ count 
+-------
+     1
+
+RESET
+=================== E. СТРАЖИ СХЕМЫ ===================
+--- E1. раздел из чужого курса
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:176: ERROR:  Раздел не из курса группы этого пробника
+CONTEXT:  PL/pgSQL function mock_exams_lesson_guard() line 8 at RAISE
+--- E2. онлайн-окно без шаблона
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:178: ERROR:  Онлайн-пробнику нужны шаблон и группа
+CONTEXT:  PL/pgSQL function mock_exams_lesson_guard() line 11 at RAISE
+--- E3. anon: функций ученика нет
+SET
+psql:/home/claude/agents/a221/repo/supabase/tests/mock_exam_lesson_221/20_probes.sql:181: ERROR:  permission denied for function my_mock_exam
+RESET

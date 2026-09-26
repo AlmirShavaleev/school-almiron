@@ -1,0 +1,389 @@
+<title>Пробник в курсе</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Mono&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --ground:#F1EFEA; --paper:#FCFBF8; --ink:#1B2430; --ink-2:#4B5663; --ink-3:#7D8793;
+  --rule:#DAD6CC; --rule-2:#C4BEB2; --cell:#FFFFFF; --cell-alt:#F8F7F3;
+  --accent:#2C5E8A; --accent-soft:#E2EBF3;
+  --good:#2F7A55; --good-soft:#E3F0E8; --warn:#A8691F; --warn-soft:#F7EDDD; --bad:#B23B3B; --bad-soft:#F7E3E1;
+  --ai:#6B4FA0; --ai-soft:#EEE8F7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ground:#12161B; --paper:#1A2027; --ink:#E9E6DF; --ink-2:#B3BAC3; --ink-3:#86909A;
+    --rule:#313A44; --rule-2:#44505D; --cell:#1F262E; --cell-alt:#1C232A;
+    --accent:#86B6DC; --accent-soft:#1E2C39;
+    --good:#7FC6A0; --good-soft:#1B2B22; --warn:#E2AE6E; --warn-soft:#2D2519; --bad:#E59191; --bad-soft:#2F1F1F;
+    --ai:#B9A2E3; --ai-soft:#271F35;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#12161B; --paper:#1A2027; --ink:#E9E6DF; --ink-2:#B3BAC3; --ink-3:#86909A;
+  --rule:#313A44; --rule-2:#44505D; --cell:#1F262E; --cell-alt:#1C232A;
+  --accent:#86B6DC; --accent-soft:#1E2C39;
+  --good:#7FC6A0; --good-soft:#1B2B22; --warn:#E2AE6E; --warn-soft:#2D2519; --bad:#E59191; --bad-soft:#2F1F1F;
+  --ai:#B9A2E3; --ai-soft:#271F35;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0; background:var(--ground); color:var(--ink); font-family:'PT Sans','Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.5; padding-block:0 48px}
+.wrap{max-width:1100px; margin:0 auto; padding:0 16px}
+.num{font-family:'PT Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums}
+.top{padding-block:20px 12px}
+.crumb{font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
+h1{margin:2px 0 4px; font-size:24px; line-height:1.2; text-wrap:balance}
+.tag{display:inline-block; font-size:12px; padding:2px 8px; border-radius:4px; background:var(--warn-soft); color:var(--warn); vertical-align:3px}
+.tabs{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 18px; border-bottom:1px solid var(--rule)}
+.tabs button{font:inherit; font-size:14px; padding:8px 12px; border:0; background:none; color:var(--ink-2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent); font-weight:700}
+.tabs button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.who{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); display:block}
+.panel{background:var(--paper); border:1px solid var(--rule); border-radius:8px; padding:16px 18px}
+.stack{display:grid; gap:14px}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media (max-width:760px){ .two{grid-template-columns:1fr} }
+h2{font-size:17px; margin:0 0 4px}
+h3{font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin:0 0 8px; font-weight:400}
+p{margin:0}
+.muted{color:var(--ink-2); font-size:14px}
+.btn{font:inherit; font-size:14px; padding:8px 14px; border-radius:6px; cursor:pointer; border:1px solid var(--rule-2); background:var(--paper); color:var(--ink)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0E1620}
+.btn.ai{border-color:var(--ai); color:var(--ai); background:var(--ai-soft)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn[disabled]{opacity:.5; cursor:not-allowed}
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+/* таймер */
+.timer{display:flex; gap:18px; align-items:center; flex-wrap:wrap}
+.clock{font-family:'PT Mono',monospace; font-size:34px; line-height:1}
+.bar{flex:1 1 260px; height:8px; background:var(--cell-alt); border:1px solid var(--rule); border-radius:4px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--accent)}
+.window{font-size:13px; color:var(--ink-2)}
+
+/* бланк */
+.blank{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:8px}
+.bcell{display:flex; align-items:center; gap:8px; border:1px solid var(--rule); border-radius:6px; padding:6px 8px; background:var(--cell)}
+.bcell label{font-family:'PT Mono',monospace; font-size:13px; color:var(--ink-3); min-width:26px}
+.bcell input{flex:1; min-width:0; border:0; background:transparent; font-family:'PT Mono',monospace; font-size:16px; color:var(--ink); padding:4px 0}
+.bcell input:focus{outline:none}
+.bcell:focus-within{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft)}
+.saved{font-size:13px; color:var(--good)}
+
+/* фото */
+.drop{border:2px dashed var(--rule-2); border-radius:8px; padding:18px; text-align:center; color:var(--ink-2); font-size:14px}
+.thumbs{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+.thumb{width:92px; height:120px; border:1px solid var(--rule); border-radius:4px; background:var(--cell-alt); display:flex; flex-direction:column; justify-content:flex-end; padding:6px; font-size:11px; color:var(--ink-3); position:relative}
+.thumb::before{content:""; position:absolute; inset:10px 10px 30px; background:repeating-linear-gradient(var(--rule) 0 1px, transparent 1px 9px)}
+
+.note{border-left:3px solid var(--accent); padding:8px 12px; background:var(--accent-soft); font-size:14px; border-radius:0 6px 6px 0}
+.note.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+
+/* результат ученика */
+table.t{border-collapse:collapse; width:100%; font-size:14px}
+.t th,.t td{border-bottom:1px solid var(--rule); padding:7px 8px; text-align:left}
+.t th{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); font-weight:400}
+.t td.n{font-family:'PT Mono',monospace; text-align:right}
+.ok{color:var(--good)} .no{color:var(--bad)}
+.scroll{overflow-x:auto}
+.kpi{display:flex; gap:28px; flex-wrap:wrap}
+.kpi div b{display:block; font-family:'PT Mono',monospace; font-size:28px; line-height:1.2}
+.kpi div span{font-size:12px; color:var(--ink-3)}
+
+/* настройка */
+.form{display:grid; grid-template-columns:180px 1fr; gap:10px 14px; align-items:center}
+@media (max-width:620px){ .form{grid-template-columns:1fr} }
+.form label{font-size:14px; color:var(--ink-2)}
+.form input,.form select{font:inherit; font-size:14px; padding:7px 9px; border:1px solid var(--rule); border-radius:6px; background:var(--cell); color:var(--ink); max-width:100%}
+.keys{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px,1fr)); gap:6px}
+.keys .bcell{padding:4px 6px}
+.keys .bcell input{font-size:14px}
+
+/* проверка */
+.gridwrap{overflow-x:auto; border:1px solid var(--rule); border-radius:8px; background:var(--paper)}
+table.g{border-collapse:separate; border-spacing:0}
+.g th,.g td{border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); text-align:center; padding:0}
+.g th{font-weight:400; font-size:12px; padding:6px 3px; background:var(--paper)}
+.g th .m{display:block; color:var(--ink-3); font-size:11px}
+.g .name{text-align:left; padding:6px 10px; min-width:170px; white-space:nowrap; font-size:14px; position:sticky; left:0; background:var(--paper); z-index:1}
+.g .name small{display:block; font-size:12px; color:var(--ink-3)}
+.g td.c{min-width:36px; height:40px; font-family:'PT Mono',monospace; font-size:14px}
+.g td.auto{background:var(--cell-alt)}
+.g td.aiprop{background:var(--ai-soft); color:var(--ai); cursor:pointer; font-style:italic}
+.g td.aiprop:hover{outline:2px solid var(--ai); outline-offset:-2px}
+.g td.conf{color:var(--ink); font-style:normal}
+.g td.sep{border-left:2px solid var(--ink-3)}
+.g td.tot{min-width:52px; font-family:'PT Mono',monospace; font-weight:700; padding:0 6px}
+.g td.act{padding:4px 8px; white-space:nowrap}
+.legend{font-size:12px; color:var(--ink-3); display:flex; gap:16px; flex-wrap:wrap; margin-top:8px}
+.sw{display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-2px; margin-right:5px; border:1px solid var(--rule)}
+.status{font-size:12px; padding:1px 7px; border-radius:4px; white-space:nowrap}
+.s-ok{background:var(--good-soft); color:var(--good)} .s-late{background:var(--warn-soft); color:var(--warn)} .s-no{background:var(--bad-soft); color:var(--bad)}
+.foot{font-size:13px; color:var(--ink-3); margin-top:16px}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="crumb">Курс · Математика ЕГЭ, профиль · 11А</div>
+    <h1>Пробник №3 · 18 октября <span class="tag">макет, данные вымышленные</span></h1>
+    <p class="muted">Урок-пробник в программе курса. Открывается для всех в 10:00, писать до 14:00, загрузить фото до 14:15.</p>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Вид">
+    <button role="tab" id="t1" aria-selected="true"  aria-controls="p1"><span class="who">Ученик</span>Во время пробника</button>
+    <button role="tab" id="t2" aria-selected="false" aria-controls="p2"><span class="who">Ученик</span>После проверки</button>
+    <button role="tab" id="t3" aria-selected="false" aria-controls="p3"><span class="who">Преподаватель</span>Настройка</button>
+    <button role="tab" id="t4" aria-selected="false" aria-controls="p4"><span class="who">Преподаватель</span>Проверка</button>
+  </div>
+
+  <!-- 1. Ученик во время -->
+  <section id="p1" role="tabpanel" aria-labelledby="t1" class="stack">
+    <div class="panel">
+      <div class="timer">
+        <div>
+          <div class="clock" id="clock">2:47:15</div>
+          <div class="window">осталось писать · закроется в 14:00</div>
+        </div>
+        <div class="bar" aria-hidden="true"><i id="barfill" style="width:30%"></i></div>
+      </div>
+      <p class="window" style="margin-top:10px">После 14:00 бланк закрывается, но загрузить фото второй части можно ещё 15 минут — до 14:15.</p>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <div>
+          <h2>Бланк ответов — часть 1</h2>
+          <p class="muted">Как бланк №1 на экзамене: только ответ, без единиц и пояснений. Десятичную дробь — через запятую.</p>
+        </div>
+        <span class="saved" id="saved" role="status">Сохранено в 11:12</span>
+      </div>
+      <div class="blank" id="blank"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Часть 2 — фото решений</h2>
+      <p class="muted" style="margin-bottom:10px">Задания 13–19. Каждое задание с новой страницы, номер задания пишите в начале. Фотографируйте при хорошем свете, лист целиком.</p>
+      <div class="drop">Перетащите фото сюда или <button class="btn" type="button">выберите файлы</button></div>
+      <div class="thumbs">
+        <div class="thumb">стр. 1 · №13</div>
+        <div class="thumb">стр. 2 · №14</div>
+        <div class="thumb">стр. 3 · №15–16</div>
+      </div>
+    </div>
+
+    <div class="panel row" style="justify-content:space-between">
+      <p class="muted">Сдать можно раньше времени. После сдачи ответы не меняются, но фото можно догрузить до 14:15.</p>
+      <button class="btn primary" type="button" id="submit">Сдать работу</button>
+    </div>
+    <div class="note" id="submitConfirm" hidden>
+      <b>Сдать сейчас?</b> Заполнено 11 ответов из 12, загружено 3 фото. Пустой ответ №9 засчитается как нерешённый.
+      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="submitYes">Сдать</button><button class="btn" type="button" id="submitNo">Вернуться</button></div>
+    </div>
+  </section>
+
+  <!-- 2. Ученик после -->
+  <section id="p2" role="tabpanel" aria-labelledby="t2" class="stack" hidden>
+    <div class="panel">
+      <h3>Результат</h3>
+      <div class="kpi">
+        <div><b>18</b><span>первичный из 32</span></div>
+        <div><b>10</b><span>часть 1 из 12</span></div>
+        <div><b>8</b><span>часть 2 из 20</span></div>
+      </div>
+      <p class="muted" style="margin-top:10px">Проверил преподаватель 19 октября. Тестовый балл появится, когда будет внесена таблица перевода на этот год.</p>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <h3>Часть 1</h3>
+        <div class="scroll"><table class="t">
+          <thead><tr><th>№</th><th>Твой ответ</th><th>Верный</th><th class="n">Балл</th></tr></thead>
+          <tbody id="p1rows"></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <h3>Часть 2</h3>
+        <div class="scroll"><table class="t">
+          <thead><tr><th>№</th><th class="n">Балл</th><th class="n">Максимум</th></tr></thead>
+          <tbody>
+            <tr><td>13</td><td class="n">2</td><td class="n">2</td></tr>
+            <tr><td>14</td><td class="n">1</td><td class="n">3</td></tr>
+            <tr><td>15</td><td class="n">2</td><td class="n">2</td></tr>
+            <tr><td>16</td><td class="n">2</td><td class="n">2</td></tr>
+            <tr><td>17</td><td class="n">1</td><td class="n">3</td></tr>
+            <tr><td>18</td><td class="n">0</td><td class="n">4</td></tr>
+            <tr><td>19</td><td class="n">0</td><td class="n">4</td></tr>
+          </tbody>
+        </table></div>
+        <div class="row" style="margin-top:12px"><button class="btn" type="button">Открыть решение (PDF)</button><button class="btn" type="button">Мои фото с пометками</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Преподаватель: настройка -->
+  <section id="p3" role="tabpanel" aria-labelledby="t3" class="stack" hidden>
+    <div class="panel">
+      <h2>Пробник в программе курса</h2>
+      <p class="muted" style="margin-bottom:14px">Появляется у учеников как урок. До начала — «откроется 18.10 в 10:00», после конца — «на проверке».</p>
+      <div class="form">
+        <label for="f-title">Название</label><input id="f-title" value="Пробник №3">
+        <label for="f-date">Начало для всех</label><input id="f-date" value="18.10.2026, 10:00">
+        <label for="f-dur">Длительность</label><input id="f-dur" value="4 ч 00 мин">
+        <label>Догрузка фото</label><span class="muted">15 минут после конца — до 14:15</span>
+        <label for="f-tpl">Шаблон</label><select id="f-tpl"><option>ЕГЭ математика, профиль · 19 заданий · 32 первичных</option></select>
+        <label>Группа</label><span class="muted">11А — берётся из курса</span>
+      </div>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <h2>Задания и решение</h2>
+        <p class="muted" style="margin-bottom:10px">Условие ученик видит с началом пробника. Решение — только после того, как ты проверишь и нажмёшь «Уведомить».</p>
+        <div class="stack" style="gap:8px">
+          <div class="row"><span class="status s-ok">загружено</span> Условие · Вариант-3.pdf</div>
+          <div class="row"><span class="status s-ok">загружено</span> Решение · Вариант-3-решение.pdf</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Ключ ответов части 1</h2>
+        <p class="muted" style="margin-bottom:10px">Можно вставить строкой или столбцом из Excel. Проверка бланка — точным сравнением, без ИИ.</p>
+        <div class="keys" id="keys"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Преподаватель: проверка -->
+  <section id="p4" role="tabpanel" aria-labelledby="t4" class="stack" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <h2>Проверка</h2>
+          <p class="muted">Часть 1 проверена по ключу сама. Часть 2 — предложения ИИ: фиолетовым, пока ты их не принял. В таблицу по номерам идёт только принятое.</p>
+        </div>
+        <div class="row">
+          <button class="btn ai" type="button" id="runAi">Проверить часть 2 через ИИ</button>
+          <button class="btn" type="button" id="acceptAll">Принять все предложения</button>
+        </div>
+      </div>
+    </div>
+    <div class="gridwrap"><table class="g" id="checkgrid"></table></div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--cell-alt)"></span>часть 1 — проверено по ключу</span>
+      <span><span class="sw" style="background:var(--ai-soft)"></span>предложение ИИ — нажми, чтобы принять</span>
+      <span><span class="sw" style="background:var(--cell)"></span>принято или поставлено тобой</span>
+    </div>
+    <div class="note warn">Сохранить таблицу нельзя, пока в строке остались непринятые предложения ИИ: результат уходит родителю, и балл за вторую часть ставишь ты.</div>
+    <p class="foot">Дальше — та же таблица пробника по номерам: «Сохранить» — черновик, «Уведомить» — отправить ученику результат и открыть ему решение.</p>
+  </section>
+
+  <p class="foot">Макет показывает устройство: что видит ученик во время и после пробника и как преподаватель его настраивает и проверяет. Ничего не сохраняется, ученики и баллы выдуманы.</p>
+</div>
+
+<script>
+(function(){
+  // вкладки
+  var tabs = [].slice.call(document.querySelectorAll('[role="tab"]'));
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){
+      tabs.forEach(function(x){ var on = x === t; x.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(x.getAttribute('aria-controls')).hidden = !on; });
+    });
+  });
+
+  // таймер: идёт по-настоящему, от 2:47:15
+  var left = 2*3600 + 47*60 + 15, total = 4*3600;
+  var clock = document.getElementById('clock'), bar = document.getElementById('barfill');
+  function tick(){
+    var h = Math.floor(left/3600), m = Math.floor(left%3600/60), s = left%60;
+    clock.textContent = h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    bar.style.width = Math.round((total-left)/total*100) + '%';
+    if (left > 0) left--;
+  }
+  tick(); setInterval(tick, 1000);
+
+  // бланк
+  var answers = ['12','0,75','-3','49','0,2','6','27','5','','144','0,35','4'];
+  var blank = document.getElementById('blank'), saved = document.getElementById('saved');
+  answers.forEach(function(a, i){
+    var d = document.createElement('div'); d.className = 'bcell';
+    d.innerHTML = '<label for="b'+(i+1)+'">№'+(i+1)+'</label><input id="b'+(i+1)+'" inputmode="decimal" autocomplete="off" value="'+a+'">';
+    blank.appendChild(d);
+    d.querySelector('input').addEventListener('input', function(){
+      saved.textContent = 'Сохраняю…';
+      clearTimeout(window.__sv); window.__sv = setTimeout(function(){
+        var n = new Date(); saved.textContent = 'Сохранено в ' + n.getHours() + ':' + String(n.getMinutes()).padStart(2,'0');
+      }, 600);
+    });
+  });
+
+  // сдача
+  var sc = document.getElementById('submitConfirm');
+  document.getElementById('submit').addEventListener('click', function(){ sc.hidden = false; });
+  document.getElementById('submitNo').addEventListener('click', function(){ sc.hidden = true; });
+  document.getElementById('submitYes').addEventListener('click', function(){
+    sc.innerHTML = '<b>Работа сдана в 11:14.</b> Ответы части 1 больше не меняются. Фото можно догрузить до 14:15.';
+  });
+
+  // ключ
+  var key = ['12','0,75','-3','49','0,2','6','27','5','3','144','0,25','4'];
+  var keys = document.getElementById('keys');
+  key.forEach(function(k, i){
+    var d = document.createElement('div'); d.className = 'bcell';
+    d.innerHTML = '<label for="k'+(i+1)+'">№'+(i+1)+'</label><input id="k'+(i+1)+'" value="'+k+'">';
+    keys.appendChild(d);
+  });
+
+  // результат ученика: часть 1
+  var norm = function(x){ return String(x).trim().replace(',', '.'); };
+  var rows = document.getElementById('p1rows'), h = '';
+  answers.forEach(function(a, i){
+    var ok = a !== '' && norm(a) === norm(key[i]);
+    h += '<tr><td>'+(i+1)+'</td><td class="num">'+(a || '—')+'</td><td class="num">'+key[i]+'</td><td class="n '+(ok?'ok':'no')+'">'+(ok?1:0)+'</td></tr>';
+  });
+  rows.innerHTML = h;
+
+  // проверка
+  var maxP2 = [2,3,2,2,3,4,4];
+  var students = [
+    {n:'Абрамова Дарья',   st:'сдала 13:52',  cls:'s-ok',   p1:[1,1,1,0,1,1,1,1,0,1,1,1], ai:[2,1,2,0,1,0,0]},
+    {n:'Гарипов Тимур',    st:'сдал 12:40',   cls:'s-ok',   p1:[1,1,1,0,1,1,1,1,1,1,0,1], ai:[2,1,1,2,1,1,0]},
+    {n:'Каримова Алсу',    st:'фото до 14:09',cls:'s-late', p1:[1,1,1,1,1,1,1,1,1,1,1,1], ai:[2,2,2,1,1,2,1]},
+    {n:'Лебедев Максим',   st:'не сдал',      cls:'s-no',   p1:null, ai:null},
+    {n:'Никитина Полина',  st:'сдала 11:14',  cls:'s-ok',   p1:[1,1,1,1,1,1,1,1,0,1,0,1], ai:[2,1,2,2,1,0,0]}
+  ];
+  var g = document.getElementById('checkgrid');
+  function render(){
+    var h = '<thead><tr><th class="name">Ученик</th>';
+    for (var i=1;i<=12;i++) h += '<th>№'+i+'<span class="m">авто</span></th>';
+    for (var j=0;j<7;j++) h += '<th'+(j===0?' style="border-left:2px solid var(--ink-3)"':'')+'>№'+(13+j)+'<span class="m">макс '+maxP2[j]+'</span></th>';
+    h += '<th>Итог</th><th>Фото</th></tr></thead><tbody>';
+    students.forEach(function(s, si){
+      h += '<tr><td class="name">'+s.n+'<small><span class="status '+s.cls+'">'+s.st+'</span></small></td>';
+      if (!s.p1){ h += '<td colspan="19" class="c" style="color:var(--ink-3)">работа не сдана</td><td class="tot">—</td><td class="act"></td></tr>'; return; }
+      var tot = 0, pending = 0;
+      s.p1.forEach(function(v){ tot += v; h += '<td class="c auto">'+v+'</td>'; });
+      s.ai.forEach(function(v, j){
+        var acc = s.acc && s.acc[j];
+        if (acc){ tot += v; h += '<td class="c conf'+(j===0?' sep':'')+'">'+v+'</td>'; }
+        else { pending++; h += '<td class="c aiprop'+(j===0?' sep':'')+'" data-s="'+si+'" data-j="'+j+'" title="Предложение ИИ. Нажми, чтобы принять">'+v+'</td>'; }
+      });
+      h += '<td class="tot">'+(pending ? '<span style="color:var(--ai)">…</span>' : tot)+'</td><td class="act"><button class="btn" type="button" style="padding:4px 10px">Открыть</button></td></tr>';
+    });
+    g.innerHTML = h + '</tbody>';
+    [].forEach.call(g.querySelectorAll('td.aiprop'), function(td){
+      td.addEventListener('click', function(){ var s = students[+td.dataset.s]; s.acc = s.acc || []; s.acc[+td.dataset.j] = true; render(); });
+    });
+  }
+  render();
+  document.getElementById('runAi').addEventListener('click', function(e){
+    e.target.textContent = 'ИИ проверила 4 работы — предложения фиолетовым';
+    e.target.disabled = true;
+  });
+  document.getElementById('acceptAll').addEventListener('click', function(){
+    students.forEach(function(s){ if (s.ai) s.acc = s.ai.map(function(){ return true; }); }); render();
+  });
+})();
+</script>
