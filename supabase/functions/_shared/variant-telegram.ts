@@ -286,6 +286,65 @@ export function buildMockExamResultTelegramMessage(payload: MockExamResultTelegr
   return { text: lines.join('\n'), replyMarkup: null }
 }
 
+/**
+ * §224. Напоминания о пробнике — производитель триггер
+ * `mock_exam_schedule_notifications` на `mock_exams` (SQL): строки встают в
+ * очередь заранее со `scheduled_for`, очередь сама ждёт момента.
+ * Payload: title, starts_at, ends_at, photos_until (ISO), link.
+ */
+export interface MockExamStartTelegramPayload {
+  title?: unknown
+  starts_at?: unknown
+  ends_at?: unknown
+  photos_until?: unknown
+  link?: unknown
+}
+
+/** «14:00» по Москве; не разобралось — пусто (строку со временем не пишем). */
+export function formatClockMsk(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' })
+}
+
+function mockTitle(v: unknown): string {
+  return typeof v === 'string' && v.trim() ? v.trim() : 'Пробник'
+}
+
+/**
+ * «Через час — пробник». Приходит за час до начала (только если пробник
+ * назначен раньше, чем за час). Кнопки нет: открывать пока нечего — страница
+ * покажет только отсчёт; кнопка приходит со вторым сообщением, в начале.
+ */
+export function buildMockExamSoonTelegramMessage(payload: MockExamStartTelegramPayload) {
+  const from = formatClockMsk(payload.starts_at)
+  const to = formatClockMsk(payload.ends_at)
+  const when = from && to ? `${from}–${to}` : from
+  const lines = [
+    '⏰ <b>Через час — пробник</b>',
+    '',
+    `«${escapeHtml(mockTitle(payload.title))}»` + (when ? ` · ${when}` : ''),
+    'Нужны черновик, ручка и телефон для фото второй части',
+  ]
+  return { text: lines.join('\n'), replyMarkup: null }
+}
+
+/** «Пробник начался» — в момент начала, с кнопкой на страницу пробника. */
+export function buildMockExamStartTelegramMessage(payload: MockExamStartTelegramPayload, appUrl: string) {
+  const to = formatClockMsk(payload.ends_at)
+  const photos = formatClockMsk(payload.photos_until)
+  const lines = [
+    '📝 <b>Пробник начался</b>',
+    '',
+    `«${escapeHtml(mockTitle(payload.title))}»` + (to ? ` · до ${to}` : ''),
+  ]
+  if (photos) lines.push(`Фото второй части — до ${photos}`)
+  const link = typeof payload.link === 'string' ? payload.link : null
+  return { text: lines.join('\n'), replyMarkup: buildLinkButton(link, appUrl, 'Открыть пробник') }
+}
+
 export interface TgErrorInfo {
   isPermanent: boolean
   isBotBlocked: boolean
@@ -329,6 +388,12 @@ export function isTelegramPreferenceEnabled(
 
   switch (eventType) {
     case 'new_homework':
+      return prefs.homework ?? true
+    // §224. Напоминания о пробнике («через час» и «начался») — под галочкой
+    // «Домашние задания»: своей у пробников нет, а по смыслу это задание,
+    // которое надо сделать. Ветки явные, чтобы решение было видно здесь.
+    case 'mock_exam_soon':
+    case 'mock_exam_started':
       return prefs.homework ?? true
     case 'lesson_reminder':
       return prefs.lesson ?? true

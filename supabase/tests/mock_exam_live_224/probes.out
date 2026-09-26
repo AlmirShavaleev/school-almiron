@@ -1,0 +1,342 @@
+NOTICE:  database "probe224" does not exist, skipping
+PENDING_224 applied twice: ok
+=================== P. ПИНГ ===================
+--- P1. свой ученик, окно открыто: первый пинг создаёт бланк (opened_at, 12 пустых полей)
+BEGIN
+      ping1       
+------------------
+ {"pinged": true}
+
+--- P2. сразу второй пинг — no-op (чаще раза в 10 с база не пишет)
+       ping2       
+-------------------
+ {"pinged": false}
+
+ opened_now | seen_now | fields | filled | submitted_at 
+------------+----------+--------+--------+--------------
+ t          | t        |     12 |      0 | 
+
+--- P2b. бланк мимо функции — не записать (ни last_seen_at, ни вставки)
+SAVEPOINT
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:29: ERROR:  permission denied for table mock_exam_sheets
+ROLLBACK
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:31: ERROR:  permission denied for table mock_exam_sheets
+ROLLBACK
+--- P3. через 11 с после прошлого пинга — пишет; opened_at не меняется
+BEGIN
+INSERT 0 1
+  ping_after_11s  
+------------------
+ {"pinged": true}
+
+ opened_kept | seen_now 
+-------------+----------
+ t           | t
+
+ROLLBACK
+--- P4. через 9 с — no-op
+BEGIN
+INSERT 0 1
+   ping_after_9s   
+-------------------
+ {"pinged": false}
+
+ seen_unchanged 
+----------------
+ t
+
+ROLLBACK
+--- P5. ученик ЧУЖОЙ группы (11Б) пингует пробник 11А — отказ
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:58: ERROR:  Этот пробник не ваш
+CONTEXT:  PL/pgSQL function mock_exam_ping(uuid) line 11 at RAISE
+ROLLBACK
+--- P6. преподаватель группы пингует — отказ (он не ученик)
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:64: ERROR:  Этот пробник не ваш
+CONTEXT:  PL/pgSQL function mock_exam_ping(uuid) line 11 at RAISE
+ROLLBACK
+--- P7. anon — нет права execute
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:69: ERROR:  permission denied for function mock_exam_ping
+ROLLBACK
+--- P8. до начала (E3 начнётся через час) — no-op, бланк не создан
+BEGIN
+           ping_before_start           
+---------------------------------------
+ {"pinged": false, "reason": "closed"}
+
+ sheets_e3 
+-----------
+         0
+
+ROLLBACK
+--- P9. после конца окна (E4 сдвинут: кончился 1 мин назад) — no-op, last_seen_at не тронут
+BEGIN
+UPDATE 1
+INSERT 0 1
+            ping_after_end             
+---------------------------------------
+ {"pinged": false, "reason": "closed"}
+
+ seen_unchanged 
+----------------
+ t
+
+ROLLBACK
+--- P10. пробник без окна (E5) — no-op
+BEGIN
+            ping_no_window             
+---------------------------------------
+ {"pinged": false, "reason": "closed"}
+
+ROLLBACK
+--- P11. после сдачи: пинг пишет только last_seen_at; ответы, сдача, updated_at — прежние
+BEGIN
+INSERT 0 1
+ ping_after_submit 
+-------------------
+ {"pinged": true}
+
+   answers_1_3    | submitted_kept | updated_kept | seen_now 
+------------------+----------------+--------------+----------
+ {12,"0,75",NULL} | t              | t            | t
+
+--- P11b. и ответ после сдачи по-прежнему не пишется
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:107: ERROR:  Работа уже сдана — ответы не меняются
+CONTEXT:  PL/pgSQL function mock_exam_student_gate(uuid,text) line 25 at RAISE
+PL/pgSQL function save_mock_exam_answer(uuid,integer,text) line 8 at assignment
+ROLLBACK
+--- P12. пинг, потом ответ: поле ложится на своё место (не сдвигается в пустом массиве)
+BEGIN
+       ping       
+------------------
+ {"pinged": true}
+
+           saved            
+----------------------------
+ {"task": 5, "answer": "7"}
+
+                                 answers                                 
+-------------------------------------------------------------------------
+ [null, null, null, null, "7", null, null, null, null, null, null, null]
+
+ROLLBACK
+=================== L. МОНИТОР mock_exam_live ===================
+--- L1. ученик своей группы — отказ
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:123: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function mock_exam_live(uuid) line 9 at RAISE
+ROLLBACK
+--- L2. преподаватель ЧУЖОЙ группы (11Б) — отказ
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:129: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function mock_exam_live(uuid) line 9 at RAISE
+ROLLBACK
+--- L3. anon — нет права execute
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:134: ERROR:  permission denied for function mock_exam_live
+ROLLBACK
+--- L4. преподаватель группы: S1 пишет (пинг 30 с назад, 2 ответа), S2 был 80 с назад, S4 сдал (фото 1), ключа и ответов в ответе нет
+BEGIN
+INSERT 0 2
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+ server_now_is_db | part1_last | has_key | has_answers_arr | leaks_answer 
+------------------+------------+---------+-----------------+--------------
+ t                | 12         | f       | f               | t
+
+      name      | online | answered | submitted | photos | opened 
+----------------+--------+----------+-----------+--------+--------
+ Ёлкина Мария   | true   | 12       | t         | 1      | t
+ Абрамова Дарья | true   | 2        | f         | 0      | t
+ Белов Артём    | false  | 0        | f         | 0      | t
+
+--- L5. куратор курса — видит (персонал курса), тот же список
+ students 
+----------
+        3
+
+ROLLBACK
+--- L6. окно закрылось: онлайн нет ни у кого, даже при свежем пинге
+BEGIN
+UPDATE 1
+INSERT 0 1
+      name      | online 
+----------------+--------
+ Абрамова Дарья | false
+
+ROLLBACK
+=================== M. РАЗДЕЛ «ПРОБНИКИ» (my_mock_exams) ===================
+--- M1. свой ученик: E3 (с разделом) и E4 (без раздела) — видны; E5 (без времени) — нет
+BEGIN
+         title          | has_module | has_work | score 
+------------------------+------------+----------+-------
+ Пробник №4 без раздела | f          | false    | 
+ Пробник №3 онлайн      | t          | false    | 
+
+ROLLBACK
+--- M2. открыл и ушёл (только пинг) — has_work = false; с ответом — true
+BEGIN
+       ping       
+------------------
+ {"pinged": true}
+
+ has_work_after_ping 
+---------------------
+ false
+
+            saved            
+-----------------------------
+ {"task": 1, "answer": "12"}
+
+ has_work_after_answer 
+-----------------------
+ true
+
+ROLLBACK
+--- M3. ученик чужой группы спрашивает список 11А — пусто
+BEGIN
+ list 
+------
+ []
+
+ROLLBACK
+--- M4. итог в списке — только после «Уведомить» И конца окна
+BEGIN
+INSERT 0 1
+ score_while_running | notified 
+---------------------+----------
+                     | false
+
+UPDATE 1
+ score_after_end | max_score | notified 
+-----------------+-----------+----------
+ 70              | 32        | true
+
+ROLLBACK
+=================== G. ПРОВЕРКА ПО КЛЮЧУ НЕ ТРОГАЕТ ПУСТОЙ БЛАНК ===================
+--- G1. после конца: S1 открыл и ушёл (пинг), S2 ответил на №1 — проверен только S2
+BEGIN
+INSERT 0 2
+INSERT 0 1
+UPDATE 1
+                    grade                    
+---------------------------------------------
+ {"changed_cells": 12, "graded_students": 1}
+
+ has_profile |              student_id              | score 
+-------------+--------------------------------------+-------
+ t           | 20000000-0000-0000-0000-000000000052 |     1
+
+ROLLBACK
+=================== N. УВЕДОМЛЕНИЯ О НАЧАЛЕ (триггер) ===================
+--- N1. время назначено за 3 ч: каждому ученику 11А (3) — «через час» (за 1 ч) и «начался»
+BEGIN
+UPDATE 1
+    event_type     | rows | status  | at_from_now |                                           link                                            
+-------------------+------+---------+-------------+-------------------------------------------------------------------------------------------
+ mock_exam_soon    |    3 | pending | 02:00:00    | /my-course/40000000-0000-0000-0000-000000000001/mock/50000000-0000-0000-0000-000000000005
+ mock_exam_started |    3 | pending | 03:00:00    | /my-course/40000000-0000-0000-0000-000000000001/mock/50000000-0000-0000-0000-000000000005
+
+--- N2. перенос на +5 ч: старые 6 строк cancelled, новые 6 pending с другим ключом
+UPDATE 1
+  status   |    event_type     | rows | at_from_now 
+-----------+-------------------+------+-------------
+ pending   | mock_exam_soon    |    3 | 04:00:00
+ pending   | mock_exam_started |    3 | 05:00:00
+ cancelled | mock_exam_soon    |    3 | 02:00:00
+ cancelled | mock_exam_started |    3 | 03:00:00
+
+--- N3. правка названия: строк не прибавилось, у pending новый текст
+UPDATE 1
+  status   | rows |           title           
+-----------+------+---------------------------
+ pending   |    6 | Пробник №5 — переименован
+ cancelled |    6 | Пробник №5 без времени
+
+--- N4. одна строка уже ушла (sent); правка длительности — её не трогаем, остальные pending с новым концом
+UPDATE 1
+UPDATE 1
+  status   | rows | mixed_ends 
+-----------+------+------------
+ pending   |    5 | f
+ sent      |    1 | f
+ cancelled |    6 | f
+
+--- N5. перенос «в прошлое» (началось 10 мин назад): всё pending погашено, новых нет
+UPDATE 1
+  status   | rows 
+-----------+------
+ sent      |    1
+ cancelled |   11
+
+--- N6. перенос на +30 мин: «через час» уже в прошлом — только «начался»
+UPDATE 1
+    event_type     | count 
+-------------------+-------
+ mock_exam_started |     3
+
+--- N7. время снято (starts_at = null): pending не осталось
+UPDATE 1
+ pending 
+---------
+       0
+
+--- N8. вернули +5 ч (как в N2): погашенные строки ожили, дублей нет
+UPDATE 1
+  status   | rows 
+-----------+------
+ pending   |    5
+ sent      |    1
+ cancelled |    9
+
+ dup_keys 
+----------
+        0
+
+--- N9. пробник перевели в группу 11Б: строки 11А погашены, ученику 11Б — 2 строки
+UPDATE 1
+  status   | is_11b | count 
+-----------+--------+-------
+ pending   | t      |     2
+ sent      | f      |     1
+ cancelled | f      |    14
+
+--- N10. пробник удалён: pending не осталось
+DELETE 1
+ pending_after_delete 
+----------------------
+                    0
+
+ROLLBACK
+--- N11. под преподавателем группы (RLS mock_exams_manage): назначил время — строки встали (триггер definer), ему самому очередь не видна
+BEGIN
+UPDATE 1
+ queue_visible_to_teacher 
+--------------------------
+                        0
+
+    event_type     | count 
+-------------------+-------
+ mock_exam_soon    |     3
+ mock_exam_started |     3
+
+ROLLBACK
+--- N12. ученик не может поставить строку в очередь сам и не видит её
+BEGIN
+ queue_visible_to_student 
+--------------------------
+                        0
+
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:274: ERROR:  new row violates row-level security policy for table "notification_queue"
+ROLLBACK
+--- N13. ученик не может сдвинуть время пробника (и тем самым очередь)
+BEGIN
+UPDATE 0
+ROLLBACK
+--- N14. функцию триггера нельзя позвать напрямую
+BEGIN
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:286: ERROR:  permission denied for function mock_exam_schedule_notifications
+ROLLBACK
