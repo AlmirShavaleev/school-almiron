@@ -3,7 +3,7 @@
 # Кластер: initdb + pg_ctl -o "-p 5442 -k /var/tmp/pg224" (под пользователем postgres).
 # Слепок — файлы §221 (../mock_exam_lesson_221: 00/05/06b/07 и данные 10),
 # поверх — ПРИМЕНЁННЫЕ тексты миграций §218, §219, §221, §223 из
-# supabase/migrations, затем PENDING_224.sql дважды (проверка повторного прогона).
+# supabase/migrations, затем 20260926065848_mock_exam_live_section_reminders.sql дважды (проверка повторного прогона).
 # Вывод последнего прогона — probes.out рядом.
 H=${PGHOST_224:-/var/tmp/pg224}; PT=${PGPORT_224:-5442}
 P="psql -h $H -p $PT -U postgres -q"
@@ -20,5 +20,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S221/05_slice_219.sql && $Q -f $S221/06b_slic
  && $Q -f $R/20260926060726_mock_exam_notify_stats.sql \
  && $Q -f $S221/10_data.sql \
  && $Q -f $S/10_data_224.sql \
- && $Q -f $R/PENDING_224.sql 2>/dev/null && $Q -f $R/PENDING_224.sql 2>/dev/null && echo "PENDING_224 applied twice: ok" \
+ && $Q -f $R/20260926065848_mock_exam_live_section_reminders.sql 2>/dev/null && $Q -f $R/20260926065848_mock_exam_live_section_reminders.sql 2>/dev/null && echo "PENDING_224 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe224 -f $S/20_probes.sql

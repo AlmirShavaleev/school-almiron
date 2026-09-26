@@ -1,10 +1,6 @@
 -- §224. Пробник: кто пишет прямо сейчас, раздел «Пробники», уведомление о начале
 -- (карточка board/073).
 --
--- НЕ ПРИМЕНЕНО. Применяет оркестратор через MCP apply_migration, после чего
--- файл переименовывается в <version>_<name>.sql точно по записи в
--- supabase_migrations.schema_migrations (MIGRATIONS.md).
---
 -- Только добавляющая: две новые колонки у mock_exam_sheets, три новые функции
 -- (mock_exam_ping, mock_exam_live, mock_exam_schedule_notifications) и
 -- триггер на mock_exams. Две существующие функции пересозданы с той же
@@ -23,9 +19,7 @@
 --
 -- Политики не менялись. Ученику по-прежнему нечего писать в таблицы напрямую.
 
--- ──────────────────────────────────────────────────────────────────────────
 -- 1. Присутствие: когда открыл и когда последний раз был на странице
--- ──────────────────────────────────────────────────────────────────────────
 
 alter table public.mock_exam_sheets
   add column if not exists opened_at    timestamptz,
@@ -91,9 +85,7 @@ comment on function public.mock_exam_ping(uuid) is
 revoke all on function public.mock_exam_ping(uuid) from public, anon;
 grant execute on function public.mock_exam_ping(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
 -- 2. Монитор для преподавателя
--- ──────────────────────────────────────────────────────────────────────────
 -- Только персонал курса группы (mock_exam_is_staff → course_is_staff).
 -- «Онлайн» считает база по своему now(), не браузер. Ключа и самих ответов
 -- здесь нет — только число заполненных полей.
@@ -161,9 +153,7 @@ comment on function public.mock_exam_live(uuid) is
 revoke all on function public.mock_exam_live(uuid) from public, anon;
 grant execute on function public.mock_exam_live(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
 -- 3. Раздел «Пробники» у ученика
--- ──────────────────────────────────────────────────────────────────────────
 -- Раздел рисуется из этого списка; в modules ничего не создаётся. В разделе —
 -- всё, у чего задано время (starts_at), независимо от module_id.
 -- has_work — по содержимому: с §224 строка бланка появляется уже при первом
@@ -205,9 +195,7 @@ $$;
 revoke all on function public.my_mock_exams(uuid) from public, anon;
 grant execute on function public.my_mock_exams(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
 -- 4. Проверка по ключу не трогает пустой бланк
--- ──────────────────────────────────────────────────────────────────────────
 -- Текст — дословно §221 (20260926051556), одна правка в условии цикла:
 -- бланк берётся, если он сдан, или окно кончилось И в бланке что-то есть
 -- (ответ или фото). Строка, созданная одним пингом, не проверяется.
@@ -334,9 +322,7 @@ comment on function public.grade_mock_exam_part1(uuid) is
 revoke all on function public.grade_mock_exam_part1(uuid) from public, anon;
 grant execute on function public.grade_mock_exam_part1(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
 -- 5. Telegram ученикам: «через час — пробник» и «пробник начался»
--- ──────────────────────────────────────────────────────────────────────────
 -- Через notification_queue: scheduled_for — очередь сама ждёт до момента
 -- (claim_notification_queue берёт только scheduled_for <= now()).
 -- Колокольчика нет: у notifications нет отложенной доставки, а раздел
@@ -441,16 +427,3 @@ create trigger mock_exams_schedule_notifications
   after insert or update of starts_at, duration_minutes, photo_grace_minutes, group_id, title or delete
   on public.mock_exams
   for each row execute function public.mock_exam_schedule_notifications();
-
--- ──────────────────────────────────────────────────────────────────────────
--- 6. Пробы — выполнять ОТДЕЛЬНО, в откатываемом блоке, под authenticated
--- ──────────────────────────────────────────────────────────────────────────
--- Прогонялись на локальном Postgres 16 со слепком схемы
--- (supabase/tests/mock_exam_live_224/). НА ПРОДЕ НЕ ПРОГОНЯЛИСЬ.
---
--- Пробники, которые после §224 впервые станут видны ученикам (время задано,
--- раздела нет) — проверить ДО применения:
---   select me.id, me.title, g.name as group_name, me.starts_at, me.module_id
---     from public.mock_exams me join public.groups g on g.id = me.group_id
---    where me.starts_at is not null and me.module_id is null
---    order by me.starts_at;

@@ -4,7 +4,7 @@
  * Карточки собирает `process-notification-queue` через
  * `_shared/variant-telegram.ts` — здесь проверяются настоящие функции из
  * этого файла, а не копии. Payload — тот, что кладёт триггер
- * `mock_exam_schedule_notifications` (PENDING_224.sql).
+ * `mock_exam_schedule_notifications` (20260926065848_mock_exam_live_section_reminders.sql).
  */
 import { describe, expect, it } from 'vitest'
 import {
