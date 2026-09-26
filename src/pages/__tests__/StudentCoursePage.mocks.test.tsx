@@ -44,9 +44,9 @@ vi.mock('@/store/authStore', () => ({ useAuthStore: (selector: any) => selector(
 
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
 
-function renderPage() {
+function renderPage(entry = '/my-course/g1') {
   return render(
-    <MemoryRouter initialEntries={['/my-course/g1']}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/my-course/:groupId" element={<StudentCoursePage />} />
         <Route path="/my-course/:groupId/mock/:examId" element={<p>страница пробника</p>} />
@@ -70,5 +70,16 @@ describe('StudentCoursePage — раздел «Пробники»', () => {
     fireEvent.click(await screen.findByText('Механика'))
     expect(await screen.findByTestId('topics-list-view')).not.toHaveTextContent('Пробник №3')
     expect(screen.queryByTestId('mock-exams-section')).toBeNull()
+  })
+})
+
+describe('StudentCoursePage — ссылка из Telegram (§224.1)', () => {
+  it('?mock=<id> сразу открывает страницу пробника', async () => {
+    renderPage('/my-course/g1?mock=0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0')
+    expect(await screen.findByText('страница пробника')).toBeInTheDocument()
+  })
+  it('мусор в ?mock= не уводит со страницы курса', () => {
+    renderPage('/my-course/g1?mock=../../admin')
+    expect(screen.queryByText('страница пробника')).toBeNull()
   })
 })

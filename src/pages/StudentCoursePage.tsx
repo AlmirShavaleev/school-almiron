@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   BookOpen, Check, Clock, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
@@ -934,6 +934,20 @@ export function StudentCoursePage() {
   // §221/§224: бланк, сдача и результат пробника — на его странице; в программе
   // пробники — своим разделом «Пробники» над разделами курса.
   const openMock = (examId: string) => navigate(`/my-course/${groupId}/mock/${examId}`)
+
+  // §224.1. Кнопка «Открыть пробник» из Telegram ведёт на страницу КУРСА с
+  // ?mock=<id>, а не прямо на пробник: курс есть в любой версии сайта, и
+  // ученик не попадёт на «страница не найдена», если версия ещё без
+  // пробников. Здесь — сразу на страницу пробника (replace: «назад» не
+  // вернёт на промежуточный курс). Чужой или несуществующий id просто
+  // откроет страницу пробника с её собственной ошибкой прав.
+  const [searchParams] = useSearchParams()
+  const mockFromLink = searchParams.get('mock')
+  useEffect(() => {
+    if (groupId && mockFromLink && /^[0-9a-f-]{36}$/i.test(mockFromLink)) {
+      navigate(`/my-course/${groupId}/mock/${mockFromLink}`, { replace: true })
+    }
+  }, [groupId, mockFromLink, navigate])
 
   // Reset selected module when course changes
   useEffect(() => { setSelectedModule(null) }, [groupId])
