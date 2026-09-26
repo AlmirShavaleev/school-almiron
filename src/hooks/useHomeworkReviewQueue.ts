@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   QUEUE_LOADED_STATUSES,
+  QUEUE_SELECT,
   buildQueueWorks,
   countByTab,
   isAlreadyReviewedError,
@@ -57,9 +58,7 @@ export function useHomeworkReviewQueue(tab: QueueTab = 'submitted') {
     async function load() {
       const { data, error: err } = await supabase
         .from('topic_homework_attempts')
-        .select(
-          '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
-        )
+        .select(QUEUE_SELECT)
         .in('status', QUEUE_LOADED_STATUSES)
         .order('submitted_at', { ascending: true })
 

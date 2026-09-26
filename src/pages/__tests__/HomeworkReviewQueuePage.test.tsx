@@ -509,6 +509,29 @@ describe('HomeworkReviewQueuePage — фильтр по теме', () => {
     ])
   })
 
+  it('§233. Вход с главной `?topic=<id>` — очередь сразу этого задания, фильтр можно снять', () => {
+    render(
+      <MemoryRouter initialEntries={['/homework-queue?topic=t3']}>
+        <HomeworkReviewQueuePage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('t3')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(1)
+    expect(screen.getByText('Вера')).toBeInTheDocument()
+    choose('queue-topic-filter', 'all')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(3)
+  })
+
+  it('§233. `?topic=` темы, которой нет в очереди, — фильтр не применяется, список не пустеет', () => {
+    render(
+      <MemoryRouter initialEntries={['/homework-queue?topic=nope']}>
+        <HomeworkReviewQueuePage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('queue-topic-filter')).toHaveValue('all')
+    expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(3)
+  })
+
   it('выбор темы оставляет только её работы', () => {
     renderPage()
     choose('queue-topic-filter', 't3')

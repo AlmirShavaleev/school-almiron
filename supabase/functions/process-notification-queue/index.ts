@@ -4,6 +4,7 @@ import {
   buildMockExamResultTelegramMessage,
   buildMockExamSoonTelegramMessage,
   buildMockExamStartTelegramMessage,
+  buildHomeworkReminderTelegramMessage,
   buildVariantAssignedTelegramMessage,
   buildVariantDeadlineTelegramMessage,
   classifyTelegramError,
@@ -349,6 +350,12 @@ function buildMessage(item: QueueItem, appUrl: string) {
     case 'mock_exam_started':
       return buildMockExamStartTelegramMessage(p, appUrl)
 
+    // §233. «Срок ДЗ прошёл» — кнопка «Напомнить всем» на главной
+    // преподавателя (remind_overdue_homework). Текст и тест — в
+    // `_shared/variant-telegram.ts`; галочка — «Просроченное ДЗ».
+    case 'topic_homework_reminder':
+      return buildHomeworkReminderTelegramMessage(p, appUrl)
+
     default:
       return {
         text: `📬 Новое уведомление: ${esc(p.title ?? item.event_type)}`,
@@ -420,7 +427,7 @@ Deno.serve(async (req: Request) => {
       // Проверяем настройки уведомлений
       const { data: prefs } = await supabase
         .from('notification_prefs')
-        .select('telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments')
+        .select('telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments, overdue')
         .eq('user_id', item.profile_id)
         .maybeSingle()
 

@@ -500,7 +500,10 @@ export function HomeworkReviewQueuePage() {
   // «состояние ↔ адрес через эффект» — ровно та конструкция, в которой сидел
   // бесконечный цикл из §35.2; здесь она не нужна.
   const [courseFilter, setCourseFilter] = useState<string>('all')
-  const [topicFilter, setTopicFilter] = useState<string>('all')
+  // §233. `?topic=<id>` — вход «в очередь этого задания» с главной (ДЗ одно
+  // на тему). Читается ОДИН раз как начальное значение, дальше фильтр живёт
+  // своим состоянием, как и остальные: синхронизации с адресом нет.
+  const [topicFilter, setTopicFilter] = useState<string>(() => searchParams.get('topic') ?? 'all')
   const [order, setOrder] = useState<'oldest' | 'newest'>('oldest')
   const [onlyLate, setOnlyLate] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())

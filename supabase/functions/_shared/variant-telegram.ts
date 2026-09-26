@@ -24,6 +24,8 @@ export interface TelegramVariantPrefs {
   lesson?: boolean | null
   checked?: boolean | null
   lesson_changed?: boolean | null
+  /** §233. «Просроченное ДЗ» в настройках — напоминания «срок прошёл». */
+  overdue?: boolean | null
 }
 
 const SUBJECT_LABELS: Record<string, string> = {
@@ -360,6 +362,42 @@ export function buildMockExamStartTelegramMessage(payload: MockExamStartTelegram
   return { text: lines.join('\n'), replyMarkup: buildLinkButton(link, appUrl, 'Открыть пробник') }
 }
 
+/**
+ * §233. «Срок ДЗ прошёл» — кнопка «Напомнить всем» на главной преподавателя.
+ * Одно сообщение на ученика, в нём все его просроченные ДЗ, которым за сутки
+ * ещё не напоминали (payload кладёт `remind_overdue_homework`):
+ * `{ items: [{ title, course_title, due_date: 'YYYY-MM-DD', link }], link }`.
+ * Кнопка ведёт на первое ДЗ — самое давнее по сроку.
+ */
+export function buildHomeworkReminderTelegramMessage(payload: Record<string, unknown>, appUrl: string) {
+  const items = Array.isArray(payload.items)
+    ? (payload.items as unknown[]).filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    : []
+  const line = (it: Record<string, unknown>) =>
+    [it.course_title, it.title]
+      .map(v => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .map(escapeHtml)
+      .join(' · ') || 'Домашнее задание'
+  const due = (it: Record<string, unknown>) => (it.due_date ? formatDay(it.due_date) : '')
+
+  const lines: string[] = []
+  if (items.length <= 1) {
+    const it = items[0] ?? {}
+    lines.push('⏰ <b>Срок ДЗ прошёл — работа не сдана</b>', '', line(it))
+    if (due(it)) lines.push(`Срок был ${escapeHtml(due(it))}`)
+  } else {
+    lines.push(`⏰ <b>Срок прошёл — не сданы ${items.length} ДЗ</b>`, '')
+    for (const it of items) lines.push(`• ${line(it)}` + (due(it) ? ` — срок был ${escapeHtml(due(it))}` : ''))
+  }
+  const first = items[0]?.link ?? payload.link
+  const link = typeof first === 'string' && first ? first : null
+  return {
+    text: lines.join('\n'),
+    replyMarkup: buildLinkButton(link, appUrl, items.length > 1 ? 'Открыть первое ДЗ' : 'Открыть задание'),
+  }
+}
+
 export interface TgErrorInfo {
   isPermanent: boolean
   isBotBlocked: boolean
@@ -410,6 +448,10 @@ export function isTelegramPreferenceEnabled(
     case 'mock_exam_soon':
     case 'mock_exam_started':
       return prefs.homework ?? true
+    // §233. «Срок ДЗ прошёл» с главной преподавателя — галочка «Просроченное
+    // ДЗ» («Если ДЗ не сдано в срок»), она ровно про это.
+    case 'topic_homework_reminder':
+      return prefs.overdue ?? true
     case 'lesson_reminder':
       return prefs.lesson ?? true
     case 'homework_reviewed':

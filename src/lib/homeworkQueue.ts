@@ -40,6 +40,14 @@ export const QUEUE_STATUSES: QueueTab[] = QUEUE_TABS.map(t => t.key)
  */
 export const QUEUE_LOADED_STATUSES: TopicHomeworkAttemptStatus[] = ['draft', ...QUEUE_STATUSES]
 
+/**
+ * Что очередь читает из `topic_homework_attempts` (join ДЗ → тема → курс под
+ * `toQueueRows`). Одна строка на всех, кто собирает работы очереди: главная
+ * преподавателя (§233) считает «ждут проверки» ровно так же, как очередь.
+ */
+export const QUEUE_SELECT =
+  '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))'
+
 /** Строка очереди: попытка + контекст (ДЗ → тема → курс), пришедший из join'а. */
 export interface QueueRow {
   attempt: TopicHomeworkAttemptRow

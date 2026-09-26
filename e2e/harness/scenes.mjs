@@ -845,6 +845,18 @@ export const scenes = [
     { persona: 'ownerNoPhysicsKey', name: 'v232-video-nokey', url: '/admin', width, height, actions: [{ clickRole: ['button', 'Видео'] }, { wait: 1200 }, { clickSel: '[data-testid="video-library-switch"] button:has-text("Физика")' }, { wait: 400 }] },
   ]),
 
+  // §233: главная преподавателя v2 — с данными, пустая, после «Напомнить всем».
+  // «Напомнить» пишет в фикстуры — гонять по ширине своим процессом (§211):
+  //   node e2e/harness/tour.mjs d233 1280 ; node e2e/harness/tour.mjs d233 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'ownerTeacher', name: 'd233-home', url: '/teacher', width, height, actions: [{ wait: 1800 }] },
+    { persona: 'ownerHomeEmpty', name: 'd233-home-empty', url: '/teacher', width, height, actions: [{ wait: 1800 }] },
+    { persona: 'ownerTeacher', name: 'd233-home-reminded', url: '/teacher', width, height, actions: [
+      { wait: 1800 }, { clickSel: '[data-testid="home-remind"]' }, { wait: 1500 },
+      { eval: "document.querySelector('[data-testid=\"home-overdue\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 300 },
+    ] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

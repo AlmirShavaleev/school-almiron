@@ -47,6 +47,10 @@ export const personas = {
   // библиотеки физики (BUNNY_PHYSICS_API_KEY). Отдельная персона, потому что
   // заглушка функции решает по персоне, а контекст один на персону и ширину.
   ownerNoPhysicsKey: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §233: владелец в режиме учителя — главная преподавателя со своими группами;
+  // `ownerHomeEmpty` — он же, когда проверять и напоминать нечего.
+  ownerTeacher: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  ownerHomeEmpty: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   guest: { user: null },
 }
 
@@ -1526,6 +1530,65 @@ function bunnyVideoStats232(persona) {
   }
 }
 
+// ── §233: главная преподавателя (дизайн v2, экран 03) ───────────────────────
+// Ответ `teacher_home` — выдуманный, как у настоящей функции: пробник «№6» на
+// проверке (5 работ — ждут и частично, как на его странице), четверо не сдали
+// ДЗ к сроку (у одного нет Telegram), двое просели (ряд ДЗ и пробник), три
+// события на неделю. «Сегодня» — по Москве в момент запроса. `remind_overdue_homework`
+// помечает напомненными тех, у кого Telegram есть, и главная после
+// перезагрузки показывает «Напомнили в …». Персона `ownerHomeEmpty` — тот же
+// владелец без единой работы на проверке и с пустым ответом: «Всё проверено».
+const mskDay = (shift = 0) => new Date(Date.now() + shift * 864e5).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
+function teacherHome233(persona) {
+  if (persona === 'ownerHomeEmpty') {
+    return {
+      teacher_home: () => ({ today: mskDay(), now: new Date().toISOString(), groups: [], mock_pending: [], overdue: [], series: [], upcoming: [] }),
+      remind_overdue_homework: { sent: 0, pairs: 0, already: 0, no_telegram: [], muted: [], sent_at: new Date().toISOString() },
+    }
+  }
+  const G = '11А профиль'
+  const od = (k, topic, due, telegram) => ({
+    homework_id: IDS.hw(topic), topic_id: IDS.topic(topic), course_id: LESSON.course, group_id: MOCK_GROUP, group_name: G,
+    title: TOPIC_TITLES[topic - 1], student_id: mockStudent(k), student_name: MOCK_ROSTER[k], due_date: mskDay(due),
+    telegram, reminded_at: null,
+  })
+  const overdue = [od(10, 4, -2, 'ok'), od(0, 4, -2, 'ok'), od(7, 4, -1, 'ok'), od(9, 2, -1, 'none')]
+  const home = () => ({
+    today: mskDay(),
+    now: new Date().toISOString(),
+    groups: [
+      { course_id: IDS.course, course_title: course.title, group_id: IDS.group, name: groups[0].name },
+      { course_id: LESSON.course, course_title: 'Математика 11А', group_id: MOCK_GROUP, name: G },
+    ],
+    mock_pending: [{ mock_exam_id: D228.done, title: 'Пробник №6', group_name: G, works: 5, oldest_student_id: D228.garipov, oldest_at: ago(24 * 9) }],
+    overdue: overdue.map(r => ({ ...r })),
+    series: [
+      { student_id: mockStudent(6), student_name: MOCK_ROSTER[6], course_id: LESSON.course, group_name: G, hw: [78, 84, 80, 86, 77, 55, 50, 57], mocks: [] },
+      { student_id: mockStudent(5), student_name: MOCK_ROSTER[5], course_id: LESSON.course, group_name: G, hw: [], mocks: [66, 70, 72, 74, 70, 72, 70, 58].map(score => ({ score, unit: 'test' })) },
+      // Ровный ряд — в «Просели» не попадает: правило решает клиент.
+      { student_id: mockStudent(1), student_name: MOCK_ROSTER[1], course_id: LESSON.course, group_name: G, hw: [80, 80, 82, 79, 81, 80, 78, 83], mocks: [] },
+    ],
+    upcoming: [
+      { kind: 'homework', id: IDS.hw(2), topic_id: IDS.topic(2), course_id: IDS.course, group_name: groups[0].name, title: TOPIC_TITLES[1], day: mskDay(1), time: null },
+      { kind: 'mock', id: D227.empty, topic_id: null, course_id: LESSON.course, group_name: G, title: 'Пробник №4', day: mskDay(3), time: '10:00' },
+      { kind: 'homework', id: IDS.hw(1), topic_id: IDS.topic(1), course_id: IDS.course, group_name: groups[0].name, title: TOPIC_TITLES[0], day: mskDay(5), time: null },
+    ],
+  })
+  return {
+    teacher_home: home,
+    remind_overdue_homework: () => {
+      const at = new Date().toISOString()
+      const sent = new Set(overdue.filter(r => r.telegram === 'ok' && !r.reminded_at).map(r => r.student_id))
+      for (const r of overdue) if (sent.has(r.student_id)) r.reminded_at = at
+      return {
+        sent: sent.size, pairs: overdue.filter(r => sent.has(r.student_id)).length, already: 0,
+        no_telegram: overdue.filter(r => r.telegram === 'none').map(r => ({ student_id: r.student_id, name: r.student_name })),
+        muted: [], sent_at: at,
+      }
+    },
+  }
+}
+
 export function baseFixtures(persona) {
   const myTopicTasks = topicTaskDefs.map(r => ({ ...r }))
   const fx = {
@@ -1604,6 +1667,8 @@ export function baseFixtures(persona) {
       // НЕ должно: внешний плеер харнесс обрывает, событий нет — значит, и
       // секунд нет. Заглушка стоит именно для того, чтобы это было видно.
       video_watch_add: null,
+      // §233: главная преподавателя.
+      ...teacherHome233(persona),
     },
     functions: {
       // §232: статистика видео по двум библиотекам Bunny (выдуманные числа).
@@ -1630,6 +1695,8 @@ export function baseFixtures(persona) {
     fx.tables.topic_homework_attempts.push({ id, homework_id: body.p_homework_id, student_id: IDS.studentRow, attempt_number: 1, status: 'draft', submitted_at: null, created_at: NOW, updated_at: NOW, homework: hwById(body.p_homework_id), topic_homework: hwById(body.p_homework_id), topic_homework_reviews: [] })
     return id
   }
+  // §233: пустая главная — ни одной работы на проверке.
+  if (persona === 'ownerHomeEmpty') fx.tables.topic_homework_attempts = fx.tables.topic_homework_attempts.filter(a => a.status !== 'submitted')
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
