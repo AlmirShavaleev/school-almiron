@@ -209,6 +209,12 @@ export interface MockExamResultTelegramPayload {
   part1_max?: unknown
   part2_score?: unknown
   part2_max?: unknown
+  // §223. Статистика: считает SQL в момент «Уведомить».
+  peers?: unknown        // сколько ДРУГИХ учеников группы с итогом
+  better_pct?: unknown   // доля из них с итогом ниже, целые проценты; null — меньше трёх других
+  is_best?: unknown      // итог не ниже ни у кого (при трёх и более других)
+  prev_score?: unknown   // итог прошлого пробника того же шаблона
+  prev_title?: unknown
 }
 
 function intOrNull(v: unknown): number | null {
@@ -243,14 +249,39 @@ export function buildMockExamResultTelegramMessage(payload: MockExamResultTelegr
     '',
     `«${escapeHtml(title)}»` + (day ? ` · ${escapeHtml(day)}` : ''),
   ]
+  // С таблицей перевода итог — тестовый, а части — первичные: без строки
+  // «первичный» 10 + 8 рядом с «72» выглядело бы ошибкой. §223: первичный —
+  // сразу под итогом, части — под ним: от общего к частному.
+  if (primary != null && primary !== score) lines.push(`Первичный балл — ${escapeHtml(of(primary, primaryMax))}`)
   const parts = [
     p1 != null ? `1 часть — ${of(p1, p1max)}` : null,
     p2 != null ? `2 часть — ${of(p2, p2max)}` : null,
   ].filter(Boolean) as string[]
   if (parts.length) lines.push(escapeHtml(parts.join(' · ')))
-  // С таблицей перевода итог — тестовый, а части — первичные: без строки
-  // «первичный» 10 + 8 рядом с «72» выглядело бы ошибкой.
-  if (primary != null && primary !== score) lines.push(`Первичный балл — ${escapeHtml(of(primary, primaryMax))}`)
+
+  // §223. Статистика — отдельным абзацем. Место в группе только долей и
+  // только когда других не меньше трёх (на двоих процент выдаёт чужой балл);
+  // ноль не пишем — карточка сообщает, а не стыдит. Рядом — сколько
+  // написали, чтобы процент был честным.
+  const stats: string[] = []
+  const peers = intOrNull(payload.peers)
+  const pct = intOrNull(payload.better_pct)
+  const written = peers != null ? `написали ${peers + 1}` : null
+  if (payload.is_best === true && peers != null && peers >= 3) {
+    stats.push(`🏆 Лучший результат в группе · ${written}`)
+  } else if (pct != null && pct > 0 && peers != null && peers >= 3) {
+    stats.push(`Лучше, чем ${pct}% группы · ${written}`)
+  }
+  const prev = intOrNull(payload.prev_score)
+  if (prev != null && score != null) {
+    const d = score - prev
+    const prevTitle = typeof payload.prev_title === 'string' && payload.prev_title.trim() ? payload.prev_title.trim() : null
+    const was = prevTitle ? `«${escapeHtml(prevTitle)}» — ${prev}` : `было ${prev}`
+    stats.push(d === 0
+      ? `Как на прошлом пробнике (${was})`
+      : `${d > 0 ? '📈 +' : '📉 −'}${Math.abs(d)} к прошлому пробнику (${was})`)
+  }
+  if (stats.length) lines.push('', ...stats)
 
   return { text: lines.join('\n'), replyMarkup: null }
 }
