@@ -1,4 +1,4 @@
-PENDING_229 applied twice: ok
+229 applied twice: ok
 =================== M. ПЕРЕНОС ДАННЫХ (миграция прогнана дважды) ===================
 --- M1. каждый пробник, существовавший до миграции: ровно один вариант, №1, те же пути и тот же ключ
              mock_exam_id             | variants | pos | same_condition | same_solution | same_key 
@@ -311,7 +311,7 @@ INSERT 0 1
       2
 
 psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:279: ERROR:  Вариант не сменить: ученик уже открыл пробник — у него есть бланк или фото
-CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 40 at RAISE
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 39 at RAISE
 ROLLBACK
 --- C2. то же через «раздачу» пачкой (upsert): S1 с бланком оставлен тем же вариантом — пачка проходит
 BEGIN
@@ -330,7 +330,7 @@ INSERT 0 1
 INSERT 0 1
 DELETE 1
 psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:297: ERROR:  Вариант не сменить: ученик уже открыл пробник — у него есть бланк или фото
-CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 40 at RAISE
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 39 at RAISE
 ROLLBACK
 --- C4. удалить вариант 2, по которому пишет S2 — 23514; вариант 3 (никто не пишет) — можно
 BEGIN
@@ -341,7 +341,7 @@ DELETE 1
              2
 
 psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:306: ERROR:  Вариант не удалить: по нему уже пишут или писали ученики
-CONTEXT:  PL/pgSQL function mock_exam_variants_guard() line 21 at RAISE
+CONTEXT:  PL/pgSQL function mock_exam_variants_guard() line 20 at RAISE
 ROLLBACK
 --- C5. номер варианта не меняется; ученик не из группы — 23514
 BEGIN
@@ -350,7 +350,7 @@ CONTEXT:  PL/pgSQL function mock_exam_variants_guard() line 5 at RAISE
 ROLLBACK
 BEGIN
 psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:317: ERROR:  Ученик не из группы этого пробника
-CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 28 at RAISE
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 27 at RAISE
 ROLLBACK
 --- C6. вариант ЧУЖОГО пробника ученику не выдать (составная ссылка)
 BEGIN

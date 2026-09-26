@@ -1,46 +1,6 @@
--- §229. Варианты внутри одного пробника: у каждого варианта своё условие,
--- решение, критерии и ключ первой части; ученику выдаётся его вариант.
---
--- НЕ ПРИМЕНЕНО. Применяет оркестратор через MCP apply_migration, после чего
--- файл переименовывается в <version>_<name>.sql точно по записи в
--- supabase_migrations.schema_migrations (MIGRATIONS.md).
---
--- Только добавляющая: одна колонка у mock_exams, три новые таблицы, новые
--- функции и триггеры. Старые колонки mock_exams.condition_path/solution_path и
--- таблица mock_exam_answer_keys НЕ удаляются и продолжают читаться: пробник без
--- строк вариантов ведёт себя как до §229 (его «вариант 1» — старые колонки и
--- старый ключ). Каждому существующему пробнику перенос ниже заводит вариант 1
--- с теми же путями и ключом, так что код, переведённый на варианты, видит их
--- без действий владельца.
---
--- Почему варианты внутри пробника, а не отдельные пробники (утверждено
--- владельцем, макет МАКЕТ-ПРОБНИК-V3.html, экран 5): шаблон и время общие,
--- таблица баллов, средний, «хуже всего решены №…», монитор и уведомления —
--- одни на класс. Отдельные пробники разрезали бы класс на две статистики.
---
--- Пересоздаются (сигнатуры и права те же, текст — прежний + правка):
---   * grade_mock_exam_part1 (текст §224) — ключ берётся по ВАРИАНТУ ученика;
---   * my_mock_exam          (текст §221) — путь условия ЕГО варианта, номер и
---     подпись варианта; при первом чтении выдаёт вариант (поэтому volatile);
---   * my_mock_exam_result   (текст §221) — ключ и решение его варианта;
---   * mock_exam_file_readable / mock_exam_file_writable (текст §221) — новые
---     пути <пробник>/v<N>/condition|solution|criteria/…; старые
---     <пробник>/condition|solution/… читаются как вариант 1. Критерии —
---     только персоналу, никогда ученику. Политики хранилища (§221) не
---     пересоздаются: они зовут эти две функции.
--- Новые: save_mock_exam_variant_key (ключ варианта), помощники выдачи и
--- триггеры защиты. Старый экран не ломается: ключ, записанный в
--- mock_exam_answer_keys (save_mock_exam_key, §221 — не тронута), и пути,
--- записанные в mock_exams.condition_path/solution_path, триггерами ложатся в
--- вариант 1.
--- Любое правило чтения по времени — по now() базы, как в §221.
+-- §229. Варианты внутри пробника (условие/решение/критерии/ключ по варианту, выдача ученикам), перенос данных в вариант 1.
+-- Полный текст с пояснениями — в истории ветки (PENDING_229.sql, коммит 1fe6382); здесь применённый код без комментариев.
 
--- ──────────────────────────────────────────────────────────────────────────
--- 1. Таблицы
--- ──────────────────────────────────────────────────────────────────────────
-
--- Как раздавали варианты — чтобы вкладка «Настройка» показала выбранный
--- способ. На выдачу опоздавшим не влияет: им всегда наименее занятый.
 alter table public.mock_exams
   add column if not exists variant_mode text not null default 'order'
     check (variant_mode in ('order', 'random', 'manual'));
@@ -59,7 +19,6 @@ create table if not exists public.mock_exam_variants (
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   unique (mock_exam_id, position),
-  -- для составных ссылок ниже: ключ и выдача — только вариант СВОЕГО пробника
   unique (id, mock_exam_id)
 );
 
@@ -68,11 +27,6 @@ comment on table public.mock_exam_variants is
 comment on column public.mock_exam_variants.criteria_path is
   '§229. Критерии оценивания (PDF). Только персоналу — ученику никогда (mock_exam_file_readable).';
 
--- Ключ — отдельной таблицей, а не колонкой варианта, по той же причине, что
--- mock_exam_answer_keys в §221: это единственное секретное поле варианта.
--- Если когда-нибудь ученику откроют чтение строки варианта (подпись, номер),
--- колонка ключа ушла бы вместе с ней; отдельную таблицу без политик для
--- ученика так не открыть. Плюс перенос из mock_exam_answer_keys — один к одному.
 create table if not exists public.mock_exam_variant_keys (
   variant_id   uuid primary key,
   mock_exam_id uuid not null,
@@ -109,9 +63,6 @@ grant select, insert, update, delete on public.mock_exam_variants         to aut
 grant select, insert, update, delete on public.mock_exam_variant_keys     to authenticated;
 grant select, insert, update, delete on public.mock_exam_variant_students to authenticated;
 
--- Персонал курса группы читает (куратор — тоже, как ключ §221), пишет — тот,
--- кто вправе настраивать пробник (mock_exam_can_manage, §221). Для ученика
--- политик нет ни на одной из трёх таблиц.
 drop policy if exists mock_exam_variants_staff_select on public.mock_exam_variants;
 create policy mock_exam_variants_staff_select on public.mock_exam_variants
   for select to authenticated using (public.mock_exam_is_staff(mock_exam_id));
@@ -154,14 +105,6 @@ drop policy if exists mock_exam_variant_students_manage_delete on public.mock_ex
 create policy mock_exam_variant_students_manage_delete on public.mock_exam_variant_students
   for delete to authenticated using (public.mock_exam_can_manage(mock_exam_id));
 
--- ──────────────────────────────────────────────────────────────────────────
--- 2. Вариант ученика
--- ──────────────────────────────────────────────────────────────────────────
-
--- Вариант ученика: выданный, а если строки выдачи нет — первый по номеру.
--- Второе — не «выдача», а то, чем ученик пользовался до §229 (у пробника был
--- один вариант) и чем пользуются функции, которые писать не могут (stable:
--- политика хранилища, проверка по ключу). У пробника без вариантов — null.
 create or replace function public.mock_exam_student_variant(p_mock_exam_id uuid, p_student_id uuid)
 returns uuid
 language sql stable security definer set search_path = public, pg_temp as $$
@@ -174,8 +117,6 @@ $$;
 
 revoke all on function public.mock_exam_student_variant(uuid, uuid) from public, anon, authenticated;
 
--- Есть ли у ученика что-то в этом пробнике: бланк (он появляется уже при
--- первом заходе — пинг §224) или фото. С этого момента вариант не меняется.
 create or replace function public.mock_exam_student_has_work(p_mock_exam_id uuid, p_student_id uuid)
 returns boolean
 language sql stable security definer set search_path = public, pg_temp as $$
@@ -185,13 +126,6 @@ $$;
 
 revoke all on function public.mock_exam_student_has_work(uuid, uuid) from public, anon, authenticated;
 
--- Выдать вариант, если его ещё нет. Кому преподаватель не раздал (добавлен в
--- группу после назначения, или раздачи не было) — наименее занятый среди
--- учеников группы; при равенстве — вариант с условием, затем меньший номер.
--- Ученику, у которого уже есть бланк/фото (писал до §229), — первый по
--- номеру: ровно тот, по которому он писал (см. mock_exam_student_variant).
--- Замок на пробник: два ученика, зашедшие одновременно, не лягут в один и
--- тот же «наименее занятый».
 create or replace function public.mock_exam_ensure_variant(p_mock_exam_id uuid, p_student_id uuid)
 returns uuid
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -245,14 +179,6 @@ comment on function public.mock_exam_ensure_variant(uuid, uuid) is
 
 revoke all on function public.mock_exam_ensure_variant(uuid, uuid) from public, anon, authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 3. Защита в базе
--- ──────────────────────────────────────────────────────────────────────────
-
--- Выдача: ученик — из группы пробника; сменить (или снять) вариант нельзя,
--- если у ученика уже есть бланк или фото. «Сменить» считается от того, чем
--- он пользовался: от выданного, а без выдачи — от первого по номеру.
--- Удаление самого пробника (каскад) не останавливаем.
 create or replace function public.mock_exam_variant_students_guard()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -269,7 +195,6 @@ begin
     if not exists (select 1 from public.mock_exam_variants v where v.id = old.variant_id) then
       return old;  -- каскад удаления варианта: его защищает свой триггер
     end if;
-    -- Без строки выдачи ученик окажется на первом по номеру.
     v_before := old.variant_id;
     select v.id into v_after from public.mock_exam_variants v
      where v.mock_exam_id = old.mock_exam_id order by v.position limit 1;
@@ -315,8 +240,6 @@ create trigger mock_exam_variant_students_guard
   before insert or update or delete on public.mock_exam_variant_students
   for each row execute function public.mock_exam_variant_students_guard();
 
--- Вариант: номер и пробник не меняются (по номеру лежат файлы — v<N>/…);
--- удалить нельзя, пока по нему уже пишет или писал хоть один ученик.
 create or replace function public.mock_exam_variants_guard()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -328,7 +251,6 @@ begin
     new.updated_at := now();
     return new;
   end if;
-  -- DELETE. Каскад удаления пробника — не останавливаем.
   if not exists (select 1 from public.mock_exams me where me.id = old.mock_exam_id) then
     return old;
   end if;
@@ -352,11 +274,6 @@ create trigger mock_exam_variants_guard
   before update or delete on public.mock_exam_variants
   for each row execute function public.mock_exam_variants_guard();
 
--- Первый заход (пинг §224), первый ответ, сдача, первое фото — любой путь, что
--- заводит бланк, — сначала выдаёт вариант. BEFORE: в этот момент бланка ещё
--- нет, и выдача «наименее занятого» не упирается в защиту выше. (У insert … on
--- conflict триггер срабатывает и при уже существующем бланке — тогда
--- ученику без выдачи достаётся первый по номеру, то, чем он и пользовался.)
 create or replace function public.mock_exam_sheets_assign_variant()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -373,9 +290,6 @@ create trigger mock_exam_sheets_assign_variant
   before insert on public.mock_exam_sheets
   for each row execute function public.mock_exam_sheets_assign_variant();
 
--- Смена группы (§228 разрешает её, пока нет работ): выдача прежней группы
--- больше ни о ком — убрать. Новая группа получит варианты раздачей или при
--- первом заходе.
 create or replace function public.mock_exam_variants_group_changed()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -397,9 +311,6 @@ create trigger mock_exam_variants_group_changed
   after update of group_id on public.mock_exams
   for each row execute function public.mock_exam_variants_group_changed();
 
--- Старый экран (ветка до §229, пока она ещё открыта у кого-то) пишет условие
--- и решение в mock_exams.condition_path/solution_path. Если у пробника есть
--- вариант 1 — те же пути ложатся в него, иначе новый код их не увидел бы.
 create or replace function public.mock_exams_legacy_files_to_variant()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -423,14 +334,6 @@ create trigger mock_exams_legacy_files_to_variant
   after update of condition_path, solution_path on public.mock_exams
   for each row execute function public.mock_exams_legacy_files_to_variant();
 
--- ──────────────────────────────────────────────────────────────────────────
--- 4. Перенос данных: каждому пробнику — вариант 1
--- ──────────────────────────────────────────────────────────────────────────
--- Идемпотентно: вариант заводится только пробнику без вариантов, ключ и
--- выдача — on conflict do nothing. Выдача — всем ученикам группы и только
--- пробникам с одним вариантом (при повторном прогоне после того, как
--- владелец добавил варианты и раздал их, ничего не трогается).
-
 insert into public.mock_exam_variants (mock_exam_id, position, condition_path, solution_path)
 select me.id, 1, me.condition_path, me.solution_path
   from public.mock_exams me
@@ -450,15 +353,6 @@ select me.id, gs.student_id, v.id
  where not exists (select 1 from public.mock_exam_variants v2 where v2.mock_exam_id = me.id and v2.position > 1)
 on conflict (mock_exam_id, student_id) do nothing;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 5. Ключ варианта
--- ──────────────────────────────────────────────────────────────────────────
-
--- Старый экран (ветка до §229) и любая прямая запись ключа в
--- mock_exam_answer_keys: ключ пробника — это ключ его варианта 1, и он ложится
--- туда же. Поэтому save_mock_exam_key (§221) не пересоздаётся: её запись
--- доходит до проверки через этот триггер (строчный AFTER срабатывает до
--- следующего оператора — до вызова проверки внутри функции).
 create or replace function public.mock_exam_answer_keys_to_variant()
 returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -480,9 +374,6 @@ create trigger mock_exam_answer_keys_to_variant
   after insert or update on public.mock_exam_answer_keys
   for each row execute function public.mock_exam_answer_keys_to_variant();
 
--- Ключ одного варианта. Вариант 1 — ровно save_mock_exam_key (старая таблица
--- ключа и через триггер выше — ключ варианта 1), остальные — те же проверки и сразу
--- перепроверка законченных бланков. Под правами вызывающего, как §221.
 create or replace function public.save_mock_exam_variant_key(p_variant_id uuid, p_answers text[])
 returns jsonb
 language plpgsql
@@ -541,16 +432,6 @@ comment on function public.save_mock_exam_variant_key(uuid, text[]) is
 revoke all on function public.save_mock_exam_variant_key(uuid, text[]) from public, anon;
 grant execute on function public.save_mock_exam_variant_key(uuid, text[]) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 6. Проверка по ключу — ключ варианта ученика
--- ──────────────────────────────────────────────────────────────────────────
--- Текст — дословно §224 (20260926065848). Правки:
---   * у пробника с вариантами ключ берётся по варианту ученика (выданный,
---     без выдачи — первый по номеру); «нет ключа» — только если нет ни одного
---     ключа варианта; ученик, у варианта которого ключа нет, не проверяется;
---   * у пробника без вариантов — прежний ключ mock_exam_answer_keys, как было.
--- Под правами вызывающего, как и раньше: варианты, ключи и выдачу персонал
--- читает своими политиками.
 create or replace function public.grade_mock_exam_part1(p_mock_exam_id uuid)
 returns jsonb
 language plpgsql
@@ -593,7 +474,6 @@ begin
     return jsonb_build_object('graded_students', 0, 'changed_cells', 0, 'skipped', 'no_window');
   end if;
   select k.answers into v_key from public.mock_exam_answer_keys k where k.mock_exam_id = p_mock_exam_id;
-  -- §229: у пробника с вариантами ключ — у каждого варианта свой.
   select v.id into v_first from public.mock_exam_variants v
    where v.mock_exam_id = p_mock_exam_id order by v.position limit 1;
   v_has_var := v_first is not null;
@@ -693,15 +573,6 @@ comment on function public.grade_mock_exam_part1(uuid) is
 revoke all on function public.grade_mock_exam_part1(uuid) from public, anon;
 grant execute on function public.grade_mock_exam_part1(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 7. Ученик: страница пробника и результат — по своему варианту
--- ──────────────────────────────────────────────────────────────────────────
-
--- Текст — дословно §221 (20260926051556). Правки: при чтении выдаёт вариант,
--- если он ещё не выдан (mock_exam_ensure_variant — поэтому функция больше не
--- stable: PostgREST выполняет stable-функции в транзакции только для чтения);
--- путь условия — его варианта (у пробника без вариантов — прежний); номер и
--- подпись варианта, число вариантов. Ключа, критериев, верности — нет.
 create or replace function public.my_mock_exam(p_mock_exam_id uuid)
 returns jsonb
 language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -728,7 +599,6 @@ begin
   select * into v_sheet from public.mock_exam_sheets
    where mock_exam_id = p_mock_exam_id and student_id = v_student;
   v_started := v_w.starts_at is not null and now() >= v_w.starts_at;
-  -- §229: свой вариант (выдаётся при первом чтении, если не выдан).
   v_var_id := public.mock_exam_ensure_variant(p_mock_exam_id, v_student);
   if v_var_id is not null then
     select * into v_var from public.mock_exam_variants where id = v_var_id;
@@ -776,9 +646,6 @@ $$;
 revoke all on function public.my_mock_exam(uuid) from public, anon;
 grant execute on function public.my_mock_exam(uuid) to authenticated;
 
--- Текст — дословно §221 (20260926051556, с правкой оркестратора про конец
--- окна). Правка §229: ключ и решение — его варианта (у пробника без
--- вариантов — прежние); номер и подпись варианта. Критериев нет.
 create or replace function public.my_mock_exam_result(p_mock_exam_id uuid)
 returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -801,8 +668,6 @@ begin
   if not found or v_r.notified_at is null then
     return jsonb_build_object('status', 'pending');
   end if;
-  -- Пока окно не закрылось — результата нет, даже если его уже отправили:
-  -- иначе ключ первой части уходит тому, кто ещё может его переписать.
   select * into v_w from public.mock_exam_window(p_mock_exam_id);
   if v_w.ends_at is not null and now() < v_w.ends_at then
     return jsonb_build_object('status', 'pending');
@@ -815,7 +680,6 @@ begin
    where me.id = p_mock_exam_id;
   select * into v_sheet from public.mock_exam_sheets
    where mock_exam_id = p_mock_exam_id and student_id = v_student;
-  -- §229: ключ и решение — его варианта.
   v_var_id := public.mock_exam_student_variant(p_mock_exam_id, v_student);
   if v_var_id is not null then
     select * into v_var from public.mock_exam_variants where id = v_var_id;
@@ -855,18 +719,6 @@ $$;
 revoke all on function public.my_mock_exam_result(uuid) from public, anon;
 grant execute on function public.my_mock_exam_result(uuid) to authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 8. Хранилище: пути вариантов
--- ──────────────────────────────────────────────────────────────────────────
--- Пути: <пробник>/v<N>/condition/…  — условие варианта N (ученику варианта N
---                                    с начала окна);
---       <пробник>/v<N>/solution/…   — решение (ученику варианта N после конца
---                                    окна и отправки результата, как §221);
---       <пробник>/v<N>/criteria/…   — критерии: ТОЛЬКО персоналу;
---       <пробник>/condition|solution/… — старые пути §221 = вариант 1;
---       <пробник>/photos/<ученик>/…  — фото, без изменений.
--- Текст обеих функций — дословно §221, правка — разбор папки варианта.
-
 create or replace function public.mock_exam_file_readable(p_name text)
 returns boolean
 language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -894,7 +746,6 @@ begin
   if v_parts[2] = 'photos' then
     return array_length(v_parts, 1) >= 4 and v_parts[3] = v_me::text;
   end if;
-  -- §229: папка варианта. Старые <пробник>/condition|solution — вариант 1.
   if v_parts[2] in ('condition', 'solution') then
     v_kind := v_parts[2];
     v_pos  := 1;
@@ -904,11 +755,9 @@ begin
   else
     return false;
   end if;
-  -- Критерии (и всё незнакомое) — никогда ученику.
   if v_kind not in ('condition', 'solution') then
     return false;
   end if;
-  -- Только свой вариант; у пробника без вариантов «свой» — первый.
   select v.position into v_mine
     from public.mock_exam_variants v
    where v.id = public.mock_exam_student_variant(v_exam, v_me);
@@ -944,7 +793,6 @@ begin
   if v_parts[2] in ('condition', 'solution') then
     return public.mock_exam_can_manage(v_exam);
   elsif v_parts[2] ~ '^v[0-9]{1,3}$' then
-    -- §229: файлы варианта — условие, решение, критерии; пишет персонал.
     return array_length(v_parts, 1) >= 4
        and v_parts[3] in ('condition', 'solution', 'criteria')
        and public.mock_exam_can_manage(v_exam);
