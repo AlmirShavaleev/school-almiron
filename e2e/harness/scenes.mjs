@@ -1,4 +1,4 @@
-import { IDS, LESSON } from './fixtures.mjs'
+import { IDS, LESSON, LIVE } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -640,6 +640,20 @@ export const scenes = [
     // исправленная №11 во второй строке и ручная вторая часть.
     { persona: 'owner', name: 'o221-grid-parts', url: `/mock-exams/${LESSON.res}`, width, height,
       actions: [{ wait: 1500 }, { eval: `(() => { const sc = document.querySelector('[data-testid="mock-grid-scroll"]'); const c = document.getElementById('mx-c-0-7'); if (sc && c) sc.scrollLeft = c.closest('td').offsetLeft - sc.clientWidth / 3 })()` }, { wait: 300 }], full: false },
+  ]),
+
+  // ── §224 (073): монитор идущего пробника, раздел «Пробники», настройка без раздела ──
+  // Монитор: группа из 16 выдуманных учеников, пробник идёт 47 минут
+  // (9 пишут, 4 сдали, 1 ушёл, 2 не заходили) и пробник, закончившийся 5 минут
+  // назад (догрузка фото). Ученик: главная курса — раздел «Пробники» над
+  // разделами (идёт / ближайший / прошедшие, среди прошедших — «Тест» без
+  // раздела, как на проде). Настройка — без полей «Раздел» и «Место».
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'o224-monitor-run', url: `/mock-exams/${LIVE.run}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'owner', name: 'o224-monitor-grace', url: `/mock-exams/${LIVE.grace}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'student', name: 's224-section', url: `/my-course/${LESSON.group}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'o224-setup', url: `/mock-exams/${LESSON.up}/setup`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'o224-list-groups', url: '/mock-exams', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid="mock-group-chip"]:has-text("11Б")' }, { wait: 500 }] },
   ]),
 
   // ── 360 narrow check on the densest screens ──

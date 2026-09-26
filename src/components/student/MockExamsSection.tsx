@@ -46,7 +46,7 @@ function MockRow({ item, now, onOpen }: { item: MockSectionItem<MockLessonListRo
   const action = actionLabel(exam, status)
   return (
     <div
-      className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3', group === 'now' && 'bg-primary-50/50', group === 'now' && 'border-l-[3px] border-l-primary-600')}
+      className={cn('flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3', group === 'now' && 'bg-primary-50/50', group === 'now' && 'border-l-[3px] border-l-primary-600')}
       data-testid="mock-section-row"
       data-status={status}
       data-group={group}
@@ -72,7 +72,7 @@ function MockRow({ item, now, onOpen }: { item: MockSectionItem<MockLessonListRo
           type="button"
           onClick={onOpen}
           data-testid="mock-section-open"
-          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-primary-700 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 sm:min-h-0 sm:py-1"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-sm font-medium text-primary-700 hover:bg-primary-50 sm:ml-0 sm:self-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 sm:min-h-0 sm:py-1"
         >
           {action}<ChevronRight size={15} aria-hidden />
         </button>

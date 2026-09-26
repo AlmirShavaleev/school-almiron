@@ -81,7 +81,7 @@ describe('ключ из Excel', () => {
   })
 })
 
-describe('§224. раздел «Пробники»: идёт → ближайшие → прошедшие', () => {
+describe('§224. раздел «Пробники»: идёт (открытый — первым) → ближайшие → прошедшие', () => {
   const H = 3600_000
   const now = at(START) + 2 * H // 12:00 МСК: пробник START идёт
   const ex = (id: string, startMs: number, extra: { submitted_at?: string | null; has_work?: boolean; notified?: boolean } = {}) => ({
@@ -102,8 +102,8 @@ describe('§224. раздел «Пробники»: идёт → ближайш�
       ex('grace', now - 4 * H - 5 * 60_000, { submitted_at: new Date(now - 5 * H).toISOString() }),
     ], now)
     expect(items.map(i => [i.exam.id, i.group, i.status])).toEqual([
-      ['grace', 'now', 'submitted'],
       ['running', 'now', 'open'],
+      ['grace', 'now', 'submitted'],
       ['soon-near', 'upcoming', 'upcoming'],
       ['soon-far', 'upcoming', 'upcoming'],
       ['past-new', 'past', 'checking'],

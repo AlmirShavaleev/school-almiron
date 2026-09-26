@@ -265,7 +265,11 @@ export function mockSectionItems<E extends StatusInput & { starts_at: string }>(
     return { exam, status, group, primary: false }
   })
   const rank: Record<MockSectionGroup, number> = { now: 0, upcoming: 1, past: 2 }
+  // Внутри «идёт» — сначала тот, что можно писать (главная кнопка наверху),
+  // потом сданные / с вышедшим временем, где осталось догрузить фото.
+  const openFirst = (i: { status: MockLessonStatus }) => (i.status === 'open' ? 0 : 1)
   items.sort((a, b) => rank[a.group] - rank[b.group]
+    || (a.group === 'now' ? openFirst(a) - openFirst(b) : 0)
     || (a.group === 'past' ? b.exam.starts_at.localeCompare(a.exam.starts_at) : a.exam.starts_at.localeCompare(b.exam.starts_at)))
   const first = items.find(i => i.status === 'open')
   if (first) first.primary = true

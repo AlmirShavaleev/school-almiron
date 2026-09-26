@@ -244,6 +244,8 @@ function notifyMockExamResults(body) {
 export const LESSON = {
   course: U('d', 50), module: U('e', 50), group: U('f', 50),
   up: U('c', 761), open: U('c', 762), sub: U('c', 763), res: U('c', 764),
+  // §224: пробник со временем, но без раздела (видим только в my_mock_exams).
+  stray: U('c', 765),
 }
 const mathCourse = { ...course2, id: LESSON.course, title: 'Математика ЕГЭ, профиль · 11А', subject: 'math', exam_type: 'ege', is_default_for_direction: false }
 const lessonGroup = { id: LESSON.group, name: '11А · профиль', course_id: LESSON.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 12, schedule_days: ['saturday'], schedule_time: '10:00', type: 'group', created_at: ago(24 * 40), teachers: teachers[0], curators: null, courses: mathCourse }
@@ -343,10 +345,18 @@ function lessonState(id) {
 }
 function lessonList(body) {
   if (body.p_group_id !== LESSON.group) return []
-  return LESSON_EXAMS.map(([id, , pos]) => {
+  const rows = LESSON_EXAMS.map(([id, , pos]) => {
     const s = lessonState(id)
-    return { id, title: s.title, module_id: LESSON.module, module_position: pos, starts_at: s.starts_at, ends_at: s.ends_at, photos_until: s.photos_until, submitted_at: s.submitted_at, has_work: id !== LESSON.up, notified: s.notified, server_now: s.server_now }
+    const res = id === LESSON.res ? lessonTotals[0] : null
+    return { id, title: s.title, module_id: LESSON.module, module_position: pos, starts_at: s.starts_at, ends_at: s.ends_at, photos_until: s.photos_until, duration_minutes: 240, submitted_at: s.submitted_at, has_work: id !== LESSON.up, notified: s.notified, score: res ? res.score : null, max_score: res ? 32 : null, server_now: s.server_now }
   })
+  // §224. Опасность из карточки 073: пробник со временем, но без раздела
+  // (на проде — «Тест» 11А, 26.09 в 06:05). До §224 ученик его не видел, с
+  // §224 он в разделе «Пробники» — прошедшим и «не сданным». На снимке он
+  // есть намеренно: так он будет выглядеть, если его не убрать до слияния.
+  const t = lessonWindow(mskTen(-1))
+  rows.push({ id: LESSON.stray, title: 'Тест', module_id: null, module_position: 0, ...t, duration_minutes: 240, submitted_at: null, has_work: false, notified: false, score: null, max_score: null, server_now: new Date().toISOString() })
+  return rows
 }
 function lessonResult(body) {
   if (body.p_mock_exam_id !== LESSON.res) return { status: 'pending' }
@@ -370,6 +380,87 @@ export const lessonRpcs = {
   save_mock_exam_key: { not_checkable: [], grade: { graded_students: 4, changed_cells: 0 } },
 }
 export { lessonTotals }
+
+// ── §224: монитор идущего пробника ───────────────────────────────────────────
+// Отдельная группа «11Б · профиль» из шестнадцати выдуманных учеников, как у
+// «11А профиль» (§218): в общие `students`/`profiles` они НЕ добавлены, экран
+// берёт их через embed `group_students`, а монитор — из `mock_exam_live`.
+// Два пробника: идёт (начался 47 минут назад) и закончился 5 минут назад
+// (идёт догрузка фото). Время — от настоящего «сейчас» прогона.
+export const LIVE = { group: U('f', 600), course: U('d', 60), run: U('c', 1650), grace: U('c', 1651) }
+const LIVE_ROSTER = [
+  'Алексеева Ксения', 'Бондарев Глеб', 'Валиева Диана', 'Гусев Матвей', 'Данилова Софья', 'Егоров Никита',
+  'Жукова Вероника', 'Зайцев Роман', 'Исаева Амина', 'Королёв Даниил', 'Литвинова Ева', 'Морозов Лев',
+  'Нуриева Камила', 'Орлов Семён', 'Павлова Алиса', 'Рахимов Артур',
+]
+const liveStudent = (k) => U('b', 600 + k)
+const liveGroupStudents = LIVE_ROSTER.map((name, k) => ({
+  id: U('f', 610 + k), group_id: LIVE.group, student_id: liveStudent(k), joined_at: ago(24 * 30),
+  students: { id: liveStudent(k), profile_id: U('a', 600 + k), profiles: { id: U('a', 600 + k), full_name: name, avatar_url: null } },
+}))
+group_students.push(...liveGroupStudents)
+const LIVE_EXAMS = [[LIVE.run, 'Пробник №5', -47], [LIVE.grace, 'Пробник №4', -245]]
+for (const [id, title, off] of LIVE_EXAMS) {
+  const w = lessonWindow(off)
+  mock_exams.push({
+    id, title, subject: 'math', exam_type: 'ege', group_id: LIVE.group, template_id: tpl.id,
+    date: w.starts_at, max_score: 32, created_by: IDS.teacherRow, created_at: ago(24 * 5),
+    module_id: null, module_position: 0, starts_at: w.starts_at, duration_minutes: 240, photo_grace_minutes: 15,
+    condition_path: `${id}/condition/1_variant.pdf`, solution_path: null,
+    groups: { name: '11Б · профиль', course_id: LIVE.course }, mock_exam_templates: tpl,
+    mock_exam_results: [], mock_exam_task_scores: [],
+  })
+}
+// Состояния учеников: [имя, вид, минут назад последний пинг / сдал, заполнено полей, фото].
+// Идёт: 9 пишут, 4 сдали, 1 был и ушёл, 2 не заходили.
+const LIVE_RUN = {
+  'Алексеева Ксения': ['online', 0.3, 9, 0], 'Бондарев Глеб': ['online', 0.5, 7, 0], 'Валиева Диана': ['submitted', 6, 12, 3],
+  'Гусев Матвей': ['online', 0.2, 11, 1], 'Данилова Софья': ['online', 0.6, 4, 0], 'Егоров Никита': ['online', 0.4, 8, 0],
+  'Жукова Вероника': ['away', 19, 5, 0], 'Зайцев Роман': ['absent'], 'Исаева Амина': ['submitted', 14, 12, 4],
+  'Королёв Даниил': ['online', 0.9, 6, 0], 'Литвинова Ева': ['submitted', 2, 11, 2], 'Морозов Лев': ['absent'],
+  'Нуриева Камила': ['online', 0.2, 10, 2], 'Орлов Семён': ['online', 1, 3, 0], 'Павлова Алиса': ['submitted', 22, 12, 3],
+  'Рахимов Артур': ['online', 0.7, 12, 0],
+}
+// Закончился 5 минут назад: 12 сдали, 2 открывали и не нажали «Сдать», 2 не заходили.
+const LIVE_GRACE = Object.fromEntries(LIVE_ROSTER.map((name, k) => [name,
+  k === 7 || k === 11 ? ['absent'] : k === 6 || k === 13 ? ['away', 40 + k, 7, 1] : ['submitted', 10 + k * 7, 12 - (k % 3), 2 + (k % 3)]]))
+const liveState = (id) => (id === LIVE.run ? LIVE_RUN : id === LIVE.grace ? LIVE_GRACE : null)
+function liveRows(id) {
+  const st = liveState(id)
+  const off = LIVE_EXAMS.find(x => x[0] === id)[2]
+  const w = lessonWindow(off)
+  return LIVE_ROSTER.map((name, k) => {
+    const [kind, agoMin, answered, photos] = st[name]
+    const t = (m) => new Date(Date.now() - m * MIN).toISOString()
+    return {
+      student_id: liveStudent(k), name, kind,
+      has_sheet: kind !== 'absent',
+      opened_at: kind === 'absent' ? null : new Date(Date.parse(w.starts_at) + (2 + k) * MIN).toISOString(),
+      last_seen_at: kind === 'absent' ? null : t(agoMin),
+      online: kind === 'online',
+      answered: kind === 'absent' ? 0 : answered,
+      submitted_at: kind === 'submitted' ? t(agoMin) : null,
+      photos: photos ?? 0,
+    }
+  })
+}
+// Бланки и фото — для ссылок «стр. N» (их экран берёт из таблиц, как в §221).
+export const liveSheets = LIVE_EXAMS.flatMap(([id]) => liveRows(id).filter(r => r.has_sheet).map(r => ({ mock_exam_id: id, student_id: r.student_id, submitted_at: r.submitted_at })))
+export const livePhotos = LIVE_EXAMS.flatMap(([id]) => liveRows(id).flatMap(r => Array.from({ length: r.photos }, (_, i) => ({
+  id: U('c', 60000 + (id === LIVE.run ? 0 : 1000) + LIVE_ROSTER.indexOf(r.name) * 10 + i), mock_exam_id: id, student_id: r.student_id,
+  storage_path: `${id}/photos/${r.student_id}/${i}_stranica-${i + 1}.webp`, file_name: `стр ${i + 1}.webp`, position: i,
+}))))
+export const liveRpcs = {
+  mock_exam_live: (body) => {
+    if (!liveState(body.p_mock_exam_id)) return null
+    const [id, title, off] = LIVE_EXAMS.find(x => x[0] === body.p_mock_exam_id)
+    return {
+      id, title, group_id: LIVE.group, ...lessonWindow(off), server_now: new Date().toISOString(), part1_last: 12,
+      students: liveRows(id).map(({ kind: _k, ...r }) => r),
+    }
+  },
+  mock_exam_ping: { pinged: true },
+}
 
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
@@ -1160,7 +1251,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets, mock_exam_photos, lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos], lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {
@@ -1197,6 +1288,8 @@ export function baseFixtures(persona) {
       notify_mock_exam_results: notifyMockExamResults,
       // §221: пробник-урок — ученические функции и проверка по ключу.
       ...lessonRpcs,
+      // §224: монитор идущего пробника и пинг ученика.
+      ...liveRpcs,
       student_progress_report: (body) =>
         body.p_student_id === IDS.otherStudent(0) ? progressReport : null,
       topic_homework_ai_expire_stale_jobs: null,

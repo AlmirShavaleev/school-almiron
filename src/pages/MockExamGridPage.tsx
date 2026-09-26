@@ -671,8 +671,8 @@ function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
   return (
     <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="mock-grid-works" data-phase={phase}>
       <p className="text-[11px] uppercase tracking-wider text-graphite-500">Онлайн-пробник · {mskDay(lesson.starts_at)}, {mskTime(lesson.starts_at)}–{mskTime(lesson.ends_at)}, фото до {mskTime(lesson.photos_until)}</p>
-      <p className={cn('mt-1 flex items-center gap-2 text-lg font-semibold', phase === 'running' ? 'text-primary-800' : phase === 'photos' ? 'text-amber-900' : 'text-graphite-900')} data-testid="mock-live-headline">
-        {phase === 'running' && <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-600" /></span>}
+      <p className={cn('mt-1 flex items-start gap-2 text-lg font-semibold', phase === 'running' ? 'text-primary-800' : phase === 'photos' ? 'text-amber-900' : 'text-graphite-900')} data-testid="mock-live-headline">
+        {phase === 'running' && <span className="relative mt-2 flex h-2.5 w-2.5 shrink-0" aria-hidden><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-600" /></span>}
         {liveHeadline(lesson, now)}
       </p>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
@@ -685,7 +685,10 @@ function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
       <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
         {rows.map(r => {
           const w = works[r.student_id]
-          const sheet = sheetLabel(r.answered, part1Last)
+          // Не заходил — бланка нет, «0 из 12» было бы шумом; «фото нет» у
+          // пишущего — тоже: фото вторая часть шлёт в конце.
+          const sheet = r.has_sheet ? sheetLabel(r.answered, part1Last) : ''
+          const noPhotosWorthSaying = started && (r.kind === 'submitted' || phase !== 'running')
           return (
             <div key={r.student_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm" data-testid="mock-grid-work-row" data-kind={r.kind}>
               <span className="min-w-[11rem] flex-1 text-graphite-900 sm:flex-none">{r.name}</span>
@@ -708,7 +711,7 @@ function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
                 </span>
               ) : r.photos > 0 ? (
                 <span className="text-xs text-graphite-600">фото {r.photos}</span>
-              ) : started ? (
+              ) : noPhotosWorthSaying ? (
                 <span className="text-xs text-graphite-400">фото нет</span>
               ) : null}
             </div>

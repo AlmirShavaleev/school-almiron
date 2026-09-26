@@ -1,4 +1,3 @@
-NOTICE:  database "probe224" does not exist, skipping
 PENDING_224 applied twice: ok
 =================== P. ПИНГ ===================
 --- P1. свой ученик, окно открыто: первый пинг создаёт бланк (opened_at, 12 пустых полей)
@@ -143,9 +142,9 @@ INSERT 0 2
 INSERT 0 1
 INSERT 0 1
 INSERT 0 1
- server_now_is_db | part1_last | has_key | has_answers_arr | leaks_answer 
-------------------+------------+---------+-----------------+--------------
- t                | 12         | f       | f               | t
+ server_now_is_db | part1_last | has_key | has_answers_arr | leaks_answer | leaks_key 
+------------------+------------+---------+-----------------+--------------+-----------
+ t                | 12         | f       | f               | f            | f
 
       name      | online | answered | submitted | photos | opened 
 ----------------+--------+----------+-----------+--------+--------
@@ -259,11 +258,11 @@ UPDATE 1
 --- N4. одна строка уже ушла (sent); правка длительности — её не трогаем, остальные pending с новым концом
 UPDATE 1
 UPDATE 1
-  status   | rows | mixed_ends 
------------+------+------------
- pending   |    5 | f
- sent      |    1 | f
- cancelled |    6 | f
+  status   | window_in_payload | rows 
+-----------+-------------------+------
+ pending   | 03:00:00          |    5
+ sent      | 04:00:00          |    1
+ cancelled | 04:00:00          |    6
 
 --- N5. перенос «в прошлое» (началось 10 мин назад): всё pending погашено, новых нет
 UPDATE 1
@@ -330,7 +329,7 @@ BEGIN
 --------------------------
                         0
 
-psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:274: ERROR:  new row violates row-level security policy for table "notification_queue"
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:275: ERROR:  new row violates row-level security policy for table "notification_queue"
 ROLLBACK
 --- N13. ученик не может сдвинуть время пробника (и тем самым очередь)
 BEGIN
@@ -338,5 +337,5 @@ UPDATE 0
 ROLLBACK
 --- N14. функцию триггера нельзя позвать напрямую
 BEGIN
-psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:286: ERROR:  permission denied for function mock_exam_schedule_notifications
+psql:/home/claude/agents/a224/repo/supabase/tests/mock_exam_live_224/20_probes.sql:287: ERROR:  permission denied for function mock_exam_schedule_notifications
 ROLLBACK
