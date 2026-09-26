@@ -23,7 +23,10 @@
 --   конец … конец + 15 мин  — фото ещё принимаются;
 --   после конец + 15 мин    — фото не принимаются;
 --   ключ ответов            — ученику никогда (таблица без политик для него);
---   решение и разбор        — только после mock_exam_results.notified_at (§219).
+--   решение и разбор        — только после mock_exam_results.notified_at (§219)
+--                             И после конца окна: рано отправленный результат не
+--                             открывает ключ/решение, пока группа ещё пишет
+--                             (правка оркестратора при применении, 26.09).
 --
 -- ──────────────────────────────────────────────────────────────────────────
 -- 1. Пробник в программе курса и его окно
@@ -466,7 +469,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
            'photos_until',    w.photos_until,
            'submitted_at',    sh.submitted_at,
            'has_work',        sh.student_id is not null,
-           'notified',        r.notified_at is not null,
+           'notified',        r.notified_at is not null and now() >= w.ends_at,
            'server_now',      now()
          ) order by me.starts_at), '[]'::jsonb)
     from public.mock_exams me
@@ -530,7 +533,7 @@ begin
     'answers',        case when v_sheet.student_id is not null then to_jsonb(v_sheet.answers) else '[]'::jsonb end,
     'submitted_at',   v_sheet.submitted_at,
     'updated_at',     v_sheet.updated_at,
-    'notified',       exists (select 1 from public.mock_exam_results r
+    'notified',       now() >= v_w.ends_at and exists (select 1 from public.mock_exam_results r
                                where r.mock_exam_id = p_mock_exam_id and r.student_id = v_student
                                  and r.notified_at is not null),
     'photos',         (select coalesce(jsonb_agg(jsonb_build_object(
@@ -564,6 +567,7 @@ declare
   v_exam    record;
   v_sheet   public.mock_exam_sheets;
   v_key     text[];
+  v_w       record;
 begin
   v_student := public.mock_exam_my_student_id(p_mock_exam_id);
   if v_student is null then
@@ -572,6 +576,12 @@ begin
   select * into v_r from public.mock_exam_results
    where mock_exam_id = p_mock_exam_id and student_id = v_student;
   if not found or v_r.notified_at is null then
+    return jsonb_build_object('status', 'pending');
+  end if;
+  -- Пока окно не закрылось — результата нет, даже если его уже отправили:
+  -- иначе ключ первой части уходит тому, кто ещё может его переписать.
+  select * into v_w from public.mock_exam_window(p_mock_exam_id);
+  if v_w.ends_at is not null and now() < v_w.ends_at then
     return jsonb_build_object('status', 'pending');
   end if;
 
@@ -846,11 +856,12 @@ begin
   if v_me is null then
     return false;
   end if;
+  select * into v_w from public.mock_exam_window(v_exam);
   if v_parts[2] = 'condition' then
-    select * into v_w from public.mock_exam_window(v_exam);
     return v_w.starts_at is not null and now() >= v_w.starts_at;
   elsif v_parts[2] = 'solution' then
-    return exists (select 1 from public.mock_exam_results r
+    return v_w.ends_at is not null and now() >= v_w.ends_at
+       and exists (select 1 from public.mock_exam_results r
                     where r.mock_exam_id = v_exam and r.student_id = v_me and r.notified_at is not null);
   elsif v_parts[2] = 'photos' then
     return array_length(v_parts, 1) >= 4 and v_parts[3] = v_me::text;
