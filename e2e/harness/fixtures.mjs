@@ -220,11 +220,11 @@ function saveMockExamGrid(body) {
  */
 function notifyMockExamResults(body) {
   const at = new Date().toISOString()
-  const ids = body.p_student_ids ?? mockTotals.map(r => r.student_id)
+  const ids = body.p_student_ids ?? [...mockTotals, ...d227Totals].filter(r => r.mock_exam_id === body.p_mock_exam_id).map(r => r.student_id)
   let sent = 0, already = 0, telegram = 0
   const rows = []
   for (const id of ids) {
-    const r = mockTotals.find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === id)
+    const r = [...mockTotals, ...d227Totals].find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === id)
     if (!r) continue
     if (r.notified_at && r.notified_score === r.score && r.notified_part1_score === r.part1_score && r.notified_part2_score === r.part2_score) { already++; continue }
     Object.assign(r, { notified_at: at, notified_score: r.score, notified_part1_score: r.part1_score, notified_part2_score: r.part2_score })
@@ -499,6 +499,82 @@ export function sandboxMockList(body) {
   const w = lessonWindow(SANDBOX_START_MIN)
   return [{ id: SANDBOX.exam, title: '№1', module_id: null, module_position: 0, ...w, duration_minutes: 240, submitted_at: null, has_work: false, notified: false, score: null, max_score: null, server_now: new Date().toISOString() }]
 }
+
+// ── §227: таблица пробника в новом дизайне ───────────────────────────────────
+// Группа «11А профиль» (двенадцать учеников §218). Два пробника:
+//  * `grid` — онлайн, закончился шесть дней назад: одиннадцать строк внесены,
+//    двенадцатой нет; первая часть — по ключу («авто»), у Ёлкиной два ответа
+//    ключ не проверил (пустые клетки первой части сданного бланка — «не
+//    сверено»); у Белова авто-клетку №5 преподаватель исправил (ручная);
+//    вторая часть — руками, с частичными, нулями и нерешёнными. Есть таблица
+//    перевода — вывод говорит о тестовых баллах. Баллы — генератор макета
+//    (`ДИЗАЙН-V2/design-v2.html`, тот же посев), выдумка целиком.
+//  * `empty` — без окна и без баллов: пустая таблица.
+export const D227 = { grid: U('c', 1680), empty: U('c', 1681), tpl: U('c', 732) }
+const D227_TPL = {
+  ...mock_exam_templates[0], id: D227.tpl,
+  score_scale: [0, 6, 11, 17, 22, 27, 34, 40, 46, 52, 58, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100, 100, 100, 100],
+}
+const d227Points = (() => {
+  let s = 11
+  const rnd = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 }
+  const max = D227_TPL.max_points
+  const diff = [.97, .93, .92, .88, .88, .82, .8, .76, .72, .7, .62, .55, .5, .3, .45, .18, .35, .14, .1]
+  const abil = [.9, 1.1, .8, 1.05, .7, 1.2, .85, .95, .6, 1.0, .75, 1]
+  return MOCK_ROSTER.map((_, i) => {
+    if (i === 11) return null
+    return max.map((mx, j) => {
+      const p = Math.min(.98, diff[j] * abil[i]); const r = rnd()
+      if (j < 12) return r < p ? 1 : (rnd(), 0)
+      // Не решал — у каждого третьего пусто («—»), у остальных 0: иначе пустые
+      // клетки не входят в «набрано по номеру», и слабых номеров не видно.
+      if (r > p * 1.6) return (i + j) % 3 ? 0 : null
+      return r < p ? mx : Math.max(0, Math.round(mx * rnd() * .7))
+    })
+  })
+})()
+const d227Start = lessonWindow(mskTen(-6)).starts_at
+mock_exams.push(
+  {
+    id: D227.grid, title: 'Пробник №2', subject: 'math', exam_type: 'ege', group_id: MOCK_GROUP, template_id: D227.tpl,
+    date: d227Start, max_score: 100, created_by: IDS.teacherRow, created_at: ago(24 * 9),
+    module_id: null, module_position: 0, starts_at: d227Start, duration_minutes: 240, photo_grace_minutes: 15,
+    condition_path: `${D227.grid}/condition/1_variant.pdf`, solution_path: null,
+    groups: { name: '11А профиль' }, mock_exam_templates: D227_TPL, mock_exam_results: [], mock_exam_task_scores: [],
+  },
+  {
+    id: D227.empty, title: 'Пробник №4', subject: 'math', exam_type: 'ege', group_id: MOCK_GROUP, template_id: mock_exam_templates[0].id,
+    date: '2026-10-25T09:00:00Z', max_score: 32, created_by: IDS.teacherRow, created_at: ago(3),
+    groups: { name: '11А профиль' }, mock_exam_templates: mock_exam_templates[0], mock_exam_results: [], mock_exam_task_scores: [],
+  },
+)
+const d227Scores = d227Points.flatMap((pts, i) => (pts ?? []).flatMap((v, t) => {
+  // Ёлкина: №9 и №11 ключ не проверил — клетки пустые, ждут преподавателя.
+  if (i === 3 && (t === 8 || t === 10)) return []
+  if (v == null) return []
+  const auto = t < 12 ? v : null
+  const points = i === 1 && t === 4 ? 1 - v : v
+  return [{ mock_exam_id: D227.grid, student_id: mockStudent(i), task_number: t + 1, points, auto_points: auto }]
+}))
+mock_exam_task_scores.push(...d227Scores)
+export const d227Totals = d227Points.flatMap((pts, i) => {
+  const rows = d227Scores.filter(r => r.student_id === mockStudent(i))
+  if (!rows.length) return []
+  const p1 = rows.filter(r => r.task_number <= 12).reduce((a, r) => a + r.points, 0)
+  const p2 = rows.filter(r => r.task_number > 12).reduce((a, r) => a + r.points, 0)
+  const score = D227_TPL.score_scale[p1 + p2]
+  // Трём первым итог уже отправлен, четвёртой — отправлялся другой.
+  const sent = i < 3 ? { notified_at: '2026-09-21T15:05:00Z', notified_score: score, notified_part1_score: p1, notified_part2_score: p2 }
+    : i === 3 ? { notified_at: '2026-09-20T15:05:00Z', notified_score: score - 4, notified_part1_score: p1, notified_part2_score: p2 - 1 }
+    : { notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null }
+  return [{ id: U('c', 1690 + i), mock_exam_id: D227.grid, student_id: mockStudent(i), score, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(24 * 5), ...sent }]
+})
+const d227End = Date.parse(d227Start) + 240 * MIN
+export const d227Sheets = d227Points.flatMap((pts, i) => (pts ? [{ mock_exam_id: D227.grid, student_id: mockStudent(i), submitted_at: new Date(d227End - (20 + i * 9) * MIN).toISOString() }] : []))
+export const d227Photos = d227Points.flatMap((pts, i) => (pts ? Array.from({ length: 1 + (i % 3) }, (_, k) => ({
+  id: U('c', 61000 + i * 10 + k), mock_exam_id: D227.grid, student_id: mockStudent(i),
+  storage_path: `${D227.grid}/photos/${mockStudent(i)}/${k}_stranica-${k + 1}.webp`, file_name: `стр ${k + 1}.webp`, position: k,
+})) : []))
 
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
@@ -1289,7 +1365,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos], lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals, ...d227Totals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets, ...d227Sheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos, ...d227Photos], lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {

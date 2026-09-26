@@ -105,8 +105,27 @@ describe('онлайн-пробник в таблице §218', () => {
     expect(autoOf(rows[0])).toEqual([true, true, false, false])
     expect(autoOf(rows[1])).toEqual([true, false, false, false])
     expect(autoOf(rows[2])).toEqual([false, false, false, false])
+    // §227. Уголок — у исключения: балл первой части, поставленный или исправленный руками (Белов №2).
+    expect(rows.map(r => within(r).queryAllByTestId('mock-grid-manual-mark').length)).toEqual([0, 1, 0])
     // Заголовок первой части — «авто», второй — максимум.
     expect(screen.getAllByText('авто')).toHaveLength(2)
+  })
+
+  it('§227: пустая клетка первой части сданного бланка — «не сверено» («?» пунктиром); у незаходившего — просто пусто', async () => {
+    // Абрамова сдала, №2 ключ не проверил (эталон не поддаётся автопроверке) — клетки нет.
+    stored = stored.filter(r => !(r.student_id === 's-a' && r.task_number === 2))
+    mount()
+    const rows = await screen.findAllByTestId('mock-grid-row')
+    const look = (r: HTMLElement, t: number) => within(r).getByLabelText(new RegExp(`задание ${t}$`)).closest('td')!.getAttribute('data-look')
+    expect(look(rows[0], 2)).toBe('unk')
+    expect((within(rows[0]).getByLabelText('Абрамова Дарья, задание 2') as HTMLInputElement).placeholder).toBe('?')
+    // Вторая часть той же строки — «не решено», а не «не сверено»: её ключ не проверяет.
+    expect(look(rows[0], 4)).toBe('none')
+    // Сафин не заходил: ни бланка, ни «авто» — ничего не ждёт, строка пустая.
+    expect([1, 2, 3, 4].map(t => look(rows[2], t))).toEqual(['empty', 'empty', 'empty', 'empty'])
+    // Балл вписан — обычная клетка.
+    fireEvent.change(within(rows[0]).getByLabelText('Абрамова Дарья, задание 2'), { target: { value: '1' } })
+    expect(look(rows[0], 2)).toBe('full')
   })
 
   it('правка авто-клетки снимает отметку сразу — ещё до сохранения', async () => {

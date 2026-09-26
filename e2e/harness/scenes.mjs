@@ -1,4 +1,4 @@
-import { IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -712,6 +712,23 @@ export const scenes = [
     { persona: 'owner', name: 'd226-review-link', url: `/homework-queue?attempt=${S.attempt(12)}`, width, height, actions: [{ wait: 3000 }], full: false },
     { persona: 'owner', name: 'd226-review-bottom', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: scrollReviewDown }, { wait: 700 }], full: false },
     { persona: 'student', name: 'd226-student-marks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1200 }, { clickSel: '[data-testid="hw-view-marks-button"]' }, { wait: 2500 }], full: false },
+  ]),
+
+  // ── §227: новый дизайн, шаг 3 — «Таблица пробника» ──
+  // Заполненная таблица (12 учеников: частичные, нули, «авто», не сверено,
+  // одна пустая строка), пустая таблица, идущий пробник с монитором; на
+  // телефоне — ещё таблица, прокрученная вправо (липкий «Ученик»). Сцены
+  // ничего не пишут — обе ширины можно гнать одним процессом.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd227-grid', url: `/mock-exams/${D227.grid}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'owner', name: 'd227-grid-empty', url: `/mock-exams/${D227.empty}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'd227-monitor', url: `/mock-exams/${LIVE.run}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'owner', name: 'd227-grid-scrolled', url: `/mock-exams/${D227.grid}`, width, height, full: false,
+      actions: [{ wait: 1800 }, { eval: `(() => { const sc = document.querySelector('[data-testid="mock-grid-scroll"]'); sc?.scrollIntoView({ block: 'start' }); if (sc) sc.scrollLeft = sc.scrollWidth })()` }, { wait: 300 }] },
+    { persona: 'owner', name: 'd227-grid-dirty', url: `/mock-exams/${D227.grid}`, width, height, full: false,
+      actions: [{ wait: 1800 }, { eval: `(() => { const i = document.getElementById('mx-c-4-14'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '1'); i.dispatchEvent(new Event('input', { bubbles: true })) })()` }, { wait: 400 }] },
+    { persona: 'owner', name: 'd227-notify-confirm', url: `/mock-exams/${D227.grid}`, width, height, full: false,
+      actions: [{ wait: 1800 }, { clickSel: '[data-testid="mock-grid-notify-all"]' }, { wait: 400 }] },
   ]),
 
   // ── 360 narrow check on the densest screens ──

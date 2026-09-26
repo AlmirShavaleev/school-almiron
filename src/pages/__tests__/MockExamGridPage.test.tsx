@@ -162,8 +162,67 @@ describe('MockExamGridPage — подхват и итоги', () => {
   it('«набрано по номеру» считается только по заполненным клеткам', async () => {
     open(); await ready()
     const pct = screen.getAllByTestId('mock-grid-task-pct').map(td => td.textContent)
-    // Решал только Белов: №1 1/1, №2 0/1, №3 2/2, №4 1/3.
-    expect(pct).toEqual(['100%', '0%', '100%', '33%'])
+    // Решал только Белов: №1 1/1, №2 0/1, №3 2/2, №4 1/3. Знак «%» — в
+    // подписи строки (§227: столбец в 30 точек «100%» не вмещает).
+    expect(pct).toEqual(['100', '0', '100', '33'])
+    // Слабый номер (§227) — набрано МЕНЬШЕ трети: №2 (0 из 1). №4 — ровно
+    // треть (1 из 3), не слабый, хотя округлённо «33».
+    const weak = screen.getAllByTestId('mock-grid-task-pct').map(td => td.hasAttribute('data-weak'))
+    expect(weak).toEqual([false, true, false, false])
+  })
+
+  it('§227: вывод над таблицей — из тех же клеток, что таблица, и меняется с правкой до сохранения', async () => {
+    open(); await ready()
+    const summary = () => screen.getByTestId('mock-grid-summary').textContent
+    // Без таблицы перевода — первичный, с максимумом и подписью «по N работам».
+    expect(summary()).toBe('Внесено 1 из 4. Средний — 4 первичных балла из 7 по 1 работе. Хуже всего решён №2: набрано меньше трети от максимума.')
+    fireEvent.change(cell('Сафин Амир', 2), { target: { value: '1' } })
+    fireEvent.change(cell('Сафин Амир', 4), { target: { value: '3' } })
+    // Сафин: 0+1+0+3 = 4 → средний (4+4)/2; №2 теперь 1 из 2 — не слабый.
+    expect(summary()).toBe('Внесено 2 из 4. Средний — 4 первичных балла из 7 по 2 работам.')
+  })
+
+  it('§227: клетки — полный, частично, ноль, не решено — видны и формой', async () => {
+    open(); await ready()
+    const look = (name: string, t: number) => cell(name, t).closest('td')!.getAttribute('data-look')
+    // Белов 1, 0, 2, 1 при максимумах 1, 1, 2, 3.
+    expect([1, 2, 3, 4].map(t => look('Белов Артём', t))).toEqual(['full', 'zero', 'full', 'part'])
+    // Строка без результата — пустые клетки без «—»; появился балл — пустые стали «не решено».
+    expect(cell('Сафин Амир', 1).placeholder).toBe('')
+    fireEvent.change(cell('Сафин Амир', 3), { target: { value: '2' } })
+    expect(look('Сафин Амир', 1)).toBe('none')
+    expect(cell('Сафин Амир', 1).placeholder).toBe('—')
+    // Ошибка — своё состояние, сохранение по-прежнему блокирует.
+    fireEvent.change(cell('Сафин Амир', 4), { target: { value: '9' } })
+    expect(look('Сафин Амир', 4)).toBe('err')
+  })
+
+  it('§227: главная кнопка одна — «Уведомить всех», а при несохранённой правке «Сохранить»', async () => {
+    open(); await ready()
+    const save = screen.getByTestId('mock-grid-save') as HTMLButtonElement
+    const all = screen.getByTestId('mock-grid-notify-all') as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    expect(save.textContent).toMatch(/Сохранено/)
+    expect(all.textContent).toBe('Уведомить всех · 1')
+    expect(all.className).toMatch(/from-action-from/)
+    expect(save.className).not.toMatch(/from-action-from/)
+    fireEvent.change(cell('Сафин Амир', 1), { target: { value: '1' } })
+    expect(save.disabled).toBe(false)
+    expect(save.className).toMatch(/from-action-from/)
+    expect(all.className).not.toMatch(/from-action-from/)
+    expect(all.disabled).toBe(true)
+  })
+
+  it('§227: «Вставить из Excel» раскрывает подсказку и ставит курсор в первую клетку «Ученик»', async () => {
+    open(); await ready()
+    // Таблица не пустая — подсказка свёрнута.
+    expect(screen.queryByTestId('mock-grid-paste-help')).toBeNull()
+    fireEvent.click(screen.getByTestId('mock-grid-paste-button'))
+    expect(screen.getByTestId('mock-grid-paste-help').textContent).toMatch(/Ctrl \+ V/)
+    await waitFor(() => expect(document.activeElement).toBe(screen.getAllByTestId('mock-grid-name')[0]))
+    // Вставка из этой клетки — прежняя, с фамилиями.
+    paste(document.activeElement!, 'Сафин\t1\t1\t2\t3')
+    expect(rowValues('Сафин Амир')).toEqual(['1', '1', '2', '3'])
   })
 
   it('Enter переводит в клетку ниже', async () => {
