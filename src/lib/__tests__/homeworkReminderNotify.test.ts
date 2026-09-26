@@ -3,7 +3,7 @@
  *
  * Карточку собирает `process-notification-queue` через
  * `_shared/variant-telegram.ts` — здесь проверяются настоящие функции из этого
- * файла. Payload — тот, что кладёт `remind_overdue_homework` (PENDING_233.sql):
+ * файла. Payload — тот, что кладёт `remind_overdue_homework` (миграция 20260926232039_teacher_home.sql):
  * `{ items: [{ title, course_title, due_date, link }], link }`.
  */
 import { describe, expect, it } from 'vitest'

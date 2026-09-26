@@ -4,7 +4,7 @@
 # Слепок и данные — цепочка §231 (../mock_exam_rights_231/run.sh: слепок §221/§224/§228/§229 +
 # ПРИМЕНЁННЫЕ тексты миграций §218–§231), затем добавки слепка §233 (topic_homework*,
 # notification_prefs, колонки открытости тем и т. п.), данные §233,
-# PENDING_233.sql ДВАЖДЫ (повторный прогон без ошибок) и пробы. Вывод — probes.out рядом.
+# 20260926232039_teacher_home.sql ДВАЖДЫ (повторный прогон без ошибок) и пробы. Вывод — probes.out рядом.
 H=${PGHOST_233:-/var/tmp/pg233}; PT=${PGPORT_233:-5533}
 P="psql -h $H -p $PT -U postgres -q"
 $P -c "drop database if exists probe233" -c "create database probe233" postgres 2>/dev/null
@@ -35,5 +35,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S221/05_slice_219.sql && $Q -f $S221/06b_slic
  && $Q -f $R/20260926220159_mock_exam_rights.sql \
  && $Q -f $S/05_slice_233.sql \
  && $Q -f $S/10_data_233.sql \
- && $Q -f $R/PENDING_233.sql && $Q -f $R/PENDING_233.sql && echo "233 applied twice: ok" \
+ && $Q -f $R/20260926232039_teacher_home.sql && $Q -f $R/20260926232039_teacher_home.sql && echo "233 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe233 -f $S/20_probes.sql
