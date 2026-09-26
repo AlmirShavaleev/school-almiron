@@ -200,9 +200,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       />
 
       {/* Sidebar panel */}
+      {/* §225. Меню нового дизайна: тёмно-синий градиент #1a3a80 → #0e1f47,
+          активный пункт — жёлтая «таблетка». Раскладка прежняя. */}
       <aside className={cn(
-        'fixed left-0 top-0 h-full w-72 md:w-64 bg-primary-950 text-white flex flex-col z-50',
-        'border-r border-white/10 shadow-2xl shadow-primary-950/30',
+        'fixed left-0 top-0 h-full w-72 md:w-64 bg-gradient-to-b from-menu-top to-menu-bottom text-white flex flex-col z-50',
+        'shadow-2xl shadow-primary-950/30',
         'transition-transform duration-300 ease-in-out',
         'md:translate-x-0',
         open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
@@ -216,12 +218,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div>
               <div className="text-white font-bold text-sm leading-tight tracking-tight">Школа Almiron</div>
-              <div className="text-primary-200 text-xs">School OS</div>
+              <div className="text-menu-muted text-xs">School OS</div>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-primary-200 hover:bg-white/10 hover:text-white transition-colors"
+            className="md:hidden w-8 h-8 flex items-center justify-center rounded-full text-menu-muted hover:bg-white/10 hover:text-white transition-colors"
             aria-label="Закрыть меню"
           >
             <X size={18} />
@@ -230,7 +232,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* User info */}
         <div className="px-4 py-4 border-b border-white/10">
-          <div className="rounded-lg bg-white/[0.06] border border-white/10 p-3 flex items-center gap-3">
+          <div className="rounded-2xl bg-white/[0.08] p-3 flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-white text-primary-950 flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
               {(profile as any).avatar_url
                 ? <img src={(profile as any).avatar_url} className="w-full h-full object-cover" alt="" />
@@ -239,7 +241,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-white text-sm font-semibold truncate leading-tight">{profile.full_name}</div>
-              <div className="text-primary-200 text-xs mt-0.5">{preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[menuRole] || menuRole}</div>
+              <div className="text-menu-muted text-xs mt-0.5">{preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[menuRole] || menuRole}</div>
             </div>
           </div>
         </div>
@@ -251,7 +253,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {studentSections.map(sec => (
                 <div key={sec.title}>
                   {sec.title && (
-                    <div className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-primary-300/80 select-none">
+                    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-menu-muted select-none">
                       {sec.title}
                     </div>
                   )}
@@ -276,7 +278,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="p-4 border-t border-white/10">
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-primary-100 hover:bg-white/10 hover:text-white transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-full text-sm text-menu-text hover:bg-white/10 hover:text-white transition-colors"
           >
             <LogOut size={18} />
             Выйти
@@ -303,7 +305,7 @@ function StaffNavigation({ items, badges, activePath, onClose }: { items: NavIte
     <div className="px-2 space-y-3">
       {sections.map(section => (
         <div key={section.title}>
-          <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-primary-300/80 select-none">
+          <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-menu-muted select-none">
             {section.title}
           </div>
           <ul className="space-y-0.5">
@@ -324,13 +326,17 @@ function SidebarNavItem({ item, badge, active, onClose }: { item: NavItem; badge
     <NavLink
       to={item.path}
       onClick={onClose}
+      // §225. Признак текущего пункта — атрибутом, а не только цветом: цвет
+      // подсветки меняется с дизайном (была белая плашка, стала жёлтая), а
+      // тесты и обход меню опираются на смысл «это текущий экран».
+      data-active={active ? 'true' : undefined}
       // Подсветку решает `activeNavPath`, а не сам `NavLink`: его правило
       // «адрес начинается с моего» зажигает сразу два вложенных пункта.
       className={cn(
-        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group',
+        'flex items-center gap-3 px-3 py-2.5 rounded-full text-sm transition-all group',
         active
-          ? 'bg-white text-primary-950 shadow-sm'
-          : 'text-primary-100/90 hover:bg-white/10 hover:text-white'
+          ? 'bg-gold-300 text-graphite-900 font-bold shadow-sm'
+          : 'font-medium text-menu-text hover:bg-white/10 hover:text-white'
       )}
     >
       {item.icon}
@@ -339,7 +345,12 @@ function SidebarNavItem({ item, badge, active, onClose }: { item: NavItem; badge
         <span
           data-testid="nav-badge"
           data-path={item.path}
-          className="bg-gold-300 text-primary-950 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center leading-none"
+          // §225. Счётчик-бейдж как в макете: на тёмном меню — светлая
+          // полупрозрачная подложка, на жёлтом активном пункте — тёмная.
+          className={cn(
+            'text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center leading-4 tabular-nums',
+            active ? 'bg-graphite-900/[0.12] text-graphite-900' : 'bg-white/[0.16] text-white',
+          )}
         >
           {badge > 99 ? '99+' : badge}
         </span>

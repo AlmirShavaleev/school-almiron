@@ -18,24 +18,27 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const inputId = id ?? generatedId
     return (
     <div className="w-full">
-      {label && <label htmlFor={inputId} className="block text-sm font-semibold text-graphite-700 mb-1.5">{label}</label>}
+      {label && <label htmlFor={inputId} className="block text-[13px] font-medium text-graphite-900 mb-1.5">{label}</label>}
       <div className="relative">
         {icon && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{icon}</span>}
         <input
           ref={ref}
           id={inputId}
           className={cn(
-            'w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm text-graphite-950 placeholder-slate-400 shadow-sm shadow-slate-950/[0.02]',
-            'transition-colors focus:border-primary-300 focus:outline-none focus:ring-4 focus:ring-primary-100',
-            'disabled:bg-slate-50 disabled:text-slate-500',
-            error && 'border-red-300 focus:border-red-300 focus:ring-red-100',
+            // §225. Поле v2: контур #c9d6ef в 1.5px, радиус 8, высота 48 на
+            // телефоне и 40 на ноутбуке, текст 15 (на телефоне не мельче 13 —
+            // и iOS не приближает страницу при фокусе, пока шрифт ≥ 16).
+            'w-full min-h-12 sm:min-h-10 rounded-lg border-[1.5px] border-graphite-300 bg-white px-3 py-2 text-base sm:text-[15px] text-graphite-900 placeholder-graphite-400',
+            'transition-colors focus:border-primary-600 focus:outline-none focus:ring-4 focus:ring-primary-100',
+            'disabled:bg-graphite-50 disabled:text-graphite-500',
+            error && 'border-verdict-bad focus:border-verdict-bad focus:ring-red-100',
             icon && 'pl-10',
             className
           )}
           {...props}
         />
       </div>
-      {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-medium text-verdict-bad-ink">{error}</p>}
     </div>
     )
   }
@@ -55,21 +58,21 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     const selectId = id ?? generatedId
     return (
     <div className="w-full">
-      {label && <label htmlFor={selectId} className="block text-sm font-semibold text-graphite-700 mb-1.5">{label}</label>}
+      {label && <label htmlFor={selectId} className="block text-[13px] font-medium text-graphite-900 mb-1.5">{label}</label>}
       <select
         ref={ref}
         id={selectId}
         className={cn(
-          'w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm text-graphite-950 shadow-sm shadow-slate-950/[0.02]',
-          'transition-colors focus:border-primary-300 focus:outline-none focus:ring-4 focus:ring-primary-100',
-          error && 'border-red-300 focus:border-red-300 focus:ring-red-100',
+          'w-full min-h-12 sm:min-h-10 rounded-lg border-[1.5px] border-graphite-300 bg-white px-3 py-2 text-base sm:text-[15px] text-graphite-900',
+          'transition-colors focus:border-primary-600 focus:outline-none focus:ring-4 focus:ring-primary-100',
+          error && 'border-verdict-bad focus:border-verdict-bad focus:ring-red-100',
           className
         )}
         {...props}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
-      {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-medium text-verdict-bad-ink">{error}</p>}
     </div>
     )
   }

@@ -3,16 +3,12 @@ import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   CheckCircle2,
-  CircleSlash,
-  HelpCircle,
   Loader2,
-  MinusCircle,
   MoreHorizontal,
   Plus,
   Save,
   Sparkles,
   Trash2,
-  XCircle,
 } from 'lucide-react'
 import {
   FINDING_UNION_LABEL,
@@ -61,6 +57,7 @@ import type { GradeScale } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
 import { HintNote } from '@/components/shared/HintNote'
 import { cn } from '@/utils/cn'
+import { MARK_OF_REVIEW_VERDICT, VerdictMark, type VerdictMarkState } from '@/components/ui/VerdictMark'
 
 /**
  * Значок и цвет вердикта строки. Цвет тут несёт смысл, а не украшает: по
@@ -71,19 +68,22 @@ import { cn } from '@/utils/cn'
  * остались там, где выбирают, — в списке вердиктов и в подсказке под знаком
  * вопроса, так что неразличающий цвет человек их по-прежнему получает.
  */
-const VERDICT_STYLE: Record<ReviewTaskVerdict, { icon: typeof CheckCircle2; className: string; tone: string }> = {
-  correct: { icon: CheckCircle2, className: 'text-emerald-700 bg-emerald-50 border-emerald-200', tone: 'text-emerald-600' },
-  wrong: { icon: XCircle, className: 'text-red-700 bg-red-50 border-red-200', tone: 'text-red-600' },
-  partial: { icon: MinusCircle, className: 'text-amber-700 bg-amber-50 border-amber-200', tone: 'text-amber-600' },
-  unchecked: { icon: HelpCircle, className: 'text-gray-600 bg-gray-100 border-gray-200', tone: 'text-gray-400' },
+const VERDICT_STYLE: Record<ReviewTaskVerdict, { mark: VerdictMarkState; className: string }> = {
   /*
-   * §214. «Не решено» — не оттенок «не сверено», а другое состояние, и
-   * отличаться оно обязано на глаз, а не по подписи: значок перечёркнутого
-   * круга («решения нет») и свой цвет. Серый занят «не сверено», красный —
-   * «неверно», янтарный — «частично»; синий свободен и читается как
-   * «замечание к работе», а не как ошибка ученика в ответе.
+   * §225. Значки — метки состояния дизайн-системы v2 (`VerdictMark`): у
+   * каждого вердикта своя форма (галка в круге, крест, полукруг, «?»
+   * пунктиром, пустой круг) и свой цвет, в печати остаётся форма.
+   *
+   * §214 требовал, чтобы «не решено» отличалось от «не сверено» на глаз, а не
+   * по подписи. Так и осталось, только наоборот по цвету, как в макете: «не
+   * сверено» — синий пунктир с вопросом (ждёт человека), «не решено» — пустой
+   * серый круг (решения нет).
    */
-  unsolved: { icon: CircleSlash, className: 'text-sky-700 bg-sky-50 border-sky-200', tone: 'text-sky-600' },
+  correct: { mark: MARK_OF_REVIEW_VERDICT.correct, className: 'text-verdict-ok-ink bg-verdict-ok-tint border-transparent' },
+  wrong: { mark: MARK_OF_REVIEW_VERDICT.wrong, className: 'text-verdict-bad-ink bg-verdict-bad-tint border-transparent' },
+  partial: { mark: MARK_OF_REVIEW_VERDICT.partial, className: 'text-verdict-part-ink bg-verdict-part-tint border-transparent' },
+  unchecked: { mark: MARK_OF_REVIEW_VERDICT.unchecked, className: 'text-verdict-unk-ink bg-verdict-unk-tint border-transparent' },
+  unsolved: { mark: MARK_OF_REVIEW_VERDICT.unsolved, className: 'text-verdict-none-ink bg-verdict-none-tint border-transparent' },
 }
 
 /** §209. Одна клавиша — один вердикт. Мнемоника названа в подсказке. */
@@ -565,11 +565,11 @@ const FILTER_LABEL: Record<ReviewTaskFilter, string> = {
 
 /** Цвет числа в счётчике — тот же, что у значка вердикта в строке. */
 const FILTER_TONE: Record<ReviewTaskVerdict, string> = {
-  correct: 'text-emerald-700',
-  wrong: 'text-red-700',
-  partial: 'text-amber-700',
-  unchecked: 'text-gray-600',
-  unsolved: 'text-sky-700',
+  correct: 'text-verdict-ok-ink',
+  wrong: 'text-verdict-bad-ink',
+  partial: 'text-verdict-part-ink',
+  unchecked: 'text-verdict-unk-ink',
+  unsolved: 'text-verdict-none-ink',
 }
 
 /** §214. Пятый счётчик — в том же порядке, что клавиши и список вердиктов. */
@@ -990,7 +990,6 @@ function Answers({ student, expected, className }: { student: string | null; exp
 /** Строка только для чтения — слепок ИИ выглядит так же, только со словом. */
 export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: string }) {
   const style = VERDICT_STYLE[task.verdict]
-  const Icon = style.icon
 
   return (
     <li data-testid={testId} data-no={task.no} data-verdict={task.verdict}>
@@ -998,7 +997,7 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
         <span
           className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium', style.className)}
         >
-          <Icon size={11} className="shrink-0" />
+          <VerdictMark state={style.mark} size={11} label={null} />
           {REVIEW_TASK_VERDICT_LABEL[task.verdict]}
         </span>
         <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-500">{task.no}</span>
@@ -1044,7 +1043,6 @@ function VerdictPicker({
   const menuRef = useRef<HTMLUListElement | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const style = VERDICT_STYLE[verdict]
-  const Icon = style.icon
 
   /**
    * Координаты списка. Считаются после отрисовки: до неё не известна его
@@ -1129,7 +1127,6 @@ function VerdictPicker({
     >
       {REVIEW_TASK_VERDICTS.map(value => {
         const option = VERDICT_STYLE[value]
-        const OptionIcon = option.icon
         return (
           <li key={value}>
             <button
@@ -1145,7 +1142,7 @@ function VerdictPicker({
                 'hover:bg-gray-50 focus:bg-gray-50 focus:outline-none',
               )}
             >
-              <OptionIcon size={11} className={cn('shrink-0', option.tone)} />
+              <VerdictMark state={option.mark} size={12} label={null} />
               {REVIEW_TASK_VERDICT_LABEL[value]}
             </button>
           </li>
@@ -1166,12 +1163,9 @@ function VerdictPicker({
         aria-label={`Вердикт задания ${no}: ${REVIEW_TASK_VERDICT_LABEL[verdict]}`}
         title={`${REVIEW_TASK_VERDICT_LABEL[verdict]} — нажмите, чтобы сменить`}
         onClick={() => setOpen(value => !value)}
-        className={cn(
-          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-gray-100',
-          style.tone,
-        )}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-gray-100"
       >
-        <Icon size={15} />
+        <VerdictMark state={style.mark} size={18} label={null} />
       </button>
       {open && createPortal(menu, document.body)}
     </>

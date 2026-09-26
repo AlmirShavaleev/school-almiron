@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import './styles/manrope.css';
 
 @tailwind base;
 @tailwind components;
@@ -8,15 +8,45 @@
   box-sizing: border-box;
 }
 
+/*
+ * §225. Новый дизайн, версия 2: мягкий градиент от голубого к тёплому
+ * кремовому (#e6efff → #fdf6e6 → #eaf2ff), текст #12234a, Manrope.
+ *
+ * Градиент нарисован слоем `body::before` на `position: fixed`, а не фоном
+ * самого body: у длинной страницы (таблица пробника, каталог) фон body
+ * растягивается на всю высоту документа, и на экране оставалась бы одна
+ * кремовая середина. Слой стоит на месте — на любой прокрутке виден весь
+ * переход. На печати слоя нет (см. правило ниже).
+ *
+ * Цифры моноширинные по всему кабинету (tabular-nums): столбцы баллов и
+ * счётчики не прыгают. Лендинг задаёт свой шрифт сам.
+ */
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #172033;
-  background:
-    radial-gradient(circle at 18% -12%, rgba(37, 117, 220, 0.10), transparent 30rem),
-    linear-gradient(180deg, #f8fafc 0%, #f3f6fb 45%, #eef3f8 100%);
+  color: #12234a;
+  background: #f3f5fb;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, #e6efff 0%, #fdf6e6 55%, #eaf2ff 100%);
+}
+
+@media print {
+  body { background: #fff; }
+  body::before { display: none; }
+  /* Метка состояния проверки (VerdictMark): на ч/б бумаге остаётся форма —
+     чёрная, а тире «не решено» уходит, остаётся пустой круг. */
+  .verdict-mark { color: #000 !important; }
+  .verdict-mark .verdict-mark-dash { display: none; }
 }
 
 #root {
@@ -24,8 +54,8 @@ body {
 }
 
 ::selection {
-  color: #0b1830;
-  background: rgba(239, 189, 76, 0.38);
+  color: #12234a;
+  background: rgba(255, 201, 51, 0.45);
 }
 
 @layer base {
@@ -33,21 +63,24 @@ body {
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Фокус — синий контур действия (#33609a в макете у активного поля). */
   :focus-visible {
-    outline: 2px solid rgba(200, 132, 26, 0.75);
+    outline: 2px solid rgba(31, 85, 224, 0.7);
     outline-offset: 2px;
   }
 }
 
 @layer components {
+  /*
+   * §225. Отдельный объект — белая карточка с мягкой синей тенью на
+   * градиентном фоне. Рамку не рисуем: в макете блоки отделяет тень, а не
+   * контур (принцип брифа «не оборачивать в рамку каждый блок»). Прозрачная
+   * рамка оставлена ради классов `hover:border-*` у кликабельных карточек.
+   */
   .platform-surface {
-    background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82)),
-      #ffffff;
-    border: 1px solid rgba(203, 213, 225, 0.72);
-    box-shadow:
-      0 1px 1px rgba(15, 23, 42, 0.03),
-      0 14px 34px rgba(15, 23, 42, 0.06);
+    background: #ffffff;
+    border: 1px solid transparent;
+    box-shadow: 0 10px 30px rgba(31, 85, 224, 0.08);
   }
 
   .platform-table {
@@ -56,26 +89,27 @@ body {
   }
 
   .platform-table thead tr {
-    color: #64748b;
-    background: #f8fafc;
+    color: #55607a;
+    background: #f5f8fe;
   }
 
+  /* Метка столбца — 12/500 с разрядкой, как «ЧАСТЬ 1 · ЗАДАНИЯ 1–12» в макете. */
   .platform-table th {
     padding-top: 0.75rem;
     padding-bottom: 0.75rem;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
   }
 
   .platform-table td {
-    border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+    border-bottom: 1px solid #e1e9f7;
   }
 
   .platform-empty {
-    border: 1px dashed rgba(148, 163, 184, 0.55);
-    background: rgba(255, 255, 255, 0.68);
+    border: 1.5px dashed #c9d6ef;
+    background: rgba(255, 255, 255, 0.7);
   }
 
   .topic-sidebar-scroll {

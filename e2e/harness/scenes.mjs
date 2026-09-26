@@ -673,6 +673,23 @@ export const scenes = [
       actions: [{ wait: 1500 }, { fill: ['[data-testid="mock-setup-start"]', new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 16)] }, { wait: 400 }], full: false },
   ]),
 
+  // ── §225: новый дизайн, шаг 1 (основа) — пары «было/стало» ──
+  // Восемь экранов из задания на двух ширинах: главная преподавателя,
+  // проверка работы, таблица пробника, карточка ученика, программа курса и
+  // пробник у ученика, вход и меню на телефоне. Сцены только смотрят — ничего
+  // не пишут, поэтому обе ширины можно гнать одним процессом.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd225-teacher-home', url: '/teacher', width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'd225-review', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    { persona: 'owner', name: 'd225-mock-grid', url: `/mock-exams/${LESSON.res}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'd225-student-card', url: `/students/${S.otherStudent(0)}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 'd225-course-program', url: `/my-course/${S.group}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'student', name: 'd225-mock-student', url: `/my-course/${LESSON.group}/mock/${LESSON.open}`, width, height, actions: [{ wait: 1500 }] },
+    { persona: 'guest', name: 'd225-login', url: '/login', width, height },
+    { persona: 'student', name: 'd225-student-menu', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: 'header button[aria-label="Открыть меню"]' }, { wait: 600 }], full: false },
+    { persona: 'owner', name: 'd225-staff-menu', url: '/homework-queue', width, height, actions: [{ wait: 1200 }, { clickSel: 'header button[aria-label="Открыть меню"]' }, { wait: 600 }], full: false },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

@@ -53,8 +53,10 @@ function renderSidebar(at = '/dashboard') {
 /** Подписи пунктов меню, подсвеченных как текущий экран. */
 function highlighted(container: HTMLElement): string[] {
   return [...container.querySelectorAll('a')]
-    // Ровно класс `bg-white`, а не `hover:bg-white/10` у спокойных пунктов.
-    .filter(a => /(^|\s)bg-white(\s|$)/.test(a.className))
+    // §225. По признаку `data-active`, а не по цвету: до нового дизайна
+    // текущий пункт искался по классу `bg-white`, и перекраска подсветки в
+    // жёлтую молча превращала бы проверку в «ничего не подсвечено».
+    .filter(a => a.getAttribute('data-active') === 'true')
     .map(a => a.textContent?.trim() ?? '')
 }
 

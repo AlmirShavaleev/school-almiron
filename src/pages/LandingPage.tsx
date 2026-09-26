@@ -1,3 +1,4 @@
+import './LandingFonts.css'
 import './LandingPage.css'
 import './LandingPageSections.css'
 import { LandingHeader } from '../components/landing/LandingHeader'

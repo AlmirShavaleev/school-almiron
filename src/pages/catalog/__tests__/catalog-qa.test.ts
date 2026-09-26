@@ -725,11 +725,28 @@ describe('Математика ОГЭ — exam routing & data separation', () =>
     const css = read('src/index.css')
     // The rule must exist outside any @media print block so preview and
     // print portal compute the exact same size before printing even starts.
-    const printMediaIdx = css.indexOf('@media print {')
+    //
+    // §225: раньше проверка сравнивала правило с ПЕРВЫМ `@media print` в
+    // файле — и падала, как только печатный блок появлялся выше (новый фон
+    // body и метки состояния снимаются на печати в начале файла). Теперь
+    // считаем границы каждого печатного блока по скобкам и проверяем ровно
+    // то, что сказано: правило ни в один из них не входит.
     const inlineMathRuleIdx = css.indexOf('.print-document .catalog-html img[class~="math"]')
     expect(inlineMathRuleIdx).toBeGreaterThan(-1)
-    expect(printMediaIdx).toBeGreaterThan(-1)
-    expect(inlineMathRuleIdx).toBeLessThan(printMediaIdx)
+    const printBlocks: Array<[number, number]> = []
+    for (let at = css.indexOf('@media print {'); at !== -1; at = css.indexOf('@media print {', at + 1)) {
+      let depth = 0
+      let end = at
+      for (let i = css.indexOf('{', at); i < css.length; i++) {
+        if (css[i] === '{') depth++
+        if (css[i] === '}' && --depth === 0) { end = i; break }
+      }
+      printBlocks.push([at, end])
+    }
+    expect(printBlocks.length).toBeGreaterThan(0)
+    for (const [start, end] of printBlocks) {
+      expect(inlineMathRuleIdx < start || inlineMathRuleIdx > end).toBe(true)
+    }
   })
 
   it('inline math formula rule uses display:inline-block and a text-relative ceiling, never a fixed height', () => {

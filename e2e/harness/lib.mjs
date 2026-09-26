@@ -2,7 +2,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const BASE = 'http://localhost:5199'
+// §225. Порт можно сменить переменной HARNESS_PORT: на общей машине 5199
+// бывает занят сервером соседней ветки, а гасить чужой сервер нельзя.
+export const BASE = `http://localhost:${process.env.HARNESS_PORT || 5199}`
 export const SB   = 'https://harness.invalid'
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
 

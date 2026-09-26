@@ -10,9 +10,11 @@ export function Card({ children, className, onClick }: CardProps) {
   return (
     <div
       className={cn(
-        'platform-surface rounded-lg p-4 sm:p-6',
+        // §225. Карточка v2: белая, радиус 20, мягкая синяя тень, без рамки
+        // (`.platform-surface`). Кликабельная при наведении приподнимается.
+        'platform-surface rounded-card p-4 sm:p-6',
         'transition-all duration-200',
-        onClick && 'cursor-pointer hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-lg active:translate-y-0',
+        onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_36px_rgba(31,85,224,0.14)] active:translate-y-0',
         className
       )}
       onClick={onClick}
