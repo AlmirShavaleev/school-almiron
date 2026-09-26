@@ -26,7 +26,7 @@ vi.mock('@/hooks/useStudentDashboard', () => ({
 vi.mock('@/hooks/useStudentTodo', () => ({
   useStudentTodo: () => ({ todo: { overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true }, loading: false, error: null }),
 }))
-const loadMockExamsByGroup = vi.fn(async (ids: string[]) => {
+const loadMockExamsByGroup = vi.fn(async (ids: string[], _preview: boolean) => {
   const now = Date.now()
   const s = now - 233 * MIN
   return Object.fromEntries(ids.map(g => [g, g !== 'g-sand' ? [] : [{
