@@ -217,6 +217,14 @@ export interface MockExamResultTelegramPayload {
   prev_title?: unknown
 }
 
+/** «балл / балла / баллов» — своя копия: edge-функция не видит src/lib/plural.ts. */
+function ballsWord(n: number): string {
+  const m10 = Math.abs(n) % 10, m100 = Math.abs(n) % 100
+  if (m10 === 1 && m100 !== 11) return 'балл'
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'балла'
+  return 'баллов'
+}
+
 function intOrNull(v: unknown): number | null {
   if (v == null || v === '') return null
   const n = Number(v)
@@ -258,6 +266,13 @@ export function buildMockExamResultTelegramMessage(payload: MockExamResultTelegr
     p2 != null ? `2 часть — ${of(p2, p2max)}` : null,
   ].filter(Boolean) as string[]
   if (parts.length) lines.push(escapeHtml(parts.join(' · ')))
+  // Владелец 26.09: под первичным и частями — отдельной строкой тестовый
+  // балл словами, как в образце: «Результат: 72 балла из 100». Только когда
+  // есть таблица перевода (итог ≠ первичный) — иначе строка повторяла бы
+  // заголовок слово в слово.
+  if (score != null && primary != null && primary !== score) {
+    lines.push(`Результат: ${score} ${ballsWord(score)}${max != null ? ` из ${max}` : ''}`)
+  }
 
   // §223. Статистика — отдельным абзацем. Место в группе только долей и
   // только когда других не меньше трёх (на двоих процент выдаёт чужой балл);
