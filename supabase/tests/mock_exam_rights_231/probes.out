@@ -1,0 +1,151 @@
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:119: NOTICE:  policy "mock_exams_insert" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:135: NOTICE:  policy "mock_exams_update" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:150: NOTICE:  policy "mock_exams_delete" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:174: NOTICE:  policy "mock_exam_results_select" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:176: NOTICE:  policy "mock_exam_results_staff_select" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:181: NOTICE:  policy "mock_exam_results_manage_insert" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:186: NOTICE:  policy "mock_exam_results_manage_update" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:192: NOTICE:  policy "mock_exam_results_manage_delete" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:99: NOTICE:  policy "mock_exams_manage" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:170: NOTICE:  policy "mock_exam_results_manage" for relation "public.mock_exam_results" does not exist, skipping
+psql:/home/claude/agents/a231/repo/supabase/migrations/PENDING_231.sql:174: NOTICE:  policy "mock_exam_results_select" for relation "public.mock_exam_results" does not exist, skipping
+PENDING_231 applied twice: ok
+CREATE TABLE
+INSERT 0 7
+GRANT
+CREATE TABLE
+GRANT
+CREATE TABLE
+INSERT 0 17
+INSERT 0 92
+DO
+DO
+=================== §231: кто × действие → ожидаемо / факт ===================
+ n  | who  |                                  action                                  |             expected              |                                                actual                                                 | verdict 
+----+------+--------------------------------------------------------------------------+-----------------------------------+-------------------------------------------------------------------------------------------------------+---------
+  1 | ADM  | видит пробники: все 10                                                   | rows=10                           | rows=10                                                                                               | ok
+  2 | T11A | видит пробники: 7 своей группы + свой №9 без группы                      | rows=8                            | rows=8                                                                                                | ok
+  3 | OWN  | видит пробники: 7 группы своего курса                                    | rows=7                            | rows=7                                                                                                | ok
+  4 | T11B | видит пробники: только №2 своей 11Б                                      | rows=1                            | rows=1                                                                                                | ok
+  5 | CUR  | видит пробники: 7 группы своего курса                                    | rows=7                            | rows=7                                                                                                | ok
+  6 | S1   | видит пробники: 7 своей группы (как до §231)                             | rows=7                            | rows=7                                                                                                | ok
+  7 | S53  | видит пробники: только №2 своей 11Б                                      | rows=1                            | rows=1                                                                                                | ok
+  8 | T11B | чужой №6 (11А) по id                                                     | rows=0                            | rows=0                                                                                                | ok
+  9 | T11A | чужой №2 (11Б) по id                                                     | rows=0                            | rows=0                                                                                                | ok
+ 10 | T11B | чужой №9 без группы (автор T11A)                                         | rows=0                            | rows=0                                                                                                | ok
+ 11 | T11A | №0 без группы и без автора                                               | rows=0                            | rows=0                                                                                                | ok
+ 12 | T11A | список «Пробники» (groups!inner, как useMockExams)                       | rows=7                            | rows=7                                                                                                | ok
+ 13 | ADM  | видит итоги: все 3                                                       | rows=3                            | rows=3                                                                                                | ok
+ 14 | T11A | видит итоги: 2 своей группы (№6)                                         | rows=2                            | rows=2                                                                                                | ok
+ 15 | OWN  | видит итоги: 2 (владелец курса)                                          | rows=2                            | rows=2                                                                                                | ok
+ 16 | T11B | видит итоги: 1 своей 11Б, чужих — нет                                    | rows=1                            | rows=1                                                                                                | ok
+ 17 | CUR  | видит итоги: 2 (куратор курса читает)                                    | rows=2                            | rows=2                                                                                                | ok
+ 18 | S1   | таблицу итогов напрямую не читает (как до §231)                          | rows=0                            | rows=0                                                                                                | ok
+ 19 | S53  | таблицу итогов напрямую не читает                                        | rows=0                            | rows=0                                                                                                | ok
+ 20 | T11A | профиль ученика S53 (useStudentProfile): его итоги 11Б                   | rows=0                            | rows=0                                                                                                | ok
+ 21 | T11A | создать в свою 11А, автор — он                                           | rows=1                            | rows=1                                                                                                | ok
+ 22 | T11A | создать в свою 11А, автор null                                           | rows=1                            | rows=1                                                                                                | ok
+ 23 | T11A | создать в 11А, автором записать T11B                                     | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 24 | T11A | создать в чужую 11Б                                                      | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 25 | T11A | создать сразу в 11А и 11Б одной вставкой — ни одного                     | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 26 | T11A | создать без группы                                                       | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 27 | OWN  | создать в 11А (владелец курса без своей группы)                          | rows=1                            | rows=1                                                                                                | ok
+ 28 | T11B | создать в чужую 11А                                                      | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 29 | CUR  | создать в 11А (куратор не управляет)                                     | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 30 | S1   | создать в 11А                                                            | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 31 | ADM  | создать в 11А и 11Б одной вставкой (две группы формы §228)               | rows=2                            | rows=2                                                                                                | ok
+ 32 | T11A | полный путь формы: пробник → вариант → условие в хранилище → ключ        | rows=1 ; rows=1 ; rows=1 ; rows=1 | rows=1 ; rows=1 ; rows=1 ; rows=1                                                                     | ok
+ 33 | T11A | копия условия в папку второго пробника (storage.copy = чтение + вставка) | rows=1 ; rows=1                   | rows=1 ; rows=1                                                                                       | ok
+ 34 | T11A | правка №6 своей группы                                                   | rows=1                            | rows=1                                                                                                | ok
+ 35 | OWN  | правка №6 (владелец курса)                                               | rows=1                            | rows=1                                                                                                | ok
+ 36 | ADM  | правка №2                                                                | rows=1                            | rows=1                                                                                                | ok
+ 37 | T11B | правка чужого №6                                                         | rows=0                            | rows=0                                                                                                | ok
+ 38 | CUR  | правка №6 (куратор)                                                      | rows=0                            | rows=0                                                                                                | ok
+ 39 | S1   | правка №6                                                                | rows=0                            | rows=0                                                                                                | ok
+ 40 | S53  | правка №2 своей группы                                                   | rows=0                            | rows=0                                                                                                | ok
+ 41 | T11A | правка чужого №2                                                         | rows=0                            | rows=0                                                                                                | ok
+ 42 | T11A | перенос №5 (без работ) в чужую 11Б — триггер §228                        | ERR 42501%                        | ERR 42501: Нет доступа к этой группе — пробник можно перенести только в группу своего курса           | ok
+ 43 | T11B | перенос своего №2 (с итогом) в 11А — триггер §228                        | ERR 23514%                        | ERR 23514: Группу пробника не сменить: у него уже есть баллы, итоги учеников прежней группы. Для друг | ok
+ 44 | T11A | снять группу у №1 чужого автора (WITH CHECK)                             | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exams"                          | ok
+ 45 | T11A | свой №9 без группы: правка названия                                      | rows=1                            | rows=1                                                                                                | ok
+ 46 | T11A | свой №9 без группы → в свою 11А                                          | rows=1                            | rows=1                                                                                                | ok
+ 47 | T11A | свой №9 без группы → в чужую 11Б                                         | ERR 42501%                        | ERR 42501: Нет доступа к этой группе — пробник можно перенести только в группу своего курса           | ok
+ 48 | T11B | чужой №9 без группы → в свою 11Б                                         | rows=0                            | rows=0                                                                                                | ok
+ 49 | T11A | №0 без группы и без автора                                               | rows=0                            | rows=0                                                                                                | ok
+ 50 | ADM  | №0 без группы → в 11А                                                    | rows=1                            | rows=1                                                                                                | ok
+ 51 | T11A | удалить №6 своей группы (каскад)                                         | rows=1                            | rows=1                                                                                                | ok
+ 52 | ADM  | удалить №2                                                               | rows=1                            | rows=1                                                                                                | ok
+ 53 | T11B | удалить чужой №6                                                         | rows=0                            | rows=0                                                                                                | ok
+ 54 | CUR  | удалить №6 (куратор)                                                     | rows=0                            | rows=0                                                                                                | ok
+ 55 | S1   | удалить №6                                                               | rows=0                            | rows=0                                                                                                | ok
+ 56 | T11A | удалить чужой №2                                                         | rows=0                            | rows=0                                                                                                | ok
+ 57 | T11A | удалить свой №9 без группы                                               | rows=1                            | rows=1                                                                                                | ok
+ 58 | T11B | удалить чужой №9 без группы                                              | rows=0                            | rows=0                                                                                                | ok
+ 59 | T11A | итог: вставить S4 в №6                                                   | rows=1                            | rows=1                                                                                                | ok
+ 60 | T11A | итоги №6: правка заметки                                                 | rows=2                            | rows=2                                                                                                | ok
+ 61 | T11A | итог S2 №6: удалить                                                      | rows=1                            | rows=1                                                                                                | ok
+ 62 | T11B | итог: вставить в чужой №6                                                | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exam_results"                   | ok
+ 63 | T11B | итоги чужого №6: правка                                                  | rows=0                            | rows=0                                                                                                | ok
+ 64 | T11B | итоги чужого №6: удалить                                                 | rows=0                            | rows=0                                                                                                | ok
+ 65 | T11B | итоги своего №2: правка                                                  | rows=1                            | rows=1                                                                                                | ok
+ 66 | CUR  | итог: вставить в №6                                                      | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exam_results"                   | ok
+ 67 | CUR  | итоги №6: правка                                                         | rows=0                            | rows=0                                                                                                | ok
+ 68 | CUR  | итоги №6: удалить                                                        | rows=0                            | rows=0                                                                                                | ok
+ 69 | S1   | итог себе: вставить в №6                                                 | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exam_results"                   | ok
+ 70 | S1   | свой итог №6: поднять балл                                               | rows=0                            | rows=0                                                                                                | ok
+ 71 | T11A | баллы №6: удалить                                                        | rows=38                           | rows=38                                                                                               | ok
+ 72 | CUR  | баллы №6: читает                                                         | rows=38                           | rows=38                                                                                               | ok
+ 73 | CUR  | баллы №6: удалить (до §231 — могла)                                      | rows=0                            | rows=0                                                                                                | ok
+ 74 | CUR  | баллы №6: вставить                                                       | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exam_task_scores"               | ok
+ 75 | T11B | баллы чужого №6: удалить                                                 | rows=0                            | rows=0                                                                                                | ok
+ 76 | T11A | save_mock_exam_grid №6 (таблица / «Сохранить» проверки)                  | rows=1                            | rows=1                                                                                                | ok
+ 77 | OWN  | save_mock_exam_grid №6                                                   | rows=1                            | rows=1                                                                                                | ok
+ 78 | CUR  | save_mock_exam_grid №6                                                   | ERR 42501%                        | ERR 42501: new row violates row-level security policy for table "mock_exam_task_scores"               | ok
+ 79 | T11B | save_mock_exam_grid чужого №6 (пробник ему не виден)                     | ERR P0002: Пробник не найден      | ERR P0002: Пробник не найден                                                                          | ok
+ 80 | T11A | grade_mock_exam_part1 №6 (открытие «Работ»)                              | rows=1                            | rows=1                                                                                                | ok
+ 81 | CUR  | grade_mock_exam_part1 №6                                                 | ERR 42501%                        | ERR 42501: Нет доступа к результатам этого пробника                                                   | ok
+ 82 | T11B | grade_mock_exam_part1 чужого №6                                          | ERR 42501%                        | ERR 42501: Нет доступа к результатам этого пробника                                                   | ok
+ 83 | T11A | notify_mock_exam_results №6, одному S2                                   | rows=1                            | rows=1                                                                                                | ok
+ 84 | T11B | notify_mock_exam_results чужого №6                                       | ERR 42501%                        | ERR 42501: Нет доступа к результатам этого пробника                                                   | ok
+ 85 | CUR  | notify_mock_exam_results №6                                              | ERR 42501%                        | ERR 42501: Нет доступа к результатам этого пробника                                                   | ok
+ 86 | T11A | бланки, фото, ключ, варианты №6 (страница пробника)                      | rows=5                            | rows=5                                                                                                | ok
+ 87 | T11B | бланки, фото, ключ, варианты чужого №6                                   | rows=0                            | rows=0                                                                                                | ok
+ 88 | S1   | my_mock_exam_result №6: свой итог готов                                  | rows=1                            | rows=1                                                                                                | ok
+ 89 | S1   | my_mock_exams(11А): пробники группы со временем                          | rows=%                            | rows=1                                                                                                | ok
+ 90 | S1   | my_mock_exam №6 (страница пробника ученика)                              | rows=1                            | rows=1                                                                                                | ok
+ 91 | S53  | my_mock_exam_result чужого №6                                            | ERR 42501%                        | ERR 42501: Этот пробник не ваш                                                                        | ok
+ 92 | S53  | условие чужого №6 в хранилище                                            | rows=0                            | rows=0                                                                                                | ok
+
+--- Итог
+ probes | ok | fail 
+--------+----+------
+     92 | 92 |    0
+
+--- После прогона данные не тронуты (все пробы откатились)
+ exams | results | task_scores 
+-------+---------+-------------
+    10 |       3 |          57
+
+--- Политики после §231
+       tablename       |             policyname             |  cmd   |      roles      
+-----------------------+------------------------------------+--------+-----------------
+ mock_exam_results     | mock_exam_results_manage_delete    | DELETE | {authenticated}
+ mock_exam_results     | mock_exam_results_manage_insert    | INSERT | {authenticated}
+ mock_exam_results     | mock_exam_results_manage_update    | UPDATE | {authenticated}
+ mock_exam_results     | mock_exam_results_staff_select     | SELECT | {authenticated}
+ mock_exam_task_scores | mock_exam_task_scores_staff_delete | DELETE | {authenticated}
+ mock_exam_task_scores | mock_exam_task_scores_staff_insert | INSERT | {authenticated}
+ mock_exam_task_scores | mock_exam_task_scores_staff_select | SELECT | {authenticated}
+ mock_exam_task_scores | mock_exam_task_scores_staff_update | UPDATE | {authenticated}
+ mock_exams            | mock_exams_delete                  | DELETE | {authenticated}
+ mock_exams            | mock_exams_insert                  | INSERT | {authenticated}
+ mock_exams            | mock_exams_select                  | SELECT | {authenticated}
+ mock_exams            | mock_exams_update                  | UPDATE | {authenticated}
+
+--- Помощники §231: anon не зовёт, authenticated — да
+          proname           | anon | authenticated 
+----------------------------+------+---------------
+ mock_exam_group_can_manage | f    | t
+ mock_exam_group_is_staff   | f    | t
+ mock_exam_is_my_teacher    | f    | t
+
