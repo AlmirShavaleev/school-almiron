@@ -117,11 +117,14 @@ describe('во время', () => {
     await waitFor(() => expect(rpcCalls.some(c => c.fn === 'save_mock_exam_answer' && c.args.p_task === 9 && c.args.p_answer === '3')).toBe(true))
   })
 
-  it('сдача — подтверждение внутри страницы с пустыми номерами, без confirm()', async () => {
+  it('сдача — окно на весь экран (§229) с пустыми номерами, без confirm()', async () => {
     mount()
     fireEvent.click(await screen.findByTestId('mock-lesson-submit'))
     const box = screen.getByTestId('mock-lesson-confirm')
-    expect(box).toHaveTextContent('Заполнено 11 ответов из 12')
+    expect(box).toHaveAttribute('role', 'dialog')
+    expect(box).toHaveAttribute('aria-modal', 'true')
+    expect(box).toHaveTextContent('Закончить пробник раньше времени?')
+    expect(box).toHaveTextContent('Бланк: 11 из 12')
     expect(box).toHaveTextContent('Пустой ответ №9 засчитается как нерешённый')
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(rpcCalls.some(c => c.fn === 'submit_mock_exam')).toBe(false)

@@ -18,6 +18,9 @@ const hour = 3600_000
 const START = new Date(Date.now() - 6 * hour).toISOString()
 
 let calls: string[]
+/** §229. Варианты пробника и выдача; пусто — пробник без вариантов (как до §229). */
+let variants: { id: string; position: number }[]
+let assigned: { student_id: string; variant_id: string }[]
 let stored: { student_id: string; task_number: number; points: number; auto_points: number | null }[]
 
 function thenable<T>(value: T) {
@@ -50,6 +53,8 @@ vi.mock('@/lib/supabase', () => ({
       if (table === 'mock_exam_results') return thenable({ data: [], error: null })
       if (table === 'mock_exam_sheets') return thenable({ data: [{ student_id: 's-a', submitted_at: new Date(Date.now() - 5 * hour).toISOString() }, { student_id: 's-b', submitted_at: null }], error: null })
       if (table === 'mock_exam_photos') return thenable({ data: [{ id: 'ph1', student_id: 's-a', storage_path: 'ex1/photos/s-a/1_p.webp', file_name: 'p.webp', position: 0 }], error: null })
+      if (table === 'mock_exam_variants') return thenable({ data: variants, error: null })
+      if (table === 'mock_exam_variant_students') return thenable({ data: assigned, error: null })
       throw new Error(`неожиданная таблица ${table}`)
     },
     rpc: (fn: string) => {
@@ -77,6 +82,8 @@ function mount() {
 
 beforeEach(() => {
   calls = []
+  variants = []
+  assigned = []
   stored = [
     // Абрамова: обе клетки первой части — по ключу; №3 поставлен вручную.
     { student_id: 's-a', task_number: 1, points: 1, auto_points: 1 },
@@ -149,5 +156,23 @@ describe('онлайн-пробник в таблице §218', () => {
     // После конца главное — проверка: блок работ под таблицей.
     const grid = screen.getByTestId('mock-grid')
     expect(grid.compareDocumentPosition(works) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('§229: варианты в таблице баллов', () => {
+  it('несколько вариантов — узкий столбец «Вар.»: номер выданного, кому не выдан — «—»; «набрано по номеру» — по всем вариантам', async () => {
+    variants = [{ id: 'v1', position: 1 }, { id: 'v2', position: 2 }]
+    assigned = [{ student_id: 's-a', variant_id: 'v2' }, { student_id: 's-b', variant_id: 'v1' }]
+    mount()
+    expect(await screen.findByTestId('mock-grid-var-head')).toHaveTextContent('Вар.')
+    expect(screen.getAllByTestId('mock-grid-var').map(c => c.textContent)).toEqual(['2', '1', '—'])
+    expect(screen.getByTestId('mock-grid-footer')).toHaveTextContent('все варианты')
+  })
+
+  it('один вариант — столбца нет', async () => {
+    variants = [{ id: 'v1', position: 1 }]
+    mount()
+    await screen.findAllByTestId('mock-grid-row')
+    expect(screen.queryByTestId('mock-grid-var-head')).toBeNull()
   })
 })

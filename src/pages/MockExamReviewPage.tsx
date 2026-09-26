@@ -6,6 +6,9 @@ import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { useMockExamWorks, type WorksExam, type WorksStudent } from '@/hooks/useMockExamWorks'
+import { useSignedPdf, type SignedPdfState } from '@/hooks/useSignedPdf'
+import { PdfPageView } from '@/components/pdf/PdfPageView'
+import { isPdfFile } from '@/lib/mockExamVariants'
 import { MOCK_EXAMS_BUCKET, mskDayLong, mskTime } from '@/lib/mockExamLesson'
 import { canNotify, notifyState, formatSentAt } from '@/lib/mockExamNotify'
 import {
@@ -32,7 +35,7 @@ import { cn } from '@/utils/cn'
 export function MockExamReviewPage() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>()
   const works = useMockExamWorks(id)
-  const { exam, students, key, loading, error } = works
+  const { exam, students, key, variants, loading, error } = works
   const student = students.find(s => s.id === studentId) ?? null
 
   if (loading) return <div className="flex h-64 items-center justify-center gap-2 text-graphite-400"><Loader2 size={18} className="animate-spin" />Загрузка…</div>
@@ -46,16 +49,19 @@ export function MockExamReviewPage() {
       </div>
     )
   }
-  return <Review key={student.id} exam={exam} students={students} student={student} answerKey={key} works={works} />
+  // §229. Ключ — варианта ученика; у пробника без вариантов — прежний ключ пробника.
+  const answerKey = student.variant ? student.variant.key : key
+  return <Review key={student.id} exam={exam} students={students} student={student} answerKey={answerKey} variantCount={variants.length} works={works} />
 }
 
 type Works = ReturnType<typeof useMockExamWorks>
 
-function Review({ exam, students, student, answerKey, works }: {
+function Review({ exam, students, student, answerKey, variantCount, works }: {
   exam: WorksExam
   students: WorksStudent[]
   student: WorksStudent
   answerKey: (string | null)[] | null
+  variantCount: number
   works: Works
 }) {
   const navigate = useNavigate()
@@ -144,6 +150,14 @@ function Review({ exam, students, student, answerKey, works }: {
   }
 
   const sheet = student.sheet
+  const variant = student.variant ?? null
+  const variantLabel = variant && variantCount > 1 ? ((variant.label ?? '').trim() || `Вариант ${variant.position}`) : null
+  // Файлы варианта ученика; у пробника без вариантов — файлы пробника.
+  const files = {
+    condition: variant ? variant.condition_path : exam.condition_path,
+    solution: variant ? variant.solution_path : exam.solution_path,
+    criteria: variant ? variant.criteria_path : null,
+  }
   const meta = [
     exam.groupName,
     sheet?.submitted_at ? `сдал ${mskDayLong(sheet.submitted_at)} в ${mskTime(sheet.submitted_at)}`
@@ -158,7 +172,10 @@ function Review({ exam, students, student, answerKey, works }: {
           <button type="button" onClick={() => go(worksUrl)} className="inline-flex items-center gap-1 self-start text-[13px] text-graphite-500 hover:text-primary-700" data-testid="mock-review-back">
             <ArrowLeft size={13} aria-hidden />{exam.title}{pos ? ` · работа ${pos.n} из ${pos.of}` : ''}
           </button>
-          <h1 className="text-xl font-semibold leading-tight text-graphite-900 [text-wrap:balance] sm:text-2xl" data-testid="mock-review-title">{student.name} — {exam.title}</h1>
+          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-semibold leading-tight text-graphite-900 [text-wrap:balance] sm:text-2xl" data-testid="mock-review-title">
+            <span>{student.name} — {exam.title}</span>
+            {variantLabel && <span className="rounded-full bg-gold-300 px-3 py-0.5 text-[13px] font-extrabold text-graphite-900" data-testid="mock-review-variant">{variantLabel}</span>}
+          </h1>
           <span className="text-[13px] text-graphite-500" data-testid="mock-review-meta">{meta}</span>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -187,6 +204,7 @@ function Review({ exam, students, student, answerKey, works }: {
       <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_400px]">
         <PhotoPane photos={student.photoList} />
         <section className="flex max-h-none flex-col gap-1 border-t border-graphite-200 px-3 py-3.5 sm:px-[18px] lg:max-h-[calc(100vh-260px)] lg:overflow-auto lg:border-l lg:border-t-0" data-testid="mock-review-tasks" aria-label="Номера">
+          <VariantFiles label={variantLabel} files={files} />
           <Eyebrow>Часть 1 · по ключу</Eyebrow>
           {Array.from({ length: p1End }, (_, i) => {
             const auto = !!student.auto?.[i] && points[i] === (saved[i] ?? null)
@@ -211,7 +229,7 @@ function Review({ exam, students, student, answerKey, works }: {
             return (
               <div key={i}>
                 <TaskRow i={i} max={maxPts[i]} value={points[i]} selected={sel === i} onSelect={() => setSel(i)} onSet={v => { setSel(i); setAt(i, v) }} />
-                {sel === i && <Part2Expand max={maxPts[i]} solutionPath={exam.solution_path} onClear={() => setAt(i, null)} hasValue={points[i] != null} />}
+                {sel === i && <Part2Expand max={maxPts[i]} solutionPath={files.solution} criteriaPath={files.criteria} onClear={() => setAt(i, null)} hasValue={points[i] != null} />}
               </div>
             )
           })}
@@ -305,16 +323,41 @@ function TaskRow({ i, max, value, selected, onSelect, onSet, answer, keyAnswer, 
   )
 }
 
-function Part2Expand({ max, solutionPath, onClear, hasValue }: { max: number; solutionPath: string | null; onClear: () => void; hasValue: boolean }) {
+/**
+ * §229. Файлы варианта ученика над номерами: условие, решение, критерии —
+ * открываются в новой вкладке (рядом с проверкой). Критерии видит только
+ * персонал (политика хранилища), ученику их не выдать.
+ */
+function VariantFiles({ label, files }: { label: string | null; files: { condition: string | null; solution: string | null; criteria: string | null } }) {
+  const link = (path: string | null, text: string, testid: string) => path
+    ? <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={path} className="inline-flex min-h-9 items-center gap-1 text-[13px] font-semibold text-primary-600 hover:underline"><span className="inline-flex items-center gap-1" data-testid={testid}><FileText size={13} aria-hidden />{text}</span></SignedFileLink>
+    : <span className="text-[13px] text-graphite-400" data-testid={`${testid}-none`}>{text} — нет</span>
+  return (
+    <div className="mb-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 border-b border-graphite-200 px-2 pb-2" data-testid="mock-review-files">
+      <span className="text-[13px] font-semibold text-graphite-500">{label ? `${label}:` : 'Файлы:'}</span>
+      {link(files.condition, 'Условие', 'mock-review-file-condition')}
+      {link(files.solution, 'Решение', 'mock-review-file-solution')}
+      {link(files.criteria, 'Критерии', 'mock-review-file-criteria')}
+    </div>
+  )
+}
+
+function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue }: { max: number; solutionPath: string | null; criteriaPath: string | null; onClear: () => void; hasValue: boolean }) {
   return (
     <div className="mb-2 ml-0 mt-1 flex flex-col gap-2 rounded-xl bg-graphite-50 px-3.5 py-3 sm:ml-[34px]" data-testid="mock-review-expand">
       <span className="text-[13px] font-semibold text-graphite-500">Максимум · {max} {plural(max, 'балл', 'балла', 'баллов')}</span>
-      <span className="text-[13px] font-semibold text-graphite-500">Ответ в решении</span>
-      {solutionPath ? (
-        <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={solutionPath} className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:underline">
-          <FileText size={14} aria-hidden />решение — PDF
-        </SignedFileLink>
-      ) : <span className="text-sm text-graphite-500">Решение не загружено — его добавляют во вкладке «Настройка».</span>}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {criteriaPath ? (
+          <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={criteriaPath} className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:underline">
+            <span className="inline-flex items-center gap-1" data-testid="mock-review-criteria"><FileText size={14} aria-hidden />Критерии — PDF</span>
+          </SignedFileLink>
+        ) : <span className="text-sm text-graphite-500">Критериев нет — их добавляют во вкладке «Настройка».</span>}
+        {solutionPath ? (
+          <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={solutionPath} className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:underline">
+            <span className="inline-flex items-center gap-1" data-testid="mock-review-solution"><FileText size={14} aria-hidden />Решение — PDF</span>
+          </SignedFileLink>
+        ) : <span className="text-sm text-graphite-500">Решение не загружено — его добавляют во вкладке «Настройка».</span>}
+      </div>
       <div className="rounded-[10px] bg-verdict-part-tint px-3 py-2.5 text-sm text-verdict-part-ink" data-testid="mock-review-ai">
         <b>Подсказка ИИ — позже (этап Б).</b> Здесь появится предложение балла с рамкой на фото; балл ставите вы.
       </div>
@@ -323,25 +366,42 @@ function Part2Expand({ max, solutionPath, onClear, hasValue }: { max: number; so
   )
 }
 
-/** Фото второй части: вкладки, масштаб, поворот текущего. Рамок-пометок в этом шаге нет. */
+/**
+ * Фото второй части: вкладки, масштаб, поворот текущего. Рамок-пометок в этом шаге нет.
+ * §229: PDF вместо фото — страницы листами, вкладки «Фото N · стр. K» (до §229 на
+ * месте PDF стояло «Не удалось показать изображение»: `<img>` его не рисует).
+ */
 function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
   const [at, setAt] = useState(0)
   const [zoom, setZoom] = useState(100)
   const [turn, setTurn] = useState<Record<string, number>>({})
-  const photo = photos[Math.min(at, photos.length - 1)] ?? null
-  const deg = photo ? (turn[photo.id] ?? 0) : 0
+  const [pdfs, setPdfs] = useState<Record<string, SignedPdfState>>({})
+  const sheets = useMemo(() => photos.flatMap((p, i) => {
+    if (!isPdfFile(p)) return [{ key: p.id, photo: p, n: i + 1, page: null as number | null, label: `Фото ${i + 1}` }]
+    const st = pdfs[p.id]
+    if (st?.status === 'ready' && st.pages > 0) {
+      return Array.from({ length: st.pages }, (_, j) => ({ key: `${p.id}:${j + 1}`, photo: p, n: i + 1, page: j + 1, label: `Фото ${i + 1} · стр. ${j + 1}` }))
+    }
+    return [{ key: p.id, photo: p, n: i + 1, page: null, label: `Фото ${i + 1} · PDF` }]
+  }), [photos, pdfs])
+  const sheet = sheets[Math.min(at, sheets.length - 1)] ?? null
+  const deg = sheet ? (turn[sheet.key] ?? 0) : 0
+  const pdfState = sheet && isPdfFile(sheet.photo) ? pdfs[sheet.photo.id] : undefined
   return (
     <section className="flex min-w-0 flex-col gap-3 px-3 py-3.5 sm:px-[22px]" data-testid="mock-review-photos" aria-label="Фото второй части">
+      {photos.filter(p => isPdfFile(p)).map(p => (
+        <PdfProbe key={p.id} path={p.storage_path} onState={st => setPdfs(prev => (prev[p.id]?.status === st.status ? prev : { ...prev, [p.id]: st }))} />
+      ))}
       {photos.length === 0 ? (
         <p className="rounded-[14px] bg-graphite-50 px-4 py-10 text-center text-sm text-graphite-500">Фото второй части ученик не прислал.</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Фото">
-              {photos.map((p, i) => (
-                <button key={p.id} type="button" role="tab" aria-selected={i === at} onClick={() => setAt(i)} data-testid="mock-review-photo-tab"
+              {sheets.map((sh, i) => (
+                <button key={sh.key} type="button" role="tab" aria-selected={i === at} onClick={() => setAt(i)} data-testid="mock-review-photo-tab"
                   className={cn('min-h-9 rounded-full border-[1.5px] px-3 text-[13px] font-semibold', i === at ? 'border-primary-600 bg-primary-50 text-primary-600' : 'border-graphite-300 bg-white text-graphite-900 hover:border-primary-500')}>
-                  Фото {i + 1}
+                  {sh.label}
                 </button>
               ))}
             </div>
@@ -349,16 +409,27 @@ function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
               <button type="button" aria-label="Мельче" onClick={() => setZoom(z => Math.max(50, z - 25))} className="grid h-9 w-9 place-items-center rounded-full hover:bg-primary-50"><ZoomOut size={16} /></button>
               <button type="button" onClick={() => setZoom(100)} className="min-w-[3.5rem] rounded-full px-1.5 py-1 hover:bg-primary-50" title="По ширине" data-testid="mock-review-zoom">{zoom} %</button>
               <button type="button" aria-label="Крупнее" onClick={() => setZoom(z => Math.min(300, z + 25))} className="grid h-9 w-9 place-items-center rounded-full hover:bg-primary-50"><ZoomIn size={16} /></button>
-              <button type="button" onClick={() => photo && setTurn(t => ({ ...t, [photo.id]: ((t[photo.id] ?? 0) + 90) % 360 }))}
+              <button type="button" onClick={() => sheet && setTurn(t => ({ ...t, [sheet.key]: ((t[sheet.key] ?? 0) + 90) % 360 }))}
                 className="inline-flex h-9 items-center gap-1 rounded-full px-2 hover:bg-primary-50" data-testid="mock-review-rotate"><RotateCw size={15} aria-hidden />повернуть</button>
             </div>
           </div>
           <div className="h-[62vh] overflow-auto rounded-[14px] bg-graphite-50 lg:h-[calc(100vh-330px)] lg:min-h-[420px]" data-testid="mock-review-photo">
-            {photo && (
+            {sheet && (
               <div className="flex min-h-full items-start justify-center p-2" style={{ width: `${zoom}%` }}>
-                <div className="transition-transform" style={deg ? { transform: `rotate(${deg}deg)` } : undefined} data-rotate={deg || undefined}>
-                  <SignedImage bucket={MOCK_EXAMS_BUCKET} path={photo.storage_path} alt={`Фото ${at + 1} — работа ученика`} sensitive
-                    className="block h-auto max-w-full rounded shadow-sm" />
+                <div className={cn('transition-transform', sheet.page != null && 'w-full')} style={deg ? { transform: `rotate(${deg}deg)` } : undefined} data-rotate={deg || undefined}>
+                  {!isPdfFile(sheet.photo) ? (
+                    <SignedImage bucket={MOCK_EXAMS_BUCKET} path={sheet.photo.storage_path} alt={`Фото ${sheet.n} — работа ученика`} sensitive
+                      className="block h-auto max-w-full rounded shadow-sm" />
+                  ) : pdfState?.status === 'ready' && sheet.page != null ? (
+                    <PdfPageView doc={pdfState.doc} page={sheet.page} className="w-full" label={`Фото ${sheet.n} (PDF), страница ${sheet.page} из ${pdfState.pages} — работа ученика`} />
+                  ) : pdfState?.status === 'failed' ? (
+                    <p className="px-4 py-10 text-center text-sm text-graphite-600" data-testid="mock-review-pdf-failed">
+                      PDF не удалось показать страницами.{' '}
+                      <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={sheet.photo.storage_path} className="font-semibold text-primary-600 hover:underline">Открыть файл</SignedFileLink>
+                    </p>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 px-4 py-10 text-sm text-graphite-400"><Loader2 size={16} className="animate-spin" />Готовлю страницы PDF…</span>
+                  )}
                 </div>
               </div>
             )}
@@ -368,4 +439,11 @@ function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
       )}
     </section>
   )
+}
+
+/** Загрузить PDF-файл работы (число страниц и документ) и сообщить наверх. */
+function PdfProbe({ path, onState }: { path: string; onState: (st: SignedPdfState) => void }) {
+  const st = useSignedPdf(MOCK_EXAMS_BUCKET, path)
+  useEffect(() => { onState(st) }, [st.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }

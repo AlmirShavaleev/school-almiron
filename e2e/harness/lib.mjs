@@ -266,7 +266,14 @@ function listBucket(fixtures, bucket, prefix) {
 
 function pickAsset(rest, assetsDir) {
   const lower = rest.toLowerCase()
-  if (lower.endsWith('.pdf')) return path.join(assetsDir, 'doc.pdf')
+  if (lower.endsWith('.pdf')) {
+    // §229: условие варианта, скан второй части, критерии — свои заглушки (если сгенерированы).
+    const pick = (n) => { const f = path.join(assetsDir, n); return fs.existsSync(f) ? f : path.join(assetsDir, 'doc.pdf') }
+    if (lower.includes('/condition/')) return pick('variant.pdf')
+    if (lower.includes('scan')) return pick('scan.pdf')
+    if (lower.includes('kriterii') || lower.includes('/criteria/')) return pick('criteria.pdf')
+    return path.join(assetsDir, 'doc.pdf')
+  }
   // §205: формулы в каталоге лежат ВЕКТОРОМ (.svg) — от натурального размера
   // файла зависит их размер на бумаге, поэтому подменять их растром нельзя.
   // Отдаём по имени файла: `.../formula-sys-long.svg` → `formula-sys-long.svg`.

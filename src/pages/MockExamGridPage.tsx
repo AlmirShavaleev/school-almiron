@@ -57,6 +57,8 @@ const cellId = (s: number, t: number) => `mx-c-${s}-${t}`
  * сжимается — на телефоне прокручивается только она, «Ученик» липкий.
  */
 const TASK_W = 30
+/** §229. «Вар.» — узкий: одна цифра. */
+const VAR_W = 34
 const TOT_W = 44
 const NOTE_W = 100
 /** Итоги и «Уведомить» закреплены справа от `sm`: при узком окне ноутбука они не уезжают за край. */
@@ -74,7 +76,9 @@ const PART_LINE = 'border-l-[1.5px] border-l-graphite-300'
  */
 export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void } = {}) {
   const { id } = useParams<{ id: string }>()
-  const { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
+  const { exam, students, points, auto, works, variantOf, variantCount, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
+  // §229. Несколько вариантов — узкий столбец «Вар.» после «Ученик»; номера и статистика — общие.
+  const showVar = variantCount > 1
   const lesson = exam?.lesson ?? null
   // §224. Монитор: опрос раз в 20 с, пока окно не закрыто + 15 мин; вместе с
   // ним — фото (ссылки на страницы работ).
@@ -249,7 +253,7 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
   const monitorOnTop = !!lesson && livePhase(lesson, Date.now() + liveOffset) !== 'ended'
   const monitor = lesson && !embedded ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End} /> : null
   // §227. Вывод над таблицей — из тех же итогов и «набрано по номеру», что в таблице.
-  const summary = gridSummary({ totals, stats, roster: roster.length, maxPrimary, hasScale: !!template.score_scale?.length, lessonOpen: monitorOnTop })
+  const summary = gridSummary({ totals, stats, roster: roster.length, maxPrimary, hasScale: !!template.score_scale?.length, lessonOpen: monitorOnTop, variants: variantCount })
   // «Как вставить из Excel»: пустая таблица — открыто само (раньше текст стоял всегда), дальше — по кнопке.
   // Пока онлайн-пробник идёт, главное — монитор, подсказку не раскрываем.
   const helpOpen = pasteHelp ?? (filledCount === 0 && !monitorOnTop)
@@ -355,6 +359,7 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
           <table className="w-full min-w-[880px] max-w-[960px] table-fixed border-separate border-spacing-0 text-center text-sm" data-testid="mock-grid">
             <colgroup>
               <col />
+              {showVar && <col style={{ width: VAR_W }} />}
               {maxPts.map((_, t) => <col key={t} style={{ width: TASK_W }} />)}
               <col style={{ width: TOT_W }} />
               <col style={{ width: TOT_W }} />
@@ -363,12 +368,14 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
             <thead>
               <tr className="h-6">
                 <th scope="col" className="sticky left-0 top-0 z-30 bg-white" aria-hidden />
+                {showVar && <th className="sticky top-0 z-20 bg-white" aria-hidden />}
                 <th scope="colgroup" colSpan={p1End} className="sticky top-0 z-20 bg-white px-1 pt-2 text-left text-[11px] font-medium uppercase tracking-[.03em] text-graphite-500">Часть 1</th>
                 {p2Count > 0 && <th scope="colgroup" colSpan={p2Count} className={cn('sticky top-0 z-20 bg-white px-1.5 pt-2 text-left text-[11px] font-medium uppercase tracking-[.03em] text-graphite-500', PART_LINE)}>Часть 2</th>}
                 <th colSpan={3} className="sticky top-0 z-20 bg-white" aria-hidden />
               </tr>
               <tr>
                 <th scope="col" className="sticky left-0 top-6 z-30 border-b-[1.5px] border-graphite-300 bg-white pb-2 pl-1 pt-1 text-left text-xs font-medium text-graphite-500">Ученик</th>
+                {showVar && <th scope="col" title="Вариант ученика" className="sticky top-6 z-20 border-b-[1.5px] border-graphite-300 bg-white px-0 pb-2 pt-1 text-xs font-medium text-graphite-500" data-testid="mock-grid-var-head">Вар.</th>}
                 {maxPts.map((m, t) => (
                   <th key={t} scope="col" title={`Задание №${t + 1}, максимум ${m}`}
                     className={cn('sticky top-6 z-20 whitespace-nowrap border-b-[1.5px] border-graphite-300 bg-white px-0 pb-2 pt-1 font-normal', t === p1End && PART_LINE)}>
@@ -398,6 +405,12 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
                     >
                       {name}
                     </td>
+                    {showVar && (
+                      <td className="border-b border-graphite-100 px-0 text-center text-[13px] font-semibold text-graphite-600" data-testid="mock-grid-var"
+                        title={variantOf[st.id] ? `Вариант ${variantOf[st.id]}` : 'Вариант не выдан — выдастся при первом входе'}>
+                        {variantOf[st.id] ?? '—'}
+                      </td>
+                    )}
                     {maxPts.map((m, t) => {
                       const c = grid[s]?.[t]
                       const err = c?.err
@@ -461,7 +474,8 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
             </tbody>
             <tfoot>
               <tr data-testid="mock-grid-footer">
-                <td className="sticky bottom-0 left-0 z-30 border-t-[1.5px] border-graphite-300 bg-white py-2 pl-1 pr-1 text-left text-xs font-medium leading-tight text-graphite-500">Набрано по номеру, %</td>
+                <td className="sticky bottom-0 left-0 z-30 border-t-[1.5px] border-graphite-300 bg-white py-2 pl-1 pr-1 text-left text-xs font-medium leading-tight text-graphite-500">Набрано по номеру, %{showVar ? ' — все варианты' : ''}</td>
+                {showVar && <td className="sticky bottom-0 z-20 border-t-[1.5px] border-graphite-300 bg-white" aria-hidden />}
                 {stats.map((st, t) => {
                   const weak = isWeakTask(st)
                   return (

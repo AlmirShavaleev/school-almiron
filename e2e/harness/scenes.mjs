@@ -1,4 +1,4 @@
-import { D227, D228, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -736,6 +736,44 @@ export const scenes = [
   // время, условие, ключ вставкой строки из Excel) — ничего не отправляется.
   // Страница пробника (вкладки), проверка работы «ждёт проверки», «Работы» во
   // время окна (11Б, монитор §224); ученик — пункт «Пробники» и результат.
+  // §229. Варианты и файлы: форма с тремя вариантами (у третьего нет условия —
+  // «не назначить»), «Кому какой вариант», вкладка «Настройка» с дозагрузкой,
+  // проверка с «Вариант 2» и критериями, PDF вместо фото листами; ученик пишет:
+  // задания страницами, вкладки на телефоне, окно «Сдать работу», плитка PDF.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const form = [
+      { wait: 1200 },
+      { fill: ['[data-testid="mock-form-title"]', 'Пробник №7'] },
+      { clickSel: '[data-testid="mock-form-group-chip"]:has-text("11А профиль")' },
+      { fill: ['[data-testid="mock-form-date"]', '2026-10-10'] },
+      { fill: ['[data-testid="mock-form-time"]', '10:00'] },
+      { clickSel: '[data-testid="mock-form-variant-count"] [data-key="multi"]' },
+      { clickSel: '[data-testid="mock-form-variant-add"]' },
+      { wait: 300 },
+      { chooseFiles: { clickSel: '[data-testid="mock-form-file-condition"] >> nth=0', files: ['variant.pdf'] } },
+      { chooseFiles: { clickSel: '[data-testid="mock-form-file-criteria"] >> nth=0', files: ['criteria.pdf'] } },
+      { chooseFiles: { clickSel: '[data-testid="mock-form-file-condition"] >> nth=1', files: ['variant.pdf'] } },
+      { chooseFiles: { clickSel: '[data-testid="mock-form-file-solution"] >> nth=1', files: ['doc.pdf'] } },
+      { clickSel: '[data-testid="mock-form-variant-key-summary"] >> nth=0' },
+      { eval: `(() => { const i = document.querySelector('[data-testid="mock-form-key-input"]'); if (!i) return; const dt = new DataTransfer(); dt.setData('text/plain', '0,25\t-3\t8\t4\t17\t0,6\t112\t0,8\t\t5,5\t3\t-1'); i.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })) })()` },
+      { wait: 600 },
+    ]
+    // Под липкой шапкой кабинета — на 96 точек ниже.
+    const toSel = (sel) => ({ eval: `(() => { const el = document.querySelector('${sel}'); if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 96) })()` })
+    const lesson = `/my-course/${LESSON.group}/mock/${LESSON.open}`
+    return [
+      { persona: 'owner', name: 'd229-new-variants', url: '/mock-exams/new', width, height, actions: [...form, toSel('[data-testid="mock-form-variants"]'), { wait: 300 }] },
+      { persona: 'owner', name: 'd229-distribution', url: '/mock-exams/new', width, height, actions: [...form, toSel('[data-testid="mock-form-distribution"]'), { wait: 300 }] },
+      { persona: 'owner', name: 'd229-setup', url: `/mock-exams/${D228.done}?tab=setup`, width, height, actions: [{ wait: 1800 }, toSel('[data-testid="mock-form-variants"]'), { wait: 300 }] },
+      { persona: 'owner', name: 'd229-review-v2', url: `/mock-exams/${D228.done}/review/${D229.safin}`, width, height, actions: [{ wait: 1800 }, { clickSel: '[data-task-row="14"]' }, { wait: 400 }], full: false },
+      { persona: 'owner', name: 'd229-review-pdf', url: `/mock-exams/${D228.done}/review/${D229.safin}`, width, height, actions: [{ wait: 1800 }, { clickSel: '[data-testid="mock-review-photo-tab"]:has-text("стр. 1")' }, { wait: 1500 }], full: false },
+      { persona: 'owner', name: 'd229-grid', url: `/mock-exams/${D228.done}?tab=table`, width, height, actions: [{ wait: 1800 }], full: false },
+      { persona: 'student', name: 's229-write', url: lesson, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'student', name: 's229-write-sheet', url: lesson, width, height, actions: [{ wait: 1500 }, { clickSel: '[data-testid="mock-lesson-tabs"] [data-key="sheet"]' }, { wait: 400 }, toSel('[data-testid="mock-lesson-tabs"]'), { wait: 300 }] },
+      { persona: 'student', name: 's229-write-photos', url: lesson, width, height, actions: [{ wait: 1500 }, { clickSel: '[data-testid="mock-lesson-tabs"] [data-key="photos"]' }, { wait: 1500 }, toSel('[data-testid="mock-lesson-drop"]'), { wait: 300 }] },
+      { persona: 'student', name: 's229-submit', url: lesson, width, height, full: false, actions: [{ wait: 2000 }, { clickSel: width > 1000 ? '[data-testid="mock-lesson-submit-top"]' : '[data-testid="mock-lesson-submit"]' }, { wait: 600 }] },
+    ]
+  }),
   ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
     { persona: 'owner', name: 'd228-new', url: '/mock-exams/new', width, height, actions: [
       { wait: 1200 },

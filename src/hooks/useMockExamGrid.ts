@@ -80,6 +80,13 @@ export function useMockExamGrid(examId: string | undefined) {
    */
   const [auto, setAuto] = useState<boolean[][]>([])
   const [works, setWorks] = useState<Record<string, GridWork>>({})
+  /**
+   * §229. Номер выданного варианта ученика и сколько вариантов у пробника.
+   * Один вариант или база до §229 — 0/пусто:
+   * столбца «Вар.» нет.
+   */
+  const [variantOf, setVariantOf] = useState<Record<string, number>>({})
+  const [variantCount, setVariantCount] = useState(0)
   /** Что сказать про проверку по ключу при открытии (или null — молчать). */
   const [gradeNote, setGradeNote] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -156,6 +163,7 @@ export function useMockExamGrid(examId: string | undefined) {
       let pts: (number | null)[][] = []
       let au: boolean[][] = []
       let wk: Record<string, GridWork> = {}
+      let vars: { of: Record<string, number>; count: number } = { of: {}, count: 0 }
       if (ex.group_id && template) {
         const [{ data: gs }, { data: scores, error: sErr }] = await Promise.all([
           db.from<any[]>('group_students')
@@ -184,6 +192,8 @@ export function useMockExamGrid(examId: string | undefined) {
         }
         if (lesson) wk = await loadWorks(ex.id)
         if (cancelled) return
+        vars = await loadVariants(ex.id, roster.map(r => r.id))
+        if (cancelled) return
       }
       if (ex.group_id && template) await loadResults(ex.id)
       if (cancelled) return
@@ -192,6 +202,8 @@ export function useMockExamGrid(examId: string | undefined) {
       setPoints(pts)
       setAuto(au)
       setWorks(wk)
+      setVariantOf(vars.of)
+      setVariantCount(vars.count)
       setGradeNote(note)
       setLoading(false)
     })()
@@ -256,7 +268,7 @@ export function useMockExamGrid(examId: string | undefined) {
     setWorks(wk)
   }, [examIdLoaded, hasLesson])
 
-  return { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, reload, refreshWorks }
+  return { exam, students, points, auto, works, variantOf, variantCount, gradeNote, results, resultsError, loading, error, save, notify, reload, refreshWorks }
 }
 
 type ScoreRow = { student_id: string; task_number: number; points: number; auto_points?: number | null }
@@ -303,4 +315,33 @@ async function loadWorks(examId: string): Promise<Record<string, GridWork>> {
     w.photos.push({ id: p.id, storage_path: p.storage_path, file_name: p.file_name, position: p.position })
   }
   return out
+}
+
+/**
+ * §229. Варианты пробника и выдача. Ошибка (база до §229) — вариантов нет,
+ * таблица как в §227.
+ */
+async function loadVariants(examId: string, studentIds: string[]): Promise<{ of: Record<string, number>; count: number }> {
+  let v: { data: { id: string; position: number }[] | null; error: unknown }
+  let a: { data: { student_id: string; variant_id: string }[] | null; error: unknown }
+  try {
+    ;[v, a] = await Promise.all([
+      db.from<{ id: string; position: number }[]>('mock_exam_variants').select('id, position').eq('mock_exam_id', examId),
+      db.from<{ student_id: string; variant_id: string }[]>('mock_exam_variant_students').select('student_id, variant_id').eq('mock_exam_id', examId),
+    ])
+  } catch {
+    return { of: {}, count: 0 }
+  }
+  const list = (v.error ? [] : v.data ?? []).map(r => ({ id: r.id, position: Number(r.position) })).sort((x, y) => x.position - y.position)
+  if (list.length < 2) return { of: {}, count: list.length }
+  const pos = new Map(list.map(r => [r.id, r.position]))
+  const assigned = new Map((a.error ? [] : a.data ?? []).map(r => [r.student_id, r.variant_id]))
+  const of: Record<string, number> = {}
+  // Кому не выдан — «—»: он ещё не заходил (при первом заходе база выдаст
+  // наименее занятый), работы у него нет.
+  for (const id of studentIds) {
+    const p = pos.get(assigned.get(id) ?? '')
+    if (p != null) of[id] = p
+  }
+  return { of, count: list.length }
 }

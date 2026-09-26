@@ -1,0 +1,399 @@
+PENDING_229 applied twice: ok
+=================== M. ПЕРЕНОС ДАННЫХ (миграция прогнана дважды) ===================
+--- M1. каждый пробник, существовавший до миграции: ровно один вариант, №1, те же пути и тот же ключ
+             mock_exam_id             | variants | pos | same_condition | same_solution | same_key 
+--------------------------------------+----------+-----+----------------+---------------+----------
+ 50000000-0000-0000-0000-000000000000 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000001 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000002 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000003 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000004 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000005 |        1 |   1 | t              | t             | t
+ 50000000-0000-0000-0000-000000000006 |        1 |   1 | t              | t             | t
+
+--- M2. выдача: у каждого ученика группы — вариант 1 (у пробника без группы — никого)
+             mock_exam_id             | group_size | assigned 
+--------------------------------------+------------+----------
+ 50000000-0000-0000-0000-000000000000 |          0 |        0
+ 50000000-0000-0000-0000-000000000001 |          3 |        3
+ 50000000-0000-0000-0000-000000000002 |          1 |        1
+ 50000000-0000-0000-0000-000000000003 |          3 |        3
+ 50000000-0000-0000-0000-000000000004 |          3 |        3
+ 50000000-0000-0000-0000-000000000005 |          3 |        3
+ 50000000-0000-0000-0000-000000000006 |          3 |        3
+
+--- M3. пробник №8, заведённый после миграции старым экраном: строк вариантов нет
+ variants | assigned 
+----------+----------
+        0 |        0
+
+=================== V. ЧТО ВИДИТ УЧЕНИК ===================
+--- V1. до начала: S1 (вариант 1) — условия нет ни путём, ни файлом; номер варианта есть
+BEGIN
+UPDATE 1
+ condition_path | variant | of 
+----------------+---------+----
+                | 1       | 3
+
+ visible_objects 
+-----------------
+               0
+
+ROLLBACK
+--- V2. идёт: S1 — путь условия СВОЕГО варианта; из файлов видит только v1/condition и старый путь (вариант 1)
+BEGIN
+UPDATE 1
+                        condition_path                        | variant | mentions_criteria | has_key 
+--------------------------------------------------------------+---------+-------------------+---------
+ 50000000-0000-0000-0000-000000000007/v1/condition/1_var1.pdf | 1       | f                 | f
+
+                             name                             
+--------------------------------------------------------------
+ 50000000-0000-0000-0000-000000000007/condition/1_old.pdf
+ 50000000-0000-0000-0000-000000000007/v1/condition/1_var1.pdf
+
+ROLLBACK
+--- V3. идёт: S2 (вариант 2) — только v2/condition; решение своего варианта до конца — нет; старый путь (вариант 1) — нет
+BEGIN
+UPDATE 1
+                        condition_path                        | variant 
+--------------------------------------------------------------+---------
+ 50000000-0000-0000-0000-000000000007/v2/condition/1_var2.pdf | 2
+
+                             name                             
+--------------------------------------------------------------
+ 50000000-0000-0000-0000-000000000007/v2/condition/1_var2.pdf
+
+ROLLBACK
+--- V4. S4 без выдачи: первое чтение выдаёт наименее занятый (вариант 3), дальше видит только v3/condition
+BEGIN
+UPDATE 1
+                        condition_path                        | variant 
+--------------------------------------------------------------+---------
+ 50000000-0000-0000-0000-000000000007/v3/condition/1_var3.pdf | 3
+
+                             name                             
+--------------------------------------------------------------
+ 50000000-0000-0000-0000-000000000007/v3/condition/1_var3.pdf
+
+ second_read_same_variant 
+--------------------------
+ 3
+
+ROLLBACK
+--- V4b. S4 без выдачи заходит пингом (§224) — бланк заведён, вариант выдан тот же «наименее занятый»
+BEGIN
+UPDATE 1
+ pinged 
+--------
+ true
+
+RESET
+ assigned_variant 
+------------------
+                3
+
+ROLLBACK
+--- V5. после конца, результат отправлен: S2 видит решение СВОЕГО варианта; S1 (у варианта 1 решения нет) — чужое решение не видит; критерии — никто
+BEGIN
+UPDATE 1
+INSERT 0 2
+ who |                        solution_path                        | variant | correct_1 
+-----+-------------------------------------------------------------+---------+-----------
+ S2  | 50000000-0000-0000-0000-000000000007/v2/solution/1_sol2.pdf | 2       | 21
+
+ who |                             name                             
+-----+--------------------------------------------------------------
+ S2  | 50000000-0000-0000-0000-000000000007/v2/condition/1_var2.pdf
+ S2  | 50000000-0000-0000-0000-000000000007/v2/solution/1_sol2.pdf
+
+ who | solution_path | variant | correct_1 
+-----+---------------+---------+-----------
+ S1  |               | 1       | 1
+
+ who |                             name                             
+-----+--------------------------------------------------------------
+ S1  | 50000000-0000-0000-0000-000000000007/condition/1_old.pdf
+ S1  | 50000000-0000-0000-0000-000000000007/v1/condition/1_var1.pdf
+
+ROLLBACK
+--- V6. результат отправлен, но окно ещё идёт: ключа и решения нет (pending), объект решения не виден
+BEGIN
+UPDATE 1
+INSERT 0 1
+        result         
+-----------------------
+ {"status": "pending"}
+
+ solution_objects 
+------------------
+                0
+
+ROLLBACK
+--- V7. после конца, результат НЕ отправлен: решения нет
+BEGIN
+UPDATE 1
+        result         
+-----------------------
+ {"status": "pending"}
+
+ solution_objects 
+------------------
+                0
+
+ROLLBACK
+--- V8. ученик таблицами напрямую: варианты, ключи, выдача — 0 строк; записать выдачу себе — RLS; поправить — 0 строк
+BEGIN
+UPDATE 1
+ variants | keys | assignments 
+----------+------+-------------
+        0 |    0 |           0
+
+UPDATE 0
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:139: ERROR:  new row violates row-level security policy for table "mock_exam_variant_students"
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:144: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function save_mock_exam_variant_key(uuid,text[]) line 13 at RAISE
+ROLLBACK
+--- V9. ученик ДРУГОЙ группы (11Б): пробник не его, файлов 0
+BEGIN
+UPDATE 1
+ objects 
+---------
+       0
+
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:153: ERROR:  Этот пробник не ваш
+CONTEXT:  PL/pgSQL function my_mock_exam(uuid) line 13 at RAISE
+ROLLBACK
+--- V10. ЧУЖОЙ преподаватель (11Б): варианты, ключи, выдача, файлы — 0; ключ варианта и вариант — отказ
+BEGIN
+ variants | keys | assignments | objects 
+----------+------+-------------+---------
+        0 |    0 |           0 |       0
+
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:164: ERROR:  new row violates row-level security policy for table "mock_exam_variants"
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:169: ERROR:  Нет доступа к этому пробнику
+CONTEXT:  PL/pgSQL function save_mock_exam_variant_key(uuid,text[]) line 13 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:174: ERROR:  new row violates row-level security policy for table "objects"
+ROLLBACK
+--- V11. учитель группы: видит все варианты, ключи, выдачу и ВСЕ файлы, включая критерии; грузит критерии в папку варианта
+BEGIN
+ variants | keys | assignments | objects 
+----------+------+-------------+---------
+        3 |    2 |           2 |       6
+
+INSERT 0 1
+UPDATE 1
+ position | has_criteria 
+----------+--------------
+        1 | t
+        2 | f
+        3 | t
+
+ROLLBACK
+--- V12. куратор курса: варианты и ключи видит (как ключ §221), записать — RLS
+BEGIN
+ variants | keys 
+----------+------
+        3 |    2
+
+UPDATE 0
+ROLLBACK
+=================== G. ПРОВЕРКА ПО КЛЮЧУ — КЛЮЧ ВАРИАНТА УЧЕНИКА ===================
+--- G1. S1 (вариант 1) и S2 (вариант 2) ответили по СВОЕМУ ключу: S1 12 из 12; S2 11 из 12 (№12 — «0» при ключе 32). По ключу варианта 1 у S2 был бы 0
+BEGIN
+UPDATE 1
+INSERT 0 2
+                    grade                    
+---------------------------------------------
+ {"changed_cells": 24, "graded_students": 2}
+
+              student_id              | part1 | auto_cells 
+--------------------------------------+-------+------------
+ 20000000-0000-0000-0000-000000000051 |    12 |         12
+ 20000000-0000-0000-0000-000000000052 |    11 |         12
+
+ROLLBACK
+--- G2. S4 без выдачи сдал бланк: вариант выдан при заведении бланка (наименее занятый — 3), у варианта 3 ключа нет — первая часть не проверяется
+BEGIN
+UPDATE 1
+INSERT 0 1
+ s4_variant 
+------------
+          3
+
+                   grade                    
+--------------------------------------------
+ {"changed_cells": 0, "graded_students": 0}
+
+ s4_cells 
+----------
+        0
+
+ROLLBACK
+--- G3. ключ варианта 3 сохранён учителем — S4 перепроверен сразу
+BEGIN
+UPDATE 1
+INSERT 0 1
+                                    saved                                    
+-----------------------------------------------------------------------------
+ {"grade": {"changed_cells": 12, "graded_students": 1}, "not_checkable": []}
+
+ s4_part1 
+----------
+       11
+
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:233: ERROR:  В ключе должно быть ровно 12 ответов (первая часть)
+CONTEXT:  PL/pgSQL function save_mock_exam_variant_key(uuid,text[]) line 25 at RAISE
+ROLLBACK
+--- G4. пробник №8 без вариантов (старый экран): проверка по прежнему ключу, как до §229
+BEGIN
+                    grade                    
+---------------------------------------------
+ {"changed_cells": 12, "graded_students": 1}
+
+ s1_part1 
+----------
+       11
+
+ROLLBACK
+--- G4b. ученик пробника №8: условие — прежний путь, варианта нет; файл виден
+BEGIN
+                     condition_path                      | variant | variant_count 
+---------------------------------------------------------+---------+---------------
+ 50000000-0000-0000-0000-000000000008/condition/1_v8.pdf | null    | 0
+
+                          name                           
+---------------------------------------------------------
+ 50000000-0000-0000-0000-000000000008/condition/1_v8.pdf
+
+ROLLBACK
+--- G5. пробник №6 (перенесён): старый экран сохраняет ключ save_mock_exam_key — он ложится и в вариант 1; проверка идёт по нему
+BEGIN
+                    grade                    
+---------------------------------------------
+ {"changed_cells": 24, "graded_students": 2}
+
+ variant1_key_12 
+-----------------
+ 99
+
+ s1_task12 
+-----------
+         0
+
+ROLLBACK
+--- G6. результат ученика пробника №6 (перенесён): ключ — тот же, что был, путь решения — прежний
+BEGIN
+INSERT 0 1
+ status | correct_2 | variant 
+--------+-----------+---------
+ ready  | 0,75      | 1
+
+                          name                           
+---------------------------------------------------------
+ 50000000-0000-0000-0000-000000000006/condition/1_v6.pdf
+
+ROLLBACK
+=================== C. СМЕНА ВАРИАНТА И ЗАЩИТА ===================
+--- C1. учитель меняет вариант S4 (бланка нет) — можно; S1 после первого захода (бланк есть) — 23514
+BEGIN
+UPDATE 1
+INSERT 0 1
+INSERT 0 1
+ s4_now 
+--------
+      2
+
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:279: ERROR:  Вариант не сменить: ученик уже открыл пробник — у него есть бланк или фото
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 40 at RAISE
+ROLLBACK
+--- C2. то же через «раздачу» пачкой (upsert): S1 с бланком оставлен тем же вариантом — пачка проходит
+BEGIN
+INSERT 0 1
+INSERT 0 3
+              student_id              | position 
+--------------------------------------+----------
+ 20000000-0000-0000-0000-000000000051 |        1
+ 20000000-0000-0000-0000-000000000052 |        3
+ 20000000-0000-0000-0000-000000000054 |        2
+
+ROLLBACK
+--- C3. снять выдачу у S2 с фото (вариант 2 ≠ первого) — 23514; у S1 с бланком (вариант 1 = первый) — можно
+BEGIN
+INSERT 0 1
+INSERT 0 1
+DELETE 1
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:297: ERROR:  Вариант не сменить: ученик уже открыл пробник — у него есть бланк или фото
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 40 at RAISE
+ROLLBACK
+--- C4. удалить вариант 2, по которому пишет S2 — 23514; вариант 3 (никто не пишет) — можно
+BEGIN
+INSERT 0 1
+DELETE 1
+ variants_left 
+---------------
+             2
+
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:306: ERROR:  Вариант не удалить: по нему уже пишут или писали ученики
+CONTEXT:  PL/pgSQL function mock_exam_variants_guard() line 21 at RAISE
+ROLLBACK
+--- C5. номер варианта не меняется; ученик не из группы — 23514
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:312: ERROR:  Номер варианта и его пробник не меняются
+CONTEXT:  PL/pgSQL function mock_exam_variants_guard() line 5 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:317: ERROR:  Ученик не из группы этого пробника
+CONTEXT:  PL/pgSQL function mock_exam_variant_students_guard() line 28 at RAISE
+ROLLBACK
+--- C6. вариант ЧУЖОГО пробника ученику не выдать (составная ссылка)
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:324: ERROR:  insert or update on table "mock_exam_variant_students" violates foreign key constraint "mock_exam_variant_students_variant_id_mock_exam_id_fkey"
+DETAIL:  Key is not present in table "mock_exam_variants".
+ROLLBACK
+--- C7. удалить пробник со всеми вариантами, бланками и выдачей — каскад не останавливается
+BEGIN
+INSERT 0 1
+DELETE 1
+ variants | assigned 
+----------+----------
+        0 |        0
+
+ROLLBACK
+--- C8. старый экран меняет mock_exams.condition_path у перенесённого пробника — вариант 1 получает тот же путь
+BEGIN
+UPDATE 1
+                      condition_path                      
+----------------------------------------------------------
+ 50000000-0000-0000-0000-000000000003/condition/2_new.pdf
+
+ROLLBACK
+--- C9. смена группы пробника без работ (§228 разрешает): выдача прежней группы убрана
+BEGIN
+ before 
+--------
+      3
+
+UPDATE 1
+ after 
+-------
+     0
+
+ROLLBACK
+--- C10. функции-помощники напрямую не позвать
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:352: ERROR:  permission denied for function mock_exam_ensure_variant
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:357: ERROR:  permission denied for function mock_exam_student_variant
+ROLLBACK
+--- C11. anon: my_mock_exam и ключ варианта — нет права
+BEGIN
+psql:/home/claude/agents/a229/repo/supabase/tests/mock_exam_variants_229/20_probes.sql:362: ERROR:  permission denied for function my_mock_exam
+ROLLBACK

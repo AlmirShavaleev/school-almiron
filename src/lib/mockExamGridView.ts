@@ -35,6 +35,8 @@ export interface GridSummaryInput {
   hasScale: boolean
   /** Онлайн-пробник ещё не закрыт (не начался, идёт или догружают фото): баллов пока и не может быть. */
   lessonOpen?: boolean
+  /** §229. Сколько вариантов у пробника: при нескольких «хуже всего» — по всем вместе (номер один и тот же в шаблоне). */
+  variants?: number
 }
 
 /**
@@ -47,7 +49,7 @@ export interface GridSummaryInput {
  *   у кого тестовый есть;
  * * фразы про слабые номера нет, если слабых нет.
  */
-export function gridSummary({ totals, stats, roster, maxPrimary, hasScale, lessonOpen }: GridSummaryInput): string {
+export function gridSummary({ totals, stats, roster, maxPrimary, hasScale, lessonOpen, variants = 1 }: GridSummaryInput): string {
   const filled = totals.filter((r): r is RowTotals => r != null)
   if (!filled.length && lessonOpen) {
     return 'Баллов пока нет: первая часть проверится по ключу, когда ученики сдадут бланки, вторую впишете после проверки фото.'
@@ -69,7 +71,7 @@ export function gridSummary({ totals, stats, roster, maxPrimary, hasScale, lesso
   const weak = weakTasks(stats)
   if (weak.length) {
     const list = weak.map(n => `№${n}`).join(', ')
-    parts.push(`Хуже всего ${weak.length === 1 ? 'решён' : 'решены'} ${list}: набрано меньше трети от максимума.`)
+    parts.push(`Хуже всего ${weak.length === 1 ? 'решён' : 'решены'} ${list}: набрано меньше трети от максимума${variants > 1 ? ' (по всем вариантам вместе)' : ''}.`)
   }
   return parts.join(' ')
 }

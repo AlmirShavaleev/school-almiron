@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorage } from '@/lib/storageUpload'
 import { compressImageFile, HOMEWORK_PHOTO_PRESET } from '@/lib/imageCompression'
-import { splitHomeworkFiles, type RejectedHomeworkFile } from '@/lib/topicHomework'
+import type { RejectedHomeworkFile } from '@/lib/topicHomework'
+import { prepareWorkFiles } from '@/lib/heicToJpeg'
 import {
   MOCK_EXAMS_BUCKET, clockOffset, mockPhotoPath,
   type MockLessonPhoto, type MockLessonResult, type MockLessonState,
@@ -95,6 +96,9 @@ export function useMockExamLesson(examId: string | undefined) {
    * (`splitHomeworkFiles`: `.dng` и прочий RAW отклоняются с подсказкой),
    * сжатие — тот же пресет, загрузка — общий `uploadToStorage`. Своего здесь
    * только путь в бакете и регистрация фото в базе, которая сверяет окно.
+   * §229: PDF принимается как есть (у ученика — плитка «PDF · N стр.», у
+   * преподавателя — страницы листами); HEIC переводится в JPEG до загрузки,
+   * а если браузер не умеет — отказ «сохраните как JPG» (`prepareWorkFiles`).
    */
   const uploadPhotos = useCallback(async (
     files: File[],
@@ -102,7 +106,7 @@ export function useMockExamLesson(examId: string | undefined) {
   ): Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }> => {
     const st = stateRef.current
     if (!examId || !st) return { rejected: [], error: 'Пробник не загружен' }
-    const { accepted, rejected } = splitHomeworkFiles(files)
+    const { accepted, rejected } = await prepareWorkFiles(files)
     if (accepted.length === 0) return { rejected, error: null }
     const studentId = st.student_id
 

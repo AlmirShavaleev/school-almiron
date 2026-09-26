@@ -51,10 +51,27 @@ export interface WorksExam {
   solution_path: string | null
 }
 
-export interface WorksPhoto { id: string; storage_path: string; file_name: string; position: number }
+export interface WorksPhoto { id: string; storage_path: string; file_name: string; position: number; mime_type?: string | null }
+
+/** §229. Вариант пробника глазами персонала — с ключом и всеми файлами (критерии — только персоналу). */
+export interface WorksVariant {
+  id: string
+  position: number
+  label: string | null
+  condition_path: string | null
+  solution_path: string | null
+  criteria_path: string | null
+  key: (string | null)[] | null
+}
 
 export interface WorksStudent extends WorkInput {
   photoList: WorksPhoto[]
+  /**
+   * §229. Вариант ученика: выданный, а без выдачи — первый по номеру (то же
+   * правило, что у базы, `mock_exam_student_variant`). null — у пробника нет
+   * строк вариантов (живёт по-старому: ключ и файлы — пробника).
+   */
+  variant?: WorksVariant | null
 }
 
 const RESULT_COLUMNS = 'student_id, score, part1_score, part2_score, notified_at, notified_score, notified_part1_score, notified_part2_score'
@@ -63,6 +80,8 @@ export function useMockExamWorks(examId: string | undefined) {
   const [exam, setExam] = useState<WorksExam | null>(null)
   const [students, setStudents] = useState<WorksStudent[]>([])
   const [key, setKey] = useState<(string | null)[] | null>(null)
+  /** §229. Варианты пробника по номеру; пусто — пробник без вариантов (или база до §229). */
+  const [variants, setVariants] = useState<WorksVariant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -87,7 +106,7 @@ export function useMockExamWorks(examId: string | undefined) {
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
       }
       if (!ex.group_id || !template) {
-        setExam(ex); setStudents([]); setKey(null); setLoading(false)
+        setExam(ex); setStudents([]); setKey(null); setVariants([]); setLoading(false)
         return
       }
       // Первая часть законченных бланков — по ключу, до чтения баллов (как у таблицы §221).
@@ -95,13 +114,18 @@ export function useMockExamWorks(examId: string | undefined) {
         try { await db.rpc('grade_mock_exam_part1', { p_mock_exam_id: ex.id }) } catch { /* таблица работает и без этого */ }
         if (cancelled) return
       }
-      const [gs, sc, sh, ph, rs, k] = await Promise.all([
+      const [gs, sc, sh, ph, rs, k, vv, vk, va] = await Promise.all([
         db.from<any[]>('group_students').select('student_id, students(id, profile_id, profiles(full_name))').eq('group_id', ex.group_id),
         db.from<any[]>('mock_exam_task_scores').select('student_id, task_number, points, auto_points').eq('mock_exam_id', ex.id),
         db.from<any[]>('mock_exam_sheets').select('student_id, answers, submitted_at').eq('mock_exam_id', ex.id),
-        db.from<any[]>('mock_exam_photos').select('id, student_id, storage_path, file_name, position').eq('mock_exam_id', ex.id),
+        db.from<any[]>('mock_exam_photos').select('id, student_id, storage_path, file_name, position, mime_type').eq('mock_exam_id', ex.id),
         db.from<MockExamResultNotifyRow[]>('mock_exam_results').select(RESULT_COLUMNS).eq('mock_exam_id', ex.id),
         db.from<{ answers: (string | null)[] }>('mock_exam_answer_keys').select('answers').eq('mock_exam_id', ex.id).maybeSingle(),
+        // §229. Варианты, их ключи и выдача. До миграции таблиц нет — ошибка
+        // значит «вариантов нет», экран живёт как в §228.
+        db.from<any[]>('mock_exam_variants').select('id, position, label, condition_path, solution_path, criteria_path').eq('mock_exam_id', ex.id),
+        db.from<any[]>('mock_exam_variant_keys').select('variant_id, answers').eq('mock_exam_id', ex.id),
+        db.from<any[]>('mock_exam_variant_students').select('student_id, variant_id').eq('mock_exam_id', ex.id),
       ])
       if (cancelled) return
       if (sc.error) { setError(sc.error.message || 'Не удалось загрузить баллы'); setLoading(false); return }
@@ -126,17 +150,31 @@ export function useMockExamWorks(examId: string | undefined) {
       for (const p of (ph.data ?? []).slice().sort((a, b) => a.position - b.position)) {
         const s = byId.get(p.student_id)
         if (!s) continue
-        s.photoList.push({ id: p.id, storage_path: p.storage_path, file_name: p.file_name, position: p.position })
+        s.photoList.push({ id: p.id, storage_path: p.storage_path, file_name: p.file_name, position: p.position, mime_type: p.mime_type ?? null })
         s.photos = s.photoList.length
       }
       for (const r of rs.data ?? []) {
         const s = byId.get(r.student_id)
         if (s) s.result = r
       }
+      const vKeys = new Map((vk.error ? [] : vk.data ?? []).map(r => [r.variant_id as string, r.answers as (string | null)[]]))
+      const vList: WorksVariant[] = (vv.error ? [] : vv.data ?? [])
+        .map(r => ({
+          id: r.id, position: Number(r.position), label: r.label ?? null,
+          condition_path: r.condition_path ?? null, solution_path: r.solution_path ?? null, criteria_path: r.criteria_path ?? null,
+          key: vKeys.get(r.id) ?? null,
+        }))
+        .sort((a, b) => a.position - b.position)
+      if (vList.length) {
+        const vById = new Map(vList.map(v => [v.id, v]))
+        const assigned = new Map((va.error ? [] : va.data ?? []).map(r => [r.student_id as string, r.variant_id as string]))
+        for (const s of byId.values()) s.variant = vById.get(assigned.get(s.id) ?? '') ?? vList[0]
+      }
       // Алфавит — как в таблице §218 и в журнале преподавателя.
       const list = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
       setExam(ex)
       setStudents(list)
+      setVariants(vList)
       setKey(k.data?.answers ?? null)
       setLoading(false)
     })()
@@ -165,5 +203,5 @@ export function useMockExamWorks(examId: string | undefined) {
     return { error: null, summary: data }
   }, [exam])
 
-  return { exam, students, key, loading, error, reload, saveRow, notify }
+  return { exam, students, key, variants, loading, error, reload, saveRow, notify }
 }

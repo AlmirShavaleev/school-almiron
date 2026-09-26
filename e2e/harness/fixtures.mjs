@@ -340,9 +340,13 @@ function lessonState(id) {
     answers: id === LESSON.up ? [] : id === LESSON.sub ? MY_ANSWERS.map(a => a || '8') : MY_ANSWERS,
     submitted_at: sub, updated_at: started ? new Date(Date.now() - 2 * MIN).toISOString() : null,
     notified: id === LESSON.res,
-    photos: id === LESSON.open ? myPhotos(id, 3) : id === LESSON.sub ? myPhotos(id, 2) : id === LESSON.res ? myPhotos(id, 3) : [],
+    photos: id === LESSON.open ? [...myPhotos(id, 2), myPdf(id)] : id === LESSON.sub ? myPhotos(id, 2) : id === LESSON.res ? myPhotos(id, 3) : [],
+    // §229: идущий пробник — три варианта, у ученика второй.
+    ...(id === LESSON.open ? { variant: { position: 2, label: null }, variant_count: 3 } : { variant: { position: 1, label: null }, variant_count: 1 }),
   }
 }
+// §229. Вторая часть PDF-сканом — у ученика плитка «PDF · N стр.».
+const myPdf = (id) => ({ id: U('c', 809), storage_path: `${id}/photos/${IDS.studentRow}/9_scan-chast-2.pdf`, file_name: 'скан часть 2.pdf', mime_type: 'application/pdf', size_bytes: 820000, position: 9, created_at: ago(1) })
 function lessonList(body) {
   // §224.2: песочница владельца — своя группа, свой список.
   const sandbox = sandboxMockList(body)
@@ -381,6 +385,7 @@ export const lessonRpcs = {
   add_mock_exam_photo: (body) => ({ id: U('c', 899), storage_path: body.p_storage_path, file_name: body.p_file_name, mime_type: body.p_mime_type, size_bytes: body.p_size_bytes, position: 9, created_at: new Date().toISOString() }),
   grade_mock_exam_part1: { graded_students: 4, changed_cells: 0 },
   save_mock_exam_key: { not_checkable: [], grade: { graded_students: 4, changed_cells: 0 } },
+  save_mock_exam_variant_key: { not_checkable: [], grade: { graded_students: 4, changed_cells: 0 } },
 }
 export { lessonTotals }
 
@@ -633,6 +638,38 @@ export const d228Photos = D228_PHOTOS.flatMap((n, i) => Array.from({ length: n }
   id: U('c', 62000 + i * 10 + k), mock_exam_id: D228.done, student_id: mockStudent(i),
   storage_path: `${D228.done}/photos/${mockStudent(i)}/${k}_stranica-${k + 1}.webp`, file_name: `стр ${k + 1}.webp`, position: k,
 })))
+// ── §229: варианты внутри пробника ──────────────────────────────────────────
+// Пробник «№6» — три варианта: у всех условие, решение у 1-го и 2-го, критерии
+// у 2-го. Раздача по очереди по алфавиту (Абрамова — 1, Белов — 2, Гарипов — 3,
+// …). Сафин (вариант 2, ждёт проверки) прислал вторую часть ещё и PDF-сканом —
+// на проверке он листами. Выдумка целиком.
+export const D229 = { v: [U('c', 1780), U('c', 1781), U('c', 1782)], safin: mockStudent(10) }
+mock_exams.find(e => e.id === D228.done).variant_mode = 'order'
+export const mock_exam_variants = [1, 2, 3].map(n => ({
+  id: D229.v[n - 1], mock_exam_id: D228.done, position: n, label: null,
+  condition_path: `${D228.done}/v${n}/condition/1_variant_${n}.pdf`,
+  solution_path: n < 3 ? `${D228.done}/v${n}/solution/1_reshenie_${n}.pdf` : null,
+  criteria_path: n === 2 ? `${D228.done}/v2/criteria/1_kriterii_2.pdf` : null,
+  created_at: ago(24 * 4), updated_at: ago(24 * 4),
+}))
+const KEY_V2 = ['0,5', '-7', '3', '64', '0,4', '9', '25', '6', '2', '121', '0,75', '5']
+export const mock_exam_variant_keys = [
+  { variant_id: D229.v[0], mock_exam_id: D228.done, answers: LESSON_KEY, updated_by: IDS.owner, updated_at: ago(30) },
+  { variant_id: D229.v[1], mock_exam_id: D228.done, answers: KEY_V2, updated_by: IDS.owner, updated_at: ago(30) },
+  { variant_id: D229.v[2], mock_exam_id: D228.done, answers: LESSON_KEY, updated_by: IDS.owner, updated_at: ago(30) },
+]
+export const mock_exam_variant_students = MOCK_ROSTER.map((_, i) => ({
+  mock_exam_id: D228.done, student_id: mockStudent(i), variant_id: D229.v[i % 3], assigned_by: IDS.owner, assigned_at: ago(24 * 4),
+}))
+// У учеников варианта 2 ответы бланка — по его ключу (верное осталось верным).
+for (const sh of d228Sheets) {
+  const i = MOCK_ROSTER.findIndex((_, k) => mockStudent(k) === sh.student_id)
+  if (i % 3 === 1) sh.answers = sh.answers.map((a, t) => (a === LESSON_KEY[t] ? KEY_V2[t] : a))
+}
+d228Photos.push({
+  id: U('c', 62199), mock_exam_id: D228.done, student_id: D229.safin,
+  storage_path: `${D228.done}/photos/${D229.safin}/9_scan-chast-2.pdf`, file_name: 'скан часть 2.pdf', mime_type: 'application/pdf', position: 9,
+})
 groups.push(
   { id: MOCK_GROUP, name: '11А профиль', course_id: LESSON.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 16, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 40), group_students: mockGroupStudents.map(g => ({ student_id: g.student_id })) },
   { id: LIVE.group, name: '11Б · профиль', course_id: LIVE.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 16, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 40), group_students: liveGroupStudents.map(g => ({ student_id: g.student_id })) },
@@ -1427,7 +1464,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals, ...d227Totals, ...d228Totals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets, ...d227Sheets, ...d228Sheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos, ...d227Photos, ...d228Photos], lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals, ...d227Totals, ...d228Totals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_variants, mock_exam_variant_keys, mock_exam_variant_students, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets, ...d227Sheets, ...d228Sheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos, ...d227Photos, ...d228Photos], lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {

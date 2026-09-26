@@ -59,6 +59,8 @@ export interface SetupDraft {
   group_id?: string
   /** §228. День пробника для черновика без времени начала (задуманный момент). */
   date?: string | null
+  /** §229. Как раздали варианты (только для экрана). Не передан — не пишется. */
+  variant_mode?: 'order' | 'random' | 'manual'
 }
 
 const EXAM_COLUMNS = 'id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)'
@@ -133,6 +135,7 @@ export function useMockExamSetup(examId: string | undefined) {
     if (d.starts_at) row.date = d.starts_at
     else if (d.date) row.date = d.date
     if (d.group_id && d.group_id !== exam.group_id) row.group_id = d.group_id
+    if (d.variant_mode) row.variant_mode = d.variant_mode
     const { error: err } = await db.from('mock_exams').update(row).eq('id', exam.id)
     if (err) return { error: err.message || 'Не сохранилось' }
     reload()

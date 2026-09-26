@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { uploadToStorage } from '@/lib/storageUpload'
-import { MOCK_EXAMS_BUCKET, mockExamFilePath } from '@/lib/mockExamLesson'
+import { MOCK_EXAMS_BUCKET } from '@/lib/mockExamLesson'
+import { variantFilePath, type VariantFileKind, type VariantMode } from '@/lib/mockExamVariants'
 import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
 
 /**
@@ -14,14 +15,25 @@ import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
  * Порядок:
  *  1. все строки — ОДНОЙ вставкой (одна транзакция: либо все группы, либо ни
  *     одной — не бывает «11А назначен, 11Б нет» из-за сбоя посередине);
- *  2. условие и решение — в папку КАЖДОГО пробника (`<пробник>/condition|solution/…`):
- *     политика чтения `mock_exam_file_readable` пускает ученика только к
- *     файлу, в пути которого id его пробника. Первому — загрузка, остальным —
- *     копия внутри хранилища, а если копия не удалась — повторная загрузка;
- *  3. ключ — `save_mock_exam_key` каждому.
+ *  2. §229: варианты — одной вставкой, у каждого пробника свои строки;
+ *  3. условие, решение, критерии — в папку варианта КАЖДОГО пробника
+ *     (`<пробник>/v<N>/condition|solution|criteria/…`): политика чтения
+ *     `mock_exam_file_readable` пускает ученика только к файлу своего
+ *     пробника и своего варианта. Первому — загрузка, остальным — копия
+ *     внутри хранилища, а если копия не удалась — повторная загрузка;
+ *  4. ключ — `save_mock_exam_variant_key` каждому варианту каждого пробника;
+ *  5. раздача «кому какой» — внутри каждой группы.
  * Сбой в шагах 2–3 пробники не откатывает: они уже созданы и видны, а что не
  * получилось — возвращается словами, чтобы дозагрузить во вкладке «Настройка».
  */
+
+export interface CreateVariantInput {
+  condition: File | null
+  solution: File | null
+  criteria: File | null
+  /** Ключ первой части; все пустые — не сохраняется. */
+  key: string[]
+}
 
 export interface CreateInput {
   title: string
@@ -32,10 +44,16 @@ export interface CreateInput {
   /** Задуманный момент черновика — пишется в `date`, чтобы форма его помнила. */
   plannedAt: string | null
   durationMinutes: number
-  condition: File | null
-  solution: File | null
-  /** Ключ первой части; все пустые — не сохраняется. */
-  key: string[]
+  /** §229. Варианты по порядку: [0] — вариант 1. Один вариант — пробник как в §228. */
+  variants: CreateVariantInput[]
+  /** §229. Как раздали — только для экрана «Настройка». */
+  variantMode: VariantMode
+  /**
+   * §229. Кому какой вариант, по группам: `{ группа: { ученик: номер } }`.
+   * Раздача внутри каждой группы. Кого здесь нет — получит наименее занятый
+   * вариант при первом заходе (это делает база).
+   */
+  assignments: Record<string, Record<string, number>>
   profileId: string
 }
 
@@ -59,6 +77,12 @@ interface DbLike {
 }
 const db = supabase as unknown as DbLike
 
+const KINDS: { kind: VariantFileKind; file: (v: CreateVariantInput) => File | null; label: string }[] = [
+  { kind: 'condition', file: v => v.condition, label: 'Условие' },
+  { kind: 'solution', file: v => v.solution, label: 'Решение' },
+  { kind: 'criteria', file: v => v.criteria, label: 'Критерии' },
+]
+
 export async function createMockExams(input: CreateInput): Promise<CreateResult> {
   const { template } = input
   // §219: строка `teachers` — по профилю при ЛЮБОЙ роли (у владельца роль admin, а строка есть).
@@ -67,6 +91,7 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
     ? template.score_scale[template.score_scale.length - 1]
     : template.max_points.reduce((a, b) => a + b, 0)
   const date = input.startsAt ?? input.plannedAt ?? new Date().toISOString()
+  const multi = input.variants.length > 1
   const rows = input.groups.map(g => ({
     title: input.title.trim(),
     subject: template.subject,
@@ -79,6 +104,7 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
     created_by: tc?.id ?? null,
     starts_at: input.startsAt,
     duration_minutes: input.durationMinutes,
+    ...(multi ? { variant_mode: input.variantMode } : {}),
   }))
   const { data, error } = await db.from<{ id: string; group_id: string }[]>('mock_exams').insert(rows).select('id, group_id')
   if (error || !data) return { created: [], problems: [], error: error?.message || 'Пробник не создан' }
@@ -88,35 +114,71 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
   })
 
   const problems: string[] = []
-  for (const kind of ['condition', 'solution'] as const) {
-    const file = kind === 'condition' ? input.condition : input.solution
-    if (!file) continue
-    const label = kind === 'condition' ? 'Условие' : 'Решение'
-    let source: string | null = null
-    for (const c of created) {
-      const path = mockExamFilePath(c.id, kind, file.name)
-      let ok = false
-      if (source) {
-        const cp = await supabase.storage.from(MOCK_EXAMS_BUCKET).copy(source, path)
-        ok = !cp.error
-      }
-      if (!ok) {
-        try { await uploadToStorage(MOCK_EXAMS_BUCKET, path, file); ok = true } catch (e) {
-          problems.push(`${label} для группы ${c.groupName} не загрузилось: ${e instanceof Error ? e.message : 'ошибка'}`)
+  // §229. Варианты — одной вставкой на все пробники: у каждого пробника свои строки.
+  const vRows = created.flatMap(c => input.variants.map((_, k) => ({ mock_exam_id: c.id, position: k + 1 })))
+  const { data: vData, error: vErr } = await db.from<{ id: string; mock_exam_id?: string; position?: number }[]>('mock_exam_variants')
+    .insert(vRows).select('id, mock_exam_id, position')
+  if (vErr || !vData) {
+    problems.push(`Варианты не созданы: ${vErr?.message || 'ошибка'} — добавьте их во вкладке «Настройка»`)
+    return { created, problems, error: null }
+  }
+  const variantId = (examId: string, position: number): string | null => {
+    const i = vRows.findIndex(r => r.mock_exam_id === examId && r.position === position)
+    const hit = vData.find(r => r.mock_exam_id === examId && Number(r.position) === position) ?? vData[i]
+    return hit?.id ?? null
+  }
+  const vName = (k: number) => (multi ? `вариант ${k + 1}, ` : '')
+
+  // Файлы: в папку варианта КАЖДОГО пробника — первому загрузка, остальным копия.
+  for (let k = 0; k < input.variants.length; k++) {
+    for (const { kind, file: pick, label } of KINDS) {
+      const file = pick(input.variants[k])
+      if (!file) continue
+      let source: string | null = null
+      for (const c of created) {
+        const vid = variantId(c.id, k + 1)
+        if (!vid) continue
+        const path = variantFilePath(c.id, k + 1, kind, file.name)
+        let ok = false
+        if (source) {
+          const cp = await supabase.storage.from(MOCK_EXAMS_BUCKET).copy(source, path)
+          ok = !cp.error
         }
+        if (!ok) {
+          try { await uploadToStorage(MOCK_EXAMS_BUCKET, path, file); ok = true } catch (e) {
+            problems.push(`${label} (${vName(k)}группа ${c.groupName}) не загрузилось: ${e instanceof Error ? e.message : 'ошибка'}`)
+          }
+        }
+        if (!ok) continue
+        source = source ?? path
+        const up = await db.from('mock_exam_variants').update({ [`${kind}_path`]: path }).eq('id', vid)
+        if (up.error) problems.push(`${label} (${vName(k)}группа ${c.groupName}) не привязалось: ${up.error.message || 'ошибка'}`)
       }
-      if (!ok) continue
-      source = source ?? path
-      const column = kind === 'condition' ? 'condition_path' : 'solution_path'
-      const up = await db.from('mock_exams').update({ [column]: path }).eq('id', c.id)
-      if (up.error) problems.push(`${label} для группы ${c.groupName} не привязалось: ${up.error.message || 'ошибка'}`)
     }
   }
 
-  if (input.key.some(a => a.trim())) {
+  for (let k = 0; k < input.variants.length; k++) {
+    const key = input.variants[k].key
+    if (!key.some(a => a.trim())) continue
     for (const c of created) {
-      const { error: kErr } = await db.rpc('save_mock_exam_key', { p_mock_exam_id: c.id, p_answers: input.key })
-      if (kErr) problems.push(`Ключ для группы ${c.groupName} не сохранён: ${kErr.message || 'ошибка'}`)
+      const vid = variantId(c.id, k + 1)
+      if (!vid) continue
+      const { error: kErr } = await db.rpc('save_mock_exam_variant_key', { p_variant_id: vid, p_answers: key })
+      if (kErr) problems.push(`Ключ (${vName(k)}группа ${c.groupName}) не сохранён: ${kErr.message || 'ошибка'}`)
+    }
+  }
+
+  // Раздача — внутри каждой группы. Один вариант — раздавать нечего: база
+  // выдаст его каждому при первом заходе.
+  if (multi) {
+    for (const c of created) {
+      const byStudent = input.assignments[c.groupId] ?? {}
+      const aRows = Object.entries(byStudent)
+        .map(([sid, pos]) => ({ mock_exam_id: c.id, student_id: sid, variant_id: variantId(c.id, pos) }))
+        .filter(r => r.variant_id)
+      if (aRows.length === 0) continue
+      const { error: aErr } = await db.from('mock_exam_variant_students').insert(aRows)
+      if (aErr) problems.push(`Варианты ученикам группы ${c.groupName} не разданы: ${aErr.message || 'ошибка'} — ученики получат их при входе`)
     }
   }
   return { created, problems, error: null }

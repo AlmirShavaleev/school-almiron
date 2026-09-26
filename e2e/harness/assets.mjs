@@ -141,5 +141,31 @@ for (const [name, { w, h, html }] of Object.entries(pages)) {
 }
 await page.setContent(`<body style="font-family:Georgia;padding:40px"><h1>Материал темы</h1><p>Кинематика равноускоренного движения. Основные формулы: v = v₀ + at, S = v₀t + at²/2.</p><p>Таблица значений и три задачи для самостоятельного решения.</p></body>`)
 await page.pdf({ path: path.join(out, 'doc.pdf'), format: 'A4' })
+// §229. Условие варианта (три страницы, как настоящий вариант ЕГЭ), скан второй
+// части (две страницы «от руки») и критерии — всё выдумано.
+const tasks = [
+  'Найдите значение выражения (3,6 · 10⁻²) : (1,2 · 10⁻⁴).',
+  'В треугольнике ABC угол C равен 90°, AC = 12, cos A = 0,6. Найдите AB.',
+  'Найдите корень уравнения log₃(x + 4) = 2.',
+  'В группе 20 учеников, из них 7 — отличники. Найдите вероятность, что случайно выбранный ученик — отличник.',
+  'Найдите значение выражения 5 sin 17° / cos 73°.',
+  'Прямая y = 5x − 8 касается графика функции y = x² + bx + 1. Найдите b, если абсцисса точки касания больше 0.',
+  'Объём конуса равен 48. Через середину высоты проведена плоскость, параллельная основанию. Найдите объём отсечённого конуса.',
+  'Материальная точка движется по закону x(t) = t³ − 3t² + 2t. Найдите скорость в момент t = 3 с.',
+  'Первая труба наполняет бак за 12 минут, вторая — за 6. За сколько минут наполнят бак обе трубы?',
+  'На рисунке — график функции f(x) = kx + b. Найдите f(−4).',
+  'Найдите наибольшее значение функции y = 12x − x³ на отрезке [−1; 3].',
+  'Решите уравнение 2cos²x + 3sin x − 3 = 0. Укажите корни на отрезке [π; 5π/2].',
+]
+const page1 = `<div style="page-break-after:always"><h2 style="margin:0 0 6px">Пробный ЕГЭ · математика, профиль</h2><h3 style="margin:0 0 18px;color:#555">Вариант 2</h3>${tasks.slice(0, 6).map((t, i) => `<p style="margin:0 0 20px"><b>${i + 1}.</b> ${t}</p><div style="border-bottom:1px solid #999;width:40%;margin:0 0 18px">Ответ: ________</div>`).join('')}</div>`
+const page2 = `<div style="page-break-after:always">${tasks.slice(6).map((t, i) => `<p style="margin:0 0 20px"><b>${i + 7}.</b> ${t}</p><div style="border-bottom:1px solid #999;width:40%;margin:0 0 18px">Ответ: ________</div>`).join('')}</div>`
+const page3 = `<div><h3>Часть 2</h3>${['13. а) Решите уравнение 2sin²x − √3 cos(π/2 − x) = 0. б) Найдите корни на [−3π; −3π/2].', '14. В правильной пирамиде SABCD все рёбра равны 6. Найдите угол между SA и плоскостью SBC.', '15. Решите неравенство log₂(x² − 4) − 3log₂((x + 2)/(x − 2)) > 2.', '16. В июле планируется взять кредит на сумму 1,3 млн рублей…', '17. Окружность касается сторон AB и BC треугольника ABC…', '18. Найдите все a, при которых система имеет ровно два решения.', '19. На доске написаны 30 натуральных чисел…'].map(t => `<p style="margin:0 0 16px">${t}</p>`).join('')}</div>`
+await page.setContent(`<body style="font-family:Georgia;font-size:15px;padding:36px">${page1}${page2}${page3}</body>`)
+await page.pdf({ path: path.join(out, 'variant.pdf'), format: 'A4' })
+const hand = (lines) => `<div style="page-break-after:always;font-family:'Comic Sans MS',cursive;font-size:22px;color:#1c2f7a;line-height:2.1;background:repeating-linear-gradient(#fff 0 44px,#b9c9ee 44px 46px);min-height:1000px;padding:30px">${lines.map(l => `<div>${l}</div>`).join('')}</div>`
+await page.setContent(`<body style="margin:0">${hand(['№13', 'а) 2sin²x − √3 sin x = 0', 'sin x (2 sin x − √3) = 0', 'sin x = 0 или sin x = √3/2', 'x = πk; x = π/3 + 2πk; x = 2π/3 + 2πk', 'б) −3π; −2π; −5π/3; −4π/3'])}${hand(['№15', 'ОДЗ: x² − 4 > 0, (x+2)/(x−2) > 0', 'log₂(x−2)(x+2) − 3log₂(x+2) + 3log₂(x−2) > 2', '4log₂(x−2) − 2log₂(x+2) > 2', 'Ответ: (2 + 2√2; +∞)'])}</body>`)
+await page.pdf({ path: path.join(out, 'scan.pdf'), format: 'A4' })
+await page.setContent(`<body style="font-family:Georgia;padding:40px"><h2>Критерии оценивания · вариант 2</h2><p><b>13.</b> 2 балла — обоснованно получены верные ответы в обоих пунктах; 1 балл — верно решён один пункт.</p><p><b>14.</b> 3 балла — обоснованно получен верный ответ; 2 балла — доказан пункт а) и получен неверный ответ в б) из-за вычислительной ошибки.</p></body>`)
+await page.pdf({ path: path.join(out, 'criteria.pdf'), format: 'A4' })
 await browser.close()
 console.log('assets:', fs.readdirSync(out).join(' '))

@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Camera, Clock, FileText, Images, Loader2, Lock, Send, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { SignedImage } from '@/components/ui/SignedImage'
 import { useMockExamLesson, useMockExamPing, type PhotoUploadProgress } from '@/hooks/useMockExamLesson'
+import { ConditionViewer } from '@/components/mockExams/ConditionViewer'
+import { WorkFileThumb } from '@/components/mockExams/WorkFileThumb'
+import { MockSubmitDialog } from '@/components/student/MockSubmitDialog'
+import { isPdfFile } from '@/lib/mockExamVariants'
 import { HOMEWORK_FILE_ACCEPT, type RejectedHomeworkFile } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
 import {
-  MOCK_EXAMS_BUCKET, emptyAnswers, formatCountdown, lessonStatus, mskDayLong, mskTime,
+  MOCK_EXAMS_BUCKET, emptyAnswers, formatCountdown, lessonStatus, lessonVariantLabel, mskDayLong, mskTime,
   type MockLessonPhoto, type MockLessonResult, type MockLessonState, type MockLessonStatus,
 } from '@/lib/mockExamLesson'
 import { cn } from '@/utils/cn'
@@ -32,6 +35,9 @@ export function MockExamLessonPage() {
   const now = useServerNow(offset)
   // §224. Монитор преподавателя: «пишет · онлайн». Пока окно открыто и вкладка видима.
   useMockExamPing(examId, state, offset)
+  // §229. Окно «Сдать работу» и файлы, которые не открылись (их назовёт окно).
+  const [ask, setAsk] = useState(false)
+  const [broken, setBroken] = useState<Record<string, boolean>>({})
 
   const status: MockLessonStatus | null = state
     ? lessonStatus({ ...state, has_work: state.submitted_at != null || state.answers.some(a => a) || state.photos.length > 0 }, now)
@@ -60,55 +66,118 @@ export function MockExamLessonPage() {
     )
   }
 
+  const variantLabel = lessonVariantLabel(state)
+  const writing = status === 'open' || status === 'submitted' || status === 'time_up'
+  const workArea = status !== 'upcoming' && status !== 'result'
+  const brokenList = state.photos
+    .map((p, i) => ({ n: i + 1, pdf: isPdfFile(p), id: p.id }))
+    .filter(b => broken[b.id])
+
   return (
-    <div className="max-w-4xl space-y-4" data-testid="mock-lesson-page" data-status={status}>
+    <div className={cn('space-y-4', workArea ? 'max-w-6xl' : 'max-w-4xl')} data-testid="mock-lesson-page" data-status={status}>
       <header>
         <BackLink groupId={groupId} />
         <h1 className="mt-1 text-2xl font-bold text-gray-900 [text-wrap:balance]">
           {state.title}{state.starts_at ? ` · ${mskDayLong(state.starts_at)}` : ''}
         </h1>
         {state.starts_at && (
-          <p className="text-sm text-graphite-600">
+          <p className={cn('text-sm text-graphite-600', writing && 'hidden sm:block')}>
             Урок-пробник. Открывается для всех в {mskTime(state.starts_at)}, писать до {mskTime(state.ends_at)}, загрузить фото до {mskTime(state.photos_until)}.
           </p>
         )}
       </header>
 
       {status === 'upcoming' && <Upcoming state={state} now={now} />}
-      {status === 'open' && <TimerPanel state={state} now={now} />}
+      {status === 'open' && <TimerPanel state={state} now={now} variantLabel={variantLabel} onSubmit={() => setAsk(true)} />}
       {(status === 'submitted' || status === 'time_up') && <ClosedNote state={state} status={status} />}
       {(status === 'checking' || status === 'missed') && <CheckingNote status={status} />}
       {status === 'result' && result?.status === 'ready' && <ResultPanels result={result} state={state} groupId={groupId} />}
 
-      {status !== 'upcoming' && status !== 'result' && state.condition_path && (
-        <Panel>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[17px] font-semibold text-graphite-900">Условие</h2>
-              <p className="text-sm text-graphite-600">Вариант открывается по ссылке, которую выдаёт сервер — только с начала пробника.</p>
-            </div>
-            <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={state.condition_path} sensitive className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-50">
-              <span data-testid="mock-lesson-condition" className="inline-flex items-center gap-1.5"><FileText size={15} />Открыть условие (PDF)</span>
-            </SignedFileLink>
-          </div>
-        </Panel>
-      )}
-
-      {status !== 'upcoming' && status !== 'result' && (
-        <AnswerSheet state={state} editable={status === 'open'} onSave={saveAnswer} onClosed={reload} />
-      )}
-
-      {status !== 'upcoming' && status !== 'result' && (
-        <PhotosPanel
+      {workArea && (
+        <WorkArea
           state={state}
-          editable={status === 'open' || status === 'submitted' || status === 'time_up'}
-          onUpload={uploadPhotos}
-          onRemove={removePhoto}
-          onClosed={reload}
+          variantLabel={variantLabel}
+          sheet={<AnswerSheet state={state} editable={status === 'open'} onSave={saveAnswer} onClosed={reload} />}
+          photos={(
+            <PhotosPanel
+              state={state}
+              editable={status === 'open' || status === 'submitted' || status === 'time_up'}
+              onUpload={uploadPhotos}
+              onRemove={removePhoto}
+              onClosed={reload}
+              onBroken={(id, b) => setBroken(prev => (prev[id] === b ? prev : { ...prev, [id]: b }))}
+            />
+          )}
         />
       )}
 
-      {status === 'open' && <SubmitPanel state={state} onSubmit={submit} onClosed={reload} />}
+      {status === 'open' && (
+        <Button onClick={() => setAsk(true)} className="min-h-12 w-full lg:hidden" data-testid="mock-lesson-submit"><Send size={15} />Сдать работу</Button>
+      )}
+      {status === 'open' && ask && (
+        <MockSubmitDialog
+          open
+          onClose={() => setAsk(false)}
+          onConfirm={async () => {
+            const r = await submit()
+            if (r.error) { reload(); return r }
+            setAsk(false)
+            return r
+          }}
+          leftMs={new Date(state.ends_at ?? 0).getTime() - now}
+          photosUntil={state.photos_until}
+          part1={state.part1_last}
+          filled={state.part1_last - emptyAnswers(state.answers, state.part1_last).length}
+          empty={emptyAnswers(state.answers, state.part1_last)}
+          photos={state.photos.length}
+          broken={brokenList}
+          part2Range={state.task_count > state.part1_last ? `${state.part1_last + 1}–${state.task_count}` : null}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * §229. Где пишут (экран 6 макета). На телефоне — вкладки «Задания / Бланк /
+ * Фото · N», видна одна; на ноутбуке — задания слева, бланк и фото справа.
+ * Вкладки — только отображение (CSS прячет на телефоне невыбранные), все три
+ * части живут всё время: несохранённый ответ бланка не теряется при переходе
+ * на «Задания».
+ */
+type WorkTab = 'tasks' | 'sheet' | 'photos'
+
+function WorkArea({ state, variantLabel, sheet, photos }: { state: MockLessonState; variantLabel: string | null; sheet: React.ReactNode; photos: React.ReactNode }) {
+  const hasTasks = !!state.condition_path
+  const [tab, setTab] = useState<WorkTab>(hasTasks ? 'tasks' : 'sheet')
+  const tabs: { key: WorkTab; label: string }[] = [
+    { key: 'tasks', label: 'Задания' },
+    { key: 'sheet', label: 'Бланк' },
+    { key: 'photos', label: `Фото · ${state.photos.length}` },
+  ]
+  return (
+    <div className="space-y-3" data-testid="mock-lesson-work">
+      <div role="tablist" aria-label="Пробник" className="flex rounded-full bg-primary-50 p-[3px] lg:hidden" data-testid="mock-lesson-tabs">
+        {tabs.map(t => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)} data-key={t.key}
+            className={cn('min-h-11 flex-1 rounded-full px-2 text-sm font-semibold', tab === t.key ? 'bg-white text-graphite-900 shadow-[0_2px_6px_rgba(18,35,74,.08)]' : 'text-graphite-500')}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <Panel className={cn(tab !== 'tasks' && 'hidden', 'lg:block')} testid="mock-lesson-tasks-panel">
+          {hasTasks ? (
+            <ConditionViewer key={state.condition_path!} path={state.condition_path!} title={variantLabel ? `Задания · ${variantLabel}` : 'Задания'} />
+          ) : (
+            <p className="text-sm text-graphite-600" data-testid="mock-lesson-no-tasks">Условия на сайте нет — задания выдал преподаватель. Если их у вас нет, напишите ему.</p>
+          )}
+        </Panel>
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className={cn(tab !== 'sheet' && 'hidden', 'lg:block')}>{sheet}</div>
+          <div className={cn(tab !== 'photos' && 'hidden', 'lg:block')}>{photos}</div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -178,24 +247,38 @@ function minutesBetween(a: string | null, b: string | null): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)
 }
 
-function TimerPanel({ state, now }: { state: MockLessonState; now: number }) {
+/**
+ * Таймер сверху (экран 6 макета): «Пробник №4 · Вариант 2 · до 13:55»,
+ * крупно — сколько осталось, рядом — что заполнено; на ноутбуке здесь же
+ * «Сдать работу» (на телефоне кнопка — под заданиями и бланком).
+ */
+function TimerPanel({ state, now, variantLabel, onSubmit }: { state: MockLessonState; now: number; variantLabel: string | null; onSubmit: () => void }) {
   const starts = new Date(state.starts_at ?? 0).getTime()
   const ends = new Date(state.ends_at ?? 0).getTime()
   const left = ends - now
   const pct = Math.min(100, Math.max(0, Math.round(((now - starts) / Math.max(1, ends - starts)) * 100)))
+  const filled = state.part1_last - emptyAnswers(state.answers, state.part1_last).length
   return (
-    <Panel testid="mock-lesson-timer">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <div>
-          <div className="font-mono text-[34px] leading-none tabular-nums text-graphite-900" data-testid="mock-lesson-clock">{formatCountdown(left)}</div>
-          <div className="mt-1 text-[13px] text-graphite-600">осталось писать · закроется в {mskTime(state.ends_at)}</div>
+    <Panel testid="mock-lesson-timer" className="rounded-[18px] border-0 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+        <div className="min-w-0">
+          <div className="text-[13px] text-graphite-500" data-testid="mock-lesson-timer-meta">
+            {[state.title, variantLabel, `до ${mskTime(state.ends_at)}`].filter(Boolean).join(' · ')}
+          </div>
+          <div className="font-mono text-[34px] font-extrabold leading-none tabular-nums tracking-[-.02em] text-graphite-900" data-testid="mock-lesson-clock">{formatCountdown(left)}</div>
         </div>
-        <div className="h-2 min-w-[12rem] flex-1 overflow-hidden rounded border border-slate-200 bg-slate-50" aria-hidden>
-          <i className="block h-full bg-primary-600" style={{ width: `${pct}%` }} />
+        <div className="flex items-center gap-4">
+          <span className="text-right text-[13px] leading-snug text-graphite-500" data-testid="mock-lesson-progress">
+            бланк {filled} из {state.part1_last}<br />фото {state.photos.length}
+          </span>
+          <Button onClick={onSubmit} className="hidden lg:inline-flex" data-testid="mock-lesson-submit-top"><Send size={15} />Сдать работу</Button>
         </div>
       </div>
-      <p className="mt-2.5 text-[13px] text-graphite-600">
-        После {mskTime(state.ends_at)} бланк закрывается, но загрузить фото второй части можно ещё {minutesBetween(state.ends_at, state.photos_until)} минут — до {mskTime(state.photos_until)}.
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-graphite-100" aria-hidden>
+        <i className="block h-full rounded-full bg-primary-600" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-2 text-[13px] text-graphite-600">
+        После {mskTime(state.ends_at)} бланк закрывается, фото второй части можно догрузить ещё {minutesBetween(state.ends_at, state.photos_until)} минут — до {mskTime(state.photos_until)}.
       </p>
     </Panel>
   )
@@ -306,12 +389,13 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
   )
 }
 
-function PhotosPanel({ state, editable, onUpload, onRemove, onClosed }: {
+function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }: {
   state: MockLessonState
   editable: boolean
   onUpload: (files: File[], onProgress?: (p: PhotoUploadProgress[]) => void) => Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }>
   onRemove: (photo: MockLessonPhoto) => Promise<{ error: string | null }>
   onClosed: () => void
+  onBroken?: (photoId: string, broken: boolean) => void
 }) {
   const [progress, setProgress] = useState<PhotoUploadProgress[]>([])
   const [rejected, setRejected] = useState<RejectedHomeworkFile[]>([])
@@ -334,7 +418,8 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed }: {
       <h2 className="text-[17px] font-semibold text-graphite-900">Часть 2 — фото решений</h2>
       <p className="mb-3 text-sm text-graphite-600">
         Задания {first}–{last}. Каждое задание с новой страницы, номер задания пишите в начале. Фотографируйте при хорошем свете, лист целиком.
-        Снимайте в обычном режиме, не ProRAW: RAW-снимки (.dng) не откроются у преподавателя.
+        Снимайте в обычном режиме, не ProRAW: RAW-снимки (.dng) не откроются у преподавателя. Можно и PDF со сканом; снимки HEIC с iPhone
+        сайт сам переведёт в JPG.
       </p>
       {editable && (
         <div
@@ -376,8 +461,8 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed }: {
         <div className="mt-3 flex flex-wrap gap-2.5" data-testid="mock-lesson-thumbs">
           {state.photos.map((p, i) => (
             <figure key={p.id} className="relative w-[92px]">
-              <SignedImage bucket={MOCK_EXAMS_BUCKET} path={p.storage_path} alt={`Страница ${i + 1}`} className="h-[120px] w-[92px] rounded border border-slate-200 object-cover" />
-              <figcaption className="mt-0.5 truncate text-[11px] text-graphite-500">стр. {i + 1}</figcaption>
+              <WorkFileThumb file={p} index={i} className="h-[120px] w-[92px]" onBroken={b => onBroken?.(p.id, b)} />
+              <figcaption className="mt-0.5 truncate text-[11px] text-graphite-500">{isPdfFile(p) ? `файл ${i + 1} · PDF` : `фото ${i + 1}`}</figcaption>
               {editable && (
                 <button type="button" aria-label={`Убрать страницу ${i + 1}`} disabled={busy}
                   onClick={async () => { const r = await onRemove(p); if (r.error) { setErr(r.error); onClosed() } }}
@@ -390,48 +475,6 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed }: {
         </div>
       )}
     </Panel>
-  )
-}
-
-/** Сдать — с подтверждением на странице, без `confirm()`. */
-function SubmitPanel({ state, onSubmit, onClosed }: {
-  state: MockLessonState
-  onSubmit: () => Promise<{ error: string | null }>
-  onClosed: () => void
-}) {
-  const [ask, setAsk] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const empty = useMemo(() => emptyAnswers(state.answers, state.part1_last), [state.answers, state.part1_last])
-  const filled = state.part1_last - empty.length
-
-  async function go() {
-    setBusy(true)
-    const r = await onSubmit()
-    setBusy(false)
-    if (r.error) { setErr(r.error); onClosed() }
-  }
-
-  return (
-    <>
-      <Panel className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-graphite-600">Сдать можно раньше времени. После сдачи ответы не меняются, но фото можно догрузить до {mskTime(state.photos_until)}.</p>
-        <Button onClick={() => { setAsk(true); setErr(null) }} disabled={ask} data-testid="mock-lesson-submit"><Send size={15} />Сдать работу</Button>
-      </Panel>
-      {ask && (
-        <div className="rounded-r-lg border-l-[3px] border-l-primary-600 bg-primary-50 px-3 py-2.5 text-sm text-graphite-800" role="alertdialog" aria-labelledby="mock-submit-title" data-testid="mock-lesson-confirm">
-          <p><b id="mock-submit-title">Сдать сейчас?</b>{' '}
-            Заполнено {filled} {plural(filled, 'ответ', 'ответа', 'ответов')} из {state.part1_last}, загружено {state.photos.length} фото.
-            {empty.length > 0 && ` ${empty.length === 1 ? 'Пустой ответ' : 'Пустые ответы'} ${empty.map(n => `№${n}`).join(', ')} ${empty.length === 1 ? 'засчитается как нерешённый' : 'засчитаются как нерешённые'}.`}
-          </p>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <Button size="sm" onClick={go} loading={busy} data-testid="mock-lesson-submit-yes">Сдать</Button>
-            <Button size="sm" variant="secondary" onClick={() => setAsk(false)} disabled={busy}>Вернуться</Button>
-          </div>
-          {err && <p className="mt-2 text-red-800" role="alert">{err}</p>}
-        </div>
-      )}
-    </>
   )
 }
 
@@ -471,7 +514,7 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
           </p>
         )}
         <p className="mt-2 text-[13px] text-graphite-500">
-          Проверил преподаватель {mskDayLong(result.notified_at)}.
+          {result.variant && (state.variant_count ?? 0) > 1 ? `${(result.variant.label ?? '').trim() || `Вариант ${result.variant.position}`} · ` : ''}Проверил преподаватель {mskDayLong(result.notified_at)}.
           {!hasScale && ' Тестовый балл появится, когда будет внесена таблица перевода на этот год.'}
         </p>
       </Panel>
@@ -553,7 +596,7 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
               <div className="flex flex-wrap gap-2">
                 {state.photos.map((p, i) => (
                   <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} className="block">
-                    <SignedImage bucket={MOCK_EXAMS_BUCKET} path={p.storage_path} alt={`Страница ${i + 1}`} className="h-[80px] w-[62px] rounded border border-graphite-200 object-cover" />
+                    <WorkFileThumb file={p} index={i} className="h-[80px] w-[62px]" />
                   </SignedFileLink>
                 ))}
               </div>

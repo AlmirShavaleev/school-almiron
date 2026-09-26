@@ -39,6 +39,7 @@ export function SignedImage({
   alt,
   className,
   sensitive = false,
+  onFailed,
 }: {
   bucket: PrivateBucket
   path: string | null | undefined
@@ -50,6 +51,11 @@ export function SignedImage({
    * право уже отобрали (§105).
    */
   sensitive?: boolean
+  /**
+   * §229. Сообщить, что картинку показать не удалось (битый файл, HEIC в
+   * браузере без HEIC, нет доступа): пробник предупреждает ученика до сдачи.
+   */
+  onFailed?: () => void
 }) {
   const [url, setUrl] = useState<string | null>(null)
   const [state, setState] = useState<'signing' | 'loading' | 'ready' | 'failed'>('signing')
@@ -85,6 +91,12 @@ export function SignedImage({
     const t = setTimeout(() => setState('failed'), LOAD_TIMEOUT_MS)
     return () => clearTimeout(t)
   }, [state, url])
+
+  const failedRef = useRef(onFailed)
+  useEffect(() => { failedRef.current = onFailed })
+  useEffect(() => {
+    if (state === 'failed') failedRef.current?.()
+  }, [state])
 
   function handleError() {
     // Одна повторная подпись: протухшая ссылка чинится сама, битый файл

@@ -18,6 +18,7 @@ import { mskDayLong, mskTime, fromMskInput, toMskInput, START_NOTICE_GRACE_MS } 
 import { livePhase, type LivePhase, type LiveStudentRow } from '@/lib/mockExamLive'
 import { plural } from '@/lib/plural'
 import type { VerdictMarkState } from '@/lib/verdictMark'
+import { variantReadiness, type VariantReady } from '@/lib/mockExamVariants'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -379,7 +380,7 @@ export interface TimelineItem {
  * напоминаний §224: «за час» — только если до начала больше часа; «Пробник
  * начался» — только если начало впереди (с запасом очереди, §224.2).
  */
-export function studentTimeline(startsIso: string | null, durationMin: number, graceMin: number, nowMs: number): TimelineItem[] {
+export function studentTimeline(startsIso: string | null, durationMin: number, graceMin: number, nowMs: number, variants = 1): TimelineItem[] {
   const s = ms(startsIso)
   if (s == null) {
     return [
@@ -396,6 +397,8 @@ export function studentTimeline(startsIso: string | null, durationMin: number, g
   const photos = ends + graceMin * MIN
   const soonOk = s - nowMs > HOUR
   const startOk = s - nowMs >= START_NOTICE_GRACE_MS
+  // §229: при нескольких вариантах каждый видит условие своего.
+  const opens = variants > 1 ? `Открываются условия (у каждого — свой из ${variants} вариантов) и бланк` : 'Открываются условие и бланк'
   return [
     {
       key: 'soon', at: at(s - HOUR), text: 'Telegram: «Через час — пробник»',
@@ -403,7 +406,7 @@ export function studentTimeline(startsIso: string | null, durationMin: number, g
     },
     {
       key: 'start', at: at(s),
-      text: startOk ? 'Открываются условие и бланк. Telegram: «Пробник начался»' : 'Открываются условие и бланк',
+      text: startOk ? `${opens}. Telegram: «Пробник начался»` : opens,
       ...(startOk ? {} : { skipped: 'Telegram «Пробник начался» не уйдёт — время уже наступило' }),
     },
     { key: 'end', at: at(ends), text: 'Бланк закрывается' },
@@ -414,7 +417,11 @@ export function studentTimeline(startsIso: string | null, durationMin: number, g
 
 export interface ReadyItem { state: 'ok' | 'todo' | 'later'; text: string }
 
-/** Чек-лист готовности под таймлайном. Решение — «можно позже», не ошибка. */
+/**
+ * Чек-лист готовности под таймлайном. Решение — «можно позже», не ошибка.
+ * §229: с вариантами строки про условие, ключ, решение и критерии — от
+ * `variantReadiness` (по варианту без условия — своя строка «не назначить»).
+ */
 export function readiness(o: {
   groups: number
   startsIso: string | null
@@ -422,10 +429,15 @@ export function readiness(o: {
   hasSolution: boolean
   keyFilled: number
   keyTotal: number
+  variants?: VariantReady[]
 }): ReadyItem[] {
-  return [
+  const head: ReadyItem[] = [
     o.groups > 0 ? { state: 'ok', text: o.groups === 1 ? 'Группа выбрана' : `Групп: ${o.groups} — будет ${o.groups} ${plural(o.groups, 'пробник', 'пробника', 'пробников')}` } : { state: 'todo', text: 'Группа не выбрана' },
     o.startsIso ? { state: 'ok', text: 'Время начала задано' } : { state: 'todo', text: 'Время начала не задано' },
+  ]
+  if (o.variants) return [...head, ...variantReadiness(o.variants)]
+  return [
+    ...head,
     o.hasCondition ? { state: 'ok', text: 'Условие загружено' } : { state: 'todo', text: 'Условие не загружено' },
     o.keyTotal === 0 ? { state: 'later', text: 'Ключ — после выбора шаблона' }
       : o.keyFilled === o.keyTotal ? { state: 'ok', text: `Ключ: ${o.keyFilled} из ${o.keyTotal}` }
@@ -435,14 +447,23 @@ export function readiness(o: {
   ]
 }
 
-/** Что мешает «Назначить» (пустой список — можно). Черновику время не нужно. */
-export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean }): string[] {
+/**
+ * Что мешает «Назначить» (пустой список — можно). Черновику время не нужно.
+ * §229: при нескольких вариантах каждому нужно условие — иначе часть учеников
+ * останется без заданий (`missingCondition` — номера таких вариантов).
+ */
+export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean; missingCondition?: number[] }): string[] {
   const out: string[] = []
   if (!o.title.trim()) out.push('Нужно название')
   if (!o.templateId) out.push('Нужен шаблон — по нему строится бланк и таблица баллов')
   if (o.groups === 0) out.push('Выберите группу')
   if (!o.durationOk) out.push('Длительность — от 10 до 720 минут')
   if (!o.draft && !o.startsIso) out.push('Нужны дата и время начала')
+  if (!o.draft && o.missingCondition?.length) {
+    out.push(o.missingCondition.length === 1
+      ? `Вариант ${o.missingCondition[0]}: нет условия — загрузите его или уберите вариант`
+      : `Варианты ${o.missingCondition.join(', ')}: нет условия — загрузите или уберите`)
+  }
   return out
 }
 

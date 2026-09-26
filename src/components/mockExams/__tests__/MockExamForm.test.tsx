@@ -19,8 +19,12 @@ const GROUPS = [
 ]
 let profile: { id: string; role: string }
 let teacherRow: { id: string } | null
+/** Вставки в `mock_exams` (пробники); прочие таблицы — в `insertsBy`. */
 let inserted: Record<string, unknown>[][]
-let updates: { row: Record<string, unknown>; id: string }[]
+let insertsBy: Record<string, Record<string, unknown>[][]>
+let upserts: { table: string; rows: Record<string, unknown>[] }[]
+let deletes: { table: string; id: string }[]
+let updates: { row: Record<string, unknown>; id: string; table: string }[]
 let uploads: string[]
 let copies: [string, string][]
 let rpcCalls: { fn: string; args: Record<string, unknown> }[]
@@ -28,16 +32,23 @@ let editExam: Record<string, unknown>
 let workRows: Record<string, unknown[]>
 
 function chain(table: string) {
-  let op: 'select' | 'insert' | 'update' = 'select'
+  let op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select'
   let payload: unknown = null
   let eqId = ''
   const result = () => {
     if (op === 'insert') {
       const rows = payload as Record<string, unknown>[]
+      if (table !== 'mock_exams') {
+        ;(insertsBy[table] ??= []).push(rows)
+        if (table === 'mock_exam_variants') return { data: rows.map(r => ({ id: `var-${r.mock_exam_id}-${r.position}`, mock_exam_id: r.mock_exam_id, position: r.position })), error: null }
+        return { data: rows, error: null }
+      }
       inserted.push(rows)
       return { data: rows.map((r, i) => ({ id: `new-${i + 1}`, group_id: r.group_id })), error: null }
     }
-    if (op === 'update') { updates.push({ row: payload as Record<string, unknown>, id: eqId }); return { data: null, error: null } }
+    if (op === 'update') { updates.push({ row: payload as Record<string, unknown>, id: eqId, table }); return { data: null, error: null } }
+    if (op === 'upsert') { upserts.push({ table, rows: payload as Record<string, unknown>[] }); return { data: null, error: null } }
+    if (op === 'delete') { deletes.push({ table, id: eqId }); return { data: null, error: null } }
     if (table === 'mock_exam_templates') return { data: [TEMPLATE], error: null }
     if (table === 'groups') return { data: GROUPS, error: null }
     if (table in workRows) return { data: workRows[table], error: null }
@@ -54,6 +65,8 @@ function chain(table: string) {
     eq: (_col: string, v: string) => { eqId = v; return c },
     insert: (rows: unknown) => { op = 'insert'; payload = rows; return c },
     update: (row: unknown) => { op = 'update'; payload = row; return c },
+    upsert: (rows: unknown) => { op = 'upsert'; payload = rows; return c },
+    delete: () => { op = 'delete'; return c },
     maybeSingle: () => Promise.resolve(single()),
     then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(result()).then(res, rej),
   }
@@ -119,7 +132,7 @@ beforeEach(() => {
   cleanup()
   profile = { id: 'p-owner', role: 'admin' }
   teacherRow = { id: 't-owner' }
-  inserted = []; updates = []; uploads = []; copies = []; rpcCalls = []; seen.at = null
+  inserted = []; insertsBy = {}; upserts = []; deletes = []; updates = []; uploads = []; copies = []; rpcCalls = []; seen.at = null
   workRows = {}
   editExam = {
     id: 'ex1', title: 'Пробник №3', date: '2026-10-18', group_id: 'g1', template_id: 't1', module_id: 'm1', module_position: 2,
@@ -153,15 +166,19 @@ describe('создание: несколько групп → по пробни�
       expect(r).toMatchObject({ title: 'Пробник №4', template_id: 't1', starts_at: '2027-03-06T07:00:00.000Z', date: '2027-03-06T07:00:00.000Z', duration_minutes: 235, subject: 'math', exam_type: 'ege', max_score: 32 })
       expect(r).not.toHaveProperty('module_id')
     }
-    // Условие: загрузка в папку первого, копия в папку второго; путь привязан каждому.
+    // §229: у каждого пробника — свой вариант 1 (одной вставкой на оба).
+    expect(insertsBy.mock_exam_variants).toEqual([[{ mock_exam_id: 'new-1', position: 1 }, { mock_exam_id: 'new-2', position: 1 }]])
+    // Условие: загрузка в папку варианта первого пробника, копия — второго; путь привязан каждому варианту.
     expect(uploads).toHaveLength(1)
-    expect(uploads[0]).toMatch(/^new-1\/condition\/\d+_variant_4\.pdf$/)
+    expect(uploads[0]).toMatch(/^new-1\/v1\/condition\/\d+_variant_4\.pdf$/)
     expect(copies).toHaveLength(1)
     expect(copies[0][0]).toBe(uploads[0])
-    expect(copies[0][1]).toMatch(/^new-2\/condition\//)
-    expect(updates.map(u => [u.id, Object.keys(u.row)[0]])).toEqual([['new-1', 'condition_path'], ['new-2', 'condition_path']])
-    const keyCalls = rpcCalls.filter(c => c.fn === 'save_mock_exam_key')
-    expect(keyCalls.map(c => c.args.p_mock_exam_id)).toEqual(['new-1', 'new-2'])
+    expect(copies[0][1]).toMatch(/^new-2\/v1\/condition\//)
+    expect(updates.map(u => [u.table, u.id, Object.keys(u.row)[0]])).toEqual([['mock_exam_variants', 'var-new-1-1', 'condition_path'], ['mock_exam_variants', 'var-new-2-1', 'condition_path']])
+    const keyCalls = rpcCalls.filter(c => c.fn === 'save_mock_exam_variant_key')
+    expect(keyCalls.map(c => c.args.p_variant_id)).toEqual(['var-new-1-1', 'var-new-2-1'])
+    // Один вариант — раздавать нечего: база выдаст его каждому при входе.
+    expect(insertsBy.mock_exam_variant_students).toBeUndefined()
     expect((keyCalls[0].args.p_answers as string[]).slice(0, 4)).toEqual(['12', '0,75', '-3', ''])
     expect((keyCalls[0].args.p_answers as string[])).toHaveLength(12)
     expect((seen.at?.state as { created: { groupName: string }[] }).created.map(c => c.groupName)).toEqual(['11А профиль', '11Б профиль'])
@@ -177,7 +194,7 @@ describe('создание: несколько групп → по пробни�
     await waitFor(() => expect(inserted).toHaveLength(1))
     expect(inserted[0][0]).toMatchObject({ group_id: 'g2', starts_at: null, date: '2027-03-06T08:30:00.000Z' })
     // Ключ пустой — не сохраняется вовсе.
-    expect(rpcCalls.some(c => c.fn === 'save_mock_exam_key')).toBe(false)
+    expect(rpcCalls.some(c => c.fn === 'save_mock_exam_key' || c.fn === 'save_mock_exam_variant_key')).toBe(false)
   })
 
   it('«Назначить» без группы и времени — не создаёт ничего и говорит что не так', async () => {

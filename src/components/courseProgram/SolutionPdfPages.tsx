@@ -186,4 +186,6 @@ function SolutionPdfPage({
   )
 }
 
+// §229: страницу берут и условие варианта у ученика, и PDF-работа на проверке пробника.
+export { SolutionPdfPage }
 export default SolutionPdfPages

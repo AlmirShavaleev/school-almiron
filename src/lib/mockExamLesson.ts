@@ -64,6 +64,9 @@ export interface MockLessonState {
   updated_at: string | null
   notified: boolean
   photos: MockLessonPhoto[]
+  /** §229. Свой вариант (у пробника без вариантов — нет) и сколько их всего. */
+  variant?: { position: number; label: string | null } | null
+  variant_count?: number
 }
 
 export interface MockLessonResultTask {
@@ -89,6 +92,8 @@ export type MockLessonResult =
     part1_last: number
     solution_path: string | null
     tasks: MockLessonResultTask[]
+    /** §229. Вариант, по которому проверен ключ. */
+    variant?: { position: number; label: string | null } | null
   }
 
 export type MockLessonStatus =
@@ -388,4 +393,19 @@ export function previewMockRows(rows: MockScheduleRow[], nowMs: number): MockLes
     })
   }
   return out.sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+}
+
+/** §229. «1 ч 12 мин» / «12 мин» / «меньше минуты» — для окна «Закончить раньше?». */
+export function formatLeftWords(leftMs: number): string {
+  const mins = Math.floor(Math.max(0, leftMs) / 60000)
+  if (mins < 1) return 'меньше минуты'
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return [h ? `${h} ч` : '', m ? `${m} мин` : ''].filter(Boolean).join(' ')
+}
+
+/** §229. «Вариант 2» в шапке ученика — только если вариантов больше одного. */
+export function lessonVariantLabel(s: Pick<MockLessonState, 'variant' | 'variant_count'>): string | null {
+  if (!s.variant || (s.variant_count ?? 0) < 2) return null
+  return (s.variant.label ?? '').trim() || `Вариант ${s.variant.position}`
 }
