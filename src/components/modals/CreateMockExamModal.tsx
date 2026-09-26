@@ -27,9 +27,15 @@ interface Props {
   open:      boolean
   onClose:   () => void
   onCreated: (examId: string) => void
+  /**
+   * §224. Группа подставлена — кнопка «Добавить пробник» в разделе «Пробники»
+   * программы курса. Попадает в список, даже если человек её не ведёт сам
+   * (владелец курса): права на запись решает база, а не этот список.
+   */
+  defaultGroup?: { id: string; name: string } | null
 }
 
-export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
+export function CreateMockExamModal({ open, onClose, onCreated, defaultGroup }: Props) {
   const profile = useAuthStore(s => s.profile)
   const [groups, setGroups]     = useState<{ id: string; name: string }[]>([])
   const [teacherId, setTeacherId] = useState<string | null>(null)
@@ -45,7 +51,9 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
   // re-run of the data-loading effect below — a background token refresh
   // must never wipe whatever the user has already typed into an open modal.
   useEffect(() => {
-    if (open) reset({})
+    if (open) reset(defaultGroup ? { group_id: defaultGroup.id } : {})
+  // defaultGroup — только в момент открытия, как и сброс формы.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reset])
 
   useEffect(() => {
@@ -107,9 +115,10 @@ export function CreateMockExamModal({ open, onClose, onCreated }: Props) {
     { value: '', label: templates.length ? '— Шаблон' : 'Шаблонов нет — заведите на странице «Шаблоны»' },
     ...templates.map(t => ({ value: t.id, label: `${t.title} · ${t.year}` })),
   ]
+  const groupList = defaultGroup && !groups.some(g => g.id === defaultGroup.id) ? [defaultGroup, ...groups] : groups
   const groupOptions = [
     { value: '', label: '— Группа' },
-    ...groups.map(g => ({ value: g.id, label: g.name })),
+    ...groupList.map(g => ({ value: g.id, label: g.name })),
   ]
 
   return (

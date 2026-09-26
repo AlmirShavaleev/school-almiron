@@ -151,3 +151,55 @@ export function useMockExamLesson(examId: string | undefined) {
 
   return { state, result, offset, loading, error, reload, saveAnswer, submit, uploadPhotos, removePhoto }
 }
+
+/** §224. Как часто страница пробника отмечается «я здесь». База пишет не чаще раза в 10 с. */
+export const MOCK_PING_MS = 30_000
+
+/**
+ * §224. «Я на странице пробника» — для монитора преподавателя. Пинг при
+ * открытии и раз в 30 с, только пока вкладка видима и окно открыто (по часам
+ * базы: `offset` — смещение часов устройства). После конца окна — тишина.
+ * Первый пинг заводит бланк с отметкой «открыл» (`mock_exam_ping`), ответы
+ * он не трогает. Ошибку глотаем: до применения PENDING_224.sql функции нет, а
+ * пробник от этого писаться не должен перестать.
+ */
+export function useMockExamPing(
+  examId: string | undefined,
+  lessonWindow: { starts_at: string | null; ends_at: string | null } | null,
+  offset: number,
+) {
+  const startsAt = lessonWindow?.starts_at ?? null
+  const endsAt = lessonWindow?.ends_at ?? null
+  useEffect(() => {
+    if (!examId || !startsAt || !endsAt) return
+    const starts = new Date(startsAt).getTime()
+    const ends = new Date(endsAt).getTime()
+    const inWindow = () => {
+      const now = Date.now() + offset
+      return now >= starts && now < ends
+    }
+    const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible'
+    // Интервал, отметка на старте и возврат на вкладку могут сойтись в одну
+    // секунду — второй раз не зовём (база всё равно пишет не чаще раза в 10 с).
+    let last = -Infinity
+    const ping = () => {
+      if (!visible() || !inWindow()) return
+      if (Date.now() - last < 10_000) return
+      last = Date.now()
+      void Promise.resolve(db.rpc('mock_exam_ping', { p_mock_exam_id: examId })).catch(() => { /* монитор подождёт */ })
+    }
+    ping()
+    const id = setInterval(ping, MOCK_PING_MS)
+    const onVis = () => { if (visible()) ping() }
+    document.addEventListener('visibilitychange', onVis)
+    // Окно открылось, пока страница стояла на отсчёте, — отметиться сразу,
+    // не ждать очередные 30 секунд.
+    const untilStart = starts - (Date.now() + offset)
+    const startTimer = untilStart > 0 && untilStart < 24 * 3600_000 ? setTimeout(ping, untilStart + 500) : null
+    return () => {
+      clearInterval(id)
+      if (startTimer) clearTimeout(startTimer)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [examId, startsAt, endsAt, offset])
+}

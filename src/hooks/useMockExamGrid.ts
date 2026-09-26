@@ -243,7 +243,20 @@ export function useMockExamGrid(examId: string | undefined) {
 
   const reload = useCallback(() => setTick(t => t + 1), [])
 
-  return { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, reload }
+  /**
+   * §224. Только бланки и фото — для монитора идущего пробника: он опрашивает
+   * базу раз в 20 с, и новые фото должны появляться ссылками без перезагрузки
+   * всей таблицы (перезагрузка сбросила бы несохранённые правки).
+   */
+  const examIdLoaded = exam?.id ?? null
+  const hasLesson = !!exam?.lesson
+  const refreshWorks = useCallback(async () => {
+    if (!examIdLoaded || !hasLesson) return
+    const wk = await loadWorks(examIdLoaded)
+    setWorks(wk)
+  }, [examIdLoaded, hasLesson])
+
+  return { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, reload, refreshWorks }
 }
 
 type ScoreRow = { student_id: string; task_number: number; points: number; auto_points?: number | null }

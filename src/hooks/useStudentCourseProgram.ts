@@ -72,8 +72,9 @@ async function loadTaskProgress(courseId: string): Promise<Map<string, { total: 
 
 /**
  * §221. Пробники-уроки группы — одной RPC `my_mock_exams`. Ошибку глотаем,
- * как у задач к уроку: до применения PENDING_221.sql функции на проде нет, и
- * падение здесь уронило бы всю программу курса.
+ * как у задач к уроку: падение здесь уронило бы всю программу курса.
+ * §224: все пробники группы со временем — в отдельном разделе «Пробники»,
+ * а не внутри разделов курса; в счётчики тем не входят.
  */
 async function loadMockExams(groupId: string): Promise<MockLessonListRow[]> {
   try {
@@ -134,11 +135,6 @@ export interface ModuleProgress {
    * двух десятках открытых тем.
    */
   counters:    CourseCounters
-  /**
-   * §221. Пробники этого раздела. В счётчики тем не входят: пробник — не
-   * тема, «тема пройдена» (§152) и открытость (§59) к нему не относятся.
-   */
-  mockExams?:  MockLessonListRow[]
 }
 
 export interface StaffInfo {
@@ -185,6 +181,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
   const preview = usePreviewMode()
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
+  const [mockExams, setMockExams] = useState<MockLessonListRow[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -199,6 +196,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
   async function load() {
     setLoading(true)
     setError(null)
+    setMockExams([])
     try {
       // Форма группы одна на обе ветки — вложенный курс и персонал; типы
       // PostgREST для embed здесь, как и раньше, не выводятся.
@@ -264,9 +262,10 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       const topicIds = (mods || []).flatMap((m: any) => m.topics.map((t: any) => t.id))
       if (topicIds.length === 0) {
         const onlyMocks = preview ? [] : await loadMockExams(group.id)
+        setMockExams(onlyMocks)
         setModules((mods || []).map((m: any) => ({
           id: m.id, title: m.title, order_index: m.order_index, topics: [], done: 0, total: 0,
-          counters: countTopics([]), mockExams: onlyMocks.filter(e => e.module_id === m.id),
+          counters: countTopics([]),
         })))
         return
       }
@@ -439,11 +438,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
 
         return {
           id: m.id, title: m.title, order_index: m.order_index, topics, done, total, counters,
-          mockExams: mockExams.filter(e => e.module_id === m.id),
         }
       })
 
       setModules(result)
+      setMockExams(mockExams)
     } catch (e) {
       console.error('Failed to load student course program', e)
       setError(e instanceof Error ? e.message : 'Не удалось загрузить программу курса')
@@ -452,5 +451,5 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
     }
   }
 
-  return { course, modules, loading, error, reload }
+  return { course, modules, mockExams, loading, error, reload }
 }

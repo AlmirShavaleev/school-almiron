@@ -4,7 +4,7 @@ import { AlertCircle, ArrowLeft, Camera, Clock, FileText, Images, Loader2, Lock,
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
-import { useMockExamLesson, type PhotoUploadProgress } from '@/hooks/useMockExamLesson'
+import { useMockExamLesson, useMockExamPing, type PhotoUploadProgress } from '@/hooks/useMockExamLesson'
 import { HOMEWORK_FILE_ACCEPT, type RejectedHomeworkFile } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
 import {
@@ -26,6 +26,8 @@ export function MockExamLessonPage() {
   const { groupId, examId } = useParams<{ groupId: string; examId: string }>()
   const { state, result, offset, loading, error, reload, saveAnswer, submit, uploadPhotos, removePhoto } = useMockExamLesson(examId)
   const now = useServerNow(offset)
+  // §224. Монитор преподавателя: «пишет · онлайн». Пока окно открыто и вкладка видима.
+  useMockExamPing(examId, state, offset)
 
   const status: MockLessonStatus | null = state
     ? lessonStatus({ ...state, has_work: state.submitted_at != null || state.answers.some(a => a) || state.photos.length > 0 }, now)
@@ -231,7 +233,7 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
   const count = state.part1_last
   const [values, setValues] = useState<string[]>(() => Array.from({ length: count }, (_, i) => state.answers[i] ?? ''))
   const [saved, setSaved] = useState<{ kind: 'idle' | 'saving' | 'ok' | 'error'; text: string }>(
-    state.updated_at ? { kind: 'ok', text: `Сохранено в ${mskTime(state.updated_at)}` } : { kind: 'idle', text: '' })
+    state.updated_at && state.answers.some(a => a) ? { kind: 'ok', text: `Сохранено в ${mskTime(state.updated_at)}` } : { kind: 'idle', text: '' })
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => () => { Object.values(timers.current).forEach(clearTimeout) }, [])

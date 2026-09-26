@@ -10,18 +10,26 @@ import { sanitizeStorageFileName } from '@/lib/topicMaterialItems'
 
 export const MOCK_EXAMS_BUCKET = 'mock-exams'
 
-/** Строка `my_mock_exams(group)` — пробник в программе курса. */
+/**
+ * Строка `my_mock_exams(group)` — пробник в разделе «Пробники» группы (§224).
+ * `module_id` / `module_position` приходят по-прежнему (колонки не удалены),
+ * но экран их больше не читает: раздел свой у группы, не строка `modules`.
+ */
 export interface MockLessonListRow {
   id: string
   title: string
-  module_id: string
-  module_position: number
+  module_id?: string | null
+  module_position?: number
   starts_at: string
   ends_at: string
   photos_until: string
   submitted_at: string | null
   has_work: boolean
   notified: boolean
+  /** §224. Итог — только когда результат уже виден ученику (отправлен и окно закрылось). */
+  score?: number | null
+  max_score?: number | null
+  duration_minutes?: number
   server_now: string
 }
 
@@ -232,26 +240,36 @@ export function parseKeyPaste(text: string, count: number): { answers: string[];
   return { answers, extra: Math.max(0, cells.length - count) }
 }
 
+export type MockSectionGroup = 'now' | 'upcoming' | 'past'
+
+export interface MockSectionItem<E> {
+  exam: E
+  status: MockLessonStatus
+  group: MockSectionGroup
+  /** Главная кнопка экрана — «Начать» / «Продолжить». Одна на раздел. */
+  primary: boolean
+}
+
 /**
- * Пробники среди тем раздела: пробник идёт после последней темы с
- * `order_index <= module_position` — то же правило, что в комментарии к
- * колонке в PENDING_221.sql. Порядок тем не меняется.
+ * §224. Раздел «Пробники»: идёт сейчас (включая 15 минут догрузки фото) →
+ * ближайшие (по времени) → прошедшие (свежие сверху). Главная кнопка — у
+ * первого пробника, который можно писать прямо сейчас; у остальных —
+ * тихие ссылки.
  */
-export function placeInModule<T extends { order_index: number }, E extends { module_position: number; starts_at: string }>(
-  topics: T[],
-  exams: E[],
-): ({ kind: 'topic'; topic: T } | { kind: 'exam'; exam: E })[] {
-  const sortedExams = exams.slice().sort((a, b) => a.module_position - b.module_position || a.starts_at.localeCompare(b.starts_at))
-  const out: ({ kind: 'topic'; topic: T } | { kind: 'exam'; exam: E })[] = []
-  let k = 0
-  for (const topic of topics) {
-    while (k < sortedExams.length && sortedExams[k].module_position < topic.order_index) {
-      out.push({ kind: 'exam', exam: sortedExams[k++] })
-    }
-    out.push({ kind: 'topic', topic })
-  }
-  while (k < sortedExams.length) out.push({ kind: 'exam', exam: sortedExams[k++] })
-  return out
+export function mockSectionItems<E extends StatusInput & { starts_at: string }>(exams: E[], nowMs: number): MockSectionItem<E>[] {
+  const items = exams.map(exam => {
+    const status = lessonStatus(exam, nowMs)
+    const group: MockSectionGroup = status === 'upcoming' ? 'upcoming'
+      : status === 'open' || status === 'submitted' || status === 'time_up' ? 'now'
+        : 'past'
+    return { exam, status, group, primary: false }
+  })
+  const rank: Record<MockSectionGroup, number> = { now: 0, upcoming: 1, past: 2 }
+  items.sort((a, b) => rank[a.group] - rank[b.group]
+    || (a.group === 'past' ? b.exam.starts_at.localeCompare(a.exam.starts_at) : a.exam.starts_at.localeCompare(b.exam.starts_at)))
+  const first = items.find(i => i.status === 'open')
+  if (first) first.primary = true
+  return items
 }
 
 /** Путь фото второй части: второй и третий сегменты держат политику бакета. */

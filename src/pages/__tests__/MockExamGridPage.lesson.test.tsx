@@ -56,6 +56,9 @@ vi.mock('@/lib/supabase', () => ({
       calls.push(fn)
       if (fn === 'grade_mock_exam_part1') return Promise.resolve({ data: { graded_students: 2, changed_cells: 4 }, error: null })
       if (fn === 'save_mock_exam_grid') return Promise.resolve({ data: { rows: [] }, error: null })
+      // §224: монитора в базе ещё нет (ветка раньше PENDING_224) — экран
+      // показывает то, что видно из бланков и фото §221.
+      if (fn === 'mock_exam_live') return Promise.resolve({ data: null, error: { message: 'function mock_exam_live does not exist' } })
       throw new Error(fn)
     },
     storage: { from: () => ({ createSignedUrl: () => Promise.resolve({ data: { signedUrl: 'https://x' }, error: null }) }) },
@@ -114,12 +117,18 @@ describe('онлайн-пробник в таблице §218', () => {
     await waitFor(() => expect(input.closest('td')).not.toHaveAttribute('data-auto'))
   })
 
-  it('работы учеников: кто сдал, у кого время вышло, кто не начинал; фото — ссылками', async () => {
+  it('работы учеников (§224, без mock_exam_live): не заходил → открывал и не сдал → сдал; фото — ссылками; блок под таблицей после конца', async () => {
     mount()
     const works = await screen.findByTestId('mock-grid-works')
+    expect(works).toHaveAttribute('data-phase', 'ended')
+    expect(screen.getByTestId('mock-live-headline')).toHaveTextContent(/^Закончился · /)
     const rows = within(works).getAllByTestId('mock-grid-work-row')
-    expect(rows[0]).toHaveTextContent(/Абрамова Дарья.*сдал\(а\).*стр\. 1/)
-    expect(rows[1]).toHaveTextContent(/Белов Артём.*время вышло.*фото нет/)
-    expect(rows[2]).toHaveTextContent(/Сафин Амир.*не сдал\(а\)/)
+    expect(rows[0]).toHaveTextContent(/Сафин Амир.*Не заходил/)
+    expect(rows[1]).toHaveTextContent(/Белов Артём.*Открывал · не сдал.*фото нет/)
+    expect(rows[2]).toHaveTextContent(/Абрамова Дарья.*Сдал в \d\d:\d\d.*фото 1:.*стр\. 1/)
+    expect(screen.getByTestId('mock-live-counts')).toHaveTextContent('В группе 3 · сдали 1 · открывали, не нажали «Сдать» 1 · не заходили 1')
+    // После конца главное — проверка: блок работ под таблицей.
+    const grid = screen.getByTestId('mock-grid')
+    expect(grid.compareDocumentPosition(works) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

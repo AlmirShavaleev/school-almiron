@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { BookOpen, TrendingUp, Plus, Table2, Download, Layers, Settings2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,6 +10,7 @@ import { useMockExams } from '@/hooks/useMockExams'
 import { CreateMockExamModal } from '@/components/modals/CreateMockExamModal'
 import { formatDate, SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { exportMockExams } from '@/utils/exportExcel'
+import { cn } from '@/utils/cn'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -25,6 +26,11 @@ export function MockExamsPage() {
 
   const [showCreate, setShowCreate]   = useState(false)
   const navigate = useNavigate()
+  // §224. У каждой группы свой список: чипы групп + «Все». Выбор — в адресе
+  // (?group=…), чтобы ссылка вела сразу в список группы. Плитки сверху
+  // считают по-прежнему всё — их эта работа не трогает.
+  const [params, setParams] = useSearchParams()
+  const groupFilter = params.get('group')
 
   if (loading) {
     return (
@@ -41,6 +47,18 @@ export function MockExamsPage() {
     maxScore: r.mock_exams?.max_score || 100,
   }))
 
+  const groupChips = isStudent ? [] : groupChipsOf(exams)
+  const hasUngrouped = exams.some((e: any) => !e.group_id)
+  const showChips = groupChips.length + (hasUngrouped ? 1 : 0) >= 2
+  const activeGroup = showChips && groupFilter && groupChips.some(g => g.id === groupFilter) ? groupFilter : null
+  const shownExams = activeGroup ? exams.filter((e: any) => e.group_id === activeGroup) : exams
+  const pickGroup = (id: string | null) => {
+    const next = new URLSearchParams(params)
+    if (id) next.set('group', id)
+    else next.delete('group')
+    setParams(next, { replace: true })
+  }
+
   const lastScore = myResults.length > 0 ? myResults[myResults.length - 1].score : null
   const firstScore = myResults.length > 0 ? myResults[0].score : null
   const delta = lastScore != null && firstScore != null ? lastScore - firstScore : null
@@ -53,9 +71,9 @@ export function MockExamsPage() {
           <p className="text-gray-500 mt-1">Результаты и динамика прогресса</p>
         </div>
         <div className="flex items-center gap-2">
-          {!isStudent && exams.length > 0 && (
+          {!isStudent && shownExams.length > 0 && (
             <Button size="sm" variant="secondary" onClick={() => {
-              const rows = exams.flatMap((e: any) =>
+              const rows = shownExams.flatMap((e: any) =>
                 (e.mock_exam_results || []).map((r: any) => ({
                   examTitle:   e.title,
                   examDate:    e.date || '',
@@ -173,9 +191,17 @@ export function MockExamsPage() {
           <CardTitle>
             {isStudent ? 'Мои результаты' : 'История пробников'}
           </CardTitle>
-          <Badge variant="default">{exams.length}</Badge>
+          <Badge variant="default">{isStudent ? exams.length : shownExams.length}</Badge>
         </CardHeader>
-        {exams.length === 0 ? (
+        {showChips && (
+          <div className="-mt-1 mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Группа" data-testid="mock-group-chips">
+            <GroupChip active={!activeGroup} onClick={() => pickGroup(null)}>Все</GroupChip>
+            {groupChips.map(g => (
+              <GroupChip key={g.id} active={activeGroup === g.id} onClick={() => pickGroup(g.id)}>{g.name}</GroupChip>
+            ))}
+          </div>
+        )}
+        {(isStudent ? exams.length : shownExams.length) === 0 ? (
           <p className="text-center text-gray-400 py-8">Нет пробников</p>
         ) : isStudent ? (
           <div className="space-y-4">
@@ -245,7 +271,7 @@ export function MockExamsPage() {
         ) : (
           // Teacher / admin view — list exams with average scores
           <div className="space-y-4">
-            {exams.map((exam: any) => {
+            {shownExams.map((exam: any) => {
               const results: any[] = exam.mock_exam_results || []
               const avg = results.length > 0
                 ? Math.round(results.reduce((s: number, r: any) => s + r.score, 0) / results.length)
@@ -343,6 +369,30 @@ function GridEntry({ exam }: { exam: any }) {
         <Table2 size={14} />Таблица
       </Link>
     </span>
+  )
+}
+
+/** §224. Группы, у которых есть пробники, — по имени. */
+function groupChipsOf(exams: any[]): { id: string; name: string }[] {
+  const map = new Map<string, string>()
+  for (const e of exams) if (e.group_id && !map.has(e.group_id)) map.set(e.group_id, e.groups?.name || 'группа')
+  return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+}
+
+function GroupChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid="mock-group-chip"
+      className={cn(
+        'min-h-9 rounded-full border px-3 py-1 text-sm transition-colors',
+        active ? 'border-primary-600 bg-primary-600 text-white' : 'border-slate-200 bg-white text-graphite-700 hover:border-primary-200',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

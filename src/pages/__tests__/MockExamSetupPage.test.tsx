@@ -31,7 +31,6 @@ vi.mock('@/lib/supabase', () => ({
           groups: { name: '11А', course_id: 'c1' }, mock_exam_templates: TEMPLATE,
         }, error: null })
       }
-      if (table === 'modules') return thenable({ data: [{ id: 'm1', title: 'Раздел 1', order_index: 0, topics: [{ id: 'tp2', title: 'Тема 2', order_index: 2 }, { id: 'tp1', title: 'Тема 1', order_index: 1 }] }], error: null })
       if (table === 'mock_exam_answer_keys') return thenable({ data: null, error: null })
       if (table === 'mock_exam_task_scores') return thenable({ data: [], error: null })
       if (table === 'mock_exam_templates') return thenable({ data: [TEMPLATE], error: null })
@@ -79,13 +78,19 @@ describe('настройка пробника-урока', () => {
     expect((inputs[0] as HTMLInputElement).value).toBe('')
   })
 
-  it('окно и место: время по Москве, позиция — после выбранной темы', async () => {
+  it('§224: окно по Москве; полей «Раздел» и «Место в разделе» нет, подсказка — раздел «Пробники» группы', async () => {
     mount()
     expect(await screen.findByTestId('mock-setup-start')).toHaveValue('2026-10-18T10:00')
-    expect(screen.getByTestId('mock-setup-position')).toHaveValue('2')
-    fireEvent.change(screen.getByTestId('mock-setup-position'), { target: { value: '1' } })
+    expect(screen.queryByTestId('mock-setup-module')).toBeNull()
+    expect(screen.queryByTestId('mock-setup-position')).toBeNull()
+    expect(screen.queryByText('Место в разделе')).toBeNull()
+    expect(screen.getByTestId('mock-setup-start-hint')).toHaveTextContent('Появится у группы 11А в разделе «Пробники»')
+    fireEvent.change(screen.getByTestId('mock-setup-start'), { target: { value: '2026-10-19T09:30' } })
     await act(async () => { fireEvent.click(screen.getByTestId('mock-setup-save')) })
     await waitFor(() => expect(updates).toHaveLength(1))
-    expect(updates[0]).toMatchObject({ starts_at: '2026-10-18T07:00:00.000Z', duration_minutes: 240, module_id: 'm1', module_position: 1, date: '2026-10-18T07:00:00.000Z' })
+    expect(updates[0]).toMatchObject({ starts_at: '2026-10-19T06:30:00.000Z', duration_minutes: 240, date: '2026-10-19T06:30:00.000Z' })
+    // Привязку к разделу экран больше не пишет — ни значением, ни null.
+    expect(updates[0]).not.toHaveProperty('module_id')
+    expect(updates[0]).not.toHaveProperty('module_position')
   })
 })

@@ -6,8 +6,10 @@ import { normalize as normalizeTemplate } from '@/hooks/useMockExamTemplates'
 import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
 
 /**
- * §221. Настройка пробника-урока у преподавателя: окно, место в программе
- * курса, условие и решение (PDF), ключ первой части.
+ * §221. Настройка пробника-урока у преподавателя: окно, условие и решение
+ * (PDF), ключ первой части. §224: места в программе курса больше нет — у
+ * ученика пробник в разделе «Пробники» своей группы, как только задано время;
+ * `module_id` / `module_position` не читаются и не пишутся (колонки остались).
  *
  * Поля пробника пишутся прямо в `mock_exams` — под существующей политикой
  * `mock_exams_manage` (политики этой работой не тронуты). Раздел из чужого
@@ -38,8 +40,6 @@ export interface SetupExam {
   courseId: string | null
   template_id: string | null
   template: MockExamTemplate | null
-  module_id: string | null
-  module_position: number
   starts_at: string | null
   duration_minutes: number
   photo_grace_minutes: number
@@ -47,27 +47,17 @@ export interface SetupExam {
   solution_path: string | null
 }
 
-export interface SetupModule {
-  id: string
-  title: string
-  order_index: number
-  topics: { id: string; title: string; order_index: number }[]
-}
-
 export interface SetupDraft {
   title: string
   starts_at: string | null
   duration_minutes: number
   template_id: string | null
-  module_id: string | null
-  module_position: number
 }
 
-const EXAM_COLUMNS = 'id, title, date, group_id, template_id, module_id, module_position, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)'
+const EXAM_COLUMNS = 'id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)'
 
 export function useMockExamSetup(examId: string | undefined) {
   const [exam, setExam] = useState<SetupExam | null>(null)
-  const [modules, setModules] = useState<SetupModule[]>([])
   const [key, setKey] = useState<(string | null)[] | null>(null)
   const [hasScores, setHasScores] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -93,25 +83,17 @@ export function useMockExamSetup(examId: string | undefined) {
         groupName: e.groups?.name ?? null, courseId: e.groups?.course_id ?? null,
         template_id: e.template_id ?? null,
         template: e.mock_exam_templates ? normalizeTemplate(e.mock_exam_templates) : null,
-        module_id: e.module_id ?? null, module_position: Number(e.module_position ?? 0),
         starts_at: e.starts_at ?? null,
         duration_minutes: Number(e.duration_minutes ?? 240),
         photo_grace_minutes: Number(e.photo_grace_minutes ?? 15),
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
       }
-      const [mods, k, sc] = await Promise.all([
-        ex.courseId
-          ? db.from<any[]>('modules').select('id, title, order_index, topics(id, title, order_index)').eq('course_id', ex.courseId).order('order_index')
-          : Promise.resolve({ data: [], error: null } as Res<any[]>),
+      const [k, sc] = await Promise.all([
         db.from<{ answers: (string | null)[] }>('mock_exam_answer_keys').select('answers').eq('mock_exam_id', ex.id).maybeSingle(),
         db.from<{ task_number: number }[]>('mock_exam_task_scores').select('task_number').eq('mock_exam_id', ex.id),
       ])
       if (cancelled) return
       setExam(ex)
-      setModules(((mods.data ?? []) as any[]).map(m => ({
-        id: m.id, title: m.title, order_index: m.order_index,
-        topics: ((m.topics ?? []) as SetupModule['topics']).slice().sort((a, b) => a.order_index - b.order_index),
-      })))
       setKey(k.data?.answers ?? null)
       setHasScores(((sc.data ?? []) as unknown[]).length > 0)
       setLoading(false)
@@ -126,8 +108,6 @@ export function useMockExamSetup(examId: string | undefined) {
       starts_at: d.starts_at,
       duration_minutes: d.duration_minutes,
       template_id: d.template_id,
-      module_id: d.module_id,
-      module_position: d.module_position,
     }
     // День пробника в списке и в уведомлении (§219) — день начала.
     if (d.starts_at) row.date = d.starts_at
@@ -169,5 +149,5 @@ export function useMockExamSetup(examId: string | undefined) {
     return { error: null, notCheckable: data?.not_checkable ?? [], changed: data?.grade?.changed_cells ?? 0 }
   }, [exam])
 
-  return { exam, modules, key, hasScores, loading, error, reload, saveSettings, uploadFile, saveKey }
+  return { exam, key, hasScores, loading, error, reload, saveSettings, uploadFile, saveKey }
 }

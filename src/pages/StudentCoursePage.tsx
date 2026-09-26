@@ -20,8 +20,7 @@ import { testPercent } from '@/lib/studentProgram'
 import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { plural, pluralTopics } from '@/lib/plural'
-import { placeInModule } from '@/lib/mockExamLesson'
-import { MockExamProgramRow } from '@/components/student/MockExamProgramRow'
+import { MockExamsSection } from '@/components/student/MockExamsSection'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -920,7 +919,7 @@ export function StudentCoursePage() {
   const { groupId }  = useParams<{ groupId?: string }>()
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
-  const { course, modules, loading, error } = useStudentCourseProgram(groupId)
+  const { course, modules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
 
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
   const [view,           setView]           = useState<CourseView>(getViewPref)
@@ -932,7 +931,8 @@ export function StudentCoursePage() {
 
   // Сдача ДЗ и прохождение теста живут на странице темы — сюда ведут все кнопки
   const openTopic = (topic: TopicProgress) => navigate(`/my-course/${groupId}/topic/${topic.id}`)
-  // §221: пробник — урок раздела; бланк, сдача и результат — на его странице.
+  // §221/§224: бланк, сдача и результат пробника — на его странице; в программе
+  // пробники — своим разделом «Пробники» над разделами курса.
   const openMock = (examId: string) => navigate(`/my-course/${groupId}/mock/${examId}`)
 
   // Reset selected module when course changes
@@ -1037,6 +1037,10 @@ export function StudentCoursePage() {
         </div>
       </div>
 
+      {/* §224. Раздел «Пробники» — над разделами курса и над планом недели:
+          идущий пробник — главное действие экрана. Нет пробников — нет раздела. */}
+      {!activeMod && <MockExamsSection exams={mockExams} onOpen={openMock} />}
+
       {/* «Эта неделя» — RPC `student_week_plan()` считает от `auth_student_id()`;
           у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}
       {!activeMod && !preview && <StudentWeekPlan courseId={course.id} />}
@@ -1079,29 +1083,23 @@ export function StudentCoursePage() {
 
           {view === 'list' ? (
             <div className="space-y-2" data-testid="topics-list-view">
-              {/* §221: пробники раздела — на своём месте среди тем. Номер
-                  темы считает только темы: пробник нумерацию не сдвигает. */}
-              {placeInModule(activeMod.topics, activeMod.mockExams ?? []).map(item => item.kind === 'exam' ? (
-                <MockExamProgramRow key={`mock-${item.exam.id}`} exam={item.exam} variant="row" onOpen={() => openMock(item.exam.id)} />
-              ) : (
+              {activeMod.topics.map((topic, i) => (
                 <TopicListRow
-                  key={item.topic.id}
-                  topic={item.topic}
-                  index={activeMod.topics.indexOf(item.topic)}
-                  onOpen={() => openTopic(item.topic)}
-                  onOpenHomework={() => openTopic(item.topic)}
+                  key={topic.id}
+                  topic={topic}
+                  index={i}
+                  onOpen={() => openTopic(topic)}
+                  onOpenHomework={() => openTopic(topic)}
                 />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="topics-cards-view">
-              {placeInModule(activeMod.topics, activeMod.mockExams ?? []).map(item => item.kind === 'exam' ? (
-                <MockExamProgramRow key={`mock-${item.exam.id}`} exam={item.exam} variant="card" onOpen={() => openMock(item.exam.id)} />
-              ) : (
+              {activeMod.topics.map((topic, i) => (
                 <TopicCard
-                  key={item.topic.id}
-                  topic={item.topic}
-                  index={activeMod.topics.indexOf(item.topic)}
+                  key={topic.id}
+                  topic={topic}
+                  index={i}
                   moduleTitle={activeMod.title}
                   groupId={groupId ?? ''}
                   onOpenTopic={openTopic}

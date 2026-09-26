@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, FileText, Loader2, Save, Table2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { useMockExamSetup, type SetupDraft, type SetupExam, type SetupModule } from '@/hooks/useMockExamSetup'
+import { useMockExamSetup, type SetupDraft, type SetupExam } from '@/hooks/useMockExamSetup'
 import { useMockExamTemplates } from '@/hooks/useMockExamTemplates'
 import { fileNameFromStoragePath } from '@/lib/storage'
 import { plural } from '@/lib/plural'
@@ -22,7 +22,7 @@ import { cn } from '@/utils/cn'
  */
 export function MockExamSetupPage() {
   const { id } = useParams<{ id: string }>()
-  const { exam, modules, key, hasScores, loading, error, saveSettings, uploadFile, saveKey } = useMockExamSetup(id)
+  const { exam, key, hasScores, loading, error, saveSettings, uploadFile, saveKey } = useMockExamSetup(id)
   const { templates } = useMockExamTemplates(true)
 
   if (loading) {
@@ -55,7 +55,7 @@ export function MockExamSetupPage() {
         )}
       </header>
 
-      <SettingsPanel exam={exam} modules={modules} templates={templates} hasScores={hasScores} onSave={saveSettings} />
+      <SettingsPanel exam={exam} templates={templates} hasScores={hasScores} onSave={saveSettings} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <FilesPanel exam={exam} onUpload={uploadFile} />
@@ -71,9 +71,8 @@ function Panel({ children, testid, className }: { children: React.ReactNode; tes
 
 const fieldCls = 'w-full max-w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-graphite-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:bg-slate-50 disabled:text-graphite-500'
 
-function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
+function SettingsPanel({ exam, templates, hasScores, onSave }: {
   exam: SetupExam
-  modules: SetupModule[]
   templates: { id: string; title: string; year: number; max_points: number[]; part1_last: number }[]
   hasScores: boolean
   onSave: (d: SetupDraft) => Promise<{ error: string | null }>
@@ -82,12 +81,9 @@ function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
   const [start, setStart] = useState(toMskInput(exam.starts_at))
   const [duration, setDuration] = useState(String(exam.duration_minutes))
   const [templateId, setTemplateId] = useState(exam.template_id ?? '')
-  const [moduleId, setModuleId] = useState(exam.module_id ?? '')
-  const [position, setPosition] = useState(() => positionOption(modules.find(m => m.id === exam.module_id) ?? null, exam.module_position))
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
-  const mod = modules.find(m => m.id === moduleId) ?? null
   const startsIso = fromMskInput(start)
   const mins = Number(duration)
   const endsIso = startsIso && Number.isFinite(mins) ? new Date(new Date(startsIso).getTime() + mins * 60000).toISOString() : null
@@ -102,7 +98,6 @@ function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
     setBusy(true)
     const r = await onSave({
       title, starts_at: startsIso, duration_minutes: mins, template_id: templateId || null,
-      module_id: moduleId || null, module_position: Number(position) || 0,
     })
     setBusy(false)
     setStatus(r.error ? { kind: 'error', text: `Не сохранено: ${r.error}` } : { kind: 'ok', text: 'Сохранено.' })
@@ -110,17 +105,21 @@ function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
 
   return (
     <Panel testid="mock-setup-settings">
-      <h2 className="text-[17px] font-semibold text-graphite-900">Пробник в программе курса</h2>
+      <h2 className="text-[17px] font-semibold text-graphite-900">Окно пробника</h2>
       <p className="mb-4 text-sm text-graphite-600">
-        Появляется у учеников как урок в выбранном разделе. До начала — «откроется {start ? `${start.slice(8, 10)}.${start.slice(5, 7)} в ${start.slice(11, 16)}` : '…'}», после конца — «на проверке».
-        Все сроки проверяет сервер, а не часы ученика.
+        Все сроки проверяет сервер, а не часы ученика. За час до начала и в момент начала ученикам группы уходит напоминание в Telegram.
       </p>
       <div className="grid items-center gap-x-4 gap-y-2.5 sm:grid-cols-[180px_1fr]">
         <label htmlFor="mx-title" className="text-sm text-graphite-600">Название</label>
         <input id="mx-title" className={fieldCls} value={title} onChange={e => setTitle(e.target.value)} data-testid="mock-setup-title" />
 
         <label htmlFor="mx-start" className="text-sm text-graphite-600">Начало для всех <span className="text-graphite-400">(МСК)</span></label>
-        <input id="mx-start" type="datetime-local" className={cn(fieldCls, 'sm:max-w-[16rem]')} value={start} onChange={e => setStart(e.target.value)} data-testid="mock-setup-start" />
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <input id="mx-start" type="datetime-local" className={cn(fieldCls, 'sm:max-w-[16rem]')} value={start} onChange={e => setStart(e.target.value)} data-testid="mock-setup-start" aria-describedby="mx-start-hint" />
+          <span id="mx-start-hint" className="text-sm text-graphite-500" data-testid="mock-setup-start-hint">
+            {exam.groupName ? `Появится у группы ${exam.groupName} в разделе «Пробники»` : 'Появится у группы в разделе «Пробники»'}
+          </span>
+        </span>
 
         <label htmlFor="mx-dur" className="text-sm text-graphite-600">Длительность</label>
         <span className="flex items-center gap-2">
@@ -144,18 +143,6 @@ function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
 
         <span className="text-sm text-graphite-600">Группа</span>
         <span className="text-sm text-graphite-500">{exam.groupName ?? 'не указана'} — берётся из пробника</span>
-
-        <label htmlFor="mx-mod" className="text-sm text-graphite-600">Раздел</label>
-        <select id="mx-mod" className={fieldCls} value={moduleId} onChange={e => { setModuleId(e.target.value); setPosition('-1') }} disabled={!exam.courseId} data-testid="mock-setup-module">
-          <option value="">— не показывать в программе —</option>
-          {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
-        </select>
-
-        <label htmlFor="mx-pos" className="text-sm text-graphite-600">Место в разделе</label>
-        <select id="mx-pos" className={fieldCls} value={position} onChange={e => setPosition(e.target.value)} disabled={!mod} data-testid="mock-setup-position">
-          <option value="-1">в начале раздела</option>
-          {(mod?.topics ?? []).map(t => <option key={t.id} value={String(t.order_index)}>после темы «{t.title}»</option>)}
-        </select>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button size="sm" onClick={save} loading={busy} data-testid="mock-setup-save"><Save size={14} />Сохранить</Button>
@@ -168,15 +155,6 @@ function SettingsPanel({ exam, modules, templates, hasScores, onSave }: {
       </div>
     </Panel>
   )
-}
-
-/**
- * Значение «Место в разделе» для сохранённой позиции: последняя тема с
- * order_index <= позиции (то же правило, что `placeInModule`), иначе «в начале».
- */
-function positionOption(mod: SetupModule | null, pos: number): string {
-  const before = (mod?.topics ?? []).filter(t => t.order_index <= pos)
-  return before.length ? String(before[before.length - 1].order_index) : '-1'
 }
 
 function FilesPanel({ exam, onUpload }: {

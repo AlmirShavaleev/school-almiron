@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Check, Images, Loader2, Save, Send, Settings2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowLeft, Check, Images, Loader2, Save, Send, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { formatDate } from '@/utils/format'
 import { useMockExamGrid, type GridLesson, type GridStudent, type GridWork } from '@/hooks/useMockExamGrid'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { MOCK_EXAMS_BUCKET, mskDay, mskTime } from '@/lib/mockExamLesson'
+import { useMockExamLive } from '@/hooks/useMockExamLive'
+import {
+  liveCounts, liveCountsLine, liveHeadline, livePhase, liveRows, sheetLabel,
+  type LiveRow, type LiveStudentRow, type MockExamLive,
+} from '@/lib/mockExamLive'
 import { plural } from '@/lib/plural'
 import {
   applyPaste,
@@ -67,8 +72,11 @@ const TOT_STICKY = ['sm:sticky sm:right-[302px]', 'sm:sticky sm:right-[236px]', 
 
 export function MockExamGridPage() {
   const { id } = useParams<{ id: string }>()
-  const { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify } = useMockExamGrid(id)
+  const { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
   const lesson = exam?.lesson ?? null
+  // §224. Монитор: опрос раз в 20 с, пока окно не закрыто + 15 мин; вместе с
+  // ним — фото (ссылки на страницы работ).
+  const { live, offset: liveOffset } = useMockExamLive(exam?.id, lesson, refreshWorks)
   const template = exam?.template ?? null
   const maxPts = template?.max_points ?? []
   const p1End = template?.part1_last ?? 0
@@ -229,6 +237,11 @@ export function MockExamGridPage() {
   }
 
   const filledCount = totals.filter(Boolean).length
+  // §224. Пока пробник не начался, идёт или догружают фото — монитор над
+  // таблицей: сначала вывод. Когда всё закрыто, главное — проверка, и блок
+  // работ уходит под таблицу, как было в §221.
+  const monitorOnTop = !!lesson && livePhase(lesson, Date.now() + liveOffset) !== 'ended'
+  const monitor = lesson ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End} /> : null
 
   return (
     <div className="space-y-4" data-testid="mock-exam-grid-page">
@@ -255,6 +268,8 @@ export function MockExamGridPage() {
           </Button>
         </div>
       </header>
+
+      {lesson && monitorOnTop && monitor}
 
       {gradeNote && (
         <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-graphite-700" data-testid="mock-grid-grade-note">{gradeNote}</p>
@@ -446,7 +461,7 @@ export function MockExamGridPage() {
         )}
       </section>
 
-      {lesson && <WorksSection lesson={lesson} students={students} works={works} />}
+      {lesson && !monitorOnTop && monitor}
 
       {report && (
         <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" aria-live="polite" data-testid="mock-grid-report">
@@ -623,39 +638,67 @@ function NotifyCell({ state, unavailable, dirty, noProfile, busy, disabled, onCl
 }
 
 /**
- * §221. Работы учеников онлайн-пробника: кто сдал и когда, фото второй
- * части. Отдельно от таблицы §218 — таблица осталась какой была, а фото
- * открываются подписанной ссылкой (бакет mock-exams закрыт).
+ * §221 → §224. Работы учеников онлайн-пробника — тот же блок, расширенный до
+ * монитора: сверху вывод словами («Идёт · осталось 2 ч 13 мин · до 14:00»),
+ * под ним одна строка счётчиков с числом группы, ниже — ученики по
+ * состояниям (не заходили → открывали и ушли → пишут → сдали), бланк
+ * «8 из 12», фото ссылками. «Онлайн» считает база (`mock_exam_live`), время —
+ * от её `server_now`. Без функции (ветка раньше миграции) — то, что видно из
+ * бланков и фото §221: кто сдал, у кого бланк есть, фото.
  */
-function WorksSection({ lesson, students, works }: { lesson: GridLesson; students: GridStudent[]; works: Record<string, GridWork> }) {
-  const now = Date.now()
-  const open = now < new Date(lesson.ends_at).getTime()
-  const photosOpen = now < new Date(lesson.photos_until).getTime()
-  const submitted = students.filter(s => works[s.id]?.submitted_at).length
+function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
+  lesson: GridLesson
+  students: GridStudent[]
+  works: Record<string, GridWork>
+  live: MockExamLive | null
+  offset: number
+  part1Last: number
+}) {
+  const now = useServerClock(offset, 15_000)
+  const phase = livePhase(lesson, now)
+  const base: LiveStudentRow[] = live
+    ? live.students
+    : students.map(st => ({
+        student_id: st.id, name: st.name, has_sheet: !!works[st.id], opened_at: null, last_seen_at: null, online: false,
+        answered: null, submitted_at: works[st.id]?.submitted_at ?? null, photos: works[st.id]?.photos.length ?? 0,
+      }))
+  const rows = liveRows(base, phase)
+  const counts = liveCounts(rows)
+  const started = phase !== 'upcoming'
+  const startMs = new Date(lesson.starts_at).getTime()
+  const endMs = new Date(lesson.ends_at).getTime()
+  const elapsed = phase === 'running' ? Math.min(1, Math.max(0, (now - startMs) / (endMs - startMs))) : phase === 'upcoming' ? 0 : 1
   return (
-    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="mock-grid-works">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-[15px] font-semibold text-graphite-900">Работы учеников — фото второй части</h3>
-        <span className="text-xs text-graphite-500">
-          {mskDay(lesson.starts_at)}, {mskTime(lesson.starts_at)}–{mskTime(lesson.ends_at)}, фото до {mskTime(lesson.photos_until)}
-          {open ? ' · идёт' : photosOpen ? ' · догружают фото' : ''} · сдали {submitted} из {students.length}
-        </span>
+    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="mock-grid-works" data-phase={phase}>
+      <p className="text-[11px] uppercase tracking-wider text-graphite-500">Онлайн-пробник · {mskDay(lesson.starts_at)}, {mskTime(lesson.starts_at)}–{mskTime(lesson.ends_at)}, фото до {mskTime(lesson.photos_until)}</p>
+      <p className={cn('mt-1 flex items-center gap-2 text-lg font-semibold', phase === 'running' ? 'text-primary-800' : phase === 'photos' ? 'text-amber-900' : 'text-graphite-900')} data-testid="mock-live-headline">
+        {phase === 'running' && <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-600" /></span>}
+        {liveHeadline(lesson, now)}
+      </p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
+        <div className={cn('h-full rounded-full', phase === 'running' ? 'bg-primary-500' : phase === 'photos' ? 'bg-amber-400' : 'bg-slate-300')} style={{ width: `${Math.round(elapsed * 100)}%` }} />
       </div>
-      <div className="mt-2 divide-y divide-slate-100">
-        {students.map(st => {
-          const w = works[st.id]
-          const badge = w?.submitted_at
-            ? { text: `сдал(а) ${mskTime(w.submitted_at)}`, cls: 'bg-emerald-50 text-emerald-800' }
-            : w
-              ? { text: open ? 'пишет' : 'время вышло', cls: open ? 'bg-primary-50 text-primary-800' : 'bg-amber-50 text-amber-800' }
-              : { text: open ? 'не начинал(а)' : 'не сдал(а)', cls: 'bg-red-50 text-red-800' }
+      <p className="mt-2 text-sm text-graphite-700" data-testid="mock-live-counts">
+        {liveCountsLine(counts, phase)}
+        {!live && started && <span className="text-graphite-400"> · кто сейчас на сайте — появится после обновления базы</span>}
+      </p>
+      <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
+        {rows.map(r => {
+          const w = works[r.student_id]
+          const sheet = sheetLabel(r.answered, part1Last)
           return (
-            <div key={st.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm" data-testid="mock-grid-work-row">
-              <span className="min-w-[10rem] text-graphite-900">{st.name}</span>
-              <span className={cn('whitespace-nowrap rounded px-1.5 py-px text-xs', badge.cls)}>{badge.text}</span>
+            <div key={r.student_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm" data-testid="mock-grid-work-row" data-kind={r.kind}>
+              <span className="min-w-[11rem] flex-1 text-graphite-900 sm:flex-none">{r.name}</span>
+              <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-px text-xs font-medium', TONE_CLS[r.tone])} data-testid="mock-live-status">
+                {r.tone === 'problem' && <AlertTriangle size={12} aria-hidden />}
+                {r.tone === 'live' && <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden />}
+                {r.label}
+              </span>
+              {sheet && <span className="font-mono text-xs tabular-nums text-graphite-600">{sheet}</span>}
               {w && w.photos.length > 0 ? (
                 <span className="inline-flex flex-wrap items-center gap-1.5">
                   <Images size={13} className="text-graphite-400" aria-hidden />
+                  <span className="text-xs text-graphite-600">фото {w.photos.length}:</span>
                   {w.photos.map((p, i) => (
                     <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} sensitive
                       className="rounded border border-slate-200 px-1.5 py-px text-xs text-primary-700 hover:bg-primary-50">
@@ -663,13 +706,34 @@ function WorksSection({ lesson, students, works }: { lesson: GridLesson; student
                     </SignedFileLink>
                   ))}
                 </span>
-              ) : (
+              ) : r.photos > 0 ? (
+                <span className="text-xs text-graphite-600">фото {r.photos}</span>
+              ) : started ? (
                 <span className="text-xs text-graphite-400">фото нет</span>
-              )}
+              ) : null}
             </div>
           )
         })}
       </div>
     </section>
   )
+}
+
+const TONE_CLS: Record<LiveRow['tone'], string> = {
+  problem: 'bg-red-50 text-red-800 ring-1 ring-inset ring-red-200',
+  warn: 'bg-amber-50 text-amber-900',
+  live: 'bg-emerald-50 text-emerald-800',
+  ok: 'bg-slate-100 text-graphite-700',
+  idle: 'bg-slate-50 text-graphite-500',
+}
+
+/** «Сейчас» по часам базы с заданным шагом — монитору хватает минут. */
+function useServerClock(offset: number, stepMs: number): number {
+  const [now, setNow] = useState(() => Date.now() + offset)
+  useEffect(() => {
+    setNow(Date.now() + offset)
+    const id = setInterval(() => setNow(Date.now() + offset), stepMs)
+    return () => clearInterval(id)
+  }, [offset, stepMs])
+  return now
 }

@@ -29,6 +29,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
+import { CourseMockExamsSection } from '@/components/courseProgram/CourseMockExamsSection'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
 import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
@@ -2264,6 +2265,15 @@ export function CourseProgramPage() {
                       {editMode ? 'Завершить редактирование' : 'Редактировать программу'}
                     </button>
                   </div>
+                )}
+
+                {/* §224. Раздел «Пробники» группы — над программой, как у ученика.
+                    У каркаса групп нет — и раздела нет. */}
+                {!isTemplate && selectedGroupId && !loadingMods && (
+                  <CourseMockExamsSection
+                    groupId={selectedGroupId}
+                    groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+                  />
                 )}
 
                 {loadingMods ? (

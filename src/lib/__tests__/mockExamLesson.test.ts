@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clockOffset, emptyAnswers, formatCountdown, fromMskInput, lessonStatus, lessonStatusLabel,
-  mockPhotoPath, parseKeyPaste, placeInModule, toMskInput,
+  mockPhotoPath, mockSectionItems, parseKeyPaste, toMskInput,
 } from '@/lib/mockExamLesson'
 
 /**
@@ -81,18 +81,44 @@ describe('ключ из Excel', () => {
   })
 })
 
-describe('место в разделе', () => {
-  const topics = [{ id: 't1', order_index: 1 }, { id: 't2', order_index: 2 }, { id: 't3', order_index: 5 }]
-  const ex = (id: string, module_position: number) => ({ id, module_position, starts_at: START })
-
-  it('после последней темы с order_index <= позиции; меньше всех — первым; больше всех — последним', () => {
-    const order = placeInModule(topics, [ex('m2', 2), ex('m0', -1), ex('m9', 9), ex('m4', 4)])
-      .map(i => (i.kind === 'topic' ? i.topic.id : i.exam.id))
-    expect(order).toEqual(['m0', 't1', 't2', 'm2', 'm4', 't3', 'm9'])
+describe('§224. раздел «Пробники»: идёт → ближайшие → прошедшие', () => {
+  const H = 3600_000
+  const now = at(START) + 2 * H // 12:00 МСК: пробник START идёт
+  const ex = (id: string, startMs: number, extra: { submitted_at?: string | null; has_work?: boolean; notified?: boolean } = {}) => ({
+    ...base, id,
+    starts_at: new Date(startMs).toISOString(),
+    ends_at: new Date(startMs + 4 * H).toISOString(),
+    photos_until: new Date(startMs + 4 * H + 15 * 60_000).toISOString(),
+    ...extra,
   })
 
-  it('без тем пробник всё равно виден', () => {
-    expect(placeInModule([], [ex('m', 0)]).map(i => i.kind)).toEqual(['exam'])
+  it('порядок и группы; главная кнопка — одна, у идущего', () => {
+    const items = mockSectionItems([
+      ex('past-old', now - 30 * 24 * H, { notified: true }),
+      ex('soon-far', now + 7 * 24 * H),
+      ex('running', at(START)),
+      ex('past-new', now - 7 * 24 * H, { has_work: true }),
+      ex('soon-near', now + 20 * H),
+      ex('grace', now - 4 * H - 5 * 60_000, { submitted_at: new Date(now - 5 * H).toISOString() }),
+    ], now)
+    expect(items.map(i => [i.exam.id, i.group, i.status])).toEqual([
+      ['grace', 'now', 'submitted'],
+      ['running', 'now', 'open'],
+      ['soon-near', 'upcoming', 'upcoming'],
+      ['soon-far', 'upcoming', 'upcoming'],
+      ['past-new', 'past', 'checking'],
+      ['past-old', 'past', 'result'],
+    ])
+    expect(items.filter(i => i.primary).map(i => i.exam.id)).toEqual(['running'])
+  })
+
+  it('идущих два — главная кнопка всё равно одна', () => {
+    const items = mockSectionItems([ex('a', at(START)), ex('b', at(START) + H)], now)
+    expect(items.filter(i => i.primary)).toHaveLength(1)
+  })
+
+  it('ничего не идёт — главной кнопки нет', () => {
+    expect(mockSectionItems([ex('x', now + H)], now).some(i => i.primary)).toBe(false)
   })
 })
 
