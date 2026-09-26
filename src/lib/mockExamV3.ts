@@ -452,7 +452,7 @@ export function readiness(o: {
  * §229: при нескольких вариантах каждому нужно условие — иначе часть учеников
  * останется без заданий (`missingCondition` — номера таких вариантов).
  */
-export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean; missingCondition?: number[] }): string[] {
+export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean; missingCondition?: number[]; variantNames?: Record<number, string> }): string[] {
   const out: string[] = []
   if (!o.title.trim()) out.push('Нужно название')
   if (!o.templateId) out.push('Нужен шаблон — по нему строится бланк и таблица баллов')
@@ -460,9 +460,14 @@ export function assignProblems(o: { title: string; templateId: string; groups: n
   if (!o.durationOk) out.push('Длительность — от 10 до 720 минут')
   if (!o.draft && !o.startsIso) out.push('Нужны дата и время начала')
   if (!o.draft && o.missingCondition?.length) {
+    // §230: у варианта может быть подпись («Резерв») — называем его так же, как на карточке.
+    const name = (n: number) => o.variantNames?.[n] ?? `Вариант ${n}`
+    const labelled = o.missingCondition.some(n => o.variantNames?.[n] && o.variantNames[n] !== `Вариант ${n}`)
     out.push(o.missingCondition.length === 1
-      ? `Вариант ${o.missingCondition[0]}: нет условия — загрузите его или уберите вариант`
-      : `Варианты ${o.missingCondition.join(', ')}: нет условия — загрузите или уберите`)
+      ? `${name(o.missingCondition[0])}: нет условия — загрузите его или уберите вариант`
+      : labelled
+        ? `${o.missingCondition.map(name).join(', ')}: нет условия — загрузите или уберите`
+        : `Варианты ${o.missingCondition.join(', ')}: нет условия — загрузите или уберите`)
   }
   return out
 }

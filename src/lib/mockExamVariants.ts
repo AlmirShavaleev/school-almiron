@@ -37,10 +37,28 @@ export function variantFilePath(examId: string, position: number, kind: VariantF
   return `${examId}/v${position}/${kind}/${now}_${sanitizeStorageFileName(fileName)}`
 }
 
+/** §230. Подпись варианта в базе — не длиннее 60 знаков (check в `mock_exam_variants.label`). */
+export const VARIANT_LABEL_MAX = 60
+
 /** «Вариант 2» или подпись, если её задали. */
 export function variantName(v: { position: number; label?: string | null }): string {
   const l = (v.label ?? '').trim()
   return l || `Вариант ${v.position}`
+}
+
+/**
+ * §230. Метки варианта для строк «Работ» и монитора: id ученика → «Вариант 2»
+ * или подпись. Пусто, если вариант у пробника один (метка была бы шумом), и
+ * у тех, кому вариант ещё не выдан (его выдаст база при первом входе).
+ */
+export function worksVariantLabels(
+  students: { id: string; variant?: { position: number; label?: string | null } | null; variantAssigned?: boolean }[],
+  variantCount: number,
+): Record<string, string> {
+  if (variantCount < 2) return {}
+  const out: Record<string, string> = {}
+  for (const s of students) if (s.variant && s.variantAssigned) out[s.id] = variantName(s.variant)
+  return out
 }
 
 export interface RosterStudent { id: string; name: string }
@@ -104,6 +122,15 @@ export function distributeVariants(
     count.set(p, (count.get(p) ?? 0) + 1)
   }
   return out
+}
+
+/**
+ * §230. «Вариант 2 — 5» в счёте раздачи; с подписью — «Резерв (№3) — 4»:
+ * в выпадающем списке у ученика стоят номера, по ним и сверяются.
+ */
+export function variantCountLabel(v: { position: number; label?: string | null }, n: number): string {
+  const l = (v.label ?? '').trim()
+  return `${l ? `${l} (№${v.position})` : `Вариант ${v.position}`} — ${n}`
 }
 
 /** Сколько учеников на каждом варианте: `{1: 5, 2: 5, 3: 6}`. */

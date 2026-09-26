@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, Check, FileText, Loader2, Lock, Plus, Shuffle, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, FileText, Loader2, Lock, Pencil, Plus, Shuffle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { VerdictMark } from '@/components/ui/VerdictMark'
@@ -18,7 +18,8 @@ import {
   DURATION_PRESETS, assignProblems, durationLabel, mskMoment, mskParts, readiness, studentTimeline,
 } from '@/lib/mockExamV3'
 import {
-  FILE_KIND_LABEL, MAX_VARIANTS, VARIANT_MODES, distributeVariants, missingConditions, studentsLabel, variantCounts,
+  FILE_KIND_LABEL, MAX_VARIANTS, VARIANT_LABEL_MAX, VARIANT_MODES, distributeVariants, missingConditions, studentsLabel, variantCountLabel,
+  variantCounts, variantName,
   type RosterStudent, type VariantFileKind, type VariantMode, type VariantReady,
 } from '@/lib/mockExamVariants'
 import { cn } from '@/utils/cn'
@@ -52,8 +53,8 @@ export function MockExamForm(props: { mode: Mode }) {
 }
 
 /** Файлы варианта в форме создания — пока только выбраны, грузятся после «Назначить». */
-interface DraftVariant { condition: File | null; solution: File | null; criteria: File | null; key: string[] }
-const emptyDraft = (): DraftVariant => ({ condition: null, solution: null, criteria: null, key: [] })
+interface DraftVariant { condition: File | null; solution: File | null; criteria: File | null; key: string[]; label: string }
+const emptyDraft = (): DraftVariant => ({ condition: null, solution: null, criteria: null, key: [], label: '' })
 
 /** Повторяемая «случайная» раздача: пока не нажали «Перемешать», таблица не прыгает. */
 function seeded(seed: number): () => number {
@@ -72,6 +73,12 @@ const keyFilled = (key: (string | null)[] | null | undefined, n: number) =>
   Array.from({ length: n }, (_, i) => key?.[i] ?? '').filter(v => (v ?? '').trim()).length
 const keyValues = (key: (string | null)[] | null | undefined, n: number) =>
   Array.from({ length: n }, (_, i) => (key?.[i] ?? '').trim())
+
+/** §230. Имя варианта по номеру — «Резерв» или «Вариант 3». */
+const namesOf = (vs: { position: number; label?: string | null }[]): Record<number, string> =>
+  Object.fromEntries(vs.map(v => [v.position, variantName(v)]))
+/** Подпись из имени: «Вариант 3» у третьего — это не подпись. */
+const labelOnly = (name: string | undefined, p: number): string | null => (name && name !== `Вариант ${p}` ? name : null)
 
 /* ─────────────────────────────── Создание ─────────────────────────────── */
 
@@ -116,7 +123,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
   }
 
   const ready: VariantReady[] = shown.map((d, k) => ({
-    position: k + 1, hasCondition: !!d.condition, hasSolution: !!d.solution, hasCriteria: !!d.criteria,
+    position: k + 1, label: d.label, hasCondition: !!d.condition, hasSolution: !!d.solution, hasCriteria: !!d.criteria,
     keyFilled: keyFilled(d.key, n), keyTotal: n,
   }))
 
@@ -134,6 +141,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
     const problems = assignProblems({
       title: f.title, templateId: f.templateId, groups: chosen.length, startsIso: f.startsIso, draft, durationOk: f.durationOk,
       missingCondition: multi ? missingConditions(ready) : [],
+      variantNames: namesOf(ready),
     })
     if (problems.length) { setStatus({ kind: 'error', text: problems.join('. ') + '.' }); return }
     if (!template || !profile) return
@@ -143,7 +151,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
       startsAt: draft ? null : f.startsIso,
       plannedAt: f.plannedIso,
       durationMinutes: f.duration,
-      variants: shown.map(d => ({ condition: d.condition, solution: d.solution, criteria: d.criteria, key: keyValues(d.key, n) })),
+      variants: shown.map(d => ({ condition: d.condition, solution: d.solution, criteria: d.criteria, key: keyValues(d.key, n), label: d.label })),
       variantMode: vMode,
       assignments,
       profileId: profile.id,
@@ -197,6 +205,8 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
               <VariantCard
                 key={k}
                 position={k + 1}
+                label={d.label}
+                onLabel={label => patchDraft(k, { label })}
                 multi={multi}
                 open={!multi || openVariant === k}
                 onOpen={() => setOpenVariant(k)}
@@ -216,6 +226,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
             <DistributionCard
               groups={chosen.map(g => ({ id: g.id, name: g.name, roster: rosters[g.id] ?? [] }))}
               positions={positions}
+              names={namesOf(ready)}
               mode={vMode}
               onMode={m => { setVMode(m); setManual({}); if (m === 'random') setSeed(s => s + 1) }}
               onShuffle={vMode === 'random' ? () => setSeed(s => s + 1) : undefined}
@@ -335,6 +346,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
     const problems = assignProblems({
       title: f.title, templateId: f.templateId, groups: groupId ? 1 : 0, startsIso: f.startsIso, draft, durationOk: f.durationOk,
       missingCondition: multi ? missingConditions(ready) : [],
+      variantNames: namesOf(ready),
     })
     if (problems.length) { setStatus({ kind: 'error', text: problems.join('. ') + '.' }); return }
     const newStart = draft ? null : f.startsIso
@@ -352,7 +364,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
     for (const v of items) {
       if (!keyDirty(v)) continue
       const k = await vh.saveKey(v, keyValues(keys[v.position], n))
-      const who = multi ? ` (вариант ${v.position})` : ''
+      const who = multi ? ` (${variantName(v)})` : ''
       if (k.error) { note += ` Ключ${who} не сохранён: ${k.error}.`; continue }
       if (k.changed > 0) note += ` Перепроверено по ключу${who} клеток: ${k.changed}.`
       if (k.notCheckable.length) note += ` Не поддаются автопроверке${who}: ${k.notCheckable.map(x => `№${x}`).join(', ')} — их поставите при проверке.`
@@ -419,6 +431,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
                 key={v.id ?? `legacy-${v.position}`}
                 position={v.position}
                 label={v.label}
+                onRename={v.id ? label => vh.renameVariant(v, label) : undefined}
                 multi={multi}
                 open={!multi || openVariant === k}
                 onOpen={() => setOpenVariant(k)}
@@ -440,6 +453,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
             <DistributionCard
               groups={[{ id: groupId, name: groupName ?? 'группа', roster }]}
               positions={positions}
+              names={namesOf(ready)}
               mode={vMode}
               onMode={m => {
                 setVMode(m)
@@ -688,9 +702,13 @@ function VariantsCard({ multi, onMulti, canSingle, count, onAdd, busy, laterNote
   )
 }
 
-function VariantCard({ position, label, multi, open, onOpen, students, onRemove, slots, keyTotal, keyFilledCount, keyField }: {
+function VariantCard({ position, label, onLabel, onRename, multi, open, onOpen, students, onRemove, slots, keyTotal, keyFilledCount, keyField }: {
   position: number
   label?: string | null
+  /** §230. Подпись в форме создания — черновик, уходит вместе с «Назначить». */
+  onLabel?: (label: string) => void
+  /** §230. Подпись у существующего пробника — сохраняется сразу (уход из поля или Enter). */
+  onRename?: (label: string) => Promise<{ error: string | null }>
   multi: boolean
   open: boolean
   onOpen: () => void
@@ -708,7 +726,9 @@ function VariantCard({ position, label, multi, open, onOpen, students, onRemove,
     >
       {multi && (
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <span className="rounded-full bg-gold-300 px-3 py-0.5 text-[13px] font-extrabold text-graphite-900">{(label ?? '').trim() || `Вариант ${position}`}</span>
+          {onLabel || onRename
+            ? <VariantLabelField position={position} value={label ?? ''} onChange={onLabel} onCommit={onRename} />
+            : <span className="rounded-full bg-gold-300 px-3 py-0.5 text-[13px] font-extrabold text-graphite-900">{variantName({ position, label })}</span>}
           <span className="flex items-center gap-3">
             {students != null && <span className="text-xs text-graphite-500" data-testid="mock-form-variant-students">{studentsLabel(students)}</span>}
             {onRemove && (
@@ -726,6 +746,66 @@ function VariantCard({ position, label, multi, open, onOpen, students, onRemove,
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * §230. Подпись варианта: жёлтая метка-поле («Вариант А», «Резерв»). Пусто —
+ * «Вариант N» (подсказка в поле). В форме создания — черновик; у
+ * существующего пробника сохраняется сразу: уход из поля или Enter, Esc —
+ * вернуть как было. Ученик видит подпись в шапке пробника, учитель — везде,
+ * где раньше стояло «Вариант N».
+ */
+function VariantLabelField({ position, value, onChange, onCommit }: {
+  position: number
+  value: string
+  onChange?: (v: string) => void
+  onCommit?: (v: string) => Promise<{ error: string | null }>
+}) {
+  const [draft, setDraft] = useState(value)
+  const [state, setState] = useState<{ kind: 'saving' | 'saved' | 'error'; text?: string } | null>(null)
+  // Сохранённое изменилось снаружи (перечитали варианты) — поле за ним, пока его не правят.
+  const [seen, setSeen] = useState(value)
+  if (seen !== value) { setSeen(value); setDraft(value) }
+  const placeholder = `Вариант ${position}`
+  const shown = onCommit ? draft : value
+  const width = Math.min(Math.max((shown || placeholder).length, 6), 28) + 2
+
+  async function commit() {
+    if (!onCommit) return
+    const clean = draft.replace(/\s+/g, ' ').trim()
+    if (clean === value.trim()) { setDraft(value); return }
+    setState({ kind: 'saving' })
+    const r = await onCommit(clean)
+    if (r.error) { setState({ kind: 'error', text: r.error }); return }
+    setState({ kind: 'saved' })
+  }
+
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="group relative inline-flex min-w-0 items-center rounded-full bg-gold-300 focus-within:ring-[3px] focus-within:ring-gold-200">
+        <input
+          value={shown}
+          onChange={e => { const v = e.target.value.slice(0, VARIANT_LABEL_MAX); if (onCommit) { setDraft(v); setState(null) } else onChange?.(v) }}
+          onBlur={() => { void commit() }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).blur() }
+            if (e.key === 'Escape' && onCommit) { e.preventDefault(); setDraft(value); setState(null) }
+          }}
+          maxLength={VARIANT_LABEL_MAX}
+          placeholder={placeholder}
+          aria-label={`Подпись варианта ${position}`}
+          title="Подпись видят ученики этого варианта. Пусто — «Вариант N»."
+          size={width}
+          data-testid="mock-form-variant-label"
+          className="h-9 min-w-0 max-w-full rounded-full border-0 bg-transparent py-0 pl-3 pr-8 text-[13px] font-extrabold text-graphite-900 placeholder:text-graphite-900 focus:outline-none sm:h-7"
+        />
+        <Pencil size={12} className="pointer-events-none absolute right-3 text-graphite-700" aria-hidden />
+      </span>
+      {state?.kind === 'saving' && <Loader2 size={13} className="animate-spin text-graphite-400" aria-label="сохраняется" />}
+      {state?.kind === 'saved' && <span className="text-xs text-verdict-ok-ink" role="status" data-testid="mock-form-variant-label-status">сохранено</span>}
+      {state?.kind === 'error' && <span className="text-xs text-verdict-bad-ink" role="alert" data-testid="mock-form-variant-label-status">{state.text}</span>}
+    </span>
   )
 }
 
@@ -869,9 +949,11 @@ function KeyField({ n, values, onChange }: { n: number; values: string[]; onChan
 }
 
 /** «Кому какой вариант» — по группе: способ раздачи и ученик → вариант. */
-function DistributionCard({ groups, positions, mode, onMode, onShuffle, assign, locked, onSet, dirty }: {
+function DistributionCard({ groups, positions, names, mode, onMode, onShuffle, assign, locked, onSet, dirty }: {
   groups: { id: string; name: string; roster: RosterStudent[] }[]
   positions: number[]
+  /** §230. Подписи вариантов по номеру — в счёте «Резерв (№3) — 4». */
+  names?: Record<number, string>
   mode: VariantMode
   onMode: (m: VariantMode) => void
   onShuffle?: () => void
@@ -921,7 +1003,7 @@ function DistributionCard({ groups, positions, mode, onMode, onShuffle, assign, 
                           className="h-10 min-w-[56px] rounded-lg border-[1.5px] border-graphite-300 bg-white px-2 text-sm font-bold text-graphite-900 focus:border-primary-600 focus:outline-none disabled:bg-graphite-50 disabled:text-graphite-500 sm:h-8"
                         >
                           {a[s.id] == null && <option value="">—</option>}
-                          {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                          {positions.map(p => <option key={p} value={p} title={names?.[p]}>{p}</option>)}
                         </select>
                       </span>
                     </li>
@@ -930,7 +1012,7 @@ function DistributionCard({ groups, positions, mode, onMode, onShuffle, assign, 
               </ul>
             )}
             <span className="text-[13px] text-graphite-900 sm:text-xs" data-testid="mock-form-distribution-counts">
-              {positions.map(p => `Вариант ${p} — ${counts[p] ?? 0}`).join(' · ')}
+              {positions.map(p => variantCountLabel({ position: p, label: labelOnly(names?.[p], p) }, counts[p] ?? 0)).join(' · ')}
             </span>
           </div>
         )

@@ -12,6 +12,7 @@ import { livePhase, liveRows } from '@/lib/mockExamLive'
 import {
   defaultTab, examStage, nextToReview, notifyCheckedIds, shortName, workRows, worksSummary, type ExamTab,
 } from '@/lib/mockExamV3'
+import { worksVariantLabels } from '@/lib/mockExamVariants'
 import { cn } from '@/utils/cn'
 
 /**
@@ -65,6 +66,8 @@ export function MockExamPage() {
     ? Object.fromEntries(liveRows(live.students, phase).map(r => [r.student_id, { label: r.label, tone: r.tone }]))
     : undefined
   const summary = worksSummary(stage, rows, win, exam.groupName)
+  // §230. Метка варианта у строки «Работ» (и монитора — это те же строки) — только если вариантов больше одного.
+  const variantById = worksVariantLabels(students, works.variants.length)
   // Главная кнопка — у проверки; пока пробник идёт, главное — монитор, а не «следующая».
   const primary = next && (stage === 'checking' || stage === 'sent')
     ? { label: `Проверить следующую · ${shortName(next.name)}`, onClick: () => navigate(`/mock-exams/${exam.id}/review/${next.id}`), testid: 'mock-page-next' }
@@ -73,7 +76,9 @@ export function MockExamPage() {
       : null
 
   return (
-    <div className="space-y-4" data-testid="mock-exam-page" data-stage={stage}>
+    // pb-14 — §230: низ страницы (последние «Уведомить», «Уведомить всех проверенных», «Очистить таблицу»)
+    // прокручивается выше кнопки помощи, она компактная в правом нижнем углу (isFabCompactPath).
+    <div className="space-y-4 pb-14" data-testid="mock-exam-page" data-stage={stage}>
       <div className="text-[13px] text-graphite-500">
         <Link to="/mock-exams" className="inline-flex items-center gap-1 hover:text-primary-700 hover:underline"><ArrowLeft size={13} aria-hidden />Пробники</Link>
         {exam.groupName && <> · {exam.groupName}</>}{exam.template && <> · {exam.template.title}</>}
@@ -122,7 +127,7 @@ export function MockExamPage() {
                     answered: null, submitted_at: s.sheet?.submitted_at ?? null, photos: s.photos,
                   }))} />
                 )}
-                <WorksTable examId={exam.id} rows={rows} liveById={liveLabels} onNotify={async ids => { const r = await works.notify(ids); if (!r.error) reload(); return r }}
+                <WorksTable examId={exam.id} rows={rows} liveById={liveLabels} variantById={variantById} onNotify={async ids => { const r = await works.notify(ids); if (!r.error) reload(); return r }}
                   confirmOpen={confirmAll} setConfirmOpen={setConfirmAll} />
               </>
             )

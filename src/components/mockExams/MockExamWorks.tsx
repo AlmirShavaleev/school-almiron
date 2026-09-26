@@ -82,10 +82,12 @@ const LIVE_MARK: Record<string, 'ok' | 'part' | 'bad' | 'none' | 'unk'> = { live
  * «Уведомить» одному, когда все номера оценены. Внизу — «Уведомить всех
  * проверенных · N» с подтверждением внутри страницы, без `confirm()`.
  */
-export function WorksTable({ examId, rows, liveById, onNotify, confirmOpen, setConfirmOpen }: {
+export function WorksTable({ examId, rows, liveById, variantById, onNotify, confirmOpen, setConfirmOpen }: {
   examId: string
   rows: WorkRow[]
   liveById?: Record<string, { label: string; tone: string }>
+  /** §230. Вариант ученика словами («Вариант 2», «Резерв»); только при нескольких вариантах. */
+  variantById?: Record<string, string>
   onNotify: (ids: string[]) => Promise<{ error: string | null; summary: NotifySummary | null }>
   confirmOpen: boolean
   setConfirmOpen: (v: boolean) => void
@@ -153,7 +155,14 @@ export function WorksTable({ examId, rows, liveById, onNotify, confirmOpen, setC
                 <tr key={r.id} onClick={() => open(r.id)} onKeyDown={onKey} tabIndex={-1}
                   className="cursor-pointer hover:bg-[#f6f9ff]" data-testid="mock-works-row" data-status={r.status} data-student={r.id}>
                   <td className="border-b border-graphite-200 px-2.5 py-3">
-                    <Link to={`/mock-exams/${examId}/review/${r.id}`} onClick={e => e.stopPropagation()} className="font-bold text-graphite-900 hover:text-primary-700" data-testid="mock-works-open">{r.name}</Link>
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Link to={`/mock-exams/${examId}/review/${r.id}`} onClick={e => e.stopPropagation()} className="font-bold text-graphite-900 hover:text-primary-700" data-testid="mock-works-open">{r.name}</Link>
+                      {variantById?.[r.id] && (
+                        <span className="max-w-[12rem] truncate whitespace-nowrap rounded-full bg-gold-100 px-2 py-px text-xs font-bold text-gold-800" data-testid="mock-works-variant" title="Вариант ученика">
+                          {variantById[r.id]}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="border-b border-graphite-200 px-2.5 py-3">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

@@ -236,7 +236,8 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
         </section>
       </div>
 
-      <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3.5 rounded-b-card border-t border-graphite-200 bg-white px-4 py-3.5 shadow-[0_-8px_20px_rgba(31,85,224,.06)] sm:px-6" data-testid="mock-review-bar">
+      {/* §230: справа поле под компактную кнопку помощи (isFabCompactPath) — она не ложится на «Следующая →». */}
+      <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3.5 rounded-b-card border-t border-graphite-200 bg-white py-3.5 pl-4 pr-12 shadow-[0_-8px_20px_rgba(31,85,224,.06)] sm:pl-6 sm:pr-8" data-testid="mock-review-bar">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-graphite-900">
           <span>Первичный <b className="text-[22px]" data-testid="mock-review-primary">{totals.primary ?? '—'}</b> <span className="text-graphite-500">из {totals.of}</span></span>
           {tpl.score_scale?.length ? <span>Тестовый <b className="text-[22px]" data-testid="mock-review-test">{totals.test ?? '—'}</b></span> : null}

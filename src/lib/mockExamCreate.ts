@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { uploadToStorage } from '@/lib/storageUpload'
 import { MOCK_EXAMS_BUCKET } from '@/lib/mockExamLesson'
-import { variantFilePath, type VariantFileKind, type VariantMode } from '@/lib/mockExamVariants'
+import { VARIANT_LABEL_MAX, variantFilePath, type VariantFileKind, type VariantMode } from '@/lib/mockExamVariants'
 import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
 
 /**
@@ -33,6 +33,8 @@ export interface CreateVariantInput {
   criteria: File | null
   /** Ключ первой части; все пустые — не сохраняется. */
   key: string[]
+  /** §230. Подпись («Вариант А», «Резерв»); пусто — «Вариант N». Пишется только при нескольких вариантах. */
+  label?: string | null
 }
 
 export interface CreateInput {
@@ -115,7 +117,10 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
 
   const problems: string[] = []
   // §229. Варианты — одной вставкой на все пробники: у каждого пробника свои строки.
-  const vRows = created.flatMap(c => input.variants.map((_, k) => ({ mock_exam_id: c.id, position: k + 1 })))
+  const labelOf = (k: number): string | null => (multi ? (input.variants[k].label ?? '').replace(/\s+/g, ' ').trim().slice(0, VARIANT_LABEL_MAX) || null : null)
+  const vRows = created.flatMap(c => input.variants.map((_, k) => ({
+    mock_exam_id: c.id, position: k + 1, ...(labelOf(k) ? { label: labelOf(k) } : {}),
+  })))
   const { data: vData, error: vErr } = await db.from<{ id: string; mock_exam_id?: string; position?: number }[]>('mock_exam_variants')
     .insert(vRows).select('id, mock_exam_id, position')
   if (vErr || !vData) {
@@ -127,7 +132,7 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
     const hit = vData.find(r => r.mock_exam_id === examId && Number(r.position) === position) ?? vData[i]
     return hit?.id ?? null
   }
-  const vName = (k: number) => (multi ? `вариант ${k + 1}, ` : '')
+  const vName = (k: number) => (multi ? `${labelOf(k) ?? `вариант ${k + 1}`}, ` : '')
 
   // Файлы: в папку варианта КАЖДОГО пробника — первому загрузка, остальным копия.
   for (let k = 0; k < input.variants.length; k++) {

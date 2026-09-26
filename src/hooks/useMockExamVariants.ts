@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorage } from '@/lib/storageUpload'
 import { MOCK_EXAMS_BUCKET, mockExamFilePath } from '@/lib/mockExamLesson'
-import { variantFilePath, type VariantFileKind, type VariantMode } from '@/lib/mockExamVariants'
+import { VARIANT_LABEL_MAX, variantFilePath, type VariantFileKind, type VariantMode } from '@/lib/mockExamVariants'
 
 // Типы базы не перегенерированы после §229 — строки новых таблиц через `any` (как в lib/myMockExams).
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -151,6 +151,23 @@ export function useMockExamVariants(exam: VariantsExam | null, legacyKey: (strin
   }, [reload])
 
   /**
+   * §230. Подпись варианта («Вариант А», «Резерв»): прямой update строки
+   * (RLS `mock_exam_variants_manage_update` пускает управляющего). Пустая —
+   * null, на экране тогда «Вариант N». В базе — не длиннее 60 знаков.
+   */
+  const renameVariant = useCallback(async (item: VariantItem, label: string): Promise<{ error: string | null }> => {
+    if (!item.id) return { error: 'Подпись появится, когда у пробника будет несколько вариантов' }
+    const clean = label.replace(/\s+/g, ' ').trim().slice(0, VARIANT_LABEL_MAX)
+    const next = clean || null
+    if (next === (item.label ?? null)) return { error: null }
+    const { error } = await db.from('mock_exam_variants').update({ label: next }).eq('id', item.id)
+    if (error) return { error: error.message || 'Подпись не сохранена' }
+    // Сразу на экране, не дожидаясь перечитывания.
+    setRows(prev => prev?.map(r => (r.id === item.id ? { ...r, label: next } : r)) ?? prev)
+    return { error: null }
+  }, [])
+
+  /**
    * Файл варианта: новый объект в бакете, затем путь в варианте, старый объект
    * — прочь. У пробника без строк вариантов условие и решение — по-старому (в
    * колонки пробника), критерии — заводят вариант 1.
@@ -231,6 +248,6 @@ export function useMockExamVariants(exam: VariantsExam | null, legacyKey: (strin
 
   return {
     variants, virtual, unavailable, mode, assigned: positionOf, locked, loading,
-    reload, addVariant, removeVariant, uploadFile, saveKey, saveAssignments,
+    reload, addVariant, removeVariant, renameVariant, uploadFile, saveKey, saveAssignments,
   }
 }

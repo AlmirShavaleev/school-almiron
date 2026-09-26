@@ -135,3 +135,51 @@ describe('во время окна', () => {
     expect(within(rows.find(r => r.getAttribute('data-student') === 'a')!).getByTestId('mock-works-status-pill')).toHaveTextContent('пишет сейчас')
   })
 })
+
+/**
+ * §230. Вариант ученика в «Работах» и в мониторе «идёт сейчас» (это те же
+ * строки): метка у имени — подпись варианта или «Вариант N». Только при
+ * нескольких вариантах и только у тех, кому вариант выдан.
+ */
+describe('вариант ученика в строках (§230)', () => {
+  const VARIANTS = [
+    { id: 'v1', position: 1, label: null, condition_path: 'ex1/v1/condition/1.pdf', solution_path: null, criteria_path: null },
+    { id: 'v2', position: 2, label: 'Резерв', condition_path: 'ex1/v2/condition/1.pdf', solution_path: null, criteria_path: null },
+  ]
+  const variantOf = (rows: HTMLElement[]) => Object.fromEntries(rows.map(r => [r.getAttribute('data-student'), within(r).queryByTestId('mock-works-variant')?.textContent ?? null]))
+
+  it('после окна: у выданных — «Вариант 1» / подпись «Резерв»; невыданному — без метки', async () => {
+    db = after()
+    db.tables.mock_exam_variants = VARIANTS
+    db.tables.mock_exam_variant_students = [{ student_id: 'a', variant_id: 'v1' }, { student_id: 'b', variant_id: 'v2' }, { student_id: 'd', variant_id: 'v1' }]
+    mount()
+    const rows = await screen.findAllByTestId('mock-works-row')
+    await waitFor(() => expect(variantOf(rows)).toEqual({ a: 'Вариант 1', b: 'Резерв', c: null, d: 'Вариант 1' }))
+  })
+
+  it('во время окна (монитор): метки у пишущих, у не заходившего без выдачи — нет', async () => {
+    db = {
+      exam: examRow(-60),
+      tables: {
+        group_students: ROSTER,
+        mock_exam_sheets: [{ student_id: 'a', answers: ['5', null, null], submitted_at: null }, { student_id: 'b', answers: ['5', '8', '0,5'], submitted_at: new Date().toISOString() }],
+        mock_exam_variants: VARIANTS,
+        mock_exam_variant_students: [{ student_id: 'a', variant_id: 'v2' }, { student_id: 'b', variant_id: 'v1' }],
+      },
+      rpcCalls: [],
+    }
+    mount()
+    const rows = await screen.findAllByTestId('mock-works-row')
+    expect(screen.getByTestId('mock-works-live')).toHaveAttribute('data-phase', 'running')
+    expect(variantOf(rows)).toEqual({ a: 'Резерв', b: 'Вариант 1', c: null, d: null })
+  })
+
+  it('один вариант — меток нет', async () => {
+    db = after()
+    db.tables.mock_exam_variants = [VARIANTS[0]]
+    db.tables.mock_exam_variant_students = ROSTER.map(r => ({ student_id: r.student_id, variant_id: 'v1' }))
+    mount()
+    await screen.findAllByTestId('mock-works-row')
+    expect(screen.queryAllByTestId('mock-works-variant')).toHaveLength(0)
+  })
+})

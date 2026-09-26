@@ -76,7 +76,7 @@ const PART_LINE = 'border-l-[1.5px] border-l-graphite-300'
  */
 export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void } = {}) {
   const { id } = useParams<{ id: string }>()
-  const { exam, students, points, auto, works, variantOf, variantCount, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
+  const { exam, students, points, auto, works, variantOf, variantCount, variantNames, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
   // §229. Несколько вариантов — узкий столбец «Вар.» после «Ученик»; номера и статистика — общие.
   const showVar = variantCount > 1
   const lesson = exam?.lesson ?? null
@@ -251,7 +251,8 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
   // таблицей: сначала вывод. Когда всё закрыто, главное — проверка, и блок
   // работ уходит под таблицу, как было в §221.
   const monitorOnTop = !!lesson && livePhase(lesson, Date.now() + liveOffset) !== 'ended'
-  const monitor = lesson && !embedded ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End} /> : null
+  const monitor = lesson && !embedded ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End}
+    variantOf={showVar ? Object.fromEntries(Object.entries(variantOf).map(([sid, p]) => [sid, variantNames[p] ?? `Вариант ${p}`])) : undefined} /> : null
   // §227. Вывод над таблицей — из тех же итогов и «набрано по номеру», что в таблице.
   const summary = gridSummary({ totals, stats, roster: roster.length, maxPrimary, hasScale: !!template.score_scale?.length, lessonOpen: monitorOnTop, variants: variantCount })
   // «Как вставить из Excel»: пустая таблица — открыто само (раньше текст стоял всегда), дальше — по кнопке.
@@ -407,7 +408,7 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
                     </td>
                     {showVar && (
                       <td className="border-b border-graphite-100 px-0 text-center text-[13px] font-semibold text-graphite-600" data-testid="mock-grid-var"
-                        title={variantOf[st.id] ? `Вариант ${variantOf[st.id]}` : 'Вариант не выдан — выдастся при первом входе'}>
+                        title={variantOf[st.id] ? (variantNames[variantOf[st.id]] ?? `Вариант ${variantOf[st.id]}`) : 'Вариант не выдан — выдастся при первом входе'}>
                         {variantOf[st.id] ?? '—'}
                       </td>
                     )}
@@ -754,8 +755,10 @@ function NotifyCell({ state, unavailable, dirty, noProfile, busy, disabled, onCl
  * от её `server_now`. Без функции (ветка раньше миграции) — то, что видно из
  * бланков и фото §221: кто сдал, у кого бланк есть, фото.
  */
-function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
+function LiveMonitor({ lesson, students, works, live, offset, part1Last, variantOf }: {
   lesson: GridLesson
+  /** §230. Вариант ученика словами — только при нескольких вариантах. */
+  variantOf?: Record<string, string>
   students: GridStudent[]
   works: Record<string, GridWork>
   live: MockExamLive | null
@@ -800,6 +803,9 @@ function LiveMonitor({ lesson, students, works, live, offset, part1Last }: {
           return (
             <div key={r.student_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm" data-testid="mock-grid-work-row" data-kind={r.kind}>
               <span className="min-w-[11rem] flex-1 font-medium text-graphite-900 sm:flex-none">{r.name}</span>
+              {variantOf?.[r.student_id] && (
+                <span className="whitespace-nowrap rounded-full bg-gold-100 px-2 py-px text-xs font-bold text-gold-800" data-testid="mock-live-variant">{variantOf[r.student_id]}</span>
+              )}
               <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold', TONE_CLS[r.tone])} data-testid="mock-live-status">
                 {r.tone === 'problem' && <AlertTriangle size={12} aria-hidden />}
                 {r.tone === 'live' && <span className="h-1.5 w-1.5 rounded-full bg-verdict-ok" aria-hidden />}

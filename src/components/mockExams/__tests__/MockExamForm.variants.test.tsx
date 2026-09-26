@@ -239,3 +239,83 @@ describe('вкладка «Настройка»: варианты существ
     expect(updates[0]).toMatchObject({ table: 'mock_exams', row: { solution_path: uploads[0] } })
   })
 })
+
+/**
+ * §230. Подпись варианта («Вариант А», «Резерв»): поле на жёлтой метке
+ * карточки варианта. В форме создания уходит вместе с вариантами; у
+ * существующего пробника пишется сразу прямым update `mock_exam_variants`.
+ * Пустое — null, на экране «Вариант N». Подпись видна там, где было «Вариант N».
+ */
+describe('подпись варианта (§230)', () => {
+  it('создание: подписи уходят в строки вариантов (пустая — без подписи), счёт раздачи и чек-лист зовут вариант подписью', async () => {
+    mountCreate()
+    fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'Пробник №4' } })
+    fireEvent.change(screen.getByTestId('mock-form-date'), { target: { value: '2099-03-06' } })
+    fireEvent.click(within(screen.getByTestId('mock-form-variant-count')).getByRole('radio', { name: 'Несколько' }))
+    fireEvent.click(screen.getByTestId('mock-form-variant-add'))
+    const labels = screen.getAllByTestId('mock-form-variant-label') as HTMLInputElement[]
+    expect(labels).toHaveLength(3)
+    expect(labels.map(l => l.placeholder)).toEqual(['Вариант 1', 'Вариант 2', 'Вариант 3'])
+    expect(labels[0]).toHaveAccessibleName('Подпись варианта 1')
+    expect(labels[0].maxLength).toBe(60)
+    fireEvent.change(labels[0], { target: { value: 'Вариант А' } })
+    fireEvent.change(labels[2], { target: { value: '  Резерв  ' } })
+    pick('mock-form-file-input-condition', 0, pdf('variant_1.pdf'))
+    pick('mock-form-file-input-condition', 1, pdf('variant_2.pdf'))
+    expect(readyText()).toContain('Резерв: нет условия — не назначить')
+    await waitFor(() => expect(screen.getByTestId('mock-form-distribution-counts')).toHaveTextContent('Вариант А (№1) — 2 · Вариант 2 — 1 · Резерв (№3) — 1'))
+    await act(async () => { fireEvent.click(screen.getByTestId('mock-form-assign')) })
+    expect(screen.getByTestId('mock-form-status')).toHaveTextContent('Резерв: нет условия')
+    expect(inserted).toHaveLength(0)
+
+    pick('mock-form-file-input-condition', 2, pdf('variant_3.pdf'))
+    await act(async () => { fireEvent.click(screen.getByTestId('mock-form-assign')) })
+    await screen.findByTestId('landed')
+    expect(insertsBy.mock_exam_variants).toEqual([[
+      { mock_exam_id: 'new-1', position: 1, label: 'Вариант А' },
+      { mock_exam_id: 'new-1', position: 2 },
+      { mock_exam_id: 'new-1', position: 3, label: 'Резерв' },
+    ]])
+  })
+
+  it('один вариант — поля подписи нет, подпись не пишется', async () => {
+    mountCreate()
+    await screen.findByTestId('mock-form-title')
+    expect(screen.queryByTestId('mock-form-variant-label')).toBeNull()
+  })
+
+  it('«Настройка»: подпись сохраняется сразу (уход из поля) прямым update; пустая — null; Esc возвращает как было', async () => {
+    tables = {
+      group_students: ROSTER,
+      mock_exam_variants: [
+        { id: 'v1', position: 1, label: null, condition_path: 'ex1/v1/condition/1_var1.pdf', solution_path: null, criteria_path: null },
+        { id: 'v2', position: 2, label: null, condition_path: 'ex1/v2/condition/1_var2.pdf', solution_path: null, criteria_path: null },
+      ],
+      mock_exam_variant_students: [{ student_id: 's1', variant_id: 'v1' }, { student_id: 's2', variant_id: 'v2' }, { student_id: 's3', variant_id: 'v1' }, { student_id: 's4', variant_id: 'v2' }],
+    }
+    mountEdit()
+    await waitFor(() => expect(screen.getAllByTestId('mock-form-variant-label')).toHaveLength(2))
+    const second = () => screen.getAllByTestId('mock-form-variant-label')[1] as HTMLInputElement
+    fireEvent.change(second(), { target: { value: 'Резерв' } })
+    await act(async () => { fireEvent.blur(second()) })
+    await waitFor(() => expect(screen.getByTestId('mock-form-variant-label-status')).toHaveTextContent('сохранено'))
+    expect(updates.filter(u => u.table === 'mock_exam_variants')).toEqual([{ table: 'mock_exam_variants', id: 'v2', row: { label: 'Резерв' } }])
+    // Подпись сразу там, где было «Вариант 2»: в счёте раздачи.
+    expect(screen.getByTestId('mock-form-distribution-counts')).toHaveTextContent('Резерв (№2) — 2')
+    expect(second().value).toBe('Резерв')
+
+    // Esc — вернуть как было, в базу ничего.
+    fireEvent.change(second(), { target: { value: 'Черновик подписи' } })
+    fireEvent.keyDown(second(), { key: 'Escape' })
+    expect(second().value).toBe('Резерв')
+    await act(async () => { fireEvent.blur(second()) })
+    expect(updates.filter(u => u.table === 'mock_exam_variants')).toHaveLength(1)
+
+    // Стёрли — null, снова «Вариант 2».
+    fireEvent.change(second(), { target: { value: '   ' } })
+    await act(async () => { fireEvent.keyDown(second(), { key: 'Enter' }); fireEvent.blur(second()) })
+    await waitFor(() => expect(updates.filter(u => u.table === 'mock_exam_variants')).toHaveLength(2))
+    expect(updates.filter(u => u.table === 'mock_exam_variants')[1]).toEqual({ table: 'mock_exam_variants', id: 'v2', row: { label: null } })
+    await waitFor(() => expect(screen.getByTestId('mock-form-distribution-counts')).toHaveTextContent('Вариант 2 — 2'))
+  })
+})

@@ -72,6 +72,12 @@ export interface WorksStudent extends WorkInput {
    * строк вариантов (живёт по-старому: ключ и файлы — пробника).
    */
   variant?: WorksVariant | null
+  /**
+   * §230. Вариант выдан (строка `mock_exam_variant_students`), а не «первый по
+   * умолчанию». Невыданный ученику ещё неизвестен: при первом входе база даст
+   * наименее занятый, не обязательно первый, — метку «Работы» не ставят.
+   */
+  variantAssigned?: boolean
 }
 
 const RESULT_COLUMNS = 'student_id, score, part1_score, part2_score, notified_at, notified_score, notified_part1_score, notified_part2_score'
@@ -168,7 +174,11 @@ export function useMockExamWorks(examId: string | undefined) {
       if (vList.length) {
         const vById = new Map(vList.map(v => [v.id, v]))
         const assigned = new Map((va.error ? [] : va.data ?? []).map(r => [r.student_id as string, r.variant_id as string]))
-        for (const s of byId.values()) s.variant = vById.get(assigned.get(s.id) ?? '') ?? vList[0]
+        for (const s of byId.values()) {
+          const own = vById.get(assigned.get(s.id) ?? '')
+          s.variant = own ?? vList[0]
+          s.variantAssigned = !!own
+        }
       }
       // Алфавит — как в таблице §218 и в журнале преподавателя.
       const list = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))

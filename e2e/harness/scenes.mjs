@@ -796,6 +796,46 @@ export const scenes = [
     { persona: 'student', name: 's228-result', url: `/my-course/${LESSON.group}/mock/${LESSON.res}`, width, height, actions: [{ wait: 1800 }] },
   ]),
 
+  // ── §230: хвосты пробника — окно сдачи на весь экран, подпись варианта,
+  // метки варианта в «Работах» и мониторе, кнопка поддержки не закрывает
+  // «Уведомить». Сцена подписи пишет (update) — по ширине отдельным процессом.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const toSel = (sel, gap = 96) => ({ eval: `(() => { const el = document.querySelector('${sel}'); if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - ${gap}) })()` })
+    const toEnd = { eval: '(() => window.scrollTo(0, document.documentElement.scrollHeight))()' }
+    // Таблица целиком в окне, её низ — у низа экрана, внутри прокручено вниз (и вправо на телефоне).
+    const gridBottom = { eval: `(() => { const sc = document.querySelector('[data-testid="mock-grid-scroll"]'); if (!sc) return; sc.scrollTop = sc.scrollHeight; sc.scrollLeft = sc.scrollWidth; const r = sc.getBoundingClientRect(); window.scrollTo(0, r.bottom + window.scrollY - window.innerHeight + 8) })()` }
+    const lesson = `/my-course/${LESSON.group}/mock/${LESSON.open}`
+    return [
+      { persona: 'student', name: 'd230-submit', url: lesson, width, height, full: false, actions: [{ wait: 2000 }, { clickSel: width > 1000 ? '[data-testid="mock-lesson-submit-top"]' : '[data-testid="mock-lesson-submit"]' }, { wait: 600 }] },
+      { persona: 'owner', name: 'd230-setup-label', url: `/mock-exams/${D228.done}?tab=setup`, width, height, actions: [
+        { wait: 1800 },
+        { fill: ['[data-testid="mock-form-variant-label"] >> nth=0', 'Вариант А'] },
+        { eval: '(() => document.activeElement?.blur())()' },
+        { wait: 400 },
+        toSel('[data-testid="mock-form-variants"]'), { wait: 300 },
+      ] },
+      { persona: 'owner', name: 'd230-new-label', url: '/mock-exams/new', width, height, actions: [
+        { wait: 1200 },
+        { fill: ['[data-testid="mock-form-title"]', 'Пробник №7'] },
+        { clickSel: '[data-testid="mock-form-group-chip"]:has-text("11А профиль")' },
+        { clickSel: '[data-testid="mock-form-variant-count"] [data-key="multi"]' },
+        { clickSel: '[data-testid="mock-form-variant-add"]' },
+        { wait: 300 },
+        { fill: ['[data-testid="mock-form-variant-label"] >> nth=0', 'Вариант А'] },
+        { fill: ['[data-testid="mock-form-variant-label"] >> nth=1', 'Вариант Б'] },
+        { fill: ['[data-testid="mock-form-variant-label"] >> nth=2', 'Резерв'] },
+        { wait: 300 },
+        toSel('[data-testid="mock-form-variants"]'), { wait: 300 },
+      ] },
+      { persona: 'owner', name: 'd230-works-variants', url: `/mock-exams/${D228.done}`, width, height, actions: [{ wait: 1800 }, toSel('[data-testid="mock-works"]', 140), { wait: 300 }] },
+      { persona: 'owner', name: 'd230-live-variants', url: `/mock-exams/${LIVE.run}`, width, height, actions: [{ wait: 1800 }, toSel('[data-testid="mock-works-live"]', 120), { wait: 300 }] },
+      { persona: 'owner', name: 'd230-grid-rows', url: `/mock-exams/${D228.done}?tab=table`, width, height, full: false, actions: [{ wait: 1800 }, gridBottom, { wait: 400 }] },
+      { persona: 'owner', name: 'd230-grid-end', url: `/mock-exams/${D228.done}?tab=table`, width, height, full: false, actions: [{ wait: 1800 }, toEnd, { wait: 400 }] },
+      { persona: 'owner', name: 'd230-works-end', url: `/mock-exams/${D228.done}`, width, height, full: false, actions: [{ wait: 1800 }, toEnd, { wait: 400 }] },
+      { persona: 'owner', name: 'd230-review-bar', url: `/mock-exams/${D228.done}/review/${D229.safin}`, width, height, full: false, actions: [{ wait: 1800 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

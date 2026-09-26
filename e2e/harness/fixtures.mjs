@@ -646,7 +646,8 @@ export const d228Photos = D228_PHOTOS.flatMap((n, i) => Array.from({ length: n }
 export const D229 = { v: [U('c', 1780), U('c', 1781), U('c', 1782)], safin: mockStudent(10) }
 mock_exams.find(e => e.id === D228.done).variant_mode = 'order'
 export const mock_exam_variants = [1, 2, 3].map(n => ({
-  id: D229.v[n - 1], mock_exam_id: D228.done, position: n, label: null,
+  // §230: у третьего — подпись «Резерв» (в «Работах», таблице, проверке — «Резерв» вместо «Вариант 3»).
+  id: D229.v[n - 1], mock_exam_id: D228.done, position: n, label: n === 3 ? 'Резерв' : null,
   condition_path: `${D228.done}/v${n}/condition/1_variant_${n}.pdf`,
   solution_path: n < 3 ? `${D228.done}/v${n}/solution/1_reshenie_${n}.pdf` : null,
   criteria_path: n === 2 ? `${D228.done}/v2/criteria/1_kriterii_2.pdf` : null,
@@ -661,6 +662,18 @@ export const mock_exam_variant_keys = [
 export const mock_exam_variant_students = MOCK_ROSTER.map((_, i) => ({
   mock_exam_id: D228.done, student_id: mockStudent(i), variant_id: D229.v[i % 3], assigned_by: IDS.owner, assigned_at: ago(24 * 4),
 }))
+// §230. Идущий «Пробник №5» (11Б) — два варианта: монитор и «Работы» с метками
+// вариантов. Не заходившим (Зайцев, Морозов) вариант ещё не выдан — без метки.
+export const D230 = { v: [U('c', 1790), U('c', 1791)] }
+mock_exams.find(e => e.id === LIVE.run).variant_mode = 'order'
+mock_exam_variants.push(...[1, 2].map(n => ({
+  id: D230.v[n - 1], mock_exam_id: LIVE.run, position: n, label: n === 1 ? 'Вариант А' : 'Вариант Б',
+  condition_path: `${LIVE.run}/v${n}/condition/1_variant_${n}.pdf`, solution_path: null, criteria_path: null,
+  created_at: ago(24 * 5), updated_at: ago(24 * 5),
+})))
+mock_exam_variant_students.push(...LIVE_ROSTER.flatMap((name, k) => (LIVE_RUN[name][0] === 'absent' ? [] : [{
+  mock_exam_id: LIVE.run, student_id: liveStudent(k), variant_id: D230.v[k % 2], assigned_by: IDS.owner, assigned_at: ago(24 * 5),
+}])))
 // У учеников варианта 2 ответы бланка — по его ключу (верное осталось верным).
 for (const sh of d228Sheets) {
   const i = MOCK_ROSTER.findIndex((_, k) => mockStudent(k) === sh.student_id)

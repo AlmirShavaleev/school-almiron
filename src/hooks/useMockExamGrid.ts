@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { MockExamResultNotifyRow, NotifySummary } from '@/lib/mockExamNotify'
+import { variantName } from '@/lib/mockExamVariants'
 
 /**
  * §218. Данные экрана «пробник по номерам»: пробник, его шаблон, ученики
@@ -87,6 +88,8 @@ export function useMockExamGrid(examId: string | undefined) {
    */
   const [variantOf, setVariantOf] = useState<Record<string, number>>({})
   const [variantCount, setVariantCount] = useState(0)
+  /** §230. Имя варианта по номеру — подпись («Резерв») или «Вариант N». */
+  const [variantNames, setVariantNames] = useState<Record<number, string>>({})
   /** Что сказать про проверку по ключу при открытии (или null — молчать). */
   const [gradeNote, setGradeNote] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -163,7 +166,7 @@ export function useMockExamGrid(examId: string | undefined) {
       let pts: (number | null)[][] = []
       let au: boolean[][] = []
       let wk: Record<string, GridWork> = {}
-      let vars: { of: Record<string, number>; count: number } = { of: {}, count: 0 }
+      let vars: { of: Record<string, number>; count: number; names: Record<number, string> } = { of: {}, count: 0, names: {} }
       if (ex.group_id && template) {
         const [{ data: gs }, { data: scores, error: sErr }] = await Promise.all([
           db.from<any[]>('group_students')
@@ -204,6 +207,7 @@ export function useMockExamGrid(examId: string | undefined) {
       setWorks(wk)
       setVariantOf(vars.of)
       setVariantCount(vars.count)
+      setVariantNames(vars.names)
       setGradeNote(note)
       setLoading(false)
     })()
@@ -268,7 +272,7 @@ export function useMockExamGrid(examId: string | undefined) {
     setWorks(wk)
   }, [examIdLoaded, hasLesson])
 
-  return { exam, students, points, auto, works, variantOf, variantCount, gradeNote, results, resultsError, loading, error, save, notify, reload, refreshWorks }
+  return { exam, students, points, auto, works, variantOf, variantCount, variantNames, gradeNote, results, resultsError, loading, error, save, notify, reload, refreshWorks }
 }
 
 type ScoreRow = { student_id: string; task_number: number; points: number; auto_points?: number | null }
@@ -321,19 +325,20 @@ async function loadWorks(examId: string): Promise<Record<string, GridWork>> {
  * §229. Варианты пробника и выдача. Ошибка (база до §229) — вариантов нет,
  * таблица как в §227.
  */
-async function loadVariants(examId: string, studentIds: string[]): Promise<{ of: Record<string, number>; count: number }> {
-  let v: { data: { id: string; position: number }[] | null; error: unknown }
+async function loadVariants(examId: string, studentIds: string[]): Promise<{ of: Record<string, number>; count: number; names: Record<number, string> }> {
+  let v: { data: { id: string; position: number; label?: string | null }[] | null; error: unknown }
   let a: { data: { student_id: string; variant_id: string }[] | null; error: unknown }
   try {
     ;[v, a] = await Promise.all([
-      db.from<{ id: string; position: number }[]>('mock_exam_variants').select('id, position').eq('mock_exam_id', examId),
+      db.from<{ id: string; position: number; label?: string | null }[]>('mock_exam_variants').select('id, position, label').eq('mock_exam_id', examId),
       db.from<{ student_id: string; variant_id: string }[]>('mock_exam_variant_students').select('student_id, variant_id').eq('mock_exam_id', examId),
     ])
   } catch {
-    return { of: {}, count: 0 }
+    return { of: {}, count: 0, names: {} }
   }
-  const list = (v.error ? [] : v.data ?? []).map(r => ({ id: r.id, position: Number(r.position) })).sort((x, y) => x.position - y.position)
-  if (list.length < 2) return { of: {}, count: list.length }
+  const list = (v.error ? [] : v.data ?? []).map(r => ({ id: r.id, position: Number(r.position), label: r.label ?? null })).sort((x, y) => x.position - y.position)
+  const names = Object.fromEntries(list.map(r => [r.position, variantName(r)]))
+  if (list.length < 2) return { of: {}, count: list.length, names }
   const pos = new Map(list.map(r => [r.id, r.position]))
   const assigned = new Map((a.error ? [] : a.data ?? []).map(r => [r.student_id, r.variant_id]))
   const of: Record<string, number> = {}
@@ -343,5 +348,5 @@ async function loadVariants(examId: string, studentIds: string[]): Promise<{ of:
     const p = pos.get(assigned.get(id) ?? '')
     if (p != null) of[id] = p
   }
-  return { of, count: list.length }
+  return { of, count: list.length, names }
 }
