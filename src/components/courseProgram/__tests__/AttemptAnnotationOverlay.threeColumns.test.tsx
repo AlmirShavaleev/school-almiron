@@ -1,16 +1,19 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { TABLE_FRACTION_STORAGE_KEY } from '@/lib/reviewPaneLayout'
 
 /**
- * §210. Три колонки: решение, работа, таблица проверки.
+ * §210 → §226. Экран проверки: работа и колонка заданий, внизу строка решения.
  *
- * Тест держит раскладку, а не оформление: что колонок ровно столько, сколько
- * есть чего показывать; что таблица лежит СНАРУЖИ свитка работы (иначе колесо
- * в таблице уводит работу — из-за этого всё и затевалось); что обе границы
- * двигаются, запоминаются и не схлопывают колонку в ноль; и что у ученика,
- * которому класть в третью колонку нечего, ничего не поехало.
+ * Тест держит раскладку, а не оформление: что таблица лежит СНАРУЖИ свитка
+ * работы (иначе колесо в таблице уводит работу — из-за этого всё и
+ * затевалось); что граница двигается, запоминается и не схлопывает колонку в
+ * ноль; и что у ученика, которому класть в колонку нечего, ничего не поехало.
+ *
+ * §226: отдельной колонки решения слева больше нет — эталон приезжает в
+ * колонку заданий сворачиваемым блоком (`reference` в контексте панели), а
+ * форма вердикта — нижней строкой (`reviewBar`).
  */
 
 const materials = [{
@@ -20,6 +23,9 @@ const materials = [{
 
 vi.mock('@/components/courseProgram/SolutionReferencePanel', () => ({
   SolutionReferencePanel: () => <div data-testid="solution-reference-panel" />,
+  SolutionReferenceBlock: ({ open, onToggle }: { open: boolean; onToggle: () => void }) => (
+    <button type="button" data-testid="solution-reference-block" aria-expanded={open} onClick={onToggle} />
+  ),
   // Как в жизни: без темы решения нет. Ученический экран `solutionTopicId` не
   // передаёт вовсе, и панели у него не появляется ни при каких условиях.
   useTopicSolutionMaterials: (topicId?: string | null) => ({
@@ -50,7 +56,8 @@ function renderStaff(extra: Record<string, unknown> = {}) {
       files={files}
       title="ДЗ"
       solutionTopicId="t1"
-      reviewPanel={() => <div data-testid="verdict-form">таблица и вердикт</div>}
+      reviewPanel={({ reference }) => <div data-testid="verdict-form">таблица {reference}</div>}
+      reviewBar={() => <div data-testid="verdict-bar">балл и решение</div>}
       onClose={() => {}}
       {...extra}
     />,
@@ -89,22 +96,41 @@ describe('три колонки на экране проверки', () => {
     window.localStorage.clear()
   })
 
-  it('с решением колонок три: решение, работа, таблица', () => {
+  it('§226. Колонок две — работа и задания; эталон блоком в колонке заданий', () => {
     renderStaff()
-    expect(screen.getByTestId('solution-reference-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('attempt-work-column')).toBeInTheDocument()
-    expect(screen.getByTestId('review-side-column')).toBeInTheDocument()
-    expect(screen.getByTestId('verdict-form')).toBeInTheDocument()
-  })
-
-  it('решение выключили — колонок две, таблица осталась', () => {
-    renderStaff()
-    fireEvent.click(screen.getByTestId('attempt-solution-toggle'))
-
+    expect(screen.getByTestId('attempt-annotation-overlay').dataset.layout).toBe('review')
     expect(screen.queryByTestId('solution-reference-panel')).not.toBeInTheDocument()
     expect(screen.queryByTestId('solution-split-handle')).not.toBeInTheDocument()
     expect(screen.getByTestId('attempt-work-column')).toBeInTheDocument()
-    expect(screen.getByTestId('review-side-column')).toBeInTheDocument()
+    const side = screen.getByTestId('review-side-column')
+    expect(within(side).getByTestId('verdict-form')).toBeInTheDocument()
+    expect(within(side).getByTestId('solution-reference-block')).toBeInTheDocument()
+  })
+
+  it('§226. Форма вердикта — нижней строкой во всю ширину, вне колонок', () => {
+    renderStaff()
+    const bar = screen.getByTestId('review-bar')
+    expect(within(bar).getByTestId('verdict-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('attempt-split-row').contains(bar)).toBe(false)
+  })
+
+  it('§226. Блок эталона сворачивается, и выбор запоминается', () => {
+    renderStaff()
+    const block = screen.getByTestId('solution-reference-block')
+    expect(block).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(block)
+    expect(screen.getByTestId('solution-reference-block')).toHaveAttribute('aria-expanded', 'false')
+    cleanup()
+    renderStaff()
+    expect(screen.getByTestId('solution-reference-block')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('§226. «← Очередь проверки» закрывает разбор, сводка и «Следующая» — в шапке', () => {
+    const onClose = vi.fn()
+    renderStaff({ onClose, backLabel: 'Очередь проверки · 1 из 3', headerAside: <span data-testid="aside">сводка</span> })
+    expect(screen.getByTestId('attempt-header-aside')).toContainElement(screen.getByTestId('aside'))
+    fireEvent.click(screen.getByTestId('attempt-back'))
+    expect(onClose).toHaveBeenCalled()
   })
 
   it('у ученика третьей колонки нет и ничего не съехало', () => {
@@ -126,6 +152,9 @@ describe('три колонки на экране проверки', () => {
     renderStaff({ locked: true })
     expect(screen.queryByTestId('review-side-column')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-split-handle')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('review-bar')).not.toBeInTheDocument()
+    // §226. Эталон при этом остаётся — сверять глазами можно и на чтении.
+    expect(within(screen.getByTestId('review-reference-column')).getByTestId('solution-reference-block')).toBeInTheDocument()
   })
 
   it('таблица лежит снаружи свитка работы — колесо в ней работу не уводит', () => {
@@ -212,19 +241,8 @@ describe('вторая граница', () => {
     expect(widthOfSideColumn()).toBe('22.0%')
 
     for (let i = 0; i < 60; i += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
-    // 1600 ≥ 1536, значит решение занимает свои 40 %: работе обязано остаться
-    // 20 %, и дальше 40 % таблицу не пускает уже это, а не её собственный
-    // потолок в 50 %.
-    expect(widthOfSideColumn()).toBe('40.0%')
-  })
-
-  it('без решения таблице достаётся её полный потолок', () => {
-    renderStaff()
-    fireEvent.click(screen.getByTestId('attempt-solution-toggle'))
-    const handle = screen.getByTestId('review-split-handle')
-    stubArea(1600)
-
-    for (let i = 0; i < 60; i += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    // §226. Колонки решения рядом больше нет — колонке заданий достаётся её
+    // собственный потолок в 50 %, даже когда у темы решение есть.
     expect(widthOfSideColumn()).toBe('50.0%')
   })
 
@@ -239,15 +257,14 @@ describe('вторая граница', () => {
     expect(widthOfSideColumn()).toBe('35.0%')
   })
 
-  it('обе границы живут своей памятью и не путаются', () => {
+  it('§226. Граница колонки заданий не трогает запомненную ширину старой колонки решения', () => {
+    window.localStorage.setItem('review:solution-pane-fraction', '0.42')
     renderStaff()
     stubArea(1600)
-    fireEvent.keyDown(screen.getByTestId('solution-split-handle'), { key: 'ArrowRight' })
     fireEvent.keyDown(screen.getByTestId('review-split-handle'), { key: 'ArrowRight' })
 
-    // 40 % + 2 % у решения, 37 % − 2 % у таблицы.
     expect(widthOfSideColumn()).toBe('35.0%')
     expect(window.localStorage.getItem(TABLE_FRACTION_STORAGE_KEY)).toBe('0.35')
-    expect(Number(window.localStorage.getItem('review:solution-pane-fraction'))).toBeCloseTo(0.42, 5)
+    expect(window.localStorage.getItem('review:solution-pane-fraction')).toBe('0.42')
   })
 })

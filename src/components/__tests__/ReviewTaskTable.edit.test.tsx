@@ -234,6 +234,8 @@ describe('ReviewTaskTable — правка таблицы', () => {
     // Пока меню не открыто, «убрать задание» на экране нет: действие редкое и
     // за внимание со статусами бороться не должно.
     expect(screen.queryByTestId('review-task-remove')).not.toBeInTheDocument()
+    // §226. Меню — у выбранного задания: сначала выбрать строку.
+    fireEvent.click(within(rowByNo('2')).getByTestId('review-task-pick'))
     fireEvent.click(within(rowByNo('2')).getByTestId('review-task-menu'))
     fireEvent.click(screen.getByTestId('review-task-remove'))
     expect(onRemoveTask).toHaveBeenCalledWith('r2')

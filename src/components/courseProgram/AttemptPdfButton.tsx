@@ -27,10 +27,16 @@ export function AttemptPdfButton({
   audience,
   report,
   sourceRef,
+  quiet = false,
 }: {
   audience: AttemptPdfAudience
   report: AttemptPdfReport | null
   sourceRef: AttemptExportSourceRef
+  /**
+   * §226. Тихий вид для шапки экрана проверки v2: без рамки, на телефоне
+   * только значок (подпись — в `title` и для читалки).
+   */
+  quiet?: boolean
 }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const busyRef = useRef(false)
@@ -81,10 +87,15 @@ export function AttemptPdfButton({
       disabled={busy}
       onClick={() => { void download() }}
       title="Скачать работу с пометками и разбором одним файлом"
-      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-60"
+      aria-label={quiet && !progress ? 'Скачать PDF' : undefined}
+      className={quiet
+        ? 'inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-900 disabled:pointer-events-none disabled:opacity-60'
+        : 'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-700 disabled:pointer-events-none disabled:opacity-60'}
     >
       {progress ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-      {progress ? `Готовлю ${progress.done} из ${progress.total}` : 'Скачать PDF'}
+      {progress
+        ? `Готовлю ${progress.done} из ${progress.total}`
+        : quiet ? <span className="hidden sm:inline">Скачать PDF</span> : 'Скачать PDF'}
     </button>
   )
 }

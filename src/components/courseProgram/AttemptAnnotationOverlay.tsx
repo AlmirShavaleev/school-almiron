@@ -4,7 +4,8 @@ import type {
 } from '@/components/SubmissionReviewer'
 import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
+import { SolutionReferenceBlock, SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
+import type { ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import { AttemptPdfButton, type AttemptPdfAudience } from './AttemptPdfButton'
 import type { AttemptPdfReport } from '@/lib/attemptPdfReport'
 import type { AttemptExportSnapshot } from '@/lib/attemptPdfSource'
@@ -34,6 +35,25 @@ import {
 } from '@/lib/topicHomework'
 
 const SubmissionReviewer = lazy(() => import('@/components/SubmissionReviewer'))
+
+/** §226. Ключ «эталон в колонке заданий открыт». */
+export const REFERENCE_OPEN_STORAGE_KEY = 'review:reference-open'
+
+function readReferenceOpen(): boolean {
+  try {
+    return window.localStorage.getItem(REFERENCE_OPEN_STORAGE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function writeReferenceOpen(open: boolean) {
+  try {
+    window.localStorage.setItem(REFERENCE_OPEN_STORAGE_KEY, open ? '1' : '0')
+  } catch {
+    // Хранилища нет (приватное окно) — просто не запомним.
+  }
+}
 
 /**
  * Аннотатор весит ~450 КБ (pdfjs), поэтому грузится лениво — не тянем его
@@ -142,6 +162,14 @@ export type AttemptAnnotationFooter = (context: {
  */
 export type AttemptReviewPanel = (context: {
   publishAnnotations: (targetStatus?: 'checked' | 'revision') => Promise<boolean>
+  /**
+   * §226. Эталон — сворачиваемый блок «авторское решение целиком». Колонки
+   * решения слева на экране проверки больше нет: блок кладёт в колонку
+   * заданий тот, кто её рисует. `null` — решения у темы нет.
+   */
+  reference?: React.ReactNode
+  /** §226. Раскрыть блок эталона и докрутить до него. */
+  showReference?: (() => void) | null
 }) => React.ReactNode
 
 /**
@@ -183,6 +211,10 @@ export function AttemptAnnotationOverlay({
   notesApiRef,
   onNotesChange,
   onSelectedNoteChange,
+  backLabel,
+  headerAside,
+  reviewBar,
+  taskVerdicts,
   onClose,
 }: {
   attemptId: string
@@ -253,6 +285,21 @@ export function AttemptAnnotationOverlay({
   notesApiRef?: MutableRefObject<AttemptNotesApi | null>
   onNotesChange?: (snapshot: AttemptNotesSnapshot) => void
   onSelectedNoteChange?: (id: string | null) => void
+  /**
+   * §226. Экран проверки v2 (включается `reviewPanel`): строка «← Очередь
+   * проверки · 1 из 39» над именем. Нажатие закрывает разбор — возвращает в
+   * очередь, откуда пришли.
+   */
+  backLabel?: string
+  /** §226. Правая часть шапки: сводка вердиктов и «Следующая работа». */
+  headerAside?: React.ReactNode
+  /**
+   * §226. Нижняя строка во всю ширину: балл, комментарий, «Вернуть», «Принять».
+   * Та же форма вердикта, что раньше стояла в третьей колонке под таблицей.
+   */
+  reviewBar?: AttemptReviewPanel
+  /** §226. Вердикты заданий — рамки на фото красятся ими и подписываются номером. */
+  taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -269,8 +316,36 @@ export function AttemptAnnotationOverlay({
 
   const { materials: solution, loading: solutionLoading } = useTopicSolutionMaterials(solutionTopicId)
   const hasSolution = solution.length > 0
+  /**
+   * §226. Экран проверки v2: шапка с именем и сводкой, фото на большую часть
+   * ширины, справа задания, внизу одна строка решения. Включается тем же, что
+   * и раньше включало третью колонку, — `reviewPanel` передаёт только экран
+   * проверки. Ученик и «Пометки учителя» живут в прежней раскладке. Колонки
+   * решения слева в v2 нет — эталон уходит блоком в колонку заданий.
+   */
+  const reviewMode = Boolean(reviewPanel)
   const [solutionOpen, setSolutionOpen] = useState(true)
-  const showSolution = hasSolution && solutionOpen
+  const showSolution = hasSolution && solutionOpen && !reviewMode
+
+  /**
+   * §226. Блок эталона в колонке заданий — открыт или свёрнут. Запоминается
+   * в браузере проверяющего (удобство, не данные): кто свернул его однажды,
+   * тому он мешает и в следующей работе. Хранилища может не быть — тогда
+   * открыт, как было с колонкой решения.
+   */
+  const [referenceOpen, setReferenceOpen] = useState(() => readReferenceOpen())
+  const referenceRef = useRef<HTMLElement | null>(null)
+  function chooseReferenceOpen(next: boolean) {
+    setReferenceOpen(next)
+    writeReferenceOpen(next)
+  }
+  function showReference() {
+    chooseReferenceOpen(true)
+    // После отрисовки: раскрытый блок выше, чем свёрнутый.
+    window.requestAnimationFrame(() => {
+      referenceRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    })
+  }
 
   /**
    * Ширина панели решения — доля рабочей области, запомненная между разборами
@@ -351,10 +426,292 @@ export function AttemptAnnotationOverlay({
     return fn(targetStatus)
   }
 
+
+  /**
+   * Полоса со ВСЕМИ файлами работы, а не только с неразмечаемыми.
+   * Так у преподавателя всегда есть способ открыть оригинал — это важно,
+   * когда встроенный просмотр не завёлся (например, браузер не смог
+   * подгрузить движок PDF). Неразмечаемые помечены отдельно.
+   * §208: полоса раскрывается кнопкой «Файлы (N)» в шапке, а не висит
+   * всегда — имена файлов машинные, и постоянно они не нужны никому.
+   */
+  const filesStrip = files.length > 0 && filesOpen ? (
+        <div
+          data-testid="attempt-files-strip"
+          className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 shrink-0"
+        >
+          <span className="text-xs text-gray-500">Файлы работы:</span>
+          {[...annotatable, ...other].map(f => {
+            const isOther = other.some(o => o.id === f.id)
+            return (
+              <SignedFileLink
+                key={f.id}
+                bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
+                url={f.storage_path}
+                title={isOther ? 'Этот файл нельзя разметить — откроется отдельно' : 'Открыть оригинал в новой вкладке'}
+                className={cn(
+                  'inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-xs',
+                  isOther
+                    ? 'border-amber-300 text-amber-900 hover:border-amber-400'
+                    : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-700',
+                )}
+              >
+                <FileChip
+                  name={f.file_name}
+                  leading={<Paperclip size={11} className="shrink-0" />}
+                  trailing={isOther && <span className="shrink-0 text-[10px] text-amber-700">без разметки</span>}
+                />
+              </SignedFileLink>
+            )
+          })}
+        </div>
+      ) : null
+
   const footerContent = footer
     ? ({ publishing, published }: { publishing: boolean; published: boolean }) =>
         footer({ publishing, published, publishAnnotations })
     : undefined
+
+  /** Сама работа — одинаково в обеих раскладках; на экране проверки v2 — с вкладками и рамками по вердиктам (§226). */
+  const workContent = (paths.length === 0 ? (
+          // Размечать нечего (только .docx, .zip и т.п. или файлов нет вовсе),
+          // но вердикт поставить всё равно нужно — иначе такая работа осталась
+          // бы в очереди навсегда. Поэтому футер рисуем и здесь, а публиковать
+          // нечего: publishAnnotations сразу отвечает «успешно».
+          <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-sm text-gray-400">
+              {files.length === 0
+                ? 'В этой попытке нет файлов — размечать нечего'
+                : 'Ни один файл этой попытки нельзя разметить (нужен PDF или картинка)'}
+            </div>
+            {!viewOnly && footer && (
+              <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5">
+                {footer({ publishing: false, published: false, publishAnnotations: async () => true })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <Suspense fallback={<ReviewerFallback />}>
+            <SubmissionReviewer
+              attemptId={attemptId}
+              bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
+              filePath={paths[0]}
+              filePaths={paths}
+              readOnly={viewOnly}
+              // В режиме чтения аннотатор по умолчанию показывает только
+              // опубликованные пометки. Здесь это было бы вредно: второй
+              // проверяющий пришёл посмотреть ровно то, что коллега рисует
+              // прямо сейчас, — а оно ещё в черновике.
+              annotationVisibility={locked ? 'all' : undefined}
+              className="h-full min-h-0"
+              footer={footerContent}
+              footerPublishLabel={footerPublishLabel}
+              publishButtonLabel={publishButtonLabel}
+              hideToolbarPublish={hideToolbarPublish}
+              publishRef={publishRef}
+              importRegionsRef={importRegionsRef}
+              dedupeFramesRef={dedupeFramesRef}
+              onDuplicateFramesChange={onDuplicateFramesChange}
+              onMarksCleared={onMarksCleared}
+              exportSourceRef={exportSourceRef}
+              notesInTaskList={notesInTaskList}
+              notesApiRef={notesApiRef}
+              onNotesChange={onNotesChange}
+              onSelectedNoteChange={onSelectedNoteChange}
+              pageTabs={reviewMode}
+              taskVerdicts={reviewMode ? taskVerdicts : null}
+            />
+          </Suspense>
+        ))
+
+
+  if (reviewMode) {
+    const secondary = subtitle ?? (lead ? title : null)
+    const reference = hasSolution ? (
+      <SolutionReferenceBlock
+        topicId={solutionTopicId ?? ''}
+        materials={solution}
+        loading={solutionLoading}
+        open={referenceOpen}
+        onToggle={() => chooseReferenceOpen(!referenceOpen)}
+        blockRef={referenceRef}
+      />
+    ) : null
+    const context = { publishAnnotations, reference, showReference: hasSolution ? showReference : null }
+    return (
+      <div
+        data-testid="attempt-annotation-overlay"
+        data-layout="review"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Разбор работы: ${title}`}
+        // §226. На телефоне прокручивается весь экран: шапка уезжает вверх,
+        // строка решения прилипает к низу. С 1024 — колонки со своими
+        // свитками, сам экран не прокручивается.
+        className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-graphite-50 lg:overflow-hidden"
+      >
+        {/*
+          §226. Шапка: сверху «← Очередь проверки · N из M» и тихие действия,
+          ниже крупно «Имя — ДЗ» со строкой подробностей; справа от них (на
+          телефоне — под ними) «Следующая работа» и сводка вердиктов.
+        */}
+        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-1.5 border-b border-graphite-200 bg-white px-4 py-3 lg:px-7 lg:py-4">
+          <div className="col-start-1 row-start-1 min-w-0 self-center">
+            {backLabel && (
+              <button
+                type="button"
+                data-testid="attempt-back"
+                onClick={onClose}
+                className="text-[13px] text-graphite-500 transition-colors hover:text-graphite-900"
+              >
+                ← {backLabel}
+              </button>
+            )}
+          </div>
+          {/*
+            Тихие действия над работой целиком: оригиналы файлов (§208),
+            «Скачать PDF» (§206) и «Закрыть». В макете их нет — на экране
+            они нужны редко, но убирать их нельзя.
+          */}
+          <div className="col-start-2 row-start-1 flex items-center justify-end gap-1 self-center">
+            {files.length > 0 && (
+              <button
+                type="button"
+                data-testid="attempt-files-toggle"
+                aria-expanded={filesOpen}
+                onClick={() => setFilesOpen(v => !v)}
+                title="Открыть оригиналы файлов работы"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors',
+                  filesOpen ? 'bg-graphite-100 text-graphite-900' : 'text-graphite-500 hover:bg-graphite-100 hover:text-graphite-900',
+                )}
+              >
+                <Paperclip size={13} />
+                <span className="hidden sm:inline">Файлы</span> ({files.length})
+              </button>
+            )}
+            {paths.length > 0 && (
+              <AttemptPdfButton audience={pdfAudience} report={pdfReport ?? null} sourceRef={exportSourceRef} quiet />
+            )}
+            <button
+              type="button"
+              data-testid="attempt-annotation-close"
+              aria-label="Закрыть разбор"
+              onClick={onClose}
+              className="rounded-full p-1.5 text-graphite-400 transition-colors hover:bg-graphite-100 hover:text-graphite-900"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="col-span-2 row-start-2 min-w-0 lg:col-span-1">
+            <h2 data-testid="attempt-header-lead" className="line-clamp-2 text-lg font-semibold leading-tight text-graphite-900 lg:truncate lg:text-2xl">
+              {lead ?? title}
+            </h2>
+            {secondary && (
+              <p data-testid="attempt-header-secondary" title={secondary} className="mt-1 line-clamp-2 text-[13px] text-graphite-500">
+                {secondary}
+              </p>
+            )}
+          </div>
+          {headerAside && (
+            <div data-testid="attempt-header-aside" className="col-span-2 row-start-3 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:justify-self-end">
+              {headerAside}
+            </div>
+          )}
+        </header>
+
+        <PresenceBanner viewers={viewers} locked={locked} onForceEdit={onForceEdit} />
+        {filesStrip}
+
+        {/*
+          Фото слева на всю оставшуюся ширину, задания справа своей колонкой со
+          своим свитком (§210 — колесо в списке не уводит работу). Ниже 1024
+          всё идёт одной лентой: фото, потом задания; строка решения остаётся
+          внизу экрана — она вне ленты.
+        */}
+        <div
+          ref={splitRef}
+          data-testid="attempt-split-row"
+          className="flex shrink-0 flex-col lg:min-h-0 lg:flex-1 lg:shrink lg:flex-row lg:overflow-hidden"
+        >
+          <div
+            data-testid="attempt-work-column"
+            className="h-[62vh] min-h-0 shrink-0 overflow-auto p-3 lg:h-auto lg:flex-1 lg:shrink lg:py-4 lg:pl-7 lg:pr-5"
+          >
+            {workContent}
+          </div>
+
+          {showReviewPanel && (
+            <div
+              data-testid="review-split-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Ширина колонки заданий"
+              aria-valuemin={Math.round(MIN_TABLE_FRACTION * 100)}
+              aria-valuemax={Math.round(MAX_TABLE_FRACTION * 100)}
+              aria-valuenow={Math.round(tableFraction * 100)}
+              tabIndex={0}
+              onPointerDown={e => {
+                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+                setTableDragging(true)
+              }}
+              onPointerMove={e => { if (tableDragging) moveTableSplit(e.clientX) }}
+              onPointerUp={() => {
+                if (!tableDragging) return
+                setTableDragging(false)
+                writeTableFraction(tableFraction)
+              }}
+              onPointerCancel={() => setTableDragging(false)}
+              onKeyDown={e => {
+                const step = e.key === 'ArrowLeft' ? 0.02 : e.key === 'ArrowRight' ? -0.02 : 0
+                if (!step) return
+                e.preventDefault()
+                stepTableSplit(step)
+              }}
+              className={cn(
+                'hidden w-1 shrink-0 cursor-col-resize touch-none bg-graphite-200 transition-colors lg:block',
+                'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
+                tableDragging && 'bg-primary-400',
+              )}
+            />
+          )}
+
+          {showReviewPanel ? (
+            <aside
+              data-testid="review-side-column"
+              style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction) }}
+              className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-graphite-200 bg-white lg:h-full lg:w-[var(--review-side-w,37%)] lg:border-t-0"
+            >
+              <div
+                data-testid="review-side-scroll-area"
+                className="flex min-h-0 flex-col p-3 sm:p-4 lg:flex-1 lg:overflow-y-auto lg:px-5"
+              >
+                {reviewPanel?.(context)}
+              </div>
+            </aside>
+          ) : reference ? (
+            // Режим чтения (в работе коллега): решать нечего, но эталон
+            // по-прежнему нужен — сверять можно и глазами.
+            <aside
+              data-testid="review-reference-column"
+              className="shrink-0 border-t border-graphite-200 bg-white p-4 lg:w-[380px] lg:overflow-y-auto lg:border-l lg:border-t-0"
+            >
+              {reference}
+            </aside>
+          ) : null}
+        </div>
+
+        {showReviewPanel && reviewBar && (
+          <div
+            data-testid="review-bar"
+            className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-graphite-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(31,85,224,0.06)] lg:static lg:px-7 lg:shadow-none"
+          >
+            {reviewBar(context)}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -449,37 +806,7 @@ export function AttemptAnnotationOverlay({
         §208: полоса раскрывается кнопкой «Файлы (N)» в шапке, а не висит
         всегда — имена файлов машинные, и постоянно они не нужны никому.
       */}
-      {files.length > 0 && filesOpen && (
-        <div
-          data-testid="attempt-files-strip"
-          className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 shrink-0"
-        >
-          <span className="text-xs text-gray-500">Файлы работы:</span>
-          {[...annotatable, ...other].map(f => {
-            const isOther = other.some(o => o.id === f.id)
-            return (
-              <SignedFileLink
-                key={f.id}
-                bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
-                url={f.storage_path}
-                title={isOther ? 'Этот файл нельзя разметить — откроется отдельно' : 'Открыть оригинал в новой вкладке'}
-                className={cn(
-                  'inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-xs',
-                  isOther
-                    ? 'border-amber-300 text-amber-900 hover:border-amber-400'
-                    : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-700',
-                )}
-              >
-                <FileChip
-                  name={f.file_name}
-                  leading={<Paperclip size={11} className="shrink-0" />}
-                  trailing={isOther && <span className="shrink-0 text-[10px] text-amber-700">без разметки</span>}
-                />
-              </SignedFileLink>
-            )
-          })}
-        </div>
-      )}
+      {filesStrip}
 
       {/* Решение слева, работа справа: сравнивать удобнее, когда оба на
           экране, а не в двух вкладках. На узком экране панель уезжает наверх —
@@ -574,54 +901,7 @@ export function AttemptAnnotationOverlay({
               : 'flex-1',
           )}
         >
-        {paths.length === 0 ? (
-          // Размечать нечего (только .docx, .zip и т.п. или файлов нет вовсе),
-          // но вердикт поставить всё равно нужно — иначе такая работа осталась
-          // бы в очереди навсегда. Поэтому футер рисуем и здесь, а публиковать
-          // нечего: publishAnnotations сразу отвечает «успешно».
-          <div className="mx-auto flex max-w-2xl flex-col gap-4">
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-sm text-gray-400">
-              {files.length === 0
-                ? 'В этой попытке нет файлов — размечать нечего'
-                : 'Ни один файл этой попытки нельзя разметить (нужен PDF или картинка)'}
-            </div>
-            {!viewOnly && footer && (
-              <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,.14)] outline outline-1 outline-black/10 sm:p-5">
-                {footer({ publishing: false, published: false, publishAnnotations: async () => true })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <Suspense fallback={<ReviewerFallback />}>
-            <SubmissionReviewer
-              attemptId={attemptId}
-              bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
-              filePath={paths[0]}
-              filePaths={paths}
-              readOnly={viewOnly}
-              // В режиме чтения аннотатор по умолчанию показывает только
-              // опубликованные пометки. Здесь это было бы вредно: второй
-              // проверяющий пришёл посмотреть ровно то, что коллега рисует
-              // прямо сейчас, — а оно ещё в черновике.
-              annotationVisibility={locked ? 'all' : undefined}
-              className="h-full min-h-0"
-              footer={footerContent}
-              footerPublishLabel={footerPublishLabel}
-              publishButtonLabel={publishButtonLabel}
-              hideToolbarPublish={hideToolbarPublish}
-              publishRef={publishRef}
-              importRegionsRef={importRegionsRef}
-              dedupeFramesRef={dedupeFramesRef}
-              onDuplicateFramesChange={onDuplicateFramesChange}
-              onMarksCleared={onMarksCleared}
-              exportSourceRef={exportSourceRef}
-              notesInTaskList={notesInTaskList}
-              notesApiRef={notesApiRef}
-              onNotesChange={onNotesChange}
-              onSelectedNoteChange={onSelectedNoteChange}
-            />
-          </Suspense>
-        )}
+        {workContent}
         </div>
 
         {/*

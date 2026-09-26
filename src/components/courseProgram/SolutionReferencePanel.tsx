@@ -121,6 +121,62 @@ export function SolutionReferencePanel({
   )
 }
 
+/**
+ * §226. Эталон на экране проверки v2 — не колонкой слева, а сворачиваемым
+ * блоком в колонке заданий. Авторское решение хранится одним файлом на тему,
+ * по заданиям оно не разбито, поэтому под выбранным заданием стоит его ответ
+ * из таблицы, а решение целиком — здесь, одним блоком.
+ *
+ * Открыт ли блок, решает экран снаружи: ссылка «Авторское решение целиком»
+ * из задания раскрывает его и докручивает до него. Те же три правила, что у
+ * панели выше: только персонал, никогда в ленте работы, скрытое тоже видно.
+ */
+export function SolutionReferenceBlock({
+  topicId, materials, loading, open, onToggle, blockRef,
+}: {
+  topicId: string
+  materials: TopicMaterial[]
+  loading: boolean
+  open: boolean
+  onToggle: () => void
+  blockRef?: React.Ref<HTMLElement>
+}) {
+  return (
+    <section
+      ref={blockRef}
+      data-testid="solution-reference-panel"
+      data-layout="block"
+      className="border-t border-graphite-200 pt-3"
+    >
+      <button
+        type="button"
+        data-testid="attempt-solution-toggle"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span>
+          <span className="block text-xs font-medium uppercase tracking-[0.03em] text-graphite-500">Эталон · авторское решение</span>
+          <span className="block text-xs text-graphite-400">Только для вас — ученик этого не увидит</span>
+        </span>
+        <span className="shrink-0 text-xs font-medium text-primary-700">{open ? 'Свернуть' : 'Показать'}</span>
+      </button>
+      {open && (
+        <div data-testid="solution-reference-body" className="mt-3 space-y-4">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-graphite-400">
+              <Loader2 size={14} className="animate-spin" />
+              Загружаю решение…
+            </div>
+          ) : (
+            materials.map(m => <SolutionItem key={m.id} material={m} topicId={topicId} />)
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function SolutionItem({ material, topicId }: { material: TopicMaterial; topicId: string }) {
   return (
     <div className="space-y-1.5">

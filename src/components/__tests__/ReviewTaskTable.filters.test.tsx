@@ -271,11 +271,15 @@ describe('ReviewTaskTable — «Убрать повторы»', () => {
 describe('ReviewTaskTable — сколько строк на экране', () => {
   beforeEach(() => { sessionStorage.clear() })
 
-  it('все 21 видны, но вторая строка есть только у восьми — тех, где есть что сказать', () => {
+  it('все 21 видны одной строкой, раскрыто только выбранное задание', () => {
     table()
     expect(screen.queryAllByTestId('review-task-row')).toHaveLength(21)
-    // Легаси-заметки есть у 14, 15, 16 и пяти «не сверено» — восемь строк.
-    expect(screen.queryAllByTestId('review-task-under')).toHaveLength(8)
+    // §226. Под строкой — не абзац, а отметка «есть замечания»: легаси-заметки
+    // есть у 14, 15, 16 и пяти «не сверено» — восемь отметок.
+    expect(screen.queryAllByTestId('review-task-notes-count')).toHaveLength(8)
+    // Раскрыто одно задание — выбранное (пока не выбирали — первое).
+    expect(screen.queryAllByTestId('review-task-detail')).toHaveLength(1)
+    expect(screen.getAllByTestId('review-task-row')[0].dataset.selected).toBe('true')
     cleanup()
   })
 

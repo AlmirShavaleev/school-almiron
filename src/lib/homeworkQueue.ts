@@ -8,6 +8,7 @@
 import type {
   TopicHomeworkAttemptRow, TopicHomeworkAttemptStatus, TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
+import { plural } from '@/lib/plural'
 
 /**
  * Вкладки страницы проверки. Ровно три состояния попытки, которые видит
@@ -370,4 +371,61 @@ export function groupByCourse(rows: QueueRow[]): Array<{ courseId: string; cours
     groups.set(row.courseId, g)
   }
   return Array.from(groups.values())
+}
+
+/**
+ * §226. Где открытая работа стоит в списке, который видит преподаватель:
+ * «1 из 39». `null` — работы в этом списке нет (открыта по ссылке с другой
+ * вкладки или отсеяна фильтром): номер «из» тогда был бы выдумкой.
+ */
+export function queuePosition(
+  rows: readonly QueueRow[],
+  attemptId: string,
+): { index: number; total: number } | null {
+  const index = rows.findIndex(row => row.attempt.id === attemptId)
+  if (index < 0) return null
+  return { index: index + 1, total: rows.length }
+}
+
+/**
+ * §226. «Следующая работа» — следующая НЕПРОВЕРЕННАЯ (`submitted`) в том же
+ * видимом списке после открытой; дошли до конца — с начала списка (пропущенные
+ * раньше работы так и ждут). Себя не предлагаем. Открытой работы в списке нет
+ * — `null`: «следующая» от места, которого нет, была бы догадкой.
+ */
+export function nextPendingRow(rows: readonly QueueRow[], attemptId: string): QueueRow | null {
+  const at = rows.findIndex(row => row.attempt.id === attemptId)
+  if (at < 0) return null
+  const order = [...rows.slice(at + 1), ...rows.slice(0, at)]
+  return order.find(row => row.attempt.status === 'submitted') ?? null
+}
+
+/**
+ * §226. Строка под именем в шапке проверки: «Кинематика · Физика 11А · сдано
+ * 22 сентября в 11:05, в срок · 2 фото». Всё, что преподаватель читает один
+ * раз: где работа, когда сдана, успел ли ученик и сколько листов смотреть.
+ * «в срок» — только когда срок есть: без срока «вовремя» было бы выдумкой.
+ */
+export function reviewHeaderMeta(
+  row: QueueRow,
+  files: readonly { mime_type: string | null; file_name: string }[],
+): string {
+  const parts: string[] = []
+  if (row.topicTitle && row.topicTitle !== row.homeworkTitle) parts.push(row.topicTitle)
+  if (row.courseTitle) parts.push(row.courseTitle)
+  if (row.attempt.attempt_number > 1) parts.push(`попытка №${row.attempt.attempt_number}`)
+  const submitted = row.attempt.submitted_at ? new Date(row.attempt.submitted_at) : null
+  if (submitted && !Number.isNaN(submitted.getTime())) {
+    const day = submitted.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    const time = submitted.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    const when = isSubmittedLate(row) ? ', с опозданием' : row.dueAt ? ', в срок' : ''
+    parts.push(`сдано ${day} в ${time}${when}`)
+  }
+  if (files.length > 0) {
+    const photos = files.every(f => (f.mime_type ?? '').startsWith('image/'))
+    parts.push(photos
+      ? `${files.length} фото`
+      : `${files.length} ${plural(files.length, 'файл', 'файла', 'файлов')}`)
+  }
+  return parts.join(' · ')
 }

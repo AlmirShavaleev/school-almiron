@@ -27,10 +27,41 @@ export const COMMENT_MAX_PANEL_FRACTION = 0.4
  */
 export const COMMENT_MIN_MAX_HEIGHT = 160
 
+/**
+ * §226. Поле в нижней строке экрана проверки v2. Над ним — фото работы, и
+ * отдавать полю 40 % окна там нельзя: пустое оно в две строки, растёт под
+ * подставленный разбор ИИ до четверти окна, дальше прокручивается. Нижний
+ * предел (`COMMENT_MIN_MAX_HEIGHT`) тот же — на низком окне поле не схлопнется.
+ */
+export const BAR_COMMENT_ROWS = 2
+export const BAR_COMMENT_MAX_FRACTION = 0.25
+/**
+ * На телефоне строка решения липкая и живёт под фото — там полю достаётся
+ * седьмая часть окна (на 844 — около шести строк), и нижний предел свой:
+ * общий 160 px съел бы треть видимой работы.
+ */
+export const BAR_COMMENT_MAX_FRACTION_NARROW = 0.14
+export const BAR_COMMENT_MIN_MAX_HEIGHT = 96
+
 /** Потолок в пикселях от высоты панели, в которой живёт форма вердикта. */
-export function commentBoxMaxHeight(panelHeight: number): number {
-  if (!Number.isFinite(panelHeight) || panelHeight <= 0) return COMMENT_MIN_MAX_HEIGHT
-  return Math.max(COMMENT_MIN_MAX_HEIGHT, Math.round(panelHeight * COMMENT_MAX_PANEL_FRACTION))
+export function commentBoxMaxHeight(
+  panelHeight: number,
+  fraction: number = COMMENT_MAX_PANEL_FRACTION,
+  floor: number = COMMENT_MIN_MAX_HEIGHT,
+): number {
+  if (!Number.isFinite(panelHeight) || panelHeight <= 0) return floor
+  return Math.max(floor, Math.round(panelHeight * fraction))
+}
+
+/**
+ * §226. Потолок поля в нижней строке экрана проверки: четверть окна с
+ * ноутбука, седьмая часть на узком экране (ниже 1024 — там же, где колонки
+ * уходят в одну).
+ */
+export function barCommentMaxHeight(windowWidth: number, windowHeight: number): number {
+  return windowWidth >= 1024
+    ? commentBoxMaxHeight(windowHeight, BAR_COMMENT_MAX_FRACTION)
+    : commentBoxMaxHeight(windowHeight, BAR_COMMENT_MAX_FRACTION_NARROW, BAR_COMMENT_MIN_MAX_HEIGHT)
 }
 
 /**

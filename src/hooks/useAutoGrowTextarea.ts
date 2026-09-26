@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { commentBoxHeight, commentBoxMaxHeight } from '@/lib/reviewCommentBox'
+import { barCommentMaxHeight, commentBoxHeight, commentBoxMaxHeight } from '@/lib/reviewCommentBox'
 
 /**
  * §208. Текстовое поле, которое растёт под содержимое до потолка.
@@ -15,7 +15,11 @@ import { commentBoxHeight, commentBoxMaxHeight } from '@/lib/reviewCommentBox'
  *     значение в `style.height` читается как «растянули руками», и дальше поле
  *     принадлежит человеку: авто-рост в него больше не лезет.
  */
-export function useAutoGrowTextarea(value: string) {
+/**
+ * §226. `mode: 'bar'` — поле в нижней строке экрана проверки v2, со своим
+ * потолком (`barCommentMaxHeight`); по умолчанию прежний (§208).
+ */
+export function useAutoGrowTextarea(value: string, mode: 'form' | 'bar' = 'form') {
   const ref = useRef<HTMLTextAreaElement | null>(null)
   /** Последняя высота, которую поставили МЫ. Всё прочее — работа человека. */
   const ourHeight = useRef<string | null>(null)
@@ -37,7 +41,10 @@ export function useAutoGrowTextarea(value: string) {
     // Потолок считаем от окна: форма вердикта стоит внизу колонки документа, а
     // та занимает экран целиком за вычетом шапки. Мерить саму колонку нельзя —
     // она растёт вместе с полем, и мерка гналась бы за собственным результатом.
-    const max = commentBoxMaxHeight(el.ownerDocument.defaultView?.innerHeight ?? 0)
+    const view = el.ownerDocument.defaultView
+    const max = mode === 'bar'
+      ? barCommentMaxHeight(view?.innerWidth ?? 0, view?.innerHeight ?? 0)
+      : commentBoxMaxHeight(view?.innerHeight ?? 0)
 
     el.style.height = 'auto'
     const { height, scroll } = commentBoxHeight(el.scrollHeight, minHeight.current, max)
@@ -45,7 +52,7 @@ export function useAutoGrowTextarea(value: string) {
     el.style.height = px
     ourHeight.current = px
     el.style.overflowY = scroll ? 'auto' : 'hidden'
-  }, [])
+  }, [mode])
 
   useEffect(() => { adjust() }, [value, adjust])
 

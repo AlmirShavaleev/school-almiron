@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { countByTab, rowsOfTab, type QueueRow, type QueueTab } from '@/lib/homeworkQueue'
 
@@ -32,19 +32,26 @@ vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
 }))
 
 // Аннотатор тянет pdfjs — в этом тесте нас интересует только то, ЧТО открылось.
-// §210: таблица проверки и форма вердикта приходят третьей колонкой
-// (`reviewPanel`), а не футером под работой.
+// §210: таблица проверки приходит колонкой (`reviewPanel`), а не футером
+// под работой. §226: форма вердикта — нижней строкой (`reviewBar`), в шапке —
+// «← Очередь проверки · N из M» и сводка со «Следующей работой».
 vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
-  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer, reviewPanel }: {
-    title: string; lead?: string; subtitle?: string; footer?: any; reviewPanel?: any
+  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer, reviewPanel, reviewBar, backLabel, headerAside, onClose }: {
+    title: string; lead?: string; subtitle?: string; footer?: any; reviewPanel?: any; reviewBar?: any
+    backLabel?: string; headerAside?: any; onClose: () => void
   }) => (
     <div data-testid="attempt-annotation-overlay">
+      <button type="button" data-testid="overlay-back" onClick={onClose}>{backLabel}</button>
+      <div data-testid="overlay-header-aside">{headerAside}</div>
       <span>{title}</span>
       <span data-testid="overlay-lead">{lead}</span>
-      <span>{subtitle}</span>
+      <span data-testid="overlay-subtitle">{subtitle}</span>
       {footer?.({ publishing: false, published: false, publishAnnotations: async () => true })}
       <div data-testid="overlay-review-panel">
-        {reviewPanel?.({ publishAnnotations: async () => true })}
+        {reviewPanel?.({ publishAnnotations: async () => true, reference: null, showReference: null })}
+      </div>
+      <div data-testid="overlay-review-bar">
+        {reviewBar?.({ publishAnnotations: async () => true, reference: null, showReference: null })}
       </div>
     </div>
   ),
@@ -156,10 +163,50 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     const overlay = screen.getByTestId('attempt-annotation-overlay')
     expect(overlay).toBeInTheDocument()
     // В шапке разбора — работа, от кого, тема, и отметка об опоздании.
-    // §208: «от кого и по какой теме» уехало в крупную строку, остальное рядом.
-    expect(overlay).toHaveTextContent('Домашнее задание')
-    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик · Новая тема1')
-    expect(overlay).toHaveTextContent('сдано с опозданием')
+    // §226: крупно «Имя — ДЗ», как в макете; тема и срок — строкой ниже.
+    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик — Домашнее задание')
+    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('Новая тема1')
+    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('с опозданием')
+  })
+
+  it('§226. В шапке — место работы в списке, «Следующая» ведёт к следующей непроверенной', () => {
+    state.studentNames = { s1: 'Ученик', s2: 'Второй', s3: 'Третий' }
+    state.all = [
+      queueRow({}, { id: 'a1', student_id: 's1', submitted_at: '2026-07-28T10:00:00Z' }),
+      queueRow({ homeworkId: 'hw2' }, { id: 'a2', student_id: 's2', homework_id: 'hw2', submitted_at: '2026-07-28T11:00:00Z' }),
+      queueRow({ homeworkId: 'hw3' }, { id: 'a3', student_id: 's3', homework_id: 'hw3', submitted_at: '2026-07-28T12:00:00Z' }),
+    ]
+    renderPage()
+    openRow('Второй')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 2 из 3')
+
+    fireEvent.click(screen.getByTestId('review-next'))
+    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Третий')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 3 из 3')
+
+    // С конца списка — к пропущенным в начале.
+    fireEvent.click(screen.getByTestId('review-next'))
+    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('1 из 3')
+  })
+
+  it('§226. Непроверенных больше нет — «Следующей» нет, «Назад к очереди» закрывает', () => {
+    state.all = [queueRow()]
+    renderPage()
+    openRow()
+    expect(screen.queryByTestId('review-next')).not.toBeInTheDocument()
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 1 из 1')
+    fireEvent.click(screen.getByTestId('overlay-back'))
+    expect(screen.queryByTestId('attempt-annotation-overlay')).not.toBeInTheDocument()
+  })
+
+  it('§226. Форма вердикта стоит нижней строкой, а не в колонке заданий', () => {
+    state.all = [queueRow()]
+    renderPage()
+    openRow()
+    expect(within(screen.getByTestId('overlay-review-bar')).getByTestId('review-accept-button')).toBeInTheDocument()
+    expect(within(screen.getByTestId('overlay-review-panel')).queryByTestId('review-accept-button')).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('overlay-review-panel')).getByTestId('ai-check-panel')).toBeInTheDocument()
   })
 
   it('повторную попытку помечает номером, первую — нет', () => {

@@ -15,7 +15,12 @@ import {
   CONFIDENCE_LABEL, aiTasksOf, findingTransferRect, findingsToRegions, taskNoOfFinding,
   type AiFindingRow,
 } from '@/lib/aiHomeworkCheck'
-import { reviewTasksScore, type ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
+import {
+  REVIEW_TASK_VERDICT_LABEL, reviewTasksScore, summarizeReviewTasks, uncheckedTaskNos,
+  type ReviewTaskRow, type ReviewTaskVerdict,
+} from '@/lib/homeworkReviewTasks'
+import { verdictsByTask } from '@/lib/reviewFrameLook'
+import { MARK_OF_REVIEW_VERDICT, VerdictMark } from '@/components/ui/VerdictMark'
 import { noteTypeOfCategory, type ReviewNote } from '@/lib/reviewNotes'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewTasks } from '@/hooks/useHomeworkReviewTasks'
@@ -24,7 +29,7 @@ import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import {
   QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate, newerAttemptReason,
-  topicFilterOptions, verdictAccess, verdictTrail,
+  nextPendingRow, queuePosition, reviewHeaderMeta, topicFilterOptions, verdictAccess, verdictTrail,
   type QueueRow, type QueueTab,
 } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
@@ -391,6 +396,52 @@ function ReturnedNotice({
   )
 }
 
+/** §226. Порядок сводки в шапке — как в макете: сначала хорошее. */
+const SUMMARY_ORDER: readonly ReviewTaskVerdict[] = ['correct', 'partial', 'wrong', 'unchecked', 'unsolved']
+
+/**
+ * §226. Правая часть шапки проверки: «Следующая работа →» и сводка вердиктов
+ * метками («3 верно · 1 частично · 1 неверно · 1 не сверено»). Нулей в
+ * сводке нет — «0 неверно» читается хуже, чем отсутствие строки. Кнопки
+ * «Следующая» нет, когда очередь её не знает (открыто по ссылке, работа не
+ * в видимом списке) или непроверенных больше нет.
+ */
+function ReviewHeaderAside({
+  tasks, hasNext, onNext,
+}: {
+  tasks: readonly ReviewTaskRow[]
+  hasNext: boolean
+  onNext: () => void
+}) {
+  const summary = summarizeReviewTasks(tasks)
+  const items = SUMMARY_ORDER.filter(kind => summary[kind] > 0)
+  if (!hasNext && items.length === 0) return null
+  return (
+    <div className="flex flex-col items-start gap-1.5 lg:items-end">
+      {hasNext && (
+        <button
+          type="button"
+          data-testid="review-next"
+          onClick={onNext}
+          className="text-sm font-medium text-graphite-900 transition-colors hover:text-primary-700"
+        >
+          Следующая работа →
+        </button>
+      )}
+      {items.length > 0 && (
+        <ul data-testid="review-verdict-summary" className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+          {items.map(kind => (
+            <li key={kind} data-kind={kind} className="inline-flex items-center gap-1.5 text-[13px] text-graphite-900">
+              <VerdictMark state={MARK_OF_REVIEW_VERDICT[kind]} size={16} label={null} />
+              {summary[kind]} {REVIEW_TASK_VERDICT_LABEL[kind]}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /**
  * Общая очередь проверки ДЗ: работы по всем темам и курсам преподавателя,
  * разложенные по состояниям — ждут проверки, на доработке, приняты. Список —
@@ -439,7 +490,7 @@ export function HomeworkReviewQueuePage() {
     const row = all.find(r => r.attempt.id === wantedAttemptId)
     if (!row) return
     consumedAttemptRef.current = wantedAttemptId
-    setReviewing({ row, locked: false })
+    openRow(row, false)
     const next = new URLSearchParams(searchParams)
     next.delete('attempt')
     setSearchParams(next, { replace: true })
@@ -481,6 +532,16 @@ export function HomeworkReviewQueuePage() {
   }, [rows, courseFilter, activeTopic, onlyLate, order])
 
   const visibleAttemptIds = useMemo(() => visibleRows.map(r => r.attempt.id), [visibleRows])
+
+  /**
+   * §226. Где открытая работа в видимом списке («1 из 39») и какая следующая
+   * непроверенная. Считается по тому же списку, что видит преподаватель, —
+   * с его вкладкой, фильтрами и порядком. Работы в нём нет (открыта по
+   * ссылке) — нет ни номера, ни «Следующей».
+   */
+  const reviewingId = reviewing?.row.attempt.id ?? null
+  const position = reviewingId ? queuePosition(visibleRows, reviewingId) : null
+  const nextRow = reviewingId ? nextPendingRow(visibleRows, reviewingId) : null
   // Проверенным работам ИИ-черновик не нужен: вердикт уже стоит. Отдаём пустой
   // список — так на вкладках «На доработке» и «Принятые» не будет ни запроса
   // статусов, ни опроса сторожа.
@@ -644,6 +705,22 @@ export function HomeworkReviewQueuePage() {
     autoFilledRef.current = job.id
     setFillRequest({ comment: job.summary })
   }, [openAttemptId, ai.job])
+
+  /**
+   * §226. Открыть работу — из списка, по ссылке или кнопкой «Следующая
+   * работа». Всё, что принадлежало прошлой открытой работе, сбрасывается
+   * здесь: иначе подстановка разбора ИИ прошлой работы уехала бы в
+   * комментарий новой, а подсветка — на чужое замечание.
+   */
+  function openRow(row: QueueRow, locked: boolean) {
+    setFillRequest(null)
+    setNotesSnapshot({ notes: [], dismissedFindings: [] })
+    setActiveNoteId(null)
+    setDuplicateFrames(0)
+    setReviewing({ row, locked })
+  }
+
+  const taskVerdicts = useMemo(() => verdictsByTask(reviewTasks.rows), [reviewTasks.rows])
 
   return (
     <div className="space-y-5">
@@ -898,7 +975,7 @@ export function HomeworkReviewQueuePage() {
                     ai={aiJobs[row.attempt.id]}
                     aiBusy={aiRunning.has(row.attempt.id)}
                     onRunAi={() => runChecks([row.attempt.id])}
-                    onOpen={() => setReviewing({ row, locked: viewersOf(row.attempt.id).length > 0 })}
+                    onOpen={() => openRow(row, viewersOf(row.attempt.id).length > 0)}
                   />
                 ))}
               </ul>
@@ -909,13 +986,26 @@ export function HomeworkReviewQueuePage() {
 
       {reviewing && (
         <AttemptAnnotationOverlay
+          // §226. Своя копия разбора на каждую работу: «Следующая работа»
+          // открывает другую, и форма вердикта с полем комментария обязана
+          // начаться с чистого листа, а не с текста прошлой.
+          key={reviewing.row.attempt.id}
           attemptId={reviewing.row.attempt.id}
           files={filesOf(reviewing.row.attempt.id)}
           title={reviewing.row.homeworkTitle}
-          // §208. Крупной строкой — чья работа и по какой теме: остальное в
-          // шапке проверяющему нужно куда реже.
-          lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.topicTitle}`}
-          subtitle={isSubmittedLate(reviewing.row) ? 'сдано с опозданием' : undefined}
+          // §208 → §226. Крупной строкой — чья работа и какое ДЗ, как в
+          // макете; тема, курс, срок и число листов — строкой ниже.
+          lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} — ${reviewing.row.homeworkTitle}`}
+          subtitle={reviewHeaderMeta(reviewing.row, filesOf(reviewing.row.attempt.id))}
+          backLabel={position ? `Очередь проверки · ${position.index} из ${position.total}` : 'Очередь проверки'}
+          headerAside={(
+            <ReviewHeaderAside
+              tasks={reviewTasks.rows}
+              hasNext={nextRow != null}
+              onNext={() => { if (nextRow) openRow(nextRow, viewersOf(nextRow.attempt.id).length > 0) }}
+            />
+          )}
+          taskVerdicts={taskVerdicts}
           viewers={viewersOf(reviewing.row.attempt.id)}
           solutionTopicId={reviewing.row.topicId}
           // §156. После «Очистить пометки» находок в базе нет — панель ИИ и
@@ -951,12 +1041,11 @@ export function HomeworkReviewQueuePage() {
           notesApiRef={notesApiRef}
           onNotesChange={setNotesSnapshot}
           onSelectedNoteChange={setActiveNoteId}
-          // §210. Таблица проверки и форма вердикта — в СВОЕЙ колонке справа,
-          // а не под работой: владелец сверяет разом три вещи (решение,
-          // работа, таблица), и очередь «сверху вниз» этого не давала. Заодно
-          // у колонки свой свиток — колесо в таблице больше не уводит работу.
-          reviewPanel={!verdictForm ? () => (
-            <div className="min-h-0 overflow-y-auto lg:flex-1">
+          // §210 → §226. Колонка справа — задания: история попыток, таблица
+          // проверки с выбранным заданием (эталон, замечания, вердикт) и блок
+          // эталона целиком. Форма вердикта уехала в нижнюю строку.
+          reviewPanel={!verdictForm ? ({ reference }) => (
+            <div className="min-h-0 space-y-4">
               <VerdictSummary
                 review={latestReview(reviews, reviewing.row.attempt.id)}
                 gradeScale={reviewing.row.gradeScale}
@@ -965,10 +1054,66 @@ export function HomeworkReviewQueuePage() {
                 reviews={reviews}
                 attemptId={reviewing.row.attempt.id}
               />
+              {reference}
             </div>
-          ) : ({ publishAnnotations }) => (
+          ) : ({ reference, showReference }) => (
+            <div data-testid="review-v2-panel" className="space-y-3">
+              {/* Пересданная работа: прошлый вердикт выше заданий — иначе
+                  преподаватель решает, не помня, что сам просил исправить. */}
+              <AttemptHistory
+                history={reviewing.row.history}
+                reviews={reviews}
+                gradeScale={reviewing.row.gradeScale}
+              />
+              {reviewing.row.attempt.status === 'returned_for_revision' && (
+                <ReturnedNotice
+                  review={latestReview(reviews, reviewing.row.attempt.id)}
+                  attempt={reviewing.row.attempt}
+                />
+              )}
+              <ReviewTaskTable
+                job={ai.job}
+                findings={ai.findings}
+                running={ai.running}
+                error={ai.error}
+                onRun={ai.runCheck}
+                duplicateFrames={duplicateFrames}
+                onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
+                // Новый объект на каждое нажатие: вставить один и тот же
+                // текст второй раз тоже должно получаться.
+                onUseText={text => setFillRequest({ comment: text })}
+                tasks={reviewTasks.rows}
+                gradeScale={reviewing.row.gradeScale}
+                saveState={reviewTasks.saveState}
+                onAddTask={reviewTasks.addRow}
+                onSeedTasks={reviewTasks.seedNow}
+                // §207. Таблица собрана из проверки старее последней —
+                // заменить её строками именно ТОГО прогона, о котором
+                // сказали преподавателю, а не «последнего завершённого».
+                onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
+                onPatchTask={reviewTasks.patchRow}
+                onRemoveTask={reviewTasks.removeRow}
+                // §209. Замечания, предложения ИИ и клавиатура — всё в одном
+                // списке: единственная сущность на экране это задание.
+                notes={notes}
+                activeNoteId={activeNoteId}
+                dismissedFindings={notesSnapshot.dismissedFindings}
+                takenFindingIds={takenFindingIds}
+                onStartNote={no => notesApiRef.current?.startNote(no)}
+                onFocusNote={id => notesApiRef.current?.focusNote(id)}
+                onDeleteNote={id => { void notesApiRef.current?.deleteNote(id) }}
+                onEditNote={(id, text) => { void notesApiRef.current?.updateNote(id, text) }}
+                onTakeFinding={takeFinding}
+                onSkipFinding={skipFinding}
+                onBulkVerdict={bulkVerdict}
+                onShowReference={showReference ?? undefined}
+              />
+              {reference}
+            </div>
+          )}
+          reviewBar={verdictForm ? ({ publishAnnotations }) => (
             <ReviewActions
-              columnLayout
+              layout="bar"
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
               hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
@@ -980,60 +1125,7 @@ export function HomeworkReviewQueuePage() {
               // непустой таблице. Строки уже прочитаны — второй запрос ради
               // одной кнопки не нужен.
               canRewriteComment={reviewTasks.rows.length > 0}
-              above={
-                <>
-                {/* Пересданная работа: прошлый вердикт выше формы — иначе
-                    преподаватель решает, не помня, что сам просил исправить. */}
-                <AttemptHistory
-                  history={reviewing.row.history}
-                  reviews={reviews}
-                  gradeScale={reviewing.row.gradeScale}
-                  className="mb-3"
-                />
-                {reviewing.row.attempt.status === 'returned_for_revision' && (
-                  <ReturnedNotice
-                    review={latestReview(reviews, reviewing.row.attempt.id)}
-                    attempt={reviewing.row.attempt}
-                  />
-                )}
-                <ReviewTaskTable
-                  job={ai.job}
-                  findings={ai.findings}
-                  running={ai.running}
-                  error={ai.error}
-                  onRun={ai.runCheck}
-                  duplicateFrames={duplicateFrames}
-                  onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
-                  // Новый объект на каждое нажатие: вставить один и тот же
-                  // текст второй раз тоже должно получаться.
-                  onUseText={text => setFillRequest({ comment: text })}
-                  tasks={reviewTasks.rows}
-                  gradeScale={reviewing.row.gradeScale}
-                  saveState={reviewTasks.saveState}
-                  onAddTask={reviewTasks.addRow}
-                  onSeedTasks={reviewTasks.seedNow}
-                  // §207. Таблица собрана из проверки старее последней —
-                  // заменить её строками именно ТОГО прогона, о котором
-                  // сказали преподавателю, а не «последнего завершённого».
-                  onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
-                  onPatchTask={reviewTasks.patchRow}
-                  onRemoveTask={reviewTasks.removeRow}
-                  // §209. Замечания, предложения ИИ и клавиатура — всё в одном
-                  // списке: единственная сущность на экране это задание.
-                  notes={notes}
-                  activeNoteId={activeNoteId}
-                  dismissedFindings={notesSnapshot.dismissedFindings}
-                  takenFindingIds={takenFindingIds}
-                  onStartNote={no => notesApiRef.current?.startNote(no)}
-                  onFocusNote={id => notesApiRef.current?.focusNote(id)}
-                  onDeleteNote={id => { void notesApiRef.current?.deleteNote(id) }}
-                  onEditNote={(id, text) => { void notesApiRef.current?.updateNote(id, text) }}
-                  onTakeFinding={takeFinding}
-                  onSkipFinding={skipFinding}
-                  onBulkVerdict={bulkVerdict}
-                />
-                </>
-              }
+              uncheckedNos={uncheckedTaskNos(reviewTasks.rows)}
               tableScore={tableScore}
               fillRequest={fillRequest}
               onReview={async (attemptId, decision, comment, score) => {
@@ -1047,7 +1139,7 @@ export function HomeworkReviewQueuePage() {
                 reloadAi()
               }}
             />
-          )}
+          ) : undefined}
           onClose={() => setReviewing(null)}
         />
       )}

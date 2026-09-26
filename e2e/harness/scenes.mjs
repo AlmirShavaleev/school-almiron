@@ -122,6 +122,13 @@ const zoomInTwice = `(() => { const b = document.querySelector('[title="Увел
 // блоком — до неё мотают всю полосу. Сцена показывает, что порядок прежний:
 // решение, работа, таблица.
 const scrollStripDown = `(() => { const el = document.querySelector('[data-testid="attempt-split-row"]') ?? document.querySelector('[data-testid="review-document-scroll-area"]'); if (el) el.scrollTop = el.scrollHeight })()`
+// §226: задание с предложением ИИ. Новая версия — клик по строке списка
+// заданий; старая — предложение и так под строкой, докручиваем до него.
+const pickSuggestedTask = `(() => { const row = document.querySelector('[data-testid="review-task-pick"][data-has-suggestion="true"]'); row?.click(); setTimeout(() => document.querySelector('[data-testid="ai-finding-suggestion"]')?.scrollIntoView({ block: 'center' }), 200) })()`
+// §226: задание 3 — у него рамка-замечание на первой странице.
+const pickTaskThree = `(() => { const row = document.querySelector('[data-testid="review-task-pick"][data-no="3"]'); if (row) { row.click(); return } document.querySelector('[data-testid="review-task-row"][data-no="3"]')?.scrollIntoView({ block: 'center' }) })()`
+// §226: низ экрана на телефоне — всё, что под работой, домотано до конца.
+const scrollReviewDown = `(() => { for (const sel of ['[data-testid="attempt-split-row"]', '[data-testid="review-side-scroll-area"]', '[data-testid="attempt-annotation-overlay"]']) { const el = document.querySelector(sel); if (el && el.scrollHeight > el.clientHeight + 5) { el.scrollTop = el.scrollHeight; return } } })()`
 
 export const scenes = [
   // ── guest ──
@@ -688,6 +695,23 @@ export const scenes = [
     { persona: 'guest', name: 'd225-login', url: '/login', width, height },
     { persona: 'student', name: 'd225-student-menu', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: 'header button[aria-label="Открыть меню"]' }, { wait: 600 }], full: false },
     { persona: 'owner', name: 'd225-staff-menu', url: '/homework-queue', width, height, actions: [{ wait: 1200 }, { clickSel: 'header button[aria-label="Открыть меню"]' }, { wait: 600 }], full: false },
+  ]),
+
+  // ── §226: новый дизайн, шаг 2 — экран «Проверка работы» ──
+  // Пары «было/стало» на одних и тех же действиях. Выбор задания с замечанием
+  // ИИ написан так, чтобы работать на обеих версиях: в новой строка задания
+  // выбирается кликом (`data-has-suggestion`), в старой предложение ИИ стоит
+  // под строкой всегда — до него докручиваем. «Не из очереди» — прямая ссылка
+  // на работу, возвращённую на доработку, при открытой вкладке «Ждут
+  // проверки»: её нет в видимом списке, и «N из M» со «Следующей» не будет.
+  // Сцены ничего не пишут — обе ширины можно гнать одним процессом.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd226-review', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }], full: false },
+    { persona: 'owner', name: 'd226-review-ai', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: pickSuggestedTask }, { wait: 600 }], full: false },
+    { persona: 'owner', name: 'd226-review-frames', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: pickTaskThree }, { wait: 800 }], full: false },
+    { persona: 'owner', name: 'd226-review-link', url: `/homework-queue?attempt=${S.attempt(12)}`, width, height, actions: [{ wait: 3000 }], full: false },
+    { persona: 'owner', name: 'd226-review-bottom', url: '/homework-queue', width, height, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 2500 }, { eval: scrollReviewDown }, { wait: 700 }], full: false },
+    { persona: 'student', name: 'd226-student-marks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Домашнее задание")' }, { wait: 1200 }, { clickSel: '[data-testid="hw-view-marks-button"]' }, { wait: 2500 }], full: false },
   ]),
 
   // ── 360 narrow check on the densest screens ──

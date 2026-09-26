@@ -29,6 +29,7 @@ import {
   REVIEW_TASK_VERDICTS,
   REVIEW_TASK_VERDICT_LABEL,
   aiCheckIsNewerThanTable,
+  taskPointsText,
   filterReviewTasks,
   reviewTasksScore,
   summarizeReviewTasks,
@@ -111,8 +112,9 @@ const NO_IDS: readonly string[] = []
  */
 const TABLE_HINTS = [
   'Счётчики сверху — фильтры: «неверно» оставляет в списке только неверные, повторное нажатие или «все» возвращает остальные.',
-  'Замечание — это рамка на работе. «Заметка» в строке включает рисование: обведите место, выберите тип, напишите текст. Текст правится кликом по нему, «стр. N» ведёт к рамке.',
-  'Клавиши: ↑ ↓ — по строкам, 1 верно, 2 неверно, 3 частично, 4 не сверено, Enter — новое замечание, Esc — выйти.',
+  'Клик по заданию раскрывает его: эталон, замечания, предложение ИИ и вердикт. Рамка на фото подписана тем же номером и окрашена вердиктом; пунктир — «не сверено».',
+  'Замечание — это рамка на работе. «+ Замечание» у выбранного задания включает рисование: обведите место, выберите тип, напишите текст. Текст правится кликом по нему, «стр. N» ведёт к рамке.',
+  'Клавиши: ↑ ↓ — по заданиям, 1 верно, 2 неверно, 3 частично, 4 не сверено, 5 не решено, Enter — новое замечание, Esc — выйти.',
   'ИИ может ошибиться в чтении почерка и в самом решении. Таблицу выше вы правите, и ученик увидит именно её — вместе с вашим вердиктом.',
 ]
 
@@ -170,6 +172,7 @@ export function ReviewTaskTable({
   onTakeFinding,
   onSkipFinding,
   onBulkVerdict,
+  onShowReference,
 }: {
   job: AiJobRow | null
   findings?: AiFindingRow[]
@@ -211,6 +214,12 @@ export function ReviewTaskTable({
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   /** §209. «Все не сверенные — верные». */
   onBulkVerdict?: (ids: string[], verdict: ReviewTaskVerdict) => Promise<boolean> | void
+  /**
+   * §226. Эталон не разбит по заданиям — авторское решение целиком лежит
+   * отдельным сворачиваемым блоком колонки. Ссылка из выбранного задания
+   * раскрывает его и докручивает до него.
+   */
+  onShowReference?: () => void
 }) {
   const [deduping, setDeduping] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
@@ -294,32 +303,21 @@ export function ReviewTaskTable({
       // Имя проверки в тестах и сценах харнесса оставлено прежним намеренно:
       // сцены §186 и соседние карточки на него ссылаются.
       data-testid="ai-check-panel"
-      className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5"
+      // §226. Без фиолетовой рамки вокруг: это не отдельный объект, а сама
+      // колонка проверки (принцип «карточка — только для отдельного объекта»).
+      className="flex flex-col"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-900">
-          <Sparkles size={14} />
-          Таблица проверки
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.03em] text-graphite-500">
+          Задания{rows.length > 0 ? ` · ${rows.length}` : aiTasks ? ` · ${aiTasks.length}` : ''}
           <HintNote label="Как читать эту таблицу" testId="ai-check-hint" lines={hints} />
         </span>
-        <div className="flex items-center gap-2">
-          <SaveMark state={saveState} />
-          <button
-            type="button"
-            data-testid="ai-check-run"
-            onClick={onRun}
-            disabled={running}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-800 transition-colors hover:border-violet-400 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {running ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-            {running ? 'Проверяю…' : done || failed ? 'Проверить заново' : 'Проверить с ИИ'}
-          </button>
-        </div>
+        <SaveMark state={saveState} />
       </div>
 
       {running && (
-        <p className="mt-2 text-xs text-violet-700">
-          Читаю работу и решаю задачу сам — это занимает до минуты.
+        <p className="mt-2 text-xs text-graphite-500">
+          ИИ читает работу и решает задачу сам — это занимает до минуты.
         </p>
       )}
 
@@ -361,50 +359,40 @@ export function ReviewTaskTable({
           onTakeFinding={onTakeFinding}
           onSkipFinding={onSkipFinding}
           onBulkVerdict={onBulkVerdict}
+          onShowReference={onShowReference}
         />
       )}
 
-      {!running && !job && !shownError && rows.length === 0 && (
-        <p className="mt-2 text-xs text-violet-800">
-          ИИ прочитает работу, решит задачу сам и составит таблицу по заданиям — её вы
-          дальше правите, и она станет результатом проверки. Решение остаётся за вами.
-        </p>
-      )}
-
-      {done && job && (
-        <div className="mt-3 space-y-2.5">
-          {job.readable === false && (
-            <p className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs text-amber-900">
-              ИИ не смог разобрать работу — балл не предлагается. Причина ниже.
-            </p>
-          )}
-
-          {/* §135. Проверка без авторского эталона — другой уровень доверия. */}
-          {referenceNotice(job) && (
-            <p
-              data-testid="ai-check-no-reference"
-              className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
-            >
-              {referenceNotice(job)}
-            </p>
-          )}
-
-          {/* §149.1. То же для условия: без рабочего листа модель угадывала
-              состав заданий по решению. */}
-          {worksheetNotice(job) && (
-            <p
-              data-testid="ai-check-no-worksheet"
-              className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
-            >
-              {worksheetNotice(job)}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {shouldShowScore(job) ? (
+      {/*
+        §226. Всё, что про саму ИИ-проверку, — одним тихим блоком под списком:
+        «Проверить заново», предложенный балл, подстановка разбора, уборка
+        повторов, предупреждения об эталоне. Главное на экране — задания и
+        вердикты, ИИ им только помогает.
+      */}
+      <div
+        data-testid="ai-check-block"
+        className="mt-4 space-y-2 border-t border-graphite-200 pt-3"
+      >
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1 font-medium text-graphite-500">
+            <Sparkles size={12} />
+            ИИ-проверка
+          </span>
+          <button
+            type="button"
+            data-testid="ai-check-run"
+            onClick={onRun}
+            disabled={running}
+            className="inline-flex items-center gap-1.5 rounded-full border border-graphite-300 bg-white px-2.5 py-1 text-xs font-medium text-graphite-800 transition-colors hover:border-primary-400 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {running ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {running ? 'Проверяю…' : done || failed ? 'Проверить заново' : 'Проверить с ИИ'}
+          </button>
+          {done && job && (
+            shouldShowScore(job) ? (
               <span
                 data-testid="ai-check-score"
-                className="rounded-md border border-violet-300 bg-white px-2 py-0.5 font-semibold text-violet-900"
+                className="rounded-md bg-graphite-100 px-2 py-0.5 font-medium text-graphite-800"
               >
                 Предлагает балл: {job.suggested_score}
               </span>
@@ -412,65 +400,103 @@ export function ReviewTaskTable({
               // §189. Вместо балла — причина его отсутствия.
               <span
                 data-testid="ai-check-partial"
-                className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 font-medium text-amber-900"
+                className="rounded-md bg-verdict-part-tint px-2 py-0.5 font-medium text-verdict-part-ink"
               >
                 Проверена не вся работа — балл не выводится
               </span>
             ) : (
-              <span className="rounded-md bg-white px-2 py-0.5 text-gray-500">Балл не предлагается</span>
-            )}
-            {/* §207. Разбор подставляется в комментарий сам при открытии
-                работы; кнопка нужна ровно тогда, когда его стёрли. */}
-            {onUseText && job.summary && (
-              <button
-                type="button"
-                data-testid="ai-check-use-text"
-                onClick={() => onUseText(job.summary ?? '')}
-                title="Подставить разбор ИИ в поле комментария"
-                className="rounded-md border border-violet-200 bg-white px-2 py-0.5 font-medium text-violet-700 transition-colors hover:border-violet-300 hover:bg-violet-50"
-              >
-                Вставить в комментарий
-              </button>
-            )}
-          </div>
-
-          {partialReason && (
-            <p
-              data-testid="ai-check-partial-reason"
-              className="whitespace-pre-wrap rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs leading-5 text-amber-900"
+              <span className="rounded-md bg-graphite-100 px-2 py-0.5 text-graphite-500">Балл не предлагается</span>
+            )
+          )}
+          {/* §207. Разбор подставляется в комментарий сам при открытии
+              работы; кнопка нужна ровно тогда, когда его стёрли. */}
+          {done && job && onUseText && job.summary && (
+            <button
+              type="button"
+              data-testid="ai-check-use-text"
+              onClick={() => onUseText(job.summary ?? '')}
+              title="Подставить разбор ИИ в поле комментария"
+              className="rounded-md px-1.5 py-0.5 font-medium text-primary-700 transition-colors hover:bg-primary-50"
             >
-              {partialReason}
-            </p>
-          )}
-
-          {/*
-            §207. Кнопку показываем только при точных совпадениях. Дубли,
-            накопленные прежними переносами, пометки источника не имеют,
-            отличить их от ручных нечем, а ручная рамка не восстанавливается.
-            §209: сам перенос ушёл, но старые дубли в базе остались — пока
-            есть что чистить, есть и кнопка.
-          */}
-          {duplicateFrames > 0 && onRemoveDuplicates && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                data-testid="ai-check-dedupe-frames"
-                onClick={removeDuplicates}
-                disabled={deduping}
-                title="Убрать рамки-двойники: та же страница, тот же текст, то же место"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deduping ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                Убрать повторы ({duplicateFrames})
-              </button>
-            </div>
-          )}
-
-          {applyError && (
-            <p className="text-xs text-red-700">{applyError}</p>
+              Вставить в комментарий
+            </button>
           )}
         </div>
-      )}
+
+        {!running && !job && !shownError && rows.length === 0 && (
+          <p className="text-xs text-graphite-500">
+            ИИ прочитает работу, решит задачу сам и составит таблицу по заданиям — её вы
+            дальше правите, и она станет результатом проверки. Решение остаётся за вами.
+          </p>
+        )}
+
+        {done && job && (
+          <>
+            {job.readable === false && (
+              <p className="rounded-lg bg-verdict-part-tint px-2.5 py-1.5 text-xs text-verdict-part-ink">
+                ИИ не смог разобрать работу — балл не предлагается. Причина ниже.
+              </p>
+            )}
+
+            {/* §135. Проверка без авторского эталона — другой уровень доверия. */}
+            {referenceNotice(job) && (
+              <p
+                data-testid="ai-check-no-reference"
+                className="rounded-lg bg-graphite-100 px-2.5 py-1.5 text-xs text-graphite-600"
+              >
+                {referenceNotice(job)}
+              </p>
+            )}
+
+            {/* §149.1. То же для условия: без рабочего листа модель угадывала
+                состав заданий по решению. */}
+            {worksheetNotice(job) && (
+              <p
+                data-testid="ai-check-no-worksheet"
+                className="rounded-lg bg-graphite-100 px-2.5 py-1.5 text-xs text-graphite-600"
+              >
+                {worksheetNotice(job)}
+              </p>
+            )}
+
+            {partialReason && (
+              <p
+                data-testid="ai-check-partial-reason"
+                className="whitespace-pre-wrap rounded-lg bg-verdict-part-tint px-2.5 py-1.5 text-xs leading-5 text-verdict-part-ink"
+              >
+                {partialReason}
+              </p>
+            )}
+
+            {/*
+              §207. Кнопку показываем только при точных совпадениях. Дубли,
+              накопленные прежними переносами, пометки источника не имеют,
+              отличить их от ручных нечем, а ручная рамка не восстанавливается.
+              §209: сам перенос ушёл, но старые дубли в базе остались — пока
+              есть что чистить, есть и кнопка.
+            */}
+            {duplicateFrames > 0 && onRemoveDuplicates && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="ai-check-dedupe-frames"
+                  onClick={removeDuplicates}
+                  disabled={deduping}
+                  title="Убрать рамки-двойники: та же страница, тот же текст, то же место"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-graphite-300 bg-white px-2.5 py-1 text-xs font-medium text-graphite-700 transition-colors hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deduping ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  Убрать повторы ({duplicateFrames})
+                </button>
+              </div>
+            )}
+
+            {applyError && (
+              <p className="text-xs text-red-700">{applyError}</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -488,7 +514,7 @@ function StaleTableNotice({ onRefill }: { onRefill: () => Promise<boolean> | voi
   return (
     <div
       data-testid="ai-check-stale"
-      className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-1.5 text-xs text-gray-700"
+      className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-700"
     >
       <span>Есть более свежая проверка ИИ</span>
       {asking ? (
@@ -522,7 +548,7 @@ function StaleTableNotice({ onRefill }: { onRefill: () => Promise<boolean> | voi
           type="button"
           data-testid="ai-check-refill"
           onClick={() => setAsking(true)}
-          className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 font-medium text-violet-800 hover:border-violet-300"
+          className="rounded-md border border-primary-200 bg-primary-50 px-2 py-0.5 font-medium text-primary-800 hover:border-primary-300"
         >
           Заполнить заново из неё
         </button>
@@ -612,15 +638,15 @@ function TaskFilters({
         disabled={count === 0}
         onClick={() => onFilter(toggleReviewTaskFilter(filter, kind))}
         className={cn(
-          'inline-flex items-baseline gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
+          'inline-flex items-baseline gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
           pressed
-            ? 'border-violet-400 bg-violet-100 text-violet-800'
-            : 'border-transparent bg-gray-100 text-gray-600 hover:border-gray-300',
+            ? 'border-primary-300 bg-primary-50 text-primary-800'
+            : 'border-transparent bg-transparent text-graphite-500 hover:border-graphite-300',
           count === 0 && 'cursor-default opacity-40 hover:border-transparent',
         )}
       >
         {count != null && (
-          <span className={cn('font-semibold tabular-nums', pressed ? 'text-violet-800' : FILTER_TONE[kind as ReviewTaskVerdict])}>
+          <span className={cn('font-semibold tabular-nums', pressed ? 'text-primary-800' : FILTER_TONE[kind as ReviewTaskVerdict])}>
             {count}
           </span>
         )}
@@ -633,16 +659,16 @@ function TaskFilters({
   return (
     <div
       data-testid="review-tasks-filters"
-      className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 bg-gray-50/80 px-2.5 py-2"
+      className="-mx-1 mb-1 flex flex-wrap items-center gap-0.5"
     >
       {FILTER_KINDS.map(kind => chip(kind, summary[kind]))}
       {chip('all', null)}
       {score != null && (
         <span
           data-testid="ai-check-tasks-score"
-          className="ml-auto inline-flex items-baseline gap-1 text-[11px] text-gray-500"
+          className="ml-auto inline-flex items-baseline gap-1 text-xs text-graphite-500"
         >
-          → балл <b className="text-[13px] font-semibold tabular-nums text-gray-900">{score}</b>
+          → балл <b className="text-[13px] font-semibold tabular-nums text-graphite-900">{score}</b>
         </span>
       )}
     </div>
@@ -677,6 +703,7 @@ function TaskSection({
   onTakeFinding,
   onSkipFinding,
   onBulkVerdict,
+  onShowReference,
 }: {
   rows: ReviewTaskRow[]
   aiTasks: AiTaskRow[] | null
@@ -698,12 +725,21 @@ function TaskSection({
   onTakeFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onBulkVerdict?: (ids: string[], verdict: ReviewTaskVerdict) => Promise<boolean> | void
+  onShowReference?: () => void
 }) {
   const showAi = rows.length === 0 && aiTasks != null
   /** §212. Какое состояние сейчас показывает список. */
   const [filter, setFilter] = useState<ReviewTaskFilter>('all')
   /** §209. Строка под клавиатурой. -1 — курсора нет, экран ведут мышью. */
   const [cursor, setCursor] = useState(-1)
+  /**
+   * §226. Выбранное задание — то, под которым раскрыты эталон, замечания и
+   * вердикт. Клавиатура его ведёт (курсор и выбор — одна строка), мышь
+   * выбирает кликом. Пока не выбирали — первое видимое: с него же начинают и
+   * цифры без курсора (§209), так что подсвеченное и то, куда встанет
+   * вердикт, не расходятся.
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const noteMap = useMemo(() => {
@@ -729,9 +765,40 @@ function TaskSection({
     [aiTasks, filter],
   )
 
+  /**
+   * §226. Рамку выделили кликом на фото — выбираем её задание: номер на рамке
+   * и строка справа обязаны говорить об одном и том же.
+   */
+  // Только на СМЕНУ выделенной рамки: иначе каждая правка вердикта (новые
+  // строки → новый список) возвращала бы выбор к рамке, и цифры с клавиатуры
+  // перестали бы идти вниз. Подстройка состояния при рендере, а не эффект:
+  // так выбор меняется в том же кадре, что и подсветка рамки.
+  const [appliedNoteId, setAppliedNoteId] = useState<string | null>(null)
+  if (activeNoteId && activeNoteId !== appliedNoteId) {
+    const note = allNotes.find(item => item.id === activeNoteId)
+    const key = note ? noteTaskKey(note.taskNo) : ''
+    const target = key ? navRows.find(row => noteTaskKey(row.no) === key) : undefined
+    if (target) {
+      setAppliedNoteId(activeNoteId)
+      setSelectedId(target.id)
+      setCursor(navRows.indexOf(target))
+    }
+  }
+
   if (rows.length === 0 && !showAi && !onAddTask) return null
 
+  const selectedRow = navRows.find(row => row.id === selectedId)
+    ?? (cursor >= 0 ? navRows[cursor] : undefined)
+    ?? navRows[0]
+
   const patch = (id: string, value: ReviewTaskPatch) => onPatchTask?.(id, value)
+
+  /** Курсор и выбор двигаются вместе: выбранное — это и есть «где я». */
+  function moveCursor(index: number) {
+    setCursor(index)
+    const row = navRows[index]
+    if (row) setSelectedId(row.id)
+  }
 
   /**
    * §209. Клавиатура. Обработчик на блоке, а не на окне, и с остановкой
@@ -753,10 +820,8 @@ function TaskSection({
       event.preventDefault()
       event.stopPropagation()
       const step = event.key === 'ArrowDown' ? 1 : -1
-      setCursor(current => {
-        const next = current < 0 ? (step > 0 ? 0 : navRows.length - 1) : current + step
-        return Math.max(0, Math.min(navRows.length - 1, next))
-      })
+      const next = cursor < 0 ? (step > 0 ? 0 : navRows.length - 1) : cursor + step
+      moveCursor(Math.max(0, Math.min(navRows.length - 1, next)))
       return
     }
     const verdict = VERDICT_KEYS[event.key]
@@ -773,7 +838,7 @@ function TaskSection({
       void patch(row.id, { verdict })
       // §209. Курсор сам уходит на следующую строку: двадцать заданий — это
       // двадцать нажатий, а не сорок. Ради этого клавиатура и заводилась.
-      setCursor(Math.min(navRows.length - 1, index + 1))
+      moveCursor(Math.min(navRows.length - 1, index + 1))
       return
     }
     if (event.key === 'Enter') {
@@ -789,13 +854,22 @@ function TaskSection({
     }
   }
 
-  const line = (row: ReviewTaskRow) => (
+  const line = (row: ReviewTaskRow, index: number) => (
     editable
       ? (
         <TaskLine
           key={row.id}
           row={row}
           current={navRows[cursor]?.id === row.id}
+          selected={selectedRow?.id === row.id}
+          onSelect={() => {
+            setSelectedId(row.id)
+            setCursor(index)
+            // §226. Выбрали задание мышью — фото едет к его первой рамке: номер
+            // в списке и номер на рамке обязаны находиться друг по другу.
+            const first = (noteMap.get(row.id) ?? []).find(note => !note.legacy && note.page != null)
+            if (first) onFocusNote?.(first.id)
+          }}
           notes={noteMap.get(row.id) ?? []}
           activeNoteId={activeNoteId}
           suggestions={suggestionsByTask.get(noteTaskKey(row.no)) ?? []}
@@ -808,6 +882,7 @@ function TaskSection({
           onDropLegacyNote={() => patch(row.id, { note: null })}
           onTakeFinding={onTakeFinding}
           onSkipFinding={onSkipFinding}
+          onShowReference={onShowReference}
         />
       )
       : <ReadOnlyTaskLine key={row.id} task={asAiTask(row)} testId="review-task-row" />
@@ -831,9 +906,7 @@ function TaskSection({
   return (
     <section
       data-testid="ai-check-tasks"
-      // §212. Рамка на экране одна — у панели. Пять рамок на строку и дали ту
-      // самую рябь, из-за которой таблицу просили «разгрузить».
-      className="mt-3 overflow-hidden rounded-lg border border-violet-200 bg-white"
+      className="mt-2"
     >
       {summary && (
         <TaskFilters summary={summary} score={score} filter={filter} onFilter={setFilter} />
@@ -848,9 +921,9 @@ function TaskSection({
         aria-label={editable ? 'Задания работы' : undefined}
         data-testid="review-tasks-list"
         onKeyDown={onKeyDown}
-        className="outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-violet-300"
+        className="-mx-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary-300 sm:-mx-4"
       >
-        <ul className="divide-y divide-gray-100">
+        <ul>
           {showAi
             ? visibleAi.map(task => <ReadOnlyTaskLine key={task.no} task={task} testId="ai-task-row" />)
             : navRows.map(line)}
@@ -858,7 +931,7 @@ function TaskSection({
       </div>
 
       {shown === 0 && (
-        <p data-testid="review-tasks-empty" className="px-2.5 py-6 text-center text-[11px] text-gray-400">
+        <p data-testid="review-tasks-empty" className="px-2.5 py-6 text-center text-xs text-graphite-400">
           Заданий с таким состоянием нет
         </p>
       )}
@@ -869,8 +942,8 @@ function TaskSection({
         работа преподавателя, и ученик их увидит.
       */}
       {(orphans.length > 0 || orphanSuggestions.length > 0) && (
-        <div data-testid="review-tasks-orphan-notes" className="border-t border-gray-100 px-2.5 py-2">
-          <div className="text-[11px] font-medium text-gray-500">Замечания без задания</div>
+        <div data-testid="review-tasks-orphan-notes" className="mt-2 border-t border-graphite-200 pt-2">
+          <div className="text-xs font-medium text-graphite-500">Замечания без задания</div>
           <ul className="mt-1">
             {orphans.map(note => (
               <NoteLine
@@ -894,13 +967,13 @@ function TaskSection({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-2.5 py-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {showAi && onSeedTasks && (
           <button
             type="button"
             data-testid="review-tasks-seed"
             onClick={() => void onSeedTasks()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-800 transition-colors hover:border-violet-300 hover:bg-violet-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-graphite-300 bg-white px-2.5 py-1 text-xs font-medium text-graphite-800 transition-colors hover:border-primary-400 hover:text-primary-700"
           >
             <Sparkles size={12} />
             Взять таблицу ИИ
@@ -911,7 +984,7 @@ function TaskSection({
             type="button"
             data-testid="review-tasks-add"
             onClick={() => void onAddTask()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-800 transition-colors hover:border-violet-300 hover:bg-violet-50"
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-900"
           >
             <Plus size={12} />
             Задание
@@ -927,7 +1000,7 @@ function TaskSection({
             type="button"
             data-testid="review-tasks-bulk-correct"
             onClick={() => { void onBulkVerdict(unchecked, 'correct') }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-graphite-300 bg-white px-2.5 py-1 text-xs font-medium text-verdict-ok-ink transition-colors hover:border-verdict-ok"
           >
             <CheckCircle2 size={12} />
             Все не сверенные — верные ({unchecked.length})
@@ -993,7 +1066,7 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
 
   return (
     <li data-testid={testId} data-no={task.no} data-verdict={task.verdict}>
-      <div className="flex items-start gap-2 px-1 py-1.5">
+      <div className="flex items-start gap-2 px-3 py-1.5 sm:px-4">
         <span
           className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium', style.className)}
         >
@@ -1004,7 +1077,7 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
         <Answers student={task.student_answer} expected={task.expected_answer} className="flex-1" />
       </div>
       {task.note && (
-        <p className="px-1 pb-1.5 pl-10 text-[11px] leading-5 text-gray-500">{task.note}</p>
+        <p className="px-3 pb-1.5 pl-12 text-[11px] leading-5 text-gray-500 sm:px-4 sm:pl-[52px]">{task.note}</p>
       )}
     </li>
   )
@@ -1138,7 +1211,7 @@ function VerdictPicker({
               onClick={() => { setOpen(false); onPick(value); buttonRef.current?.focus() }}
               className={cn(
                 'flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px]',
-                value === verdict ? 'font-semibold text-violet-800' : 'font-normal text-gray-700',
+                value === verdict ? 'font-semibold text-primary-800' : 'font-normal text-gray-700',
                 'hover:bg-gray-50 focus:bg-gray-50 focus:outline-none',
               )}
             >
@@ -1196,6 +1269,8 @@ function VerdictPicker({
 function TaskLine({
   row,
   current,
+  selected,
+  onSelect,
   notes,
   activeNoteId,
   suggestions,
@@ -1208,9 +1283,13 @@ function TaskLine({
   onDropLegacyNote,
   onTakeFinding,
   onSkipFinding,
+  onShowReference,
 }: {
   row: ReviewTaskRow
   current: boolean
+  /** §226. Строка выбрана — под ней раскрыто задание целиком. */
+  selected: boolean
+  onSelect: () => void
   notes: ReviewNote[]
   activeNoteId: string | null
   suggestions: AiFindingRow[]
@@ -1223,11 +1302,13 @@ function TaskLine({
   onDropLegacyNote: () => void
   onTakeFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
+  onShowReference?: () => void
 }) {
   const conflict = verdictConflictsWithNotes(row.verdict, notes)
   const tone = reviewRowTone(row, notes)
   const highlighted = notes.some(note => note.id === activeNoteId)
   const hasUnder = conflict || notes.length > 0 || suggestions.length > 0
+  const view = answerView(row.student_answer, row.expected_answer)
 
   return (
     <li
@@ -1235,79 +1316,211 @@ function TaskLine({
       data-no={row.no}
       data-verdict={row.verdict}
       data-current={current ? 'true' : undefined}
+      data-selected={selected ? 'true' : undefined}
       data-conflict={conflict ? 'true' : undefined}
       data-tone={tone}
       className={cn(
-        // `group` — на нём висят редкие действия строки.
-        'group border-l-[3px] px-1.5 py-0.5',
-        tone === 'mismatch' && 'border-l-red-400 bg-red-50/50',
-        tone === 'conflict' && 'border-l-amber-400 bg-amber-50/60',
-        tone === 'none' && 'border-l-transparent',
-        highlighted && !current && 'bg-sky-50',
-        current && 'border-l-violet-500 bg-violet-50',
+        'border-l-[3px]',
+        selected ? 'border-l-primary-800 bg-primary-50' : 'border-l-transparent',
+        !selected && tone === 'mismatch' && 'bg-verdict-bad-tint/40',
+        !selected && tone === 'conflict' && 'bg-verdict-part-tint/50',
+        !selected && highlighted && 'bg-sky-50',
       )}
     >
-      <div className="flex items-center gap-2 py-1">
-        <VerdictPicker
-          verdict={row.verdict}
-          no={row.no}
-          onPick={verdict => { void onPatch({ verdict }) }}
-        />
-        <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-700">{row.no}</span>
-        <Answers student={row.student_answer} expected={row.expected_answer} className="flex-1" />
-        <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
-          {onStartNote && (
-            <button
-              type="button"
-              data-testid="review-task-add-note"
-              title="Обвести место на работе и написать замечание"
-              aria-label={`Замечание к заданию ${row.no}`}
-              onClick={() => onStartNote(row.no)}
-              className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
-            >
-              <Plus size={11} />
-              Заметка
-            </button>
+      {/*
+        §226. Строка — справка в одну линию: метка, номер, ответ, вклад в
+        балл. Клик выбирает задание; метка слева по-прежнему открывает список
+        вердиктов (§209) — быстрый путь для тех, кто не раскрывает задание.
+      */}
+      <div
+        data-testid="review-task-pick"
+        data-no={row.no}
+        data-has-suggestion={suggestions.length > 0 ? 'true' : undefined}
+        onClick={onSelect}
+        className="grid cursor-pointer grid-cols-[24px_28px_minmax(0,1fr)_auto] items-center gap-x-2 px-3 py-1.5 sm:px-4"
+      >
+        <span onClick={event => event.stopPropagation()} className="flex">
+          <VerdictPicker
+            verdict={row.verdict}
+            no={row.no}
+            onPick={verdict => { void onPatch({ verdict }) }}
+          />
+        </span>
+        <span className="text-sm font-semibold tabular-nums text-graphite-900">{row.no}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Answers student={row.student_answer} expected={row.expected_answer} className="min-w-0 truncate" />
+          {/* §226. Что есть под заданием — видно и без раскрытия. */}
+          {!selected && notes.length > 0 && (
+            <span data-testid="review-task-notes-count" title="Замечания к заданию" className="shrink-0 rounded bg-graphite-100 px-1 text-[11px] font-medium tabular-nums text-graphite-600">
+              ▢ {notes.length}
+            </span>
           )}
-          <RowMenu no={row.no} onRemove={onRemove} />
+          {!selected && suggestions.length > 0 && (
+            <span title="Предложение ИИ" className="shrink-0 rounded bg-gold-100 px-1 text-[11px] font-semibold text-gold-800">ИИ</span>
+          )}
+        </span>
+        <span data-testid="review-task-points" className="text-sm font-medium tabular-nums text-graphite-900">
+          {taskPointsText(row.verdict)} / 1
         </span>
       </div>
 
-      {hasUnder && (
-        <div data-testid="review-task-under" className="pb-1 pl-9">
-          {conflict && (
-            <p data-testid="review-task-conflict" className="pb-0.5 text-[11px] font-medium text-amber-700">
-              {VERDICT_CONFLICT_LABEL}
+      {selected && (
+        <div
+          data-testid="review-task-detail"
+          className="space-y-3 px-3 pb-3 pt-1 sm:px-4"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[15px] font-semibold leading-snug text-graphite-900">
+              Задание {row.no}
+              {view.student && view.student !== '—' && (
+                <span className="font-normal text-graphite-500"> · ответ {view.student}</span>
+              )}
             </p>
-          )}
+            <span className="flex shrink-0 items-center">
+              {onStartNote && (
+                <button
+                  type="button"
+                  data-testid="review-task-add-note"
+                  title="Обвести место на работе и написать замечание"
+                  aria-label={`Замечание к заданию ${row.no}`}
+                  onClick={() => onStartNote(row.no)}
+                  className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-white"
+                >
+                  <Plus size={12} />
+                  Замечание
+                </button>
+              )}
+              <RowMenu no={row.no} onRemove={onRemove} />
+            </span>
+          </div>
 
-          {notes.length > 0 && (
-            <ul>
-              {notes.map(note => (
-                <NoteLine
-                  key={note.id}
-                  note={note}
-                  active={note.id === activeNoteId}
-                  onFocus={onFocusNote}
-                  onDelete={note.legacy ? undefined : onDeleteNote}
-                  onEdit={note.legacy ? undefined : onEditNote}
-                  onDropLegacy={note.legacy ? onDropLegacyNote : undefined}
+          <div>
+            <span className="text-xs font-medium uppercase tracking-[0.03em] text-graphite-500">Эталон</span>
+            <p data-testid="review-task-expected" className="text-sm leading-relaxed text-graphite-900">
+              {row.expected_answer?.trim()
+                ? <>Ответ: <span className="font-mono tabular-nums">{row.expected_answer}</span></>
+                : <span className="text-graphite-500">Ответа по заданию в таблице нет</span>}
+            </p>
+            {onShowReference && (
+              <button
+                type="button"
+                data-testid="review-task-show-reference"
+                onClick={onShowReference}
+                className="mt-0.5 text-xs font-medium text-primary-700 hover:underline"
+              >
+                Авторское решение целиком ↓
+              </button>
+            )}
+          </div>
+
+          {hasUnder && (
+            <div data-testid="review-task-under" className="space-y-2">
+              {conflict && (
+                <p data-testid="review-task-conflict" className="text-xs font-medium text-verdict-part-ink">
+                  {VERDICT_CONFLICT_LABEL}
+                </p>
+              )}
+
+              {notes.length > 0 && (
+                <div>
+                  <span className="text-xs font-medium uppercase tracking-[0.03em] text-graphite-500">Замечания</span>
+                  <ul>
+                    {notes.map(note => (
+                      <NoteLine
+                        key={note.id}
+                        note={note}
+                        active={note.id === activeNoteId}
+                        onFocus={onFocusNote}
+                        onDelete={note.legacy ? undefined : onDeleteNote}
+                        onEdit={note.legacy ? undefined : onEditNote}
+                        onDropLegacy={note.legacy ? onDropLegacyNote : undefined}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {suggestions.map(finding => (
+                <FindingSuggestion
+                  key={finding.id}
+                  finding={finding}
+                  onTake={onTakeFinding}
+                  onSkip={onSkipFinding}
                 />
               ))}
-            </ul>
+            </div>
           )}
 
-          {suggestions.map(finding => (
-            <FindingSuggestion
-              key={finding.id}
-              finding={finding}
-              onTake={onTakeFinding}
-              onSkip={onSkipFinding}
-            />
-          ))}
+          <VerdictSegment verdict={row.verdict} no={row.no} onPick={verdict => { void onPatch({ verdict }) }} />
         </div>
       )}
     </li>
+  )
+}
+
+/**
+ * §226. Вердикт выбранного задания — сегмент «Верно / Частично / Неверно»,
+ * как в макете. Два редких значения (§214: «не сверено», «не решено») —
+ * тихими кнопками под ним: их ставят реже, но убирать нельзя. Вердикт
+ * ставит только человек — ИИ сюда ничего не пишет.
+ */
+function VerdictSegment({
+  verdict,
+  no,
+  onPick,
+}: {
+  verdict: ReviewTaskVerdict
+  no: string
+  onPick: (verdict: ReviewTaskVerdict) => void
+}) {
+  const main: ReviewTaskVerdict[] = ['correct', 'partial', 'wrong']
+  const rare: ReviewTaskVerdict[] = ['unchecked', 'unsolved']
+  return (
+    <div data-testid="review-task-segment" role="group" aria-label={`Вердикт задания ${no}`} className="space-y-1.5">
+      <div className="grid grid-cols-3 overflow-hidden rounded-lg border-[1.5px] border-graphite-300 bg-white">
+        {main.map((value, index) => {
+          const on = verdict === value
+          return (
+            <button
+              key={value}
+              type="button"
+              data-testid={`review-task-segment-${value}`}
+              aria-pressed={on}
+              onClick={() => onPick(value)}
+              className={cn(
+                'h-9 px-1 text-[13px] transition-colors',
+                index > 0 && 'border-l-[1.5px] border-graphite-300',
+                on ? 'bg-primary-600 font-semibold text-white' : 'font-medium text-graphite-900 hover:bg-graphite-50',
+              )}
+            >
+              {REVIEW_TASK_VERDICT_LABEL[value].replace(/^./, c => c.toUpperCase())}
+              {on && ` · ${taskPointsText(value)}`}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs text-graphite-500">
+        {rare.map(value => {
+          const on = verdict === value
+          return (
+            <button
+              key={value}
+              type="button"
+              data-testid={`review-task-segment-${value}`}
+              aria-pressed={on}
+              onClick={() => onPick(value)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors',
+                on ? 'bg-primary-600 font-semibold text-white' : 'hover:bg-graphite-100 hover:text-graphite-900',
+              )}
+            >
+              <VerdictMark state={VERDICT_STYLE[value].mark} size={12} label={null} className={on ? 'text-white' : undefined} />
+              {REVIEW_TASK_VERDICT_LABEL[value]}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -1354,7 +1567,7 @@ function NoteLine({
     >
       <span
         aria-hidden
-        className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+        className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
         style={{ backgroundColor: note.type === 'good' ? '#16a34a' : note.type === 'inaccuracy' ? '#d97706' : note.type === 'error' ? '#dc2626' : '#94a3b8' }}
       />
       {editing ? (
@@ -1372,7 +1585,7 @@ function NoteLine({
             if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setEditing(false) }
             if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); commit() }
           }}
-          className="min-w-0 flex-1 rounded-md border border-violet-200 px-1.5 py-1 text-[11px] leading-5 text-gray-800 focus:border-violet-300 focus:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-primary-200 px-1.5 py-1 text-sm leading-snug text-graphite-900 focus:border-primary-400 focus:outline-none"
         />
       ) : (
         /*
@@ -1388,7 +1601,7 @@ function NoteLine({
           title={onEdit ? 'Нажмите, чтобы поправить' : 'Старая заметка — её можно только удалить'}
           onClick={() => { if (onEdit) setEditing(true) }}
           className={cn(
-            'min-w-0 flex-1 break-words rounded px-0.5 text-left text-[11px] leading-5 text-gray-700',
+            'min-w-0 flex-1 break-words rounded px-0.5 text-left text-sm leading-snug text-graphite-900',
             onEdit ? 'hover:bg-gray-100 hover:text-gray-900' : 'cursor-default',
           )}
         >
@@ -1401,7 +1614,7 @@ function NoteLine({
           data-testid="review-task-note-page"
           title="Показать место в работе"
           onClick={() => onFocus?.(note.id)}
-          className="shrink-0 rounded px-0.5 text-[10px] tabular-nums text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          className="shrink-0 rounded px-0.5 pt-0.5 text-[11px] tabular-nums text-graphite-500 hover:bg-graphite-100 hover:text-graphite-900"
         >
           стр. {note.page}
         </button>
@@ -1445,34 +1658,43 @@ function FindingSuggestion({
     <div
       data-testid="ai-finding-suggestion"
       data-finding-id={finding.id}
-      className="mb-1 flex flex-wrap items-start gap-x-2 gap-y-1 rounded-md bg-gray-50 px-1.5 py-1 text-[11px] text-gray-500"
+      // §226. Жёлтая плашка макета: предложение ИИ, а не решение. Вердикт
+      // от него не меняется — «взять» делает из него замечание-рамку, и всё.
+      className="rounded-md bg-verdict-part-tint px-3 py-2"
     >
-      <span className="min-w-0 flex-1 break-words"><span className="font-semibold text-violet-700">ИИ:</span> {finding.text}</span>
-      {onTake && (
-        <button
-          type="button"
-          data-testid="ai-finding-take"
-          // §212. Честная подпись: границ задания модель не возвращает, и
-          // обещать «обведём всю задачу» нельзя.
-          title={`Рамкой встанет ${FINDING_UNION_LABEL}`}
-          disabled={busy}
-          onClick={async () => { setBusy(true); try { await onTake(finding) } finally { setBusy(false) } }}
-          className="shrink-0 rounded border border-violet-200 bg-white px-1.5 py-0.5 font-medium text-violet-700 hover:border-violet-300 disabled:opacity-60"
-        >
-          взять
-        </button>
-      )}
-      {onSkip && (
-        <button
-          type="button"
-          data-testid="ai-finding-skip"
-          disabled={busy}
-          onClick={async () => { setBusy(true); try { await onSkip(finding) } finally { setBusy(false) } }}
-          className="shrink-0 rounded px-1.5 py-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-60"
-        >
-          мимо
-        </button>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="text-xs font-medium uppercase tracking-[0.03em] text-graphite-600">
+          Замечание ИИ{finding.page != null ? ` · стр. ${finding.page}` : ''}
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          {onTake && (
+            <button
+              type="button"
+              data-testid="ai-finding-take"
+              // §212. Честная подпись: границ задания модель не возвращает, и
+              // обещать «обведём всю задачу» нельзя.
+              title={`Рамкой встанет ${FINDING_UNION_LABEL}`}
+              disabled={busy}
+              onClick={async () => { setBusy(true); try { await onTake(finding) } finally { setBusy(false) } }}
+              className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-primary-700 shadow-sm hover:text-primary-800 disabled:opacity-60"
+            >
+              взять
+            </button>
+          )}
+          {onSkip && (
+            <button
+              type="button"
+              data-testid="ai-finding-skip"
+              disabled={busy}
+              onClick={async () => { setBusy(true); try { await onSkip(finding) } finally { setBusy(false) } }}
+              className="rounded-full px-2 py-0.5 text-xs text-graphite-600 hover:bg-white/60 hover:text-graphite-900 disabled:opacity-60"
+            >
+              мимо
+            </button>
+          )}
+        </span>
+      </div>
+      <p className="mt-0.5 break-words text-sm leading-snug text-graphite-900">{finding.text}</p>
     </div>
   )
 }

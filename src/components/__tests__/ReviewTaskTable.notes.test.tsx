@@ -98,16 +98,27 @@ function table(over: Partial<React.ComponentProps<typeof ReviewTaskTable>> = {})
 const rowByNo = (no: string) =>
   screen.getAllByTestId('review-task-row').find(r => r.dataset.no === no)!
 
+/**
+ * §226. Замечания, предложения ИИ и «+ Замечание» раскрыты под ВЫБРАННЫМ
+ * заданием — как человек: сначала кликнуть строку, потом работать с ней.
+ */
+const pick = (no: string) => fireEvent.click(within(rowByNo(no)).getByTestId('review-task-pick'))
+
 describe('§209 — замечания под строкой задания', () => {
   beforeEach(() => { sessionStorage.clear() })
 
   it('замечание показывается под своим заданием, с номером страницы', () => {
     table({ notes: [note({ id: 'n1' })] })
+    // Не выбрано — под строкой только счётчик, само замечание раскрывается выбором.
+    expect(within(rowByNo('13')).getByTestId('review-task-notes-count')).toHaveTextContent('1')
+    pick('13')
     const line = within(rowByNo('13')).getByTestId('review-task-note')
     expect(line).toHaveTextContent('Ошибка в финальном вычислении')
     expect(within(line).getByTestId('review-task-note-page')).toHaveTextContent('стр. 2')
     // У соседнего задания замечаний нет — привязка по номеру, а не «все всем».
+    pick('7')
     expect(within(rowByNo('7')).queryByTestId('review-task-note')).not.toBeInTheDocument()
+    expect(within(rowByNo('7')).queryByTestId('review-task-notes-count')).not.toBeInTheDocument()
   })
 
   it('на одно задание можно несколько замечаний', () => {
@@ -117,6 +128,7 @@ describe('§209 — замечания под строкой задания', ()
         note({ id: 'n2', text: 'Арифметика', page: 3 }),
       ],
     })
+    pick('13')
     expect(within(rowByNo('13')).getAllByTestId('review-task-note')).toHaveLength(2)
   })
 
@@ -124,6 +136,7 @@ describe('§209 — замечания под строкой задания', ()
     const onDeleteNote = vi.fn()
     const onRemoveTask = vi.fn(async () => true)
     table({ notes: [note({ id: 'n1' })], onDeleteNote, onRemoveTask })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-remove'))
     expect(onDeleteNote).toHaveBeenCalledWith('n1')
     expect(onRemoveTask).not.toHaveBeenCalled()
@@ -137,6 +150,10 @@ describe('§209 — замечания под строкой задания', ()
     const onFocusNote = vi.fn()
     const onEditNote = vi.fn(async () => true)
     table({ notes: [note({ id: 'n1' })], onFocusNote, onEditNote })
+    pick('13')
+    // §226. Выбор задания мышью сам ведёт фото к его первой рамке.
+    expect(onFocusNote).toHaveBeenCalledWith('n1')
+    onFocusNote.mockClear()
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-page'))
     expect(onFocusNote).toHaveBeenCalledWith('n1')
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
@@ -147,6 +164,7 @@ describe('§209 — замечания под строкой задания', ()
   it('§212. Enter сохраняет правку, Esc отменяет', () => {
     const onEditNote = vi.fn(async () => true)
     const { unmount } = table({ notes: [note({ id: 'n1' })], onEditNote })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
     const input = within(rowByNo('13')).getByTestId('review-task-note-input')
     fireEvent.change(input, { target: { value: 'Потерян второй корень' } })
@@ -156,6 +174,7 @@ describe('§209 — замечания под строкой задания', ()
 
     const second = vi.fn(async () => true)
     table({ notes: [note({ id: 'n1' })], onEditNote: second })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-note-text'))
     const again = within(rowByNo('13')).getByTestId('review-task-note-input')
     fireEvent.change(again, { target: { value: 'мимо' } })
@@ -166,6 +185,7 @@ describe('§209 — замечания под строкой задания', ()
   it('«+ Заметка» просит рамку именно для этого задания', () => {
     const onStartNote = vi.fn()
     table({ onStartNote })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('review-task-add-note'))
     expect(onStartNote).toHaveBeenCalledWith('13')
   })
@@ -173,6 +193,7 @@ describe('§209 — замечания под строкой задания', ()
   it('старое поле note показывается замечанием без места и удаляется в поле', () => {
     const onPatchTask = vi.fn(async () => true)
     table({ tasks: [row('7', 'correct'), row('13', 'wrong', { note: 'старая заметка' })], onPatchTask })
+    pick('13')
     const line = within(rowByNo('13')).getByTestId('review-task-note')
     expect(line).toHaveTextContent('старая заметка')
     expect(line.dataset.legacy).toBe('true')
@@ -192,8 +213,11 @@ describe('§209 — находки ИИ как предложения', () => {
 
   it('находка стоит под своим заданием предложением, а не замечанием', () => {
     table({ findings: [finding()], onTakeFinding: vi.fn(), onSkipFinding: vi.fn() })
+    pick('13')
     const suggestion = within(rowByNo('13')).getByTestId('ai-finding-suggestion')
-    expect(suggestion).toHaveTextContent('ИИ: ошибка в отборе корней')
+    // §226. Жёлтая плашка «Замечание ИИ» — предложение, а не замечание.
+    expect(suggestion).toHaveTextContent('Замечание ИИ')
+    expect(suggestion).toHaveTextContent('ошибка в отборе корней')
     // Замечанием она НЕ стала: замечания приходят из рамок, а рамки нет.
     expect(within(rowByNo('13')).queryByTestId('review-task-note')).not.toBeInTheDocument()
   })
@@ -201,6 +225,7 @@ describe('§209 — находки ИИ как предложения', () => {
   it('«взять» отдаёт находку наружу — там она станет рамкой', async () => {
     const onTakeFinding = vi.fn(async () => true)
     table({ findings: [finding()], onTakeFinding })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('ai-finding-take'))
     await waitFor(() => expect(onTakeFinding).toHaveBeenCalledWith(expect.objectContaining({ id: 'f1' })))
   })
@@ -213,6 +238,7 @@ describe('§209 — находки ИИ как предложения', () => {
   it('«мимо» убирает предложение и оно не возвращается', async () => {
     const onSkipFinding = vi.fn(async () => true)
     const view = table({ findings: [finding()], onSkipFinding })
+    pick('13')
     fireEvent.click(within(rowByNo('13')).getByTestId('ai-finding-skip'))
     await waitFor(() => expect(onSkipFinding).toHaveBeenCalled())
     // Отказ помнится снаружи: при следующем открытии работы предложения нет.

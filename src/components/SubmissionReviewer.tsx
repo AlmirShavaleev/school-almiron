@@ -20,6 +20,8 @@ import {
 import { HintNote } from '@/components/shared/HintNote'
 import type { MutableRefObject, ReactNode } from 'react'
 import type { AttemptExportSourceRef } from '@/lib/attemptPdfSource'
+import type { ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
+import { frameLookOf, type FrameLook } from '@/lib/reviewFrameLook'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -203,6 +205,19 @@ interface BaseProps {
   onSelectedNoteChange?: (id: string | null) => void
   /** §209. Ручки управления замечаниями для таблицы заданий. */
   notesApiRef?: MutableRefObject<AttemptNotesApi | null>
+  /**
+   * §226. Экран проверки v2: вместо счётчика «1 / 2» в тулбаре — вкладки
+   * «Фото 1 · Фото 2» (переход к странице, листать по-прежнему можно и
+   * прокруткой) и «Повернуть» для текущей страницы. Кнопка поворота у каждой
+   * страницы остаётся. Ученику и прочим экранам тулбар прежний.
+   */
+  pageTabs?: boolean
+  /**
+   * §226. Вердикты заданий по номеру (`verdictsByTask`). Есть — рамка с
+   * номером задания красится вердиктом и подписывается «3 · текст»; «не
+   * сверено» — пунктиром. Нет — рамки как раньше, цветом типа замечания.
+   */
+  taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
 }
 
 /**
@@ -445,6 +460,8 @@ export function SubmissionReviewer({
   onNotesChange,
   onSelectedNoteChange,
   notesApiRef,
+  pageTabs = false,
+  taskVerdicts = null,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -1587,6 +1604,13 @@ export function SubmissionReviewer({
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
+  /** §226. Страница, которую сейчас видно, — для «Повернуть» в тулбаре. */
+  const currentSurface = surfaces.find(surface => surface.globalPage === currentPage) ?? surfaces[0] ?? null
+  /** §226. Вкладка страницы: перейти к ней в ленте. */
+  function goToSurface(surface: DocumentSurface) {
+    setCurrentPage(surface.globalPage)
+    pageRefs.current[surface.surfaceKey]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
   const triggerPublish = (targetStatus?: 'checked' | 'revision') => { void publish(targetStatus) }
   const footerContent = typeof footer === 'function'
     ? footer({ publishing, published, triggerPublish })
@@ -1613,12 +1637,37 @@ export function SubmissionReviewer({
 
   return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
     <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
-      {header ? <div className="min-w-0 flex-1">{header}</div> : <div className="flex-1" />}
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
-          <FileText size={13} className="text-slate-400" />
-          <span className="min-w-14 text-center tabular-nums">{currentPage} / {pageCount}</span>
+      {header ? <div className="min-w-0 flex-1">{header}</div> : pageTabs ? (
+        <div className="min-w-0 flex-1">
+          <div data-testid="review-page-tabs" role="tablist" aria-label="Страницы работы" className="flex max-w-full items-center gap-1 overflow-x-auto">
+            {surfaces.map(surface => (
+              <button
+                key={surface.surfaceKey}
+                type="button"
+                role="tab"
+                data-testid={`review-page-tab-${surface.globalPage}`}
+                aria-selected={currentPage === surface.globalPage}
+                onClick={() => goToSurface(surface)}
+                className={cn(
+                  'shrink-0 rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors',
+                  currentPage === surface.globalPage
+                    ? 'bg-primary-600 text-white'
+                    : 'text-graphite-500 hover:bg-graphite-100 hover:text-graphite-900',
+                )}
+              >
+                {surface.kind === 'pdf' ? `Стр. ${surface.globalPage}` : `Фото ${surface.globalPage}`}
+              </button>
+            ))}
+          </div>
         </div>
+      ) : <div className="flex-1" />}
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {pageTabs ? null : (
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+            <FileText size={13} className="text-slate-400" />
+            <span className="min-w-14 text-center tabular-nums">{currentPage} / {pageCount}</span>
+          </div>
+        )}
         <div className="flex items-center rounded-full border border-slate-200 bg-slate-50 px-1">
           <ToolButton disabled={zoom <= MIN_ZOOM} title="Уменьшить" onClick={() => setManualZoom(z => z - ZOOM_STEP)}><ZoomOut size={17}/></ToolButton>
           <span data-testid="review-zoom-value" className="w-12 text-center text-xs font-semibold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
@@ -1643,6 +1692,19 @@ export function SubmissionReviewer({
             По ширине
           </button>
         </div>
+        {pageTabs && !readOnly && currentSurface && (
+          <button
+            type="button"
+            data-testid="review-rotate-current"
+            disabled={!pagesLoaded}
+            onClick={() => { void rotatePage(currentSurface.filePath, currentSurface.page) }}
+            title="Повернуть текущую страницу на 90° по часовой стрелке"
+            className="inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40"
+          >
+            <RotateCw size={13} />
+            Повернуть
+          </button>
+        )}
         {!readOnly && hasOtherAuthor && (
           <span
             data-testid="review-other-author"
@@ -1777,6 +1839,7 @@ export function SubmissionReviewer({
                     onPointerMove={pointerMove}
                     onPointerUp={pointerUp}
                     onActivate={setActiveId}
+                    taskVerdicts={taskVerdicts}
                   />
                 : <ImagePageSurface
                     surface={surface}
@@ -1801,6 +1864,7 @@ export function SubmissionReviewer({
                     onPointerMove={pointerMove}
                     onPointerUp={pointerUp}
                     onActivate={setActiveId}
+                    taskVerdicts={taskVerdicts}
                   />
               }
             </div>
@@ -1865,9 +1929,11 @@ type RegionLayerProps = {
   edit: { id: string; rect: Rect } | null
   onBeginRegionEdit: (surface: DocumentSurface, region: Region, mode: 'move' | 'resize', handle: ResizeHandle | null, event: React.PointerEvent<SVGElement>) => void
   onActivate: (id: string | null) => void
+  /** §226. Вердикты заданий — рамки красятся ими (`frameLookOf`). */
+  taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
 }
 
-function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate }: RegionLayerProps & {
+function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate, taskVerdicts }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
   pageData: PageData
@@ -1882,6 +1948,7 @@ function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedI
     active={mark.id === activeId}
     selected={!readOnly && mark.id === selectedId}
     aspect={aspect}
+    look={isRegion(mark) ? frameLookOf(mark, taskVerdicts) : null}
     // §211. Хранимая рамка — в координатах исходной страницы; рисуется
     // всегда повёрнутая. Пока её тянут, сверху ложится жест — он уже в
     // экранных координатах.
@@ -1891,6 +1958,48 @@ function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedI
       if (isRegion(mark)) onBeginRegionEdit(surface, mark, mode, handle, event)
     }}
   />)}</>
+}
+
+/**
+ * §226. Подписи над рамками: «3 · не отобран −7π/6». HTML, а не SVG: слой
+ * рамок растянут `preserveAspectRatio="none"`, и текст в нём сплющился бы.
+ * Клики сквозь подписи проходят к рамкам — подпись не перехватывает жест.
+ * Рамка у самого верха страницы подписывается изнутри, иначе подпись срежет
+ * край листа.
+ */
+function FrameLabels({ pageData, quarter, edit, taskVerdicts }: {
+  pageData: PageData
+  quarter: Quarter
+  edit: { id: string; rect: Rect } | null
+  taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
+}) {
+  if (!taskVerdicts) return null
+  const items = pageData.objects
+    .filter(isRegion)
+    .map(mark => ({ mark, look: frameLookOf(mark, taskVerdicts) }))
+    .filter((item): item is { mark: Region; look: FrameLook } => item.look != null)
+  if (items.length === 0) return null
+  return <div aria-hidden className="pointer-events-none absolute inset-0">
+    {items.map(({ mark, look }) => {
+      const rect = edit?.id === mark.id ? edit.rect : rotateRect(mark.rect, quarter)
+      const inside = rect.y < 0.035
+      return <span
+        key={mark.id}
+        data-testid={`region-label-${mark.id}`}
+        data-verdict={look.verdict}
+        className="absolute max-w-[60%] truncate whitespace-nowrap rounded-t px-1.5 text-[11px] font-semibold leading-5 text-white"
+        style={{
+          left: `${rect.x * 100}%`,
+          top: `${rect.y * 100}%`,
+          transform: inside ? undefined : 'translateY(-100%)',
+          backgroundColor: look.color,
+          borderRadius: inside ? '0 0 4px 0' : undefined,
+        }}
+      >
+        {look.label}
+      </span>
+    })}
+  </div>
 }
 
 function PdfPageSurface({
@@ -1911,6 +2020,7 @@ function PdfPageSurface({
   onPointerMove,
   onPointerUp,
   onActivate,
+  taskVerdicts,
 }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
@@ -1985,9 +2095,10 @@ function PdfPageSurface({
         onPointerUp={event => onPointerUp(surface, event)}
         onPointerCancel={event => onPointerUp(surface, event)}
       >
-        <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
+        <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} />
         {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
       </svg>
+      <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} />
     </div>
   </div>
 }
@@ -2011,6 +2122,7 @@ function ImagePageSurface({
   onPointerMove,
   onPointerUp,
   onActivate,
+  taskVerdicts,
 }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
@@ -2065,17 +2177,20 @@ function ImagePageSurface({
           onPointerUp={event => onPointerUp(surface, event)}
           onPointerCancel={event => onPointerUp(surface, event)}
         >
-          <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} />
+          <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} />
           {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008" />}
         </svg>
+        <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} />
         {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
       </div>
     </div>
   )
 }
 
-function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverride = null, onActivate, onBeginEdit }: {
+function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverride = null, look = null, onActivate, onBeginEdit }: {
   mark: Mark
+  /** §226. Вид по вердикту задания; нет — цвет типа замечания, как раньше. */
+  look?: FrameLook | null
   active: boolean
   selected?: boolean
   /** Отношение ширины страницы к высоте — нужно, чтобы ручки были квадратными. */
@@ -2087,6 +2202,11 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
 }) {
   if (mark.type === 'region') {
     const category = categoryOf(mark.category)
+    // §226. Рамка задания — цвет вердикта, заливки почти нет (её место — фото
+    // под рамкой), «не сверено» пунктиром. Выделенная рамка пунктиром и так.
+    const color = look?.color ?? category.color
+    const fillOpacity = look ? (active || selected ? 0.14 : 0.04) : (active || selected ? 0.24 : 0.14)
+    const dash = selected || look?.dashed ? '0.012 0.008' : undefined
     const rect = rectOverride ?? mark.rect
     const handleW = HANDLE_UNIT
     const handleH = HANDLE_UNIT * aspect
@@ -2112,9 +2232,11 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
       <rect
         data-testid={`region-${mark.id}`}
         x={rect.x} y={rect.y} width={rect.w} height={rect.h}
-        fill={category.color} fillOpacity={active || selected ? 0.24 : 0.14}
-        stroke={category.color} strokeWidth={active || selected ? 0.005 : 0.003}
-        strokeDasharray={selected ? '0.012 0.008' : undefined}
+        data-look={look?.verdict}
+        data-dashed={look?.dashed ? 'true' : undefined}
+        fill={color} fillOpacity={fillOpacity}
+        stroke={color} strokeWidth={active || selected ? 0.005 : 0.003}
+        strokeDasharray={dash}
         className={cn('transition-opacity', selected ? 'cursor-move' : 'cursor-pointer')}
         onPointerEnter={onActivate}
         onPointerDown={event => {
@@ -2127,7 +2249,7 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
         data-testid={`region-handle-${item.handle}`}
         x={item.x - handleW / 2} y={item.y - handleH / 2}
         width={handleW} height={handleH}
-        fill="#ffffff" stroke={category.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke"
+        fill="#ffffff" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke"
         className={HANDLE_CURSOR[item.handle]}
         onPointerDown={event => onBeginEdit?.('resize', item.handle, event)}
       />)}

@@ -15,6 +15,7 @@
 
 import { TASK_VERDICT_LABEL, type AiTaskRow, type AiTaskVerdict, type AiTasksSummary } from './aiHomeworkCheck'
 import type { GradeScale } from './topicHomework'
+import { plural } from './plural'
 
 /**
  * §214. Вердикт преподавателя — ПЯТЬ значений, у ИИ их по-прежнему четыре.
@@ -273,4 +274,47 @@ export function reviewTasksFromAi(tasks: readonly AiTaskRow[]): Array<Omit<Revie
     note: task.note || null,
     position: (index + 1) * 10,
   }))
+}
+
+/**
+ * §226. Сколько задание приносит в балл по формуле §180: верно — 1, частично —
+ * ½, неверно и «не решено» — 0. «Не сверено» — `null`: оно в балл не входит
+ * вовсе (§214), и писать ему ноль значило бы врать, что оно посчитано.
+ *
+ * Своих «максимумов по заданиям» в таблице нет — каждое весит одинаково.
+ * Поэтому справа в строке «1/1», «½/1», «0/1», «?/1», а не выдуманные «1/2».
+ */
+export function taskPoints(verdict: ReviewTaskVerdict): number | null {
+  if (verdict === 'correct') return 1
+  if (verdict === 'partial') return 0.5
+  if (verdict === 'unchecked') return null
+  return 0
+}
+
+/** «1», «½», «0», «?» — вклад задания в балл, как его печатать. */
+export function taskPointsText(verdict: ReviewTaskVerdict): string {
+  const points = taskPoints(verdict)
+  if (points == null) return '?'
+  return points === 0.5 ? '½' : String(points)
+}
+
+/**
+ * §226. Номера заданий, которые ещё не сверены, — для строки у балла
+ * («№6 ещё не сверено»). Порядок — как в таблице.
+ */
+export function uncheckedTaskNos(rows: readonly { no: string; verdict: ReviewTaskVerdict }[]): string[] {
+  return rows.filter(row => row.verdict === 'unchecked').map(row => row.no)
+}
+
+/**
+ * §226. Подпись к баллу про несверенные: «№6 ещё не сверено», «№3, 6 ещё не
+ * сверены», при пяти и больше — «5 заданий ещё не сверено» (список номеров в
+ * одной строке с полем балла не помещается). Пусто — `null`.
+ */
+export function uncheckedNote(nos: readonly string[]): string | null {
+  if (nos.length === 0) return null
+  if (nos.length === 1) return `№${nos[0]} ещё не сверено`
+  if (nos.length <= 4) return `№${nos.join(', ')} ещё не сверены`
+  const n = nos.length
+  return `${n} ${plural(n, 'задание', 'задания', 'заданий')} ещё не сверено`
 }

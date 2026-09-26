@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { HintNote } from '@/components/shared/HintNote'
 import { useAutoGrowTextarea } from '@/hooks/useAutoGrowTextarea'
-import { COMMENT_ROWS } from '@/lib/reviewCommentBox'
+import { BAR_COMMENT_ROWS, COMMENT_ROWS } from '@/lib/reviewCommentBox'
+import { uncheckedNote } from '@/lib/homeworkReviewTasks'
 import { rewriteCommentByTable } from '@/lib/rewriteComment'
 import {
   ATTEMPT_STATUS_TONE,
@@ -58,6 +59,8 @@ export function ReviewActions({
   disabledReason,
   canRewriteComment = false,
   columnLayout = false,
+  layout = 'form',
+  uncheckedNos,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -120,9 +123,20 @@ export function ReviewActions({
    * нет, и там форме нужен отступ сверху (`mt-3`), а в колонке он лишний.
    */
   columnLayout?: boolean
+  /**
+   * §226. `bar` — нижняя строка экрана проверки v2: «Балл [4] из 5 · №6 ещё
+   * не сверено», комментарий ученику, «Вернуть на доработку», «Принять · 4 б.».
+   * Логика формы та же самая, меняется только раскладка. `form` — прежний
+   * блок (карточка ученика на странице темы).
+   */
+  layout?: 'form' | 'bar'
+  /** §226. Номера заданий «не сверено» — подпись к баллу в строке `bar`. */
+  uncheckedNos?: readonly string[]
 }) {
   const [comment, setComment] = useState('')
-  const commentRef = useAutoGrowTextarea(comment)
+  // §226. В нижней строке поле растёт до четверти окна (на телефоне — до
+  // седьмой части), а не до 40 %: над ним фото работы.
+  const commentRef = useAutoGrowTextarea(comment, layout === 'bar' ? 'bar' : 'form')
   const [score, setScore] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -189,6 +203,166 @@ export function ReviewActions({
     } finally {
       setBusy(false)
     }
+  }
+
+  if (layout === 'bar') {
+    const pending = uncheckedNote(uncheckedNos ?? [])
+    const scoreDiffers = tableScore != null && scoreNum !== tableScore
+    return (
+      <div
+        data-testid="review-actions"
+        data-layout="bar"
+        className="space-y-2"
+      >
+        {/* Сообщения — строкой над полями: их не бывает большую часть времени. */}
+        {(disabledReason || rewriteError || error || suggestion != null) && (
+          <div className="space-y-2">
+            {disabledReason && (
+              <p
+                data-testid="review-blocked-reason"
+                className="rounded-lg bg-verdict-part-tint px-2.5 py-1.5 text-xs text-verdict-part-ink"
+              >
+                {disabledReason}
+              </p>
+            )}
+            {rewriteError && (
+              <div data-testid="review-rewrite-error" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+                {rewriteError}
+              </div>
+            )}
+            {suggestion != null && (
+              <div
+                data-testid="review-rewrite-suggestion"
+                className="max-h-48 overflow-y-auto rounded-xl bg-primary-50 p-2.5"
+              >
+                <div className="mb-1 text-xs font-semibold text-primary-900">Предложение по таблице</div>
+                <p data-testid="review-rewrite-suggestion-text" className="whitespace-pre-line text-sm text-graphite-900">
+                  {suggestion}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    data-testid="review-rewrite-apply"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => { setComment(suggestion); setSuggestion(null) }}
+                  >
+                    Вставить
+                  </Button>
+                  <Button
+                    data-testid="review-rewrite-cancel"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSuggestion(null)}
+                  >
+                    Отмена
+                  </Button>
+                </div>
+              </div>
+            )}
+            {error && <div className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">{error}</div>}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4">
+          {scoreMax != null && (
+            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 lg:h-10 lg:flex-nowrap">
+              <label htmlFor={`review-score-${attempt.id}`} className="text-[13px] font-medium text-graphite-900">Балл</label>
+              <input
+                id={`review-score-${attempt.id}`}
+                data-testid="review-score-input"
+                type="number"
+                value={score}
+                onChange={e => { setScoreByHand(true); setScore(e.target.value) }}
+                disabled={blocked}
+                aria-label={`Балл (0–${scoreMax})`}
+                min="0"
+                max={scoreMax}
+                className={cn(
+                  'h-10 w-16 rounded-lg border-[1.5px] bg-white px-2 text-center text-base font-semibold tabular-nums focus:border-primary-600 focus:outline-none',
+                  !scoreValid && score !== '' ? 'border-red-500' : 'border-graphite-300',
+                )}
+              />
+              <span className="text-sm text-graphite-500">
+                из {scoreMax}
+                {pending && <span data-testid="review-score-unchecked"> · {pending}</span>}
+              </span>
+              {/* §212. Рекомендация таблицы — только когда число уже другое:
+                  пока совпадает, она и так стоит в поле. */}
+              {scoreDiffers && (
+                <span data-testid="review-score-from-table" className="text-xs text-graphite-500">
+                  рекомендуемый балл <b className="font-semibold text-graphite-900">{tableScore}</b>
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={commentRef}
+              data-testid="review-comment-input"
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              disabled={blocked}
+              placeholder="Комментарий ученику (обязателен при возврате)"
+              aria-label="Комментарий к работе"
+              rows={BAR_COMMENT_ROWS}
+              className={cn(
+                'block w-full resize-y rounded-lg border-[1.5px] border-graphite-300 bg-white px-3 py-2 text-sm leading-snug focus:border-primary-600 focus:outline-none',
+                canRewriteComment && !blocked && 'pr-10',
+              )}
+            />
+            {/*
+              §213. «Переписать по таблице» — значком в углу поля: действие
+              про это поле и живёт в нём. Подпись — в подсказке и для
+              читалки, «Пишу…» — пока модель пишет.
+            */}
+            {canRewriteComment && !blocked && (
+              <button
+                type="button"
+                data-testid="review-rewrite-button"
+                onClick={() => { void rewriteComment() }}
+                disabled={rewriting}
+                title="Переписать комментарий по исправленной таблице заданий"
+                aria-label={rewriting ? 'Пишу…' : 'Переписать по таблице'}
+                className="absolute right-1.5 top-1.5 inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-full px-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-50 disabled:opacity-70"
+              >
+                {rewriting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {rewriting && 'Пишу…'}
+              </button>
+            )}
+          </div>
+
+          <div data-testid="review-decision-row" className="flex shrink-0 flex-wrap items-center gap-2 lg:h-10 lg:flex-nowrap">
+            {hint && (
+              <HintNote label="Что делает решение по работе" testId="review-hint" lines={[hint]} />
+            )}
+            <Button
+              data-testid="review-return-button"
+              variant="secondary"
+              onClick={() => run('returned_for_revision')}
+              disabled={busy || !canReturn}
+              title={blocked ? disabledReason ?? undefined : canReturn ? undefined : 'Напишите, что исправить'}
+              className="flex-1 whitespace-nowrap px-3 text-sm lg:flex-none lg:px-4"
+            >
+              Вернуть на доработку
+            </Button>
+            <Button
+              data-testid="review-accept-button"
+              variant="primary"
+              onClick={() => run('accepted')}
+              loading={busy}
+              disabled={busy || !canAccept}
+              className="flex-1 whitespace-nowrap px-3 text-sm lg:flex-none lg:px-5"
+            >
+              {scoreMax != null && scoreNum != null && scoreValid ? `Принять · ${scoreNum} б.` : 'Принять'}
+            </Button>
+          </div>
+        </div>
+        {scoreMax != null && !scoreValid && score !== '' && (
+          <p className="text-xs text-red-600">Введите число от 0 до {scoreMax}</p>
+        )}
+      </div>
+    )
   }
 
   return (
