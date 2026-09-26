@@ -2,7 +2,7 @@
 # §231. Пробы прав на mock_exams / mock_exam_results на ЛОКАЛЬНОМ Postgres 16 (не прод).
 # Кластер: initdb + pg_ctl -o "-p 5451 -k /var/tmp/pg231" (под пользователем postgres).
 # Слепок и данные — ровно цепочка §229 (../mock_exam_variants_229/run.sh: слепок §221/§224/§228 +
-# ПРИМЕНЁННЫЕ тексты миграций §218–§229), затем PENDING_231.sql ДВАЖДЫ (повторный прогон без ошибок),
+# ПРИМЕНЁННЫЕ тексты миграций §218–§229), затем 20260926220159_mock_exam_rights.sql ДВАЖДЫ (повторный прогон без ошибок),
 # данные §231 и пробы. Вывод последнего прогона — probes.out рядом.
 H=${PGHOST_231:-/var/tmp/pg231}; PT=${PGPORT_231:-5451}
 P="psql -h $H -p $PT -U postgres -q"
@@ -30,5 +30,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S221/05_slice_219.sql && $Q -f $S221/06b_slic
  && $Q -f $R/20260926182241_mock_exam_variants.sql 2>/dev/null \
  && $Q -f $S229/10_data_229.sql \
  && $Q -f $S/10_data_231.sql \
- && $Q -f $R/PENDING_231.sql && $Q -f $R/PENDING_231.sql && echo "PENDING_231 applied twice: ok" \
+ && $Q -f $R/20260926220159_mock_exam_rights.sql && $Q -f $R/20260926220159_mock_exam_rights.sql && echo "231 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe231 -f $S/20_probes.sql
