@@ -1,4 +1,4 @@
-psql:/home/claude/agents/a228/repo/supabase/migrations/PENDING_228.sql:84: NOTICE:  trigger "mock_exams_group_change_guard" for relation "public.mock_exams" does not exist, skipping
+psql:/home/claude/agents/a228/repo/supabase/migrations/20260926125435_mock_exams_group_change_guard.sql:84: NOTICE:  trigger "mock_exams_group_change_guard" for relation "public.mock_exams" does not exist, skipping
 PENDING_228 applied twice: ok
 =================== R. ЧТЕНИЕ РАБОТЫ УЧЕНИКА (экран проверки §228) ===================
 --- R1. учитель группы: бланки с ответами, фото, ключ — видит все (то, что читает экран проверки)
