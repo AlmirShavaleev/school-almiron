@@ -16,7 +16,6 @@ vi.mock('@/hooks/useMockExams', () => ({ useMockExams: () => ({ exams: EXAMS, my
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: { id: 'p', role: 'teacher' } }),
 }))
-vi.mock('@/components/modals/CreateMockExamModal', () => ({ CreateMockExamModal: () => null }))
 
 import { MockExamsPage } from '@/pages/MockExamsPage'
 

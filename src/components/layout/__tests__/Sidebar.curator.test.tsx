@@ -79,6 +79,13 @@ describe('Sidebar: вход в кураторство', () => {
     expect(screen.getByText('Мой кабинет')).toBeInTheDocument()
   })
 
+  it('§228: у ученика есть пункт «Пробники» — все его пробники, а не список итогов', async () => {
+    renderSidebar()
+
+    const item = (await screen.findByText('Пробники')).closest('a')
+    expect(item).toHaveAttribute('href', '/my-mock-exams')
+  })
+
   it('обычному ученику раздела нет', async () => {
     renderSidebar()
 

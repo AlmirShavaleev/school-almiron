@@ -65,13 +65,20 @@ const TOT_STICKY = ['sm:sticky sm:right-[144px]', 'sm:sticky sm:right-[100px]'] 
 /** Граница частей — вертикальная линия, как в макете. */
 const PART_LINE = 'border-l-[1.5px] border-l-graphite-300'
 
-export function MockExamGridPage() {
+/**
+ * §228. Та же таблица — вкладка «Таблица баллов» страницы пробника
+ * (`embedded`): без своих крошек и заголовка (они у страницы) и без монитора
+ * §224 (он на вкладке «Работы»). Логика таблицы не меняется; `onChanged`
+ * говорит странице, что баллы или отправка изменились, — чтобы статус и
+ * «Работы» не показывали устаревшее.
+ */
+export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void } = {}) {
   const { id } = useParams<{ id: string }>()
   const { exam, students, points, auto, works, gradeNote, results, resultsError, loading, error, save, notify, refreshWorks } = useMockExamGrid(id)
   const lesson = exam?.lesson ?? null
   // §224. Монитор: опрос раз в 20 с, пока окно не закрыто + 15 мин; вместе с
   // ним — фото (ссылки на страницы работ).
-  const { live, offset: liveOffset } = useMockExamLive(exam?.id, lesson, refreshWorks)
+  const { live, offset: liveOffset } = useMockExamLive(embedded ? undefined : exam?.id, lesson, refreshWorks)
   const template = exam?.template ?? null
   const maxPts = template?.max_points ?? []
   const p1End = template?.part1_last ?? 0
@@ -207,6 +214,7 @@ export function MockExamGridPage() {
     setReport(null)
     setGrid(null)
     setConfirmAll(false)
+    onChanged?.()
     setStatus({ kind: 'ok', text: 'Сохранено. Ученики ничего не получили — это черновик. Отправить результат: «Уведомить» в строке или «Уведомить всех» под таблицей.' })
   }
 
@@ -217,6 +225,7 @@ export function MockExamGridPage() {
     setSending(null)
     setConfirmAll(false)
     if (err) { setStatus({ kind: 'error', text: `Не отправлено: ${err}` }); return }
+    onChanged?.()
     setStatus({ kind: 'ok', text: sentText(summary, target === 'all' ? null : students.find(s => s.id === target)?.name ?? null) })
   }
 
@@ -238,7 +247,7 @@ export function MockExamGridPage() {
   // таблицей: сначала вывод. Когда всё закрыто, главное — проверка, и блок
   // работ уходит под таблицу, как было в §221.
   const monitorOnTop = !!lesson && livePhase(lesson, Date.now() + liveOffset) !== 'ended'
-  const monitor = lesson ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End} /> : null
+  const monitor = lesson && !embedded ? <LiveMonitor lesson={lesson} students={students} works={works} live={live} offset={liveOffset} part1Last={p1End} /> : null
   // §227. Вывод над таблицей — из тех же итогов и «набрано по номеру», что в таблице.
   const summary = gridSummary({ totals, stats, roster: roster.length, maxPrimary, hasScale: !!template.score_scale?.length, lessonOpen: monitorOnTop })
   // «Как вставить из Excel»: пустая таблица — открыто само (раньше текст стоял всегда), дальше — по кнопке.
@@ -262,20 +271,22 @@ export function MockExamGridPage() {
     <div className="space-y-5" data-testid="mock-exam-grid-page">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 lg:flex-nowrap">
         <div className="min-w-0 max-w-[660px] space-y-2 lg:flex-1">
+          {!embedded && <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-graphite-500">
             <span className="min-w-0">
               <Link to="/mock-exams" className="hover:text-primary-700 hover:underline">Пробники</Link>
               {' · '}{exam.groupName ?? 'группа'}{' · '}{template.title}
             </span>
-            <Link to={`/mock-exams/${exam.id}/setup`} data-testid="mock-grid-setup-link"
+            <Link to={`/mock-exams/${exam.id}?tab=setup`} data-testid="mock-grid-setup-link"
               className="inline-flex items-center gap-1 text-graphite-600 underline decoration-graphite-300 underline-offset-[3px] hover:text-primary-700 hover:decoration-primary-400">
               <Settings2 size={13} aria-hidden />{lesson ? 'Онлайн: ключ и файлы' : 'Настройка'}
             </Link>
           </div>
           <h1 className="text-2xl font-semibold leading-tight text-graphite-900 [text-wrap:balance] sm:text-[28px]">{exam.title} · {examDay(exam.date)}</h1>
+          </>}
           <p className="text-base leading-normal text-graphite-900 [text-wrap:pretty] sm:text-[17px]" data-testid="mock-grid-summary">{summary}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:pt-7">
+        <div className={cn('flex flex-wrap items-center gap-2 lg:shrink-0', !embedded && 'lg:pt-7')}>
           <Button variant="secondary" onClick={openPasteHelp} aria-expanded={helpOpen} data-testid="mock-grid-paste-button">
             <ClipboardPaste size={15} aria-hidden />Вставить из Excel
           </Button>

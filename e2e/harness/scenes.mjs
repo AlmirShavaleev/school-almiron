@@ -1,4 +1,4 @@
-import { D227, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -729,6 +729,33 @@ export const scenes = [
       actions: [{ wait: 1800 }, { eval: `(() => { const i = document.getElementById('mx-c-4-14'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '1'); i.dispatchEvent(new Event('input', { bubbles: true })) })()` }, { wait: 400 }] },
     { persona: 'owner', name: 'd227-notify-confirm', url: `/mock-exams/${D227.grid}`, width, height, full: false,
       actions: [{ wait: 1800 }, { clickSel: '[data-testid="mock-grid-notify-all"]' }, { wait: 400 }] },
+  ]),
+
+  // ── §228: пробник v3 — макет МАКЕТ-ПРОБНИК-V3.html, экраны 1–4 ──
+  // Форма «Новый пробник» заполняется действиями (название, две группы, дата,
+  // время, условие, ключ вставкой строки из Excel) — ничего не отправляется.
+  // Страница пробника (вкладки), проверка работы «ждёт проверки», «Работы» во
+  // время окна (11Б, монитор §224); ученик — пункт «Пробники» и результат.
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd228-new', url: '/mock-exams/new', width, height, actions: [
+      { wait: 1200 },
+      { fill: ['[data-testid="mock-form-title"]', 'Пробник №7'] },
+      { clickSel: '[data-testid="mock-form-group-chip"]:has-text("11А профиль")' },
+      { clickSel: '[data-testid="mock-form-group-chip"]:has-text("11Б")' },
+      { fill: ['[data-testid="mock-form-date"]', '2026-10-10'] },
+      { fill: ['[data-testid="mock-form-time"]', '10:00'] },
+      { chooseFiles: { clickSel: '[data-testid="mock-form-file-condition"]', files: ['doc.pdf'] } },
+      { eval: `(() => { const i = document.querySelector('[data-testid="mock-form-key-input"]'); if (!i) return; const dt = new DataTransfer(); dt.setData('text/plain', '0,25\t-3\t8\t4\t17\t0,6\t112\t0,8\t\t5,5\t3\t-1'); i.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })) })()` },
+      { wait: 400 }, { scroll: 0 },
+    ] },
+    { persona: 'owner', name: 'd228-page-works', url: `/mock-exams/${D228.done}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'owner', name: 'd228-page-table', url: `/mock-exams/${D228.done}?tab=table`, width, height, actions: [{ wait: 1800 }], full: false },
+    { persona: 'owner', name: 'd228-page-setup', url: `/mock-exams/${D228.done}?tab=setup`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'owner', name: 'd228-review', url: `/mock-exams/${D228.done}/review/${D228.garipov}`, width, height, actions: [{ wait: 1800 }], full: false },
+    { persona: 'owner', name: 'd228-review-full', url: `/mock-exams/${D228.done}/review/${D228.garipov}`, width, height, actions: [{ wait: 1800 }, { clickSel: '[data-task-row="16"]' }, { wait: 300 }] },
+    { persona: 'owner', name: 'd228-live-works', url: `/mock-exams/${LIVE.run}`, width, height, actions: [{ wait: 1800 }] },
+    { persona: 'student', name: 's228-my-mocks', url: '/my-mock-exams', width, height, actions: [{ wait: 1800 }] },
+    { persona: 'student', name: 's228-result', url: `/my-course/${LESSON.group}/mock/${LESSON.res}`, width, height, actions: [{ wait: 1800 }] },
   ]),
 
   // ── 360 narrow check on the densest screens ──

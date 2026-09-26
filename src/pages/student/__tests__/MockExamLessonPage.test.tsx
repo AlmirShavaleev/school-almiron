@@ -174,7 +174,15 @@ describe('результат', () => {
     }
     mount()
     await waitFor(() => expect(screen.getByTestId('mock-lesson-result')).toBeInTheDocument())
-    expect(screen.getByText('первичный из 32')).toBeInTheDocument()
+    // §228: итог крупно (без таблицы перевода — первичный) и строка «первичный · части».
+    expect(screen.getByTestId('mock-lesson-big')).toHaveTextContent('18')
+    expect(screen.getByTestId('mock-lesson-primary')).toHaveTextContent('Первичный 18 из 32 · часть 1: 10 из 12 · часть 2: 8 из 20')
+    // «По номерам» — метки формой: 12 + 7 номеров; №9 и №11 — ноль, №18 — ноль, №14 — частично.
+    const marks = screen.getByTestId('mock-lesson-marks').querySelectorAll('[data-mark]')
+    expect(marks).toHaveLength(19)
+    expect(marks[8].getAttribute('data-mark')).toBe('bad')
+    expect(marks[13].getAttribute('data-mark')).toBe('part')
+    expect(marks[12].getAttribute('data-mark')).toBe('ok')
     expect(screen.getByTestId('mock-lesson-part1').querySelectorAll('tbody tr')).toHaveLength(12)
     expect(screen.getByTestId('mock-lesson-part2').querySelectorAll('tbody tr')).toHaveLength(7)
     expect(screen.getByTestId('mock-lesson-solution')).toBeInTheDocument()

@@ -4,7 +4,7 @@
  * «Таблица», «Добавить пробник» — с подставленной группой.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const min = 60_000
@@ -53,17 +53,18 @@ describe('CourseMockExamsSection', () => {
     expect(rows.map(r => r.getAttribute('data-kind'))).toEqual(['now', 'upcoming', 'unscheduled', 'past'])
     expect(rows[0]).toHaveTextContent(/идёт · до \d\d:\d\d/)
     expect(rows[2]).toHaveTextContent('время не назначено — ученики не видят')
-    expect(within(rows[0]).getByText('Настройка').closest('a')).toHaveAttribute('href', '/mock-exams/run/setup')
-    expect(within(rows[0]).getByText('Таблица').closest('a')).toHaveAttribute('href', '/mock-exams/run')
+    // §228: вкладки страницы пробника; название ведёт на саму страницу.
+    expect(within(rows[0]).getByText('Настройка').closest('a')).toHaveAttribute('href', '/mock-exams/run?tab=setup')
+    expect(within(rows[0]).getByText('Таблица').closest('a')).toHaveAttribute('href', '/mock-exams/run?tab=table')
+    expect(within(rows[0]).getByText('Пробник №3').closest('a')).toHaveAttribute('href', '/mock-exams/run')
     // Без шаблона таблицы по номерам нет — и ссылки нет.
     expect(within(rows[2]).queryByText('Таблица')).toBeNull()
   })
 
   it('«Добавить пробник» открывает создание с подставленной группой', async () => {
+    // §228: вместо модалки — форма «Новый пробник» на своей странице; группа — в адресе
+    // (подстановку в чипах проверяет MockExamForm.test).
     render(<MemoryRouter><CourseMockExamsSection groupId="g-11a" groupName="11А" /></MemoryRouter>)
-    fireEvent.click(await screen.findByTestId('course-mock-add'))
-    const group = await screen.findByLabelText('Группа') as HTMLSelectElement
-    expect(group.value).toBe('g-11a')
-    expect(within(group).getByRole('option', { name: '11А' })).toBeInTheDocument()
+    expect(await screen.findByTestId('course-mock-add')).toHaveAttribute('href', '/mock-exams/new?group=g-11a')
   })
 })

@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { lazyPage } from '@/lib/lazyPage'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
@@ -30,8 +30,10 @@ const TeacherDetailPage = lazyPage('TeacherDetailPage', () => import('@/pages/Te
 const LessonDetailPage = lazyPage('LessonDetailPage', () => import('@/pages/LessonDetailPage').then(m => ({ default: m.LessonDetailPage })))
 const StudentJournalPage = lazyPage('StudentJournalPage', () => import('@/pages/StudentJournalPage').then(m => ({ default: m.StudentJournalPage })))
 const MockExamsPage = lazyPage('MockExamsPage', () => import('@/pages/MockExamsPage').then(m => ({ default: m.MockExamsPage })))
-const MockExamGridPage = lazyPage('MockExamGridPage', () => import('@/pages/MockExamGridPage').then(m => ({ default: m.MockExamGridPage })))
-const MockExamSetupPage = lazyPage('MockExamSetupPage', () => import('@/pages/MockExamSetupPage').then(m => ({ default: m.MockExamSetupPage })))
+const MockExamPage = lazyPage('MockExamPage', () => import('@/pages/MockExamPage').then(m => ({ default: m.MockExamPage })))
+const MockExamNewPage = lazyPage('MockExamNewPage', () => import('@/pages/MockExamNewPage').then(m => ({ default: m.MockExamNewPage })))
+const MockExamReviewPage = lazyPage('MockExamReviewPage', () => import('@/pages/MockExamReviewPage').then(m => ({ default: m.MockExamReviewPage })))
+const MyMockExamsPage = lazyPage('MyMockExamsPage', () => import('@/pages/student/MyMockExamsPage').then(m => ({ default: m.MyMockExamsPage })))
 const MockExamLessonPage = lazyPage('MockExamLessonPage', () => import('@/pages/student/MockExamLessonPage').then(m => ({ default: m.MockExamLessonPage })))
 const MockExamTemplatesPage = lazyPage('MockExamTemplatesPage', () => import('@/pages/MockExamTemplatesPage').then(m => ({ default: m.MockExamTemplatesPage })))
 const SettingsPage = lazyPage('SettingsPage', () => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
@@ -72,6 +74,12 @@ const MyHomeworksV2Page = lazyPage('MyHomeworksV2Page', () => import('@/pages/st
 const HomeworkTemplateBuilderPage = lazyPage('HomeworkTemplateBuilderPage', () => import('@/pages/teacher/HomeworkTemplateBuilderPage').then(m => ({ default: m.HomeworkTemplateBuilderPage })))
 const TestBankPage = lazyPage('TestBankPage', () => import('@/pages/TestBankPage').then(m => ({ default: m.TestBankPage })))
 const TestBankTestPage = lazyPage('TestBankTestPage', () => import('@/pages/TestBankTestPage').then(m => ({ default: m.TestBankTestPage })))
+
+/** §228. `/mock-exams/:id/setup` (§221) → вкладка «Настройка» страницы пробника. */
+function LegacySetupRedirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/mock-exams/${id}?tab=setup`} replace />
+}
 
 /**
  * Заглушка на время подгрузки чанка страницы. Намеренно скромная и без
@@ -190,8 +198,15 @@ export default function AppRoutes() {
             `templates` бьёт динамический `:id` по рангу маршрута. Ученику —
             нет: читать результаты пробников ему не дают и права в базе. */}
         <Route path="/mock-exams/templates" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamTemplatesPage /></RoleGuard>} />
-        <Route path="/mock-exams/:id" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamGridPage /></RoleGuard>} />
-        <Route path="/mock-exams/:id/setup" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamSetupPage /></RoleGuard>} />
+        {/* §228. Пробник — одна страница со статусом и вкладками «Работы /
+            Таблица баллов / Настройка» (таблица §218 — вкладка), «Новый
+            пробник» — одна форма, проверка работы ученика — свой экран.
+            Старые адреса `/:id/setup` (§221) ведут во вкладку «Настройка»:
+            на них ссылаются уведомления и закладки. */}
+        <Route path="/mock-exams/new" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamNewPage /></RoleGuard>} />
+        <Route path="/mock-exams/:id" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamPage /></RoleGuard>} />
+        <Route path="/mock-exams/:id/setup" element={<RoleGuard allow={['teacher','admin','owner']}><LegacySetupRedirect /></RoleGuard>} />
+        <Route path="/mock-exams/:id/review/:studentId" element={<RoleGuard allow={['teacher','admin','owner']}><MockExamReviewPage /></RoleGuard>} />
 
         {/* Обёртка каталога — режим подбора задач к уроку (§164). Вне режима не
             рисует ничего; страницы каталога о нём не знают. */}
@@ -258,6 +273,8 @@ export default function AppRoutes() {
         <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
+        {/* §228. «Пробники» ученика — все пробники по всем его группам. */}
+        <Route path="/my-mock-exams" element={<RoleGuard allow={['student']} preview="stub"><MyMockExamsPage /></RoleGuard>} />
         <Route path="/my-course/:groupId/mock/:examId" element={<RoleGuard allow={['student']} preview="stub"><MockExamLessonPage /></RoleGuard>} />
         {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт).
             В предпросмотре — заглушка: здесь личные работы ученика. */}

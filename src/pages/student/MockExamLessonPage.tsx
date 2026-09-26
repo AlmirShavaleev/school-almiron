@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Camera, Clock, FileText, Images, Loader2, Lock, Send, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -12,6 +12,10 @@ import {
   type MockLessonPhoto, type MockLessonResult, type MockLessonState, type MockLessonStatus,
 } from '@/lib/mockExamLesson'
 import { cn } from '@/utils/cn'
+import { VerdictMark } from '@/components/ui/VerdictMark'
+import { useMyMockExams } from '@/hooks/useMyMockExams'
+import { deltaToPrevious, taskMark } from '@/lib/mockExamV3'
+import { fileNameFromStoragePath } from '@/lib/storage'
 
 /**
  * §221. Пробник в курсе глазами ученика — по макету `МАКЕТ-ОНЛАЙН-ПРОБНИКА.html`
@@ -74,7 +78,7 @@ export function MockExamLessonPage() {
       {status === 'open' && <TimerPanel state={state} now={now} />}
       {(status === 'submitted' || status === 'time_up') && <ClosedNote state={state} status={status} />}
       {(status === 'checking' || status === 'missed') && <CheckingNote status={status} />}
-      {status === 'result' && result?.status === 'ready' && <ResultPanels result={result} state={state} />}
+      {status === 'result' && result?.status === 'ready' && <ResultPanels result={result} state={state} groupId={groupId} />}
 
       {status !== 'upcoming' && status !== 'result' && state.condition_path && (
         <Panel>
@@ -121,9 +125,11 @@ function useServerNow(offset: number): number {
 }
 
 function BackLink({ groupId }: { groupId?: string }) {
+  // §228: пришли из пункта меню «Пробники» — туда и назад.
+  const fromList = (useLocation().state as { from?: string } | null)?.from === 'my-mock-exams'
   return (
-    <Link to={groupId ? `/my-course/${groupId}` : '/my-course'} className="inline-flex items-center gap-1 text-xs uppercase tracking-wider text-graphite-500 hover:text-primary-700">
-      <ArrowLeft size={12} />Программа курса
+    <Link to={fromList ? '/my-mock-exams' : groupId ? `/my-course/${groupId}` : '/my-course'} className="inline-flex items-center gap-1 text-[13px] text-graphite-500 hover:text-primary-700">
+      <ArrowLeft size={13} />{fromList ? 'Пробники' : 'Программа курса'}
     </Link>
   )
 }
@@ -429,46 +435,82 @@ function SubmitPanel({ state, onSubmit, onClosed }: {
   )
 }
 
-function ResultPanels({ result, state }: { result: Extract<MockLessonResult, { status: 'ready' }>; state: MockLessonState }) {
+/**
+ * §228. Результат у ученика — по макету v3 (экран 4, справа): крупно итог
+ * (тестовый, если есть таблица перевода), строка «первичный · части», разница
+ * с прошлым пробником той же группы; «По номерам» — метками `VerdictMark`
+ * (форма, не только цвет); ниже ответы первой части рядом с верными и баллы
+ * второй; файлы — решение и свои фото (пометок на фото в этом шаге нет).
+ */
+function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonResult, { status: 'ready' }>; state: MockLessonState; groupId?: string }) {
   const part1 = result.tasks.filter(t => t.n <= result.part1_last)
   const part2 = result.tasks.filter(t => t.n > result.part1_last)
   const p1max = part1.reduce((a, t) => a + t.max, 0)
   const p2max = part2.reduce((a, t) => a + t.max, 0)
   const primaryMax = p1max + p2max
   const hasScale = result.max_score != null && result.max_score !== primaryMax
+  const mine = useMyMockExams(groupId ? [groupId] : [])
+  const list = (groupId ? mine[groupId] ?? [] : []).map(e => ({ ...e, group: groupId! }))
+  const delta = deltaToPrevious(list, state.id)
+  const prevTitle = delta != null
+    ? list.filter(e => e.id !== state.id && e.score != null && e.starts_at < (state.starts_at ?? '')).sort((a, b) => b.starts_at.localeCompare(a.starts_at))[0]?.title
+    : null
   return (
-    <div className="space-y-4" data-testid="mock-lesson-result">
+    <div className="space-y-3.5" data-testid="mock-lesson-result">
       <Panel>
-        <h3 className="mb-2 text-xs uppercase tracking-wider text-graphite-500">Результат</h3>
-        <div className="flex flex-wrap gap-7">
-          <Kpi value={result.primary_score} label={`первичный из ${primaryMax}`} />
-          {hasScale && <Kpi value={result.score} label={`тестовый из ${result.max_score}`} />}
-          <Kpi value={result.part1_score} label={`часть 1 из ${p1max}`} />
-          <Kpi value={result.part2_score} label={`часть 2 из ${p2max}`} />
+        <div className="flex flex-wrap items-baseline gap-x-2.5">
+          <span className="text-[34px] font-extrabold leading-none tracking-[-.02em] text-graphite-900" data-testid="mock-lesson-big">{hasScale ? result.score ?? '—' : result.primary_score ?? '—'}</span>
+          <span className="text-graphite-500">{hasScale ? `тестовых из ${result.max_score}` : `первичных из ${primaryMax}`}</span>
         </div>
-        <p className="mt-2.5 text-sm text-graphite-600">
+        <p className="mt-2 text-sm text-graphite-900" data-testid="mock-lesson-primary">
+          Первичный {result.primary_score ?? '—'} из {primaryMax} · часть 1: {result.part1_score ?? '—'} из {p1max} · часть 2: {result.part2_score ?? '—'} из {p2max}
+        </p>
+        {delta != null && delta !== 0 && (
+          <p className={cn('mt-1 text-sm font-bold', delta > 0 ? 'text-verdict-ok-ink' : 'text-verdict-bad-ink')} data-testid="mock-lesson-delta">
+            {delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`} к {prevTitle ? `«${prevTitle}»` : 'прошлому пробнику'}
+          </p>
+        )}
+        <p className="mt-2 text-[13px] text-graphite-500">
           Проверил преподаватель {mskDayLong(result.notified_at)}.
           {!hasScale && ' Тестовый балл появится, когда будет внесена таблица перевода на этот год.'}
         </p>
       </Panel>
-      <div className="grid gap-4 md:grid-cols-2">
+      <Panel>
+        <h3 className="mb-2.5 text-[15px] font-bold text-graphite-900">По номерам</h3>
+        <div className="grid grid-cols-10 gap-x-1 gap-y-1.5 text-center" data-testid="mock-lesson-marks">
+          {result.tasks.map(t => (
+            <div key={t.n} className="flex flex-col items-center gap-0.5 text-[13px] text-graphite-500 sm:text-xs" data-mark={taskMark(t.points, t.max)}>
+              {t.n}
+              <VerdictMark state={t.points == null ? 'none' : taskMark(t.points, t.max)} size={20} label={`№${t.n}: ${t.points ?? '—'} из ${t.max}`} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-2.5 flex flex-wrap gap-3.5 text-[13px] text-graphite-500 sm:text-xs">
+          <span className="inline-flex items-center gap-1.5"><VerdictMark state="ok" size={16} label={null} />полный</span>
+          <span className="inline-flex items-center gap-1.5"><VerdictMark state="part" size={16} label={null} />частично</span>
+          <span className="inline-flex items-center gap-1.5"><VerdictMark state="bad" size={16} label={null} />0</span>
+        </div>
+      </Panel>
+      <div className="grid gap-3.5 md:grid-cols-2">
         <Panel>
-          <h3 className="mb-2 text-xs uppercase tracking-wider text-graphite-500">Часть 1</h3>
+          <h3 className="mb-2 text-[15px] font-bold text-graphite-900">Часть 1 — ответы</h3>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm" data-testid="mock-lesson-part1">
-              <thead><tr className="text-left text-[11px] uppercase tracking-wider text-graphite-500">
-                <th className="border-b border-slate-200 px-2 py-1.5 font-normal">№</th>
-                <th className="border-b border-slate-200 px-2 py-1.5 font-normal">Твой ответ</th>
-                <th className="border-b border-slate-200 px-2 py-1.5 font-normal">Верный</th>
-                <th className="border-b border-slate-200 px-2 py-1.5 text-right font-normal">Балл</th>
+              <thead><tr className="text-left text-xs font-semibold uppercase tracking-[.04em] text-graphite-500">
+                <th className="border-b border-graphite-200 px-2 py-1.5">№</th>
+                <th className="border-b border-graphite-200 px-2 py-1.5">Твой ответ</th>
+                <th className="border-b border-graphite-200 px-2 py-1.5">Верный</th>
+                <th className="border-b border-graphite-200 px-2 py-1.5 text-right">Балл</th>
               </tr></thead>
               <tbody>
                 {part1.map(t => (
                   <tr key={t.n}>
-                    <td className="border-b border-slate-100 px-2 py-1.5">{t.n}</td>
-                    <td className="border-b border-slate-100 px-2 py-1.5 font-mono">{t.answer || '—'}</td>
-                    <td className="border-b border-slate-100 px-2 py-1.5 font-mono">{t.correct ?? '—'}</td>
-                    <td className={cn('border-b border-slate-100 px-2 py-1.5 text-right font-mono', (t.points ?? 0) > 0 ? 'text-emerald-700' : 'text-red-700')}>{t.points ?? '—'}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5">{t.n}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5 font-mono">{t.answer || '—'}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5 font-mono">{t.correct ?? '—'}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5 text-right">
+                      <span className="inline-flex items-center gap-1.5 font-mono">{t.points ?? '—'}<VerdictMark state={t.points == null ? 'none' : taskMark(t.points, t.max)} size={14} label={null} /></span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -476,55 +518,49 @@ function ResultPanels({ result, state }: { result: Extract<MockLessonResult, { s
           </div>
         </Panel>
         <Panel>
-          <h3 className="mb-2 text-xs uppercase tracking-wider text-graphite-500">Часть 2</h3>
+          <h3 className="mb-2 text-[15px] font-bold text-graphite-900">Часть 2</h3>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm" data-testid="mock-lesson-part2">
-              <thead><tr className="text-left text-[11px] uppercase tracking-wider text-graphite-500">
-                <th className="border-b border-slate-200 px-2 py-1.5 font-normal">№</th>
-                <th className="border-b border-slate-200 px-2 py-1.5 text-right font-normal">Балл</th>
-                <th className="border-b border-slate-200 px-2 py-1.5 text-right font-normal">Максимум</th>
+              <thead><tr className="text-left text-xs font-semibold uppercase tracking-[.04em] text-graphite-500">
+                <th className="border-b border-graphite-200 px-2 py-1.5">№</th>
+                <th className="border-b border-graphite-200 px-2 py-1.5 text-right">Балл</th>
+                <th className="border-b border-graphite-200 px-2 py-1.5 text-right">Максимум</th>
               </tr></thead>
               <tbody>
                 {part2.map(t => (
                   <tr key={t.n}>
-                    <td className="border-b border-slate-100 px-2 py-1.5">{t.n}</td>
-                    <td className="border-b border-slate-100 px-2 py-1.5 text-right font-mono">{t.points ?? '—'}</td>
-                    <td className="border-b border-slate-100 px-2 py-1.5 text-right font-mono">{t.max}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5">{t.n}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5 text-right font-mono">{t.points ?? '—'}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1.5 text-right font-mono">{t.max}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {result.solution_path && (
-              <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={result.solution_path} sensitive className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-50">
-                <span data-testid="mock-lesson-solution" className="inline-flex items-center gap-1.5"><FileText size={15} />Открыть решение (PDF)</span>
-              </SignedFileLink>
-            )}
-          </div>
+        </Panel>
+      </div>
+      <Panel>
+        <h3 className="mb-2 text-[15px] font-bold text-graphite-900">Файлы</h3>
+        <div className="flex flex-col gap-2">
+          {result.solution_path ? (
+            <SignedFileLink bucket={MOCK_EXAMS_BUCKET} url={result.solution_path} sensitive className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:underline">
+              <span data-testid="mock-lesson-solution" className="inline-flex items-center gap-1.5"><FileText size={15} />Решение · {fileNameFromStoragePath(result.solution_path).replace(/^\d+_/, '')}</span>
+            </SignedFileLink>
+          ) : <span className="text-sm text-graphite-500">Решение преподаватель ещё не загрузил.</span>}
           {state.photos.length > 0 && (
-            <div className="mt-3">
-              <p className="mb-1.5 inline-flex items-center gap-1 text-xs uppercase tracking-wider text-graphite-500"><Images size={13} />Мои фото</p>
+            <div>
+              <p className="mb-1.5 inline-flex items-center gap-1 text-sm font-semibold text-graphite-900"><Images size={14} />Мои фото · {state.photos.length}</p>
               <div className="flex flex-wrap gap-2">
                 {state.photos.map((p, i) => (
                   <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} className="block">
-                    <SignedImage bucket={MOCK_EXAMS_BUCKET} path={p.storage_path} alt={`Страница ${i + 1}`} className="h-[80px] w-[62px] rounded border border-slate-200 object-cover" />
+                    <SignedImage bucket={MOCK_EXAMS_BUCKET} path={p.storage_path} alt={`Страница ${i + 1}`} className="h-[80px] w-[62px] rounded border border-graphite-200 object-cover" />
                   </SignedFileLink>
                 ))}
               </div>
             </div>
           )}
-        </Panel>
-      </div>
-    </div>
-  )
-}
-
-function Kpi({ value, label }: { value: number | null; label: string }) {
-  return (
-    <div>
-      <b className="block font-mono text-[28px] leading-tight text-graphite-900">{value ?? '—'}</b>
-      <span className="text-xs text-graphite-500">{label}</span>
+        </div>
+      </Panel>
     </div>
   )
 }

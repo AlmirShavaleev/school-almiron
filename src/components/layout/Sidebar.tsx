@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, TrendingUp, ListChecks,
   Send,
-  LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images,
+  LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer,
 } from 'lucide-react'
 
 interface NavItem {
@@ -38,7 +38,10 @@ const navItems: NavItem[] = [
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Домашние задания',  path: '/my-homework',    icon: <ClipboardCheck size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
-  { label: 'Пробники',          path: '/mock-exams',     icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба', hidden: true },
+  // §228. Все пробники ученика по всем его группам. Прежний скрытый пункт вёл на
+  // `/mock-exams` — список ИТОГОВ из `mock_exam_results`, которую ученик по RLS
+  // не читает (§215/§221), то есть на пустой экран. Новый — `my_mock_exams`.
+  { label: 'Пробники',          path: '/my-mock-exams',  icon: <Timer size={18} />, roles: ['student'],  section: 'Учёба' },
 
   // Путь ученика к самостоятельной сборке был достижим только по прямой ссылке:
   // пункт стоял скрытым, а ссылка на конструктор жила на самой скрытой странице.

@@ -220,11 +220,11 @@ function saveMockExamGrid(body) {
  */
 function notifyMockExamResults(body) {
   const at = new Date().toISOString()
-  const ids = body.p_student_ids ?? [...mockTotals, ...d227Totals].filter(r => r.mock_exam_id === body.p_mock_exam_id).map(r => r.student_id)
+  const ids = body.p_student_ids ?? [...mockTotals, ...d227Totals, ...d228Totals].filter(r => r.mock_exam_id === body.p_mock_exam_id).map(r => r.student_id)
   let sent = 0, already = 0, telegram = 0
   const rows = []
   for (const id of ids) {
-    const r = [...mockTotals, ...d227Totals].find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === id)
+    const r = [...mockTotals, ...d227Totals, ...d228Totals].find(x => x.mock_exam_id === body.p_mock_exam_id && x.student_id === id)
     if (!r) continue
     if (r.notified_at && r.notified_score === r.score && r.notified_part1_score === r.part1_score && r.notified_part2_score === r.part2_score) { already++; continue }
     Object.assign(r, { notified_at: at, notified_score: r.score, notified_part1_score: r.part1_score, notified_part2_score: r.part2_score })
@@ -575,6 +575,68 @@ export const d227Photos = d227Points.flatMap((pts, i) => (pts ? Array.from({ len
   id: U('c', 61000 + i * 10 + k), mock_exam_id: D227.grid, student_id: mockStudent(i),
   storage_path: `${D227.grid}/photos/${mockStudent(i)}/${k}_stranica-${k + 1}.webp`, file_name: `стр ${k + 1}.webp`, position: k,
 })) : []))
+
+// ── §228: пробник v3 — страница пробника, «Работы», проверка по номерам ─────
+// Группа «11А профиль» (двенадцать учеников §218). Пробник «№6» прошёл вчера
+// (10:00–13:55 по Москве); у учеников все состояния строки «Работы»: проверено
+// (итог не отправлен / отправлен / изменён после отправки), проверено частично
+// (№16 не оценено), ждёт проверки (первая часть — по ключу, вторая не тронута),
+// не писал. Бланки с ответами (экран проверки кладёт их рядом с ключом), фото.
+// Группы «11А профиль» и «11Б · профиль» добавлены в общую `groups` — иначе
+// форма «Новый пробник» не покажет их чипами; на чужих снимках списков групп
+// персонала — на две строки больше. Выдумка целиком.
+export const D228 = { done: U('c', 1700), garipov: U('b', 302) }
+const D228_STATUS = ['checked', 'sent', 'waiting', 'waiting', 'checked', 'partial', 'partial', 'sent', 'absent', 'changed', 'waiting', 'absent']
+const D228_PHOTOS = [4, 3, 4, 3, 2, 3, 4, 2, 0, 3, 4, 0]
+const d228Start = mskTen(-1)
+const d228End = Date.parse(d228Start) + 235 * MIN
+const d228Answers = MOCK_ROSTER.map((_, i) => (D228_STATUS[i] === 'absent' ? null
+  : LESSON_KEY.map((k, t) => ((i * 7 + t * 5) % 9 === 0 ? (t === 8 ? '' : String(i + t)) : k))))
+const d228Points = MOCK_ROSTER.map((_, i) => {
+  const st = D228_STATUS[i]
+  if (st === 'absent') return null
+  const p1 = d228Answers[i].map((a, t) => (a && a === LESSON_KEY[t] ? 1 : 0))
+  if (st === 'waiting') return [...p1, ...Array(7).fill(null)]
+  const p2 = D227_TPL.max_points.slice(12).map((m, j) => Math.max(0, Math.min(m, (i * 3 + j * 2 + 1) % (m + 1))))
+  if (st === 'partial') p2[3] = null
+  return [...p1, ...p2]
+})
+mock_exams.push({
+  id: D228.done, title: 'Пробник №6', subject: 'math', exam_type: 'ege', group_id: MOCK_GROUP, template_id: D227.tpl,
+  date: d228Start, max_score: 100, created_by: IDS.teacherRow, created_at: ago(24 * 4),
+  module_id: null, module_position: 0, starts_at: d228Start, duration_minutes: 235, photo_grace_minutes: 15,
+  condition_path: `${D228.done}/condition/1_variant_6.pdf`, solution_path: `${D228.done}/solution/1_reshenie_6.pdf`,
+  groups: { name: '11А профиль', course_id: LESSON.course }, mock_exam_templates: D227_TPL, mock_exam_results: [], mock_exam_task_scores: [],
+})
+mock_exam_answer_keys.push({ mock_exam_id: D228.done, answers: LESSON_KEY, updated_by: IDS.owner, updated_at: ago(30) })
+const d228Scores = d228Points.flatMap((pts, i) => (pts ?? []).flatMap((v, t) => (v == null ? [] : [{
+  mock_exam_id: D228.done, student_id: mockStudent(i), task_number: t + 1, points: v, auto_points: t < 12 ? v : null,
+}])))
+mock_exam_task_scores.push(...d228Scores)
+export const d228Totals = d228Points.flatMap((pts, i) => {
+  const rows = d228Scores.filter(r => r.student_id === mockStudent(i))
+  if (!rows.length) return []
+  const p1 = rows.filter(r => r.task_number <= 12).reduce((a, r) => a + r.points, 0)
+  const p2 = rows.filter(r => r.task_number > 12).reduce((a, r) => a + r.points, 0)
+  const score = D227_TPL.score_scale[p1 + p2]
+  const st = D228_STATUS[i]
+  const sent = st === 'sent' ? { notified_at: ago(20), notified_score: score, notified_part1_score: p1, notified_part2_score: p2 }
+    : st === 'changed' ? { notified_at: ago(21), notified_score: score - 4, notified_part1_score: p1, notified_part2_score: p2 - 1 }
+    : { notified_at: null, notified_score: null, notified_part1_score: null, notified_part2_score: null }
+  return [{ id: U('c', 1710 + i), mock_exam_id: D228.done, student_id: mockStudent(i), score, primary_score: p1 + p2, part1_score: p1, part2_score: p2, notes: null, created_at: ago(20), ...sent }]
+})
+export const d228Sheets = d228Answers.flatMap((ans, i) => (ans ? [{
+  mock_exam_id: D228.done, student_id: mockStudent(i), answers: ans,
+  submitted_at: i === 10 ? null : new Date(d228End - (12 + i * 7) * MIN).toISOString(),
+}] : []))
+export const d228Photos = D228_PHOTOS.flatMap((n, i) => Array.from({ length: n }, (_, k) => ({
+  id: U('c', 62000 + i * 10 + k), mock_exam_id: D228.done, student_id: mockStudent(i),
+  storage_path: `${D228.done}/photos/${mockStudent(i)}/${k}_stranica-${k + 1}.webp`, file_name: `стр ${k + 1}.webp`, position: k,
+})))
+groups.push(
+  { id: MOCK_GROUP, name: '11А профиль', course_id: LESSON.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 16, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 40), group_students: mockGroupStudents.map(g => ({ student_id: g.student_id })) },
+  { id: LIVE.group, name: '11Б · профиль', course_id: LIVE.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 16, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 40), group_students: liveGroupStudents.map(g => ({ student_id: g.student_id })) },
+)
 
 // ── materials ────────────────────────────────────────────────────────────────
 const LONG_TEXT = `Равноускоренное движение — движение, при котором ускорение постоянно по модулю и направлению.
@@ -1365,7 +1427,7 @@ export function baseFixtures(persona) {
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
       topic_homework_review_tasks,
-      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals, ...d227Totals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets, ...d227Sheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos, ...d227Photos], lesson_materials: [], school_presence: [],
+      annotation_sets: annotationSets, mock_exams, mock_exam_results: [...mock_exam_results, ...mockTotals, ...lessonTotals, ...d227Totals, ...d228Totals], mock_exam_templates, mock_exam_task_scores, mock_exam_answer_keys, mock_exam_sheets: [...mock_exam_sheets, ...liveSheets, ...d227Sheets, ...d228Sheets], mock_exam_photos: [...mock_exam_photos, ...livePhotos, ...d227Photos, ...d228Photos], lesson_materials: [], school_presence: [],
       video_watch_daily,
     },
     rpc: {

@@ -52,6 +52,13 @@ export interface SetupDraft {
   starts_at: string | null
   duration_minutes: number
   template_id: string | null
+  /**
+   * §228. Группа меняется, пока у пробника нет работ и баллов (защита — в
+   * базе, `mock_exams_group_change_guard`). Не передана — не пишется.
+   */
+  group_id?: string
+  /** §228. День пробника для черновика без времени начала (задуманный момент). */
+  date?: string | null
 }
 
 const EXAM_COLUMNS = 'id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)'
@@ -60,6 +67,13 @@ export function useMockExamSetup(examId: string | undefined) {
   const [exam, setExam] = useState<SetupExam | null>(null)
   const [key, setKey] = useState<(string | null)[] | null>(null)
   const [hasScores, setHasScores] = useState(false)
+  /**
+   * §228. У пробника уже есть что-то от учеников или баллы: строки в
+   * `mock_exam_task_scores`, `mock_exam_sheets`, `mock_exam_results` или
+   * `mock_exam_photos`. Тогда группу не сменить (то же условие, что у
+   * триггера в базе, — здесь только чтобы не предлагать заведомый отказ).
+   */
+  const [hasWork, setHasWork] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -88,14 +102,19 @@ export function useMockExamSetup(examId: string | undefined) {
         photo_grace_minutes: Number(e.photo_grace_minutes ?? 15),
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
       }
-      const [k, sc] = await Promise.all([
+      const [k, sc, sh, rs, ph] = await Promise.all([
         db.from<{ answers: (string | null)[] }>('mock_exam_answer_keys').select('answers').eq('mock_exam_id', ex.id).maybeSingle(),
         db.from<{ task_number: number }[]>('mock_exam_task_scores').select('task_number').eq('mock_exam_id', ex.id),
+        db.from<{ student_id: string }[]>('mock_exam_sheets').select('student_id').eq('mock_exam_id', ex.id),
+        db.from<{ student_id: string }[]>('mock_exam_results').select('student_id').eq('mock_exam_id', ex.id),
+        db.from<{ id: string }[]>('mock_exam_photos').select('id').eq('mock_exam_id', ex.id),
       ])
       if (cancelled) return
+      const some = (r: { data: unknown } | undefined) => Array.isArray(r?.data) && (r!.data as unknown[]).length > 0
       setExam(ex)
       setKey(k.data?.answers ?? null)
-      setHasScores(((sc.data ?? []) as unknown[]).length > 0)
+      setHasScores(some(sc))
+      setHasWork(some(sc) || some(sh) || some(rs) || some(ph))
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -109,8 +128,11 @@ export function useMockExamSetup(examId: string | undefined) {
       duration_minutes: d.duration_minutes,
       template_id: d.template_id,
     }
-    // День пробника в списке и в уведомлении (§219) — день начала.
+    // День пробника в списке и в уведомлении (§219) — день начала. У
+    // черновика (§228) — задуманный момент, чтобы форма его помнила.
     if (d.starts_at) row.date = d.starts_at
+    else if (d.date) row.date = d.date
+    if (d.group_id && d.group_id !== exam.group_id) row.group_id = d.group_id
     const { error: err } = await db.from('mock_exams').update(row).eq('id', exam.id)
     if (err) return { error: err.message || 'Не сохранилось' }
     reload()
@@ -149,5 +171,5 @@ export function useMockExamSetup(examId: string | undefined) {
     return { error: null, notCheckable: data?.not_checkable ?? [], changed: data?.grade?.changed_cells ?? 0 }
   }, [exam])
 
-  return { exam, key, hasScores, loading, error, reload, saveSettings, uploadFile, saveKey }
+  return { exam, key, hasScores, hasWork, loading, error, reload, saveSettings, uploadFile, saveKey }
 }

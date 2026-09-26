@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ClipboardCheck, Plus, Settings2, Table2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { CreateMockExamModal } from '@/components/modals/CreateMockExamModal'
 import { mskDayLong, mskTime } from '@/lib/mockExamLesson'
 import { cn } from '@/utils/cn'
 
@@ -58,10 +57,8 @@ const db = supabase as unknown as { from(t: string): { select(s: string): Chain 
 export function CourseMockExamsSection({ groupId, groupName }: { groupId: string; groupName: string | null }) {
   const profile = useAuthStore(s => s.profile)
   const canCreate = !!profile?.role && ['teacher', 'admin', 'owner'].includes(profile.role)
-  const navigate = useNavigate()
   const [rows, setRows] = useState<CourseMockRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -92,14 +89,14 @@ export function CourseMockExamsSection({ groupId, groupName }: { groupId: string
         <span className="text-xs text-gray-500">ученики видят их отдельным разделом над программой</span>
         <div className="flex-1" />
         {canCreate && (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
+          // §228. «Новый пробник» — одна форма на своей странице, группа подставлена.
+          <Link
+            to={`/mock-exams/new?group=${groupId}`}
             data-testid="course-mock-add"
             className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
           >
             <Plus size={14} />Добавить пробник
-          </button>
+          </Link>
         )}
       </div>
       {rows == null ? (
@@ -112,14 +109,14 @@ export function CourseMockExamsSection({ groupId, groupName }: { groupId: string
         <ul className="divide-y divide-gray-100">
           {items.map(({ row, kind }) => (
             <li key={row.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5" data-testid="course-mock-row" data-kind={kind}>
-              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900">{row.title}</span>
+              <Link to={`/mock-exams/${row.id}`} className="min-w-0 flex-1 text-sm font-medium text-gray-900 hover:text-primary-700 hover:underline">{row.title}</Link>
               <span className={cn('whitespace-nowrap rounded px-1.5 py-px text-xs', KIND_CLS[kind])} data-testid="course-mock-when">{whenText(row, kind)}</span>
               <span className="inline-flex gap-1.5">
-                <Link to={`/mock-exams/${row.id}/setup`} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
+                <Link to={`/mock-exams/${row.id}?tab=setup`} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
                   <Settings2 size={13} />Настройка
                 </Link>
                 {row.template_id && (
-                  <Link to={`/mock-exams/${row.id}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
+                  <Link to={`/mock-exams/${row.id}?tab=table`} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0">
                     <Table2 size={13} />Таблица
                   </Link>
                 )}
@@ -127,18 +124,6 @@ export function CourseMockExamsSection({ groupId, groupName }: { groupId: string
             </li>
           ))}
         </ul>
-      )}
-      {canCreate && (
-        <CreateMockExamModal
-          open={creating}
-          onClose={() => setCreating(false)}
-          defaultGroup={{ id: groupId, name: groupName ?? 'группа курса' }}
-          onCreated={examId => {
-            setCreating(false)
-            // Из программы курса пробник заводят, чтобы назначить время, — сразу в настройку.
-            navigate(`/mock-exams/${examId}/setup`)
-          }}
-        />
       )}
     </section>
   )

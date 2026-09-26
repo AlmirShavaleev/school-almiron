@@ -1,0 +1,201 @@
+psql:/home/claude/agents/a228/repo/supabase/migrations/PENDING_228.sql:84: NOTICE:  trigger "mock_exams_group_change_guard" for relation "public.mock_exams" does not exist, skipping
+PENDING_228 applied twice: ok
+=================== R. ЧТЕНИЕ РАБОТЫ УЧЕНИКА (экран проверки §228) ===================
+--- R1. учитель группы: бланки с ответами, фото, ключ — видит все (то, что читает экран проверки)
+BEGIN
+ sheets | s2_answer2 | photos | keys 
+--------+------------+--------+------
+      2 | 0,75       |      1 |    1
+
+ROLLBACK
+--- R2. ученик S1: только свой бланк и свои фото; бланк S2, ключ, баллы, итоги — нет
+BEGIN
+ sheets_visible | s2_sheet | photos_visible | keys | scores | results 
+----------------+----------+----------------+------+--------+---------
+              1 |        0 |              1 |    0 |      0 |       0
+
+ROLLBACK
+--- R2b. ученик S2: фото S1 (строка и объект хранилища) не видит
+BEGIN
+ photos_visible | photo_objects | s1_sheet 
+----------------+---------------+----------
+              0 |             0 |        0
+
+ROLLBACK
+--- R3. ученик ЧУЖОЙ группы (11Б): 0 строк везде
+BEGIN
+ sheets | photos | scores | keys 
+--------+--------+--------+------
+      0 |      0 |      0 |    0
+
+ROLLBACK
+--- R4. ЧУЖОЙ преподаватель (11Б): 0 строк бланков, фото, баллов, ключей, объектов фото
+BEGIN
+ sheets | photos | scores | keys | objects 
+--------+--------+--------+------+---------
+      0 |      0 |      0 |    0 |       0
+
+ROLLBACK
+--- R4b. чужой преподаватель: сохранить строку ученика и уведомить — 42501
+BEGIN
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:74: ERROR:  Нет доступа к результатам этого пробника
+CONTEXT:  PL/pgSQL function save_mock_exam_grid(uuid,jsonb) line 36 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:79: ERROR:  Нет доступа к результатам этого пробника
+CONTEXT:  PL/pgSQL function notify_mock_exam_results(uuid,uuid[]) line 42 at RAISE
+ROLLBACK
+--- R5. куратор курса: бланки видит (чтение), сохранить не может
+BEGIN
+ curator_sheets 
+----------------
+              2
+
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:87: ERROR:  new row violates row-level security policy for table "mock_exam_results"
+CONTEXT:  SQL statement "insert into public.mock_exam_results (mock_exam_id, student_id, score, primary_score, part1_score, part2_score)
+      values (p_mock_exam_id, v_student, v_score, v_primary, v_p1, v_p2)
+      on conflict (mock_exam_id, student_id)
+      do update set score         = excluded.score,
+                    primary_score = excluded.primary_score,
+                    part1_score   = excluded.part1_score,
+                    part2_score   = excluded.part2_score"
+PL/pgSQL function save_mock_exam_grid(uuid,jsonb) line 99 at SQL statement
+ROLLBACK
+--- R6. учитель группы: «Сохранить» на экране проверки — одна строка ученика; баллы S2 не тронуты
+BEGIN
+                   graded                    
+---------------------------------------------
+ {"changed_cells": 24, "graded_students": 2}
+
+ is_s1 | cells | pts 
+-------+-------+-----
+ f     |    12 |   1
+ t     |    12 |  12
+
+                                         saved                                          
+----------------------------------------------------------------------------------------
+ [{"score": 28, "old_score": 12, "student_id": "20000000-0000-0000-0000-000000000051"}]
+
+ is_s1 | cells | pts | auto_cells 
+-------+-------+-----+------------
+ f     |    12 |   1 |         12
+ t     |    18 |  28 |         12
+
+--- R6b. исправленная клетка ключа — становится ручной (points <> auto_points)
+                                       saved_s2                                       
+--------------------------------------------------------------------------------------
+ [{"score": 2, "old_score": 1, "student_id": "20000000-0000-0000-0000-000000000052"}]
+
+ task_number | points | auto_points | manual 
+-------------+--------+-------------+--------
+           1 |      1 |           0 | t
+           2 |      1 |           1 | f
+
+ROLLBACK
+=================== G. СМЕНА ГРУППЫ ===================
+--- G1. без работ: учитель 11А переносит пробник №5 в 11А-2 (свой курс) — можно
+BEGIN
+         title          | moved 
+------------------------+-------
+ Пробник №5 без времени | t
+
+UPDATE 1
+ROLLBACK
+--- G2. в группу ЧУЖОГО курса (11Б) — 42501
+BEGIN
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:118: ERROR:  Нет доступа к этой группе — пробник можно перенести только в группу своего курса
+CONTEXT:  PL/pgSQL function mock_exams_group_change_guard() line 33 at RAISE
+ROLLBACK
+--- G2b. владелец платформы — в любую группу
+BEGIN
+ moved 
+-------
+ t
+
+UPDATE 1
+ROLLBACK
+--- G3. есть бланки, фото, итоги и баллы (пробник №6) — отказ 23514 с перечнем
+BEGIN
+ graded_cells 
+--------------
+ 24
+
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:132: ERROR:  Группу пробника не сменить: у него уже есть баллы, итоги, бланки, фото учеников прежней группы. Для другой группы заведите новый пробник.
+CONTEXT:  PL/pgSQL function mock_exams_group_change_guard() line 25 at RAISE
+ROLLBACK
+--- G4. только пустой бланк «открыл и ушёл» (пинг §224) — тоже отказ: это уже работа ученика группы
+BEGIN
+UPDATE 1
+INSERT 0 1
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:142: ERROR:  Группу пробника не сменить: у него уже есть бланки учеников прежней группы. Для другой группы заведите новый пробник.
+CONTEXT:  PL/pgSQL function mock_exams_group_change_guard() line 25 at RAISE
+ROLLBACK
+--- G5. только фото — отказ
+BEGIN
+INSERT 0 1
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:150: ERROR:  Группу пробника не сменить: у него уже есть фото учеников прежней группы. Для другой группы заведите новый пробник.
+CONTEXT:  PL/pgSQL function mock_exams_group_change_guard() line 25 at RAISE
+ROLLBACK
+--- G5b. только итог (внесён таблицей без работы на сайте) — отказ
+BEGIN
+INSERT 0 1
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:157: ERROR:  Группу пробника не сменить: у него уже есть итоги учеников прежней группы. Для другой группы заведите новый пробник.
+CONTEXT:  PL/pgSQL function mock_exams_group_change_guard() line 25 at RAISE
+ROLLBACK
+--- G6. пробник с баллами: правка названия и времени (группа та же) — можно
+BEGIN
+ graded_cells 
+--------------
+ 24
+
+           title           
+---------------------------
+ Пробник №6 (переименован)
+
+UPDATE 1
+ROLLBACK
+--- G7. назначенный пробник без работ: смена группы переставляет напоминания (триггер §224)
+BEGIN
+UPDATE 1
+ moved 
+-------
+ t
+
+UPDATE 1
+  status   | new_group |    event_type     | count 
+-----------+-----------+-------------------+-------
+ pending   | t         | mock_exam_soon    |     1
+ pending   | t         | mock_exam_started |     1
+ cancelled | f         | mock_exam_soon    |     3
+ cancelled | f         | mock_exam_started |     3
+
+ROLLBACK
+--- G8. ученик пытается сменить группу — RLS mock_exams_manage: 0 строк
+BEGIN
+UPDATE 0
+ROLLBACK
+--- G9. функцию триггера напрямую не позвать
+BEGIN
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:194: ERROR:  permission denied for function mock_exams_group_change_guard
+ROLLBACK
+=================== F. ФАЙЛЫ «НЕСКОЛЬКИХ ГРУПП» ===================
+--- F1. условие второго пробника кладётся в ЕГО папку: учитель курса — можно, чужой учитель — RLS
+BEGIN
+                           name                            
+-----------------------------------------------------------
+ 50000000-0000-0000-0000-000000000005/condition/2_copy.pdf
+
+INSERT 0 1
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a228/repo/supabase/tests/mock_exam_v3_228/20_probes.sql:207: ERROR:  new row violates row-level security policy for table "objects"
+ROLLBACK
+--- F2. ученик читает условие СВОЕГО идущего пробника; копию в папке пробника другой группы — нет
+BEGIN
+INSERT 0 1
+INSERT 0 1
+                          name                           
+---------------------------------------------------------
+ 50000000-0000-0000-0000-000000000006/condition/1_v6.pdf
+
+ROLLBACK

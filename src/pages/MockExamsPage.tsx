@@ -1,5 +1,4 @@
-import { useState, useCallback } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { BookOpen, TrendingUp, Plus, Table2, Download, Layers, Settings2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -7,7 +6,6 @@ import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import { useMockExams } from '@/hooks/useMockExams'
-import { CreateMockExamModal } from '@/components/modals/CreateMockExamModal'
 import { formatDate, SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { exportMockExams } from '@/utils/exportExcel'
 import { cn } from '@/utils/cn'
@@ -20,12 +18,8 @@ export function MockExamsPage() {
   const canCreate = profile?.role && ['teacher', 'admin', 'owner'].includes(profile.role)
   const isStudent = profile?.role === 'student'
 
-  const [tick, setTick] = useState(0)
-  const reload = useCallback(() => setTick(t => t + 1), [])
-  const { exams, myResults, loading } = useMockExams(tick)
+  const { exams, myResults, loading } = useMockExams(0)
 
-  const [showCreate, setShowCreate]   = useState(false)
-  const navigate = useNavigate()
   // §224. У каждой группы свой список: чипы групп + «Все». Выбор — в адресе
   // (?group=…), чтобы ссылка вела сразу в список группы. Плитки сверху
   // считают по-прежнему всё — их эта работа не трогает.
@@ -107,9 +101,11 @@ export function MockExamsPage() {
             </Link>
           )}
           {canCreate && (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={16} className="mr-1" />Добавить пробник
-            </Button>
+            // §228. «Новый пробник» — одна форма на своей странице (вместо модалки §218).
+            <Link to="/mock-exams/new" data-testid="mock-exams-add"
+              className="inline-flex min-h-11 items-center gap-1 rounded-full bg-gradient-to-br from-action-from to-action-to px-3.5 py-1 text-sm font-bold text-white shadow-action hover:brightness-110 sm:min-h-8">
+              <Plus size={16} />Добавить пробник
+            </Link>
           )}
         </div>
       </div>
@@ -280,7 +276,9 @@ export function MockExamsPage() {
                 <div key={exam.id} className="p-5 border border-gray-200 rounded-xl hover:border-primary-300 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900">{exam.title}</h3>
+                      <h3 className="font-semibold text-gray-900">
+                        {canCreate && exam.group_id ? <Link to={`/mock-exams/${exam.id}`} className="hover:text-primary-700 hover:underline">{exam.title}</Link> : exam.title}
+                      </h3>
                       <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                         <span>{formatDate(exam.date)}</span>
                         {exam.subject && <><span>•</span><span>{SUBJECT_LABELS[exam.subject] || exam.subject}</span></>}
@@ -321,19 +319,6 @@ export function MockExamsPage() {
           </div>
         )}
       </Card>
-      {/* Modals */}
-      {canCreate && (
-        <CreateMockExamModal
-          open={showCreate}
-          onClose={() => setShowCreate(false)}
-          onCreated={(examId) => {
-            setShowCreate(false)
-            reload()
-            // §218. Сразу в таблицу по номерам: пробник заводят, чтобы вносить баллы.
-            navigate(`/mock-exams/${examId}`)
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -355,14 +340,14 @@ function GridEntry({ exam }: { exam: any }) {
     <span className="inline-flex flex-wrap justify-end gap-1.5">
       {/* §221: онлайн-окно, условие, решение, ключ, место в программе курса. */}
       <Link
-        to={`/mock-exams/${exam.id}/setup`}
+        to={`/mock-exams/${exam.id}?tab=setup`}
         data-testid="mock-exam-setup-open"
         className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
       >
         <Settings2 size={14} />{exam.starts_at ? 'Онлайн' : 'Настройка'}
       </Link>
       <Link
-        to={`/mock-exams/${exam.id}`}
+        to={`/mock-exams/${exam.id}?tab=table`}
         data-testid="mock-exam-grid-open"
         className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm font-medium text-graphite-800 hover:border-primary-200 sm:min-h-0"
       >
