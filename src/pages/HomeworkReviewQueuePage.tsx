@@ -1110,6 +1110,8 @@ export function HomeworkReviewQueuePage() {
                 onSkipFinding={skipFinding}
                 onBulkVerdict={bulkVerdict}
                 onShowReference={showReference ?? undefined}
+                // §238. Светофор: жёлтые сверху, зелёные свёрнуты.
+                triage
               />
               {reference}
             </div>

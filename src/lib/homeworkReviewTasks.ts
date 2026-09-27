@@ -16,6 +16,7 @@
 import { TASK_VERDICT_LABEL, type AiTaskRow, type AiTaskVerdict, type AiTasksSummary } from './aiHomeworkCheck'
 import type { GradeScale } from './topicHomework'
 import { plural } from './plural'
+import { seededVerdict } from './reviewTriage'
 
 /**
  * §214. Вердикт преподавателя — ПЯТЬ значений, у ИИ их по-прежнему четыре.
@@ -266,14 +267,19 @@ export function toggleReviewTaskFilter(
  * копируется» было названо один раз и проверялось тестом).
  */
 export function reviewTasksFromAi(tasks: readonly AiTaskRow[]): Array<Omit<ReviewTaskRow, 'id' | 'attempt_id' | 'updated_by' | 'updated_at'>> {
-  return tasks.map((task, index) => ({
-    no: task.no,
-    verdict: task.verdict,
-    student_answer: task.student_answer || null,
-    expected_answer: task.expected_answer || null,
-    note: task.note || null,
-    position: (index + 1) * 10,
-  }))
+  return tasks.map((task, index) => {
+    // §238. «Частично» при совпавшем ответе ложится «верно» с заметкой «ИИ
+    // сомневается: …» — то же правило, что у первого заполнения в хуке.
+    const seeded = seededVerdict(task)
+    return {
+      no: task.no,
+      verdict: seeded.verdict,
+      student_answer: task.student_answer || null,
+      expected_answer: task.expected_answer || null,
+      note: seeded.note,
+      position: (index + 1) * 10,
+    }
+  })
 }
 
 /**

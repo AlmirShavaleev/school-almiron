@@ -924,6 +924,31 @@ export const scenes = [
     { eval: "document.querySelector('[data-testid=\"solution-reference-panel\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 800 },
   ] },
 
+  // §238: «светофор» в таблице заданий. Работа из 14 заданий (3 жёлтых, 11
+  // зелёных) открывается прямой ссылкой; настройку «Зелёные» каждая сцена
+  // выставляет сама (`ls`) — контекст браузера общий на персону и ширину.
+  // В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d238 1280 ; node e2e/harness/tour.mjs d238 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd238-folded', url: `/homework-queue?attempt=${S.attempt(38)}`, width, height, full: false, actions: [
+      { ls: ['review:greens', 'folded'] }, { goto: `/homework-queue?attempt=${S.attempt(38)}` }, { wait: 3000 },
+      { eval: "document.querySelector('[data-testid=\"triage-strip\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 400 },
+    ] },
+    { persona: 'owner', name: 'd238-open', url: `/homework-queue?attempt=${S.attempt(38)}`, width, height, full: false, actions: [
+      { ls: ['review:greens', 'folded'] }, { goto: `/homework-queue?attempt=${S.attempt(38)}` }, { wait: 3000 },
+      { clickSel: '[data-testid="triage-green-fold"]' }, { wait: 500 },
+      { eval: "document.querySelector('[data-testid=\"triage-green-fold\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 400 },
+    ] },
+    { persona: 'owner', name: 'd238-false-claim', url: `/homework-queue?attempt=${S.attempt(38)}`, width, height, full: false, actions: [
+      { ls: ['review:greens', 'folded'] }, { goto: `/homework-queue?attempt=${S.attempt(38)}` }, { wait: 3000 },
+      { eval: "document.querySelector('[data-testid=\"review-task-rootcheck\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 400 },
+    ] },
+    { persona: 'owner', name: 'd238-admin-accuracy', url: '/admin', width, height, full: false, actions: [
+      { wait: 1200 }, { clickRole: ['button', 'Учёба'] }, { wait: 1500 },
+      { eval: "document.querySelector('[data-testid=\"ai-check-accuracy\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 400 },
+    ] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

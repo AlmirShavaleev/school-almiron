@@ -20,6 +20,7 @@ import { DormantPanel, LearningPanel } from '@/components/admin/SchoolActivity'
 import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
 import { VideoStatsTab } from '@/components/admin/VideoStats'
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
+import { AiCheckAccuracy } from '@/components/admin/AiCheckAccuracy'
 import { LiveNow } from '@/components/admin/LiveNow'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
 import { getCourseAvailability } from '@/types'
@@ -655,6 +656,10 @@ export function AdminDashboard() {
             error={analytics.error}
           />
           <SourceNote at={analytics.fetchedAt} />
+
+          {/* §238. Рядом с воронкой ДЗ — та же тема «как идёт проверка»:
+              насколько черновику ИИ можно верить на этой неделе. */}
+          <AiCheckAccuracy />
 
           <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
             <p className="text-sm text-gray-500">{courses.length} курсов</p>

@@ -827,6 +827,10 @@ const attemptRows = [
   { id: IDS.attempt(3), homework_id: IDS.hw(3), student_id: IDS.studentRow, attempt_number: 1, status: 'accepted', submitted_at: ago(100), created_at: ago(101), updated_at: ago(90) },
   // other students → queue
   ...[0, 1, 2, 3, 4, 5].map(k => ({ id: IDS.attempt(10 + k), homework_id: IDS.hw(1 + (k % 3)), student_id: IDS.otherStudent(k), attempt_number: 1 + (k % 2), status: ['submitted', 'submitted', 'returned_for_revision', 'submitted', 'accepted', 'submitted'][k], submitted_at: ago(2 + k * 9), created_at: ago(3 + k * 9), updated_at: ago(1 + k * 9) })),
+  // §238: работа для «светофора» — 14 заданий как в макете. Сдана позже всех,
+  // поэтому в очереди она последняя и «Проверить» по-прежнему открывает
+  // работу §199/§207; сцены d238 открывают её прямой ссылкой.
+  { id: IDS.attempt(38), homework_id: IDS.hw(2), student_id: IDS.otherStudent(3), attempt_number: 1, status: 'submitted', submitted_at: ago(0.5), created_at: ago(1), updated_at: ago(0.5) },
 ]
 export const topic_homework_attempts = attemptRows.map(a => ({
   ...a, homework: hwById(a.homework_id), topic_homework: hwById(a.homework_id), students: studentById(a.student_id),
@@ -865,6 +869,15 @@ const aiJobBase = {
   attempts: 1, accepted_at: null, last_error: null, input_tokens: 9800, output_tokens: 1400,
   worksheet_state: 'used', worksheet_chars: 1800,
 }
+// §238: таблица ИИ работы «светофора» — макет 1:1 по номерам и ответам.
+const SVETOFOR_AI = [
+  ...[['1', '12 м/с'], ['2', '0,4'], ['3', '25 м'], ['4', '8 Н'], ['6', '1,5 кг'], ['7', '144'], ['8', '0,25'],
+      ['10', '36 км/ч'], ['11', '9,8'], ['13', '600 Дж'], ['14', '4 Ом']]
+    .map(([no, answer]) => ({ no, verdict: 'correct', student_answer: answer, expected_answer: answer, note: '' })),
+  { no: '5', verdict: 'partial', student_answer: '4π; 3π; 15π/4', expected_answer: '4π; 3π; 15π/4', note: 'Неверный отбор: x=3π не входит в [5π/2; 4π]' },
+  { no: '9', verdict: 'wrong', student_answer: '−3,8', expected_answer: '−4,5', note: 'Ошибка в вычислении дискриминанта' },
+  { no: '12', verdict: 'unchecked', student_answer: '', expected_answer: '0,125', note: 'не разобрал почерк на фото 2' },
+].sort((a, b) => Number(a.no) - Number(b.no))
 export const aiJobs = [
   {
     // accepted_at выставлен: рамки этой проверки уже перенесены в разбор
@@ -890,6 +903,16 @@ export const aiJobs = [
     started_at: ago(26), created_at: ago(26), completed_at: ago(26),
     summary: 'Часть задач решена верно, в задачах 16–19 расхождения с эталоном. Проверьте вручную: почерк местами читается плохо.',
     tasks: null, dropped_findings: null,
+  },
+  // §238: светофор. 3 жёлтых (частично при совпавшем ответе с ложной
+  // претензией к отбору корней, неверно, не сверено) и 11 зелёных.
+  {
+    ...aiJobBase, id: U('c', 1310), attempt_id: IDS.attempt(38), status: 'done', accepted_at: ago(0.4),
+    suggested_score: 5, confidence: 'medium', reference_state: 'used', reference_chars: 5200,
+    started_at: ago(0.4), created_at: ago(0.4), completed_at: ago(0.4),
+    summary: 'Большинство заданий решено верно. В задании 9 ошибка в вычислении, задание 12 не удалось прочитать.',
+    tasks: SVETOFOR_AI,
+    dropped_findings: 0,
   },
 ]
 export const aiFindings = [
@@ -940,6 +963,15 @@ export const topic_homework_review_tasks = [
   })),
   ...['20', '21'].map((no, i) => reviewTaskRow(20 + i, IDS.attempt(15), {
     no, verdict: 'unsolved', note: 'задание не начато',
+  })),
+  // §238: таблица работы «светофора» — как её заполняет §238: у №5 «частично»
+  // при совпавшем ответе легло «верно» с заметкой «ИИ сомневается: …».
+  ...SVETOFOR_AI.map((t, i) => reviewTaskRow(300 + i, IDS.attempt(38), {
+    no: t.no,
+    verdict: t.verdict === 'partial' ? 'correct' : t.verdict,
+    student_answer: t.student_answer || null, expected_answer: t.expected_answer || null,
+    note: t.verdict === 'partial' ? `ИИ сомневается: ${t.note}` : (t.note || null),
+    position: (i + 1) * 10, updated_at: ago(0.3),
   })),
   // ── работа ученика, уже проверенная ──
   reviewTaskRow(11, IDS.attempt(1), { no: '1', verdict: 'correct', student_answer: '4 м/с²', expected_answer: '4 м/с²' }),
@@ -1720,6 +1752,17 @@ export function baseFixtures(persona) {
       // §199: строки уже есть — настоящая RPC в этом случае возвращает 0 и
       // ничего не трогает, чтобы правки преподавателя не затирались слепком.
       topic_homework_review_tasks_seed: 0,
+      // §238: недельная точность ИИ-проверки (блок во вкладке «Учёба» админки).
+      // Числа — выгрузка оркестратора (34 работы, 336 заданий).
+      ai_check_accuracy: [
+        { ai_verdict: 'correct', answer_match: true, tasks: 235, changed: 11, works: 34 },
+        { ai_verdict: 'correct', answer_match: false, tasks: 30, changed: 1, works: 20 },
+        { ai_verdict: 'partial', answer_match: true, tasks: 23, changed: 20, works: 15 },
+        { ai_verdict: 'partial', answer_match: false, tasks: 16, changed: 13, works: 10 },
+        { ai_verdict: 'wrong', answer_match: true, tasks: 4, changed: 3, works: 4 },
+        { ai_verdict: 'wrong', answer_match: false, tasks: 20, changed: 6, works: 12 },
+        { ai_verdict: 'unchecked', answer_match: false, tasks: 8, changed: 6, works: 5 },
+      ],
       get_variant_results: [], variant_pass_counts: [], variant_topic_availability: [], variant_selection_availability: [],
       ...topicTaskRpcs((body) => body.p_topic_id === IDS.topic(1) ? myTopicTasks : []),
       topic_tasks_for_staff: (body) => body.p_topic_id === IDS.topic(1) ? topicTasksStaff : [],

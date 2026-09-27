@@ -9,6 +9,7 @@ import {
   type ReviewTaskRow,
 } from '@/lib/homeworkReviewTasks'
 import type { AiTaskRow } from '@/lib/aiHomeworkCheck'
+import { seedDoubtPatches } from '@/lib/reviewTriage'
 
 /**
  * `supabase as any`: `topic_homework_review_tasks` появилась миграцией §199, а
@@ -21,6 +22,31 @@ const db = () => supabase as any
 const TABLE = 'topic_homework_review_tasks'
 
 export type ReviewTasksSaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+/**
+ * §238. Первое заполнение таблицы: RPC (§199) плюс правило светофора —
+ * «частично» при совпавшем ответе ложится «верно» с заметкой «ИИ
+ * сомневается: …».
+ *
+ * Правило применяется, только если строки создал ЭТОТ вызов (RPC вернула
+ * число больше нуля): готовую таблицу не переписываем. Запись условная
+ * (`verdict = 'partial'`): если второй преподаватель открыл работу в ту же
+ * секунду и уже поправил строку, его правка не затирается. Отказ записи — не
+ * ошибка экрана: строка просто останется «частично», как до §238.
+ *
+ * Возвращает ошибку RPC или null.
+ */
+async function seedTable(attemptId: string, readRows: (id: string) => Promise<ReviewTaskRow[]>): Promise<string | null> {
+  const { data, error } = await db()
+    .rpc('topic_homework_review_tasks_seed', { p_attempt_id: attemptId })
+  if (error) return error.message ?? 'Не удалось заполнить таблицу'
+  if (typeof data !== 'number' || data <= 0) return null
+  const fresh = await readRows(attemptId)
+  for (const { id, patch } of seedDoubtPatches(fresh)) {
+    await db().from(TABLE).update(patch).eq('id', id).eq('verdict', 'partial')
+  }
+  return null
+}
 
 /**
  * Таблица проверки одной попытки: чтение, первое заполнение копией из ИИ и
@@ -73,8 +99,7 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
         // чем показывать красную строку над работой.
         if (found.length === 0 && seedWanted && seededRef.current !== attemptId) {
           seededRef.current = attemptId
-          const { error: seedErr } = await db()
-            .rpc('topic_homework_review_tasks_seed', { p_attempt_id: attemptId })
+          const seedErr = await seedTable(attemptId, fetchRows)
           if (!seedErr) found = await fetchRows(attemptId)
         }
         if (!cancelled) setRows(found)
@@ -141,11 +166,15 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
   const seedNow = useCallback(async () => {
     if (!attemptId) return false
     setSaveState('saving')
-    const { error: err } = await db()
-      .rpc('topic_homework_review_tasks_seed', { p_attempt_id: attemptId })
+    let err: string | null
+    try {
+      err = await seedTable(attemptId, fetchRows)
+    } catch (e: any) {
+      err = e?.message ?? 'Не удалось заполнить таблицу'
+    }
     if (err) {
       setSaveState('error')
-      setError(err.message)
+      setError(err)
       return false
     }
     try {

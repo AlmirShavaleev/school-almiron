@@ -56,6 +56,7 @@ import {
 import type { ReviewTasksSaveState } from '@/hooks/useHomeworkReviewTasks'
 import type { GradeScale } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
+import { classifyRow, stripAiDoubt, triageRank, type RowTriage, type TriageReason } from '@/lib/reviewTriage'
 import { HintNote } from '@/components/shared/HintNote'
 import { cn } from '@/utils/cn'
 import { MARK_OF_REVIEW_VERDICT, VerdictMark, type VerdictMarkState } from '@/components/ui/VerdictMark'
@@ -173,6 +174,7 @@ export function ReviewTaskTable({
   onSkipFinding,
   onBulkVerdict,
   onShowReference,
+  triage = false,
 }: {
   job: AiJobRow | null
   findings?: AiFindingRow[]
@@ -220,6 +222,12 @@ export function ReviewTaskTable({
    * раскрывает его и докручивает до него.
    */
   onShowReference?: () => void
+  /**
+   * §238. «Светофор»: жёлтые задания сверху, зелёные («ИИ: верно, ответ
+   * совпал с эталоном») свёрнуты. Включает экран проверки; без таблицы ИИ
+   * (старые проверки, ручная таблица) список остаётся прежним.
+   */
+  triage?: boolean
 }) {
   const [deduping, setDeduping] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
@@ -360,6 +368,7 @@ export function ReviewTaskTable({
           onSkipFinding={onSkipFinding}
           onBulkVerdict={onBulkVerdict}
           onShowReference={onShowReference}
+          triage={triage}
         />
       )}
 
@@ -704,6 +713,7 @@ function TaskSection({
   onSkipFinding,
   onBulkVerdict,
   onShowReference,
+  triage = false,
 }: {
   rows: ReviewTaskRow[]
   aiTasks: AiTaskRow[] | null
@@ -726,6 +736,7 @@ function TaskSection({
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onBulkVerdict?: (ids: string[], verdict: ReviewTaskVerdict) => Promise<boolean> | void
   onShowReference?: () => void
+  triage?: boolean
 }) {
   const showAi = rows.length === 0 && aiTasks != null
   /** §212. Какое состояние сейчас показывает список. */
@@ -758,8 +769,65 @@ function TaskSection({
     return map
   }, [suggestions])
 
+  /**
+   * §238. Светофор. Цвет строки считается по ВЕРДИКТУ ИИ, а не по таблице:
+   * таблица после заполнения уже может говорить «верно» там, где ИИ сказала
+   * «частично», — а смотреть нужно именно такие строки. Ответы — из таблицы:
+   * преподаватель мог поправить прочитанный почерк. Состав групп от правок
+   * вердикта не меняется: строка не уезжает из-под курсора (урок §207).
+   */
+  const triageOn = triage && editable && aiTasks != null && rows.length > 0
+  const triageById = useMemo(() => {
+    const map = new Map<string, { triage: RowTriage; aiNote: string; known: boolean }>()
+    if (!triageOn || !aiTasks) return map
+    const byNo = new Map<string, AiTaskRow>()
+    for (const task of aiTasks) {
+      const key = noteTaskKey(task.no)
+      if (key && !byNo.has(key)) byNo.set(key, task)
+    }
+    for (const row of rows) {
+      const ai = byNo.get(noteTaskKey(row.no))
+      const aiNote = ai ? ai.note : stripAiDoubt(row.note)
+      map.set(row.id, {
+        triage: classifyRow({
+          aiVerdict: ai?.verdict ?? null,
+          studentAnswer: row.student_answer,
+          expectedAnswer: row.expected_answer,
+          note: aiNote,
+        }),
+        aiNote,
+        known: ai != null,
+      })
+    }
+    return map
+  }, [aiTasks, rows, triageOn])
+  const { yellowRows, greenRows } = useMemo(() => {
+    const yellow: ReviewTaskRow[] = []
+    const green: ReviewTaskRow[] = []
+    for (const row of rows) {
+      if (triageById.get(row.id)?.triage.light === 'green') green.push(row)
+      else yellow.push(row)
+    }
+    // Стабильная сортировка: «частично при совпавшем ответе» — первыми,
+    // остальные жёлтые в порядке таблицы.
+    const rank = (row: ReviewTaskRow) => {
+      const t = triageById.get(row.id)?.triage
+      return t ? triageRank(t) : 1
+    }
+    yellow.sort((a, b) => rank(a) - rank(b))
+    return { yellowRows: yellow, greenRows: green }
+  }, [rows, triageById])
+  const [greensOpen, setGreensOpen] = useState(() => readGreensPreference() === 'open')
+  /** Светофор виден при фильтре «все»; фильтр по вердикту — прежний плоский список. */
+  const grouped = triageOn && filter === 'all'
+
   /** Видимые строки — они же те, по которым ходят стрелки. */
-  const navRows = useMemo(() => filterReviewTasks(rows, filter), [filter, rows])
+  const navRows = useMemo(
+    () => (grouped
+      ? [...yellowRows, ...(greensOpen ? greenRows : [])]
+      : filterReviewTasks(rows, filter)),
+    [filter, greenRows, greensOpen, grouped, rows, yellowRows],
+  )
   const visibleAi = useMemo(
     () => (aiTasks ? filterReviewTasks(aiTasks, filter) : []),
     [aiTasks, filter],
@@ -778,10 +846,20 @@ function TaskSection({
     const note = allNotes.find(item => item.id === activeNoteId)
     const key = note ? noteTaskKey(note.taskNo) : ''
     const target = key ? navRows.find(row => noteTaskKey(row.no) === key) : undefined
+    // §238. Рамка у задания из свёрнутых зелёных — раскрываем их: номер на
+    // рамке и строка справа обязаны находиться друг по другу.
+    const hiddenGreen = !target && grouped && !greensOpen && key
+      ? greenRows.find(row => noteTaskKey(row.no) === key)
+      : undefined
     if (target) {
       setAppliedNoteId(activeNoteId)
       setSelectedId(target.id)
       setCursor(navRows.indexOf(target))
+    } else if (hiddenGreen) {
+      setAppliedNoteId(activeNoteId)
+      setGreensOpen(true)
+      setSelectedId(hiddenGreen.id)
+      setCursor(yellowRows.length + greenRows.indexOf(hiddenGreen))
     }
   }
 
@@ -814,6 +892,9 @@ function TaskSection({
     if (!editable || navRows.length === 0) return
     const target = event.target as HTMLElement
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+    // §238. Enter и пробел на плашке зелёных — это её нажатие, а не
+    // «новое замечание» к строке под курсором.
+    if ((event.key === 'Enter' || event.key === ' ') && target.closest?.('[data-testid="triage-green-fold"]')) return
     if (event.metaKey || event.ctrlKey || event.altKey) return
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -883,6 +964,7 @@ function TaskSection({
           onTakeFinding={onTakeFinding}
           onSkipFinding={onSkipFinding}
           onShowReference={onShowReference}
+          triage={triageById.get(row.id)}
         />
       )
       : <ReadOnlyTaskLine key={row.id} task={asAiTask(row)} testId="review-task-row" />
@@ -901,7 +983,16 @@ function TaskSection({
     return !key || !knownTasks.has(key)
   })
 
-  const shown = showAi ? visibleAi.length : navRows.length
+  const shown = showAi ? visibleAi.length : grouped ? rows.length : navRows.length
+
+  /** §238. Свернуть/раскрыть зелёные. Если выбранная строка уехала — выбор сбрасываем. */
+  function toggleGreens(open: boolean) {
+    setGreensOpen(open)
+    if (!open) {
+      const hidden = greenRows.some(row => row.id === selectedRow?.id)
+      if (hidden) { setSelectedId(null); setCursor(-1) }
+    }
+  }
 
   return (
     <section
@@ -910,6 +1001,18 @@ function TaskSection({
     >
       {summary && (
         <TaskFilters summary={summary} score={score} filter={filter} onFilter={setFilter} />
+      )}
+
+      {triageOn && (
+        <TriageStrip
+          yellow={yellowRows.length}
+          green={greenRows.length}
+          preference={greensOpen ? 'open' : 'folded'}
+          onPreference={value => {
+            writeGreensPreference(value)
+            toggleGreens(value === 'open')
+          }}
+        />
       )}
 
       <div
@@ -923,11 +1026,46 @@ function TaskSection({
         onKeyDown={onKeyDown}
         className="-mx-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary-300 sm:-mx-4"
       >
-        <ul>
-          {showAi
-            ? visibleAi.map(task => <ReadOnlyTaskLine key={task.no} task={task} testId="ai-task-row" />)
-            : navRows.map(line)}
-        </ul>
+        {grouped ? (
+          <>
+            <div
+              data-testid="triage-yellow-title"
+              className="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.05em] text-verdict-part-ink sm:px-4"
+            >
+              <span>Проверьте · {yellowRows.length}</span>
+              {yellowRows.length > 0 && (
+                <span className="rounded-md bg-verdict-part-tint px-1.5 py-0.5 text-[11px] font-bold normal-case tracking-normal">сначала эти</span>
+              )}
+            </div>
+            {yellowRows.length === 0 ? (
+              <p data-testid="triage-yellow-empty" className="px-3 pb-2 text-xs text-graphite-500 sm:px-4">
+                Сомнительных заданий нет: везде ИИ сказал «верно», и ответ совпал с эталоном.
+              </p>
+            ) : (
+              <ul data-testid="triage-yellow">
+                {yellowRows.map((row, index) => line(row, index))}
+              </ul>
+            )}
+            {greenRows.length > 0 && (
+              <GreenFold
+                count={greenRows.length}
+                open={greensOpen}
+                onToggle={() => toggleGreens(!greensOpen)}
+              />
+            )}
+            {greensOpen && greenRows.length > 0 && (
+              <ul data-testid="triage-green">
+                {greenRows.map((row, index) => line(row, yellowRows.length + index))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <ul>
+            {showAi
+              ? visibleAi.map(task => <ReadOnlyTaskLine key={task.no} task={task} testId="ai-task-row" />)
+              : navRows.map(line)}
+          </ul>
+        )}
       </div>
 
       {shown === 0 && (
@@ -1284,6 +1422,7 @@ function TaskLine({
   onTakeFinding,
   onSkipFinding,
   onShowReference,
+  triage,
 }: {
   row: ReviewTaskRow
   current: boolean
@@ -1303,6 +1442,8 @@ function TaskLine({
   onTakeFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onSkipFinding?: (finding: AiFindingRow) => Promise<boolean> | void
   onShowReference?: () => void
+  /** §238. Светофор строки; нет — строка без светофора (как до §238). */
+  triage?: { triage: RowTriage; aiNote: string; known: boolean }
 }) {
   const conflict = verdictConflictsWithNotes(row.verdict, notes)
   const tone = reviewRowTone(row, notes)
@@ -1319,12 +1460,16 @@ function TaskLine({
       data-selected={selected ? 'true' : undefined}
       data-conflict={conflict ? 'true' : undefined}
       data-tone={tone}
+      data-light={triage?.triage.light}
       className={cn(
         'border-l-[3px]',
         selected ? 'border-l-primary-800 bg-primary-50' : 'border-l-transparent',
         !selected && tone === 'mismatch' && 'bg-verdict-bad-tint/40',
         !selected && tone === 'conflict' && 'bg-verdict-part-tint/50',
         !selected && highlighted && 'bg-sky-50',
+        // §238. Жёлтая строка светофора — лёгкая заливка слева, как в макете.
+        !selected && !highlighted && tone === 'none' && triage?.triage.light === 'yellow'
+          && 'bg-gradient-to-r from-verdict-part-tint to-transparent',
       )}
     >
       {/*
@@ -1363,6 +1508,16 @@ function TaskLine({
           {taskPointsText(row.verdict)} / 1
         </span>
       </div>
+
+      {triage && triage.triage.light === 'yellow' && (
+        <TriageNote
+          info={triage}
+          verdict={row.verdict}
+          full={selected}
+          onSelect={onSelect}
+          onAccept={verdict => { void onPatch({ verdict }) }}
+        />
+      )}
 
       {selected && (
         <div
@@ -1750,5 +1905,220 @@ function RowMenu({ no, onRemove }: { no: string; onRemove: () => Promise<boolean
         </div>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// §238. Светофор
+// ---------------------------------------------------------------------------
+
+/**
+ * Зелёные по умолчанию свёрнуты, «раскрыты» — настройка проверяющего (для
+ * второй части, где важен ход решения, а не ответ). Удобство, не данные:
+ * живёт в браузере, хранилища нет — свёрнуты.
+ */
+export const GREENS_STORAGE_KEY = 'review:greens'
+export type GreensPreference = 'open' | 'folded'
+
+function readGreensPreference(): GreensPreference {
+  try {
+    return window.localStorage.getItem(GREENS_STORAGE_KEY) === 'open' ? 'open' : 'folded'
+  } catch {
+    return 'folded'
+  }
+}
+
+function writeGreensPreference(value: GreensPreference) {
+  try {
+    window.localStorage.setItem(GREENS_STORAGE_KEY, value)
+  } catch {
+    // Хранилища нет — выбор действует до закрытия экрана.
+  }
+}
+
+/** Короткая метка причины — слева в строке пояснения. */
+const REASON_TAG: Record<TriageReason, { label: string; className: string }> = {
+  partial_equal: { label: 'ответ совпал', className: 'bg-verdict-part-tint text-verdict-part-ink' },
+  answer_differs: { label: 'ответ другой', className: 'bg-verdict-bad-tint text-verdict-bad-ink' },
+  wrong: { label: 'неверно', className: 'bg-verdict-bad-tint text-verdict-bad-ink' },
+  unchecked: { label: 'не сверено', className: 'bg-verdict-unk-tint text-verdict-unk-ink' },
+  correct_other_form: { label: 'записан иначе', className: 'bg-verdict-part-tint text-verdict-part-ink' },
+}
+
+/** Причина жёлтой строки словами — одна строка, как в макете. */
+export function triageReasonText(info: { triage: RowTriage; aiNote: string; known: boolean }): string {
+  const { triage, known } = info
+  const note = info.aiNote.trim()
+  const quoted = note ? ` «${note}»` : ''
+  switch (triage.reason) {
+    case 'partial_equal':
+      return `ИИ: «частично», но ответ совпал с эталоном.${note ? ` ИИ сомневается:${quoted}` : ''}`
+    case 'answer_differs':
+      return `ИИ: «частично»${triage.match === 'different' ? ', ответ другой.' : ', ответ код сверить не смог.'}${quoted}`
+    case 'wrong':
+      return `ИИ: «неверно»${triage.match === 'different' ? ' — ответ не совпал.' : triage.match === 'equal' ? ', хотя ответ совпал с эталоном.' : '.'}${quoted}`
+    case 'correct_other_form':
+      return triage.match === 'different'
+        ? 'ИИ: «верно», но ответ ученика не совпал с эталоном.'
+        : 'ИИ: «верно», но ответ записан иначе — код не смог сверить его с эталоном.'
+    case 'unchecked':
+    default:
+      if (!known) return 'Этого задания нет в таблице ИИ — проверьте сами.'
+      return `ИИ: «не сверено»${note ? ` — ${note}` : '.'}`
+  }
+}
+
+/**
+ * Пояснение под жёлтой строкой: почему её надо посмотреть, что посчитал код
+ * про отбор корней и — если предложение ИИ расходится с таблицей — кнопка
+ * «Поставить …». Сама она ничего не ставит: вердикт — дело человека.
+ */
+function TriageNote({
+  info,
+  verdict,
+  full,
+  onSelect,
+  onAccept,
+}: {
+  info: { triage: RowTriage; aiNote: string; known: boolean }
+  verdict: ReviewTaskVerdict
+  /** Строка выбрана — пояснение целиком, а не одной строкой. */
+  full: boolean
+  onSelect: () => void
+  onAccept: (verdict: ReviewTaskVerdict) => void
+}) {
+  const { triage } = info
+  if (!triage.reason) return null
+  const tag = REASON_TAG[triage.reason]
+  const text = triageReasonText(info)
+  const check = triage.rootCheck
+  const suggested = triage.suggested
+  return (
+    <div
+      data-testid="review-task-triage"
+      data-reason={triage.reason}
+      onClick={onSelect}
+      className="-mt-1 cursor-pointer space-y-1 pb-2 pl-[80px] pr-3 sm:pl-[84px] sm:pr-4"
+    >
+      <p className="flex min-w-0 items-baseline gap-1.5 text-xs leading-5 text-graphite-600">
+        <span className={cn('shrink-0 rounded px-1.5 text-[11px] font-bold', tag.className)}>{tag.label}</span>
+        <span
+          data-testid="review-task-triage-text"
+          title={full ? undefined : text}
+          className={cn('min-w-0 flex-1', full ? 'break-words' : 'truncate')}
+        >
+          {text}
+        </span>
+      </p>
+      {check && (
+        <p
+          data-testid="review-task-rootcheck"
+          data-verdict={check.verdict}
+          className={cn(
+            'break-words text-xs leading-5',
+            check.verdict === 'false_claim' ? 'text-verdict-part-ink' : 'text-graphite-600',
+          )}
+        >
+          <b className="font-semibold">
+            Система проверила: {check.value} {check.actual ? 'входит' : 'не входит'} в {check.interval}
+          </b>
+          {check.verdict === 'false_claim'
+            ? ' — претензия, скорее всего, ложная.'
+            : ' — здесь ИИ права по факту.'}
+        </p>
+      )}
+      {suggested && suggested !== verdict && (
+        <button
+          type="button"
+          data-testid="review-task-accept-suggested"
+          data-verdict={suggested}
+          onClick={event => { event.stopPropagation(); onAccept(suggested) }}
+          className="rounded-md border border-graphite-300 bg-white px-2 py-0.5 text-xs font-semibold text-graphite-800 hover:border-primary-400 hover:text-primary-700"
+        >
+          Поставить «{REVIEW_TASK_VERDICT_LABEL[suggested]}»
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Полоска-сводка светофора и настройка «Зелёные: свёрнуты / раскрыты». */
+function TriageStrip({
+  yellow,
+  green,
+  preference,
+  onPreference,
+}: {
+  yellow: number
+  green: number
+  preference: GreensPreference
+  onPreference: (value: GreensPreference) => void
+}) {
+  const total = yellow + green
+  const option = (value: GreensPreference, label: string) => (
+    <button
+      type="button"
+      data-testid={`triage-pref-${value}`}
+      aria-pressed={preference === value}
+      onClick={() => onPreference(value)}
+      className={cn(
+        'rounded-full px-2 py-0.5 transition-colors',
+        preference === value ? 'bg-primary-50 font-semibold text-primary-800' : 'text-graphite-500 hover:bg-graphite-100',
+      )}
+    >
+      {label}
+    </button>
+  )
+  return (
+    <div data-testid="triage-strip" className="mb-1 space-y-1.5">
+      <div aria-hidden className="flex h-2 overflow-hidden rounded-full bg-graphite-100">
+        {total > 0 && (
+          <>
+            <i className="block bg-verdict-part" style={{ width: `${(yellow / total) * 100}%` }} />
+            <i className="block bg-verdict-ok" style={{ width: `${(green / total) * 100}%` }} />
+          </>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-graphite-600">
+        <span data-testid="triage-summary" className="inline-flex flex-wrap items-center gap-x-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="h-2.5 w-2.5 rounded-[3px] bg-verdict-part" />
+            <b className="tabular-nums text-graphite-900">{yellow}</b> проверить
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="h-2.5 w-2.5 rounded-[3px] bg-verdict-ok" />
+            <b className="tabular-nums text-graphite-900">{green}</b> ИИ: верно
+          </span>
+        </span>
+        <span role="group" aria-label="Зелёные задания" className="inline-flex items-center gap-0.5">
+          <span className="mr-0.5">Зелёные:</span>
+          {option('folded', 'свёрнуты')}
+          {option('open', 'раскрыты')}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** Одна плашка вместо зелёных строк: «✓ N заданий — ИИ: верно, ответ совпал». */
+function GreenFold({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="triage-green-fold"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="flex w-full items-center justify-between gap-3 border-t border-graphite-200 bg-verdict-ok-tint px-3 py-2.5 text-left text-[13px] font-semibold text-verdict-ok-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 sm:px-4"
+    >
+      <span className="min-w-0">
+        <span className="block">
+          ✓ {count} {plural(count, 'задание', 'задания', 'заданий')} — ИИ: верно, ответ совпал с эталоном
+        </span>
+        <small className="block text-xs font-medium opacity-85">
+          Можно не смотреть. В ваших проверках ИИ здесь ошибся в 5 случаях из 100.
+        </small>
+      </span>
+      <span className="shrink-0">{open ? 'Свернуть ↑' : 'Показать ↓'}</span>
+    </button>
   )
 }
