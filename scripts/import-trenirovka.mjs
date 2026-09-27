@@ -215,7 +215,7 @@ async function main() {
       existing = await fetchAll('чтение загруженного', () => db
         .from('topic_material_items')
         .select('topic_id, subtopic_code, section')
-        .eq('track', 'training')
+        .eq('track', mapping.format === 'explicit' && mapping.track === 'ege' ? 'ege' : 'training')
         .in('topic_id', topicIds))
     }
     console.log(`  темы шаблона: ${topicIds.length - topicProblems.length} из ${topicIds.length} на месте`)

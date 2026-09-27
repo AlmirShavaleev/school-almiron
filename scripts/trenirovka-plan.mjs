@@ -85,7 +85,14 @@ export function buildPlan(mapping, { only = null } = {}) {
   // самой раскладке, а не префиксом имени. Физика (формат по умолчанию) идёт
   // прежней веткой без единого изменения.
   const explicit = mapping?.format === 'explicit'
+  // §236: «явная» раскладка может класть файлы и на дорожку курса (`ege`) —
+  // обычные материалы темы (методички «Оформление»). По умолчанию — тренировка.
+  const track = explicit && mapping?.track === 'ege' ? 'ege' : 'training'
   const problems = []
+  if (mapping?.track != null && !explicit) problems.push('поле track допустимо только в «явной» раскладке')
+  if (explicit && mapping?.track != null && !['ege', 'training'].includes(mapping.track)) {
+    problems.push(`track «${mapping.track}» — допустимо ege или training`)
+  }
   const subtopics = []
   const seen = new Set()
   const wanted = only ? new Set(only) : null
@@ -104,7 +111,7 @@ export function buildPlan(mapping, { only = null } = {}) {
     const files = []
     const bad = []
     if (explicit) {
-      collectExplicitFiles(s, code, files, bad)
+      collectExplicitFiles(s, code, files, bad, track)
     } else for (const fileName of s.files ?? []) {
       const parsed = parseTrainingFileName(fileName)
       if (!parsed) { bad.push(`«${fileName}» — имя не по шаблону «N. Название (${code}).pdf»`); continue }
@@ -134,6 +141,7 @@ export function buildPlan(mapping, { only = null } = {}) {
       topicId: s.template_topic_id,
       topicTitle: s.topic_title ?? '',
       folder: s.folder,
+      track,
       files,
     })
   }
@@ -158,7 +166,7 @@ const TRAINING_SECTIONS = TRAINING_ROLES.map(r => r.section)
  * идемпотентности — тема + код + рубрика, второй файл той же рубрики загрузчик
  * посчитал бы уже загруженным). `position` — порядок файла в подтеме.
  */
-function collectExplicitFiles(s, code, files, bad) {
+function collectExplicitFiles(s, code, files, bad, track = 'training') {
   const list = Array.isArray(s.files) ? s.files : []
   if (list.length === 0) bad.push('нет ни одного файла')
   list.forEach((f, i) => {
@@ -166,6 +174,7 @@ function collectExplicitFiles(s, code, files, bad) {
     const section = typeof f?.section === 'string' ? f.section.trim() : ''
     if (!name) { bad.push(`файл №${i + 1} — не указано имя`); return }
     if (!section) { bad.push(`«${name}» — не указана рубрика`); return }
+    if (track === 'ege' && section === 'homework_tasks') { bad.push(`«${name}» — рубрика homework_tasks есть только у тренировки`); return }
     if (!TRAINING_SECTIONS.includes(section)) {
       bad.push(`«${name}» — рубрика «${section}» не из списка тренировки (${TRAINING_SECTIONS.join(', ')})`)
       return
@@ -177,7 +186,8 @@ function collectExplicitFiles(s, code, files, bad) {
       relPath: `${s.folder}/${name}`,
       section,
       position: files.length,
-      title: materialTitle(label, code),
+      // У материалов курса (§236) заголовок — само название, без кода подтемы.
+      title: track === 'ege' ? label : materialTitle(label, code),
     })
   })
 }
@@ -201,7 +211,7 @@ export function insertRows(subtopic, uploaded, createdBy) {
   return uploaded.map(({ file, storagePath, size }) => ({
     topic_id: subtopic.topicId,
     kind: 'file',
-    track: 'training',
+    track: subtopic.track ?? 'training',
     subtopic_code: subtopic.code,
     subtopic_title: subtopic.title,
     section: file.section,

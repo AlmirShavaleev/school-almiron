@@ -266,3 +266,37 @@ describe('buildPlan — явная раскладка (§234.1)', () => {
     expect(problems[0]).toMatch(/не по шаблону/)
   })
 })
+
+describe('§236: «явная» раскладка на дорожке курса (track = ege)', () => {
+  const real = JSON.parse(readFileSync(join(__dirname, '../../../scripts/oformlenie-physics-mapping.json'), 'utf8'))
+
+  it('методички «Оформление»: 5 подтем, дорожка ege, заголовок без кода', () => {
+    const { subtopics, problems } = buildPlan(real)
+    expect(problems).toEqual([])
+    expect(subtopics).toHaveLength(5)
+    for (const s of subtopics) expect(s.track).toBe('ege')
+    const s21 = subtopics.find((s: { code: string }) => s.code === "21")!
+    expect(s21.files[0]).toMatchObject({ section: 'theory', position: 0, title: 'Правила оформления №21' })
+    const rows = insertRows(s21, [{ file: s21.files[0], storagePath: 'p/x.pdf', size: 10 }], 'owner')
+    expect(rows[0]).toMatchObject({ track: 'ege', section: 'theory', title: 'Правила оформления №21' })
+  })
+
+  it('без track раскладка по-прежнему пишет тренировку', () => {
+    const m = { ...real, track: undefined }
+    const { subtopics } = buildPlan(m)
+    expect(subtopics[0].track).toBe('training')
+    const rows = insertRows(subtopics[0], [{ file: subtopics[0].files[0], storagePath: 'p', size: 1 }], 'o')
+    expect(rows[0].track).toBe('training')
+    expect(rows[0].title).toBe('Правила оформления №21 · 21')
+  })
+
+  it('track у обычной (физической) раскладки и неизвестный track — проблема', () => {
+    expect(buildPlan({ track: 'ege', subtopics: [] }).problems.join(' ')).toMatch(/только в «явной»/)
+    expect(buildPlan({ ...real, track: 'x' }).problems.join(' ')).toMatch(/допустимо ege или training/)
+  })
+
+  it('homework_tasks на дорожке ege отклоняется', () => {
+    const m = { ...real, subtopics: [{ ...real.subtopics[0], files: [{ name: 'a.pdf', section: 'homework_tasks' }] }] }
+    expect(buildPlan(m).problems.join(' ')).toMatch(/только у тренировки/)
+  })
+})
