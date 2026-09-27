@@ -13,6 +13,7 @@ import {
 } from '@/lib/studentProgram'
 import type { MockLessonListRow } from '@/lib/mockExamLesson'
 import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
+import { onlyEgeTrack } from '@/lib/training'
 
 /**
  * Программа курса глазами ученика.
@@ -270,10 +271,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       // 4. Рубрики материалов + ДЗ темы + привязанные тесты + задачи к уроку
       const [materialRows, homeworkRows, assignmentRows, taskProgress, mockExams] = await Promise.all([
         fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>((from, to) =>
-          supabase
+          // §234: тренировка — не рубрика темы и не шаг «тема пройдена».
+          onlyEgeTrack(supabase
             .from('topic_material_items')
             .select('topic_id, kind, section')
-            .in('topic_id', topicIds)
+            .in('topic_id', topicIds))
             .range(from, to)),
         (async () => {
           const { data, error } = await supabase

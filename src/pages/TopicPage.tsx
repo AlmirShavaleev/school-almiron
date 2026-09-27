@@ -17,6 +17,9 @@ import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkSt
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
 import { useTopicTasks } from '@/hooks/useTopicTasks'
+import { useTopicTraining } from '@/hooks/useTopicTraining'
+import { EgeFormatMark, TopicTrainingStudent, TrainingMark } from '@/components/courseProgram/TopicTrainingStudent'
+import { subtopicsForStudent } from '@/lib/training'
 import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
   STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
@@ -109,6 +112,13 @@ export function TopicPage() {
   // показывает «решено N из M» в шапке группы, и второй такой же запрос при
   // открытии урока был бы лишним.
   const topicTasks = useTopicTasks(topicId ?? undefined)
+
+  // Тренировка (§234) — задачник по кодификатору, своя группа вкладок между
+  // «Теорией» и «Уроком». Ученику скрытые подтемы база не отдаёт; фильтр ниже
+  // нужен предпросмотру персонала, которому RLS отдаёт всё.
+  const training = useTopicTraining(topicId ?? null)
+  const trainingSubtopics = subtopicsForStudent(training.subtopics)
+  const hasTraining = trainingSubtopics.length > 0
 
   // Самоотметки по ГРУППАМ рубрик. Персонал заходит на эту же страницу; у него
   // своей строки `students` нет, хук отдаёт пустой набор и кнопки не будет —
@@ -249,7 +259,7 @@ export function TopicPage() {
   // ── Determine available tabs ─────────────────────────────────────────────
   // Порядок: Видео, Конспект, Теория, Задачи, Решение ДЗ, Домашнее задание, Тест
 
-  type TabKey = 'video' | TopicMaterialSection | 'homework' | 'test'
+  type TabKey = 'video' | TopicMaterialSection | 'homework' | 'test' | 'training'
 
   const availableTabs: TabKey[] = []
 
@@ -280,6 +290,10 @@ export function TopicPage() {
   const hasTopicTasks = preview ? topicTasks.total > 0 : topicVariants.length > 0
   const hasAnyTest = (hasTest || hasTopicTasks) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
+  // Отдельным рядом, а не рубрикой перечня: у тренировки нет ни отметки, ни
+  // места в «тема пройдена» (решение владельца), и в `TOPIC_SECTION_GROUPS`
+  // она сдвинула бы общее определение групп темы (§121, §162).
+  if (hasTraining) availableTabs.push('training')
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
   // if chosen tab is no longer available, switch to the first one
@@ -414,6 +428,51 @@ export function TopicPage() {
     )
   }
 
+  /**
+   * Ряды вкладок: группы рубрик (§121) и ряд «Тренировка» сразу после
+   * «Теории» — учебный маршрут владельца: теория → тренировка → формат ЕГЭ →
+   * ДЗ. Нет «Теории» — ряд встаёт первым.
+   */
+  const sectionRows = groupTopicSections(availableTabs.filter(t => t !== 'training') as TopicSection[])
+  const tabRows: Array<(typeof sectionRows)[number] | 'training'> = [...sectionRows]
+  if (hasTraining) {
+    const theoryIdx = sectionRows.findIndex(r => r.group?.key === 'theory')
+    tabRows.splice(theoryIdx + 1, 0, 'training')
+  }
+
+  /** Ряд «Тренировка»: жёлтая пометка вместо подписи и одна вкладка. */
+  function renderTrainingRow() {
+    const isActive = active === 'training'
+    const n = trainingSubtopics.length
+    return (
+      <div
+        key="training"
+        data-testid="topic-tab-group-training"
+        className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3"
+      >
+        <span className="shrink-0 px-1 sm:w-32"><TrainingMark /></span>
+        <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            data-testid="topic-tab-training"
+            onClick={() => setChosen('training')}
+            className={cn(
+              'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
+              isActive
+                ? 'border-primary-500 text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-800',
+            )}
+          >
+            <span className="truncate">Подтемы</span>
+            <span className="text-xs text-gray-400">{n}</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl space-y-6 pb-10">
 
@@ -456,15 +515,19 @@ export function TopicPage() {
           второй копии здесь нет: перечень уже однажды разъезжался (§100). */}
       {availableTabs.length > 0 && (
         <div role="tablist" aria-label="Разделы темы" className="space-y-1.5 border-b border-gray-200 pb-1.5">
-          {groupTopicSections(availableTabs as TopicSection[]).map(row => (
+          {tabRows.map(row => row === 'training' ? renderTrainingRow() : (
             <div
               key={row.group?.key ?? 'other'}
               data-testid={`topic-tab-group-${row.group?.key ?? 'other'}`}
               className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3"
             >
               {row.group && (
-                <span className="shrink-0 px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:w-32">
+                <span className="flex shrink-0 flex-wrap items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:w-32">
                   {row.group.label}
+                  {/* «Формат ЕГЭ» — только там, где рядом есть тренировка:
+                      отличать урок не от чего, и у математики ничего не
+                      меняется (§234). */}
+                  {row.group.key === 'lesson' && hasTraining && <EgeFormatMark className="normal-case tracking-normal" />}
                 </span>
               )}
               <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
@@ -546,6 +609,8 @@ export function TopicPage() {
         // По общему списку, а не перечислением: с §95 рубрик семь, и вкладка
         // «Решение задач» открывалась пустой — её не было в перечне (§100).
         <TopicMaterialItems topicId={topic.id} canManage={false} section={active} />
+      ) : active === 'training' ? (
+        <TopicTrainingStudent topicId={topic.id} subtopics={trainingSubtopics} countView={!preview} />
       ) : active === 'homework' ? (
         <TopicHomeworkStudent topicId={topic.id} />
       ) : active === 'test' ? (

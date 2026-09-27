@@ -17,6 +17,7 @@ import { getMaterialFileIcon } from '@/lib/materialIcons'
 import { isTopicOpen, isDateAutomation, willOpenByDate } from '@/lib/topicAvailability'
 import { formatEgeNumbers, parseEgeNumbersInput, parseEgeNumbersFromTitle } from '@/lib/egeTaskNumbers'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
+import { TopicTrainingEditor } from '@/components/courseProgram/TopicTrainingEditor'
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import { TopicTemplateBanner } from '@/components/courseProgram/TopicTemplateBanner'
@@ -941,6 +942,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 )}
               </div>
             )}
+
+            {/* §234. Тренировка — подтемы задачника и переключатель «видят /
+                скрыта» для этого класса. Файлы кладёт загрузчик в шаблон,
+                здесь их не загружают и не удаляют. Нет тренировки — блока нет. */}
+            <TopicTrainingEditor topicId={topicId} />
 
           </div>
         )}

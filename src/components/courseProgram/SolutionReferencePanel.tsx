@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { getSignedFileUrl } from '@/lib/storage'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { cn } from '@/utils/cn'
+import { onlyEgeTrack } from '@/lib/training'
 
 /**
  * Просмотрщик страниц грузится лениво: pdfjs весит ~450 КБ, а панель решения
@@ -47,11 +48,12 @@ export function useTopicSolutionMaterials(topicId: string | null | undefined) {
     let cancelled = false
     setLoading(true)
 
-    supabase
+    // §234: эталон проверки — решение ДЗ курса, не решения тренировки.
+    onlyEgeTrack(supabase
       .from('topic_material_items')
       .select('*')
       .eq('topic_id', topicId)
-      .eq('section', 'solution')
+      .eq('section', 'solution'))
       .order('position', { ascending: true })
       .order('created_at', { ascending: true })
       .then(({ data }) => {

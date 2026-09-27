@@ -857,6 +857,29 @@ export const scenes = [
     ] },
   ]),
 
+  // §234: вкладка «Тренировка». Тема 9 — ФИПИ + три подтемы задачника, 1.15
+  // скрыта учителем (ученик её не видит, учитель видит «скрыта»); тема 10 —
+  // математика без тренировки, у неё не меняется ничего (нет ни «Тренировки»,
+  // ни «Формат ЕГЭ»). Переключатель учителя пишет в фикстуры — гонять по
+  // ширине своим процессом (§211):
+  //   node e2e/harness/tour.mjs d234 1280 ; node e2e/harness/tour.mjs d234 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'student', name: 'd234-student-training', url: `/my-course/${S.group}/topic/${S.topic(9)}`, width, height, actions: [
+      { wait: 1200 }, { clickSel: '[data-testid="topic-tab-training"]' }, { wait: 600 },
+    ] },
+    { persona: 'student', name: 'd234-student-lesson', url: `/my-course/${S.group}/topic/${S.topic(9)}`, width, height, actions: [
+      { wait: 1200 }, { clickSel: '[data-testid="topic-tab-group-lesson"] button:has-text("Задачи")' }, { wait: 600 },
+    ] },
+    { persona: 'ownerPreview', name: 'd234-preview-training', url: `/my-course/${S.group}/topic/${S.topic(9)}`, width, height, actions: [
+      { wait: 1200 }, { clickSel: '[data-testid="topic-tab-training"]' }, { wait: 600 },
+    ] },
+    { persona: 'owner', name: 'd234-teacher-editor', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [
+      { click: 'Физика ЕГЭ 2027' }, { wait: 800 }, { click: 'Кинематика. Баллистика' }, { wait: 1500 },
+      { eval: `document.querySelector('[data-testid="topic-training-editor"]')?.scrollIntoView({ block: 'center' })` }, { wait: 400 },
+    ] },
+    { persona: 'student', name: 'd234-math-topic', url: `/my-course/${S.group2}/topic/${S.topic(10)}`, width, height, actions: [{ wait: 1200 }] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

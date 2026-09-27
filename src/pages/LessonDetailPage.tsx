@@ -20,6 +20,7 @@ import { bucketForMaterialPath } from '@/lib/topicMaterialItems'
 import { EditLessonModal } from '@/components/modals/EditLessonModal'
 import { LessonSummaryCard } from '@/components/lessons/LessonSummaryCard'
 import { LessonMaterialsCard } from '@/components/lessons/LessonMaterialsCard'
+import { onlyEgeTrack } from '@/lib/training'
 
 interface LessonFull {
   id:               string
@@ -270,9 +271,10 @@ export function LessonDetailPage() {
 
       if (built.topic) {
         round2.push(
-          supabase.from('topic_material_items')
+          // §234: на странице урока — материалы темы, без тренировки.
+          onlyEgeTrack(supabase.from('topic_material_items')
             .select('id, kind, section, title, content, url, storage_path, file_name, position')
-            .eq('topic_id', built.topic.id)
+            .eq('topic_id', built.topic.id))
             .order('position')
         )
       } else {

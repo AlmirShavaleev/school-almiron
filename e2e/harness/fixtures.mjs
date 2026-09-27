@@ -68,6 +68,8 @@ const modules = [
   { id: IDS.module, course_id: IDS.course, title: 'Механика: кинематика, динамика, статика, законы сохранения энергии и импульса', order_index: 1, created_at: ago(24 * 80), courses: course },
   { id: IDS.module2, course_id: IDS.course, title: 'Молекулярная физика и термодинамика', order_index: 2, created_at: ago(24 * 80), courses: course },
   { id: IDS.moduleTemplate, course_id: IDS.courseTemplate, title: 'Механика', order_index: 1, created_at: ago(24 * 80), courses: courseTemplate },
+  // §234: модуль математики — тема без тренировки, у которой ничего не меняется.
+  { id: U('e', 4), course_id: IDS.course2, title: 'Алгебра', order_index: 1, created_at: ago(24 * 80), courses: course2 },
 ]
 const TOPIC_TITLES = [
   'Равноускоренное прямолинейное движение: уравнения, графики зависимости координаты и скорости от времени',
@@ -91,6 +93,12 @@ export const topics = [
     ege_task_numbers: TOPIC_EGE_NUMBERS[i] ?? [],
     modules: i < 6 ? modules[0] : modules[1],
   })),
+  // §234: тема с тренировкой (подтемы 1.14, 1.15 — скрыта учителем, 1.17) и
+  // тема математики без тренировки.
+  { id: IDS.topic(9), module_id: IDS.module, title: 'Кинематика. Баллистика. Теория + Первая часть', order_index: 7, max_score: 100,
+    is_open: true, available_from: ago(24 * 3), source_template_id: null, created_at: ago(24 * 80), ege_task_numbers: [1, 2], modules: modules[0] },
+  { id: IDS.topic(10), module_id: U('e', 4), title: 'Квадратные уравнения. Теорема Виета', order_index: 1, max_score: 100,
+    is_open: true, available_from: ago(24 * 3), source_template_id: null, created_at: ago(24 * 80), ege_task_numbers: [], modules: modules[3] },
   // темы каркаса (§174) — три первые темы механики
   ...TOPIC_TITLES.slice(0, 3).map((title, i) => ({
     id: IDS.topic(20 + i + 1), module_id: IDS.moduleTemplate, title, order_index: i + 1, max_score: 100,
@@ -746,6 +754,42 @@ export const topic_material_items = [
     mime_type: 'image/png', size_bytes: 82000, lesson_id: null, source_topic_material_id: null,
     created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
   },
+  // §234: материалы ФИПИ («Формат ЕГЭ») темы 9 и темы математики 10 — те же
+  // рубрики урока и теории, что у любой темы до §234.
+  ...[
+    [9, 'theory', 'Теория: свободное падение и бросок'], [9, 'tasks', 'Задачи урока'], [9, 'task_solution', 'Решение задач урока'],
+    [9, 'worksheet_tasks', 'Рабочий лист урока'], [9, 'worksheet_homework', 'ДЗ · рабочий лист'],
+    [10, 'theory', 'Теория: дискриминант и теорема Виета'], [10, 'tasks', 'Задачи урока'], [10, 'task_solution', 'Решение задач урока'],
+    [10, 'worksheet_tasks', 'Рабочий лист урока'],
+  ].map(([n, section, title], i) => ({
+    id: IDS.material(60 + i), topic_id: IDS.topic(n), kind: 'file', title, content: null, position: i, is_visible: true,
+    section, url: null, storage_path: `course-materials/topic-${n}/fipi-${i}.pdf`, file_name: `${title}.pdf`,
+    mime_type: 'application/pdf', size_bytes: 240000, lesson_id: null, source_topic_material_id: null,
+    created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
+  })),
+  // §234: тренировка темы 9 — три подтемы по семь файлов (роль = позиция).
+  ...[['1.17', 'Горизонтальный бросок'], ['1.14', 'Скорость и перемещение при свободном падении'], ['1.15', 'Путь в n-ю секунду свободного падения']]
+    .flatMap(([code, subtitle], k) => [
+      ['theory', 'Теория'], ['tasks', 'Список задач'], ['worksheet_tasks', 'Рабочий лист'], ['task_solution', 'Решения'],
+      ['homework_tasks', 'ДЗ · список задач'], ['worksheet_homework', 'ДЗ · рабочий лист'], ['solution', 'ДЗ · решения'],
+    ].map(([section, label], pos) => ({
+      id: IDS.material(100 + k * 10 + pos), topic_id: IDS.topic(9), kind: 'file', title: `${label} · ${code}`, content: null,
+      position: pos, is_visible: true, section, url: null,
+      storage_path: `${IDS.topic(9)}/training_${code}_${pos}.pdf`, file_name: `${pos}. ${label} (${code}).pdf`,
+      mime_type: 'application/pdf', size_bytes: 180000, lesson_id: null, source_topic_material_id: null,
+      track: 'training', subtopic_code: code, subtopic_title: subtitle,
+      created_by: IDS.owner, created_at: ago(20), updated_at: ago(20),
+    }))),
+]
+// §234: у всех строк до тренировки дорожка ege — как у базы после PENDING_234
+// (столбец с умолчанием). Клиент фильтрует `track=eq.ege`, и строка без
+// дорожки пропала бы со всех прежних сцен.
+for (const m of topic_material_items) {
+  if (m.track === undefined) Object.assign(m, { track: 'ege', subtopic_code: null, subtopic_title: null })
+}
+// §234: 1.15 скрыта учителем для этого класса.
+export const topic_subtopic_hidden = [
+  { topic_id: IDS.topic(9), subtopic_code: '1.15', hidden_by: IDS.owner, created_at: ago(5) },
 ]
 
 // ── homework ─────────────────────────────────────────────────────────────────
@@ -1594,7 +1638,7 @@ export function baseFixtures(persona) {
   const fx = {
     tables: {
       profiles, students, teachers, curators: [], courses, modules, topics, groups, group_students,
-      topic_material_items, topic_homework, topic_homework_attempts, topic_homework_reviews, topic_homework_attempt_files,
+      topic_material_items, topic_subtopic_hidden, topic_homework, topic_homework_attempts, topic_homework_reviews, topic_homework_attempt_files,
       topic_tests, topic_test_assignments, topic_test_attempts, topic_test_items: [], test_variants: [...test_variants, ...topicVariants], test_variant_items: [
         ...Array.from({ length: 26 }, (_, k) => ({ id: U('c', 1600 + k), variant_id: IDS.variant(1), task_id: IDS.task(1 + (k % 14)), position: k + 1, points: k < 20 ? 1 : 3, grading_type: k < 20 ? 'auto' : 'manual', section_id: IDS.section(1), topic_id: null, created_at: ago(100) })),
         // §201: две задачи части 2 в конце варианта — на них видно, что
@@ -1613,7 +1657,10 @@ export function baseFixtures(persona) {
     },
     rpc: {
       record_app_visit: null, school_presence_touch: null,
-      topic_solution_state: { has_solution: true, has_homework: true, unlocked: true },
+      // §234: у тем 9 и 10 решения ДЗ курса нет — плашки «Решение ДЗ» там быть не должно.
+      topic_solution_state: (body) => [IDS.topic(9), IDS.topic(10)].includes(body.p_topic_id)
+        ? { has_solution: false, has_homework: false, unlocked: true }
+        : { has_solution: true, has_homework: true, unlocked: true },
       topic_student_variants: [{ student_assignment_id: U('c', 601), variant_id: IDS.variant(1), title: test_variants[0].title, subject: 'Физика', exam_type: 'ЕГЭ', tasks_count: 26, status: 'in_progress', grading_status: 'not_submitted', due_at: ago(-24), score: null, max_score: 54, percentage: null }],
       get_student_topic_journal: journal,
       get_my_variant_assignments: myAssignments,

@@ -20,6 +20,8 @@ import-summary.json
 import-errors.jsonl
 import-checkpoint.json
 skipped-assets.jsonl
+# §234: лог загрузчика задачника (пишется рядом со скриптом)
+scripts/trenirovka-import-log.json
 
 # E2E / test artifacts (generated PDFs, auth state, playwright report)
 test-results/

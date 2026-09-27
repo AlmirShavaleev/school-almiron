@@ -14,6 +14,7 @@ import {
   type TopicMaterial,
   type TopicMaterialItemRow,
 } from '@/lib/topicMaterialItems'
+import { onlyEgeTrack } from '@/lib/training'
 
 /**
  * Материалы темы: текст, видео, ссылка, файл.
@@ -41,10 +42,13 @@ export function useTopicMaterialItems(topicId: string | null) {
     setLoading(true)
     setError(null)
 
-    supabase
+    // §234: только материалы темы. Тренировку читает свой хук
+    // (`useTopicTraining`) — здесь она попала бы во вкладки, счётчики
+    // рубрик и в «тема пройдена» на клиенте.
+    onlyEgeTrack(supabase
       .from('topic_material_items')
       .select('*')
-      .eq('topic_id', topicId)
+      .eq('topic_id', topicId))
       .order('position', { ascending: true })
       .order('created_at', { ascending: true })
       .then(({ data, error: err }) => {

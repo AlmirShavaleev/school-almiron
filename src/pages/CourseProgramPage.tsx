@@ -54,6 +54,7 @@ import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 import { groupCoursesByTemplate } from '@/lib/courseGrouping'
 import { copyDisplayTitle } from '@/lib/courseDisplayName'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+import { onlyEgeTrack } from '@/lib/training'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
 function InlineEdit({
@@ -1102,10 +1103,12 @@ function MaterialsMatrix({
         const [materialItems, homeworkRows, testRows, variantRows] = await Promise.all([
           // Query 1: topic_material_items with pagination
           fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null }>(async (from, to) =>
-            await supabase
+            // §234: матрица заполненности — про рубрики темы; тренировка
+            // лежит в тех же секциях и отметила бы пустые клетки.
+            await onlyEgeTrack(supabase
               .from('topic_material_items')
               .select('topic_id, kind, section')
-              .in('topic_id', topicIds)
+              .in('topic_id', topicIds))
               .range(from, to)
           ),
           // Query 2: topic_homework (no pagination)

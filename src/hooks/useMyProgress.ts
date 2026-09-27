@@ -9,6 +9,7 @@ import {
 } from '@/lib/topicProgress'
 import { scorePercent } from '@/lib/studentInsights'
 import type { TopicSection } from '@/lib/topicMaterialItems'
+import { onlyEgeTrack } from '@/lib/training'
 
 interface TopicRow {
   id: string
@@ -74,7 +75,9 @@ export function useMyProgress() {
       }
 
       const [materialsRes, marksRes] = await Promise.all([
-        supabase.from('topic_material_items').select('topic_id, section, kind').in('topic_id', ids),
+        // §234: тренировка в «тема пройдена» не входит — только дорожка ege,
+        // как в topic_done_events() на сервере.
+        onlyEgeTrack(supabase.from('topic_material_items').select('topic_id, section, kind').in('topic_id', ids)),
         supabase.from('topic_section_marks').select('topic_id, group_key')
           .eq('student_id', sid).in('topic_id', ids),
       ])

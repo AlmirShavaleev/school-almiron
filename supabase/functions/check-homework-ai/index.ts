@@ -801,6 +801,10 @@ async function loadMaterialText(
     .select('id, title, content, kind, storage_path, size_bytes, mime_type')
     .eq('topic_id', topicId)
     .eq('section', spec.section)
+    // §234: эталон и рабочий лист — только из материалов ДЗ курса. У тренировки
+    // те же рубрики (`solution`, `worksheet_homework`), и без фильтра в эталон
+    // реального ДЗ попали бы решения задачника.
+    .eq('track', 'ege')
     .order('position', { ascending: true })
 
   const rows = (materials ?? []) as Record<string, any>[]
