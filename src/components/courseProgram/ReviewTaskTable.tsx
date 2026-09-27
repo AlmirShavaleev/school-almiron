@@ -56,7 +56,7 @@ import {
 import type { ReviewTasksSaveState } from '@/hooks/useHomeworkReviewTasks'
 import type { GradeScale } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
-import { classifyRow, stripAiDoubt, triageRank, type RowTriage, type TriageReason } from '@/lib/reviewTriage'
+import { acceptSuggestionPatch, classifyRow, triageRank, type RowTriage, type TriageReason, type TriageSuggestion } from '@/lib/reviewTriage'
 import { HintNote } from '@/components/shared/HintNote'
 import { cn } from '@/utils/cn'
 import { MARK_OF_REVIEW_VERDICT, VerdictMark, type VerdictMarkState } from '@/components/ui/VerdictMark'
@@ -787,7 +787,9 @@ function TaskSection({
     }
     for (const row of rows) {
       const ai = byNo.get(noteTaskKey(row.no))
-      const aiNote = ai ? ai.note : stripAiDoubt(row.note)
+      // Сомнение ИИ — только из слепка проверки: в таблице преподавателя его
+      // нет (§238 — поле `note` видит ученик).
+      const aiNote = ai ? ai.note : ''
       map.set(row.id, {
         triage: classifyRow({
           aiVerdict: ai?.verdict ?? null,
@@ -1515,7 +1517,7 @@ function TaskLine({
           verdict={row.verdict}
           full={selected}
           onSelect={onSelect}
-          onAccept={verdict => { void onPatch({ verdict }) }}
+          onAccept={suggested => { void onPatch(acceptSuggestionPatch(suggested, row.note, triage.aiNote)) }}
         />
       )}
 
@@ -1985,7 +1987,8 @@ function TriageNote({
   /** Строка выбрана — пояснение целиком, а не одной строкой. */
   full: boolean
   onSelect: () => void
-  onAccept: (verdict: ReviewTaskVerdict) => void
+  /** Нажали «Поставить …»: что записать, решает `acceptSuggestionPatch`. */
+  onAccept: (suggested: TriageSuggestion) => void
 }) {
   const { triage } = info
   if (!triage.reason) return null

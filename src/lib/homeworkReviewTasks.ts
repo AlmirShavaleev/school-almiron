@@ -268,8 +268,8 @@ export function toggleReviewTaskFilter(
  */
 export function reviewTasksFromAi(tasks: readonly AiTaskRow[]): Array<Omit<ReviewTaskRow, 'id' | 'attempt_id' | 'updated_by' | 'updated_at'>> {
   return tasks.map((task, index) => {
-    // §238. «Частично» при совпавшем ответе ложится «верно» с заметкой «ИИ
-    // сомневается: …» — то же правило, что у первого заполнения в хуке.
+    // §238. «Частично» при совпавшем ответе ложится «верно» без заметки ИИ —
+    // то же правило, что у первого заполнения в хуке.
     const seeded = seededVerdict(task)
     return {
       no: task.no,

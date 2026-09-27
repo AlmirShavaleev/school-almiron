@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AI_DOUBT_PREFIX,
+  acceptSuggestionPatch,
   checkRootClaim,
   classifyRow,
   inInterval,
   parseInterval,
   parseMathValue,
+  seedDoubtPatches,
   seededVerdict,
-  stripAiDoubt,
   triageRank,
 } from '../reviewTriage'
 import { reviewTasksFromAi } from '../homeworkReviewTasks'
@@ -143,10 +143,6 @@ describe('§238. утверждения ИИ — свои случаи', () => {
     expect(checkRootClaim('Ответ — 3π не входит в [5π/2; 4π]')).toMatchObject({ value: '3π', actual: true })
   })
 
-  it('заметка с префиксом сомнения разбирается так же', () => {
-    expect(checkRootClaim(`${AI_DOUBT_PREFIX}Неверный отбор: x=3π не входит в [5π/2; 4π]`)).toMatchObject({ verdict: 'false_claim' })
-    expect(stripAiDoubt(`${AI_DOUBT_PREFIX}текст`)).toBe('текст')
-  })
 })
 
 describe('§238. светофор строки', () => {
@@ -203,19 +199,16 @@ describe('§238. светофор строки', () => {
 })
 
 describe('§238. заполнение таблицы из ИИ', () => {
-  it('«частично» при совпавшем ответе ложится «верно» с заметкой «ИИ сомневается: …»', () => {
+  it('«частично» при совпавшем ответе ложится «верно» БЕЗ заметки ИИ — её видит ученик', () => {
     expect(seededVerdict({ verdict: 'partial', student_answer: '30 Н', expected_answer: '30 Н', note: 'Нет хода решения' }))
-      .toEqual({ verdict: 'correct', note: 'ИИ сомневается: Нет хода решения' })
-    expect(seededVerdict({ verdict: 'partial', student_answer: '30', expected_answer: '30', note: '' }))
       .toEqual({ verdict: 'correct', note: null })
-    // Повторно префикс не наращивается.
-    expect(seededVerdict({ verdict: 'partial', student_answer: '1', expected_answer: '1', note: 'ИИ сомневается: x' }).note)
-      .toBe('ИИ сомневается: x')
+    expect(seededVerdict({ verdict: 'partial', student_answer: 'в 144 раза', expected_answer: '144', note: 'x=3π не входит в [5π/2; 4π]' }))
+      .toEqual({ verdict: 'correct', note: null })
   })
 
-  it('остальное — как было', () => {
+  it('остальное — как было, с заметкой ИИ', () => {
     expect(seededVerdict({ verdict: 'partial', student_answer: '12', expected_answer: '30', note: 'n' })).toEqual({ verdict: 'partial', note: 'n' })
-    expect(seededVerdict({ verdict: 'wrong', student_answer: '1', expected_answer: '1', note: '' })).toEqual({ verdict: 'wrong', note: null })
+    expect(seededVerdict({ verdict: 'wrong', student_answer: '1', expected_answer: '2', note: 'знак' })).toEqual({ verdict: 'wrong', note: 'знак' })
     expect(seededVerdict({ verdict: 'correct', student_answer: '1', expected_answer: '1', note: '' })).toEqual({ verdict: 'correct', note: null })
   })
 
@@ -225,8 +218,41 @@ describe('§238. заполнение таблицы из ИИ', () => {
       { no: '2', verdict: 'partial', student_answer: '1', expected_answer: '2', note: 'ход неверный' },
     ])
     expect(rows.map(r => [r.no, r.verdict, r.note])).toEqual([
-      ['1', 'correct', 'ИИ сомневается: x=3π не входит в [5π/2; 4π]'],
+      ['1', 'correct', null],
       ['2', 'partial', 'ход неверный'],
     ])
+  })
+
+  it('правки к только что заполненной таблице: только «частично» при совпавшем ответе, с текущей заметкой для условной записи', () => {
+    expect(seedDoubtPatches([
+      { id: 'a', verdict: 'partial', student_answer: '1', expected_answer: '1', note: 'претензия ИИ' },
+      { id: 'b', verdict: 'partial', student_answer: '1', expected_answer: '2', note: 'x' },
+      { id: 'c', verdict: 'correct', student_answer: '1', expected_answer: '1', note: null },
+    ])).toEqual([{ id: 'a', note: 'претензия ИИ', patch: { verdict: 'correct', note: null } }])
+  })
+})
+
+describe('§238. кнопка «Поставить …»', () => {
+  const AI = 'Неверный отбор: x=3π не входит в [5π/2; 4π]'
+
+  it('«верно» стирает заметку, если в ней дословно текст ИИ', () => {
+    expect(acceptSuggestionPatch('correct', AI, AI)).toEqual({ verdict: 'correct', note: null })
+    // Пробелы по краям срезают и RPC заполнения, и разбор слепка.
+    expect(acceptSuggestionPatch('correct', `  ${AI} `, AI)).toEqual({ verdict: 'correct', note: null })
+  })
+
+  it('заметку преподавателя не трогает', () => {
+    expect(acceptSuggestionPatch('correct', `${AI} — проверил, отбор верный`, AI)).toEqual({ verdict: 'correct' })
+    expect(acceptSuggestionPatch('correct', 'Своё замечание', AI)).toEqual({ verdict: 'correct' })
+    expect(acceptSuggestionPatch('correct', null, AI)).toEqual({ verdict: 'correct' })
+  })
+
+  it('у ИИ заметки нет — нечего сверять, заметку не трогает', () => {
+    expect(acceptSuggestionPatch('correct', 'текст', '')).toEqual({ verdict: 'correct' })
+  })
+
+  it('другие предложения заметку не трогают: объяснение ошибки ученику нужно', () => {
+    expect(acceptSuggestionPatch('wrong', AI, AI)).toEqual({ verdict: 'wrong' })
+    expect(acceptSuggestionPatch('partial', AI, AI)).toEqual({ verdict: 'partial' })
   })
 })

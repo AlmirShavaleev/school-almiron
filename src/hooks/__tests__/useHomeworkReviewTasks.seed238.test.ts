@@ -4,10 +4,10 @@ import { vi } from 'vitest'
 
 /**
  * §238. Первое заполнение таблицы из ИИ: «частично» при совпавшем ответе
- * ложится «верно» с заметкой «ИИ сомневается: …». Проверяем поведение хука на
- * подменённой базе, которая честно применяет фильтры `eq` к записи: правило
- * применяется только к строкам, которые создал этот вызов, и не затирает
- * чужую правку.
+ * ложится «верно» БЕЗ заметки ИИ (поле `note` видит ученик). Проверяем
+ * поведение хука на подменённой базе, которая честно применяет фильтры
+ * `eq`/`is` к записи: правило применяется только к строкам, которые создал
+ * этот вызов, и не затирает чужую правку — ни вердикт, ни заметку.
  */
 
 type Row = {
@@ -28,6 +28,8 @@ let stored: Row[] = []
 let seedRows: Row[] = []
 /** Что сделать «другому преподавателю» сразу после заполнения. */
 let afterSeed: (() => void) | null = null
+/** Что сделать «другому преподавателю» между нашим чтением и нашей записью. */
+let beforeUpdate: (() => void) | null = null
 const updates: Array<{ patch: Record<string, unknown>; filters: Array<[string, unknown]> }> = []
 let rpcCalls = 0
 
@@ -47,7 +49,9 @@ vi.mock('@/lib/supabase', () => {
           const upFilters: Array<[string, unknown]> = []
           const up: any = {
             eq: (col: string, val: unknown) => { upFilters.push([col, val]); return up },
+            is: (col: string, val: unknown) => { upFilters.push([col, val]); return up },
             then: (res: any) => {
+              if (beforeUpdate) { const run = beforeUpdate; beforeUpdate = null; run() }
               updates.push({ patch, filters: [...upFilters] })
               stored = stored.map(row => (matches(upFilters)(row) ? { ...row, ...patch } : row))
               return Promise.resolve({ error: null }).then(res)
@@ -80,7 +84,8 @@ const FROM_AI: Row[] = [
   row({ id: 'r1', no: '1', verdict: 'correct', student_answer: '12', expected_answer: '12' }),
   row({ id: 'r5', no: '5', verdict: 'partial', student_answer: '4π; 3π', expected_answer: '4π; 3π', note: 'Неверный отбор: x=3π не входит в [5π/2; 4π]', position: 50 }),
   row({ id: 'r6', no: '6', verdict: 'partial', student_answer: '7', expected_answer: '8', note: 'Округление', position: 60 }),
-  row({ id: 'r7', no: '7', verdict: 'partial', student_answer: 'в 144 раза', expected_answer: '144', note: '', position: 70 }),
+  // RPC кладёт пустую заметку как null (nullif).
+  row({ id: 'r7', no: '7', verdict: 'partial', student_answer: 'в 144 раза', expected_answer: '144', note: null, position: 70 }),
 ]
 
 describe('§238. useHomeworkReviewTasks — заполнение из ИИ со светофором', () => {
@@ -88,25 +93,42 @@ describe('§238. useHomeworkReviewTasks — заполнение из ИИ со 
     stored = []
     seedRows = FROM_AI
     afterSeed = null
+    beforeUpdate = null
     updates.length = 0
     rpcCalls = 0
   })
 
-  it('пустая таблица: «частично» при совпавшем ответе становится «верно» с сомнением ИИ', async () => {
+  it('пустая таблица: «частично» при совпавшем ответе становится «верно», заметка ИИ стирается', async () => {
     const { result } = renderHook(() => useHomeworkReviewTasks('a1'))
     await waitFor(() => expect(result.current.rows).toHaveLength(4))
+    await waitFor(() => expect(result.current.rows.find(r => r.no === '5')?.verdict).toBe('correct'))
 
     const byNo = Object.fromEntries(result.current.rows.map(r => [r.no, r]))
-    expect(byNo['5']).toMatchObject({ verdict: 'correct', note: 'ИИ сомневается: Неверный отбор: x=3π не входит в [5π/2; 4π]' })
-    // Ответ другой — остаётся «частично».
+    // Претензия ИИ в таблицу (её видит ученик) не попадает ни в каком виде.
+    expect(byNo['5']).toMatchObject({ verdict: 'correct', note: null })
+    expect(result.current.rows.some(r => /сомневается|3π/.test(r.note ?? ''))).toBe(false)
+    // Ответ другой — остаётся «частично» с заметкой ИИ.
     expect(byNo['6']).toMatchObject({ verdict: 'partial', note: 'Округление' })
-    // «в 144 раза» = «144» по compareAnswers; заметки не было — не выдумываем.
+    // «в 144 раза» = «144» по compareAnswers; заметки не было.
     expect(byNo['7']).toMatchObject({ verdict: 'correct', note: null })
     expect(byNo['1'].verdict).toBe('correct')
 
-    // Запись условная — только строки, которые всё ещё «частично».
+    // Запись условная: всё ещё «частично» и в заметке всё ещё текст ИИ.
     expect(updates).toHaveLength(2)
     for (const u of updates) expect(u.filters).toContainEqual(['verdict', 'partial'])
+    expect(updates.find(u => u.filters.some(([c, v]) => c === 'id' && v === 'r5'))?.filters)
+      .toContainEqual(['note', 'Неверный отбор: x=3π не входит в [5π/2; 4π]'])
+    expect(updates.find(u => u.filters.some(([c, v]) => c === 'id' && v === 'r7'))?.filters)
+      .toContainEqual(['note', null])
+  })
+
+  it('преподаватель успел дописать свою заметку — строка не трогается', async () => {
+    beforeUpdate = () => {
+      stored = stored.map(r => (r.id === 'r5' ? { ...r, note: 'Моё замечание к оформлению' } : r))
+    }
+    const { result } = renderHook(() => useHomeworkReviewTasks('a1'))
+    await waitFor(() => expect(result.current.rows).toHaveLength(4))
+    expect(result.current.rows.find(r => r.no === '5')).toMatchObject({ verdict: 'partial', note: 'Моё замечание к оформлению' })
   })
 
   it('готовая таблица не переписывается: заполнения нет, правок нет', async () => {
@@ -132,7 +154,7 @@ describe('§238. useHomeworkReviewTasks — заполнение из ИИ со 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.rows).toHaveLength(0)
     await act(async () => { await result.current.seedNow() })
-    expect(result.current.rows.find(r => r.no === '5')?.verdict).toBe('correct')
+    expect(result.current.rows.find(r => r.no === '5')).toMatchObject({ verdict: 'correct', note: null })
     expect(result.current.saveState).toBe('saved')
   })
 })

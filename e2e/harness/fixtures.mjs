@@ -965,12 +965,13 @@ export const topic_homework_review_tasks = [
     no, verdict: 'unsolved', note: 'задание не начато',
   })),
   // §238: таблица работы «светофора» — как её заполняет §238: у №5 «частично»
-  // при совпавшем ответе легло «верно» с заметкой «ИИ сомневается: …».
+  // при совпавшем ответе легло «верно» без заметки ИИ (её видит ученик);
+  // сомнение ИИ экран берёт из слепка проверки.
   ...SVETOFOR_AI.map((t, i) => reviewTaskRow(300 + i, IDS.attempt(38), {
     no: t.no,
     verdict: t.verdict === 'partial' ? 'correct' : t.verdict,
     student_answer: t.student_answer || null, expected_answer: t.expected_answer || null,
-    note: t.verdict === 'partial' ? `ИИ сомневается: ${t.note}` : (t.note || null),
+    note: t.verdict === 'partial' ? null : (t.note || null),
     position: (i + 1) * 10, updated_at: ago(0.3),
   })),
   // ── работа ученика, уже проверенная ──

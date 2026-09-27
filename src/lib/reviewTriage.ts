@@ -132,34 +132,50 @@ export function triageRank(triage: RowTriage): number {
 // Заполнение таблицы из ИИ (seed)
 // ---------------------------------------------------------------------------
 
-/** Префикс заметки, с которым «частично» ИИ уходит в таблицу как «верно». */
-export const AI_DOUBT_PREFIX = 'ИИ сомневается: '
-
-/** Заметка без префикса сомнения — чтобы искать в ней утверждение ИИ. */
-export function stripAiDoubt(note: string | null | undefined): string {
-  const text = String(note ?? '')
-  return text.startsWith(AI_DOUBT_PREFIX) ? text.slice(AI_DOUBT_PREFIX.length) : text
-}
-
 /**
  * Во что превращается строка ИИ при заполнении таблицы преподавателя.
  *
  * Единственное изменение §238: «частично» при совпавшем ответе кладётся как
- * «верно», а претензия ИИ — заметкой с префиксом «ИИ сомневается: …». Балл не
- * снижается, пока человек сам не выберет иначе. Остальные строки — как есть.
+ * «верно» и БЕЗ заметки. Поле `note` таблицы после вердикта видит ученик
+ * (§199: внутреннего поля нет намеренно), а претензия ИИ здесь, как правило,
+ * выдумана — ученику её показывать нельзя. Преподаватель видит сомнение ИИ в
+ * интерфейсе, из слепка проверки (`topic_homework_ai_jobs.tasks`), как причину
+ * жёлтой строки. Балл не снижается, пока человек сам не выберет иначе.
+ * Остальные строки — как есть.
  */
 export function seededVerdict(task: Pick<AiTaskRow, 'verdict' | 'student_answer' | 'expected_answer' | 'note'>): {
   verdict: AiTaskVerdict
   note: string | null
 } {
   const note = String(task.note ?? '').trim()
-  if (task.verdict === 'partial' && compareAnswers(task.student_answer ?? '', task.expected_answer ?? '') === 'equal') {
-    return {
-      verdict: 'correct',
-      note: note ? (note.startsWith(AI_DOUBT_PREFIX) ? note : `${AI_DOUBT_PREFIX}${note}`) : null,
-    }
-  }
+  if (isPartialEqual(task)) return { verdict: 'correct', note: null }
   return { verdict: task.verdict, note: note || null }
+}
+
+function isPartialEqual(task: { verdict: string; student_answer?: string | null; expected_answer?: string | null }): boolean {
+  return task.verdict === 'partial'
+    && compareAnswers(task.student_answer ?? '', task.expected_answer ?? '') === 'equal'
+}
+
+/**
+ * Что записать по кнопке «Поставить …» у жёлтой строки.
+ *
+ * Для «верно» заметка очищается, но ТОЛЬКО если в ней дословно текст ИИ по
+ * этому заданию (старые таблицы, заполненные до §238, несут претензию модели
+ * в `note`, и с вердиктом «верно» ученик прочёл бы её как замечание). Если
+ * текст другой — его писал преподаватель, и он остаётся. Для остальных
+ * предложений заметка не трогается: объяснение ошибки ученику нужно.
+ */
+export function acceptSuggestionPatch(
+  suggested: TriageSuggestion,
+  rowNote: string | null | undefined,
+  aiNote: string | null | undefined,
+): { verdict: TriageSuggestion; note?: null } {
+  const ai = String(aiNote ?? '').trim()
+  if (suggested === 'correct' && ai && String(rowNote ?? '').trim() === ai) {
+    return { verdict: suggested, note: null }
+  }
+  return { verdict: suggested }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +244,7 @@ export function inInterval(x: number, interval: ParsedInterval): boolean {
  * проверка и заводилась.
  */
 export function checkRootClaim(note: string | null | undefined): RootCheck | null {
-  const text = normalizeMath(stripAiDoubt(note))
+  const text = normalizeMath(note)
   if (!text.trim()) return null
 
   const checks: RootCheck[] = []
@@ -326,12 +342,15 @@ function pretty(raw: string): string {
 
 /**
  * §238. Правки к только что заполненной таблице: строки «частично» при
- * совпавшем ответе → «верно» с заметкой «ИИ сомневается: …».
+ * совпавшем ответе → «верно», заметка ИИ стирается (см. `seededVerdict`).
  *
  * Заполняет таблицу RPC в базе (`topic_homework_review_tasks_seed`, §199), а
  * сравнивать ответы в SQL значило бы завести вторую копию `compareAnswers`.
  * Поэтому правило применяет клиент — сразу после того, как ЕГО вызов RPC
  * создал строки, и только к ним: уже заполненные таблицы не переписываются.
+ * `note` в ответе — что лежит в строке сейчас (текст ИИ из RPC): запись
+ * условная и по нему тоже, чтобы не стереть заметку, которую успел написать
+ * человек.
  */
 export function seedDoubtPatches(rows: readonly {
   id: string
@@ -339,17 +358,10 @@ export function seedDoubtPatches(rows: readonly {
   student_answer: string | null
   expected_answer: string | null
   note: string | null
-}[]): Array<{ id: string; patch: { verdict: 'correct'; note: string | null } }> {
-  const out: Array<{ id: string; patch: { verdict: 'correct'; note: string | null } }> = []
+}[]): Array<{ id: string; note: string | null; patch: { verdict: 'correct'; note: null } }> {
+  const out: Array<{ id: string; note: string | null; patch: { verdict: 'correct'; note: null } }> = []
   for (const row of rows) {
-    if (row.verdict !== 'partial') continue
-    const seeded = seededVerdict({
-      verdict: 'partial',
-      student_answer: row.student_answer ?? '',
-      expected_answer: row.expected_answer ?? '',
-      note: row.note ?? '',
-    })
-    if (seeded.verdict === 'correct') out.push({ id: row.id, patch: { verdict: 'correct', note: seeded.note } })
+    if (isPartialEqual(row)) out.push({ id: row.id, note: row.note, patch: { verdict: 'correct', note: null } })
   }
   return out
 }

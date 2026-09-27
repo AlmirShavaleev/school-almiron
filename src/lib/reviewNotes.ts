@@ -1,5 +1,3 @@
-import { AI_DOUBT_PREFIX } from './reviewTriage'
-
 /**
  * §209. Замечание — это рамка на работе, привязанная к заданию.
  *
@@ -171,14 +169,7 @@ export function verdictConflictsWithNotes(
   notes: readonly ReviewNote[],
 ): boolean {
   if (verdict !== 'correct') return false
-  return notes.some(note => {
-    const text = String(note.text ?? '').trim()
-    // §238. «ИИ сомневается: …» — заметка, с которой «частично» ИИ при
-    // совпавшем ответе легло в таблицу «верно». Спор тут показан светофором
-    // (жёлтая строка и проверка отбора корней), второй раз его не называем.
-    if (note.legacy && text.startsWith(AI_DOUBT_PREFIX.trim())) return false
-    return note.type !== 'good' && text.length > 0
-  })
+  return notes.some(note => note.type !== 'good' && String(note.text ?? '').trim().length > 0)
 }
 
 export const VERDICT_CONFLICT_LABEL = 'вердикт и замечание расходятся'

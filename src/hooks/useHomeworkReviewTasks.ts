@@ -25,13 +25,14 @@ export type ReviewTasksSaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 /**
  * §238. Первое заполнение таблицы: RPC (§199) плюс правило светофора —
- * «частично» при совпавшем ответе ложится «верно» с заметкой «ИИ
- * сомневается: …».
+ * «частично» при совпавшем ответе ложится «верно» без заметки: претензию ИИ
+ * ученик видеть не должен, преподаватель видит её в светофоре из слепка ИИ.
  *
  * Правило применяется, только если строки создал ЭТОТ вызов (RPC вернула
  * число больше нуля): готовую таблицу не переписываем. Запись условная
- * (`verdict = 'partial'`): если второй преподаватель открыл работу в ту же
- * секунду и уже поправил строку, его правка не затирается. Отказ записи — не
+ * (`verdict = 'partial'` и заметка всё ещё текст ИИ): если второй
+ * преподаватель открыл работу в ту же секунду и уже поправил строку, его
+ * правка не затирается. Отказ записи — не
  * ошибка экрана: строка просто останется «частично», как до §238.
  *
  * Возвращает ошибку RPC или null.
@@ -42,8 +43,10 @@ async function seedTable(attemptId: string, readRows: (id: string) => Promise<Re
   if (error) return error.message ?? 'Не удалось заполнить таблицу'
   if (typeof data !== 'number' || data <= 0) return null
   const fresh = await readRows(attemptId)
-  for (const { id, patch } of seedDoubtPatches(fresh)) {
-    await db().from(TABLE).update(patch).eq('id', id).eq('verdict', 'partial')
+  for (const { id, note, patch } of seedDoubtPatches(fresh)) {
+    let query = db().from(TABLE).update(patch).eq('id', id).eq('verdict', 'partial')
+    query = note == null ? query.is('note', null) : query.eq('note', note)
+    await query
   }
   return null
 }

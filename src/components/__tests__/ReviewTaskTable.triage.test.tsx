@@ -27,7 +27,7 @@ const job = (tasks: AiTaskRow[] = AI_TASKS): AiJobRow => ({
   created_at: '2026-09-27T10:00:00Z', completed_at: '2026-09-27T10:01:00Z',
 })
 
-/** Таблица преподавателя — как её заполняет §238: у №5 уже «верно» с сомнением ИИ. */
+/** Таблица преподавателя — как её заполняет §238: у №5 уже «верно» и без заметки ИИ. */
 const ROWS: ReviewTaskRow[] = Array.from({ length: 14 }, (_v, i) => {
   const no = String(i + 1)
   const ai = AI_TASKS.find(t => t.no === no)!
@@ -36,7 +36,7 @@ const ROWS: ReviewTaskRow[] = Array.from({ length: 14 }, (_v, i) => {
     id: `r${no}`, attempt_id: 'a1', no,
     verdict: doubt ? 'correct' : ai.verdict,
     student_answer: ai.student_answer || null, expected_answer: ai.expected_answer || null,
-    note: doubt ? `ИИ сомневается: ${ai.note}` : ai.note || null,
+    note: doubt ? null : ai.note || null,
     position: (i + 1) * 10, updated_by: null, updated_at: '2026-09-27T10:05:00Z',
   }
 })
@@ -89,14 +89,17 @@ describe('§238. светофор в таблице заданий', () => {
     const note = within(five).getByTestId('review-task-triage')
     expect(note).toHaveAttribute('data-reason', 'partial_equal')
     expect(note).toHaveTextContent('ИИ: «частично», но ответ совпал с эталоном')
+    // Сомнение ИИ — из слепка проверки: в таблице у №5 заметки нет.
+    expect(note).toHaveTextContent('ИИ сомневается: «Неверный отбор: x=3π не входит в [5π/2; 4π]»')
     expect(within(five).getByTestId('review-task-rootcheck'))
       .toHaveTextContent('Система проверила: 3π входит в [5π/2; 4π] — претензия, скорее всего, ложная.')
     // Таблица уже «верно» — предлагать нечего.
     expect(within(five).queryByTestId('review-task-accept-suggested')).toBeNull()
-    // №5 выбрана (первая жёлтая); заметка «ИИ сомневается» спором вердикта
-    // и замечания не считается — сомнение уже показал светофор.
+    // №5 выбрана (первая жёлтая). Заметки в таблице нет — нет ни замечаний,
+    // ни спора «вердикт и замечание расходятся»: сомнение показано один раз.
     expect(five).toHaveAttribute('data-selected', 'true')
     expect(within(five).queryByTestId('review-task-conflict')).toBeNull()
+    expect(within(five).queryByTestId('review-task-note')).toBeNull()
 
     const nine = screen.getAllByTestId('review-task-row').find(r => r.dataset.no === '9')!
     expect(within(nine).getByTestId('review-task-triage')).toHaveTextContent('ИИ: «неверно» — ответ не совпал.')
@@ -165,7 +168,7 @@ describe('§238. светофор в таблице заданий', () => {
     expect(onStartNote).not.toHaveBeenCalled()
   })
 
-  it('старая таблица с «частично» при совпавшем ответе: предложено «верно», ставит только нажатие', () => {
+  it('старая таблица с «частично» и заметкой ИИ: «Поставить «верно»» ставит вердикт и стирает текст ИИ', () => {
     const rows = ROWS.map(r => (r.no === '5' ? { ...r, verdict: 'partial' as const, note: AI_TASKS.find(t => t.no === '5')!.note } : r))
     const { onPatchTask } = table({ tasks: rows })
     expect(onPatchTask).not.toHaveBeenCalled()
@@ -173,6 +176,14 @@ describe('§238. светофор в таблице заданий', () => {
     const accept = within(five).getByTestId('review-task-accept-suggested')
     expect(accept).toHaveTextContent('Поставить «верно»')
     fireEvent.click(accept)
+    expect(onPatchTask).toHaveBeenCalledWith('r5', { verdict: 'correct', note: null })
+  })
+
+  it('старая таблица, но заметку писал преподаватель: «Поставить «верно»» заметку не трогает', () => {
+    const rows = ROWS.map(r => (r.no === '5' ? { ...r, verdict: 'partial' as const, note: 'Оформите отбор на круге' } : r))
+    const { onPatchTask } = table({ tasks: rows })
+    const five = screen.getAllByTestId('review-task-row').find(r => r.dataset.no === '5')!
+    fireEvent.click(within(five).getByTestId('review-task-accept-suggested'))
     expect(onPatchTask).toHaveBeenCalledWith('r5', { verdict: 'correct' })
   })
 
