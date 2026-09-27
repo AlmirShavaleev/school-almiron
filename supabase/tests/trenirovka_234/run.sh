@@ -27,5 +27,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S/05_slice_234.sql \
  && $Q -f $R/20260913195406_template_sync_drop_renumber.sql 2>/dev/null \
  && $Q -f $R/20260913195532_copy_functions_fill_lineage.sql \
  && $Q -f $S/10_data_234.sql \
- && $Q -1 -f $R/PENDING_234.sql 2>/dev/null && $Q -1 -f $R/PENDING_234.sql 2>/dev/null && echo "PENDING_234 applied twice: ok" \
+ && $Q -1 -f $R/20260927153810_trenirovka_training_track.sql 2>/dev/null && $Q -1 -f $R/20260927153810_trenirovka_training_track.sql 2>/dev/null && echo "PENDING_234 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe234 -f $S/20_probes.sql
