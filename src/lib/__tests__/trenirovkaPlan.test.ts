@@ -170,3 +170,99 @@ describe('parseOnly', () => {
     expect(materialTitle('Теория', '1.4.1')).toBe('Теория · 1.4.1')
   })
 })
+
+// ── §234.1: «явная» раскладка (задачник по математике) ──────────────────────
+
+const mathMapping = JSON.parse(readFileSync(join(process.cwd(), 'scripts/trenirovka-math-mapping.json'), 'utf8'))
+const M = '18ec6504-4ca0-4421-8b21-9e16deb08885'
+const explicit = (subtopics: unknown[]) => ({ format: 'explicit', template_course_id: 'fbf65ad2', subtopics })
+const msub = (code: string, files: unknown[], extra: Record<string, unknown> = {}) => ({
+  code, title: `Подтема ${code}`, folder: 'ЕГЭ математика/Задание 01. Планиметрия', template_topic_id: M, files, ...extra,
+})
+
+describe('buildPlan — явная раскладка (§234.1)', () => {
+  it('раскладка математики владельца: 118 подтем, 118 файлов, без проблем', () => {
+    const { subtopics, problems } = buildPlan(mathMapping)
+    expect(problems).toEqual([])
+    expect(summarizePlan(subtopics)).toEqual({ subtopics: 118, files: 118, topics: 19 })
+    const codes = subtopics.map((s: { code: string }) => s.code)
+    expect(codes).toEqual([...codes].sort(compareSubtopicCodes))
+    expect(codes.slice(0, 3)).toEqual(['1.0', '1.1', '1.2'])
+  })
+
+  it('роль и подпись — из раскладки, позиция — порядок файла, заголовок «Подпись · код»', () => {
+    const { subtopics, problems } = buildPlan(explicit([
+      msub('1.2', [{ name: '02_Площадь_треугольника.pdf', section: 'tasks', label: 'Задачи' }]),
+      msub('1.0', [{ name: '00_Теория.pdf', section: 'theory', label: 'Теория' }]),
+      msub('2.5', [
+        { name: 'a.pdf', section: 'theory', label: 'Теория' },
+        { name: 'b.pdf', section: 'tasks' },
+      ]),
+    ]))
+    expect(problems).toEqual([])
+    expect(subtopics.map((s: { code: string }) => s.code)).toEqual(['1.0', '1.2', '2.5'])
+    expect(subtopics[1].files).toEqual([{
+      fileName: '02_Площадь_треугольника.pdf', relPath: 'ЕГЭ математика/Задание 01. Планиметрия/02_Площадь_треугольника.pdf',
+      section: 'tasks', position: 0, title: 'Задачи · 1.2',
+    }])
+    // Нет подписи — подпись роли; позиции 0, 1 по порядку в подтеме.
+    expect(subtopics[2].files.map((f: { position: number; title: string }) => [f.position, f.title]))
+      .toEqual([[0, 'Теория · 2.5'], [1, 'Список задач · 2.5']])
+  })
+
+  it('два файла одной рубрики — проблема, подтема в план не входит', () => {
+    const { subtopics, problems } = buildPlan(explicit([
+      msub('1.1', [{ name: 'a.pdf', section: 'tasks', label: 'Задачи' }, { name: 'b.pdf', section: 'tasks', label: 'Задачи' }]),
+    ]))
+    expect(subtopics).toEqual([])
+    expect(problems).toEqual([expect.stringMatching(/«b\.pdf» — второй файл рубрики tasks/)])
+  })
+
+  it('неизвестная рубрика — проблема', () => {
+    const { subtopics, problems } = buildPlan(explicit([msub('1.1', [{ name: 'a.pdf', section: 'notes', label: 'Конспект' }])]))
+    expect(subtopics).toEqual([])
+    expect(problems).toEqual([expect.stringMatching(/рубрика «notes» не из списка тренировки/)])
+  })
+
+  it('пустая рубрика, файл без имени и подтема без файлов — проблемы', () => {
+    const { subtopics, problems } = buildPlan(explicit([
+      msub('1.1', [{ name: 'a.pdf', section: '', label: 'Задачи' }]),
+      msub('1.2', [{ section: 'tasks', label: 'Задачи' }]),
+      msub('1.3', []),
+      msub('1.4', [{ name: 'ok.pdf', section: 'tasks', label: 'Задачи' }]),
+    ]))
+    expect(subtopics.map((s: { code: string }) => s.code)).toEqual(['1.4'])
+    expect(problems).toEqual([
+      expect.stringMatching(/^1\.1 .*«a\.pdf» — не указана рубрика/),
+      expect.stringMatching(/^1\.2 .*файл №1 — не указано имя/),
+      expect.stringMatching(/^1\.3 .*нет ни одного файла/),
+    ])
+  })
+
+  it('прежние общие проверки действуют: код уникален, тема и папка указаны', () => {
+    const f = [{ name: 'a.pdf', section: 'tasks', label: 'Задачи' }]
+    const { subtopics, problems } = buildPlan(explicit([
+      msub('1.1', f), msub('1.1', f), msub('1.2', f, { template_topic_id: null }), msub('1.3', f, { folder: '' }), msub('', f),
+    ]))
+    expect(subtopics.map((s: { code: string }) => s.code)).toEqual(['1.1'])
+    expect(problems).toHaveLength(4)
+    expect(problems.join('\n')).toMatch(/дважды[\s\S]*не указана тема шаблона[\s\S]*не указана папка[\s\S]*нет номера подтемы/)
+  })
+
+  it('--only и идемпотентность — как у физики (тема + код + рубрика)', () => {
+    const { subtopics } = buildPlan(mathMapping, { only: ['1.2'] })
+    expect(subtopics).toHaveLength(1)
+    const [s] = subtopics
+    expect(s.files.map((f: { section: string; title: string }) => [f.section, f.title])).toEqual([['tasks', 'Задачи · 1.2']])
+    expect(missingFiles(s, [])).toHaveLength(1)
+    expect(missingFiles(s, [{ topic_id: s.topicId, subtopic_code: '1.2', section: 'tasks' }])).toEqual([])
+    const [row] = insertRows(s, [{ file: s.files[0], storagePath: 'p', size: 1 }], 'owner')
+    expect(row).toMatchObject({ track: 'training', subtopic_code: '1.2', section: 'tasks', position: 0, title: 'Задачи · 1.2' })
+  })
+
+  it('физическая раскладка без поля format по-прежнему строгая: файлы-объекты в ней — проблема', () => {
+    const { subtopics, problems } = buildPlan({ subtopics: [msub('1.1', [{ name: '00_Теория.pdf', section: 'theory' }])] })
+    expect(subtopics).toEqual([])
+    expect(problems[0]).toMatch(/не по шаблону/)
+  })
+})

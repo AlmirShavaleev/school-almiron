@@ -81,6 +81,10 @@ export function parseOnly(value) {
  * вторым заходом, чем разложить её криво.
  */
 export function buildPlan(mapping, { only = null } = {}) {
+  // §234.1: «явная» раскладка (задачник по математике) — роль файла задана в
+  // самой раскладке, а не префиксом имени. Физика (формат по умолчанию) идёт
+  // прежней веткой без единого изменения.
+  const explicit = mapping?.format === 'explicit'
   const problems = []
   const subtopics = []
   const seen = new Set()
@@ -99,7 +103,9 @@ export function buildPlan(mapping, { only = null } = {}) {
 
     const files = []
     const bad = []
-    for (const fileName of s.files ?? []) {
+    if (explicit) {
+      collectExplicitFiles(s, code, files, bad)
+    } else for (const fileName of s.files ?? []) {
       const parsed = parseTrainingFileName(fileName)
       if (!parsed) { bad.push(`«${fileName}» — имя не по шаблону «N. Название (${code}).pdf»`); continue }
       if (parsed.code !== code) { bad.push(`«${fileName}» — номер в имени ${parsed.code}, а подтема ${code}`); continue }
@@ -112,8 +118,10 @@ export function buildPlan(mapping, { only = null } = {}) {
         title: materialTitle(parsed.label, code),
       })
     }
-    const missing = TRAINING_ROLES.filter(r => !files.some(f => f.position === r.position))
-    for (const r of missing) bad.push(`нет файла «${r.position}. …» (${r.label})`)
+    if (!explicit) {
+      const missing = TRAINING_ROLES.filter(r => !files.some(f => f.position === r.position))
+      for (const r of missing) bad.push(`нет файла «${r.position}. …» (${r.label})`)
+    }
 
     if (bad.length) {
       problems.push(`${where}: ${bad.join('; ')}`)
@@ -136,6 +144,42 @@ export function buildPlan(mapping, { only = null } = {}) {
 
   subtopics.sort((a, b) => compareSubtopicCodes(a.code, b.code))
   return { subtopics, problems }
+}
+
+const TRAINING_SECTIONS = TRAINING_ROLES.map(r => r.section)
+
+/**
+ * Файлы подтемы «явной» раскладки: `{ name, section, label }`.
+ *
+ * Проверки «ровно семь ролей 0–6» и «номер в имени = код» здесь не действуют:
+ * у математики в подтеме один файл (`00_Теория.pdf` или `02_Площадь_треугольника.pdf`),
+ * и номера в имени нет. Остаётся то, без чего файл некуда положить: имя, рубрика
+ * из списка тренировки и не больше одного файла на рубрику (ключ
+ * идемпотентности — тема + код + рубрика, второй файл той же рубрики загрузчик
+ * посчитал бы уже загруженным). `position` — порядок файла в подтеме.
+ */
+function collectExplicitFiles(s, code, files, bad) {
+  const list = Array.isArray(s.files) ? s.files : []
+  if (list.length === 0) bad.push('нет ни одного файла')
+  list.forEach((f, i) => {
+    const name = typeof f?.name === 'string' ? f.name.trim() : ''
+    const section = typeof f?.section === 'string' ? f.section.trim() : ''
+    if (!name) { bad.push(`файл №${i + 1} — не указано имя`); return }
+    if (!section) { bad.push(`«${name}» — не указана рубрика`); return }
+    if (!TRAINING_SECTIONS.includes(section)) {
+      bad.push(`«${name}» — рубрика «${section}» не из списка тренировки (${TRAINING_SECTIONS.join(', ')})`)
+      return
+    }
+    if (files.some(x => x.section === section)) { bad.push(`«${name}» — второй файл рубрики ${section}`); return }
+    const label = (typeof f.label === 'string' && f.label.trim()) || TRAINING_ROLES.find(r => r.section === section).label
+    files.push({
+      fileName: name,
+      relPath: `${s.folder}/${name}`,
+      section,
+      position: files.length,
+      title: materialTitle(label, code),
+    })
+  })
 }
 
 /**

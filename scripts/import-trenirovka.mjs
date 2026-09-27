@@ -18,6 +18,10 @@
  *   node scripts/import-trenirovka.mjs --apply             загрузить всё
  *   … --root "E:\Задачник"                                 другой корень задачника
  *
+ * Математика (§234.1) — та же команда со своей раскладкой в «явном» формате
+ * (`"format": "explicit"`, у файла сразу `{ name, section, label }`):
+ *   node scripts/import-trenirovka.mjs --mapping scripts/trenirovka-math-mapping.json [--apply] [--only 1.2]
+ *
  * Ключи — из `.env.import.local` / `.env` / окружения (те же имена, что у
  * import-lessons: VITE_SUPABASE_URL или SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).
  * Значения ключей не печатаются никогда.
@@ -163,6 +167,8 @@ async function main() {
 
   console.log(`\nЗадачник → «Тренировка» (${FLAGS.apply ? 'ЗАГРУЗКА' : 'сухой прогон, ничего не пишется'})`)
   console.log(`  раскладка: ${FLAGS.mapping}`)
+  // §234.1: «явная» раскладка (математика) — роли файлов заданы в ней самой.
+  if (mapping.format === 'explicit') console.log(`  формат раскладки: явный (роль файла — из раскладки), шаблон ${mapping.template_course_id}`)
   console.log(`  корень задачника: ${FLAGS.root}`)
   console.log(`  в плане: ${nSubtopics(sum.subtopics)}, ${nFiles(sum.files)}, ${nTopics(sum.topics)} шаблона`)
 
@@ -198,10 +204,12 @@ async function main() {
     for (const id of topicIds) {
       const t = topics.find(x => x.id === id)
       const sample = subtopics.find(s => s.topicId === id)
-      if (!t) topicProblems.push(`тема ${id} («${sample?.topicTitle}») не найдена`)
+      if (!t) topicProblems.push(`тема ${id}${sample?.topicTitle ? ` («${sample.topicTitle}»)` : ''} не найдена`)
       else if (t.modules?.course_id !== mapping.template_course_id) {
         topicProblems.push(`тема ${id} («${t.title}») не из шаблона ${mapping.template_course_id}`)
       }
+      // В «явной» раскладке названия темы нет — берём из базы для прогресса.
+      if (t) for (const s of subtopics) if (s.topicId === id && !s.topicTitle) s.topicTitle = t.title
     }
     if (topicIds.length) {
       existing = await fetchAll('чтение загруженного', () => db

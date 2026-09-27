@@ -880,6 +880,21 @@ export const scenes = [
     { persona: 'student', name: 'd234-math-topic', url: `/my-course/${S.group2}/topic/${S.topic(10)}`, width, height, actions: [{ wait: 1200 }] },
   ]),
 
+  // §234.1: задачник по математике — у подтемы один файл («Теория» или
+  // «Задачи»); пустых строк «Дома»/«На уроке» быть не должно. Тема 11 курса
+  // математики, подтемы 1.0 / 1.1 / 1.2.
+  //   node e2e/harness/tour.mjs d2341 1280 ; node e2e/harness/tour.mjs d2341 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 'student', name: 'd2341-math-student', url: `/my-course/${S.group2}/topic/${S.topic(11)}`, width, height, actions: [
+      { wait: 1200 }, { clickSel: '[data-testid="topic-tab-training"]' }, { wait: 400 },
+      { clickSel: '[data-testid="training-subtopic"][data-code="1.1"] button' }, { wait: 400 },
+    ] },
+    { persona: 'owner', name: 'd2341-math-teacher', url: `/course-program?course=${S.course2}`, width, height, full: false, actions: [
+      { click: 'Математика ОГЭ' }, { wait: 800 }, { click: 'Задание 1. Планиметрия' }, { wait: 1500 },
+      { eval: `document.querySelector('[data-testid="topic-training-editor"]')?.scrollIntoView({ block: 'center' })` }, { wait: 400 },
+    ] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

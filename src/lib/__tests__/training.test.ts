@@ -52,3 +52,17 @@ describe('onlyEgeTrack', () => {
     expect(q.eq).toHaveBeenCalledWith('track', 'ege')
   })
 })
+
+describe('подтема с одним файлом (§234.1, математика)', () => {
+  it('подпись — из заголовка «Подпись · код», строка «Дома» пуста', () => {
+    const [s] = buildTrainingSubtopics([row('1.2', 'tasks', 0, { title: 'Задачи · 1.2' })])
+    expect(s.lesson.map(i => i.label)).toEqual(['Задачи'])
+    expect(s.home).toEqual([])
+    expect(s.total).toBe(1)
+  })
+
+  it('заголовок не того вида — подпись роли', () => {
+    const [s] = buildTrainingSubtopics([row('1.0', 'theory', 0, { title: 'Что-то своё' })])
+    expect(s.lesson.map(i => i.label)).toEqual(['Теория'])
+  })
+})

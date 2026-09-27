@@ -172,7 +172,9 @@ export function TopicTrainingStudent({ topicId, subtopics, countView }: {
               />
             </button>
             {isOpen && (
-              <div className="grid gap-4 border-t border-graphite-200 px-4 py-3 sm:grid-cols-2">
+              // Две колонки — только когда есть обе строки: у подтемы с одним
+              // файлом (математика, §234.1) вторая колонка стояла бы пустой.
+              <div className={cn('grid gap-4 border-t border-graphite-200 px-4 py-3', s.lesson.length > 0 && s.home.length > 0 && 'sm:grid-cols-2')}>
                 <PlaceRow place="lesson" items={s.lesson} topicId={topicId} countView={countView} />
                 <PlaceRow place="home" items={s.home} topicId={topicId} countView={countView} />
               </div>

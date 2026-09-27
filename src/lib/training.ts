@@ -129,6 +129,19 @@ export interface TrainingSubtopic {
 }
 
 /**
+ * Подпись кнопки — из заголовка строки «Подпись · код», если он такой.
+ * Загрузчик пишет подпись из раскладки: у физики «Список задач», у математики
+ * (§234.1) — «Задачи». Иначе подпись роли по рубрике.
+ */
+function labelFromTitle(title: string | null, code: string): string | null {
+  const t = title?.trim()
+  const suffix = ` · ${code}`
+  if (!t || !t.endsWith(suffix)) return null
+  const label = t.slice(0, -suffix.length).trim()
+  return label || null
+}
+
+/**
  * Строки тренировки → подтемы в порядке кодификатора, внутри — в порядке
  * ролей. Строки без файла или с незнакомой рубрикой пропускаются: показать
  * их нечем, а упасть из-за одной кривой строки хуже.
@@ -149,7 +162,7 @@ export function buildTrainingSubtopics(
     entry.items.push({
       id: row.id,
       section: role.section,
-      label: role.label,
+      label: labelFromTitle(row.title, code) ?? role.label,
       place: role.place,
       storagePath: row.storage_path,
       fileName: row.file_name,

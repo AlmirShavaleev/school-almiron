@@ -99,6 +99,9 @@ export const topics = [
     is_open: true, available_from: ago(24 * 3), source_template_id: null, created_at: ago(24 * 80), ege_task_numbers: [1, 2], modules: modules[0] },
   { id: IDS.topic(10), module_id: U('e', 4), title: 'Квадратные уравнения. Теорема Виета', order_index: 1, max_score: 100,
     is_open: true, available_from: ago(24 * 3), source_template_id: null, created_at: ago(24 * 80), ege_task_numbers: [], modules: modules[3] },
+  // §234.1: тема математики с задачником по математике — по одному файлу в подтеме.
+  { id: IDS.topic(11), module_id: U('e', 4), title: 'Задание 1. Планиметрия', order_index: 2, max_score: 100,
+    is_open: true, available_from: ago(24 * 3), source_template_id: null, created_at: ago(24 * 80), ege_task_numbers: [1], modules: modules[3] },
   // темы каркаса (§174) — три первые темы механики
   ...TOPIC_TITLES.slice(0, 3).map((title, i) => ({
     id: IDS.topic(20 + i + 1), module_id: IDS.moduleTemplate, title, order_index: i + 1, max_score: 100,
@@ -780,6 +783,23 @@ export const topic_material_items = [
       track: 'training', subtopic_code: code, subtopic_title: subtitle,
       created_by: IDS.owner, created_at: ago(20), updated_at: ago(20),
     }))),
+  // §234.1: материал ФИПИ темы 11 и три подтемы задачника по математике (как
+  // в scripts/trenirovka-math-mapping.json: теория — код N.0, у подтемы один файл).
+  { id: IDS.material(90), topic_id: IDS.topic(11), kind: 'file', title: 'Задачи урока', content: null, position: 0, is_visible: true,
+    section: 'tasks', url: null, storage_path: 'course-materials/topic-11/fipi-0.pdf', file_name: 'Задачи урока.pdf',
+    mime_type: 'application/pdf', size_bytes: 240000, lesson_id: null, source_topic_material_id: null,
+    created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
+  ...[['1.2', 'Площадь треугольника', 'tasks', 'Задачи', '02_Площадь_треугольника.pdf'],
+      ['1.0', 'Теория к заданию №1', 'theory', 'Теория', '00_Теория.pdf'],
+      ['1.1', 'Сумма углов треугольника', 'tasks', 'Задачи', '01_Сумма_углов_треугольника.pdf']]
+    .map(([code, subtitle, section, label, name], k) => ({
+      id: IDS.material(140 + k), topic_id: IDS.topic(11), kind: 'file', title: `${label} · ${code}`, content: null,
+      position: 0, is_visible: true, section, url: null,
+      storage_path: `${IDS.topic(11)}/math_${code}.pdf`, file_name: name,
+      mime_type: 'application/pdf', size_bytes: 150000, lesson_id: null, source_topic_material_id: null,
+      track: 'training', subtopic_code: code, subtopic_title: subtitle,
+      created_by: IDS.owner, created_at: ago(20), updated_at: ago(20),
+    })),
 ]
 // §234: у всех строк до тренировки дорожка ege — как у базы после PENDING_234
 // (столбец с умолчанием). Клиент фильтрует `track=eq.ege`, и строка без
@@ -1658,7 +1678,7 @@ export function baseFixtures(persona) {
     rpc: {
       record_app_visit: null, school_presence_touch: null,
       // §234: у тем 9 и 10 решения ДЗ курса нет — плашки «Решение ДЗ» там быть не должно.
-      topic_solution_state: (body) => [IDS.topic(9), IDS.topic(10)].includes(body.p_topic_id)
+      topic_solution_state: (body) => [IDS.topic(9), IDS.topic(10), IDS.topic(11)].includes(body.p_topic_id)
         ? { has_solution: false, has_homework: false, unlocked: true }
         : { has_solution: true, has_homework: true, unlocked: true },
       topic_student_variants: [{ student_assignment_id: U('c', 601), variant_id: IDS.variant(1), title: test_variants[0].title, subject: 'Физика', exam_type: 'ЕГЭ', tasks_count: 26, status: 'in_progress', grading_status: 'not_submitted', due_at: ago(-24), score: null, max_score: 54, percentage: null }],
