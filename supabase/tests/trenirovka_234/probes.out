@@ -1,0 +1,184 @@
+PENDING_234 applied twice: ok
+=== 0. Старые строки прошли новые CHECK: все материалы на дорожке ege
+ track | count 
+-------+-------
+ ege   |    15
+
+=== 1. Загрузка тренировки в каркас (как загрузчик: service role, по подтеме за запрос)
+INSERT 0 28
+=== 2. Синхронизация донесла дорожку и подтему до обеих копий (по 21 + 7 строк тренировки в каждом курсе)
+       course        |  track   | rows | subtopics | from_template 
+---------------------+----------+------+-----------+---------------
+ Физика ЕГЭ (каркас) | ege      |    5 |         0 |             0
+ Физика ЕГЭ (каркас) | training |   28 |         4 |             0
+ Физика ЕГЭ 10А      | ege      |    5 |         0 |             5
+ Физика ЕГЭ 10А      | training |   28 |         4 |            28
+ Физика ЕГЭ 11А      | ege      |    5 |         0 |             5
+ Физика ЕГЭ 11А      | training |   28 |         4 |            28
+
+=== 3. Правка подтемы в каркасе уезжает в копии (UPDATE + IS DISTINCT FROM)
+BEGIN
+UPDATE 1
+        title        |        subtopic_title         
+---------------------+-------------------------------
+ Физика ЕГЭ (каркас) | Горизонтальный бросок (новое)
+ Физика ЕГЭ 10А      | Горизонтальный бросок (новое)
+ Физика ЕГЭ 11А      | Горизонтальный бросок (новое)
+
+ROLLBACK
+=== 4. CHECK: тренировка без номера подтемы — отказ
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:35: ERROR:  new row for relation "topic_material_items" violates check constraint "topic_material_items_training_subtopic_check"
+DETAIL:  Failing row contains (25699070-1707-4a26-9023-907dbafae679, 00000000-0000-4000-8000-000000070001, file, x, null, null, x, null, null, null, 0, t, theory, 00000000-0000-4000-8000-0000000000a0, null, 2026-09-27 15:04:58.015888+00, 2026-09-27 15:04:58.015888+00, training, null, null).
+=== 4b. CHECK: «ДЗ · список задач» на дорожке ege — отказ
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:37: ERROR:  new row for relation "topic_material_items" violates check constraint "topic_material_items_homework_tasks_training_check"
+DETAIL:  Failing row contains (d34cd8df-787d-47aa-a8fa-4d1c3033a889, 00000000-0000-4000-8000-000000070001, file, x, null, null, x, null, null, null, 0, t, homework_tasks, 00000000-0000-4000-8000-0000000000a0, null, 2026-09-27 15:04:58.016155+00, 2026-09-27 15:04:58.016155+00, ege, null, null).
+=== 4c. CHECK: неизвестная дорожка — отказ
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:39: ERROR:  new row for relation "topic_material_items" violates check constraint "topic_material_items_track_check"
+DETAIL:  Failing row contains (3200c742-1f8a-47b0-9a93-bbd95359596b, 00000000-0000-4000-8000-000000070001, file, x, null, null, x, null, null, null, 0, t, theory, 00000000-0000-4000-8000-0000000000a0, null, 2026-09-27 15:04:58.016332+00, 2026-09-27 15:04:58.016332+00, extra, 1.1, null).
+=== 5. «Тема пройдена»: тема 2 класса 1 — у ученика 1 отметки Теория+Урок, ДЗ нет.
+       Тренировка добавила теме рабочий лист ДЗ и решения — пройдена всё равно (track=ege в topic_done_events)
+     title      |            title            | done 
+----------------+-----------------------------+------
+ Физика ЕГЭ 10А | Кинематика. Баллистика      | f
+ Физика ЕГЭ 10А | Кинематика. Относительность | t
+
+=== 5b. Контроль: если бы тренировка считалась (те же строки на ege), тема 2 пройденной бы НЕ была
+BEGIN
+ALTER TABLE
+ALTER TABLE
+UPDATE 84
+            title            | done 
+-----------------------------+------
+ Кинематика. Баллистика      | f
+ Кинематика. Относительность | f
+
+ROLLBACK
+SET
+=== 6. Ученик 1 (ДЗ курса не принято): решение ДЗ курса закрыто гейтом, решения тренировки видны сразу
+  track   |      section       | count 
+----------+--------------------+-------
+ ege      | notes              |     1
+ ege      | tasks              |     1
+ training | homework_tasks     |     3
+ training | solution           |     3
+ training | task_solution      |     3
+ training | tasks              |     3
+ training | theory             |     3
+ training | worksheet_homework |     3
+ training | worksheet_tasks    |     3
+
+=== 6b. Файлы: решение тренировки — виден, решение ДЗ курса — нет (topic_material_object_visible)
+ training_solution | course_solution | training_theory 
+-------------------+-----------------+-----------------
+ t                 | f               | t
+
+=== 6c. topic_solution_state: плашка «закрыто» — только про решение ДЗ курса (тема 2: решение есть лишь у тренировки)
+            title            |                       topic_solution_state                       
+-----------------------------+------------------------------------------------------------------
+ Кинематика. Баллистика      | {"unlocked": false, "has_homework": true, "has_solution": true}
+ Кинематика. Относительность | {"unlocked": true, "has_homework": false, "has_solution": false}
+
+=== 7. Ученик 1 скрыть подтему не может (RLS insert)
+BEGIN
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:77: ERROR:  new row violates row-level security policy for table "topic_subtopic_hidden"
+ROLLBACK
+=== 7b. …и снять чужое скрытие тоже (строк удалено — 0; скрытий пока нет, проверяется в 9b)
+RESET
+SET
+=== 8. Преподаватель 1 скрывает 1.15 в теме своего класса — можно
+ subtopic_code |              hidden_by               
+---------------+--------------------------------------
+ 1.15          | 00000000-0000-4000-8000-0000000000a1
+
+INSERT 0 1
+=== 8b. hidden_by чужим именем — отказ
+BEGIN
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:94: ERROR:  new row violates row-level security policy for table "topic_subtopic_hidden"
+ROLLBACK
+=== 8c. Преподаватель 1 не может скрыть подтему в классе 2
+BEGIN
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:100: ERROR:  new row violates row-level security policy for table "topic_subtopic_hidden"
+ROLLBACK
+RESET
+SET
+=== 9. Ученик 1: подтема 1.15 скрыта — её строк нет; скрытие он читает
+ subtopic_code | count 
+---------------+-------
+ 1.14          |     7
+ 1.17          |     7
+
+ subtopic_code 
+---------------
+ 1.15
+
+=== 9b. Ученик 1 снять скрытие не может (удалено строк)
+ deleted 
+---------
+       0
+
+RESET
+SET
+=== 10. Ученик 2 (класс 2): скрытие класса 1 его не касается — 1.15 видна; чужого скрытия не читает
+ subtopic_code | count 
+---------------+-------
+ 1.14          |     7
+ 1.15          |     7
+ 1.17          |     7
+
+ hidden_rows_visible 
+---------------------
+                   0
+
+RESET
+SET
+=== 11. Посторонний преподаватель: не читает, не пишет, не удаляет
+ hidden_rows_visible 
+---------------------
+                   0
+
+BEGIN
+psql:/home/claude/agents/a234/repo/supabase/tests/trenirovka_234/20_probes.sql:130: ERROR:  new row violates row-level security policy for table "topic_subtopic_hidden"
+ROLLBACK
+ deleted 
+---------
+       0
+
+RESET
+=== 12. Синхронизация каркаса скрытие не трогает: правка в каркасе, скрытие класса 1 на месте
+UPDATE 1
+ hidden_after_sync 
+-------------------
+                 1
+
+UPDATE 1
+=== 13. Преподаватель 1 снимает скрытие — можно
+SET
+BEGIN
+ subtopic_code 
+---------------
+ 1.15
+
+ROLLBACK
+RESET
+=== 14. Копирование темы (course_copy_topic_content, тема 2 каркаса в чужой курс) несёт дорожку и подтему
+BEGIN
+INSERT 0 1
+INSERT 0 1
+  track   | count | subtopics | hw_tasks 
+----------+-------+-----------+----------
+ ege      |     2 |         0 |        0
+ training |     7 |         1 |        1
+
+ROLLBACK
+=== 15. «Неоткрытые материалы» у владельца считают только материалы курса (без 1 449 файлов задачника)
+SET
+         topic_title         |    course_title     | total_items 
+-----------------------------+---------------------+-------------
+ Кинематика. Баллистика      | Физика ЕГЭ (каркас) |           3
+ Кинематика. Относительность | Физика ЕГЭ (каркас) |           2
+ Кинематика. Баллистика      | Физика ЕГЭ 10А      |           3
+ Кинематика. Относительность | Физика ЕГЭ 10А      |           2
+ Кинематика. Баллистика      | Физика ЕГЭ 11А      |           3
+ Кинематика. Относительность | Физика ЕГЭ 11А      |           2
+
+RESET
