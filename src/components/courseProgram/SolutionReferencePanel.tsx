@@ -179,6 +179,83 @@ export function SolutionReferenceBlock({
   )
 }
 
+/**
+ * §235. Эталон отдельной колонкой слева от работы — режим «Решение: Рядом»
+ * экрана проверки v2. Тело то же, что у панели и блока выше (`SolutionItem`:
+ * PDF своими страницами, картинки, текст), те же три правила; отличается
+ * только место: своя колонка со своим свитком, ширина — доля рабочей области
+ * с той же памятью, что у колонки решения до §226 (`reviewPaneLayout`).
+ *
+ * Рисуется только с 1024: ниже экран проверки всегда «Внизу» — решает это
+ * `AttemptAnnotationOverlay`, а не классы здесь, чтобы не держать в DOM две
+ * копии одного PDF.
+ */
+export function SolutionReferenceColumn({
+  topicId, materials, loading, widthPercent, widthFromLaptop = false, scrollRef, flash = false, onMoveBelow,
+}: {
+  topicId: string
+  materials: TopicMaterial[]
+  loading: boolean
+  widthPercent?: string
+  /** Как у `SolutionReferencePanel`: доля с 1024, если границу уже двигали. */
+  widthFromLaptop?: boolean
+  /** Свиток колонки — его докручивает «Авторское решение целиком» из задания. */
+  scrollRef?: React.Ref<HTMLDivElement>
+  /** Короткая подсветка после «Авторское решение целиком»: колонка уже на экране, прокрутки может не быть. */
+  flash?: boolean
+  /** «Внизу ↓» из шапки колонки — то же, что вторая кнопка переключателя. */
+  onMoveBelow?: () => void
+}) {
+  return (
+    <aside
+      data-testid="solution-reference-column"
+      data-layout="column"
+      data-flash={flash ? 'true' : undefined}
+      aria-label="Эталон · авторское решение"
+      style={widthPercent ? { ['--solution-pane-w' as string]: widthPercent } : undefined}
+      className={cn(
+        'flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-graphite-200 bg-white transition-shadow lg:h-full',
+        flash && 'shadow-[inset_0_0_0_2px_theme(colors.primary.300)]',
+        widthFromLaptop
+          ? 'lg:w-[var(--solution-pane-w,40%)]'
+          : 'lg:w-80 2xl:w-[var(--solution-pane-w,40%)]',
+      )}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-graphite-100 px-5 py-3">
+        <span className="min-w-0">
+          <span className="block text-xs font-medium uppercase tracking-[0.03em] text-graphite-500">Эталон · авторское решение</span>
+          <span className="block text-xs text-graphite-400">Только для вас — ученик этого не увидит</span>
+        </span>
+        {onMoveBelow && (
+          <button
+            type="button"
+            data-testid="solution-reference-column-below"
+            onClick={onMoveBelow}
+            title="Показывать решение под таблицей заданий"
+            className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+          >
+            Внизу ↓
+          </button>
+        )}
+      </div>
+      <div
+        ref={scrollRef}
+        data-testid="solution-reference-column-scroll"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
+      >
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-graphite-400">
+            <Loader2 size={14} className="animate-spin" />
+            Загружаю решение…
+          </div>
+        ) : (
+          materials.map(m => <SolutionItem key={m.id} material={m} topicId={topicId} />)
+        )}
+      </div>
+    </aside>
+  )
+}
+
 function SolutionItem({ material, topicId }: { material: TopicMaterial; topicId: string }) {
   return (
     <div className="space-y-1.5">

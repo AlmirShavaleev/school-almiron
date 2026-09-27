@@ -4,7 +4,9 @@ import type {
 } from '@/components/SubmissionReviewer'
 import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
-import { SolutionReferenceBlock, SolutionReferencePanel, useTopicSolutionMaterials } from './SolutionReferencePanel'
+import {
+  SolutionReferenceBlock, SolutionReferenceColumn, SolutionReferencePanel, useTopicSolutionMaterials,
+} from './SolutionReferencePanel'
 import type { ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import { AttemptPdfButton, type AttemptPdfAudience } from './AttemptPdfButton'
 import type { AttemptPdfReport } from '@/lib/attemptPdfReport'
@@ -53,6 +55,107 @@ function writeReferenceOpen(open: boolean) {
   } catch {
     // Хранилища нет (приватное окно) — просто не запомним.
   }
+}
+
+/**
+ * §235. Где на экране проверки стоит эталон: `side` — своей колонкой слева от
+ * работы, `below` — блоком под таблицей заданий (как в §226). По умолчанию
+ * «Рядом» — так решил владелец. Удобство проверяющего, не данные: живёт в его
+ * браузере; хранилища нет — «Рядом».
+ */
+export type ReferencePlacement = 'side' | 'below'
+export const REFERENCE_PLACEMENT_STORAGE_KEY = 'review:reference-placement'
+
+function readReferencePlacement(): ReferencePlacement {
+  try {
+    return window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY) === 'below' ? 'below' : 'side'
+  } catch {
+    return 'side'
+  }
+}
+
+function writeReferencePlacement(placement: ReferencePlacement) {
+  try {
+    window.localStorage.setItem(REFERENCE_PLACEMENT_STORAGE_KEY, placement)
+  } catch {
+    // Хранилища нет — выбор действует до закрытия экрана.
+  }
+}
+
+/**
+ * §235. С этой ширины колонки экрана проверки стоят рядом (`lg`). Ниже три
+ * колонки не помещаются, и эталон всегда «Внизу». Нет `matchMedia` (jsdom,
+ * совсем старый браузер) — считаем экран узким: «Внизу» работает на любой
+ * ширине, а три колонки на телефоне — нет.
+ */
+const LAPTOP_QUERY = '(min-width: 1024px)'
+
+function readLaptopUp(): boolean {
+  try {
+    return typeof window.matchMedia === 'function' && window.matchMedia(LAPTOP_QUERY).matches
+  } catch {
+    return false
+  }
+}
+
+function useLaptopUp(): boolean {
+  const [wide, setWide] = useState(readLaptopUp)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(LAPTOP_QUERY)
+    const sync = () => setWide(query.matches)
+    sync()
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', sync)
+      return () => query.removeEventListener('change', sync)
+    }
+    query.addListener?.(sync)
+    return () => query.removeListener?.(sync)
+  }, [])
+  return wide
+}
+
+/** §235. Сегментный переключатель «Решение: Рядом / Внизу» в шапке экрана проверки. */
+function ReferencePlacementToggle({
+  value, onChange,
+}: {
+  value: ReferencePlacement
+  onChange: (next: ReferencePlacement) => void
+}) {
+  const options: { id: ReferencePlacement; label: string; title: string }[] = [
+    { id: 'side', label: 'Рядом', title: 'Решение отдельной колонкой слева от работы' },
+    { id: 'below', label: 'Внизу', title: 'Решение блоком под таблицей заданий' },
+  ]
+  return (
+    <div data-testid="reference-placement" className="mr-1 flex items-center gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-graphite-400">Решение</span>
+      <div
+        role="group"
+        aria-label="Где показывать решение"
+        className="inline-flex gap-0.5 rounded-xl border border-graphite-200 bg-graphite-50 p-0.5"
+      >
+        {options.map(o => (
+          <button
+            key={o.id}
+            type="button"
+            data-testid={`reference-placement-${o.id}`}
+            aria-pressed={value === o.id}
+            title={o.title}
+            onClick={() => onChange(o.id)}
+            className={cn(
+              'rounded-[10px] px-2.5 py-1 text-xs font-semibold transition-colors',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary-500',
+              value === o.id
+                ? 'bg-white text-primary-700 shadow-[0_1px_4px_rgba(18,35,74,.12)]'
+                : 'text-graphite-500 hover:text-graphite-900',
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -348,6 +451,31 @@ export function AttemptAnnotationOverlay({
   }
 
   /**
+   * §235. «Решение: Рядом / Внизу». Выбор человека — `placement`; действует он
+   * только там, где три колонки помещаются и есть что в них класть: с 1024,
+   * у темы есть эталон и экран не в режиме чтения (там своя колонка эталона
+   * справа, §226, её не трогаем). Во всех остальных случаях — «Внизу».
+   */
+  const laptopUp = useLaptopUp()
+  const [placement, setPlacement] = useState<ReferencePlacement>(() => readReferencePlacement())
+  function choosePlacement(next: ReferencePlacement) {
+    setPlacement(next)
+    writeReferencePlacement(next)
+  }
+  const columnScrollRef = useRef<HTMLDivElement | null>(null)
+  const [columnFlash, setColumnFlash] = useState(false)
+  useEffect(() => {
+    if (!columnFlash) return
+    const t = window.setTimeout(() => setColumnFlash(false), 1200)
+    return () => window.clearTimeout(t)
+  }, [columnFlash])
+  /** «Авторское решение целиком» в режиме «Рядом»: колонка эталона — к началу и подсветить. */
+  function showReferenceColumn() {
+    columnScrollRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' })
+    setColumnFlash(true)
+  }
+
+  /**
    * Ширина панели решения — доля рабочей области, запомненная между разборами
    * (§140). Границу можно тянуть мышью и пальцем; арифметика в
    * `lib/reviewPaneLayout`, здесь только жест.
@@ -371,6 +499,10 @@ export function AttemptAnnotationOverlay({
    */
   const showReviewPanel = Boolean(reviewPanel) && !viewOnly
 
+  /** §235. Переключатель есть — эталон есть, колонки помещаются, вердикт ставится. */
+  const placementAvailable = reviewMode && showReviewPanel && hasSolution && laptopUp
+  const referenceSide = placementAvailable && placement === 'side'
+
   /** Ширина третьей колонки — своя доля, со своей памятью (§210). */
   const [tableFraction, setTableFraction] = useState(() => readTableFraction())
   const [tableDragging, setTableDragging] = useState(false)
@@ -382,7 +514,7 @@ export function AttemptAnnotationOverlay({
    */
   function currentSolutionShare(areaWidth: number) {
     return solutionShareOf({
-      shown: showSolution, fraction: solutionFraction, chosen: fractionChosen, areaWidth,
+      shown: showSolution || referenceSide, fraction: solutionFraction, chosen: fractionChosen, areaWidth,
     })
   }
 
@@ -527,7 +659,8 @@ export function AttemptAnnotationOverlay({
 
   if (reviewMode) {
     const secondary = subtitle ?? (lead ? title : null)
-    const reference = hasSolution ? (
+    // §235. «Рядом» — эталон своей колонкой слева, блока под заданиями нет.
+    const reference = hasSolution && !referenceSide ? (
       <SolutionReferenceBlock
         topicId={solutionTopicId ?? ''}
         materials={solution}
@@ -537,7 +670,14 @@ export function AttemptAnnotationOverlay({
         blockRef={referenceRef}
       />
     ) : null
-    const context = { publishAnnotations, reference, showReference: hasSolution ? showReference : null }
+    const context = {
+      publishAnnotations,
+      reference,
+      showReference: !hasSolution ? null : referenceSide ? showReferenceColumn : showReference,
+    }
+    // Колонка заданий при эталоне рядом: вторая граница не должна отдавать ей
+    // место, которое уже занял эталон (та же подрезка, что у перетаскивания).
+    const sideShare = referenceSide ? currentSolutionShare(window.innerWidth) : 0
     return (
       <div
         data-testid="attempt-annotation-overlay"
@@ -574,6 +714,9 @@ export function AttemptAnnotationOverlay({
             они нужны редко, но убирать их нельзя.
           */}
           <div className="col-start-2 row-start-1 flex items-center justify-end gap-1 self-center">
+            {placementAvailable && (
+              <ReferencePlacementToggle value={placement} onChange={choosePlacement} />
+            )}
             {files.length > 0 && (
               <button
                 type="button"
@@ -632,11 +775,73 @@ export function AttemptAnnotationOverlay({
         <div
           ref={splitRef}
           data-testid="attempt-split-row"
+          data-reference={referenceSide ? 'side' : 'below'}
           className="flex shrink-0 flex-col lg:min-h-0 lg:flex-1 lg:shrink lg:flex-row lg:overflow-hidden"
         >
+          {referenceSide && (
+            <SolutionReferenceColumn
+              topicId={solutionTopicId ?? ''}
+              materials={solution}
+              loading={solutionLoading}
+              widthPercent={fractionToPercent(solutionFraction)}
+              widthFromLaptop={fractionChosen}
+              scrollRef={columnScrollRef}
+              flash={columnFlash}
+              onMoveBelow={() => choosePlacement('below')}
+            />
+          )}
+
+          {/*
+            §235. Граница «эталон | работа» — тот же механизм и та же память
+            доли, что у колонки решения до §226 (§140, §208): Pointer Events,
+            стрелки с клавиатуры, `review:solution-pane-fraction`.
+          */}
+          {referenceSide && (
+            <div
+              data-testid="solution-split-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Ширина колонки решения"
+              aria-valuemin={Math.round(MIN_SOLUTION_FRACTION * 100)}
+              aria-valuemax={Math.round(MAX_SOLUTION_FRACTION * 100)}
+              aria-valuenow={Math.round(solutionFraction * 100)}
+              tabIndex={0}
+              onPointerDown={e => {
+                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+                setDragging(true)
+              }}
+              onPointerMove={e => { if (dragging) moveSplit(e.clientX) }}
+              onPointerUp={() => {
+                if (!dragging) return
+                setDragging(false)
+                writeSolutionFraction(solutionFraction)
+              }}
+              onPointerCancel={() => setDragging(false)}
+              onKeyDown={e => {
+                const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0
+                if (!step) return
+                e.preventDefault()
+                const next = Math.min(
+                  MAX_SOLUTION_FRACTION,
+                  Math.max(MIN_SOLUTION_FRACTION, solutionFraction + step),
+                )
+                chooseFraction(next)
+                writeSolutionFraction(next)
+              }}
+              className={cn(
+                'hidden w-1 shrink-0 cursor-col-resize touch-none bg-graphite-200 transition-colors lg:block',
+                'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
+                dragging && 'bg-primary-400',
+              )}
+            />
+          )}
+
           <div
             data-testid="attempt-work-column"
-            className="h-[62vh] min-h-0 shrink-0 overflow-auto p-3 lg:h-auto lg:flex-1 lg:shrink lg:py-4 lg:pl-7 lg:pr-5"
+            className={cn(
+              'h-[62vh] min-h-0 shrink-0 overflow-auto p-3 lg:h-auto lg:flex-1 lg:shrink lg:py-4 lg:pl-7 lg:pr-5',
+              referenceSide && 'lg:min-w-0 lg:pl-5',
+            )}
           >
             {workContent}
           </div>
@@ -679,7 +884,7 @@ export function AttemptAnnotationOverlay({
           {showReviewPanel ? (
             <aside
               data-testid="review-side-column"
-              style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction) }}
+              style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction, sideShare) }}
               className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-graphite-200 bg-white lg:h-full lg:w-[var(--review-side-w,37%)] lg:border-t-0"
             >
               <div

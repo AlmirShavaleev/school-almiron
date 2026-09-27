@@ -895,6 +895,35 @@ export const scenes = [
     ] },
   ]),
 
+  // §235: «Решение: Рядом / Внизу» на экране проверки. Выбор живёт в
+  // localStorage, а контекст браузера общий на персону и ширину — поэтому
+  // каждая сцена выставляет его сама (`ls`) до открытия работы, иначе «Рядом»
+  // после «Внизу» приехало бы уже «Внизу». В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d235
+  ...[[1280, 800], [1024, 768]].flatMap(([width, height]) => [
+    { persona: 'owner', name: 'd235-side', url: '/homework-queue', width, height, full: false, actions: [
+      { ls: ['review:reference-placement', 'side'] }, { clickSel: 'button:has-text("Проверить")' }, { wait: 3000 },
+    ] },
+    { persona: 'owner', name: 'd235-below', url: '/homework-queue', width, height, full: false, actions: [
+      { ls: ['review:reference-placement', 'side'] }, { clickSel: 'button:has-text("Проверить")' }, { wait: 2500 },
+      { clickSel: '[data-testid="reference-placement-below"]' }, { wait: 1200 },
+    ] },
+  ]),
+  { persona: 'owner', name: 'd235-side-show', url: '/homework-queue', width: 1280, height: 800, full: false, actions: [
+    { ls: ['review:reference-placement', 'side'] }, { clickSel: 'button:has-text("Проверить")' }, { wait: 3000 },
+    { eval: "document.querySelector('[data-testid=\"solution-reference-column-scroll\"]')?.scrollTo(0, 400)" }, { wait: 300 },
+    { clickSel: '[data-testid="review-task-show-reference"]' }, { wait: 300 },
+  ] },
+  // Телефон: запомнено «Рядом», но на узком экране всегда «Внизу» и
+  // переключателя нет; вторая сцена докручена до блока эталона.
+  { persona: 'owner', name: 'd235-narrow', url: '/homework-queue', width: 390, height: 844, full: false, actions: [
+    { ls: ['review:reference-placement', 'side'] }, { clickSel: 'button:has-text("Проверить")' }, { wait: 3000 },
+  ] },
+  { persona: 'owner', name: 'd235-narrow-ref', url: '/homework-queue', width: 390, height: 844, full: false, actions: [
+    { ls: ['review:reference-placement', 'side'] }, { clickSel: 'button:has-text("Проверить")' }, { wait: 3000 },
+    { eval: "document.querySelector('[data-testid=\"solution-reference-panel\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 800 },
+  ] },
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },
