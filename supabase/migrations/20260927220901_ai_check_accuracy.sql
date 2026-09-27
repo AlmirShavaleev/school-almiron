@@ -49,7 +49,7 @@ as $$
                replace(
                  regexp_replace(
                    translate(lower(coalesce(p_raw, '')), U&'\2212\2013\2014\2012', '----'),
-                   '[[:space:] ]+', '', 'g'),
+                   E'[[:space:] ]+', '', 'g'),
                  ',', '.'),
                '[.;:!?]+$', ''),
              '^\+', '') as v
