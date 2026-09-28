@@ -30,11 +30,17 @@ import { MARK_OF_REVIEW_VERDICT, VerdictMark } from '@/components/ui/VerdictMark
 export function ReviewTaskList({
   rows,
   notes = [],
+  hideExpected = false,
   className,
 }: {
   rows: readonly ReviewTaskRow[]
   /** §209. Замечания-рамки этой попытки (опубликованные). */
   notes?: readonly ReviewNote[]
+  /**
+   * §239. Верный ответ до принятия работы не показываем: в разборе он
+   * «после пересдачи», и прошлые попытки не должны его выдавать.
+   */
+  hideExpected?: boolean
   className?: string
 }) {
   if (rows.length === 0 && notes.length === 0) return null
@@ -72,7 +78,7 @@ export function ReviewTaskList({
                   data-testid="student-review-task-answer"
                   className="min-w-0 flex-1 break-words text-[11px] leading-5 text-gray-700"
                 >
-                  {expectedOnlyView(row.expected_answer)}
+                  {hideExpected ? '' : expectedOnlyView(row.expected_answer)}
                 </span>
               </div>
               {(own.length > 0 || legacy) && (

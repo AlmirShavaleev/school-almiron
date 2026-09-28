@@ -6,6 +6,7 @@ import { useReviewPresence } from '@/hooks/useReviewPresence'
 import { viewersOfAttempt } from '@/lib/reviewPresence'
 import { AttemptAnnotationOverlay, splitAnnotatableFiles } from './AttemptAnnotationOverlay'
 import { ReviewTaskList } from './ReviewTaskList'
+import { sortReviewTasks } from '@/lib/homeworkReviewTasks'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
@@ -410,6 +411,8 @@ export function HomeworkAttemptDetailModal({
             scoreMax,
             tasks: reviewTasks.filter(t => t.attempt_id === annotating.attempt.id),
           })}
+          // §239. Выбор «к заданию №» у рамки — из строк таблицы этой попытки.
+          taskNumbers={sortReviewTasks(reviewTasks.filter(t => t.attempt_id === annotating.attempt.id)).map(t => t.no)}
           // Единственная кнопка публикации — в футере, под объяснением, что она
           // делает. Дубль в тулбаре убран: две зелёные кнопки рядом читались как
           // одно действие и создавали ощущение, что работа куда-то отправлена.

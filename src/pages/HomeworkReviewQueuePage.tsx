@@ -16,7 +16,7 @@ import {
   type AiFindingRow,
 } from '@/lib/aiHomeworkCheck'
 import {
-  REVIEW_TASK_VERDICT_LABEL, reviewTasksScore, summarizeReviewTasks, uncheckedTaskNos,
+  REVIEW_TASK_VERDICT_LABEL, reviewTasksScore, sortReviewTasks, summarizeReviewTasks, uncheckedTaskNos,
   type ReviewTaskRow, type ReviewTaskVerdict,
 } from '@/lib/homeworkReviewTasks'
 import { verdictsByTask } from '@/lib/reviewFrameLook'
@@ -724,6 +724,8 @@ export function HomeworkReviewQueuePage() {
   }
 
   const taskVerdicts = useMemo(() => verdictsByTask(reviewTasks.rows), [reviewTasks.rows])
+  /** §239. Номера заданий — выбор «к заданию №» у свободной рамки. */
+  const taskNumbers = useMemo(() => sortReviewTasks(reviewTasks.rows).map(row => row.no), [reviewTasks.rows])
 
   return (
     <div className="space-y-5">
@@ -1009,6 +1011,7 @@ export function HomeworkReviewQueuePage() {
             />
           )}
           taskVerdicts={taskVerdicts}
+          taskNumbers={taskNumbers}
           viewers={viewersOf(reviewing.row.attempt.id)}
           solutionTopicId={reviewing.row.topicId}
           // §156. После «Очистить пометки» находок в базе нет — панель ИИ и

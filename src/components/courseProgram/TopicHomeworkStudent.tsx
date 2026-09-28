@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Camera, ChevronLeft, ChevronRight, FileText, Images, Loader2, Paperclip, Send, SquareDashed, Trash2, Upload,
+  Camera, ChevronDown, ChevronLeft, ChevronRight, FileText, Images, Loader2, Upload,
 } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
+import { AttemptFeedback, type OpenPageTarget } from './AttemptFeedback'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { useAttemptNotes } from '@/hooks/useAttemptNotes'
@@ -107,7 +108,19 @@ function useCoarsePointer(): boolean {
  * с `topics.available_from`. Клиент ничего не перепроверяет: скрытие кнопки
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
-export function TopicHomeworkStudent({ topicId, className }: { topicId: string; className?: string }) {
+export function TopicHomeworkStudent({
+  topicId, className, solution, onOpenSolution,
+}: {
+  topicId: string
+  className?: string
+  /**
+   * §239. Состояние «Решения ДЗ» темы (`useTopicSolutionState` страницы темы):
+   * после «Принято» разбор ведёт к авторскому решению. Нет — строки нет.
+   */
+  solution?: { unlocked: boolean; hasSolution: boolean } | null
+  /** §239. Переключить страницу темы на раздел «Решение ДЗ». */
+  onOpenSolution?: () => void
+}) {
   // Предпросмотр глазами ученика (§178): блок в состоянии «не сдано», кнопка
   // сдачи видна, но выключена; хук в этой ветке попыток не читает и не пишет.
   const preview = usePreviewMode()
@@ -129,7 +142,13 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const [rejected, setRejected] = useState<RejectedHomeworkFile[]>([])
 
   const [annotatedAttempts, setAnnotatedAttempts] = useState<Set<string>>(new Set())
-  const [viewingMarks, setViewingMarks] = useState<string | null>(null)
+  /**
+   * Просмотр страницы с пометками. §239: открывается сразу на нужной странице
+   * (и рамке) — с вырезки под заданием, миниатюры или «Вся страница →».
+   */
+  const [viewingMarks, setViewingMarks] = useState<({ attemptId: string } & Partial<OpenPageTarget>) | null>(null)
+  /** §239. Раскрытые строки «Прошлых попыток». */
+  const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
   const [dragOver, setDragOver] = useState(false)
   const attemptIdsKey = attempts.map(a => a.id).sort().join(',')
   /**
@@ -249,8 +268,20 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
 
   const gradeMax = gradeScaleMax(homework.grade_scale)
-  const lastReview = accepted ? latestReview(reviews, accepted.id) : null
-  const showGrade = accepted && homework.grade_scale && lastReview?.score !== null && lastReview?.score !== undefined
+
+  /**
+   * §239. Попытка, у которой показывается «Разбор»: последняя проверенная.
+   * Если после неё уже отправлена новая — разбирать нечего, ждём проверки, и
+   * проверенная уходит в «Прошлые попытки». Начатый черновик разбор не
+   * прячет: по нему и исправляют.
+   */
+  const newestFirst = attemptsNewestFirst(attempts)
+  const latestReviewed = newestFirst.find(a => a.status === 'accepted' || a.status === 'returned_for_revision') ?? null
+  const featured = latestReviewed && !newestFirst.some(a => a.attempt_number > latestReviewed.attempt_number && a.status === 'submitted')
+    ? latestReviewed
+    : null
+  const pastAttempts = newestFirst.filter(a => a.id !== featured?.id && a.status !== 'draft')
+  const canResubmit = canStartNewAttempt(attempts) && attempts.length > 0
 
   // Определяем состояние шагов
   const submittedOrBetter = attempts.some(a => ['submitted', 'accepted', 'returned_for_revision'].includes(a.status))
@@ -261,7 +292,9 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
 
   // Срок
   const urgency = dueUrgency(homework.due_at)
-  const showDeadlineBanner = urgency.level !== 'none' && (!active || active.status === 'draft')
+  // §239. У проверенной работы срок живёт в итоге разбора («Пересдать до …»)
+  // — второй баннер про тот же срок над ним был бы повтором.
+  const showDeadlineBanner = urgency.level !== 'none' && (active ? active.status === 'draft' : !featured)
 
   function pluralizeDays(n: number): string {
     if (n % 10 === 1 && n % 100 !== 11) return 'день'
@@ -297,20 +330,116 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
     }
   }
 
-  function getAttemptStatusColor(status: string): { bg: string; border: string } {
-    switch (status) {
-      case 'accepted':
-        return { bg: 'bg-emerald-600', border: 'border-emerald-600' }
-      case 'returned_for_revision':
-        return { bg: 'bg-amber-500', border: 'border-amber-500' }
-      case 'submitted':
-        return { bg: 'bg-blue-500', border: 'border-blue-500' }
-      default:
-        return { bg: 'bg-gray-400', border: 'border-gray-400' }
-    }
+  const tone = getDeadlineTone()
+
+  /**
+   * §239. «Прошлые попытки» — по строке на попытку (номер, статус, дата);
+   * раскрытие показывает то же, что показывала лента до §239: файлы,
+   * комментарий, таблицу, «Пометки учителя». Верный ответ в таблице —
+   * только у принятой попытки: до принятия его не видно и в разборе.
+   */
+  function renderHistory(title: string) {
+    return (
+      <div data-testid="hw-history" className="flex flex-col gap-2">
+        <h3 className="px-0.5 pt-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-graphite-500">{title}</h3>
+        <ul className="overflow-hidden rounded-2xl bg-white ring-1 ring-graphite-200">
+          {pastAttempts.map(a => {
+            const open = openHistory.has(a.id)
+            const date = a.submitted_at
+              ? new Date(a.submitted_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+              : null
+            return (
+              <li key={a.id} data-testid="hw-history-row" className="border-t border-graphite-100 first:border-t-0">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setOpenHistory(prev => {
+                    const next = new Set(prev)
+                    if (next.has(a.id)) next.delete(a.id)
+                    else next.add(a.id)
+                    return next
+                  })}
+                  className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left text-[13px]"
+                >
+                  <b className="font-bold text-graphite-900">Попытка №{a.attempt_number}</b>
+                  <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', ATTEMPT_STATUS_TONE[a.status])}>
+                    {ATTEMPT_STATUS_LABEL[a.status]}
+                  </span>
+                  {date && <span className="ml-auto text-xs text-graphite-500">{date}</span>}
+                  <ChevronDown
+                    size={15}
+                    className={cn('shrink-0 text-graphite-400 transition-transform', !date && 'ml-auto', open && 'rotate-180')}
+                  />
+                </button>
+                {open && <div className="px-3.5 pb-3.5">{renderAttemptDetails(a)}</div>}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
   }
 
-  const tone = getDeadlineTone()
+  function renderAttemptDetails(a: (typeof attempts)[number]) {
+    const review = latestReview(reviews, a.id)
+    const attFiles = attemptFiles.filter(f => f.attempt_id === a.id)
+    return (
+      <div>
+        {a.submitted_at && (
+          <div className="text-xs text-gray-400">
+            {new Date(a.submitted_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}, {new Date(a.submitted_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
+        {attFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {attFiles.map(f => (
+              <SignedFileLink
+                key={f.id}
+                bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
+                url={f.storage_path}
+                className="inline-flex max-w-full min-w-0 items-center gap-2 border border-gray-200 bg-white rounded-2xl px-2.5 py-1.5 text-xs hover:border-primary-300"
+              >
+                <FileChip
+                  name={f.file_name}
+                  className="gap-2 text-gray-700"
+                  leading={(
+                    <span className={cn(
+                      'flex-none w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold text-white',
+                      f.mime_type?.startsWith('image/') ? 'bg-blue-500' : 'bg-red-500'
+                    )}>
+                      {f.mime_type?.startsWith('image/') ? 'IMG' : 'PDF'}
+                    </span>
+                  )}
+                />
+              </SignedFileLink>
+            ))}
+          </div>
+        )}
+        {review?.comment && (
+          <div className="mt-2.5 rounded-2xl bg-graphite-50 px-3 py-2 text-xs text-graphite-700">
+            <div className="font-bold">Комментарий учителя:</div>
+            <div className="whitespace-pre-wrap break-words">{review.comment}</div>
+          </div>
+        )}
+        <ReviewTaskList
+          rows={reviewTasks.filter(t => t.attempt_id === a.id)}
+          notes={notesOfAttempt(a.id)}
+          hideExpected={a.status !== 'accepted'}
+          className="mt-2.5"
+        />
+        {annotatedAttempts.has(a.id) && (
+          <button
+            type="button"
+            data-testid="hw-view-marks-button"
+            onClick={() => setViewingMarks({ attemptId: a.id })}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-2xl border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700 hover:border-primary-200"
+          >
+            ✏ Пометки учителя
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={cn('rounded-2xl border border-gray-200 bg-white p-5', className)}>
@@ -433,34 +562,6 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
               </div>
             </div>
           </SignedFileLink>
-        </div>
-      )}
-
-      {/* ── Оценка и пометки (если принято) ── */}
-      {accepted && (
-        <div data-testid="hw-grade" className="mt-4 bg-emerald-50 rounded-2xl p-4 flex items-center gap-4">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Оценка</div>
-            {showGrade ? (
-              <div className="text-3xl font-extrabold text-emerald-700 mt-1 leading-none">
-                {lastReview?.score} / {gradeMax}
-              </div>
-            ) : null}
-          </div>
-          <div className="ml-auto text-right">
-            {annotatedAttempts.has(accepted.id) && (
-              <button
-                type="button"
-                onClick={() => setViewingMarks(accepted.id)}
-                className="inline-flex items-center gap-1.5 rounded-2xl border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700 hover:border-primary-200"
-              >
-                ✏ Посмотреть пометки учителя
-              </button>
-            )}
-            <div className="text-xs text-gray-400 mt-1.5">
-              Принято {accepted.submitted_at ? new Date(accepted.submitted_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '?'} · попытка №{accepted.attempt_number}
-            </div>
-          </div>
         </div>
       )}
 
@@ -726,8 +827,36 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
         </div>
       )}
 
+      {/*
+        §239. Разбор последней проверенной попытки: итог, слово учителя,
+        задания с кусками своей страницы, страницы с рамками. Кнопка пересдачи
+        живёт в его итоге — вторая «Сдать заново» ниже была бы второй главной
+        кнопкой на экране.
+      */}
+      {featured && (
+        <AttemptFeedback
+          homework={homework}
+          attempt={featured}
+          review={latestReview(reviews, featured.id)}
+          files={attemptFiles.filter(f => f.attempt_id === featured.id)}
+          rows={reviewTasks.filter(t => t.attempt_id === featured.id)}
+          resubmit={featured.status === 'returned_for_revision' && canResubmit ? {
+            onClick: () => { void run(() => startAttempt()) },
+            busy,
+            disabled: preview,
+            title: preview ? PREVIEW_NOOP_MESSAGE : undefined,
+          } : null}
+          resubmitNote={featured.status === 'returned_for_revision' && active?.status === 'draft'
+            ? 'Новая попытка уже начата — загрузи исправленные страницы выше и отправь.'
+            : null}
+          solution={solution?.unlocked && solution.hasSolution && onOpenSolution ? { onOpen: onOpenSolution } : null}
+          onOpenPage={target => setViewingMarks({ attemptId: featured.id, ...target })}
+          footer={pastAttempts.length > 0 ? renderHistory('Прошлые попытки') : null}
+        />
+      )}
+
       {/* ── Начать сдачу ── */}
-      {!active && !accepted && (
+      {!active && !accepted && !(featured && canResubmit) && (
         <div className="mt-4">
           <Button
             data-testid="hw-start-attempt"
@@ -745,138 +874,30 @@ export function TopicHomeworkStudent({ topicId, className }: { topicId: string; 
         </div>
       )}
 
-      {/* ── История попыток (лента) ── */}
-      {attempts.length > 0 && (
-        <div className="mt-4">
-          <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-4">История попыток</div>
-          <div className="relative pl-6">
-            {/* Вертикальная линия */}
-            <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200"></div>
-
-            <div className="space-y-4">
-              {attemptsNewestFirst(attempts).map(a => {
-                const review = latestReview(reviews, a.id)
-                const attFiles = attemptFiles.filter(f => f.attempt_id === a.id)
-                const colors = getAttemptStatusColor(a.status)
-
-                return (
-                  <div key={a.id} className="relative">
-                    {/* Точка на ленте */}
-                    <div className={cn(
-                      'absolute -left-4 top-1 w-3 h-3 rounded-full border-2',
-                      colors.border,
-                      colors.bg
-                    )}></div>
-
-                    {/* Содержимое события */}
-                    <div>
-                      {/* Дата и время */}
-                      {a.submitted_at && (
-                        <div className="text-xs text-gray-400">
-                          {new Date(a.submitted_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}, {new Date(a.submitted_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      )}
-
-                      {/* Попытка + статус */}
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className="text-sm font-semibold text-gray-900">Попытка №{a.attempt_number}</span>
-                        <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', ATTEMPT_STATUS_TONE[a.status])}>
-                          {ATTEMPT_STATUS_LABEL[a.status]}
-                        </span>
-                      </div>
-
-                      {/* Файлы чипами */}
-                      {attFiles.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {attFiles.map(f => (
-                            <SignedFileLink
-                              key={f.id}
-                              bucket={TOPIC_HOMEWORK_ATTEMPTS_BUCKET}
-                              url={f.storage_path}
-                              className="inline-flex max-w-full min-w-0 items-center gap-2 border border-gray-200 bg-white rounded-2xl px-2.5 py-1.5 text-xs hover:border-primary-300"
-                            >
-                              <FileChip
-                                name={f.file_name}
-                                className="gap-2 text-gray-700"
-                                leading={(
-                                  <span className={cn(
-                                    'flex-none w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold text-white',
-                                    f.mime_type?.startsWith('image/') ? 'bg-blue-500' : 'bg-red-500'
-                                  )}>
-                                    {f.mime_type?.startsWith('image/') ? 'IMG' : 'PDF'}
-                                  </span>
-                                )}
-                              />
-                            </SignedFileLink>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Комментарий учителя */}
-                      {review?.comment && (
-                        <div className="mt-2.5 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2 flex gap-2 text-xs text-amber-800">
-                          <span>💬</span>
-                          <div>
-                            <div className="font-bold">Комментарий учителя:</div>
-                            <div>{review.comment}</div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/*
-                        §199. Разбор по заданиям — та самая таблица, которую
-                        преподаватель правил при проверке. Стоит под его
-                        комментарием: сначала общее, потом по заданиям.
-                        Строк нет (старая работа, работа без проверки) — блока
-                        нет вовсе, экран как раньше.
-                      */}
-                      <ReviewTaskList
-                        rows={reviewTasks.filter(t => t.attempt_id === a.id)}
-                        notes={notesOfAttempt(a.id)}
-                        className="mt-2.5"
-                      />
-
-                      {/* Кнопка пометок */}
-                      {annotatedAttempts.has(a.id) && (
-                        <button
-                          type="button"
-                          data-testid="hw-view-marks-button"
-                          onClick={() => setViewingMarks(a.id)}
-                          className="mt-2 inline-flex items-center gap-1.5 rounded-2xl border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700 hover:border-primary-200"
-                        >
-                          ✏ Пометки учителя
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {canStartNewAttempt(attempts) && attempts.length > 0 && (
-        <p className="mt-3 text-xs text-gray-400">Работа возвращена на доработку — можно сдать ещё раз.</p>
+      {/* ── История попыток: без разбора — здесь, с разбором — в его конце ── */}
+      {!featured && pastAttempts.length > 0 && (
+        <div className="mt-4">{renderHistory('История попыток')}</div>
       )}
 
       {viewingMarks && (
         <AttemptAnnotationOverlay
-          attemptId={viewingMarks}
-          files={attemptFiles.filter(f => f.attempt_id === viewingMarks)}
+          attemptId={viewingMarks.attemptId}
+          files={attemptFiles.filter(f => f.attempt_id === viewingMarks.attemptId)}
           title={homework.title}
           subtitle="Пометки учителя — нажмите на рамку, чтобы прочитать замечание"
           readOnly
+          initialPage={viewingMarks.page ?? null}
+          initialRegionId={viewingMarks.regionId ?? null}
           // §206. Ученику кнопка «Скачать PDF» доступна только после вердикта:
           // решает `canDownloadAttemptPdf` по самому разбору, а не этот экран.
           pdfAudience="student"
           pdfReport={attemptPdfReportFrom({
             studentName: myName,
             homeworkTitle: homework.title,
-            submittedAt: attempts.find(a => a.id === viewingMarks)?.submitted_at ?? null,
-            review: latestReview(reviews, viewingMarks) ?? null,
+            submittedAt: attempts.find(a => a.id === viewingMarks.attemptId)?.submitted_at ?? null,
+            review: latestReview(reviews, viewingMarks.attemptId) ?? null,
             scoreMax: gradeMax,
-            tasks: reviewTasks.filter(t => t.attempt_id === viewingMarks),
+            tasks: reviewTasks.filter(t => t.attempt_id === viewingMarks.attemptId),
             // §209. Свой ответ ученику не печатается — ни на экране, ни в
             // файле: ИИ читает почерк с ошибками, и «твой ответ: 0,375», когда
             // он написал другое, — спор на ровном месте.

@@ -318,6 +318,9 @@ export function AttemptAnnotationOverlay({
   headerAside,
   reviewBar,
   taskVerdicts,
+  initialPage = null,
+  initialRegionId = null,
+  taskNumbers = null,
   onClose,
 }: {
   attemptId: string
@@ -403,6 +406,17 @@ export function AttemptAnnotationOverlay({
   reviewBar?: AttemptReviewPanel
   /** §226. Вердикты заданий — рамки на фото красятся ими и подписываются номером. */
   taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
+  /**
+   * §239. Открыть сразу на этой странице (сквозной номер, как «стр. N»)…
+   */
+  initialPage?: number | null
+  /** …и докрутить к этой рамке, подсветив её. Ученик пришёл с вырезки задания. */
+  initialRegionId?: string | null
+  /**
+   * §239. Номера заданий таблицы этой попытки — для выбора «к заданию №» у
+   * свободной рамки. Нет таблицы — выбора нет.
+   */
+  taskNumbers?: readonly string[] | null
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -652,6 +666,9 @@ export function AttemptAnnotationOverlay({
               onSelectedNoteChange={onSelectedNoteChange}
               pageTabs={reviewMode}
               taskVerdicts={reviewMode ? taskVerdicts : null}
+              initialPage={initialPage}
+              initialRegionId={initialRegionId}
+              taskNumbers={taskNumbers}
             />
           </Suspense>
         ))

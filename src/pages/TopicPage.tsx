@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Check, ChevronRight, Circle, ExternalLink, GraduationCap,
@@ -91,6 +91,8 @@ export function TopicPage() {
   const [hasHomework, setHasHomework] = useState(false)
   const [hasTest, setHasTest] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
+  /** §239. Ряд вкладок — к нему докручиваем после «Авторское решение». */
+  const tabsRef = useRef<HTMLDivElement>(null)
 
   // Видео темы живёт в topic_material_items: плитка «Видео» в модалке
   // преподавателя пишет ссылку туда (kind='video'), старая topic_materials
@@ -474,7 +476,9 @@ export function TopicPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6 pb-10">
+    // §239. На вкладке ДЗ разбор проверенной работы с 1024 идёт в две колонки
+    // (страницы с рамками | задания) — в 768 px им тесно, вкладке дана ширина.
+    <div className={cn('max-w-3xl space-y-6 pb-10', active === 'homework' && 'lg:max-w-5xl')}>
 
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
 
@@ -514,7 +518,7 @@ export function TopicPage() {
           Состав групп живёт в общем перечне рубрик (`topicMaterialItems.ts`),
           второй копии здесь нет: перечень уже однажды разъезжался (§100). */}
       {availableTabs.length > 0 && (
-        <div role="tablist" aria-label="Разделы темы" className="space-y-1.5 border-b border-gray-200 pb-1.5">
+        <div ref={tabsRef} role="tablist" aria-label="Разделы темы" className="scroll-mt-4 space-y-1.5 border-b border-gray-200 pb-1.5">
           {tabRows.map(row => row === 'training' ? renderTrainingRow() : (
             <div
               key={row.group?.key ?? 'other'}
@@ -612,7 +616,16 @@ export function TopicPage() {
       ) : active === 'training' ? (
         <TopicTrainingStudent topicId={topic.id} subtopics={trainingSubtopics} countView={!preview} />
       ) : active === 'homework' ? (
-        <TopicHomeworkStudent topicId={topic.id} />
+        <TopicHomeworkStudent
+          topicId={topic.id}
+          // §239. После «Принято» разбор ведёт к авторскому решению: это та
+          // же вкладка «Решение ДЗ», её открывает база (`topic_solution_unlocked`).
+          solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
+          onOpenSolution={() => {
+            setChosen('solution')
+            window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
+          }}
+        />
       ) : active === 'test' ? (
         /* Задачи к уроку (§162) и тест из банка — разные системы. Если есть
            оба, показываем оба с подписями, а не выбираем один молча. */

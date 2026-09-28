@@ -52,6 +52,11 @@ export const personas = {
   ownerTeacher: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   ownerHomeEmpty: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   guest: { user: null },
+  // §239: тот же ученик, разные состояния ДЗ темы 1 — разбор проверенной
+  // работы. Свои фикстуры у каждой персоны (см. `apply239`).
+  ...Object.fromEntries(['s239ret', 's239acc', 's239plain', 's239nomarks', 's239pdf', 's239many'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1808,6 +1813,99 @@ export function baseFixtures(persona) {
   }
   // §233: пустая главная — ни одной работы на проверке.
   if (persona === 'ownerHomeEmpty') fx.tables.topic_homework_attempts = fx.tables.topic_homework_attempts.filter(a => a.status !== 'submitted')
+  if (persona.startsWith('s239')) apply239(fx, persona)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
+}
+
+// ── §239: разбор проверенной работы у ученика ───────────────────────────────
+// Все данные выдуманы. Каждая персона `s239*` получает СВОИ копии строк ДЗ
+// темы 1 (общие массивы не трогаются — остальные сцены их видят прежними):
+//   s239ret     — вернули на доработку: таблица, рамки с `task`, рамка с
+//                 номером только в тексте («Задача 7: …»), рамка к засчитанному
+//                 №9, общее замечание и похвала; срок пересдачи впереди;
+//   s239acc     — приняли: балл, авторское решение открыто;
+//   s239plain   — без таблицы заданий (старые работы): только комментарий и рамки;
+//   s239nomarks — таблица есть, рамок нет: ни миниатюр, ни вырезок;
+//   s239pdf     — работа одним PDF из двух страниц, рамки на обеих;
+//   s239many    — пять фото, одно снято боком и повёрнуто (§211), рамки на четырёх.
+function apply239(fx, persona) {
+  const hw = { ...hwById(IDS.hw(1)), due_at: new Date(Date.now() + 3 * 86400e3).toISOString().slice(0, 10) }
+  fx.tables.topic_homework = fx.tables.topic_homework.map(h => (h.id === hw.id ? hw : h))
+  const A_NOW = IDS.attempt(1)
+  const A_OLD = U('3', 2391)
+  const accepted = persona === 's239acc'
+  const mine = [
+    { id: A_OLD, homework_id: hw.id, student_id: IDS.studentRow, attempt_number: 1, status: 'returned_for_revision', submitted_at: ago(96), created_at: ago(100), updated_at: ago(90) },
+    { id: A_NOW, homework_id: hw.id, student_id: IDS.studentRow, attempt_number: 2, status: accepted ? 'accepted' : 'returned_for_revision', submitted_at: ago(30), created_at: ago(40), updated_at: ago(20) },
+  ].map(a => ({ ...a, homework: hw, topic_homework: hw, students: studentById(a.student_id), topic_homework_reviews: [] }))
+  fx.tables.topic_homework_attempts = [
+    ...fx.tables.topic_homework_attempts.filter(a => a.homework_id !== hw.id),
+    ...mine,
+  ]
+  const reviews = [
+    { id: U('5', 2391), attempt_id: A_OLD, reviewer_id: IDS.owner, decision: 'returned_for_revision', score: null, comment: 'Не хватает задач 7 и 9. Досдай их вместе с исправлениями.', created_at: ago(90) },
+    accepted
+      ? { id: IDS.review(1), attempt_id: A_NOW, reviewer_id: IDS.owner, decision: 'accepted', score: 4, comment: 'Молодец, знак ускорения исправлен. В №7 график всё ещё без подписей осей — на ЕГЭ за это снимут балл.', created_at: ago(20) }
+      : { ...topic_homework_reviews.find(r => r.id === IDS.review(1)) },
+  ]
+  fx.tables.topic_homework_reviews = [...fx.tables.topic_homework_reviews.filter(r => r.attempt_id !== A_NOW), ...reviews]
+
+  // Файлы попытки.
+  const file = (n, name, path, mime = 'image/jpeg') => ({
+    id: U('4', 2390 + n), attempt_id: A_NOW, storage_path: path, file_name: name, mime_type: mime, size_bytes: 2400000,
+    width: null, height: null, page_number: n, position: n, rotation: 0, sha256: null, metadata: {}, created_at: ago(40),
+  })
+  const base = `homeworks/${IDS.studentRow}/${A_NOW}`
+  let files
+  if (persona === 's239pdf') files = [file(1, 'Работа_Константинопольская.pdf', `${base}/work-scan.pdf`, 'application/pdf')]
+  else if (persona === 's239many') files = [1, 2, 3, 4, 5].map(n => file(n, `IMG_2026091${n}_стр${n}.jpg`, `${base}/photo-${n}${n === 3 ? '-sideways' : ''}.jpg`))
+  else files = [1, 2].map(n => file(n, `IMG_2026091${n}_очень_длинное_имя_файла_с_телефона_${n}.jpg`, `${base}/photo-${n}.jpg`))
+  const oldFiles = [1, 2].map(n => ({ ...file(n, `IMG_2026090${n}.jpg`, `homeworks/${IDS.studentRow}/${A_OLD}/photo-${n}.jpg`), id: U('4', 2380 + n), attempt_id: A_OLD }))
+  fx.tables.topic_homework_attempt_files = [
+    ...fx.tables.topic_homework_attempt_files.filter(f => f.attempt_id !== A_NOW),
+    ...files, ...oldFiles,
+  ]
+
+  // Таблица заданий.
+  const row = (n, no, verdict, student, expected, note = null) => reviewTaskRow(2390 + n, A_NOW, { no, verdict, student_answer: student, expected_answer: expected, note })
+  let rows = [
+    row(1, '1', 'correct', '4 м/с²', '4 м/с²'),
+    row(2, '3', accepted ? 'correct' : 'wrong', accepted ? '−5 м/с²' : '5 м/с²', '−5 м/с²', accepted ? null : 'Знак ускорения при торможении: a направлено против скорости, значит в проекции на ось движения оно отрицательное.'),
+    row(3, '7', 'partial', '18 м', '18 м', 'Ответ верный, но график v(t) не построен'),
+    row(4, '9', 'correct', '2,5 с', '2,5 с'),
+  ]
+  if (persona === 's239many') rows = [...rows, row(5, '10', 'wrong', '12 Н', '8 Н', null), row(6, '12', 'unsolved', null, '0,6 м')]
+  if (persona === 's239plain') rows = []
+  fx.tables.topic_homework_review_tasks = [...fx.tables.topic_homework_review_tasks.filter(r => r.attempt_id !== A_NOW), ...rows]
+
+  // Рамки (опубликованные). Координаты — доли страницы.
+  const set = (n, filePath, page, objects, rotation) => ({
+    id: U('d', 2390 + n), attempt_id: A_NOW, submission_id: null, file_path: filePath, page, status: 'published',
+    author_id: IDS.owner, created_at: ago(21), updated_at: ago(21),
+    data: { version: 2, objects, ...(rotation ? { rotation } : {}) },
+  })
+  const P = (i) => files[i].storage_path
+  const ERR3 = { id: 'r239-1', type: 'region', category: 'error', task: '3', text: 'Задача 3: знак ускорения при торможении отрицательный — пересчитай проекцию на ось движения.', rect: { x: 0.06, y: 0.335, w: 0.72, h: 0.095 } }
+  const PRAISE = { id: 'r239-2', type: 'region', category: 'praise', text: 'Аккуратное оформление «Дано»', rect: { x: 0.06, y: 0.04, w: 0.62, h: 0.1 } }
+  const PART7 = { id: 'r239-3', type: 'region', category: 'inaccuracy', text: 'Задача 7: ответ верный, но график v(t) не построен — условие просит развёрнутое решение с рисунком.', rect: { x: 0.06, y: 0.285, w: 0.74, h: 0.055 } }
+  const NINE = { id: 'r239-4', type: 'region', category: 'format', text: '№9: нет единиц измерения в промежуточном ответе', rect: { x: 0.06, y: 0.455, w: 0.6, h: 0.06 } }
+  const FREE = { id: 'r239-5', type: 'region', category: 'comment', text: 'Пиши «Ответ:» отдельной строкой — так проверяющему видно, что ты считаешь ответом.', rect: { x: 0.06, y: 0.2, w: 0.7, h: 0.05 } }
+  let sets = []
+  // PDF-скан (заглушка scan.pdf): строки «от руки» идут в верхней трети листа.
+  const at = (o, rect) => ({ ...o, rect })
+  if (persona === 's239pdf') sets = [
+    set(1, P(0), 1, [at(ERR3, { x: 0.03, y: 0.148, w: 0.62, h: 0.045 }), at(PRAISE, { x: 0.03, y: 0.024, w: 0.2, h: 0.045 })]),
+    set(2, P(0), 2, [at(PART7, { x: 0.03, y: 0.107, w: 0.75, h: 0.045 }), at(NINE, { x: 0.03, y: 0.19, w: 0.45, h: 0.045 })]),
+  ]
+  else if (persona === 's239many') sets = [
+    set(1, P(0), 1, [ERR3, PRAISE]),
+    set(2, P(1), 1, [PART7]),
+    // Страница снята боком и выправлена учителем (rotation: 1). Рамка — в
+    // долях ИСХОДНОЙ страницы, на экране она обязана лечь на строку решения.
+    set(3, P(2), 1, [{ id: 'r239-6', type: 'region', category: 'error', task: '10', text: 'Задача 10: сила трения направлена против движения — знак в уравнении неверный.', rect: { x: 0.29, y: 0.32, w: 0.05, h: 0.6 } }], 1),
+    set(4, P(4), 1, [NINE, FREE]),
+  ]
+  else if (persona !== 's239nomarks') sets = [set(1, P(0), 1, [ERR3, PRAISE]), set(2, P(1), 1, [PART7, NINE, FREE])]
+  fx.tables.annotation_sets = [...fx.tables.annotation_sets.filter(r => r.attempt_id !== A_NOW), ...sets]
 }

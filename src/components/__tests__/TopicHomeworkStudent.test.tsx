@@ -98,7 +98,9 @@ describe('ДЗ ученику — цикл сдачи', () => {
     attemptFiles = [{ id: 'af1', attempt_id: 'att-1', storage_path: 'att-1/scan.jpg', file_name: 'scan.jpg', mime_type: null, size_bytes: null, position: 0, created_at: '' }]
     renderStudent()
 
-    expect(screen.getAllByText('Черновик').length).toBeGreaterThan(0)
+    // §239. Черновик собирается здесь же, в «Историю попыток» он не попадает:
+    // там только отправленные.
+    expect(screen.getByTestId('hw-attempt-file-input')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Отправить на проверку'))
     await waitFor(() => expect(submitAttempt).toHaveBeenCalledWith('att-1'))
   })
@@ -153,7 +155,7 @@ describe('ДЗ ученику — цикл сдачи', () => {
     expect(screen.queryByText('Отправить на проверку')).not.toBeInTheDocument()
   })
 
-  it('после возврата предлагает сдать заново и показывает комментарий', () => {
+  it('после возврата предлагает сдать заново и показывает комментарий', async () => {
     attempts = [attempt(1, 'returned_for_revision')]
     reviews = [{
       id: 'r1', attempt_id: 'att-1', reviewer_id: 'teacher',
@@ -163,9 +165,13 @@ describe('ДЗ ученику — цикл сдачи', () => {
     }]
     renderStudent()
 
-    expect(screen.getByText('Сдать заново')).toBeInTheDocument()
-    expect(screen.getAllByText('На доработке').length).toBeGreaterThan(0)
+    // §239. Пересдача — в итоге разбора, это тот же поток новой попытки.
+    expect(screen.getByTestId('attempt-feedback')).toHaveAttribute('data-state', 'returned')
+    expect(screen.getByText(/На доработке/)).toBeInTheDocument()
     expect(screen.getByText('Задача 3 решена неверно')).toBeInTheDocument()
+    expect(screen.queryByTestId('hw-start-attempt')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Исправить и сдать заново'))
+    await waitFor(() => expect(startAttempt).toHaveBeenCalled())
   })
 
   it('после принятия кнопки новой сдачи нет', () => {
@@ -197,8 +203,12 @@ describe('ДЗ ученику — история попыток', () => {
   it('история не теряется после пересдачи', () => {
     attempts = [attempt(1, 'returned_for_revision'), attempt(2, 'draft')]
     renderStudent()
-    expect(screen.getByText('История попыток')).toBeInTheDocument()
+    // §239. Пока новая попытка собирается, разбор возвращённой остаётся на
+    // экране — по нему и исправляют; кнопки второй пересдачи в нём нет.
+    expect(screen.getByTestId('attempt-feedback')).toBeInTheDocument()
     expect(screen.getAllByText(/Попытка №1/).length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('hw-resubmit')).not.toBeInTheDocument()
+    expect(screen.getByText(/Новая попытка уже начата/)).toBeInTheDocument()
   })
 })
 

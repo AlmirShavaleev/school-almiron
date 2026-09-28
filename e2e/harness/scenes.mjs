@@ -949,6 +949,46 @@ export const scenes = [
     ] },
   ]),
 
+  // §239: разбор проверенной работы у ученика — свои фото с рамками учителя
+  // прямо в разборе. Персоны `s239*` — один ученик в разных состояниях ДЗ
+  // темы 1 (фикстуры `apply239`). В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d239 1280 ; node e2e/harness/tour.mjs d239 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const hwTab = [{ clickSel: 'button[role="tab"]:has-text("Домашнее задание")' }, { wait: 2500 }]
+    const toFeedback = { eval: "(() => { document.querySelector('[data-testid=\"attempt-feedback\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -84) })()" }
+    const topic1 = `/my-course/${S.group}/topic/${S.topic(1)}`
+    // Страницы грузятся лениво (IntersectionObserver): снимок всей страницы
+    // её не прокручивает — проходим экран сверху вниз, чтобы всё загрузилось.
+    const walk = { eval: '(async () => { for (let y = 0; y < document.body.scrollHeight; y += 350) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 150)) } })()' }
+    return [
+      ...['ret', 'acc', 'plain', 'nomarks', 'pdf', 'many'].map(k => ({
+        persona: `s239${k}`, name: `d239-${k}`, url: topic1, width, height, actions: [...hwTab, walk, { wait: 2000 }, toFeedback, { wait: 800 }],
+      })),
+      // Вырезка под заданием и «Вся страница →»: просмотр открывается сразу на
+      // странице 2 у рамки задания 7.
+      { persona: 's239ret', name: 'd239-ret-open', url: topic1, width, height, full: false, actions: [
+        ...hwTab, { clickSel: '[data-testid="feedback-task"][data-no="7"] [data-testid="feedback-open-page"]' }, { wait: 3500 },
+      ] },
+      // Нажатие на чип задания: на телефоне — к карточке, с 1024 — ещё и левая
+      // колонка к его рамке.
+      { persona: 's239many', name: 'd239-many-chip', url: topic1, width, height, full: false, actions: [
+        ...hwTab, toFeedback, { wait: 2000 }, { clickSel: '[data-testid="feedback-chip"][data-no="10"]' }, { wait: 1500 },
+      ] },
+      { persona: 's239acc', name: 'd239-acc-solution', url: topic1, width, height, full: false, actions: [
+        ...hwTab, { clickSel: '[data-testid="feedback-solution"]' }, { wait: 1500 },
+      ] },
+      // Учитель: свободная рамка → «к заданию №» (из строк таблицы работы).
+      { persona: 'owner', name: 'd239-teacher-task', url: '/homework-queue', width, height, full: false, actions: [
+        { clickSel: 'button:has-text("Проверить")' }, { wait: 2500 },
+        { eval: "document.querySelector('[data-testid=\"review-page-1\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 500 },
+        { drag: { sel: '[data-testid="review-overlay-1"]', from: [0.1, 0.52], to: [0.7, 0.58] } }, { wait: 500 },
+        { eval: "(() => { const el = document.querySelector('[data-testid=\"comment-task-select\"]'); if (!el) return; const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(el, '15'); el.dispatchEvent(new Event('change', { bubbles: true })) })()" },
+        { fill: ['[data-testid="comment-editor-text"]', 'Потерян процент во втором шаге'] }, { wait: 400 },
+        { eval: "document.querySelector('[data-testid=\"comment-editor\"] > div')?.scrollTo(0, 0)" }, { wait: 300 },
+      ] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

@@ -218,6 +218,19 @@ interface BaseProps {
    * сверено» — пунктиром. Нет — рамки как раньше, цветом типа замечания.
    */
   taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
+  /**
+   * §239. С какой страницы (сквозной номер) открыть работу. Ученик приходит
+   * из разбора с вырезки под заданием или с миниатюры — листать до нужной
+   * страницы самому незачем.
+   */
+  initialPage?: number | null
+  /** §239. Рамка, к которой докрутить и которую подсветить при открытии. */
+  initialRegionId?: string | null
+  /**
+   * §239. Номера заданий таблицы проверки — выбор «к заданию №» в окне новой
+   * рамки. Пусто или null — таблицы нет, и выбора нет.
+   */
+  taskNumbers?: readonly string[] | null
 }
 
 /**
@@ -462,6 +475,9 @@ export function SubmissionReviewer({
   notesApiRef,
   pageTabs = false,
   taskVerdicts = null,
+  initialPage = null,
+  initialRegionId = null,
+  taskNumbers = null,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -745,11 +761,17 @@ export function SubmissionReviewer({
   }, [notesDigest, notesSnapshot, onNotesChange])
   useEffect(() => { onSelectedNoteChange?.(selectedId) }, [onSelectedNoteChange, selectedId])
 
+  /**
+   * §239. Страница, на которой работу открыли по просьбе снаружи. Держим её,
+   * чтобы пересборка `surfaces` (догрузились размеры фото) не отматывала
+   * номер текущей страницы обратно на первую.
+   */
+  const openedAtPageRef = useRef<number | null>(null)
   useEffect(() => {
     if (!surfaces.length) return
     setPageCount(surfaces.length)
     setVisiblePages(new Set(surfaces.slice(0, 2).map(surface => surface.surfaceKey)))
-    setCurrentPage(1)
+    setCurrentPage(openedAtPageRef.current ?? 1)
   }, [surfaces])
 
   const getUrls = useCallback(async () => {
@@ -1225,6 +1247,46 @@ export function SubmissionReviewer({
     scrollTargetRef.current = { item, behavior }
     setScrollTick(tick => tick + 1)
   }
+
+  /**
+   * §239. Открыть работу сразу на нужной странице/рамке.
+   *
+   * Ждём, пока страницы прочитаны и у всех фото ДО целевой страницы известны
+   * размеры: высота каждой фото-страницы появляется только после загрузки
+   * картинки, и прокрутка раньше промахнулась бы на эту разницу. Один раз:
+   * дальше страницу выбирает человек.
+   */
+  const initialDoneRef = useRef(false)
+  useEffect(() => {
+    if (initialDoneRef.current) return
+    if (initialPage == null && !initialRegionId) return
+    if (!pagesLoaded || loading || !surfaces.length) return
+    const item = initialRegionId ? regions.find(region => region.id === initialRegionId) : undefined
+    const target = item ? surfaceByKey[item.surfaceKey] : surfaces.find(surface => surface.globalPage === initialPage)
+    if (!target) return
+    const settled = surfaces
+      .filter(surface => surface.kind === 'image' && surface.globalPage <= target.globalPage)
+      .every(surface => imageRatios[surface.filePath] != null)
+    if (!settled) return
+    initialDoneRef.current = true
+    openedAtPageRef.current = target.globalPage
+    setCurrentPage(target.globalPage)
+    setVisiblePages(prev => new Set([...prev, target.surfaceKey]))
+    if (item) {
+      setActiveId(item.id)
+      scrollTargetRef.current = { item, behavior: 'auto' }
+      setScrollTick(tick => tick + 1)
+      return
+    }
+    window.requestAnimationFrame(() => {
+      const area = frameRef.current
+      const node = pageRefs.current[target.surfaceKey]
+      if (!area || !node) return
+      const top = Math.max(0, area.scrollTop + node.getBoundingClientRect().top - area.getBoundingClientRect().top - 8)
+      if (typeof area.scrollTo === 'function') area.scrollTo({ top, behavior: 'auto' })
+      else area.scrollTop = top
+    })
+  }, [imageRatios, initialPage, initialRegionId, loading, pagesLoaded, regions, surfaceByKey, surfaces])
 
   // Свежие значения для оконных слушателей: подписка не должна пересоздаваться
   // на каждый рендер, а замыкание с первого рендера устарело бы. Пишем в
@@ -1879,7 +1941,7 @@ export function SubmissionReviewer({
       {!notesInTaskList && (
         <aside className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white [@media(min-width:700px)_and_(max-height:600px)]:border-l [@media(min-width:700px)_and_(max-height:600px)]:border-t-0 lg:border-l lg:border-t-0">
           <div data-testid="review-rail-scroll-zone" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)} categories={LEGACY_CATEGORIES}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
+            {draft ? <CommentEditor draft={draft} setDraft={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)} categories={LEGACY_CATEGORIES} taskNumbers={taskNumbers}/> : <CommentList regions={regions} readOnly={readOnly} activeId={activeId} onActivate={activateRegion} onHover={setActiveId} onDelete={deleteRegion} onClearAll={canClearMarks ? openClearDialog : undefined} clearDisabled={!hasAnyMarks(markCounts) && regions.length === 0}/>}
           </div>
         </aside>
       )}
@@ -1900,6 +1962,7 @@ export function SubmissionReviewer({
               onSave={saveDraft}
               onCancel={() => { setDraft(null); setNoteTarget(null) }}
               categories={NOTE_CATEGORIES}
+              taskNumbers={taskNumbers}
             />
           </div>
         </div>
@@ -2260,15 +2323,24 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
   return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} dominantBaseline="hanging">{mark.text}</text>
 }
 
-function CommentEditor({ draft, setDraft, onSave, onCancel, categories }: {
+function CommentEditor({ draft, setDraft, onSave, onCancel, categories, taskNumbers = null }: {
   draft: Draft
   setDraft: React.Dispatch<React.SetStateAction<Draft | null>>
   onSave: () => void
   onCancel: () => void
   /** §209. Из чего выбирать тип: три на экране проверки, пять в старых дверях. */
   categories: Category[]
+  /**
+   * §239. Номера заданий таблицы. Есть — у рамки маленький выбор «к заданию»:
+   * ученик в разборе увидит замечание под этим заданием, а не в «Общих».
+   * Пишется в то же поле `task`, что и «+ Заметка» (§209).
+   */
+  taskNumbers?: readonly string[] | null
 }) {
   const category = categoryOf(draft.category)
+  const taskOptions = taskNumbers?.length
+    ? (draft.task && !taskNumbers.includes(draft.task) ? [...taskNumbers, draft.task] : [...taskNumbers])
+    : []
   const canSave = draft.category === 'praise' || draft.category === 'good' || draft.text.trim().length > 0
   return <div data-testid="comment-editor" className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
@@ -2278,6 +2350,24 @@ function CommentEditor({ draft, setDraft, onSave, onCancel, categories }: {
           {draft.task ? `Замечание к заданию ${draft.task}` : 'Комментарий к области'}
         </div>
         <div className="mb-3 text-xs text-slate-400">Выберите тип, затем напишите замечание.</div>
+        {taskOptions.length > 0 && (
+          <label className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+            <span className="shrink-0">к заданию</span>
+            <select
+              data-testid="comment-task-select"
+              aria-label="К какому заданию замечание"
+              value={draft.task ?? ''}
+              onChange={event => {
+                const value = event.target.value
+                setDraft(current => current && { ...current, task: value || null })
+              }}
+              className="min-h-8 min-w-0 rounded-lg bg-slate-50 px-2 text-xs font-medium text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">—</option>
+              {taskOptions.map(no => <option key={no} value={no}>№{no}</option>)}
+            </select>
+          </label>
+        )}
         <div className="grid grid-cols-2 gap-2">
           {categories.map(value => {
             const item = categoryOf(value)
