@@ -1951,11 +1951,15 @@ export function SubmissionReviewer({
         несколько секунд, пока выбирают тип и пишут текст.
       */}
       {notesInTaskList && draft && (
+        // §239. Окно прижато к низу колонки и не выше её самой (`inset-0` +
+        // `max-h-full`): раньше `max-h-[70%]` считался от блока без высоты и
+        // не ограничивал ничего — высокое окно уходило верхом под панель
+        // инструментов просмотра вместе с выбором «к заданию».
         <div
           data-testid="note-draft-panel"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-end p-3 sm:p-4"
+          className="pointer-events-none absolute inset-0 z-30 flex items-end justify-end p-3 sm:p-4"
         >
-          <div className="pointer-events-auto flex max-h-[70%] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_32px_rgba(15,23,42,.24)] outline outline-1 outline-black/10">
+          <div className="pointer-events-auto flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_32px_rgba(15,23,42,.24)] outline outline-1 outline-black/10">
             <CommentEditor
               draft={draft}
               setDraft={setDraft}
@@ -1963,6 +1967,7 @@ export function SubmissionReviewer({
               onCancel={() => { setDraft(null); setNoteTarget(null) }}
               categories={NOTE_CATEGORIES}
               taskNumbers={taskNumbers}
+              compact
             />
           </div>
         </div>
@@ -2323,7 +2328,7 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
   return <text x={mark.x} y={mark.y} fill={mark.color} fontSize={mark.size} dominantBaseline="hanging">{mark.text}</text>
 }
 
-function CommentEditor({ draft, setDraft, onSave, onCancel, categories, taskNumbers = null }: {
+function CommentEditor({ draft, setDraft, onSave, onCancel, categories, taskNumbers = null, compact = false }: {
   draft: Draft
   setDraft: React.Dispatch<React.SetStateAction<Draft | null>>
   onSave: () => void
@@ -2336,39 +2341,48 @@ function CommentEditor({ draft, setDraft, onSave, onCancel, categories, taskNumb
    * Пишется в то же поле `task`, что и «+ Заметка» (§209).
    */
   taskNumbers?: readonly string[] | null
+  /**
+   * §239. Плавающее окно над работой (экран проверки): всё в одну высоту
+   * колонки — выбор задания в строке заголовка, три типа одним рядом, поле
+   * ниже. Иначе на 1280×800 окно выше колонки, и его верх (с выбором задания)
+   * уезжает под панель инструментов просмотра.
+   */
+  compact?: boolean
 }) {
   const category = categoryOf(draft.category)
   const taskOptions = taskNumbers?.length
     ? (draft.task && !taskNumbers.includes(draft.task) ? [...taskNumbers, draft.task] : [...taskNumbers])
     : []
   const canSave = draft.category === 'praise' || draft.category === 'good' || draft.text.trim().length > 0
+  const taskSelect = taskOptions.length > 0 ? (
+    <label className="flex items-center gap-2 text-xs font-normal text-slate-500">
+      <span className="shrink-0">к заданию</span>
+      <select
+        data-testid="comment-task-select"
+        aria-label="К какому заданию замечание"
+        value={draft.task ?? ''}
+        onChange={event => {
+          const value = event.target.value
+          setDraft(current => current && { ...current, task: value || null })
+        }}
+        className="min-h-8 min-w-0 rounded-lg bg-slate-50 px-2 text-xs font-medium text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">—</option>
+        {taskOptions.map(no => <option key={no} value={no}>№{no}</option>)}
+      </select>
+    </label>
+  ) : null
   return <div data-testid="comment-editor" className="flex flex-1 min-h-0 flex-col" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onCancel() } }}>
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
+    <div className={cn('flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3', compact ? 'gap-2.5' : 'gap-3')}>
       <div>
-        <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          <MessageSquare size={13} className="text-slate-400" />
-          {draft.task ? `Замечание к заданию ${draft.task}` : 'Комментарий к области'}
+        <div className={cn('flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500', compact ? 'mb-2.5 min-h-8' : 'mb-1')}>
+          <MessageSquare size={13} className="shrink-0 text-slate-400" />
+          <span className="min-w-0 truncate">{draft.task ? `Замечание к заданию ${draft.task}` : 'Комментарий к области'}</span>
+          {compact && taskSelect && <span className="ml-auto shrink-0 normal-case tracking-normal">{taskSelect}</span>}
         </div>
-        <div className="mb-3 text-xs text-slate-400">Выберите тип, затем напишите замечание.</div>
-        {taskOptions.length > 0 && (
-          <label className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-            <span className="shrink-0">к заданию</span>
-            <select
-              data-testid="comment-task-select"
-              aria-label="К какому заданию замечание"
-              value={draft.task ?? ''}
-              onChange={event => {
-                const value = event.target.value
-                setDraft(current => current && { ...current, task: value || null })
-              }}
-              className="min-h-8 min-w-0 rounded-lg bg-slate-50 px-2 text-xs font-medium text-slate-800 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">—</option>
-              {taskOptions.map(no => <option key={no} value={no}>№{no}</option>)}
-            </select>
-          </label>
-        )}
-        <div className="grid grid-cols-2 gap-2">
+        {!compact && <div className="mb-3 text-xs text-slate-400">Выберите тип, затем напишите замечание.</div>}
+        {!compact && taskSelect && <div className="mb-3">{taskSelect}</div>}
+        <div className={cn('grid gap-2', compact && categories.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
           {categories.map(value => {
             const item = categoryOf(value)
             return <button key={value} data-testid={`comment-category-${value}`} type="button" onClick={() => setDraft(current => current && { ...current, category: value })} className={cn('min-h-10 rounded-lg px-2 text-left text-xs font-medium transition-[transform,background-color,box-shadow] active:scale-[0.96]', draft.category === value ? `${item.bg} ring-2 ${item.ring}` : 'bg-slate-50 hover:bg-slate-100')}>
@@ -2380,9 +2394,9 @@ function CommentEditor({ draft, setDraft, onSave, onCancel, categories, taskNumb
       {category.phrases.length > 0 && <div className="flex flex-wrap gap-2">
         {category.phrases.map(phrase => <button key={phrase} data-testid="comment-phrase-button" type="button" onClick={() => setDraft(current => current && { ...current, text: phrase })} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">{phrase}</button>)}
       </div>}
-      <textarea data-testid="comment-editor-text" autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className="min-h-28 resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500"/>
+      <textarea data-testid="comment-editor-text" autoFocus aria-label="Текст комментария" value={draft.text} onChange={event => setDraft(current => current && { ...current, text: event.target.value })} placeholder={draft.category === 'praise' ? 'Можно оставить пустым' : 'Введите комментарий'} className={cn('resize-none rounded-lg bg-slate-50 px-3 py-2 text-sm outline-none ring-1 ring-slate-200 transition-shadow focus:ring-2 focus:ring-blue-500', compact ? 'min-h-20' : 'min-h-28')}/>
     </div>
-    <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 p-3">
+    <div className={cn('flex shrink-0 justify-end gap-2 border-t border-slate-100', compact ? 'px-3 py-2.5' : 'p-3')}>
       <button data-testid="comment-editor-cancel" type="button" onClick={onCancel} className="min-h-10 rounded-lg bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-[transform,background-color] hover:bg-slate-200 active:scale-[0.96]">Отмена</button>
       <button data-testid="comment-editor-save" type="button" onClick={onSave} disabled={!canSave} className="min-h-10 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition-[transform,background-color] hover:bg-slate-800 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40">Сохранить</button>
     </div>

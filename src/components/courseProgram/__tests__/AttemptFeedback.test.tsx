@@ -107,13 +107,23 @@ describe('Разбор: вернули на доработку', () => {
     expect(props.resubmit!.onClick).toHaveBeenCalledTimes(1)
   })
 
-  it('верный ответ до принятия не показывается — «после пересдачи»', () => {
+  it('на доработке блока ответов нет: ни своего (§209), ни верного', () => {
     renderFeedback()
     const card = screen.getAllByTestId('feedback-task').find(c => c.getAttribute('data-no') === '3')!
-    expect(within(card).getByTestId('feedback-answer-student')).toHaveTextContent('5 м/с²')
-    expect(within(card).getByTestId('feedback-answer-locked')).toHaveTextContent('после пересдачи')
-    expect(screen.queryByTestId('feedback-answer-expected')).not.toBeInTheDocument()
+    expect(within(card).getByText('Неверно')).toBeInTheDocument()
+    expect(screen.queryByText('Твой ответ')).not.toBeInTheDocument()
+    expect(screen.queryByText('Верный ответ')).not.toBeInTheDocument()
+    expect(screen.queryByText('после пересдачи')).not.toBeInTheDocument()
+    expect(screen.queryByText('5 м/с²')).not.toBeInTheDocument()
     expect(screen.queryByText('−5 м/с²')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('feedback-answer-expected')).not.toBeInTheDocument()
+  })
+
+  it('раскрытые засчитанные тоже без своего ответа', () => {
+    renderFeedback()
+    fireEvent.click(within(screen.getByTestId('feedback-correct')).getByRole('button', { name: 'Показать' }))
+    expect(screen.queryByText('4 м/с²')).not.toBeInTheDocument()
+    expect(screen.queryByText('2,5 с')).not.toBeInTheDocument()
   })
 
   it('засчитанные — одной свёрнутой строкой', () => {
@@ -232,7 +242,9 @@ describe('Разбор: приняли', () => {
     expect(screen.getByTestId('feedback-score')).toHaveTextContent('4из 5')
     const card = screen.getAllByTestId('feedback-task').find(c => c.getAttribute('data-no') === '3')!
     expect(within(card).getByTestId('feedback-answer-expected')).toHaveTextContent('−5 м/с²')
-    expect(screen.queryByTestId('feedback-answer-locked')).not.toBeInTheDocument()
+    // Свой ответ (прочитанный ИИ) не показывается и после принятия (§209).
+    expect(screen.queryByText('Твой ответ')).not.toBeInTheDocument()
+    expect(screen.queryByText('5 м/с²')).not.toBeInTheDocument()
     expect(screen.queryByTestId('hw-resubmit')).not.toBeInTheDocument()
     expect(screen.queryByTestId('feedback-due')).not.toBeInTheDocument()
   })

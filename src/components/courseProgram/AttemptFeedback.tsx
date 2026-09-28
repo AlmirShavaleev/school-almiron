@@ -6,7 +6,6 @@ import { VerdictMark, MARK_OF_REVIEW_VERDICT } from '@/components/ui/VerdictMark
 import { extractStoragePath, getSignedFileUrl } from '@/lib/storage'
 import { loadSignedPdf } from '@/hooks/useSignedPdf'
 import { plural } from '@/lib/plural'
-import { answersMatch } from '@/lib/reviewNotes'
 import { rotateRatio, rotationDegrees, type Quarter } from '@/lib/pageRotation'
 import type { ReviewTaskRow, ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import {
@@ -669,9 +668,7 @@ export function AttemptFeedback({
   const taskCard = (task: FeedbackTask) => {
     const { row } = task
     const tone = VERDICT_TONE[row.verdict]
-    const student = String(row.student_answer ?? '').trim()
     const expected = String(row.expected_answer ?? '').trim()
-    const sameAnswer = !!student && !!expected && answersMatch(student, expected)
     return (
       <article
         key={row.id}
@@ -690,28 +687,19 @@ export function AttemptFeedback({
           <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-[9px] px-1 text-[13px] font-extrabold', tone.chip)}>{row.no}</span>
           <span className={cn('text-xs font-bold', tone.ink)}>{VERDICT_WORD[row.verdict]}</span>
         </div>
-        <div className="grid grid-cols-2 gap-1.5 px-3.5">
-          <div className="min-w-0 rounded-[10px] bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-500">
-            Твой ответ
-            <b data-testid="feedback-answer-student" className="block break-words text-sm font-bold text-graphite-900">{student || '—'}</b>
-          </div>
-          {accepted ? (
-            <div className="min-w-0 rounded-[10px] bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-500">
+        {/*
+          Свой ответ ученику не показываем (§209): это ответ, прочитанный ИИ
+          с фото, а почерк читается с ошибками — свой ответ ученик видит на
+          вырезке своей страницы. Верный ответ — только после «Принято».
+        */}
+        {accepted && (
+          <div className="px-3.5">
+            <div className="rounded-[10px] bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-500">
               Верный ответ
               <b data-testid="feedback-answer-expected" className="block break-words text-sm font-bold text-graphite-900">{expected || '—'}</b>
             </div>
-          ) : row.verdict === 'partial' && sameAnswer ? (
-            <div className="min-w-0 rounded-[10px] bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-500">
-              Ответ
-              <b className="block text-sm font-bold text-graphite-900">верный</b>
-            </div>
-          ) : (
-            <div data-testid="feedback-answer-locked" className="min-w-0 rounded-[10px] bg-graphite-50 px-2.5 py-1.5 text-xs text-graphite-500">
-              Верный ответ
-              <b className="block text-[12.5px] font-semibold text-graphite-400">после пересдачи</b>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
         {task.note && (
           <p data-testid="feedback-task-note" className="px-3.5 pt-2.5 text-[13.5px] leading-normal text-graphite-900">{task.note}</p>
         )}
@@ -790,7 +778,8 @@ export function AttemptFeedback({
               )}
             >
               <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-[9px] px-1 text-[13px] font-extrabold', VERDICT_TONE.correct.chip)}>{task.row.no}</span>
-              <span className="min-w-0 flex-1 break-words text-graphite-900">{String(task.row.student_answer ?? '').trim() || '—'}</span>
+              {/* Свой ответ не показываем (§209); верный — только после «Принято». */}
+              <span className="min-w-0 flex-1 break-words text-graphite-900">{accepted ? String(task.row.expected_answer ?? '').trim() : ''}</span>
               <span className="shrink-0 text-xs font-bold text-verdict-ok-ink">верно</span>
             </li>
           ))}

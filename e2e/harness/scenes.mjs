@@ -984,7 +984,6 @@ export const scenes = [
         { drag: { sel: '[data-testid="review-overlay-1"]', from: [0.1, 0.52], to: [0.7, 0.58] } }, { wait: 500 },
         { eval: "(() => { const el = document.querySelector('[data-testid=\"comment-task-select\"]'); if (!el) return; const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(el, '15'); el.dispatchEvent(new Event('change', { bubbles: true })) })()" },
         { fill: ['[data-testid="comment-editor-text"]', 'Потерян процент во втором шаге'] }, { wait: 400 },
-        { eval: "document.querySelector('[data-testid=\"comment-editor\"] > div')?.scrollTo(0, 0)" }, { wait: 300 },
       ] },
     ]
   }),
