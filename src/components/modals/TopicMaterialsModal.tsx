@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   X, FileText, Link, Upload, Loader2, Check, Trash2,
   BookOpen, ClipboardList, Video, Lightbulb, GraduationCap, BookMarked,
-  Calendar, Clock, Lock, BarChart3,
+  Calendar, Clock, Lock, BarChart3, ListChecks,
 } from 'lucide-react'
 import { useTopicMaterials, type MaterialType } from '@/hooks/useTopicMaterials'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
@@ -21,9 +21,10 @@ import { TopicTrainingEditor } from '@/components/courseProgram/TopicTrainingEdi
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import { TopicTemplateBanner } from '@/components/courseProgram/TopicTemplateBanner'
+import { TOPIC_KINDS, TOPIC_KIND_HINT, TOPIC_KIND_LABEL, isTimedKind, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
 import {
   MATERIAL_FILE_ACCEPT, isMaterialSection,
-  TOPIC_SECTION_ORDER, TOPIC_SECTION_LABELS, isTopicSectionVisible,
+  TOPIC_SECTION_ORDER, isTopicSectionVisible, sectionLabel,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { SignedImage } from '@/components/ui/SignedImage'
@@ -50,6 +51,7 @@ const TILE_ICON: Record<TopicSection, typeof BookMarked> = {
   homework: Lightbulb,
   solution: Check,
   worksheet_homework: FileText,
+  criteria: ListChecks,
   video: Video,
   test: BarChart3,
 }
@@ -521,7 +523,12 @@ interface Props {
     available_from?: string | null
     is_open?: boolean | null
     ege_task_numbers?: number[]
+    kind?: TopicKind
   }) => Promise<void>
+  /** §240. Тип темы: урок / проверочная / контрольная. */
+  kind?: string | null
+  /** §240. Тема в курсе-шаблоне: время работы там не ставится. */
+  isTemplate?: boolean
   /** Открыть все темы курса до этой включительно. Возвращает, сколько открылось. */
   onOpenUntilHere?: () => Promise<number>
   lessonDate?: string | null
@@ -533,7 +540,7 @@ interface Props {
   initialTile?: string | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, egeTaskNumbers = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, egeTaskNumbers = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null, kind = null, isTemplate = false }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
@@ -546,6 +553,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   const [savingNumbers, setSavingNumbers] = useState(false)
   const [savingOpen, setSavingOpen] = useState(false)
   const [bulkNote, setBulkNote] = useState<string | null>(null)
+  // §240. Тип темы держим у себя: кнопки переключаются сразу, запись — фоном.
+  const [kindVal, setKindVal] = useState<TopicKind>(normalizeTopicKind(kind))
+  const [savingKind, setSavingKind] = useState(false)
   const [activeTile, setActiveTile] = useState<TopicSection | null>(null)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
 
@@ -557,6 +567,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   useEffect(() => {
     setDateVal(availableFrom || '')
   }, [availableFrom, open, topicId])
+
+  useEffect(() => {
+    setKindVal(normalizeTopicKind(kind))
+  }, [kind, open, topicId])
 
   useEffect(() => {
     setNumbersVal(formatEgeNumbers(egeTaskNumbers))
@@ -658,6 +672,26 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     }
   }
 
+  /**
+   * §240. Тип темы. Проверочная и контрольная — одно правило (окно, одна
+   * попытка, автосдача), различаются только подписью; урок — как раньше.
+   */
+  async function handleKind(next: TopicKind) {
+    if (!canEdit || !onSaveTopicMeta || next === kindVal) return
+    const prev = kindVal
+    setKindVal(next)
+    setSavingKind(true)
+    try {
+      await onSaveTopicMeta({ kind: next })
+      toast.saved()
+    } catch (e) {
+      setKindVal(prev)
+      saveFailed(e)
+    } finally {
+      setSavingKind(false)
+    }
+  }
+
   /** Вернуть теме автоматику по дате: is_open снова null. */
   async function handleBackToSchedule() {
     if (!canEdit || !onSaveTopicMeta) return
@@ -703,9 +737,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   */
   // Скрытые рубрики не показываем и персоналу: вход в механизм, которым не
   // пользуются, копит недоумение при каждом просмотре темы.
+  const timed = isTimedKind(kindVal)
   const TILES = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(key => ({
     key,
-    label: TOPIC_SECTION_LABELS[key],
+    label: sectionLabel(key, timed),
     icon: TILE_ICON[key],
   }))
 
@@ -870,6 +905,63 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 : <div className="mt-1.5 text-xs text-gray-400">Через запятую — номеров может быть несколько: «13, 14, 15» или «22-23». Пусто — номера не проставлены.</div>}
             </div>
 
+            {/* §240. Тип темы — как в макете: урок, проверочная, контрольная. */}
+            <div data-testid="topic-kind" className="rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-900">Тип темы</span>
+                {savingKind && <Loader2 size={14} className="animate-spin text-primary-500" />}
+              </div>
+              <div role="group" aria-label="Тип темы" className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {TOPIC_KINDS.map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    data-testid={`topic-kind-${k}`}
+                    aria-pressed={kindVal === k}
+                    disabled={savingKind || !onSaveTopicMeta}
+                    onClick={() => { void handleKind(k) }}
+                    className={cn(
+                      'rounded-xl border-[1.5px] px-3 py-2 text-left text-sm font-semibold transition-colors disabled:opacity-70',
+                      kindVal === k
+                        ? 'border-primary-600 bg-primary-50 text-primary-900'
+                        : 'border-gray-200 bg-white text-gray-800 hover:border-primary-300',
+                    )}
+                  >
+                    {TOPIC_KIND_LABEL[k]}
+                    <small className="block text-[11.5px] font-normal text-gray-500">{TOPIC_KIND_HINT[k]}</small>
+                  </button>
+                ))}
+              </div>
+              {timed && (
+                <div data-testid="topic-kind-materials" className="mt-3 space-y-1.5">
+                  {([
+                    ['worksheet_homework', 'Условие', 'с начала работы', 'bg-gold-50 text-gold-800'],
+                    ['solution', 'Решение', 'после проверки', 'bg-emerald-50 text-emerald-700'],
+                    ['criteria', 'Ответы и критерии оценивания', 'после проверки', 'bg-emerald-50 text-emerald-700'],
+                  ] as const).map(([section, label, when, tone]) => {
+                    const n = newMaterials.filter(m => m.section === section).length
+                    return (
+                      <button
+                        key={section}
+                        type="button"
+                        onClick={() => setActiveTile(section)}
+                        className="flex w-full items-center gap-2 rounded-xl border border-gray-100 px-3 py-2 text-left text-sm hover:border-primary-200"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="font-semibold text-gray-900">{label}</span>
+                          <span className="ml-1.5 text-xs text-gray-500">{n > 0 ? `файлов: ${n}` : 'не загружено'}</span>
+                        </span>
+                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', tone)}>{when}</span>
+                      </button>
+                    )
+                  })}
+                  <p className="text-xs text-gray-500">
+                    Время работы, одна попытка и автосдача — в плитке «Работа». ИИ-проверка берёт условие, решение и критерии.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Каркас и его отражения (§172): куда уедет правка — или откуда
                 приехало то, что здесь показано. */}
             <TopicTemplateBanner topicId={topicId} />
@@ -934,7 +1026,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 )}
 
                 {activeTile === 'homework' && (
-                  <TopicHomeworkEditor topicId={topicId} />
+                  <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} />
                 )}
 
                 {activeTile === 'test' && (

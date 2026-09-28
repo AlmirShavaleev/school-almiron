@@ -85,6 +85,9 @@ export function topicSections(input: {
 
   for (const [section, count] of Object.entries(input.sectionCounts)) {
     if (section === 'solution') continue
+    // §240. «Ответы и критерии» группу ДЗ не заводят — ровно как в
+    // `topic_done_events()`: там группу ДЗ дают само ДЗ, рабочий лист и решение.
+    if (section === 'criteria') continue
     if ((count ?? 0) > 0) out.push(section as TopicSection)
   }
   if (input.hasSolution || (input.sectionCounts.solution ?? 0) > 0) out.push('solution')

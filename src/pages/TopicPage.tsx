@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Check, ChevronRight, Circle, ExternalLink, GraduationCap,
+  ArrowLeft, Check, ChevronRight, Circle, Clock, ExternalLink, GraduationCap,
   Loader2, Lock, Play, Video, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -14,6 +14,8 @@ import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItem
 import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
 import { useVideoWatchMarks } from '@/hooks/useVideoWatchMarks'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
+import { TopicTimedWorkStudent } from '@/components/courseProgram/TopicTimedWorkStudent'
+import { TOPIC_KIND_LABEL, isTimedKind, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
 import { useTopicTasks } from '@/hooks/useTopicTasks'
@@ -22,8 +24,8 @@ import { EgeFormatMark, TopicTrainingStudent, TrainingMark } from '@/components/
 import { subtopicsForStudent } from '@/lib/training'
 import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
-  STUDENT_SECTION_ORDER, TOPIC_MATERIAL_SECTION_LABELS, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
-  isTopicSectionVisible,
+  STUDENT_SECTION_ORDER, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
+  isTopicSectionVisible, sectionLabel,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useTopicSectionMarks } from '@/hooks/useTopicSectionMarks'
@@ -45,6 +47,8 @@ interface TopicInfo {
   course_title:   string
   group_id:       string
   group_name:     string
+  /** §240. Урок / проверочная / контрольная. */
+  kind:           TopicKind
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -97,7 +101,7 @@ export function TopicPage() {
   // Видео темы живёт в topic_material_items: плитка «Видео» в модалке
   // преподавателя пишет ссылку туда (kind='video'), старая topic_materials
   // здесь больше не читается.
-  const { materials } = useTopicMaterialItems(topicId ?? null)
+  const { materials, reload: reloadMaterials } = useTopicMaterialItems(topicId ?? null)
 
   // Существует ли решение и открыто ли оно этому ученику. Сами материалы
   // решения до проверки не приходят вовсе — здесь только три флага, без путей
@@ -156,8 +160,10 @@ export function TopicPage() {
 
         // 2. Topic + group info + homework + test (parallel)
         const [topicRes, groupRes, hwRes, testRes] = await Promise.all([
+          // `*`, а не перечень: §240 добавил `kind`, и до применения миграции
+          // явный столбец уронил бы всю страницу темы.
           supabase.from('topics')
-            .select('id, title, order_index, available_from, is_open, modules(id, title, courses(id, title, subject))')
+            .select('*, modules(id, title, courses(id, title, subject))')
             .eq('id', topicId!).single(),
           supabase.from('groups')
             .select('id, name').eq('id', groupId!).single(),
@@ -180,6 +186,7 @@ export function TopicPage() {
           course_title:   td.modules?.courses?.title || '',
           group_id:       groupId!,
           group_name:     gd?.name || '',
+          kind:           normalizeTopicKind(td.kind),
         })
         setHasHomework((hwRes.count ?? 0) > 0)
         setHasTest((testRes.count ?? 0) > 0)
@@ -264,11 +271,15 @@ export function TopicPage() {
   type TabKey = 'video' | TopicMaterialSection | 'homework' | 'test' | 'training'
 
   const availableTabs: TabKey[] = []
+  // §240. Проверочная / контрольная: главное на странице — сама работа.
+  const timed = isTimedKind(topic.kind)
 
   // «Видео» стоит всегда, даже без видео: до перестройки на вкладки этот блок
   // с заглушкой «Видеоурок ещё не добавлен» был на странице постоянно, и его
-  // исчезновение владелец прочитал как пропажу раздела.
-  availableTabs.push('video')
+  // исчезновение владелец прочитал как пропажу раздела. У работы по времени
+  // видео — только если оно правда есть: пустая заглушка над контрольной
+  // уводила бы от главного.
+  if (!timed || videoMaterial) availableTabs.push('video')
 
   // Счёт и порядок вкладок берём из общего списка рубрик, а не перечисляем
   // руками: с §95 их семь, и перечень здесь стал бы пятой копией.
@@ -298,10 +309,12 @@ export function TopicPage() {
   if (hasTraining) availableTabs.push('training')
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
-  // if chosen tab is no longer available, switch to the first one
+  // if chosen tab is no longer available, switch to the first one.
+  // §240: у работы по времени по умолчанию открыта сама работа.
+  const defaultTab: TabKey | null = timed && availableTabs.includes('homework') ? 'homework' : availableTabs[0] ?? null
   const active: TabKey | null = chosen && availableTabs.includes(chosen as TabKey)
     ? (chosen as TabKey)
-    : availableTabs[0] ?? null
+    : defaultTab
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -396,11 +409,11 @@ export function TopicPage() {
       label = 'Видео'
     } else if ((STUDENT_SECTION_ORDER as readonly string[]).includes(tabKey)) {
       const s = tabKey as TopicMaterialSection
-      label = TOPIC_MATERIAL_SECTION_LABELS[s]
+      label = sectionLabel(s, timed)
       count = sectionCounts[s]
       if (s === 'solution') isLocked = solutionState.hasSolution && !solutionState.unlocked
     } else if (tabKey === 'homework') {
-      label = 'Домашнее задание'
+      label = timed ? 'Работа' : 'Домашнее задание'
     } else if (tabKey === 'test') {
       label = 'Задачи'
     }
@@ -495,6 +508,13 @@ export function TopicPage() {
           <ChevronRight size={11} />
           <span className="text-primary-600 font-medium">{topic.module_title}</span>
         </div>
+        {/* §240. Метка типа: «⏱ Контрольная работа» над названием, как в макете. */}
+        {timed && (
+          <span data-testid="topic-kind-badge" className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-primary-900 px-2.5 py-1 text-xs font-extrabold text-white">
+            <Clock size={12} className="shrink-0" />
+            {TOPIC_KIND_LABEL[topic.kind]}
+          </span>
+        )}
         <h1 className="text-2xl font-bold text-gray-900">{topic.title}</h1>
         {/* shrink-0: без него иконка в 12px сжималась в чёрточку, а подпись
             группы уезжала на строку ниже (§183). */}
@@ -527,7 +547,7 @@ export function TopicPage() {
             >
               {row.group && (
                 <span className="flex shrink-0 flex-wrap items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:w-32">
-                  {row.group.label}
+                  {timed && row.group.key === 'homework' ? TOPIC_KIND_LABEL[topic.kind] : row.group.label}
                   {/* «Формат ЕГЭ» — только там, где рядом есть тренировка:
                       отличать урок не от чего, и у математики ничего не
                       меняется (§234). */}
@@ -615,6 +635,18 @@ export function TopicPage() {
         <TopicMaterialItems topicId={topic.id} canManage={false} section={active} />
       ) : active === 'training' ? (
         <TopicTrainingStudent topicId={topic.id} subtopics={trainingSubtopics} countView={!preview} />
+      ) : active === 'homework' && timed ? (
+        <TopicTimedWorkStudent
+          topicId={topic.id}
+          kind={topic.kind}
+          onOpenSection={section => {
+            setChosen(section)
+            window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
+          }}
+          // Окно открылось или работа проверена — сервер отдаёт новые
+          // материалы (условие, решение, критерии): перечитываем вкладки.
+          onPhaseChange={() => { reloadMaterials?.() }}
+        />
       ) : active === 'homework' ? (
         <TopicHomeworkStudent
           topicId={topic.id}

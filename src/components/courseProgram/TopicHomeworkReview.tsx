@@ -61,6 +61,7 @@ export function ReviewActions({
   columnLayout = false,
   layout = 'form',
   uncheckedNos,
+  allowReturn = true,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -132,6 +133,12 @@ export function ReviewActions({
   layout?: 'form' | 'bar'
   /** §226. Номера заданий «не сверено» — подпись к баллу в строке `bar`. */
   uncheckedNos?: readonly string[]
+  /**
+   * §240. Можно ли вернуть на доработку. У проверочной и контрольной — нет:
+   * одна попытка, только оценка (сервер тоже отказывает). Кнопки нет вовсе,
+   * а не выключена: действия, которого не бывает, на экране быть не должно.
+   */
+  allowReturn?: boolean
 }) {
   const [comment, setComment] = useState('')
   // §226. В нижней строке поле растёт до четверти окна (на телефоне — до
@@ -303,7 +310,7 @@ export function ReviewActions({
               value={comment}
               onChange={e => setComment(e.target.value)}
               disabled={blocked}
-              placeholder="Комментарий ученику (обязателен при возврате)"
+              placeholder={allowReturn ? 'Комментарий ученику (обязателен при возврате)' : 'Комментарий ученику'}
               aria-label="Комментарий к работе"
               rows={BAR_COMMENT_ROWS}
               className={cn(
@@ -336,6 +343,7 @@ export function ReviewActions({
             {hint && (
               <HintNote label="Что делает решение по работе" testId="review-hint" lines={[hint]} />
             )}
+            {allowReturn && (
             <Button
               data-testid="review-return-button"
               variant="secondary"
@@ -346,6 +354,7 @@ export function ReviewActions({
             >
               Вернуть на доработку
             </Button>
+            )}
             <Button
               data-testid="review-accept-button"
               variant="primary"
@@ -471,7 +480,7 @@ export function ReviewActions({
         value={comment}
         onChange={e => setComment(e.target.value)}
         disabled={blocked}
-        placeholder="Комментарий (обязателен при возврате на доработку)"
+        placeholder={allowReturn ? 'Комментарий (обязателен при возврате на доработку)' : 'Комментарий'}
         aria-label="Комментарий к работе"
         rows={COMMENT_ROWS}
         className="mb-2 w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
@@ -520,6 +529,7 @@ export function ReviewActions({
           <Check size={14} />
           Принять
         </Button>
+        {allowReturn && (
         <Button
           data-testid="review-return-button"
           size="sm"
@@ -531,10 +541,11 @@ export function ReviewActions({
           <RotateCcw size={14} />
           Вернуть на доработку
         </Button>
+        )}
       </div>
-      {((!canReturn && !blocked) || (scoreMax != null && !scoreValid && score !== '')) && (
+      {((allowReturn && !canReturn && !blocked) || (scoreMax != null && !scoreValid && score !== '')) && (
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          {!canReturn && !blocked && (
+          {allowReturn && !canReturn && !blocked && (
             <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>
           )}
           {scoreMax != null && !scoreValid && score !== '' && (

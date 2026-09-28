@@ -38,7 +38,30 @@ import {
   type TopicHomeworkAttemptFileRow, type TopicHomeworkAttemptRow, type TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
+import {
+  WORK_KIND_TAG, countByKind, filterByKind, isTimedKind, readStoredKindFilter, storeKindFilter, submittedLabel,
+  type WorkKindFilter,
+} from '@/lib/timedWork'
 import type { QueueAiJob } from '@/hooks/useQueueAiJobs'
+
+/**
+ * §240. localStorage может бросить уже на обращении к свойству (приватный
+ * режим, запрет сайта) — фильтр тогда просто не запоминается.
+ */
+function safeLocalStorage(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+/** §240. Плашка типа работы: «ДЗ» / «Проверочная» / «КР». */
+const KIND_TAG_TONE = {
+  lesson: 'bg-primary-50 text-primary-700',
+  check: 'bg-primary-400 text-white',
+  control: 'bg-primary-900 text-white',
+} as const
 
 /** Дата ушла в заголовок дня, в строке остаётся только время сдачи. */
 function formatTime(value: string | null): string | null {
@@ -136,6 +159,13 @@ function QueueRowItem({
         title={`${row.topicTitle} · ${row.homeworkTitle}`}
         className="order-1 min-w-0 grow basis-full truncate text-left text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 lg:order-none lg:basis-0"
       >
+        <span
+          data-testid="queue-kind-tag"
+          data-kind={row.topicKind ?? 'lesson'}
+          className={cn('mr-2 inline-block min-w-[2.5rem] rounded-md px-1.5 py-0.5 text-center align-middle text-[11px] font-extrabold', KIND_TAG_TONE[row.topicKind ?? 'lesson'])}
+        >
+          {WORK_KIND_TAG[row.topicKind ?? 'lesson']}
+        </span>
         <span className="font-medium">{studentName}</span>
         <span className="text-gray-400"> — </span>
         <span className="text-gray-600">{row.topicTitle}</span>
@@ -155,7 +185,13 @@ function QueueRowItem({
         )}
       </button>
 
-      {time && <span className="order-3 hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline lg:order-none">{time}</span>}
+      {/* §240. Автосдача — вместо времени сдачи, отдельно от имени: в имени
+          строка обрезается, а эта подпись важнее темы. */}
+      {attempt.auto_submitted ? (
+        <span data-testid="queue-auto-submitted" className="order-3 shrink-0 text-xs font-semibold text-gold-700 lg:order-none">
+          {submittedLabel(attempt.submitted_at, true)}
+        </span>
+      ) : time && <span className="order-3 hidden shrink-0 text-xs tabular-nums text-gray-400 sm:inline lg:order-none">{time}</span>}
 
       {/* ИИ-статус метка */}
       {pending && (aiBusy || ai) && (
@@ -507,6 +543,13 @@ export function HomeworkReviewQueuePage() {
   const [order, setOrder] = useState<'oldest' | 'newest'>('oldest')
   const [onlyLate, setOnlyLate] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // §240. Тип работы: ДЗ / проверочная / КР. Запоминается между заходами.
+  const [kindFilter, setKindFilterState] = useState<WorkKindFilter>(() => readStoredKindFilter(safeLocalStorage()))
+  const setKindFilter = (value: WorkKindFilter) => {
+    setKindFilterState(value)
+    storeKindFilter(safeLocalStorage(), value)
+  }
+  const kindCounts = useMemo(() => countByKind(rows), [rows])
 
   const courseOptions = useMemo(() => courseFilterOptions(rows), [rows])
   // Темы — только из строк очереди и только выбранного курса (§149).
@@ -529,10 +572,11 @@ export function HomeworkReviewQueuePage() {
     let out = rows
     if (courseFilter !== 'all') out = out.filter(r => r.courseId === courseFilter)
     if (activeTopic !== 'all') out = out.filter(r => r.topicId === activeTopic)
+    out = filterByKind(out, kindFilter)
     if (onlyLate) out = out.filter(isSubmittedLate)
     if (order === 'newest') out = [...out].reverse()
     return out
-  }, [rows, courseFilter, activeTopic, onlyLate, order])
+  }, [rows, courseFilter, activeTopic, kindFilter, onlyLate, order])
 
   const visibleAttemptIds = useMemo(() => visibleRows.map(r => r.attempt.id), [visibleRows])
 
@@ -856,6 +900,23 @@ export function HomeworkReviewQueuePage() {
             </select>
           </label>
 
+          {/* §240. Тип работы — рядом с курсом и темой, запоминается. */}
+          <label className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
+            Тип
+            <select
+              data-testid="queue-kind-filter"
+              aria-label="Тип работы"
+              value={kindFilter}
+              onChange={e => setKindFilter(e.target.value as WorkKindFilter)}
+              className="min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">Все · {kindCounts.all}</option>
+              <option value="lesson">ДЗ · {kindCounts.lesson}</option>
+              <option value="check">Проверочные · {kindCounts.check}</option>
+              <option value="control">КР · {kindCounts.control}</option>
+            </select>
+          </label>
+
           <label className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
             Порядок
             <select
@@ -884,10 +945,10 @@ export function HomeworkReviewQueuePage() {
             Только просроченные{lateCount > 0 ? ` · ${lateCount}` : ''}
           </button>
 
-          {(courseFilter !== 'all' || activeTopic !== 'all' || onlyLate || order !== 'oldest') && (
+          {(courseFilter !== 'all' || activeTopic !== 'all' || kindFilter !== 'all' || onlyLate || order !== 'oldest') && (
             <button
               type="button"
-              onClick={() => { setCourseFilter('all'); setTopicFilter('all'); setOnlyLate(false); setOrder('oldest') }}
+              onClick={() => { setCourseFilter('all'); setTopicFilter('all'); setKindFilter('all'); setOnlyLate(false); setOrder('oldest') }}
               className="ml-auto text-xs text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
             >
               Сбросить
@@ -1124,7 +1185,12 @@ export function HomeworkReviewQueuePage() {
               layout="bar"
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
-              hint="Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно."
+              // §240. Проверочную и контрольную на доработку не возвращают —
+              // одна попытка, только оценка (сервер тоже отказывает).
+              allowReturn={!isTimedKind(reviewing.row.topicKind)}
+              hint={isTimedKind(reviewing.row.topicKind)
+                ? 'Рамки сохраняются сразу. Ученик увидит их вместе с оценкой, решением и критериями, когда вы примете работу. Вернуть на доработку проверочную и контрольную нельзя.'
+                : 'Рамки сохраняются сразу. Ученик увидит их, когда вы примете работу или вернёте на доработку — отдельно публиковать не нужно.'}
               // §198. Не последняя попытка — форма на месте, но выключена:
               // вердикт этой попытке база не примет, а пустой карточки без
               // объяснения хватило бы, чтобы решить, что экран сломан.

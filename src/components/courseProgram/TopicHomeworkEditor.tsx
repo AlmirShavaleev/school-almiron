@@ -10,6 +10,11 @@ import { SignedImage } from '@/components/ui/SignedImage'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
+import { useTimedSummary } from '@/hooks/useTimedWork'
+import {
+  TOPIC_KIND_LABEL, durationLabel, formatMoscowTime, isTimedKind, normalizeTopicKind, parseWindowDraft,
+  windowDraftOf, type WindowDraft,
+} from '@/lib/timedWork'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -31,7 +36,17 @@ function isImageName(name: string | null): boolean {
  * модалка темы — про настройку задания. Держать разбор работ в двух местах
  * значило бы чинить его дважды.
  */
-export function TopicHomeworkEditor({ topicId, className }: { topicId: string; className?: string }) {
+export function TopicHomeworkEditor({
+  topicId, className, kind = null, isTemplate = false,
+}: {
+  topicId: string
+  className?: string
+  /** §240. Тип темы: у проверочной и контрольной вместо дедлайна — окно времени. */
+  kind?: string | null
+  /** §240. Шаблон курса: время не ставится, оно своё у каждого класса. */
+  isTemplate?: boolean
+}) {
+  const timed = isTimedKind(kind)
   const {
     homework, files, loading, error,
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
@@ -65,6 +80,33 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
     setDueAt(homework?.due_at ? homework.due_at.slice(0, 10) : '')
     setGradeScale(homework?.grade_scale ?? null)
   }, [homework?.id, homework?.due_at, homework?.grade_scale])
+
+  // §240. Окно работы по времени: дата + «открывается» + «закрывается» по
+  // Москве. Поля держим строкой (как их печатает человек), в базу — только
+  // целое и верное окно.
+  const [win, setWin] = useState<WindowDraft>(() => windowDraftOf(homework?.opens_at, homework?.closes_at))
+  const [winError, setWinError] = useState<string | null>(null)
+  useEffect(() => {
+    setWin(windowDraftOf(homework?.opens_at, homework?.closes_at))
+    setWinError(null)
+  }, [homework?.id, homework?.opens_at, homework?.closes_at])
+  const { summary } = useTimedSummary(homework?.id ?? null, timed && !isTemplate && !!homework?.closes_at)
+
+  function saveWindow(next: WindowDraft) {
+    setWin(next)
+    const parsed = parseWindowDraft(next)
+    if (parsed.kind === 'incomplete') { setWinError(null); return }
+    if (parsed.kind === 'invalid') { setWinError(parsed.message); return }
+    setWinError(null)
+    const patch = parsed.kind === 'ok'
+      ? { opens_at: parsed.opensAt, closes_at: parsed.closesAt }
+      : { opens_at: null, closes_at: null }
+    if ((patch.opens_at ?? null) === (homework?.opens_at ?? null) && (patch.closes_at ?? null) === (homework?.closes_at ?? null)) return
+    void run(async () => {
+      await ensureHomework()
+      await updateHomework(patch)
+    })
+  }
 
   /**
    * Создаёт ДЗ, если его ещё нет. Хук после создания синхронно запоминает
@@ -176,7 +218,9 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
   }
 
   const published = homework?.is_published ?? false
-  const canPublish = files.length > 0
+  // §240. Условие работы по времени часто лежит рубрикой «Условие», а не
+  // файлом задания, — публиковать её можно и без файла.
+  const canPublish = files.length > 0 || timed
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -187,7 +231,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <FileText size={15} className="text-primary-600" />
-          <span className="text-sm font-semibold text-gray-900">Домашнее задание</span>
+          <span className="text-sm font-semibold text-gray-900">{timed ? TOPIC_KIND_LABEL[normalizeTopicKind(kind)] : 'Домашнее задание'}</span>
           {/*
             Бейдж снова ИНДИКАТОР, а не кнопка. В §75 он стал переключателем —
             и владельцу это оказалось неудобно: «надо нажать на черновик, и она
@@ -335,8 +379,91 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
           </ul>
         )}
 
+        {/* §240. Время написания — у проверочной и контрольной вместо дедлайна. */}
+        {timed && (
+          <div data-testid="timed-window-editor" className="mt-4 rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+            <div className="text-xs font-bold uppercase tracking-[0.06em] text-gray-500">Время написания · для этого класса</div>
+            {isTemplate ? (
+              <p data-testid="timed-window-template" className="mt-1.5 text-sm text-gray-600">
+                Время ставится в курсе класса: у каждого класса свой день и час. Из шаблона копируются тип и материалы, время — нет.
+              </p>
+            ) : (
+              <>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1.2fr_1fr_1fr]">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] text-gray-500">дата</span>
+                    <input
+                      type="date"
+                      data-testid="timed-window-date"
+                      value={win.date}
+                      onChange={e => saveWindow({ ...win, date: e.target.value })}
+                      aria-label="Дата работы"
+                      className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] text-gray-500">открывается</span>
+                    <input
+                      type="time"
+                      data-testid="timed-window-opens"
+                      value={win.opens}
+                      onChange={e => saveWindow({ ...win, opens: e.target.value })}
+                      aria-label="Открывается"
+                      className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] text-gray-500">закрывается</span>
+                    <input
+                      type="time"
+                      data-testid="timed-window-closes"
+                      value={win.closes}
+                      onChange={e => saveWindow({ ...win, closes: e.target.value })}
+                      aria-label="Закрывается"
+                      className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  </label>
+                </div>
+                {winError ? (
+                  <p data-testid="timed-window-error" className="mt-1.5 text-xs text-red-600">{winError}</p>
+                ) : homework?.opens_at && homework?.closes_at ? (
+                  <p className="mt-1.5 text-sm font-bold text-emerald-700">
+                    {durationLabel(homework.opens_at, homework.closes_at)} · время московское
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-amber-800">Время не назначено — ученики не могут начать работу и не видят условие.</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  У каждого класса своё время. Ученику, который пропустил, можно открыть работу заново — на вкладке «Домашние задания» курса.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* §240. После закрытия — сводка: сдали сами / автоматически / не сдали / в классе. */}
+        {timed && summary?.closed && (
+          <div data-testid="timed-summary" className="mt-3">
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-gray-500">После закрытия · сводка</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {([
+                [summary.submittedSelf, 'сдали сами'],
+                [summary.submittedAuto, `сдано автоматически${summary.closesAt ? ` в ${formatMoscowTime(summary.closesAt)}` : ''}`],
+                [summary.notSubmitted, 'не сдали'],
+                [summary.inClass, 'в классе'],
+              ] as const).map(([n, label]) => (
+                <div key={label} className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                  <b className="block text-xl font-extrabold tabular-nums text-primary-900">{n}</b>
+                  {label}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 3. Дедлайн и баллы — сохраняются сразу */}
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className={cn('mt-4 grid gap-2', !timed && 'sm:grid-cols-2')}>
+          {!timed && (
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Дедлайн</label>
             <input
@@ -355,6 +482,7 @@ export function TopicHomeworkEditor({ topicId, className }: { topicId: string; c
             />
             <p className="mt-1 text-xs text-gray-400">Не блокирует сдачу — просто напоминание</p>
           </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Баллы</label>
             <select

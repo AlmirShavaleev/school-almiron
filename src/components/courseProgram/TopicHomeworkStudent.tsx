@@ -3,6 +3,7 @@ import {
   Camera, ChevronDown, ChevronLeft, ChevronRight, FileText, Images, Loader2, Upload,
 } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
+import { useCoarsePointer } from '@/hooks/useCoarsePointer'
 import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -47,7 +48,7 @@ import type { RejectedHomeworkFile, TopicHomeworkAttemptFileRow } from '@/lib/to
  * браузера RAW не снимает, а точный список ей только мешает. Снимок всё
  * равно проходит через `uploadPicked` и тот же гейт по формату.
  */
-function CameraInput({
+export function CameraInput({
   testId, ariaLabel, disabled, onPick,
 }: {
   testId: string
@@ -73,33 +74,6 @@ function CameraInput({
   )
 }
 
-/**
- * «Телефон» — по вводу, а не по ширине окна: планшет с клавиатурой и мышью
- * должен получить настольный экран (широкий сенсорный монитор — наоборот,
- * телефонный). `pointer: coarse` — основной указатель неточный (палец), это
- * ровно то различие, которое здесь важно. Тот же защитный приём, что у
- * `usePrefersReducedMotion` в `LiveNow.tsx`: без `matchMedia` (не бывает в
- * реальном браузере, бывает в тестовом окружении) — просто false, экран
- * ведёт себя как десктопный, ничего не ломается молча.
- */
-function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(false)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const query = window.matchMedia('(pointer: coarse)')
-    setCoarse(query.matches)
-    const onChange = (e: MediaQueryListEvent) => setCoarse(e.matches)
-    if (query.addEventListener) {
-      query.addEventListener('change', onChange)
-      return () => query.removeEventListener('change', onChange)
-    }
-    query.addListener(onChange)
-    return () => query.removeListener(onChange)
-  }, [])
-
-  return coarse
-}
 
 /**
  * Ученический блок ДЗ темы.
@@ -924,7 +898,7 @@ export function TopicHomeworkStudent({
  * страницы: `touch-action: none` на всей плитке отняло бы у пальца прокрутку
  * страницы, а плитки маленькие и попасть мимо легко.
  */
-function PageGrid({
+export function PageGrid({
   files, disabled, coarse, onReorder, onDelete,
 }: {
   files: TopicHomeworkAttemptFileRow[]

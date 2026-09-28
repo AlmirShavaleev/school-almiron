@@ -18,6 +18,11 @@ export interface Topic {
    * база отдаёт строку темы без него, и экран обязан это пережить.
    */
   ege_task_numbers?: number[] | null
+  /**
+   * §240. Тип темы: lesson | check | control. Необязательное по той же
+   * причине, что номера заданий: до миграции §240 столбца нет.
+   */
+  kind?: string | null
 }
 
 export interface Module {

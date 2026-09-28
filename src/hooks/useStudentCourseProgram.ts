@@ -93,6 +93,8 @@ export interface TopicProgress {
   available_from: string | null
   /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
   is_open:        boolean | null
+  /** §240. Урок / проверочная / контрольная — метка в программе. */
+  kind?:          string | null
   /** Заполненные рубрики темы — те же плитки, что у преподавателя. */
   sections:       Set<TopicSection>
   // ── ДЗ темы (topic_homework) ──
@@ -253,7 +255,9 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       // 3. Modules + topics
       const { data: mods } = await supabase
         .from('modules')
-        .select('id, title, order_index, topics(id, title, order_index, max_score, available_from, is_open)')
+        // topics(*): §240 добавил `kind`; явный столбец уронил бы программу,
+        // пока миграция не применена.
+        .select('id, title, order_index, topics(*)')
         .eq('course_id', course.id)
         .order('order_index')
 
@@ -401,6 +405,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               max_score:      t.max_score,
               available_from: t.available_from,
               is_open:        t.is_open ?? null,
+              kind:           t.kind ?? null,
               sections,
               hw_id:           hw?.id ?? null,
               hw_title:        hw?.title ?? null,

@@ -21066,3 +21066,105 @@ anon — нет права на функцию. Харнесс (`HARNESS_PORT=52
 Тесты: `AttemptFeedback` 21 (на доработке нет ни своего, ни верного ответа; раскрытые засчитанные без своего ответа;
 после принятия — верный без своего), сцены `d239-*` пересняты на 1280 и 390 (в `d239-teacher-task` строка
 «к заданию №15» видна без подкрутки окна), без OVERFLOW/ACTION-FAIL.
+
+## §240 — Тип темы «Проверочная / Контрольная работа»: окно времени, автосдача, одна попытка
+
+**Зачем.** Владелец (28.09) хочет писать проверочные и контрольные в назначенное время: условие появляется в момент
+открытия, фото и сдача — только внутри окна, в момент закрытия загруженное сдаётся само, одна попытка, решение и
+новая рубрика «Ответы и критерии» — после проверки. Проверочная и контрольная различаются только названием. Макет —
+`/home/claude/agents/a240/maket.html` (утверждён).
+
+**База — `supabase/migrations/PENDING_240.sql`** (только добавляющая, повторяемая; применять одной транзакцией).
+* `topics.kind text not null default 'lesson'` + CHECK lesson|check|control. Все прежние темы — урок, ничего не меняется.
+* `topic_homework.opens_at/closes_at timestamptz` (оба или ни одного, closes > opens) — окно своё у каждой копии курса;
+  `topic_homework_attempts.auto_submitted boolean default false`.
+* `topic_homework_personal_windows (homework_id, student_id)` PK, `opens_at/closes_at`, RLS: читает сам ученик и
+  персонал (`topic_homework_can_manage` → `course_is_staff`); писать — только через definer-функции ниже.
+* Рубрика `criteria` в CHECK `topic_material_items_section_check` (к списку §234).
+* Помощники (definer): `topic_is_timed(topic)`, `topic_homework_is_timed(hw)`,
+  **`topic_homework_student_window(hw, student)` — единственное место «какое окно у ученика»** (личное заменяет общее;
+  revoke у authenticated), `topic_homework_window_open(hw, student)` (урок — всегда true),
+  `topic_homework_window_message` (один текст отказа), `topic_homework_condition_open(hw, student)` (урок — true;
+  работа — с `opens_at` действующего окна ИЛИ если у ученика уже есть сданная попытка — иначе КР без окна спрятала бы
+  условие и от проверенных), `topic_condition_visible(topic)` для политик.
+* Условие до открытия не отдаётся: политика `topic_material_items_student_select` (+ строка `worksheet_homework` →
+  `topic_condition_visible`, + `criteria` тем же гейтом, что `solution`), `topic_material_object_visible` (то же для
+  объектов `topic-materials`), `topic_homework_object_visible` и политика `topic_homework_files_student_select`
+  (условие файлом ДЗ, бакет `topic-homework`).
+* Фото только в окне: `topic_homework_attempt_is_own_draft` + `window_open` — это предикат ВСЕХ пишущих политик
+  страниц работы (строки и `storage.objects`, §20260811222514), поэтому залить/удалить/переставить вне окна нельзя
+  ни через экран, ни через REST.
+* Сторож `topic_homework_attempts_guard` (тело §198 + ветки): INSERT работы по времени — одна попытка на ученика
+  (любая существующая → отказ) и только в окне; UPDATE draft→submitted — только в окне, `submitted_at := now()`
+  сервером; отметку `auto_submitted` меняет только автосдача (транзакционный флаг `app.topic_homework_autosubmit` =
+  id попытки, как `app.topic_homework_revise` у §198); переход в `returned_for_revision` у работы по времени — отказ;
+  DELETE своего черновика вне окна — отказ (каскад от учителя не задевается: удаляет не сам ученик).
+  `topic_homework_start_attempt` / `topic_homework_submit_attempt` НЕ менялись — их INSERT/UPDATE проходят через
+  сторож, и прямой REST в обход RPC упирается в него же.
+* `topic_homework_review_attempt` (тело §198) — ранний отказ «нельзя вернуть на доработку» для работ по времени.
+* `topic_homework_autosubmit_due()` — черновики работ по времени с ≥1 фото и закрывшимся действующим окном →
+  submitted, `submitted_at = closes_at`, `auto_submitted = true`, `for update skip locked`; уведомление
+  `notify_homework_submitted` в `begin/exception` (сбой не откатывает сдачу). Задание pg_cron
+  `topic-homework-autosubmit` раз в минуту, `cron.schedule` по имени (повторный прогон не плодит задания; вызов под
+  `to_regprocedure(...)` — без pg_cron файл тоже проходит).
+* Учителю: `topic_homework_set_personal_window(hw, student, opens, closes)` / `topic_homework_clear_personal_window
+  (hw, student)` — definer, `course_is_staff`, только работа по времени, ученик курса (group_students или
+  student_courses), отказ, если есть сданная попытка; `topic_homework_timed_summary(hw)` → jsonb in_class /
+  submitted_self / submitted_auto / not_submitted / personal_windows / closed / opens_at / closes_at / server_now.
+  Всем: `topic_homework_my_window(hw)` → своё действующее окно + `server_now`; `app_server_now()`.
+* Каркас → классы: `template_sync_topic_apply` переносит `kind` (тело §234 + kind), `course_copy_topic_content`
+  переносит `kind` рядом с тумблером; триггер `template_sync_topic_write` слушает и `kind`. Окно не переносится
+  нигде: `template_sync_homework` и копирование пишут в `topic_homework` явный список столбцов.
+
+**Почему так.** Правила в стороже и в предикате политик, а не в RPC: ученик пишет в `topic_homework_attempts`
+и `topic_homework_attempt_files` и напрямую (политики это разрешают), и проверка только в RPC была бы дырой.
+Окно у ДЗ, а не у темы: у темы уже есть классные открытие/дата (§101), а правила сдачи — свойство работы.
+Условие видно и после закрытия (для разбора) — осознанный риск: пропустивший ученик до «Открыть заново» может
+увидеть задания; альтернатива «условие видно только в окне» отняла бы его у проверенных.
+Время по Москве фиксированным +03:00 (с 2014 без перехода).
+
+**ИИ-проверка (`check-homework-ai`).** `loadMaterialText` теперь грузит и `criteria` (`CRITERIA_SPEC`, потолок
+`CRITERIA_CHAR_LIMIT = 12 000`), в промпт — блоком «КРИТЕРИИ ОЦЕНИВАНИЯ» после эталона (`criteriaPromptBlock` в
+`reference.ts`; пусто — блока нет, у обычного ДЗ промпт прежний). `deno check` с подменённым импортом supabase-js
+прошёл. **Нужен деплой функции.**
+
+**Интерфейс.**
+* `src/lib/timedWork.ts` — тип темы, Москва, окно учителя, отсчёт, `timedPhase` (unscheduled/before/live/sending/
+  sent/missed/done), подписи, фильтр очереди (localStorage с try/catch). `src/hooks/useTimedWork.ts` — окно ученика
+  и разница с сервером (таймер = часы устройства + offset по середине запроса), сводка, личные окна.
+* Ученик: `TopicTimedWorkStudent` — пять состояний макета + «время не назначено» + «сдаётся автоматически»;
+  отдельной кнопки «Начать» нет — первое фото само начинает попытку; «Сдать работу» с подтверждением; вне окна кнопки
+  сдачи нет (task важнее макета, где она серой); после проверки — разбор §239 без пересдачи, «Решение» и «Ответы и
+  критерии». Таймер sticky под шапкой (`top-[4.5rem]`), за 5 минут — красный. `TopicPage`: метка «⏱ Контрольная
+  работа», по умолчанию вкладка «Работа», рубрики «Условие / Решение / Ответы и критерии», пустое «Видео» у работ
+  не показывается; `topics` читается `*` (иначе до миграции страница упала бы на явном столбце). Метка типа в
+  программе курса ученика (`TopicKindMark`, `topics(*)`) и учителя.
+* Учитель: «Тип темы» в окне темы; у работы — список материалов с пометками «с начала работы / после проверки»;
+  в «Работе» вместо дедлайна «Время написания · для этого класса» (в шаблоне — подсказка без полей), публиковать
+  можно без файла (условие — рубрикой), после закрытия — сводка. «Открыть заново» — вкладка «Домашние задания» курса
+  (`CourseTopicHomeworkSection`): плашка КР/Проверочная и общее время в строке темы, колонка «Время» — кнопка у тех,
+  кто не сдал, личное время со «Снять», статус «Сдано автоматически».
+* Проверка работ: плашка «ДЗ / Проверочная / КР», фильтр «Тип» рядом с курсом и темой (запоминается,
+  `homework-queue:kind`), «сдано автоматически в 10:45» в строке и в шапке проверки; у работ по времени
+  `ReviewActions allowReturn={false}` — «Вернуть на доработку» нет. `QUEUE_SELECT` читает тему `*` ради `kind`.
+* Рубрика `criteria` в перечне (`topicMaterialItems.ts`, группа «Домашнее задание»), но не в матрице «Материалы»
+  (одиннадцатая пустая колонка уронила бы «заполнено» у всех курсов) и не заводит группу ДЗ в «тема пройдена»
+  (`topicSections`, как `topic_done_events()`).
+
+**Проверено.** Локальный Postgres 16 (`supabase/tests/kontrolnaya_240/run.sh`, `probes.out`): слепок + настоящие
+миграции + PENDING_240 дважды; пробы — условие до окна не видно (строки материалов, файлы ДЗ, объекты обоих
+бакетов), в окне видно; вне окна не начать / не залить / не удалить / не сдать / не удалить черновик; одна попытка;
+автосдача (с фото — сдано по общему и личному окну, без фото — нет, идущее личное окно — нет, сбой уведомления не
+откатывает, повтор — 0); решение и критерии только после принятия; возврат запрещён (RPC и UPDATE); личное окно —
+только персонал, не при сданной, не чужому ученику; чужой учитель — отказ; обычное ДЗ — старт, сдача после срока,
+возврат, попытка №2 как раньше; синхронизация переносит тип и не трогает окно; копирование темы — тип едет, окна нет.
+vitest по связанным файлам — 93 файла / 1095 тестов; новые: `timedWork`, `homeworkQueueKind`, `TopicTimedWorkStudent`,
+`TopicHomeworkEditor.timed`, `CourseTopicHomeworkSection.reopen`, `ReviewActions.noReturn`,
+`TopicMaterialsModal.kind`, `HomeworkReviewQueuePage.kind`, `TopicPage.timed`, дополнен `aiReference`.
+Харнесс: сцены `d240-*` (фикстуры `apply240`, персоны `s240*`, `o240`; «сейчас» задаёт заглушка сервера) на 1280 и 390
+без OVERFLOW/ACTION-FAIL. `npm run build`, `npx tsc -b` — 0.
+
+**Не сделано / после применения.** Сгенерированные типы базы не обновлены (новые RPC/столбцы — через `as never`).
+КР «Кинематика» (тема 1d4e4838): если у темы есть `source_topic_id`, тип ставить и теме каркаса — иначе ближайшая
+синхронизация вернёт `lesson`. Окно у КР на проде — ставит учитель в «Работе». Уведомлений ученику об открытии
+окна нет (не просили).

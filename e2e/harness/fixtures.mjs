@@ -57,6 +57,12 @@ export const personas = {
   ...Object.fromEntries(['s239ret', 's239acc', 's239plain', 's239nomarks', 's239pdf', 's239many'].map(k => [
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
+  // §240: тот же ученик — пять состояний контрольной (фикстуры `apply240`),
+  // и владелец-учитель с контрольной и проверочной в курсе (`o240`).
+  ...Object.fromEntries(['s240before', 's240live', 's240warn', 's240sent', 's240missed', 's240done'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
+  o240: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1814,6 +1820,7 @@ export function baseFixtures(persona) {
   // §233: пустая главная — ни одной работы на проверке.
   if (persona === 'ownerHomeEmpty') fx.tables.topic_homework_attempts = fx.tables.topic_homework_attempts.filter(a => a.status !== 'submitted')
   if (persona.startsWith('s239')) apply239(fx, persona)
+  if (persona.startsWith('s240') || persona === 'o240') apply240(fx, persona)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -1908,4 +1915,140 @@ function apply239(fx, persona) {
   ]
   else if (persona !== 's239nomarks') sets = [set(1, P(0), 1, [ERR3, PRAISE]), set(2, P(1), 1, [PART7, NINE, FREE])]
   fx.tables.annotation_sets = [...fx.tables.annotation_sets.filter(r => r.attempt_id !== A_NOW), ...sets]
+}
+
+// ── §240: проверочная и контрольная работа по времени ───────────────────────
+// Всё выдумано. Контрольная (тема 12) и проверочная (тема 13) в первом модуле
+// основного курса. Окно КР — пятница 2 октября 10:00–10:45 по Москве.
+// «Сейчас» задаёт СЕРВЕР: заглушки `topic_homework_my_window` и
+// `app_server_now` отдают своё время на каждую персону, и таймер на экране
+// считается от него, а не от часов машины, на которой снимают:
+//   s240before — за сутки с лишним до начала (отсчёт «1 д 03:12:40»);
+//   s240live   — идёт, 32:14 до конца, три фото в черновике;
+//   s240warn   — идёт, 4 минуты до конца — таймер красный;
+//   s240sent   — сдано в 10:41, ждёт проверки;
+//   s240missed — время вышло, фото не было;
+//   s240done   — проверено: 4 из 5, разбор, решение и критерии открыты;
+//   o240       — учитель: настройки, «Открыть заново», сводка, очередь.
+export const KR = {
+  topic: IDS.topic(12), topicPr: IDS.topic(13), hw: IDS.hw(12), hwPr: IDS.hw(13),
+  opens: '2026-10-02T07:00:00.000Z', closes: '2026-10-02T07:45:00.000Z',
+  prOpens: '2026-10-01T15:00:00.000Z', prCloses: '2026-10-01T15:20:00.000Z',
+  attempt: (i) => U('3', 2400 + i),
+}
+const SERVER_NOW_240 = {
+  s240before: '2026-10-01T03:47:20.000Z',
+  s240live: '2026-10-02T07:12:46.000Z',
+  s240warn: '2026-10-02T07:41:02.000Z',
+  s240sent: '2026-10-02T08:10:00.000Z',
+  s240missed: '2026-10-02T08:10:00.000Z',
+  s240done: '2026-10-03T12:00:00.000Z',
+  o240: '2026-10-02T09:30:00.000Z',
+}
+function apply240(fx, persona) {
+  const mod = modules[0]
+  const krTopic = {
+    id: KR.topic, module_id: IDS.module, title: 'Контрольная работа. Кинематика: равноускоренное движение и броски',
+    order_index: 8, max_score: 100, is_open: true, available_from: ago(24 * 2), source_template_id: null,
+    created_at: ago(24 * 10), ege_task_numbers: [], kind: 'control', modules: mod,
+  }
+  const prTopic = {
+    ...krTopic, id: KR.topicPr, title: 'Проверочная работа. Законы Ньютона', order_index: 9, kind: 'check',
+  }
+  const topicsNew = persona === 'o240' ? [krTopic, prTopic] : [krTopic]
+  fx.tables.topics = [...fx.tables.topics.filter(t => !topicsNew.some(n => n.id === t.id)), ...topicsNew]
+  // Программа курса учителя читает темы через modules → topics.
+  fx.tables.modules = fx.tables.modules.map(m => (m.id === IDS.module
+    ? { ...m, topics: [...(m.topics ?? []).filter(t => !topicsNew.some(n => n.id === t.id)), ...topicsNew.map(({ modules: _m, ...t }) => t)] }
+    : m))
+
+  const hwRow = (id, topic, title, opens, closes) => ({
+    id, topic_id: topic.id, title, instructions: null, grade_scale: 'five', due_at: null, is_published: true,
+    opens_at: opens, closes_at: closes, created_by: IDS.owner, created_at: ago(24 * 5), updated_at: ago(24 * 5),
+    topics: topic, topic,
+  })
+  const hwKr = hwRow(KR.hw, krTopic, 'Контрольная работа', KR.opens, KR.closes)
+  const hwPr = hwRow(KR.hwPr, prTopic, 'Проверочная работа', KR.prOpens, KR.prCloses)
+  fx.tables.topic_homework = [...fx.tables.topic_homework, hwKr, ...(persona === 'o240' ? [hwPr] : [])]
+  fx.tables.topic_homework_files = []
+
+  // Материалы: условие, решение, критерии — и то, что из них отдал бы сервер.
+  const mat = (n, section, title, file) => ({
+    id: IDS.material(2400 + n), topic_id: KR.topic, kind: 'file', title, content: null, position: n, is_visible: true, section,
+    url: null, storage_path: `${KR.topic}/${file}`, file_name: file, mime_type: 'application/pdf', size_bytes: 480000,
+    lesson_id: null, source_topic_material_id: null, track: 'ege', subtopic_code: null, subtopic_title: null,
+    created_by: IDS.owner, created_at: ago(24 * 5), updated_at: ago(24 * 5),
+  })
+  const cond = mat(1, 'worksheet_homework', 'КР Кинематика — задания', 'kr-kinematika-zadaniya.pdf')
+  const sol = mat(2, 'solution', 'КР Кинематика — решения', 'kr-kinematika-resheniya.pdf')
+  const crit = mat(3, 'criteria', 'КР Кинематика — ключ и критерии', 'kr-kinematika-klyuch.pdf')
+  const visible = persona === 'o240' || persona === 's240done' ? [cond, sol, crit]
+    : persona === 's240before' ? [] : [cond]
+  fx.tables.topic_material_items = [...fx.tables.topic_material_items.filter(m => m.topic_id !== KR.topic), ...visible]
+
+  const serverNow = SERVER_NOW_240[persona]
+  fx.rpc.app_server_now = serverNow
+  fx.rpc.topic_homework_my_window = (body) => (body.p_homework_id === KR.hw
+    ? { timed: true, opens_at: KR.opens, closes_at: KR.closes, personal: false, server_now: serverNow }
+    : null)
+  const prevSolution = fx.rpc.topic_solution_state
+  fx.rpc.topic_solution_state = (body) => (body.p_topic_id === KR.topic
+    ? { has_solution: true, has_homework: true, unlocked: persona === 's240done' || persona === 'o240' }
+    : prevSolution(body))
+
+  const attempt = (i, studentId, status, submittedAt, extra = {}) => ({
+    id: KR.attempt(i), homework_id: KR.hw, student_id: studentId, attempt_number: 1, status,
+    submitted_at: submittedAt, auto_submitted: false, created_at: KR.opens, updated_at: submittedAt ?? KR.opens,
+    homework: hwKr, topic_homework: hwKr, students: studentById(studentId), topic_homework_reviews: [], ...extra,
+  })
+  const photos = (a, n) => Array.from({ length: n }, (_, k) => ({
+    id: U('4', 2400 + (a.id === KR.attempt(0) ? 0 : 10) + k), attempt_id: a.id,
+    storage_path: `homeworks/${a.student_id}/${a.id}/photo-${(k % 2) + 1}.jpg`, file_name: `IMG_20261002_стр${k + 1}.jpg`,
+    mime_type: 'image/jpeg', size_bytes: 2100000, width: 1200, height: 1600, page_number: k + 1, position: k,
+    rotation: 0, sha256: null, metadata: {}, created_at: KR.opens,
+  }))
+
+  if (persona.startsWith('s240')) {
+    const mine = {
+      s240live: attempt(0, IDS.studentRow, 'draft', null),
+      s240warn: attempt(0, IDS.studentRow, 'draft', null),
+      s240sent: attempt(0, IDS.studentRow, 'submitted', '2026-10-02T07:41:00.000Z'),
+      s240done: attempt(0, IDS.studentRow, 'accepted', '2026-10-02T07:41:00.000Z'),
+    }[persona]
+    fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts, ...(mine ? [mine] : [])]
+    fx.tables.topic_homework_attempt_files = [...fx.tables.topic_homework_attempt_files, ...(mine ? photos(mine, 3) : [])]
+    if (persona === 's240done') {
+      fx.tables.topic_homework_reviews = [...fx.tables.topic_homework_reviews,
+        { id: U('5', 2400), attempt_id: mine.id, reviewer_id: IDS.owner, decision: 'accepted', score: 4, comment: 'Хорошая работа. В №5 не хватает проекции на ось Oy, в №7 перепутана формула дальности полёта — разбери по критериям.', created_at: '2026-10-02T15:00:00.000Z' }]
+      const row = (n, no, verdict, student, expected, note = null) => reviewTaskRow(2400 + n, mine.id, { no, verdict, student_answer: student, expected_answer: expected, note })
+      fx.tables.topic_homework_review_tasks = [...fx.tables.topic_homework_review_tasks,
+        row(1, '1', 'correct', '4 м/с²', '4 м/с²'), row(2, '2', 'correct', '20 м', '20 м'), row(3, '3', 'correct', '2 с', '2 с'),
+        row(4, '4', 'correct', '15 м/с', '15 м/с'), row(5, '5', 'partial', '0,8 с', '0,8 с', 'Ответ верный, проекция на ось Oy не расписана — 1 из 2 баллов.'),
+        row(6, '6', 'correct', '45°', '45°'), row(7, '7', 'wrong', '10 м', '40 м', 'Дальность L = v₀²·sin2α/g, а не v₀²/(2g).'),
+      ]
+    }
+    return
+  }
+
+  // ── учитель (o240): очередь, сводка, личные окна ──
+  const roster = [IDS.studentRow, ...[0, 1, 2, 3, 4, 5, 6].map(k => IDS.otherStudent(k))]
+  const kr = [
+    attempt(1, roster[1], 'submitted', '2026-10-02T07:41:00.000Z'),
+    attempt(2, roster[2], 'submitted', KR.closes, { auto_submitted: true }),
+    attempt(3, roster[3], 'submitted', '2026-10-02T07:38:00.000Z'),
+    attempt(4, roster[4], 'accepted', '2026-10-02T07:30:00.000Z'),
+  ]
+  const pr = {
+    ...attempt(5, roster[5], 'submitted', '2026-10-01T15:18:00.000Z'),
+    homework_id: KR.hwPr, homework: hwPr, topic_homework: hwPr,
+  }
+  fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts, ...kr, pr]
+  fx.tables.topic_homework_attempt_files = [...fx.tables.topic_homework_attempt_files, ...[...kr, pr].flatMap(a => photos(a, 2))]
+  fx.tables.topic_homework_personal_windows = [
+    { homework_id: KR.hw, student_id: roster[6], opens_at: '2026-10-05T12:00:00.000Z', closes_at: '2026-10-05T12:45:00.000Z', created_by: IDS.owner, created_at: ago(1), updated_at: ago(1) },
+  ]
+  fx.rpc.topic_homework_timed_summary = (body) => (body.p_homework_id === KR.hw
+    ? { in_class: roster.length, submitted_self: 3, submitted_auto: 1, not_submitted: roster.length - 4, personal_windows: 1, opens_at: KR.opens, closes_at: KR.closes, closed: true, server_now: serverNow }
+    : { in_class: roster.length, submitted_self: 1, submitted_auto: 0, not_submitted: roster.length - 1, personal_windows: 0, opens_at: KR.prOpens, closes_at: KR.prCloses, closed: true, server_now: serverNow })
+  fx.rpc.topic_homework_set_personal_window = null
 }

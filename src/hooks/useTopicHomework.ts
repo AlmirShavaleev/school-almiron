@@ -189,10 +189,12 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   )
 
   const updateHomework = useCallback(
-    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published' | 'due_at' | 'grade_scale'>>) => {
+    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published' | 'due_at' | 'grade_scale' | 'opens_at' | 'closes_at'>>) => {
       const current = homeworkRef.current
       if (!current) throw new Error('ДЗ ещё не создано')
-      const { error: err } = await supabase.from('topic_homework').update(patch).eq('id', current.id)
+      // `as never`: окна §240 нет в сгенерированных типах (они отстают от
+      // схемы, перегенерирует оркестратор) — как `saveTopic` в useCourseProgram.
+      const { error: err } = await supabase.from('topic_homework').update(patch as never).eq('id', current.id)
       if (err) throw err
       applyHomework({ ...current, ...patch })
     },

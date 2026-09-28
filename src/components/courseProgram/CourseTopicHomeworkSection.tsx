@@ -6,13 +6,18 @@ import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import { describePublishResult, planHomeworkPublish } from '@/lib/homeworkPublish'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
+import { clearPersonalWindow, setPersonalWindow, type PersonalWindowRow } from '@/hooks/useTimedWork'
+import {
+  WORK_KIND_TAG, formatMoscowShort, formatMoscowTime, isTimedKind, normalizeTopicKind, parseWindowDraft,
+  windowDraftOf, type WindowDraft,
+} from '@/lib/timedWork'
 
 interface Module {
   id: string
   title: string
   // is_open/available_from нужны тумблеру открытости в строке темы; состояние
   // он считает через общий topicAvailability.ts, своей копии правила тут нет.
-  topics: { id: string; title: string; is_open: boolean | null; available_from: string | null }[]
+  topics: { id: string; title: string; is_open: boolean | null; available_from: string | null; kind?: string | null }[]
 }
 
 interface RosterStudent {
@@ -26,6 +31,9 @@ interface TopicHomework {
   title: string
   grade_scale: 'five' | 'hundred' | null
   is_published: boolean
+  /** §240. Окно работы по времени. */
+  opens_at?: string | null
+  closes_at?: string | null
 }
 
 interface TopicHomeworkAttempt {
@@ -35,6 +43,8 @@ interface TopicHomeworkAttempt {
   attempt_number: number
   status: TopicHomeworkAttemptStatus
   submitted_at: string | null
+  /** §240. Сдано автоматически в момент закрытия. */
+  auto_submitted?: boolean
   created_at: string
   updated_at: string
   topic_homework_reviews?: Array<{
@@ -129,6 +139,10 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [publishing, setPublishing] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  /** §240. Личные окна учеников по работам по времени («Открыть заново»). */
+  const [personalWindows, setPersonalWindows] = useState<PersonalWindowRow[]>([])
+  /** Открытая форма «Открыть заново»: какая работа и какой ученик. */
+  const [reopen, setReopen] = useState<{ homeworkId: string; studentId: string; draft: WindowDraft; error: string | null; busy: boolean } | null>(null)
 
   useEffect(() => {
     // Флажок живёт ВНУТРИ эффекта: в StrictMode эффект гоняется дважды,
@@ -173,9 +187,11 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
         }))
 
         // Load homeworks
+        // `*`: окно работы по времени (§240) — новые столбцы; явный перечень
+        // уронил бы раздел целиком, пока миграция не применена.
         const homeworksResult = (await supabase
           .from('topic_homework')
-          .select('id, topic_id, title, grade_scale, is_published')
+          .select('*')
           .in('topic_id', allTopicIds)) as any
 
         if (homeworksResult.error) throw new Error(homeworksResult.error.message)
@@ -209,11 +225,29 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
             counts[row.homework_id] = (counts[row.homework_id] ?? 0) + 1
           }
 
+          // §240. Личные окна — только по работам по времени. Отдельно и без
+          // падения: до миграции таблицы нет, и раздел ДЗ не должен из-за
+          // этого пропасть.
+          const timedTopicIds = new Set(
+            modules.flatMap(m => m.topics).filter(t => isTimedKind(t.kind)).map(t => t.id),
+          )
+          const timedHwIds = homeworksData.filter(h => timedTopicIds.has(h.topic_id)).map(h => h.id)
+          let windows: PersonalWindowRow[] = []
+          if (timedHwIds.length > 0) {
+            // Таблицы §240 нет в сгенерированных типах — как у прочих новых таблиц.
+            const winRes = (await supabase
+              .from('topic_homework_personal_windows' as never)
+              .select('homework_id, student_id, opens_at, closes_at')
+              .in('homework_id', timedHwIds)) as { data: PersonalWindowRow[] | null; error: unknown }
+            windows = winRes.error ? [] : (winRes.data ?? [])
+          }
+
           if (!cancelled.value) {
             setRoster(rosterArray)
             setHomeworks(homeworksData)
             setAttempts(attemptsData)
             setFileCounts(counts)
+            setPersonalWindows(windows)
           }
         } else {
           if (!cancelled.value) {
@@ -277,6 +311,35 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
       toast.error(e?.message ?? 'Не удалось опубликовать ДЗ')
     } finally {
       setPublishing(null)
+    }
+  }
+
+  /** §240. Сохранить ученику личное окно. Правила (персонал, нет сданной) держит сервер. */
+  async function saveReopen() {
+    if (!reopen) return
+    const parsed = parseWindowDraft(reopen.draft)
+    if (parsed.kind !== 'ok') {
+      setReopen(r => r && { ...r, error: parsed.kind === 'invalid' ? parsed.message : 'Укажите дату и время открытия и закрытия' })
+      return
+    }
+    setReopen(r => r && { ...r, busy: true, error: null })
+    try {
+      await setPersonalWindow(reopen.homeworkId, reopen.studentId, parsed.opensAt, parsed.closesAt)
+      toast.success('Работа открыта заново для ученика')
+      setReopen(null)
+      setReloadKey(k => k + 1)
+    } catch (e) {
+      setReopen(r => r && { ...r, busy: false, error: e instanceof Error ? e.message : 'Не удалось сохранить' })
+    }
+  }
+
+  async function dropPersonal(homeworkId: string, studentId: string) {
+    try {
+      await clearPersonalWindow(homeworkId, studentId)
+      toast.success('Личное время снято — ученику снова действует общее')
+      setReloadKey(k => k + 1)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не удалось снять личное время')
     }
   }
 
@@ -430,6 +493,8 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
             {module.topics.map(topic => {
               const topicHomeworks = homeworks.filter(hw => hw.topic_id === topic.id)
               const isExpanded = expandedTopics.has(topic.id)
+              // §240. Проверочная / контрольная: колонка «Время» и «Открыть заново».
+              const timedTopic = isTimedKind(topic.kind)
               const stats = getTopicStats(topic.id, topicHomeworks)
 
               if (topicHomeworks.length === 0) {
@@ -457,7 +522,25 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       {isExpanded ? <ChevronDown size={16} className="text-gray-400 shrink-0" /> : <ChevronRight size={16} className="text-gray-400 shrink-0" />}
+                      {timedTopic && (
+                        <span
+                          data-testid="hw-section-kind"
+                          className={cn(
+                            'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-extrabold',
+                            normalizeTopicKind(topic.kind) === 'control' ? 'bg-primary-900 text-white' : 'bg-primary-400 text-white',
+                          )}
+                        >
+                          {WORK_KIND_TAG[normalizeTopicKind(topic.kind)]}
+                        </span>
+                      )}
                       <span className="text-sm font-medium text-gray-900 truncate">{topic.title}</span>
+                      {timedTopic && (
+                        <span className="hidden shrink-0 text-xs tabular-nums text-gray-500 sm:inline">
+                          {topicHomeworks[0]?.opens_at
+                            ? `${formatMoscowShort(topicHomeworks[0].opens_at)}–${formatMoscowTime(topicHomeworks[0].closes_at)}`
+                            : 'время не назначено'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Status badges */}
@@ -500,6 +583,7 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Статус</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Балл</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Дата сдачи</th>
+                              {timedTopic && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Время</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -513,11 +597,18 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                               const attempt = getLatestAttempt(attempts, firstHw.id, student.studentId)
                               const review = attempt ? getLatestReview(attempt) : null
                               const maxScore = gradeScaleMax(firstHw.grade_scale)
+                              const personal = timedTopic
+                                ? personalWindows.find(w => w.homework_id === firstHw.id && w.student_id === student.studentId) ?? null
+                                : null
+                              // Сданная работа (любой статус, кроме черновика) — открыть заново нельзя.
+                              const hasSubmitted = !!attempt && attempt.status !== 'draft'
+                              const formHere = reopen?.homeworkId === firstHw.id && reopen.studentId === student.studentId
 
                               return (
                                 <tr
                                   key={student.studentId}
-                                  className={cn('border-b border-gray-100', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+                                  data-testid="hw-section-row"
+                                  className={cn('border-b border-gray-100 align-top', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
                                 >
                                   <td className="px-4 py-2">
                                     <span className="text-sm text-gray-900">{student.name}</span>
@@ -529,7 +620,9 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                                         ATTEMPT_STATUS_BADGE_COLORS[studentStatus.status],
                                       )}
                                     >
-                                      {ATTEMPT_STATUS_LABEL[studentStatus.status]}
+                                      {timedTopic && studentStatus.status === 'submitted' && attempt?.auto_submitted
+                                        ? 'Сдано автоматически'
+                                        : ATTEMPT_STATUS_LABEL[studentStatus.status]}
                                     </span>
                                   </td>
                                   <td className="px-4 py-2">
@@ -542,6 +635,81 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                                   <td className="px-4 py-2">
                                     <span className="text-sm text-gray-600">{formatDate(studentStatus.submittedAt)}</span>
                                   </td>
+                                  {timedTopic && (
+                                    <td className="px-4 py-2">
+                                      {formHere && reopen ? (
+                                        <div data-testid="hw-reopen-form" className="flex min-w-[240px] flex-col gap-1.5">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <input
+                                              type="date"
+                                              aria-label="Дата"
+                                              value={reopen.draft.date}
+                                              onChange={e => setReopen(r => r && { ...r, draft: { ...r.draft, date: e.target.value }, error: null })}
+                                              className="h-8 rounded-lg border border-gray-200 px-2 text-xs"
+                                            />
+                                            <input
+                                              type="time"
+                                              aria-label="Открывается"
+                                              value={reopen.draft.opens}
+                                              onChange={e => setReopen(r => r && { ...r, draft: { ...r.draft, opens: e.target.value }, error: null })}
+                                              className="h-8 rounded-lg border border-gray-200 px-2 text-xs tabular-nums"
+                                            />
+                                            <span className="text-xs text-gray-400">–</span>
+                                            <input
+                                              type="time"
+                                              aria-label="Закрывается"
+                                              value={reopen.draft.closes}
+                                              onChange={e => setReopen(r => r && { ...r, draft: { ...r.draft, closes: e.target.value }, error: null })}
+                                              className="h-8 rounded-lg border border-gray-200 px-2 text-xs tabular-nums"
+                                            />
+                                          </div>
+                                          <p className="text-[11px] text-gray-500">Время московское. Личное время заменяет общее для этого ученика.</p>
+                                          {reopen.error && <p className="text-xs text-red-600">{reopen.error}</p>}
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              data-testid="hw-reopen-save"
+                                              disabled={reopen.busy}
+                                              onClick={() => { void saveReopen() }}
+                                              className="inline-flex h-8 items-center gap-1 rounded-lg bg-primary-600 px-3 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+                                            >
+                                              {reopen.busy && <Loader2 size={12} className="animate-spin" />}
+                                              Открыть
+                                            </button>
+                                            <button type="button" onClick={() => setReopen(null)} className="text-xs text-gray-500 hover:text-gray-900">Отмена</button>
+                                          </div>
+                                        </div>
+                                      ) : personal ? (
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                          <span data-testid="hw-personal-window" className="font-semibold text-primary-800">
+                                            лично: {formatMoscowShort(personal.opens_at)}–{formatMoscowTime(personal.closes_at)}
+                                          </span>
+                                          {!hasSubmitted && (
+                                            <button type="button" onClick={() => { void dropPersonal(firstHw.id, student.studentId) }} className="self-start text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline">
+                                              Снять
+                                            </button>
+                                          )}
+                                        </div>
+                                      ) : !hasSubmitted ? (
+                                        <button
+                                          type="button"
+                                          data-testid="hw-reopen"
+                                          onClick={() => setReopen({
+                                            homeworkId: firstHw.id,
+                                            studentId: student.studentId,
+                                            draft: windowDraftOf(firstHw.opens_at, firstHw.closes_at),
+                                            error: null,
+                                            busy: false,
+                                          })}
+                                          className="inline-flex h-8 items-center rounded-lg border border-primary-200 bg-white px-2.5 text-xs font-semibold text-primary-700 hover:bg-primary-50"
+                                        >
+                                          Открыть заново
+                                        </button>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                  )}
                                 </tr>
                               )
                             })}

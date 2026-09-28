@@ -1,4 +1,4 @@
-import { D227, D228, D229, IDS, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -984,6 +984,65 @@ export const scenes = [
         { drag: { sel: '[data-testid="review-overlay-1"]', from: [0.1, 0.52], to: [0.7, 0.58] } }, { wait: 500 },
         { eval: "(() => { const el = document.querySelector('[data-testid=\"comment-task-select\"]'); if (!el) return; const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(el, '15'); el.dispatchEvent(new Event('change', { bubbles: true })) })()" },
         { fill: ['[data-testid="comment-editor-text"]', 'Потерян процент во втором шаге'] }, { wait: 400 },
+      ] },
+    ]
+  }),
+
+  // §240: проверочная и контрольная по времени. Ученик — пять состояний макета
+  // (+ «за 5 минут» — красный таймер); «сейчас» задаёт заглушка сервера на
+  // персону (`apply240`), часы машины не влияют. Учитель — тип темы и окно в
+  // настройках работы, сводка после закрытия, «Открыть заново», очередь с
+  // плашками и фильтром, экран проверки КР без «Вернуть на доработку».
+  // В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d240 1280 ; node e2e/harness/tour.mjs d240 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const kr = `/my-course/${S.group}/topic/${KR.topic}`
+    const toDone = { eval: "(() => { document.querySelector('[data-testid=\"timed-done\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -96) })()" }
+    return [
+      // Снимок экрана — докручен до работы (над ней шапка темы и вкладки),
+      // полный снимок — вся страница.
+      ...['before', 'live', 'warn', 'sent', 'missed'].map(k => ({
+        persona: `s240${k}`, name: `d240-student-${k}`, url: kr, width, height, actions: [
+          { wait: 2500 }, { eval: "(() => { document.querySelector('[data-testid=\"timed-work\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -140) })()" }, { wait: 400 },
+        ],
+      })),
+      { persona: 's240done', name: 'd240-student-done', url: kr, width, height, actions: [{ wait: 3000 }, toDone, { wait: 600 }] },
+      // Таймер держится на виду, пока ученик листает к своим фото.
+      { persona: 's240live', name: 'd240-student-live-scrolled', url: kr, width, height, full: false, actions: [
+        { wait: 2500 }, { eval: "document.querySelector('[data-testid=\"timed-photos\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 500 },
+      ] },
+      { persona: 's240live', name: 'd240-student-live-confirm', url: kr, width, height, full: false, actions: [
+        { wait: 2500 }, { clickSel: '[data-testid="timed-submit"]' }, { wait: 300 },
+        { eval: "document.querySelector('[data-testid=\"timed-submit-confirm\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 300 },
+      ] },
+      { persona: 'o240', name: 'd240-teacher-program', url: `/course-program?course=${S.course}`, width, height, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1200 },
+        { eval: "[...document.querySelectorAll('[data-testid=\"topic-kind-mark\"]')][0]?.scrollIntoView({ block: 'center' })" }, { wait: 400 },
+      ] },
+      { persona: 'o240', name: 'd240-teacher-settings', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1200 }, { click: 'Контрольная работа. Кинематика' }, { wait: 1200 },
+        { eval: "document.querySelector('[data-testid=\"topic-kind\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 400 },
+      ] },
+      { persona: 'o240', name: 'd240-teacher-settings-window', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1200 }, { click: 'Контрольная работа. Кинематика' }, { wait: 1200 },
+        { clickSel: '[data-testid="topic-tile-homework"]' }, { wait: 1500 },
+        { eval: "document.querySelector('[data-testid=\"timed-window-editor\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 500 },
+      ] },
+      { persona: 'o240', name: 'd240-teacher-reopen', url: `/course-program?course=${S.course}`, width, height, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1200 },
+        { clickSel: 'button:has-text("Домашние задания")' }, { wait: 1500 },
+        { click: 'Контрольная работа. Кинематика' }, { wait: 600 },
+        { clickSel: '[data-testid="hw-reopen"]' }, { wait: 400 },
+        { eval: "document.querySelector('[data-testid=\"hw-reopen-form\"]')?.scrollIntoView({ block: 'center', inline: 'center' })" }, { wait: 400 },
+      ] },
+      { persona: 'o240', name: 'd240-queue', url: '/homework-queue', width, height, actions: [
+        { ls: ['homework-queue:kind', 'all'] }, { goto: '/homework-queue' }, { wait: 1500 },
+      ] },
+      { persona: 'o240', name: 'd240-queue-kr', url: '/homework-queue', width, height, actions: [
+        { ls: ['homework-queue:kind', 'control'] }, { goto: '/homework-queue' }, { wait: 1500 },
+      ] },
+      { persona: 'o240', name: 'd240-review-kr', url: `/homework-queue?attempt=${KR.attempt(2)}`, width, height, full: false, actions: [
+        { ls: ['homework-queue:kind', 'all'] }, { goto: `/homework-queue?attempt=${KR.attempt(2)}` }, { wait: 3000 },
       ] },
     ]
   }),

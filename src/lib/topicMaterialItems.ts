@@ -59,10 +59,12 @@ export type TopicMaterialSection =
   | 'notes' | 'theory' | 'tasks'
   | 'task_solution' | 'worksheet_tasks' | 'worksheet_homework'
   | 'solution'
+  /** §240. «Ответы и критерии оценивания» — гейт как у решения ДЗ. */
+  | 'criteria'
 
 /** Порядок кнопок у преподавателя — как их перечислил владелец. */
 export const TOPIC_MATERIAL_SECTIONS: readonly TopicMaterialSection[] =
-  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework'] as const
+  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework', 'criteria'] as const
 
 export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string> = {
   notes: 'Конспект',
@@ -72,6 +74,7 @@ export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string>
   worksheet_tasks: 'Рабочий лист задач',
   solution: 'Решение ДЗ',
   worksheet_homework: 'Рабочий лист ДЗ',
+  criteria: 'Ответы и критерии',
 }
 
 /**
@@ -80,7 +83,7 @@ export const TOPIC_MATERIAL_SECTION_LABELS: Record<TopicMaterialSection, string>
  * там порядок кнопок у преподавателя, здесь учебный маршрут.
  */
 export const STUDENT_SECTION_ORDER: readonly TopicMaterialSection[] =
-  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework'] as const
+  ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'solution', 'worksheet_homework', 'criteria'] as const
 
 /**
  * Рубрика темы в ИНТЕРФЕЙСЕ — те самые «десять рубрик» владельца.
@@ -98,7 +101,7 @@ export type TopicSection = TopicMaterialSection | 'video' | 'homework' | 'test'
 /** Порядок карточек у преподавателя — как их перечислил владелец. */
 export const TOPIC_SECTION_ORDER: readonly TopicSection[] = [
   'theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks',
-  'homework', 'solution', 'worksheet_homework', 'video', 'test',
+  'homework', 'solution', 'worksheet_homework', 'criteria', 'video', 'test',
 ] as const
 
 /**
@@ -155,7 +158,8 @@ export interface TopicSectionGroup {
 export const TOPIC_SECTION_GROUPS: readonly TopicSectionGroup[] = [
   { key: 'theory',   label: 'Теория',            sections: ['video', 'notes', 'theory'] },
   { key: 'lesson',   label: 'Урок',              sections: ['tasks', 'task_solution', 'worksheet_tasks'] },
-  { key: 'homework', label: 'Домашнее задание',  sections: ['homework', 'worksheet_homework', 'solution'] },
+  // §240: «Ответы и критерии» — в той же группе, последними: после проверки.
+  { key: 'homework', label: 'Домашнее задание',  sections: ['homework', 'worksheet_homework', 'solution', 'criteria'] },
   // §162: задачи к уроку считаются в «тема пройдена» — решение владельца.
   // До этого рубрика жила вне групп (§121) и на завершённость не влияла.
   { key: 'tasks',    label: 'Задачи',            sections: ['test'] },
@@ -202,6 +206,7 @@ export const TOPIC_SECTION_SHORT_LABELS: Record<TopicSection, string> = {
   ...TOPIC_SECTION_LABELS,
   worksheet_tasks: 'Раб. лист задач',
   worksheet_homework: 'Раб. лист ДЗ',
+  criteria: 'Критерии',
 }
 
 /** Рубрика-секция ли это, то есть значение `topic_material_items.section`. */
@@ -217,6 +222,23 @@ export function isMaterialSection(
  * здесь значение нужно ровно для того, чтобы показать плашку вместо пустоты.
  */
 export const GATED_SECTION: TopicMaterialSection = 'solution'
+
+/**
+ * §240. Подписи рубрик у ПРОВЕРОЧНОЙ и КОНТРОЛЬНОЙ работы: там рабочий лист ДЗ
+ * — это условие работы, решение ДЗ — решение работы, само ДЗ — работа.
+ * Значения в базе те же, меняется только слово на экране.
+ */
+export const TIMED_SECTION_LABELS: Partial<Record<TopicSection, string>> = {
+  homework: 'Работа',
+  worksheet_homework: 'Условие',
+  solution: 'Решение',
+  criteria: 'Ответы и критерии',
+}
+
+/** Подпись рубрики с учётом типа темы. */
+export function sectionLabel(section: TopicSection, timed: boolean): string {
+  return (timed && TIMED_SECTION_LABELS[section]) || TOPIC_SECTION_LABELS[section]
+}
 
 export const TOPIC_MATERIAL_KINDS: readonly TopicMaterialKind[] = ['text', 'video', 'link', 'file'] as const
 

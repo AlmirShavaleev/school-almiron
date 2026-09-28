@@ -22,7 +22,7 @@ import {
   BookOpen, Plus, ChevronDown, ChevronRight, Pencil, Trash2,
   Check, X, Calendar, Save, Loader2, ToggleLeft, ToggleRight, FileText,
   Video, Lightbulb, BookMarked, Users, GripVertical, ClipboardList, GraduationCap, BarChart3, ChevronLeft,
-  Copy, Eye, Layers,
+  Copy, Eye, Layers, ListChecks,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -44,6 +44,7 @@ import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
 import { TopicHomeworkBadge } from '@/components/courseProgram/TopicHomeworkBadge'
+import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { groupHomeworkByTopic, type TopicHomeworkRow } from '@/lib/topicHomeworkState'
 import {
   TOPIC_MATERIAL_SECTIONS, TOPIC_SECTION_ORDER, TOPIC_SECTION_SHORT_LABELS,
@@ -393,6 +394,7 @@ function HwTable({
                             {topic.title}
                           </span>
                         </button>
+                        <TopicKindMark kind={topic.kind} />
                         <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
                         <TopicHomeworkBadge rows={homeworkStateByTopic[topic.id] ?? []} />
                         {hw && (
@@ -490,6 +492,7 @@ function TopicRowEdit({
                   onCancelCreate={onCancelCreate}
                 />
               </div>
+              <TopicKindMark kind={topic.kind} />
               <TopicOpenToggle topic={topic} onToggle={v => onSave(topic.id, { is_open: v })} />
               <TopicHomeworkBadge rows={homeworkRows} />
             </div>
@@ -1024,6 +1027,7 @@ const MAT_COL_COLOR: Record<TopicSection, string> = {
   homework: 'text-yellow-500',
   solution: 'text-green-500',
   worksheet_homework: 'text-cyan-500',
+  criteria: 'text-emerald-600',
   video: 'text-red-500',
   test: 'text-indigo-500',
 }
@@ -1037,13 +1041,17 @@ const MAT_COL_ICON: Record<TopicSection, React.ReactNode> = {
   homework: <Lightbulb size={13} />,
   solution: <Check size={13} />,
   worksheet_homework: <FileText size={13} />,
+  criteria: <ListChecks size={13} />,
   video: <Video size={13} />,
   test: <BarChart3 size={13} />,
 }
 
 // Скрытая рубрика не должна занимать колонку в матрице: перечень един, а
 // показ решает `TOPIC_SECTIONS_HIDDEN`.
-const MAT_COLS = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(type => ({
+// §240: «Ответы и критерии» бывают только у проверочной и контрольной — в
+// матрице они стали бы одиннадцатой колонкой, пустой у каждого урока, и
+// уронили бы «заполнено» у всех курсов. Рубрика видна в окне темы.
+const MAT_COLS = TOPIC_SECTION_ORDER.filter(t => isTopicSectionVisible(t) && t !== 'criteria').map(type => ({
   type,
   label: TOPIC_SECTION_SHORT_LABELS[type],
   icon: MAT_COL_ICON[type],
@@ -2430,6 +2438,8 @@ export function CourseProgramPage() {
       availableFrom={matTopic?.topic.available_from ?? null}
       isOpen={matTopic?.topic.is_open ?? null}
       egeTaskNumbers={matTopic?.topic.ege_task_numbers ?? null}
+      kind={matTopic?.topic.kind ?? null}
+      isTemplate={isTemplate}
       onSaveTopicMeta={async values => {
         if (!matTopic?.topic.id) return
         await handleSaveTopic(matTopic.topic.id, values)

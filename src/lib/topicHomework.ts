@@ -88,6 +88,13 @@ export interface TopicHomeworkRow {
   is_published: boolean
   due_at: string | null
   grade_scale: 'five' | 'hundred' | null
+  /**
+   * §240. Окно работы по времени (проверочная/контрольная): открывается и
+   * закрывается. У урока не используется. Необязательные: до миграции §240
+   * база строку без них и отдаёт.
+   */
+  opens_at?: string | null
+  closes_at?: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -111,6 +118,8 @@ export interface TopicHomeworkAttemptRow {
   attempt_number: number
   status: TopicHomeworkAttemptStatus
   submitted_at: string | null
+  /** §240. Сдано автоматически в момент закрытия окна. */
+  auto_submitted?: boolean
   created_at: string
   updated_at: string
 }

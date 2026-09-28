@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CRITERIA_CHAR_LIMIT,
+  CRITERIA_SECTION,
   ENGINE_ORDER,
   FREE_ENGINE,
   MAX_FAILURE_REASON_CHARS,
@@ -10,6 +12,7 @@ import {
   REFERENCE_TAIL_CHARS,
   WORKSHEET_CHAR_LIMIT,
   WORKSHEET_SECTION,
+  criteriaPromptBlock,
   describeParseFailure,
   extractAnnotationText,
   isParseUsable,
@@ -256,5 +259,48 @@ describe('рабочий лист (условие ДЗ)', () => {
   it('причина отказа называет материал', () => {
     expect(describeParseFailure(['движок x: пусто'], 'рабочий лист ДЗ')).toContain('Не удалось распознать рабочий лист ДЗ:')
     expect(describeParseFailure(['движок x: пусто'])).toContain('авторское решение:')
+  })
+})
+
+describe('§240. Ответы и критерии оценивания', () => {
+  it('рубрика — criteria, как в CHECK базы и в перечне рубрик клиента', () => {
+    expect(CRITERIA_SECTION).toBe('criteria')
+  })
+
+  it('свой потолок, меньше эталона и условия: критерии — таблица на страницу-две', () => {
+    expect(CRITERIA_CHAR_LIMIT).toBeGreaterThan(0)
+    expect(CRITERIA_CHAR_LIMIT).toBeLessThan(WORKSHEET_CHAR_LIMIT)
+    expect(CRITERIA_CHAR_LIMIT).toBeLessThan(REFERENCE_CHAR_LIMIT)
+  })
+
+  it('обрезка по своему потолку сохраняет конец (итоговую шкалу баллов)', () => {
+    const doc = 'Задание 1 — 1 балл. '.repeat(1500) + 'Итого: 13 баллов — «5»'
+    const block = truncateReference(doc, CRITERIA_CHAR_LIMIT)
+    expect(block.truncated).toBe(true)
+    expect(block.text.length).toBeLessThanOrEqual(CRITERIA_CHAR_LIMIT)
+    expect(block.text.endsWith('Итого: 13 баллов — «5»')).toBe(true)
+  })
+
+  it('блок критериев: заголовок, текст, оговорка и правило «прав критерий»', () => {
+    const block = criteriaPromptBlock({ text: '№5 — 2 балла: верная формула 1 б., ответ 1 б.', truncated: false })
+    expect(block.startsWith('КРИТЕРИИ ОЦЕНИВАНИЯ')).toBe(true)
+    expect(block).toContain('№5 — 2 балла')
+    expect(block).toContain('распознаванием PDF')
+    expect(block).toContain('ПО ЭТИМ КРИТЕРИЯМ')
+    expect(block).toContain('прав критерий')
+    expect(block).not.toContain('НЕ ЦЕЛИКОМ')
+  })
+
+  it('обрезанные критерии честно помечены', () => {
+    expect(criteriaPromptBlock({ text: 'x', truncated: true })).toContain('НЕ ЦЕЛИКОМ')
+  })
+
+  it('нет критериев (обычное ДЗ) — блока нет вовсе, промпт прежний', () => {
+    expect(criteriaPromptBlock({ text: '', truncated: false })).toBe('')
+    expect(criteriaPromptBlock({ text: '   \n ', truncated: true })).toBe('')
+  })
+
+  it('причина отказа называет критерии', () => {
+    expect(describeParseFailure(['движок x: пусто'], 'критерии оценивания')).toContain('Не удалось распознать критерии оценивания:')
   })
 })

@@ -1,0 +1,385 @@
+slice + prod migrations: ok
+PENDING_240 applied twice: ok
+=== 0. Схема: тип тем (прежние — lesson), окно, отметка автосдачи; задание cron одно
+           title            |  kind   | has_window 
+----------------------------+---------+------------
+ L: Законы Ньютона          | lesson  | f
+ K: Контрольная (идёт)      | control | t
+ F: Проверочная (завтра)    | check   | t
+ C: Контрольная (закрылась) | control | t
+ N: Контрольная без времени | control | f
+
+ lesson_topics_elsewhere 
+-------------------------
+                       3
+
+          jobname          | schedule  |                    command                    
+---------------------------+-----------+-----------------------------------------------
+ topic-homework-autosubmit | * * * * * | select public.topic_homework_autosubmit_due()
+
+=== 0b. CHECK: окно «закрывается раньше открытия» и половинчатое окно — отказ; неизвестный тип — отказ
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:42: ERROR:  new row for relation "topic_homework" violates check constraint "topic_homework_window_check"
+DETAIL:  Failing row contains (00000000-0000-4000-8000-0000000d0002, 00000000-0000-4000-8000-0000007a0002, Работа 2, null, t, 00000000-0000-4000-8000-0000000000a1, 2026-09-28 11:18:54.45629+00, 2026-09-28 11:18:54.805+00, null, five, null, 2026-09-28 11:18:54.805+00, 2026-09-28 11:17:54.805+00).
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:43: ERROR:  new row for relation "topic_homework" violates check constraint "topic_homework_window_check"
+DETAIL:  Failing row contains (00000000-0000-4000-8000-0000000d0002, 00000000-0000-4000-8000-0000007a0002, Работа 2, null, t, 00000000-0000-4000-8000-0000000000a1, 2026-09-28 11:18:54.45629+00, 2026-09-28 11:18:54.80673+00, null, five, null, 2026-09-28 11:18:54.80673+00, null).
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:44: ERROR:  new row for relation "topics" violates check constraint "topics_kind_check"
+DETAIL:  Failing row contains (00000000-0000-4000-8000-0000007a0002, 00000000-0000-4000-8000-0000000e0001, K: Контрольная (идёт), 2, null, null, null, null, 2026-09-28 11:18:54.452152+00, exam).
+SET
+=== 1. S2: условие (worksheet_homework) по темам: урок L — есть; K (идёт) — есть; F (завтра) — нет; C (закрылась) — есть; N (без времени; у S2 там сданная работа) — есть
+ code | cond_rows 
+------+-----------
+ C    |         1
+ F    |         0
+ K    |         1
+ L    |         1
+ N    |         1
+
+=== 1a. S4 (в теме N попыток нет): условие N — нет; у S2 оно видно, потому что у него уже есть сданная работа
+ cond_n_for_s4 
+---------------
+             0
+
+=== 1b. S2: объекты хранилища условий (topic-materials): все, кроме F
+           title            
+----------------------------
+ C: Контрольная (закрылась)
+ K: Контрольная (идёт)
+ L: Законы Ньютона
+ N: Контрольная без времени
+
+=== 1c. S2: условие файлом ДЗ (строки topic_homework_files и объекты topic-homework): урок и K — есть, F — нет
+  title   | count 
+----------+-------
+ Работа 1 |     1
+ Работа 2 |     1
+ Работа 3 |     0
+
+                     name                      
+-----------------------------------------------
+ 00000000-0000-4000-8000-0000007a0001/task.pdf
+ 00000000-0000-4000-8000-0000007a0002/task.pdf
+
+=== 1d. S2: конспект (не условие) у F виден как раньше — прячется только условие
+ notes_f 
+---------
+       1
+
+=== 2. S2: начать F (не началась), N (без времени), C (вышло) — отказ с понятным текстом
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:69: ERROR:  Работа ещё не началась
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 27 at RAISE
+SQL statement "insert into topic_homework_attempts (homework_id, student_id, attempt_number)
+  values (p_homework_id, v_student, 1)   -- номер перезапишет триггер
+  returning id"
+PL/pgSQL function topic_homework_start_attempt(uuid) line 20 at SQL statement
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:70: ERROR:  Работу по времени сдают один раз — попытка уже есть
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 23 at RAISE
+SQL statement "insert into topic_homework_attempts (homework_id, student_id, attempt_number)
+  values (p_homework_id, v_student, 1)   -- номер перезапишет триггер
+  returning id"
+PL/pgSQL function topic_homework_start_attempt(uuid) line 20 at SQL statement
+    (C: у S2 уже есть черновик без фото — RPC возвращает его, как раньше; новую попытку сторож не создаст)
+ returns_existing_draft 
+------------------------
+ t
+
+=== 2b. S2 в C (вне окна): залить фото — отказ (строка и объект); сдать — отказ; удалить черновик — отказ
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:74: ERROR:  new row violates row-level security policy for table "topic_homework_attempt_files"
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:75: ERROR:  new row violates row-level security policy for table "objects"
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:76: ERROR:  Время работы вышло — сдача закрыта
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 86 at RAISE
+SQL statement "update topic_homework_attempts
+     set status = 'submitted', submitted_at = now()
+   where id = p_attempt_id
+     and status = 'draft'"
+PL/pgSQL function topic_homework_submit_attempt(uuid) line 3 at SQL statement
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:77: ERROR:  Время работы вышло — сдача закрыта
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 86 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:78: ERROR:  Время работы вышло — сдача закрыта
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 116 at RAISE
+=== 2c. S1 в C (вне окна, черновик с фото): удалить фото — ни строка, ни объект не удаляются (0 строк)
+DELETE 0
+DELETE 0
+ s1_files_still_there 
+----------------------
+                    1
+
+=== 3. S2 в K (идёт): начать → залить фото (строка + объект) → переставить → сдать; время сдачи — серверное
+BEGIN
+ attempt_number | status 
+----------------+--------
+              1 | draft
+
+INSERT 0 1
+INSERT 0 1
+UPDATE 1
+    отметку «сдано автоматически» ученик себе не ставит
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:94: ERROR:  Отметку автосдачи ставит только сервер
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 75 at RAISE
+UPDATE 1
+  status   | auto_submitted | server_time 
+-----------+----------------+-------------
+ submitted | f              | t
+
+    после сдачи — фото не удалить (как у ДЗ), новую попытку не начать: RPC вернёт сданную
+DELETE 0
+ same_attempt 
+--------------
+ t
+
+ROLLBACK
+=== 4. S2 в N: одна попытка — у S2 возвращённая (наследие), даже при открытом окне новую не начать
+RESET
+BEGIN
+UPDATE 1
+SET
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:108: ERROR:  Работу по времени сдают один раз — попытка уже есть
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 23 at RAISE
+SQL statement "insert into topic_homework_attempts (homework_id, student_id, attempt_number)
+  values (p_homework_id, v_student, 1)   -- номер перезапишет триггер
+  returning id"
+PL/pgSQL function topic_homework_start_attempt(uuid) line 20 at SQL statement
+ROLLBACK
+=== 5. S2: решение и критерии в C — нет (работа не проверена)
+SET
+      section       | count 
+--------------------+-------
+ notes              |     1
+ worksheet_homework |     1
+
+=== 5b. S2: личные окна — видит только своё (своего нет)
+ windows_seen 
+--------------
+            0
+
+=== 5c. S2: своё окно и серверное время (K: общее окно, timed)
+ timed | personal | live | server_now 
+-------+----------+------+------------
+ t     | f        | t    | t
+
+ server_now_ok 
+---------------
+ t
+
+=== 5d. S2: личное окно не поставить и сводку не прочитать
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:124: ERROR:  Нет прав на эту работу
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 8 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:125: ERROR:  Нет прав на эту работу
+CONTEXT:  PL/pgSQL function topic_homework_timed_summary(uuid) line 12 at RAISE
+=== 5e. S2: автосдачу не вызвать
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:127: ERROR:  permission denied for function topic_homework_autosubmit_due
+=== 6. S4 в C: личное окно заменяет общее — условие видно, фото заливается, сдать можно
+BEGIN
+ cond_rows 
+-----------
+         1
+
+ personal 
+----------
+ t
+
+INSERT 0 1
+ topic_homework_submit_attempt 
+-------------------------------
+ 
+
+  status   | auto_submitted 
+-----------+----------------
+ submitted | f
+
+ROLLBACK
+=== 6b. S5 в C: личное окно закрылось — фото не залить
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:141: ERROR:  new row violates row-level security policy for table "topic_homework_attempt_files"
+RESET
+=== 7. Автосдача: S1 (фото, общее окно) и S5 (фото, личное окно закрылось) и S6 (фото, уведомление падает) — сданы;
+       S2 (без фото) — черновик; S4 (личное окно идёт) — черновик; S3 — как был
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:147: WARNING:  Уведомление об автосдаче 00000000-0000-4000-8000-00000c0a0006 не создано: P0001 — заглушка уведомления: сбой
+ autosubmitted 
+---------------
+             3
+
+ full_name |  status   | auto_submitted |        submitted        
+-----------+-----------+----------------+-------------------------
+ Ученик 1  | submitted | t              | время закрытия (общее)
+ Ученик 2  | draft     | f              | 
+ Ученик 3  | submitted | f              | сам
+ Ученик 4  | draft     | f              | 
+ Ученик 5  | submitted | t              | время закрытия (личное)
+ Ученик 6  | submitted | t              | время закрытия (общее)
+
+    уведомления: у S1 и S5 есть; у S6 сбой уведомления не откатил сдачу
+ full_name 
+-----------
+ Ученик 1
+ Ученик 5
+
+=== 7b. Повторный запуск ничего не меняет
+ autosubmitted_again 
+---------------------
+                   0
+
+ notifications 
+---------------
+             2
+
+SET
+=== 8. A видит всё: условие F (до открытия), критерии и решение C
+ code |      section       | count 
+------+--------------------+-------
+ C    | criteria           |     1
+ C    | notes              |     1
+ C    | solution           |     1
+ C    | worksheet_homework |     1
+ F    | notes              |     1
+ F    | solution           |     1
+ F    | worksheet_homework |     1
+
+=== 9. Вернуть на доработку работу по времени — отказ (RPC и прямой UPDATE)
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:171: ERROR:  Проверочную и контрольную работу нельзя вернуть на доработку — только оценить
+CONTEXT:  PL/pgSQL function topic_homework_review_attempt(uuid,topic_homework_review_decision,text,integer) line 46 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:172: ERROR:  Проверочную и контрольную работу нельзя вернуть на доработку — только оценить
+CONTEXT:  PL/pgSQL function topic_homework_attempts_guard() line 93 at RAISE
+=== 10. Сводка по C: сдали сами / автоматически / не сдали / в классе
+                                                       summary                                                        
+----------------------------------------------------------------------------------------------------------------------
+ {"closed": true, "in_class": 6, "not_submitted": 2, "submitted_auto": 3, "submitted_self": 1, "personal_windows": 2}
+
+=== 11. «Открыть заново»: S2 (не сдал) — да; S1 (сдано автоматически) — нет; S7 (другой курс) — нет
+BEGIN
+ topic_homework_set_personal_window 
+------------------------------------
+ 
+
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:178: ERROR:  У ученика уже есть сданная работа — открыть заново нельзя
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 32 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:179: ERROR:  Ученик не из этого курса
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 25 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:180: ERROR:  Время закрытия должно быть позже времени открытия
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 15 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:181: ERROR:  Личное время бывает только у проверочной и контрольной работы
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 11 at RAISE
+    …и S2 теперь в окне: фото заливается, сдача проходит
+ windows_seen_by_s2 
+--------------------
+                  1
+
+INSERT 0 1
+ topic_homework_submit_attempt 
+-------------------------------
+ 
+
+  status   | auto_submitted 
+-----------+----------------
+ submitted | f
+
+    …а после сдачи снять личное окно уже нельзя
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:190: ERROR:  У ученика уже есть сданная работа — личное время не снимается
+CONTEXT:  PL/pgSQL function topic_homework_clear_personal_window(uuid,uuid) line 15 at RAISE
+ROLLBACK
+=== 11b. Снять личное окно S4 (не сдано) — можно
+BEGIN
+ topic_homework_clear_personal_window 
+--------------------------------------
+ 
+
+ windows_left 
+--------------
+            1
+
+ROLLBACK
+=== 12. Решение и критерии — после проверки: A принимает S3, S3 видит решение и критерии (строки и объекты); S2 — нет
+BEGIN
+ accepted 
+----------
+ t
+
+      section       | count 
+--------------------+-------
+ criteria           |     1
+ notes              |     1
+ solution           |     1
+ worksheet_homework |     1
+
+   file    
+-----------
+ cond.pdf
+ crit.pdf
+ notes.pdf
+ sol.pdf
+
+ file_for_s2 
+-------------
+ cond.pdf
+ notes.pdf
+
+ROLLBACK
+=== 13. X: личное окно, снятие, сводка — отказ; личных окон не видит
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:210: ERROR:  Нет прав на эту работу
+CONTEXT:  PL/pgSQL function topic_homework_set_personal_window(uuid,uuid,timestamp with time zone,timestamp with time zone) line 8 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:211: ERROR:  Нет прав на эту работу
+CONTEXT:  PL/pgSQL function topic_homework_clear_personal_window(uuid,uuid) line 8 at RAISE
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:212: ERROR:  Нет прав на эту работу
+CONTEXT:  PL/pgSQL function topic_homework_timed_summary(uuid) line 12 at RAISE
+ windows_seen 
+--------------
+            0
+
+=== 13b. X: вердикт по чужой работе — отказ (как раньше)
+psql:/home/claude/agents/a240/repo/supabase/tests/kontrolnaya_240/20_probes.sql:215: ERROR:  Нет прав на проверку этой работы
+CONTEXT:  PL/pgSQL function topic_homework_review_attempt(uuid,topic_homework_review_decision,text,integer) line 17 at RAISE
+=== 14. Урок L: S2 начинает, заливает, сдаёт после срока (срок мягкий); A возвращает; S2 начинает попытку №2; возврат виден
+BEGIN
+INSERT 0 1
+INSERT 0 1
+DELETE 1
+ topic_homework_submit_attempt 
+-------------------------------
+ 
+
+ returned 
+----------
+ t
+
+ attempt_number |        status         | auto_submitted 
+----------------+-----------------------+----------------
+              1 | returned_for_revision | f
+
+ second_attempt 
+----------------
+ t
+
+ attempt_number |        status         
+----------------+-----------------------
+              1 | returned_for_revision
+              2 | draft
+
+    решение урока до принятия закрыто, как раньше
+ solution_rows 
+---------------
+             0
+
+ROLLBACK
+RESET
+=== 15. Смена типа темы в каркасе уезжает в копии; окно копии синхронизация не трогает и из каркаса не приносит
+BEGIN
+UPDATE 1
+UPDATE 1
+UPDATE 1
+        title        |  kind   |       hw_title        |    window    
+---------------------+---------+-----------------------+--------------
+ Физика ЕГЭ (каркас) | control | Контрольная работа №1 | окно каркаса
+ Физика ЕГЭ 10А      | control | Контрольная работа №1 | окно класса
+ Физика ЕГЭ 11А      | control | Контрольная работа №1 | нет окна
+
+ROLLBACK
+=== 16. Копирование темы в другой курс: тип едет, окно — нет
+BEGIN
+INSERT 0 1
+ copied 
+--------
+ t
+
+  kind   | opens_at | closes_at | is_published 
+---------+----------+-----------+--------------
+ control |          |           | f
+
+ROLLBACK

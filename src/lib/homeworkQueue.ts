@@ -9,6 +9,7 @@ import type {
   TopicHomeworkAttemptRow, TopicHomeworkAttemptStatus, TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
+import { formatMoscowTime, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
 
 /**
  * Вкладки страницы проверки. Ровно три состояния попытки, которые видит
@@ -46,7 +47,9 @@ export const QUEUE_LOADED_STATUSES: TopicHomeworkAttemptStatus[] = ['draft', ...
  * преподавателя (§233) считает «ждут проверки» ровно так же, как очередь.
  */
 export const QUEUE_SELECT =
-  '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))'
+  // §240: у темы `*`, а не (id, title) — нужен тип темы (kind). Явный столбец
+  // уронил бы очередь целиком, пока миграция §240 не применена.
+  '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(*, module:modules!inner(id, course:courses!inner(id, title))))'
 
 /** Строка очереди: попытка + контекст (ДЗ → тема → курс), пришедший из join'а. */
 export interface QueueRow {
@@ -78,6 +81,8 @@ export interface QueueRow {
   dueAt: string | null
   topicId: string
   topicTitle: string
+  /** §240. Тип темы: у проверочной и контрольной — плашка, фильтр, без «на доработку». */
+  topicKind?: TopicKind
   courseId: string
   courseTitle: string
 }
@@ -138,6 +143,7 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
       dueAt: hw.due_at ?? null,
       topicId: topic.id,
       topicTitle: topic.title ?? 'Тема',
+      topicKind: normalizeTopicKind(topic.kind),
       courseId: course.id,
       courseTitle: course.title ?? 'Курс',
     })
@@ -423,7 +429,12 @@ export function reviewHeaderMeta(
   if (row.courseTitle) parts.push(row.courseTitle)
   if (row.attempt.attempt_number > 1) parts.push(`попытка №${row.attempt.attempt_number}`)
   const submitted = row.attempt.submitted_at ? new Date(row.attempt.submitted_at) : null
-  if (submitted && !Number.isNaN(submitted.getTime())) {
+  if (submitted && !Number.isNaN(submitted.getTime()) && row.attempt.auto_submitted) {
+    // §240. Автосдача в момент закрытия окна: время закрытия — по Москве,
+    // как его назначал учитель; «в срок / с опозданием» тут не бывает.
+    const day = submitted.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' })
+    parts.push(`сдано автоматически ${day} в ${formatMoscowTime(submitted)}`)
+  } else if (submitted && !Number.isNaN(submitted.getTime())) {
     const day = submitted.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
     const time = submitted.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
     const when = isSubmittedLate(row) ? ', с опозданием' : row.dueAt ? ', в срок' : ''

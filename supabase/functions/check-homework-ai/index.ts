@@ -16,10 +16,13 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  CRITERIA_CHAR_LIMIT,
+  CRITERIA_SECTION,
   MAX_REFERENCE_BYTES,
   REFERENCE_CHAR_LIMIT,
   WORKSHEET_CHAR_LIMIT,
   WORKSHEET_SECTION,
+  criteriaPromptBlock,
   describeParseFailure,
   extractAnnotationText,
   isParseUsable,
@@ -220,6 +223,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // §240. Ответы и критерии оценивания (проверочная/контрольная) — тем же
+    // путём и с тем же правилом «провал — проверим без них». У обычного ДЗ
+    // рубрики нет: 'missing', блока в промпте нет.
+    let criteria: ReferenceResult
+    try {
+      criteria = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, CRITERIA_SPEC)
+    } catch (err) {
+      criteria = {
+        text: '', truncated: false, state: 'failed', engine: null, cached: false,
+        error: `Критерии не получены: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+      }
+    }
+
     // Шаг 3. Страницы работы.
     const { data: rawFiles } = await admin
       .from('topic_homework_attempt_files')
@@ -262,6 +278,8 @@ Deno.serve(async (req) => {
       worksheetTruncated: worksheet.truncated,
       solutionText,
       referenceTruncated: reference.truncated,
+      criteriaText: criteria.text,
+      criteriaTruncated: criteria.truncated,
       gradeScale,
       pageCount: sent.length,
     })
@@ -776,6 +794,9 @@ const SOLUTION_SPEC: MaterialSpec = {
 const WORKSHEET_SPEC: MaterialSpec = {
   section: WORKSHEET_SECTION, limit: WORKSHEET_CHAR_LIMIT, label: 'рабочий лист ДЗ', fallbackName: 'worksheet.pdf',
 }
+const CRITERIA_SPEC: MaterialSpec = {
+  section: CRITERIA_SECTION, limit: CRITERIA_CHAR_LIMIT, label: 'критерии оценивания', fallbackName: 'criteria.pdf',
+}
 
 /**
  * Текст материала темы для промпта: авторское решение или рабочий лист.
@@ -967,6 +988,9 @@ function buildPrompt(ctx: {
   solutionText: string
   /** Эталон показан не целиком — модель обязана знать об этом. */
   referenceTruncated: boolean
+  /** §240. Ответы и критерии оценивания; пусто — блока нет. */
+  criteriaText?: string
+  criteriaTruncated?: boolean
   gradeScale: string | null
   pageCount: number
 }): string {
@@ -994,6 +1018,8 @@ function buildPrompt(ctx: {
       ? referencePromptBlock({ text: ctx.solutionText, truncated: ctx.referenceTruncated })
       : 'АВТОРСКОГО РЕШЕНИЯ НЕТ: сверять не с чем, оценивай по существу и не завышай уверенность.',
     '',
+    // §240. Критерии — отдельным блоком после эталона; у обычного ДЗ пусто.
+    criteriaPromptBlock({ text: ctx.criteriaText ?? '', truncated: !!ctx.criteriaTruncated }),
     'ПОРЯДОК РАБОТЫ:',
     '1. Сначала реши задачу сам, не подглядывая в ход ученика.',
     '2. Потом прочитай работу ученика и сравни со своим решением.',

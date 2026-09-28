@@ -7,6 +7,7 @@ import {
   LayoutList, LayoutGrid, FileEdit,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
+import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
@@ -282,6 +283,7 @@ function TopicCard({
           isLocked ? 'text-gray-400' : st.titleCls
         )}>
           {isLocked && <Lock size={11} className="inline mr-1 mb-0.5 text-gray-300" />}
+          <TopicKindMark kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </div>
 
@@ -571,6 +573,7 @@ function TopicListRow({
       <div className="flex-1 min-w-0">
         <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : st.titleCls)}>
           {isLocked && <Lock size={10} className="inline mr-1 mb-0.5 text-gray-300" aria-hidden />}
+          <TopicKindMark kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </p>
 
