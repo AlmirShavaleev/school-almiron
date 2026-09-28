@@ -58,25 +58,36 @@ describe('Тип темы в окне темы (§240)', () => {
     expect(screen.getByTestId('topic-kind-lesson')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('у контрольной рубрики — «Работа», «Условие», «Решение», «Ответы и критерии»', () => {
+  it('у контрольной только три плитки: «Условие», «Решение», «Ответы и критерии» (§240.1)', () => {
     renderModal({ kind: 'control' })
-    expect(screen.getByTestId('topic-tile-homework')).toHaveTextContent('Работа')
     expect(screen.getByTestId('topic-tile-worksheet_homework')).toHaveTextContent('Условие')
     expect(screen.getByTestId('topic-tile-solution')).toHaveTextContent('Решение')
     expect(screen.getByTestId('topic-tile-criteria')).toHaveTextContent('Ответы и критерии')
-    expect(screen.getByTestId('topic-kind-materials')).toHaveTextContent('после проверки')
+    expect(screen.getByTestId('topic-tile-worksheet_homework')).toHaveTextContent('с начала работы')
+    expect(screen.getByTestId('topic-tile-criteria')).toHaveTextContent('после проверки')
+    for (const hidden of ['theory', 'notes', 'tasks', 'task_solution', 'worksheet_tasks', 'homework', 'video', 'test']) {
+      expect(screen.queryByTestId(`topic-tile-${hidden}`)).not.toBeInTheDocument()
+    }
   })
 
-  it('настройки работы получают тип и признак шаблона', () => {
+  it('настройки работы по времени видны сразу, без плитки, и получают тип и признак шаблона', () => {
     renderModal({ kind: 'check', isTemplate: true })
-    fireEvent.click(screen.getByTestId('topic-tile-homework'))
+    expect(screen.getByTestId('topic-timed-settings')).toBeInTheDocument()
     expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-kind', 'check')
     expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-template', 'true')
+  })
+
+  it('открытие окна сразу на «ДЗ» у контрольной не рисует лишнюю панель', () => {
+    renderModal({ kind: 'control', initialTile: 'homework' })
+    expect(screen.getAllByTestId('hw-editor')).toHaveLength(1)
   })
 
   it('у урока подписи прежние', () => {
     renderModal({ kind: 'lesson' })
     expect(screen.getByTestId('topic-tile-worksheet_homework')).toHaveTextContent('Рабочий лист ДЗ')
+    expect(screen.getByTestId('topic-tile-theory')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-tile-homework')).toBeInTheDocument()
     expect(screen.queryByTestId('topic-kind-materials')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-timed-settings')).not.toBeInTheDocument()
   })
 })

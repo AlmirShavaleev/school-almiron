@@ -42,6 +42,14 @@ function isImageName(name: string | null): boolean {
  * картинка базе неинтересна. Тип `Record` не даёт забыть новую рубрику —
  * добавят восьмую секцию, и это место перестанет собираться.
  */
+/** §240.1. Рубрики проверочной и контрольной — только эти три. */
+const TIMED_TILE_ORDER: readonly TopicSection[] = ['worksheet_homework', 'solution', 'criteria'] as const
+const TIMED_TILE_WHEN: Partial<Record<TopicSection, string>> = {
+  worksheet_homework: 'с начала работы',
+  solution: 'после проверки',
+  criteria: 'после проверки',
+}
+
 const TILE_ICON: Record<TopicSection, typeof BookMarked> = {
   theory: BookOpen,
   notes: BookMarked,
@@ -738,7 +746,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   // Скрытые рубрики не показываем и персоналу: вход в механизм, которым не
   // пользуются, копит недоумение при каждом просмотре темы.
   const timed = isTimedKind(kindVal)
-  const TILES = TOPIC_SECTION_ORDER.filter(isTopicSectionVisible).map(key => ({
+  // §240.1. У проверочной и контрольной только три рубрики — условие, решение,
+  // ответы и критерии (решение владельца 28.09): остальное на работе по времени
+  // лишнее. Время, публикация и оценка — блоком «Время и сдача» под плитками,
+  // а не отдельной плиткой.
+  const TILES = (timed ? TIMED_TILE_ORDER : TOPIC_SECTION_ORDER).filter(isTopicSectionVisible).map(key => ({
     key,
     label: sectionLabel(key, timed),
     icon: TILE_ICON[key],
@@ -933,32 +945,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 ))}
               </div>
               {timed && (
-                <div data-testid="topic-kind-materials" className="mt-3 space-y-1.5">
-                  {([
-                    ['worksheet_homework', 'Условие', 'с начала работы', 'bg-gold-50 text-gold-800'],
-                    ['solution', 'Решение', 'после проверки', 'bg-emerald-50 text-emerald-700'],
-                    ['criteria', 'Ответы и критерии оценивания', 'после проверки', 'bg-emerald-50 text-emerald-700'],
-                  ] as const).map(([section, label, when, tone]) => {
-                    const n = newMaterials.filter(m => m.section === section).length
-                    return (
-                      <button
-                        key={section}
-                        type="button"
-                        onClick={() => setActiveTile(section)}
-                        className="flex w-full items-center gap-2 rounded-xl border border-gray-100 px-3 py-2 text-left text-sm hover:border-primary-200"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="font-semibold text-gray-900">{label}</span>
-                          <span className="ml-1.5 text-xs text-gray-500">{n > 0 ? `файлов: ${n}` : 'не загружено'}</span>
-                        </span>
-                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', tone)}>{when}</span>
-                      </button>
-                    )
-                  })}
-                  <p className="text-xs text-gray-500">
-                    Время работы, одна попытка и автосдача — в плитке «Работа». ИИ-проверка берёт условие, решение и критерии.
-                  </p>
-                </div>
+                <p data-testid="topic-kind-materials" className="mt-3 text-xs text-gray-500">
+                  Условие ученик видит с начала работы, решение и критерии — после проверки. Время, одна попытка
+                  и автосдача — в блоке «Время и сдача» ниже. ИИ-проверка берёт условие, решение и критерии.
+                </p>
               )}
             </div>
 
@@ -967,7 +957,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
             <TopicTemplateBanner topicId={topicId} />
 
             {/* Сетка плиток */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            <div className={cn('grid gap-2', timed ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4')}>
               {TILES.map((tile) => {
                 const Icon = tile.icon
                 const isActive = activeTile === tile.key
@@ -986,7 +976,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                     )}
                   >
                     <Icon size={20} />
-                    <span className="text-xs">{tile.label}</span>
+                    <span className="text-xs text-center leading-tight px-1">{tile.label}</span>
+                    {timed && TIMED_TILE_WHEN[tile.key] && (
+                      <span className="text-[10.5px] font-medium text-gray-400">{TIMED_TILE_WHEN[tile.key]}</span>
+                    )}
                     {hasContent && (
                       <div data-testid="topic-tile-filled" className="w-1.5 h-1.5 rounded-full bg-green-500" />
                     )}
@@ -995,8 +988,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               })}
             </div>
 
-            {/* Панель под сеткой */}
-            {activeTile && (
+            {/* Панель под сеткой. Плитки нет в сетке (у работы по времени —
+                всё, кроме трёх рубрик) — нет и панели. */}
+            {activeTile && TILES.some(t => t.key === activeTile) && (
               <div className="rounded-2xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
                 <div className="text-sm font-semibold text-primary-700">
                   {TILES.find(t => t.key === activeTile)?.label}
@@ -1035,10 +1029,20 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             )}
 
+            {/* §240.1. Работа по времени: окно, публикация и оценка — всегда
+                на виду, без отдельной плитки. */}
+            {timed && (
+              <div data-testid="topic-timed-settings" className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                <div className="text-sm font-semibold text-gray-900">Время и сдача</div>
+                <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} />
+              </div>
+            )}
+
             {/* §234. Тренировка — подтемы задачника и переключатель «видят /
                 скрыта» для этого класса. Файлы кладёт загрузчик в шаблон,
-                здесь их не загружают и не удаляют. Нет тренировки — блока нет. */}
-            <TopicTrainingEditor topicId={topicId} />
+                здесь их не загружают и не удаляют. Нет тренировки — блока нет.
+                У работы по времени тренировки нет (§240.1). */}
+            {!timed && <TopicTrainingEditor topicId={topicId} />}
 
           </div>
         )}

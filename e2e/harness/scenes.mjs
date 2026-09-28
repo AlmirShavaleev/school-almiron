@@ -1025,7 +1025,7 @@ export const scenes = [
       ] },
       { persona: 'o240', name: 'd240-teacher-settings-window', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [
         { click: 'Физика ЕГЭ 2027' }, { wait: 1200 }, { click: 'Контрольная работа. Кинематика' }, { wait: 1200 },
-        { clickSel: '[data-testid="topic-tile-homework"]' }, { wait: 1500 },
+        { wait: 800 },
         { eval: "document.querySelector('[data-testid=\"timed-window-editor\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 500 },
       ] },
       { persona: 'o240', name: 'd240-teacher-reopen', url: `/course-program?course=${S.course}`, width, height, actions: [

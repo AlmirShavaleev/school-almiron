@@ -307,6 +307,15 @@ export function TopicPage() {
   // места в «тема пройдена» (решение владельца), и в `TOPIC_SECTION_GROUPS`
   // она сдвинула бы общее определение групп темы (§121, §162).
   if (hasTraining) availableTabs.push('training')
+  // §240.1. У проверочной и контрольной ученик видит только саму работу,
+  // условие, решение и критерии — остальные вкладки на работе по времени
+  // лишние (решение владельца 28.09).
+  if (timed) {
+    const keep: readonly TabKey[] = ['homework', 'worksheet_homework', 'solution', 'criteria']
+    for (let i = availableTabs.length - 1; i >= 0; i -= 1) {
+      if (!keep.includes(availableTabs[i])) availableTabs.splice(i, 1)
+    }
+  }
 
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
   // if chosen tab is no longer available, switch to the first one.

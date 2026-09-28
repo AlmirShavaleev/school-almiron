@@ -17,6 +17,9 @@ const materials: TopicMaterial[] = [
   { kind: 'file', id: 'm1', title: null, position: 0, isVisible: true, section: 'worksheet_homework', storagePath: `${TOPIC}/cond.pdf`, fileName: 'cond.pdf', sizeBytes: 1 },
   { kind: 'file', id: 'm2', title: null, position: 1, isVisible: true, section: 'solution', storagePath: `${TOPIC}/sol.pdf`, fileName: 'sol.pdf', sizeBytes: 1 },
   { kind: 'file', id: 'm3', title: null, position: 2, isVisible: true, section: 'criteria', storagePath: `${TOPIC}/crit.pdf`, fileName: 'crit.pdf', sizeBytes: 1 },
+  // §240.1: у работы по времени эти рубрики ученику не показываются.
+  { kind: 'file', id: 'm4', title: null, position: 3, isVisible: true, section: 'theory', storagePath: `${TOPIC}/theory.pdf`, fileName: 'theory.pdf', sizeBytes: 1 },
+  { kind: 'file', id: 'm5', title: null, position: 4, isVisible: true, section: 'notes', storagePath: `${TOPIC}/notes.pdf`, fileName: 'notes.pdf', sizeBytes: 1 },
 ]
 
 function chain(result: unknown, count = 0) {
@@ -89,7 +92,7 @@ describe('Тема-контрольная у ученика (§240)', () => {
     expect(screen.queryByTestId('lesson-hw')).not.toBeInTheDocument()
   })
 
-  it('рубрики подписаны по-своему, видео-заглушки нет', async () => {
+  it('рубрики подписаны по-своему; видео, теории и конспекта нет (§240.1)', async () => {
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     const labels = screen.getAllByRole('tab').map(t => t.textContent?.replace(/\d+$/, ''))
