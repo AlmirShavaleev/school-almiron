@@ -21074,7 +21074,7 @@ anon — нет права на функцию. Харнесс (`HARNESS_PORT=52
 новая рубрика «Ответы и критерии» — после проверки. Проверочная и контрольная различаются только названием. Макет —
 `/home/claude/agents/a240/maket.html` (утверждён).
 
-**База — `supabase/migrations/PENDING_240.sql`** (только добавляющая, повторяемая; применять одной транзакцией).
+**База — `supabase/migrations/20260928122420_kontrolnaya_timed_work.sql`** (была PENDING_240; применена оркестратором 28.09 через MCP, версия 20260928122420) (только добавляющая, повторяемая; применять одной транзакцией).
 * `topics.kind text not null default 'lesson'` + CHECK lesson|check|control. Все прежние темы — урок, ничего не меняется.
 * `topic_homework.opens_at/closes_at timestamptz` (оба или ни одного, closes > opens) — окно своё у каждой копии курса;
   `topic_homework_attempts.auto_submitted boolean default false`.

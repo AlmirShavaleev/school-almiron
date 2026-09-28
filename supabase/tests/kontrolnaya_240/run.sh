@@ -37,6 +37,6 @@ $Q -f $S221/00_slice.sql && $Q -f $S/05_slice_240.sql \
  && $Q -1 -f $R/20260927153810_trenirovka_training_track.sql \
  && echo "slice + prod migrations: ok" \
  && $Q -f $S/10_data_240.sql \
- && $Q -1 -f $R/PENDING_240.sql && $Q -1 -f $R/PENDING_240.sql && echo "PENDING_240 applied twice: ok" \
+ && $Q -1 -f $R/20260928122420_kontrolnaya_timed_work.sql && $Q -1 -f $R/20260928122420_kontrolnaya_timed_work.sql && echo "PENDING_240 applied twice: ok" \
  && $Q -f $S/15_data_after_240.sql \
  && psql -h $H -p $PT -U postgres probe240 -f $S/20_probes.sql
