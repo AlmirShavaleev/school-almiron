@@ -68,6 +68,8 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o241: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §242: статистика курса у учителя (фикстуры `apply242` поверх `apply241`).
+  o242: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1828,6 +1830,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('s240') || persona === 'o240') apply240(fx, persona)
   if (persona.startsWith('s241') || persona === 'o241') apply241(fx, persona)
   if (persona === 'o241') fx.rpc.course_assessments_summary = summary241
+  if (persona === 'o242') { apply241(fx, 'o241'); fx.rpc.course_assessments_summary = summary241; apply242(fx) }
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2198,4 +2201,113 @@ function summary241(body) {
       m(1, { status: 'done', submitted: 15, avg_score: 55 }),
     ],
   }
+}
+
+// ── §242: статистика курса у учителя ─────────────────────────────────────────
+// Всё выдумано; числа — как в утверждённом макете (класс из 11 учеников).
+// «Сегодня» сервера — 29 сентября (`to` в ответах). Заглушки повторяют форму
+// ответов PENDING_242: сводка (`course_stats_summary`), по темам
+// (`course_stats_topics`), тема по ученикам (`course_stats_topic_students`),
+// таблица класса (`course_stats_students`). Период — из тела запроса.
+const S242_TODAY = '2026-09-29'
+const s242Day = (k) => { const d = new Date(Date.parse(S242_TODAY + 'T00:00:00Z') - k * 86400e3); return d.toISOString().slice(0, 10) }
+// [имя, дней назад, дней занятий (7д), открыл файлов, видео мин (7д), ДЗ сдано, средний, долги, пробник, ДЗ за 7, ДЗ за 30]
+const ST242 = [
+  ['Абрамова Екатерина', 0, 5, 34, 95, 14, 4.8, 0, 78, 2, 7],
+  ['Васильев Дмитрий', 1, 4, 29, 80, 13, 4.5, 0, 71, 2, 6],
+  ['Кузнецова Виктория', 2, 4, 26, 52, 12, 4.1, 1, 64, 1, 5],
+  ['Смирнов Артём', 0, 5, 31, 70, 13, 4.3, 0, 69, 2, 6],
+  ['Иванова Мария', 3, 3, 18, 31, 10, 3.9, 2, 58, 1, 4],
+  ['Орлова Дарья', 1, 3, 21, 44, 11, 4.0, 1, 61, 1, 5],
+  ['Лебедев Никита', 5, 2, 12, 12, 9, 3.6, 3, 52, 0, 3],
+  ['Соколова Анна', 0, 6, 38, 102, 14, 4.9, 0, 83, 2, 7],
+  ['Морозова Ксения', 9, 0, 6, 0, 6, 3.4, 5, 47, 0, 1],
+  ['Федоров Лев', 12, 0, 4, 0, 5, 3.2, 6, null, 0, 0],
+  ['Петров Илья', 16, 0, 2, 0, 3, 3.0, 8, 41, 0, 0],
+]
+const s242Student = (i) => U('b', 4200 + i)
+const S242_ACTIVITY = [6, 7, 5, 8, 9, 4, 3, 7, 8, 6, 9, 10, 5, 4, 8, 7, 9, 6, 8, 10, 4, 3, 7, 8, 9, 6, 8, 7, 5, 8]
+const S242_SUMMARY = {
+  '7d': { active: 8, views: 64, views_prev: 46, video_seconds: 12000, video_done: 9, submitted: 14, accepted: 12, returned: 1, avg_five: 4.3, avg_five_count: 12 },
+  '30d': { active: 10, views: 248, views_prev: 208, video_seconds: 39900, video_done: 31, submitted: 52, accepted: 47, returned: 4, avg_five: 4.2, avg_five_count: 47 },
+  all: { active: 11, views: 611, views_prev: null, video_seconds: 52800, video_done: 38, submitted: 129, accepted: 110, returned: 18, avg_five: 4.1, avg_five_count: 110 },
+}
+const s242Period = (body) => (body.p_period === '30d' || body.p_period === 'all' ? body.p_period : '7d')
+const s242Mul = (p) => (p === '7d' ? 1 : p === '30d' ? 4 : 6)
+
+function apply242(fx) {
+  const courseTopics = () => {
+    const mods = new Set(fx.tables.modules.filter(m => m.course_id === IDS.course).map(m => m.id))
+    return fx.tables.topics.filter(t => mods.has(t.module_id)).sort((a, b) => a.order_index - b.order_index)
+  }
+  const deny = (body) => body.p_course_id !== IDS.course ? new Error('42501: Нет прав на этот курс') : null
+  fx.rpc.course_stats_summary = (body) => deny(body) ?? (() => {
+    const p = s242Period(body)
+    const v = S242_SUMMARY[p]
+    return {
+      period: p, from: p === '7d' ? s242Day(6) : p === '30d' ? s242Day(29) : null, to: S242_TODAY,
+      prev_from: null, prev_to: null, in_class: ST242.length, ...v,
+      pending: 1, pending_oldest_at: '2026-09-27T09:10:00.000Z', avg_hundred: null, avg_hundred_count: 0,
+      days: S242_ACTIVITY.map((n, i) => ({ day: s242Day(29 - i), active: n })),
+      quiet: ST242.map((r, i) => ({ r, i })).filter(({ r }) => r[1] >= 7)
+        .map(({ r, i }) => ({ student_id: s242Student(i), full_name: r[0], last_day: s242Day(r[1]) })),
+      no_hw_14: [{ student_id: s242Student(10), full_name: ST242[10][0] }],
+    }
+  })()
+  fx.rpc.course_stats_topics = (body) => deny(body) ?? (() => {
+    const p = s242Period(body)
+    const n = ST242.length
+    const topics = courseTopics().map((t, k) => {
+      const timed = t.kind === 'check' || t.kind === 'control'
+      const open = t.is_open !== false
+      // Свежие темы — выше охват; к старым за 7 дней почти никто не возвращается.
+      const age = k
+      const base = !open ? 0 : p === '7d' ? Math.max(0, n - age * 2) : p === '30d' ? Math.max(2, n - age) : Math.max(4, n - Math.floor(age / 2))
+      const opened = Math.min(n, base)
+      const videos = k % 3 === 1 ? 0 : 1
+      return {
+        topic_id: t.id, timed, opened, videos,
+        video_done: videos ? Math.max(0, opened - 2 - (k % 3)) : 0,
+        video_started: videos ? Math.min(2, opened) : 0,
+        hw: open && !timed, grade_scale: 'five',
+        submitted: open && !timed ? Math.max(0, opened - 1 - (k % 2)) : 0,
+        avg_score: open && !timed && opened > 1 ? [4.6, 4.2, 3.8, 4.4, 4.0, 3.9, 4.1][k % 7] : null,
+        pending: open && !timed && k % 4 === 2 ? 1 : 0,
+      }
+    })
+    return { period: p, from: null, to: S242_TODAY, in_class: n, topics }
+  })()
+  fx.rpc.course_stats_topic_students = (body) => deny(body) ?? (() => {
+    const p = s242Period(body)
+    const k = courseTopics().findIndex(t => t.id === body.p_topic_id)
+    if (k < 0) return new Error('22023: Тема не из этого курса')
+    const videos = k % 3 === 1 ? 0 : 1
+    return {
+      topic_id: body.p_topic_id, period: p, videos,
+      rows: ST242.map((r, i) => {
+        const active = r[1] < 7 || p !== '7d'
+        const opened = active && i !== 8
+        const hw = !opened ? null : i === 2 ? 'submitted' : i === 4 ? 'returned' : i === 6 ? 'draft' : 'accepted'
+        return {
+          student_id: s242Student(i), full_name: r[0], opened,
+          video: videos ? (!opened ? 'none' : i % 3 === 2 ? 'started' : 'done') : null,
+          hw_status: hw, score: hw === 'accepted' ? Math.max(3, Math.min(5, Math.round(r[6]))) : null, grade_scale: 'five',
+        }
+      }).sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru')),
+    }
+  })()
+  fx.rpc.course_stats_students = (body) => deny(body) ?? (() => {
+    const p = s242Period(body)
+    const m = s242Mul(p)
+    return {
+      period: p, from: null, to: S242_TODAY, in_class: ST242.length,
+      mock: { id: U('c', 4204), title: 'Пробник №4', max_score: 100 },
+      rows: ST242.map((r, i) => ({
+        student_id: s242Student(i), full_name: r[0], last_day: s242Day(r[1]),
+        days: Math.min(p === '7d' ? 7 : 30, r[2] * m), files_opened: r[3], files_total: 40,
+        video_seconds: r[4] * 60 * m, hw7: r[9], hw30: r[10], hw_done: r[5], hw_total: 14,
+        avg_five: r[6], avg_hundred: null, debts: r[7], mock_score: r[8],
+      })),
+    }
+  })()
 }

@@ -1,0 +1,298 @@
+slice + prod migrations (§241 chain + video §204) + slice 242: ok
+PENDING_242 applied twice: ok
+Null display is "∅".
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+=== 1. Преподаватель 10А, сводка за 7 дней.
+=== ожидание: in_class 4; active 3 (S1,S2,S3); views 5 (S1: F1 D0, F1 D1, F2 D1, TR1 D2; S2: F1 D3; преподаватель не считается);
+=== views_prev 2 (S1 F3 D8, S3 F1 D9); video 900+120 = 1020 с, досмотрено 2 (S1 V1, V2); сдано 3 (S1 T1 D2, S2 T1 D1, S2 T2 D5; T4 — контрольная, не считается),
+=== принято 2, вернули 0; ждут 1 (S2 T1, сдано D1 → 1 день); средний 5.00 (1) и 60.0 (1); не заходили — Ученик 4 (никогда); без ДЗ 14 дней — Ученик 3, Ученик 4.
+ as_user 
+---------
+ ∅
+(1 row)
+
+ in_class | active | views | views_prev | video_s | video_done | submitted | accepted | returned | pending | oldest_days | avg5 | avg5_n | avg100 | avg100_n |      quiet       |      no_hw_14      
+----------+--------+-------+------------+---------+------------+-----------+----------+----------+---------+-------------+------+--------+--------+----------+------------------+--------------------
+        4 |      3 |     5 |          2 |    1020 |          2 |         3 |        2 |        0 |       1 |           1 | 5.00 |      1 |   60.0 |        1 | Ученик 4 никогда | Ученик 3, Ученик 4
+(1 row)
+
+=== активность по дням (только ненулевые): D0=1 (S1) D1=2 (S1,S2) D2=1 D3=1 D4=1 (черновик S3) D5=1 D8=1 D9=1 D10=1 D12=1 D20=1; всего 30 дней
+                           days                            | n_days 
+-----------------------------------------------------------+--------
+ D0=1 D1=2 D2=1 D3=1 D4=1 D5=1 D8=1 D9=1 D10=1 D12=1 D20=1 |     30
+(1 row)
+
+=== 2. Сводка за 30 дней: active 3; views 7 (+ S1 F3 D8, S3 F1 D9); prev 1 (S2 F3 D40); video 1420 с, досмотрено 3 (+ S3 V1 D12);
+=== сдано 5 (+ S1 T2 D20, S2 T1 D10), принято 3, вернули 1; средний 5.00 (1), 70.0 (2).
+ in_class | active | views | views_prev | video_s | video_done | submitted | accepted | returned | pending | oldest_days | avg5 | avg5_n | avg100 | avg100_n |      quiet       |      no_hw_14      
+----------+--------+-------+------------+---------+------------+-----------+----------+----------+---------+-------------+------+--------+--------+----------+------------------+--------------------
+        4 |      3 |     7 |          1 |    1420 |          3 |         5 |        3 |        1 |       1 |           1 | 5.00 |      1 |   70.0 |        2 | Ученик 4 никогда | Ученик 3, Ученик 4
+(1 row)
+
+=== 3. Сводка «всё время»: views 8, views_prev ∅ (прошлого периода нет); остальное как за 30 дней.
+ in_class | active | views | views_prev | video_s | video_done | submitted | accepted | returned | pending | oldest_days | avg5 | avg5_n | avg100 | avg100_n |      quiet       |      no_hw_14      
+----------+--------+-------+------------+---------+------------+-----------+----------+----------+---------+-------------+------+--------+--------+----------+------------------+--------------------
+        4 |      3 |     8 |          ∅ |    1420 |          3 |         5 |        3 |        1 |       1 |           1 | 5.00 |      1 |   70.0 |        2 | Ученик 4 никогда | Ученик 3, Ученик 4
+(1 row)
+
+=== 4. Неверный период — 22023.
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:72: ERROR:  Период — 7d, 30d или all
+CONTEXT:  PL/pgSQL function course_stats_bounds_internal(text) line 12 at RAISE
+SQL statement "select *        from public.course_stats_bounds_internal(p_period)"
+PL/pgSQL function course_stats_summary(uuid,text) line 9 at SQL statement
+=== 5. По темам за 7 дней.
+=== T1: открыли 2 (S1, S2), видео 1, досмотрел 1 (S1), начал 1 (S2); ДЗ пятибалльное, сдали 2 (S1, S2), средний 5, ждут 1.
+=== T2: открыли 1 (S1 TR1 D2), видео 2, S1 досмотрел одно из двух → начал 1; ДЗ стобалльное, сдали 1 (S2 D5), средний 60, ждут 0.
+=== T3 (закрыта): 0, без видео, ДЗ есть, 0 сдач. T4 (контрольная): timed, hw = false.
+     topic      | timed | opened | videos | done | started | hw |  scale  | submitted |  avg  | pending 
+----------------+-------+--------+--------+------+---------+----+---------+-----------+-------+---------
+ T1 Кинематика  | f     |      2 |      1 |    1 |       1 | t  | five    |         2 |  5.00 |       1
+ T2 Динамика    | f     |      1 |      2 |    0 |       1 | t  | hundred |         1 | 60.00 |       0
+ T3 Закрыта     | f     |      0 |      0 |    0 |       0 | t  | five    |         0 |     ∅ |       0
+ T4 Контрольная | t     |      0 |      0 |    0 |       0 | f  | five    |         0 |     ∅ |       0
+(4 rows)
+
+=== 6. По темам за всё время: T1 открыли 3 (+ S3 D9), досмотрели 2 (+ S3 D12), начал 1; сдали 2, средний 5; T2 открыли 2 (+ S2 F3 D40), сдали 2, средний 70.
+     topic      | timed | opened | videos | done | started | hw |  scale  | submitted |  avg  | pending 
+----------------+-------+--------+--------+------+---------+----+---------+-----------+-------+---------
+ T1 Кинематика  | f     |      3 |      1 |    2 |       1 | t  | five    |         2 |  5.00 |       1
+ T2 Динамика    | f     |      2 |      2 |    0 |       1 | t  | hundred |         2 | 70.00 |       0
+ T3 Закрыта     | f     |      0 |      0 |    0 |       0 | t  | five    |         0 |     ∅ |       0
+ T4 Контрольная | t     |      0 |      0 |    0 |       0 | f  | five    |         0 |     ∅ |       0
+(4 rows)
+
+=== 7. Тема T1 по ученикам, 7 дней: S1 открыл, досмотрел, принято 5; S2 открыл, начал, ждёт (вторая попытка);
+=== S3 не открывал (D9 вне периода), видео нет (D12 вне), черновик D4; S4 — ничего.
+ student  | opened |  video  |    hw     | score 
+----------+--------+---------+-----------+-------
+ Ученик 1 | t      | done    | accepted  |     5
+ Ученик 2 | t      | started | submitted |     ∅
+ Ученик 3 | f      | none    | draft     |     ∅
+ Ученик 4 | f      | none    | ∅         |     ∅
+(4 rows)
+
+=== 8. Тема T1, всё время: S3 открыл и досмотрел.
+ student  | opened |  video  |    hw     | score 
+----------+--------+---------+-----------+-------
+ Ученик 1 | t      | done    | accepted  |     5
+ Ученик 2 | t      | started | submitted |     ∅
+ Ученик 3 | t      | done    | draft     |     ∅
+ Ученик 4 | f      | none    | ∅         |     ∅
+(4 rows)
+
+=== 9. Тема T2, 7 дней: у S1 досмотрено одно видео из двух — «начал»; ДЗ S1 (D20) вне периода — ∅; S2 принято 60.
+ student  | opened |  video  |    hw    | score 
+----------+--------+---------+----------+-------
+ Ученик 1 | t      | started | ∅        |     ∅
+ Ученик 2 | f      | none    | accepted |    60
+ Ученик 3 | f      | none    | ∅        |     ∅
+ Ученик 4 | f      | none    | ∅        |     ∅
+(4 rows)
+
+=== 10. Тема чужого курса (владелец обоих курсов спрашивает T1 от имени 11А) — 22023.
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:91: ERROR:  Тема не из этого курса
+CONTEXT:  PL/pgSQL function course_stats_topic_students(uuid,uuid,text) line 11 at RAISE
+ as_user 
+---------
+ ∅
+(1 row)
+
+=== 11. По ученикам, 7 дней (сначала дольше всех не заходившие).
+=== S4: никогда, 0 дней, файлов 0/3 (F1, F3, TR1), ДЗ 0/2, долг 1 (T1, срок D3), пробник ∅ (не писал).
+=== S3: D4, 1 день, 1/3, ДЗ 0/2 (черновик — не сдача), долг 1. S2: D1, 3 дня (D1, D3, D5), 2/3, видео 120, ДЗ за 7 — 2, за 30 — 3, 2/2, средний 100-балльной 60, пробник 65.
+=== S1: D0, 3 дня, 4/5 (+ F2 решение — принято; + F5 условие контрольной — уже сдал; TR2 скрыта), видео 900, за 7 — 1, за 30 — 2 (T4 не считается), 2/2, средний 5, пробник 70 (последний с итогом — №2).
+ student  |  last   | days | files | video_s | hw7 | hw30 | hw  | avg5 | avg100 | debts | mock 
+----------+---------+------+-------+---------+-----+------+-----+------+--------+-------+------
+ Ученик 4 | никогда |    0 | 0/3   |       0 |   0 |    0 | 0/2 |    ∅ |      ∅ |     1 |    ∅
+ Ученик 3 | D4      |    1 | 1/3   |       0 |   0 |    0 | 0/2 |    ∅ |      ∅ |     1 |    ∅
+ Ученик 2 | D1      |    3 | 2/3   |     120 |   2 |    3 | 2/2 |    ∅ |   60.0 |     0 |   65
+ Ученик 1 | D0      |    3 | 4/5   |     900 |   1 |    2 | 2/2 | 5.00 |      ∅ |     0 |   70
+(4 rows)
+
+                                        last_mock                                        
+-----------------------------------------------------------------------------------------
+ {"id": "00000000-0000-4000-8000-0000000a7e02", "title": "Пробник №2", "max_score": 100}
+(1 row)
+
+=== 12. «Доступные файлы» = то, что RLS topic_material_items_student_select отдаёт самому ученику (kind = file, курс 10А):
+=== ожидание: S1 5, S2 3, S3 3, S4 3 — совпадает с files_total в п. 11.
+ as_user 
+---------
+ ∅
+(1 row)
+
+ who | count 
+-----+-------
+ S1  |     5
+(1 row)
+
+ as_user 
+---------
+ ∅
+(1 row)
+
+ who | count 
+-----+-------
+ S2  |     3
+(1 row)
+
+ as_user 
+---------
+ ∅
+(1 row)
+
+ who | count 
+-----+-------
+ S3  |     3
+(1 row)
+
+ as_user 
+---------
+ ∅
+(1 row)
+
+ who | count 
+-----+-------
+ S4  |     3
+(1 row)
+
+=== 13. Права. Ученик своего курса — 42501 на всех четырёх.
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:118: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_summary(uuid,text) line 7 at RAISE
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:119: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_topics(uuid,text) line 7 at RAISE
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:120: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_topic_students(uuid,uuid,text) line 8 at RAISE
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:121: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_students(uuid,text) line 7 at RAISE
+=== 14. Чужой преподаватель (11А) и посторонний — 42501.
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:124: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_summary(uuid,text) line 7 at RAISE
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:125: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_students(uuid,text) line 7 at RAISE
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:127: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_topics(uuid,text) line 7 at RAISE
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:128: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_stats_topic_students(uuid,uuid,text) line 8 at RAISE
+=== 15. Внутренние помощники ученику и учителю недоступны (permission denied).
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:130: ERROR:  permission denied for function course_stats_roster_internal
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:131: ERROR:  permission denied for function course_stats_files_internal
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:133: ERROR:  permission denied for function course_stats_activity_internal
+=== 16. Аноним — permission denied.
+ set_config | set_config 
+------------+------------
+ anon       | 
+(1 row)
+
+psql:/home/claude/agents/a242/repo/supabase/tests/stat_242/20_probes.sql:136: ERROR:  permission denied for function course_stats_summary
+=== 17. Владелец курса (не преподаватель группы) — данные; шаблон — пустой класс.
+ as_user 
+---------
+ ∅
+(1 row)
+
+ in_class | active | views | submitted 
+----------+--------+-------+-----------
+        4 |      3 |     7 |         5
+(1 row)
+
+ tpl_in_class | tpl_rows 
+--------------+----------
+ 0            |        0
+(1 row)
+
+=== 18. Преподаватель 11А по своему курсу — свой ученик S7 (никогда), чужих не видно.
+ as_user 
+---------
+ ∅
+(1 row)
+
+ student  |  last   | days | files | video_s | hw7 | hw30 | hw  | avg5 | avg100 | debts | mock 
+----------+---------+------+-------+---------+-----+------+-----+------+--------+-------+------
+ Ученик 7 | никогда |    0 | 0/0   |       0 |   0 |    0 | 0/0 |    ∅ |      ∅ |     0 |    ∅
+(1 row)
+
+=== 19. Объём: курс 170 тем (по 5 файлов и видео) × 20 учеников, ~10 тыс. просмотров, 3 тыс. дней видео, 2 тыс. сдач —
+=== каждая функция одним вызовом; ожидание: все четыре быстрее 2 с (в откатываемом блоке, под владельцем курса).
+RESET
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 20
+INSERT 0 20
+INSERT 0 20
+INSERT 0 1
+INSERT 0 170
+INSERT 0 1020
+INSERT 0 170
+INSERT 0 12799
+INSERT 0 3400
+INSERT 0 2719
+UPDATE 2719
+ views | video_rows | attempts 
+-------+------------+----------
+ 12799 |       3404 |     2719
+(1 row)
+
+ as_user 
+---------
+ ∅
+(1 row)
+
+CREATE TABLE
+DO
+         fn         | under_2s 
+--------------------+----------
+ summary 30d        | t
+ topics all         | t
+ students 7d        | t
+ topic_students all | t
+(4 rows)
+
+(замер на этой машине, мс — в probes.out не сравнивать:)
+         fn         | ms  
+--------------------+-----
+ summary 30d        |  63
+ topics all         |  49
+ students 7d        | 227
+ topic_students all |  13
+(4 rows)
+
+ files_total_one_student | topics 
+-------------------------+--------
+                     680 |    170
+(1 row)
+
+ROLLBACK

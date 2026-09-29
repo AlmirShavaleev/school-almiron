@@ -1086,6 +1086,37 @@ export const scenes = [
     ]
   }),
 
+  // §242: статистика курса у учителя на «Программе курса» — сводка за 7/30/всё
+  // время, подсказка графика, по темам с раскрытой темой, по ученикам (порядок
+  // по умолчанию и сортировка по видео), каркас без статистики. Период и разрез
+  // каждая сцена выставляет сама (`ls`): localStorage общий на персону и ширину.
+  //   node e2e/harness/tour.mjs d242 1280 ; node e2e/harness/tour.mjs d242 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const url = `/course-program?courseId=${S.course}`
+    const prep = (period, view) => [{ ls: ['course-stats:period', period] }, { ls: ['course-stats:view', view] }, { goto: url }, { wait: 1800 }]
+    const to = (sel) => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -96) })()` })
+    return [
+      { persona: 'o242', name: 'd242-summary-7', url, width, height, actions: [...prep('7d', 'topics'), to('[data-testid="course-stats"]'), { wait: 300 }] },
+      { persona: 'o242', name: 'd242-summary-30', url, width, height, actions: [...prep('7d', 'topics'), { clickSel: '[data-testid="stats-period"] button[data-key="30d"]' }, { wait: 800 }, to('[data-testid="course-stats"]'), { wait: 300 }] },
+      { persona: 'o242', name: 'd242-summary-all', url, width, height, actions: [...prep('all', 'topics'), to('[data-testid="course-stats"]'), { wait: 300 }] },
+      { persona: 'o242', name: 'd242-chart-tip', url, width, height, full: false, actions: [
+        ...prep('7d', 'topics'), { eval: "document.querySelector('[data-testid=\"activity-chart\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 300 },
+        { clickSel: '[data-testid="activity-hit"] >> nth=26' }, { wait: 300 },
+      ] },
+      { persona: 'o242', name: 'd242-topics-open', url, width, height, actions: [
+        ...prep('30d', 'topics'), { clickSel: '[data-testid="stats-topic-row"] >> nth=0 >> [data-expand]' }, { wait: 900 },
+        to('[data-testid="stats-view"]'), { wait: 300 },
+      ] },
+      { persona: 'o242', name: 'd242-students', url, width, height, actions: [...prep('7d', 'students'), to('[data-testid="stats-view"]'), { wait: 300 }] },
+      { persona: 'o242', name: 'd242-students-sort', url, width, height, actions: [
+        ...prep('30d', 'students'), { clickSel: '[data-sort="video"]' }, { wait: 300 }, to('[data-testid="stats-view"]'), { wait: 300 },
+      ] },
+      { persona: 'o242', name: 'd242-template', url: '/course-program', width, height, actions: [
+        { click: 'Физика ЕГЭ Шаблон' }, { wait: 1800 }, to('[data-testid="course-stats-template"]'), { wait: 300 },
+      ] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

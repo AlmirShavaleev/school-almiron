@@ -30,6 +30,7 @@ import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
 import { CourseAssessmentsSummarySection } from '@/components/courseProgram/CourseAssessmentsSummary'
+import { CourseStatsSection } from '@/components/courseProgram/CourseStatsSection'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
 import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
@@ -2402,13 +2403,29 @@ export function CourseProgramPage() {
                     </Button>
                   </>
                 ) : (
-                  <HwTable
+                  /* §242. Статистика курса: панель за период и новые столбцы
+                     вместо «Шаблоны / Назначения / Последнее назначение»; без
+                     миграции (ошибка RPC) — прежняя таблица. */
+                  <CourseStatsSection
+                    courseId={selectedCourse.id}
+                    isTemplate={isTemplate}
                     modules={modules}
-                    homeworkByTopic={homeworkByTopic}
+                    legacyHw={homeworkByTopic}
                     homeworkStateByTopic={homeworkStateByTopic}
+                    refreshKey={matRefreshKey}
                     onOpenTopic={openMaterials}
                     onOpenHomeworkTab={() => setTab('homework')}
                     onToggleTopicOpen={handleToggleTopicOpen}
+                    fallback={(
+                      <HwTable
+                        modules={modules}
+                        homeworkByTopic={homeworkByTopic}
+                        homeworkStateByTopic={homeworkStateByTopic}
+                        onOpenTopic={openMaterials}
+                        onOpenHomeworkTab={() => setTab('homework')}
+                        onToggleTopicOpen={handleToggleTopicOpen}
+                      />
+                    )}
                   />
                 )}
               </div>
