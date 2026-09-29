@@ -21,8 +21,8 @@ vi.mock('@/hooks/useTopicHomework', () => ({
   useTopicHomework: () => ({ homework: null, files: [], loading: false, error: null }),
 }))
 vi.mock('@/components/courseProgram/TopicHomeworkEditor', () => ({
-  TopicHomeworkEditor: ({ kind, isTemplate }: { kind: string; isTemplate: boolean }) => (
-    <div data-testid="hw-editor" data-kind={kind} data-template={String(isTemplate)} />
+  TopicHomeworkEditor: ({ kind, isTemplate, isOpen, availableFrom }: { kind: string; isTemplate: boolean; isOpen: boolean | null; availableFrom: string | null }) => (
+    <div data-testid="hw-editor" data-kind={kind} data-template={String(isTemplate)} data-open={String(isOpen)} data-from={String(availableFrom)} />
   ),
 }))
 vi.mock('@/components/courseProgram/TopicTemplateBanner', () => ({ TopicTemplateBanner: () => null }))
@@ -75,6 +75,13 @@ describe('Тип темы в окне темы (§240)', () => {
     expect(screen.getByTestId('topic-timed-settings')).toBeInTheDocument()
     expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-kind', 'check')
     expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-template', 'true')
+  })
+
+  // §243. Выдано ли ДЗ, решает открытость темы: блок ДЗ получает тумблер и дату.
+  it('блок ДЗ получает открытость темы — тумблер и дату', () => {
+    renderModal({ kind: 'lesson', initialTile: 'homework', isOpen: null, availableFrom: '2026-10-06' })
+    expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-open', 'null')
+    expect(screen.getByTestId('hw-editor')).toHaveAttribute('data-from', '2026-10-06')
   })
 
   it('открытие окна сразу на «ДЗ» у контрольной не рисует лишнюю панель', () => {

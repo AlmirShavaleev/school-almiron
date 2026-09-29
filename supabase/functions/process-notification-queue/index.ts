@@ -13,6 +13,7 @@ import {
   formatWhen,
   isTelegramPreferenceEnabled,
 } from '../_shared/variant-telegram.ts'
+import { buildHomeworkDigestTelegramMessage } from '../_shared/homework-digest.ts'
 
 const TG_API    = 'https://api.telegram.org'
 const MAX_RETRY = 3
@@ -125,6 +126,13 @@ function buildMessage(item: QueueItem, appUrl: string) {
           'Открыть задание',
         ),
       }
+
+    // §243. Сводка новых ДЗ: одна карточка на ученика вместо поштучных
+    // `new_homework` (ставит topic_homework_digest_flush по крону). Одно ДЗ —
+    // та же карточка, что выше; 2–9 — список по курсам; 10+ — число и курсы.
+    // Тексты и тест — `_shared/homework-digest.ts`.
+    case 'new_homework_digest':
+      return buildHomeworkDigestTelegramMessage(p, appUrl)
 
     // Приветствие при добавлении в курс. Ссылок на ДЗ и списка заданий здесь
     // намеренно нет — решение владельца: рассылка по старым ДЗ была бы спамом.

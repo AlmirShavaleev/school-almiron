@@ -70,6 +70,9 @@ export const personas = {
   o241: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
   // §242: статистика курса у учителя (фикстуры `apply242` поверх `apply241`).
   o242: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §243: «тема открыта = ДЗ выдано» — статусы выдачи в окне темы и в разделе
+  // «Домашние задания» (фикстуры `apply243`).
+  o243: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1831,6 +1834,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('s241') || persona === 'o241') apply241(fx, persona)
   if (persona === 'o241') fx.rpc.course_assessments_summary = summary241
   if (persona === 'o242') { apply241(fx, 'o241'); fx.rpc.course_assessments_summary = summary241; apply242(fx) }
+  if (persona === 'o243') apply243(fx)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2310,4 +2314,35 @@ function apply242(fx) {
       })),
     }
   })()
+}
+
+// ── §243: «тема открыта = ДЗ выдано» ────────────────────────────────────────
+// Все данные выдуманы. Курс «Физика ЕГЭ 2027», три состояния из макета:
+//   тема 1 открыта, у ДЗ файл — «Выдано · тема открыта», сводка по нему ещё
+//          ждёт отправки (заглушка topic_homework_digest_eta: трём ученикам,
+//          через ~25 минут от «сейчас» браузера);
+//   тема 4 открыта, файлов у ДЗ нет — «Нет файлов задания»;
+//   тема 6 закрыта, открывается датой 6 октября — «Не выдано · тема закрыта,
+//          откроется 6 октября» (ДЗ с файлом ждёт открытия).
+// Остальные открытые темы (2, 3, 5) — с файлами, выданы.
+function apply243(fx) {
+  const t6 = { ...fx.tables.topics.find(t => t.id === IDS.topic(6)), is_open: null, available_from: '2026-10-06' }
+  fx.tables.topics = fx.tables.topics.map(t => (t.id === t6.id ? t6 : t))
+  const hw6 = {
+    ...hwById(IDS.hw(2)), id: IDS.hw(6), topic_id: t6.id, title: 'Домашняя работа №6', due_at: null,
+    is_published: false, topics: t6, topic: t6,
+  }
+  fx.tables.topic_homework = [
+    ...fx.tables.topic_homework.map(h => (h.id === IDS.hw(4) ? { ...h, is_published: false } : h)),
+    hw6,
+  ]
+  fx.tables.topic_homework_files = [1, 2, 3, 5, 6].map(i => ({
+    id: U('4', 2430 + i), homework_id: IDS.hw(i), storage_path: `${IDS.topic(i)}/zadanie-${i}.pdf`,
+    original_filename: `Задание ${i}.pdf`, mime_type: 'application/pdf', size_bytes: 180000 + i * 1000, position: 0, created_at: ago(24),
+  }))
+  fx.rpc.topic_homework_digest_eta = (body) => {
+    if (body.p_homework_id !== IDS.hw(1)) return { pending: 0, due_at: null }
+    const due = new Date(Math.ceil((Date.now() + 25 * 60e3) / 300e3) * 300e3)
+    return { pending: 3, due_at: due.toISOString() }
+  }
 }

@@ -4,13 +4,14 @@ import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
-import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import { useTimedSummary } from '@/hooks/useTimedWork'
+import { supabase } from '@/lib/supabase'
+import { describeDigestEta, homeworkIssueStatus, type HomeworkIssueState } from '@/lib/homeworkIssue'
 import {
   TOPIC_KIND_LABEL, durationLabel, formatMoscowTime, isTimedKind, normalizeTopicKind, parseWindowDraft,
   windowDraftOf, type WindowDraft,
@@ -24,9 +25,24 @@ function isImageName(name: string | null): boolean {
   return /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
 }
 
+/** §243. Цвет плашки статуса выдачи — как в макете: зелёная, серая, янтарная. */
+const ISSUE_TONE: Record<HomeworkIssueState, string> = {
+  issued: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  closed: 'border-gray-200 bg-gray-50 text-gray-600',
+  no_files: 'border-amber-200 bg-amber-50 text-amber-800',
+  template: 'border-primary-100 bg-primary-50 text-primary-700',
+}
+const ISSUE_DOT: Record<HomeworkIssueState, string> = {
+  issued: 'bg-emerald-500', closed: 'bg-gray-400', no_files: 'bg-amber-500', template: 'bg-primary-400',
+}
+
 /**
  * Преподавательский блок ДЗ темы: прикрепить файлы, задать дедлайн и баллы,
- * опубликовать, оповестить в Telegram.
+ * оповестить в Telegram.
+ *
+ * §243: кнопки «Опубликовать» больше нет. ДЗ выдаётся само, пока тема открыта
+ * (тумблер или дата) и у него есть файл; скрыть выданное ДЗ открытой темы
+ * нельзя. Вместо кнопки — статус выдачи и время, когда уйдёт сводка ученикам.
  *
  * Названия и инструкции в интерфейсе нет: ДЗ — это прикреплённые файлы.
  * Сама строка ДЗ создаётся лениво, при первом действии преподавателя.
@@ -37,7 +53,7 @@ function isImageName(name: string | null): boolean {
  * значило бы чинить его дважды.
  */
 export function TopicHomeworkEditor({
-  topicId, className, kind = null, isTemplate = false,
+  topicId, className, kind = null, isTemplate = false, isOpen = null, availableFrom = null,
 }: {
   topicId: string
   className?: string
@@ -45,6 +61,9 @@ export function TopicHomeworkEditor({
   kind?: string | null
   /** §240. Шаблон курса: время не ставится, оно своё у каждого класса. */
   isTemplate?: boolean
+  /** §243. Открытость темы (тумблер и дата) — от неё зависит, выдано ли ДЗ. */
+  isOpen?: boolean | null
+  availableFrom?: string | null
 }) {
   const timed = isTimedKind(kind)
   const {
@@ -57,8 +76,6 @@ export function TopicHomeworkEditor({
   const [gradeScale, setGradeScale] = useState<'five' | 'hundred' | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
-  // Сигнал «раскрой оповещение»: ставится один раз после публикации.
-  const [notifyOpen, setNotifyOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   // Состояние оповещения переехало внутрь TopicHomeworkNotify: там же список
@@ -91,6 +108,35 @@ export function TopicHomeworkEditor({
     setWinError(null)
   }, [homework?.id, homework?.opens_at, homework?.closes_at])
   const { summary } = useTimedSummary(homework?.id ?? null, timed && !isTemplate && !!homework?.closes_at)
+
+  // §243. Статус выдачи — тем же правилом, что у сервера (lib/homeworkIssue).
+  const issue = homeworkIssueStatus({
+    topic: { is_open: isOpen, available_from: availableFrom },
+    fileCount: files.length,
+    timed,
+    isTemplate,
+  })
+
+  // «Сводка ученикам уйдёт в HH:MM» — если по этому ДЗ кому-то ещё не ушло.
+  // Перечитываем, когда ДЗ стало выданным или появился файл: выдача и
+  // постановка в сводку идут в той же транзакции, что и загрузка файла.
+  const [eta, setEta] = useState<{ pending: number; due_at: string | null } | null>(null)
+  const homeworkId = homework?.id ?? null
+  useEffect(() => {
+    if (!homeworkId || issue.state !== 'issued') { setEta(null); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        // Функции §243 нет в сгенерированных типах — как у прочих новых RPC.
+        const { data, error: err } = await supabase.rpc('topic_homework_digest_eta' as never, { p_homework_id: homeworkId } as never)
+        if (!cancelled) setEta(err || !data ? null : (data as { pending: number; due_at: string | null }))
+      } catch {
+        if (!cancelled) setEta(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [homeworkId, issue.state, files.length])
+  const etaText = eta && eta.pending > 0 ? describeDigestEta(eta.due_at) : null
 
   function saveWindow(next: WindowDraft) {
     setWin(next)
@@ -217,11 +263,6 @@ export function TopicHomeworkEditor({
     )
   }
 
-  const published = homework?.is_published ?? false
-  // §240. Условие работы по времени часто лежит рубрикой «Условие», а не
-  // файлом задания, — публиковать её можно и без файла.
-  const canPublish = files.length > 0 || timed
-
   return (
     <div className={cn('space-y-3', className)}>
       {(error || localError) && (
@@ -232,47 +273,30 @@ export function TopicHomeworkEditor({
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <FileText size={15} className="text-primary-600" />
           <span className="text-sm font-semibold text-gray-900">{timed ? TOPIC_KIND_LABEL[normalizeTopicKind(kind)] : 'Домашнее задание'}</span>
-          {/*
-            Бейдж снова ИНДИКАТОР, а не кнопка. В §75 он стал переключателем —
-            и владельцу это оказалось неудобно: «надо нажать на черновик, и она
-            только потом опубликуется», то есть нажимаешь на текущее состояние,
-            а не на действие. Действие теперь отдельной кнопкой внизу.
-          */}
-          {homework && (
-            <span
-              data-testid="homework-publish-state"
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase',
-                published
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-amber-200 bg-amber-50 text-amber-700',
-              )}
-            >
-              <span className={cn('h-1.5 w-1.5 rounded-full', published ? 'bg-emerald-500' : 'bg-amber-500')} />
-              {published ? 'Опубликовано' : 'Черновик'}
-            </span>
-          )}
           {saved && <span className="text-xs text-emerald-600">Сохранено</span>}
         </div>
 
         {/*
-          Неопубликованное задание ученику не приходит вовсе — его отсекает RLS
-          (`topic_homework_student_select` требует is_published). Снаружи это
-          выглядит так, будто задания нет: ни блока, ни строки, ни подсказки.
-          Маленькой плашки «Скрыто» рядом с заголовком оказалось мало — по ней
-          не видно последствия, и задание месяцами лежит невидимым. Поэтому
-          прямой текст: что именно сейчас видит ученик и чего не хватает, чтобы
-          это исправить.
+          §243. Статус выдачи вместо «Черновик / Опубликовано» и кнопки. Что
+          видит ученик, решает открытость темы: открыта и есть файл — выдано;
+          закрыта — не выдано (и когда откроется, если это решает дата); нет
+          файла — ученик увидит ДЗ, как только файл появится.
         */}
-        {homework && !published && (
-          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
-            <p className="font-semibold">Ученики этого задания не видят</p>
-            <p className="mt-1 text-amber-800">
-              {canPublish
-                ? 'Оно останется скрытым, пока вы не переключите «Черновик» вверху на «Опубликовано».'
-                : 'Чтобы опубликовать, прикрепите файл с заданием — без него переключатель недоступен.'}
-            </p>
-          </div>
+        <div data-testid="homework-issue" className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            data-testid="homework-issue-state"
+            data-state={issue.state}
+            className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold', ISSUE_TONE[issue.state])}
+          >
+            <span className={cn('h-1.5 w-1.5 rounded-full', ISSUE_DOT[issue.state])} />
+            {issue.label}
+          </span>
+          {issue.note && <span className="text-xs text-gray-500">{issue.note}</span>}
+        </div>
+        {etaText && (
+          <p data-testid="homework-digest-eta" className="-mt-1 mb-3 text-xs text-gray-600">
+            {etaText}
+          </p>
         )}
 
         {/* 1. Зона загрузки: несколько файлов подряд, с прогрессом */}
@@ -505,41 +529,14 @@ export function TopicHomeworkEditor({
           </div>
         </div>
 
-        {/* Публикация переехала в переключатель у заголовка — отдельной кнопки
-            «Скрыть от учеников» больше нет: это было второе управление тем же
-            полем is_published. */}
-        {/*
-          Явное действие вместо нажатия на состояние. После публикации сразу
-          раскрываем аккордеон оповещения: опубликовал — предложило оповестить,
-          это следующий шаг, а не отдельная модалка.
-        */}
-        {homework && (
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button
-              variant={published ? 'secondary' : 'primary'}
-              size="sm"
-              data-testid="homework-publish-button"
-              disabled={busy || (!published && !canPublish)}
-              title={!published && !canPublish ? 'Сначала прикрепите файл задания' : undefined}
-              onClick={() => run(async () => {
-                await updateHomework({ is_published: !published })
-                if (!published) setNotifyOpen(true)
-              })}
-            >
-              {published ? 'Снять с публикации' : 'Опубликовать'}
-            </Button>
-            {!published && !canPublish && (
-              <span className="text-xs text-gray-400">Сначала прикрепите файл задания</span>
-            )}
-          </div>
-        )}
-
-        {published && (
+        {/* §243. Кнопки «Опубликовать» / «Снять с публикации» нет: выдачу
+            ставит сервер по открытости темы. Ручное «Напомнить ученикам» (§75)
+            остаётся — для выданного ДЗ открытой темы. */}
+        {homework && issue.state === 'issued' && (
           <TopicHomeworkNotify
             className="mt-4"
             loadTargets={loadNotifyTargets}
             onNotify={notifyStudents}
-            openSignal={notifyOpen}
           />
         )}
 

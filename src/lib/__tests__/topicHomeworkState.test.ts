@@ -24,7 +24,7 @@ describe('describeTopicHomework', () => {
     const info = describeTopicHomework([row({ due_at: '2026-09-14' })], TODAY)
 
     expect(info.state).toBe('draft')
-    expect(info.label).toBe('ДЗ черновик')
+    expect(info.label).toBe('ДЗ не выдано')
   })
 
   /** Дедлайн черновика ничего не значит: ученик задания ещё не видит. */

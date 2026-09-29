@@ -1117,6 +1117,30 @@ export const scenes = [
     ]
   }),
 
+  // §243: «тема открыта = ДЗ выдано». Окно темы — блок «Домашнее задание»:
+  // выдано (+ «Сводка ученикам уйдёт в …»), нет файлов, закрыта с датой;
+  // раздел «Домашние задания» программы — без кнопок публикации и плашки,
+  // статус у каждой темы. В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d243 1280 ; node e2e/harness/tour.mjs d243 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const url = `/course-program?course=${S.course}`
+    const toIssue = { eval: "(() => { document.querySelector('[data-testid=\"homework-issue\"]')?.scrollIntoView({ block: 'center' }); })()" }
+    const topicHw = (title) => [
+      { click: 'Физика ЕГЭ 2027' }, { wait: 1200 }, { click: title }, { wait: 1200 },
+      { clickSel: '[data-testid="topic-tile-homework"]' }, { wait: 1200 }, toIssue, { wait: 400 },
+    ]
+    return [
+      { persona: 'o243', name: 'd243-topic-issued', url, width, height, full: false, actions: topicHw('Равноускоренное прямолинейное движение') },
+      { persona: 'o243', name: 'd243-topic-nofiles', url, width, height, full: false, actions: topicHw('Закон сохранения импульса') },
+      { persona: 'o243', name: 'd243-topic-closed', url, width, height, full: false, actions: topicHw('Статика. Момент силы') },
+      { persona: 'o243', name: 'd243-hw-section', url, width, height, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1200 },
+        { clickSel: 'button:has-text("Домашние задания")' }, { wait: 1800 },
+        { eval: "(() => { document.querySelector('[data-testid=\"hw-section-issue\"]')?.closest('.space-y-2')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80) })()" }, { wait: 400 },
+      ] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

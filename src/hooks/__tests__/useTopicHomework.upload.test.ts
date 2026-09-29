@@ -134,3 +134,14 @@ describe('uploadAttemptFiles — гейт по формату (§173)', () => {
     expect(insertedRows.map(r => r.position)).toEqual([0, 1, 2, 3, 4])
   })
 })
+
+describe('createHomework — флаг выдачи не шлёт (§243)', () => {
+  it('в строке вставки нет is_published: выдачу ставит сервер по открытости темы', async () => {
+    const result = await mountHook()
+    await act(async () => { await result.current.createHomework('', '', { due_at: null }) })
+    const row = insertedRows.find(r => r.topic_id === TOPIC)
+    expect(row).toBeDefined()
+    expect(row).not.toHaveProperty('is_published')
+    expect(row).toMatchObject({ title: 'Домашнее задание', created_by: 'stu' })
+  })
+})

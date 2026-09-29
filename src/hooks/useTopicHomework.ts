@@ -170,7 +170,8 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           topic_id: topicId,
           title: clean,
           instructions: instructions.trim() || null,
-          is_published: false,
+          // is_published не шлём (§243): выдачу ставит сервер — ДЗ в открытой
+          // теме выдаётся, как только у него появится файл.
           created_by: profile.id,
           due_at: extra?.due_at || null,
           grade_scale: extra?.grade_scale ?? null,
@@ -189,7 +190,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   )
 
   const updateHomework = useCallback(
-    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'is_published' | 'due_at' | 'grade_scale' | 'opens_at' | 'closes_at'>>) => {
+    // §243: is_published в правке нет — флаг выдачи пишет только сервер
+    // (сторож topic_homework_publish_guard), клиенту его не менять.
+    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'due_at' | 'grade_scale' | 'opens_at' | 'closes_at'>>) => {
       const current = homeworkRef.current
       if (!current) throw new Error('ДЗ ещё не создано')
       // `as never`: окна §240 нет в сгенерированных типах (они отстают от

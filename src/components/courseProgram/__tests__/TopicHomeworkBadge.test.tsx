@@ -18,7 +18,7 @@ describe('TopicHomeworkBadge', () => {
   it('черновик отличается от выданного ученикам', () => {
     render(<TopicHomeworkBadge rows={[{ topic_id: 't1', is_published: false, due_at: '2026-09-14' }]} />)
 
-    expect(screen.getByTestId('topic-homework-state-draft')).toHaveTextContent('ДЗ черновик')
+    expect(screen.getByTestId('topic-homework-state-draft')).toHaveTextContent('ДЗ не выдано')
     // Дедлайн черновика ничего не значит: ученик задания ещё не видит.
     expect(screen.queryByTestId('topic-homework-due')).not.toBeInTheDocument()
   })

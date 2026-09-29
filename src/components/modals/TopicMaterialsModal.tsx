@@ -1020,7 +1020,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 )}
 
                 {activeTile === 'homework' && (
-                  <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} />
+                  <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} isOpen={isOpen} availableFrom={availableFrom} />
                 )}
 
                 {activeTile === 'test' && (
@@ -1034,7 +1034,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
             {timed && (
               <div data-testid="topic-timed-settings" className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
                 <div className="text-sm font-semibold text-gray-900">Время и сдача</div>
-                <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} />
+                <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} isOpen={isOpen} availableFrom={availableFrom} />
               </div>
             )}
 

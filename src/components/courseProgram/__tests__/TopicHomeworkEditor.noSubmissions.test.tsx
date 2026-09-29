@@ -53,7 +53,7 @@ describe('Модалка ДЗ без «Работ учеников» (§117)', (
     render(<TopicHomeworkEditor topicId="t1" />)
 
     expect(await screen.findByText('Домашнее задание')).toBeInTheDocument()
-    expect(screen.getByTestId('homework-publish-state')).toBeInTheDocument()
+    expect(screen.getByTestId('homework-issue-state')).toBeInTheDocument()
   })
 
   it('модалка не тянет попытки и ростер: запросы ушли вместе с блоком', async () => {

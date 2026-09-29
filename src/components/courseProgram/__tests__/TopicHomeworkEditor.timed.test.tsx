@@ -46,9 +46,16 @@ describe('Настройки работы по времени (§240)', () => {
     expect(screen.getByText(/Время не назначено/)).toBeInTheDocument()
   })
 
-  it('без файла задания опубликовать можно: условие — рубрикой «Условие»', () => {
-    render(<TopicHomeworkEditor topicId="t1" kind="check" />)
-    expect(screen.getByTestId('homework-publish-button')).not.toBeDisabled()
+  // §243 (было §240: «опубликовать можно без файла»): кнопки нет, работа по
+  // времени в открытой теме выдана и без файла — условие лежит рубрикой.
+  it('без файла задания работа по времени в открытой теме выдана; в закрытой — нет', () => {
+    const { unmount } = render(<TopicHomeworkEditor topicId="t1" kind="check" isOpen={true} />)
+    expect(screen.getByTestId('homework-issue-state')).toHaveAttribute('data-state', 'issued')
+    expect(screen.queryByText('Нет файлов задания')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Опубликовать/ })).not.toBeInTheDocument()
+    unmount()
+    render(<TopicHomeworkEditor topicId="t1" kind="check" isOpen={false} />)
+    expect(screen.getByTestId('homework-issue-state')).toHaveTextContent('Не выдано · тема закрыта')
   })
 
   it('дата и время по Москве уходят моментом UTC; закрытие раньше открытия — ошибка без записи', async () => {
