@@ -1047,6 +1047,45 @@ export const scenes = [
     ]
   }),
 
+  // §241: раздел «Контрольные, самостоятельные и пробники». Ученик — блоки по
+  // типам, график, лист пробника и лист проверочной, идущая КР строкой
+  // сверху, свёрнутые блоки, курс без работ (раздела нет); учитель — сводка по
+  // классу над программой, каркас — только список. «Сейчас» — у сервера
+  // (`apply241`). В базу сцены не пишут. Свёрнутая сцена у персоны последняя:
+  // состояние блоков живёт в localStorage контекста.
+  //   node e2e/harness/tour.mjs d241 1280 ; node e2e/harness/tour.mjs d241 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const course = `/my-course/${S.group}`
+    const toSection = { eval: "(() => { document.querySelector('[data-testid=\"assessments-section\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80) })()" }
+    const row = (t) => ({ clickSel: `[data-testid="assessments-row"]:has-text("${t}")` })
+    const toSummary = { eval: "(() => { document.querySelector('[data-testid=\"course-assessments\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80) })()" }
+    return [
+      { persona: 's241', name: 'd241-student', url: course, width, height, actions: [{ wait: 2500 }, toSection, { wait: 400 }] },
+      { persona: 's241', name: 'd241-student-chart-tip', url: course, width, height, full: false, actions: [
+        { wait: 2500 }, { eval: "document.querySelector('[data-testid=\"mock-chart\"]')?.scrollIntoView({ block: 'center' })" }, { wait: 300 },
+        { clickSel: '[data-testid="mock-chart-hit"] >> nth=3' }, { wait: 300 },
+      ] },
+      { persona: 's241', name: 'd241-student-sheet-mock', url: course, width, height, full: false, actions: [{ wait: 2500 }, toSection, row('Пробник №4'), { wait: 1200 }] },
+      { persona: 's241', name: 'd241-student-sheet-kr', url: course, width, height, full: false, actions: [{ wait: 2500 }, toSection, row('Импульс и энергия'), { wait: 800 }] },
+      { persona: 's241', name: 'd241-student-module', url: course, width, height, actions: [{ wait: 2500 }, { click: 'Механика: кинематика' }, { wait: 800 }] },
+      { persona: 's241', name: 'd241-student-collapsed', url: course, width, height, actions: [
+        { ls: [`course-assessments:collapsed:${S.group}`, '["mock","control","check"]'] }, { goto: course }, { wait: 2500 }, toSection, { wait: 400 },
+      ] },
+      { persona: 's241live', name: 'd241-student-live', url: course, width, height, actions: [{ wait: 2500 }, toSection, { wait: 400 }] },
+      { persona: 's241empty', name: 'd241-student-empty', url: course, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o241', name: 'd241-teacher', url: `/course-program?course=${S.course}`, width, height, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1800 }, toSummary, { wait: 400 },
+      ] },
+      // «Кто пишет» у идущей КР — вкладка «Домашние задания» с раскрытой темой.
+      { persona: 'o241', name: 'd241-teacher-who', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [
+        { click: 'Физика ЕГЭ 2027' }, { wait: 1800 }, { clickRole: ['button', 'Кто пишет'] }, { wait: 2000 },
+      ] },
+      { persona: 'o241', name: 'd241-template', url: '/course-program', width, height, actions: [
+        { click: 'Физика ЕГЭ Шаблон' }, { wait: 1800 }, toSummary, { wait: 400 },
+      ] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

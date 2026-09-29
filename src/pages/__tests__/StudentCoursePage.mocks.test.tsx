@@ -44,6 +44,12 @@ vi.mock('@/hooks/useStudentCourseProgram', () => ({
     modules, mockExams, loading: false, error: null, reload: vi.fn(),
   }),
 }))
+// §241. Здесь — поведение §224 как оно есть без раздела «Контрольные,
+// самостоятельные и пробники» (RPC ещё нет на базе): прежний блок «Пробники».
+// Сам раздел — StudentCoursePage.assessments.test.tsx.
+vi.mock('@/hooks/useCourseAssessments', () => ({
+  useMyCourseAssessments: () => ({ status: 'error', data: null, reload: vi.fn() }),
+}))
 vi.mock('@/hooks/useStudentWeekPlan', () => ({ useStudentWeekPlan: () => ({ courses: [], loading: false, error: null }) }))
 vi.mock('@/store/authStore', () => ({ useAuthStore: (selector: any) => selector({ profile: { id: 'p1', role: 'student' } }) }))
 

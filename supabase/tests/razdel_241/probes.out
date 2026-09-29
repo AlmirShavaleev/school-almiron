@@ -1,0 +1,223 @@
+slice + prod migrations (§240 chain) + mock slice: ok
+              set_config              
+--------------------------------------
+ 00000000-0000-4000-8000-00000c040005
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+PENDING_241 applied twice: ok
+Null display is "∅".
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+=== 1. S1 (10А): работы по времени курса — все темы check/control из любых модулей (урок L не попадает).
+=== K идёт, черновик; F впереди; C — оценка 5, отметки по заданиям, группа (других с оценкой трое: 4,3,4 → средний 4.0, лучший);
+=== P — 80, но других с оценкой двое → группы нет; U — ДЗ не опубликовано (нет ДЗ и окна); N — без времени.
+ as_user 
+---------
+ ∅
+(1 row)
+
+                title                |  kind   | hw |  status  |    win    | score |            tasks            |                                           grp                                            
+-------------------------------------+---------+----+----------+-----------+-------+-----------------------------+------------------------------------------------------------------------------------------
+ P: Проверочная (стобалльная)        | check   | t  | reviewed | закрылось |    80 | ∅                           | null
+ K: Контрольная (идёт)               | control | t  | draft    | идёт      |     ∅ | ∅                           | null
+ F: Проверочная (завтра)             | check   | t  | none     | впереди   |     ∅ | ∅                           | null
+ C: Контрольная (закрылась)          | control | t  | reviewed | закрылось |     5 | 1:correct 2:partial 3:wrong | {"avg": 4.0, "best": true, "count": 4, "in_group": 6, "submitted": 5, "better_pct": 100}
+ N: Контрольная без времени          | control | t  | none     | —         |     ∅ | ∅                           | null
+ U: Контрольная (ДЗ не опубликовано) | control | f  | none     | —         |     ∅ | ∅                           | null
+(6 rows)
+
+=== 2. S2: C — 4, «лучше, чем 33 %», не лучший; средний тот же 4.0
+ as_user 
+---------
+ ∅
+(1 row)
+
+           title            | score |                                           grp                                            
+----------------------------+-------+------------------------------------------------------------------------------------------
+ C: Контрольная (закрылась) |     4 | {"avg": 4.0, "best": false, "count": 4, "in_group": 6, "submitted": 5, "better_pct": 33}
+(1 row)
+
+=== 3. S3: C — 3, у двоих выше, у никого ниже → better_pct нет («0 %» не пишем)
+ as_user 
+---------
+ ∅
+(1 row)
+
+           title            | score |                                            grp                                             
+----------------------------+-------+--------------------------------------------------------------------------------------------
+ C: Контрольная (закрылась) |     3 | {"avg": 4.0, "best": false, "count": 4, "in_group": 6, "submitted": 5, "better_pct": null}
+(1 row)
+
+=== 4. S5: C — сдано автоматически, вердикта нет → ни балла, ни строк таблицы проверки (они уже есть у учителя), ни группы
+ as_user 
+---------
+ ∅
+(1 row)
+
+           title            |     status     | score | tasks | grp  
+----------------------------+----------------+-------+-------+------
+ C: Контрольная (закрылась) | auto_submitted |     ∅ | ∅     | null
+(1 row)
+
+=== 5. S6: C — не сдавал, но ему открыли личное окно, идущее сейчас; группы нет (своего результата нет)
+ as_user 
+---------
+ ∅
+(1 row)
+
+           title            | status |      win      | score | grp  
+----------------------------+--------+---------------+-------+------
+ C: Контрольная (закрылась) | none   | идёт (личное) |     ∅ | null
+(1 row)
+
+=== 6. S1: пробники группы со временем (без «Пробника без времени» и без пробника 11А).
+=== №1 — 50, группа: средний 55, лучше 25 %; №2 — 62, +12 к прошлому (50), группы нет (итоги есть у двоих других);
+=== №3 идёт — результат «отправлен», но окно не кончилось → итог скрыт; №5 впереди.
+ as_user 
+---------
+ ∅
+(1 row)
+
+   title    | notified | has_work | score | prim | prev |                            grp                             
+------------+----------+----------+-------+------+------+------------------------------------------------------------
+ Пробник №1 | t        | f        |    50 | 5/7  |    ∅ | {"avg": 55.0, "best": false, "count": 5, "better_pct": 25}
+ Пробник №2 | t        | t        |    62 | 6/7  |   50 | null
+ Пробник №3 | f        | t        |     ∅ | ∅/∅  |    ∅ | null
+ Пробник №5 | f        | f        |     ∅ | ∅/∅  |    ∅ | null
+(4 rows)
+
+=== 7. S3: №2 — результат НЕ отправлен → скрыт (notified = f, балла нет)
+ as_user 
+---------
+ ∅
+(1 row)
+
+   title    | notified | score |                             grp                              
+------------+----------+-------+--------------------------------------------------------------
+ Пробник №1 | t        |    40 | {"avg": 55.0, "best": false, "count": 5, "better_pct": null}
+ Пробник №2 | f        |     ∅ | null
+(2 rows)
+
+=== 8. Чужой ученик S7 (11А) о группе 10А — отказ; о своей — только свой пробник 11А, работ по времени нет
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:69: ERROR:  Это не ваша группа
+CONTEXT:  PL/pgSQL function my_course_assessments(uuid) line 18 at RAISE
+ works |     mocks      
+-------+----------------
+     0 | Пробник 11А=90
+(1 row)
+
+=== 9. Преподаватель 10А, владелец курса и аноним — ученической функции нет (это не их группа как ученика)
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:75: ERROR:  Это не ваша группа
+CONTEXT:  PL/pgSQL function my_course_assessments(uuid) line 18 at RAISE
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:77: ERROR:  Это не ваша группа
+CONTEXT:  PL/pgSQL function my_course_assessments(uuid) line 18 at RAISE
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:81: ERROR:  permission denied for function my_course_assessments
+RESET
+=== 10. Персонал: преподаватель 10А — сводка по классу (в классе 6).
+=== K идёт: сдал 1, пишут 2; F запланирована; C — общее окно закрылось → «ждёт проверки 1», сдали 5, средний 4.00; у S6 идёт личное окно (personal_live 1), черновика нет — пишут 0;
+=== P проверена, средний 70; U — видна персоналу (ДЗ не опубликовано); N — без времени; урок L — нет.
+ as_user 
+---------
+ ∅
+(1 row)
+
+ in_class | grp |  tpl  
+----------+-----+-------
+ 6        | 10А | false
+(1 row)
+
+                title                |  kind   |  pub  |   status    | sub | pend | rev |  avg  | writing | pers 
+-------------------------------------+---------+-------+-------------+-----+------+-----+-------+---------+------
+ P: Проверочная (стобалльная)        | check   | true  | done        | 3   | 0    | 3   | 70.00 | 0       | 0
+ K: Контрольная (идёт)               | control | true  | live        | 1   | 1    | 0   | ∅     | 2       | 0
+ F: Проверочная (завтра)             | check   | true  | planned     | 0   | 0    | 0   | ∅     | 0       | 0
+ C: Контрольная (закрылась)          | control | true  | review      | 5   | 1    | 4   | 4.00  | 0       | 1
+ N: Контрольная без времени          | control | true  | unscheduled | 0   | 0    | 0   | ∅     | 0       | 0
+ U: Контрольная (ДЗ не опубликовано) | control | false | live        | 0   | 0    | 0   | ∅     | 0       | 0
+(6 rows)
+
+=== Пробники: №1 проверен (сдали 5, средний 55.0); №2 ждёт проверки 1 (не отправлен S3); №3 идёт, пишет 1 (S1; S2 сдал),
+=== №5 запланирован; без времени — по итогам таблицы; пробника 11А нет.
+        title        | status  | sub | pend | avg  | writing | n 
+---------------------+---------+-----+------+------+---------+---
+ Пробник №1          | done    | 5   | 0    | 55.0 | 0       | 6
+ Пробник №2          | review  | 3   | 1    | 60.7 | 0       | 6
+ Пробник №3          | live    | 2   | 1    | 77.0 | 1       | 6
+ Пробник №5          | planned | 0   | 0    | ∅    | 0       | 6
+ Пробник без времени | done    | 1   | 0    | 45.0 | 0       | 6
+(5 rows)
+
+=== 11. Владелец курсов (не преподаватель группы) — тоже персонал; шаблон — список работ без группы и без пробников
+ as_user 
+---------
+ ∅
+(1 row)
+
+ works_10a 
+-----------
+         6
+(1 row)
+
+ tpl  | in_class | grp | mocks |                works                 
+------+----------+-----+-------+--------------------------------------
+ true | 0        | ∅   |     0 | T: Проверочная каркаса · unscheduled
+(1 row)
+
+=== 12. Отказы сводки: преподаватель 11А о 10А, посторонний, ученик S1
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:106: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessments_summary(uuid) line 11 at RAISE
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:108: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessments_summary(uuid) line 11 at RAISE
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a241/repo/supabase/tests/razdel_241/20_probes.sql:110: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessments_summary(uuid) line 11 at RAISE
+=== 13. Права на функции: anon — нет, authenticated — есть; обе SECURITY DEFINER со своим search_path
+RESET
+          proname           | prosecdef |            proconfig            | anon_exec | auth_exec 
+----------------------------+-----------+---------------------------------+-----------+-----------
+ course_assessments_summary | t         | {"search_path=public, pg_temp"} | f         | t
+ my_course_assessments      | t         | {"search_path=public, pg_temp"} | f         | t
+(2 rows)
+

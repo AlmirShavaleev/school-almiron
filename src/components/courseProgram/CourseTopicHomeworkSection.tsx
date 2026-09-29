@@ -122,19 +122,24 @@ function getStudentAttemptStatus(
   return { status: latest.status, score: null, submittedAt: latest.submitted_at }
 }
 
-export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, onToggleTopicOpen }: {
+export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, onToggleTopicOpen, focusTopicId = null }: {
   courseId: string
   modules: Module[]
   refreshKey?: number
   /** Тумблер открытости в строке темы. Без него раздел работает как раньше. */
   onToggleTopicOpen?: (topicId: string, isOpen: boolean) => Promise<void>
+  /**
+   * §241. Тема, с которой пришли из раздела «Контрольные, самостоятельные и
+   * пробники» («Кто пишет» / «Работы»): раскрыта сразу и прокручена в вид.
+   */
+  focusTopicId?: string | null
 }) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [homeworks, setHomeworks] = useState<TopicHomework[]>([])
   const [attempts, setAttempts] = useState<TopicHomeworkAttempt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(() => new Set(focusTopicId ? [focusTopicId] : []))
   /** Сколько файлов у каждого ДЗ: без файлов публиковать нельзя (§116). */
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
   const [publishing, setPublishing] = useState<string | null>(null)
@@ -397,6 +402,14 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
   const moduleUnpublished = (module: Module) =>
     homeworks.filter(h => !h.is_published && module.topics.some(t => t.id === h.topic_id)).length
 
+  // §241. Пришли за конкретной темой — прокрутить к ней, когда список готов.
+  useEffect(() => {
+    if (loading || !focusTopicId) return
+    setExpandedTopics(prev => (prev.has(focusTopicId) ? prev : new Set(prev).add(focusTopicId)))
+    const el = document.querySelector(`[data-hw-topic="${focusTopicId}"]`)
+    if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [loading, focusTopicId])
+
   const totalStats = getTotalStats()
   const totalHomeworks = homeworks.length
   const totalAssignments = totalHomeworks * roster.length
@@ -511,7 +524,7 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
               }
 
               return (
-                <div key={topic.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                <div key={topic.id} data-hw-topic={topic.id} className="scroll-mt-24 border border-gray-200 rounded-lg overflow-hidden bg-white">
                   {/* Topic header (collapsible). Тумблер — СОСЕД кнопки, а не
                       её потомок: кнопка внутри кнопки невалидна, и клик по
                       тумблеру всё равно сворачивал бы тему. */}

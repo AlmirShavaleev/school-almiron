@@ -22,6 +22,9 @@ import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { plural, pluralTopics } from '@/lib/plural'
 import { MockExamsSection } from '@/components/student/MockExamsSection'
+import { CourseAssessmentsSection } from '@/components/student/CourseAssessmentsSection'
+import { useMyCourseAssessments } from '@/hooks/useCourseAssessments'
+import { withoutAssessmentTopics } from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
@@ -925,7 +928,21 @@ export function StudentCoursePage() {
   const { groupId }  = useParams<{ groupId?: string }>()
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
-  const { course, modules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
+  const { course, modules: programModules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
+  // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
+  // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
+  // блок «Пробники» по расписанию, как в §224.2.
+  const assessments = useMyCourseAssessments(groupId, !preview)
+  const assessmentsReady = assessments.status === 'ready' && !!assessments.data
+    && (assessments.data.works.length > 0 || assessments.data.mocks.length > 0)
+  // Без дублей: работы по времени живут в разделе, а не в своих модулях; модуль,
+  // где кроме них ничего нет, скрыт. Только когда раздел действительно на
+  // экране — иначе (миграция не применена, сбой) темы остаются на месте.
+  // Счётчики модулей и курса не трогаем (§141/§152/§162): меняется только список.
+  const modules = useMemo(
+    () => (assessmentsReady ? withoutAssessmentTopics(programModules) : programModules),
+    [assessmentsReady, programModules],
+  )
 
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
   const [view,           setView]           = useState<CourseView>(getViewPref)
@@ -960,12 +977,12 @@ export function StudentCoursePage() {
 
   // §224.2. Одно «сейчас» по часам базы на баннер и раздел «Пробники»: у
   // идущего пробника главная кнопка — в баннере, в разделе — тихая ссылка.
-  const mockNow = useServerNow(mockExams[0]?.server_now ?? null)
+  const mockNow = useServerNow(mockExams[0]?.server_now ?? assessments.data?.serverNow ?? null)
   const mockBannerOpen = mockAlert(mockExams, mockNow)?.kind === 'open'
 
   // Курс = сумма разделов по тому же правилу, иначе цифры на двух уровнях
   // разойдутся (§141).
-  const courseCounters = sumCounters(modules.map(module => module.counters))
+  const courseCounters = sumCounters(programModules.map(module => module.counters))
   const overallPct     = openPercent(courseCounters)
 
   if (loading) return (
@@ -1057,20 +1074,27 @@ export function StudentCoursePage() {
             <div className="flex items-center gap-3 text-xs text-gray-400 border-l border-gray-100 pl-3">
               <span className="flex items-center gap-1">
                 <Clock size={11} className="text-blue-400" />
-                {modules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'submitted').length, 0)}
+                {programModules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'submitted').length, 0)}
               </span>
               <span className="flex items-center gap-1">
                 <RotateCcw size={11} className="text-orange-400" />
-                {modules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'returned').length, 0)}
+                {programModules.reduce((s, m) => s + m.topics.filter(t => t.hw_status === 'returned').length, 0)}
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* §224. Раздел «Пробники» — над разделами курса и над планом недели:
-          идущий пробник — главное действие экрана. Нет пробников — нет раздела. */}
-      {!activeMod && <MockExamsSection exams={mockExams} onOpen={openMock} now={mockNow} primaryInBanner={mockBannerOpen} />}
+      {/* §241. Раздел «Контрольные, самостоятельные и пробники» — над разделами
+          курса и над планом недели, вместо прежнего блока «Пробники» (§224).
+          Пока его данных нет (загрузка) — ничего; RPC недоступна (миграция не
+          применена, сбой, предпросмотр) — прежний блок «Пробники». */}
+      {!activeMod && groupId && assessmentsReady && assessments.data && (
+        <CourseAssessmentsSection data={assessments.data} groupId={groupId} now={mockNow} primaryInBanner={mockBannerOpen} />
+      )}
+      {!activeMod && (preview || assessments.status === 'error') && (
+        <MockExamsSection exams={mockExams} onOpen={openMock} now={mockNow} primaryInBanner={mockBannerOpen} />
+      )}
 
       {/* «Эта неделя» — RPC `student_week_plan()` считает от `auth_student_id()`;
           у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}
@@ -1145,7 +1169,7 @@ export function StudentCoursePage() {
       {/* ══ БЛОК ЗАДАНИЙ (только на главном экране курса) ══ */}
       {!activeMod && (
         <HomeworkBlock
-          modules={modules}
+          modules={programModules}
           onOpenTopic={openTopic}
         />
       )}

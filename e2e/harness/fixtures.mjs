@@ -63,6 +63,11 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o240: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §241: раздел «Контрольные, самостоятельные и пробники» (фикстуры `apply241`).
+  ...Object.fromEntries(['s241', 's241live', 's241empty'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
+  o241: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1821,6 +1826,8 @@ export function baseFixtures(persona) {
   if (persona === 'ownerHomeEmpty') fx.tables.topic_homework_attempts = fx.tables.topic_homework_attempts.filter(a => a.status !== 'submitted')
   if (persona.startsWith('s239')) apply239(fx, persona)
   if (persona.startsWith('s240') || persona === 'o240') apply240(fx, persona)
+  if (persona.startsWith('s241') || persona === 'o241') apply241(fx, persona)
+  if (persona === 'o241') fx.rpc.course_assessments_summary = summary241
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2051,4 +2058,144 @@ function apply240(fx, persona) {
     ? { in_class: roster.length, submitted_self: 3, submitted_auto: 1, not_submitted: roster.length - 4, personal_windows: 1, opens_at: KR.opens, closes_at: KR.closes, closed: true, server_now: serverNow }
     : { in_class: roster.length, submitted_self: 1, submitted_auto: 0, not_submitted: roster.length - 1, personal_windows: 0, opens_at: KR.prOpens, closes_at: KR.prCloses, closed: true, server_now: serverNow })
   fx.rpc.topic_homework_set_personal_window = null
+}
+
+// ── §241: раздел «Контрольные, самостоятельные и пробники» ──────────────────
+// Всё выдумано. Раздел собирается сам: темы с kind check/control и пробники
+// группы — у ученика из `my_course_assessments`, у учителя из
+// `course_assessments_summary` (заглушки ниже повторяют правила PENDING_241:
+// оценка и отметки — только после вердикта, итог пробника — только после
+// конца окна и отправки, группа — только при ≥ 3 других).
+// «Сейчас» — пятница 2 октября, 10:22 по Москве (сервер).
+//   s241      — ученик: всё, что было в макете, идущей работы нет;
+//   s241live  — тот же ученик во время КР «Кинематика» (10:00–10:45);
+//   s241empty — курс без работ по времени и без пробников: раздела нет;
+//   o241      — учитель: сводка по классу над программой; каркас — список.
+export const R241 = {
+  now: '2026-10-02T07:22:00.000Z',
+  module: U('e', 41),
+  topic: (i) => U('1', 4100 + i),
+  mock: (i) => U('c', 4100 + i),
+}
+const T241 = [
+  // [i, модуль, название, kind]
+  [1, IDS.module, 'Кинематика: равноускоренное движение', 'control'],
+  [2, R241.module, 'Динамика: законы Ньютона', 'control'],
+  [3, R241.module, 'Импульс и энергия', 'check'],
+  [4, R241.module, 'Статика', 'check'],
+]
+const MOCKS241 = [
+  // [i, название, начало (UTC), вторичный, первичный, средний группы, «лучше %»]
+  [1, 'Пробник №1', '2026-08-29T07:00:00.000Z', 52, 12, 55, null],
+  [2, 'Пробник №2', '2026-09-05T07:00:00.000Z', 61, 15, 58, 60],
+  [3, 'Пробник №3', '2026-09-12T07:00:00.000Z', 58, 14, null, null],
+  [4, 'Пробник №4', '2026-09-26T07:00:00.000Z', 72, 18, 63, 70],
+  [5, 'Пробник №5', '2026-10-05T07:00:00.000Z', null, null, null, null],
+]
+function apply241(fx, persona) {
+  const plusMin = (iso, m) => new Date(Date.parse(iso) + m * 60_000).toISOString()
+  const empty = persona === 's241empty'
+  if (!empty) {
+    const mod241 = { id: R241.module, course_id: IDS.course, title: 'Контрольные работы', order_index: 3, created_at: ago(24 * 30), courses: fx.tables.courses.find(c => c.id === IDS.course) }
+    const topicRows = T241.map(([i, moduleId, title, kind]) => ({
+      id: R241.topic(i), module_id: moduleId, title, order_index: 20 + i, max_score: 100, is_open: true, available_from: ago(24 * 40),
+      source_template_id: null, created_at: ago(24 * 40), ege_task_numbers: [], kind,
+    }))
+    fx.tables.topics = [...fx.tables.topics, ...topicRows.map(t => ({ ...t, modules: t.module_id === R241.module ? mod241 : modules[0] }))]
+    fx.tables.topic_homework = [...fx.tables.topic_homework, ...topicRows.map((t, k) => ({
+      id: U('2', 4101 + k), topic_id: t.id, title: t.title, instructions: null, grade_scale: 'five', due_at: null, is_published: true,
+      opens_at: null, closes_at: null, created_by: IDS.owner, created_at: ago(24 * 30), updated_at: ago(24 * 30), topics: t, topic: t,
+    }))]
+    fx.tables.modules = [...fx.tables.modules, mod241].map(m => {
+      const add = topicRows.filter(t => t.module_id === m.id)
+      return add.length ? { ...m, topics: [...(m.topics ?? []), ...add] } : m
+    })
+  }
+
+  const live = persona === 's241live'
+  const mockList = MOCKS241.map(([i, title, starts, score, primary, avg, better]) => {
+    const ends = plusMin(starts, 235)
+    const past = Date.parse(ends) < Date.parse(R241.now)
+    return {
+      id: R241.mock(i), title, starts_at: starts, ends_at: ends, photos_until: plusMin(starts, 250), duration_minutes: 235,
+      submitted_at: past ? plusMin(starts, 200) : null, has_work: past, notified: past,
+      score: past ? score : null, max_score: past ? 100 : null,
+      primary_score: past ? primary : null, primary_max: past ? 32 : null,
+      part1_score: past ? Math.min(12, primary - 7) : null, part2_score: past ? 7 : null,
+      prev_score: past && i > 1 ? MOCKS241[i - 2][3] : null,
+      group: past && avg != null ? { avg, count: 14, better_pct: better, best: false } : null,
+      server_now: R241.now,
+    }
+  })
+  const W = (i, p) => ({
+    topic_id: R241.topic(i), homework_id: U('2', 4100 + i), kind: T241[i - 1][3], title: T241[i - 1][2],
+    module_id: T241[i - 1][1], module_title: T241[i - 1][1] === R241.module ? 'Контрольные работы' : modules[0].title,
+    topic_open: true, available_from: null, grade_scale: 'five', personal: false, submitted_at: null, reviewed_at: null,
+    score: null, tasks: null, group: null, status: 'none', opens_at: null, closes_at: null, ...p,
+  })
+  const works = [
+    live
+      ? W(1, { opens_at: '2026-10-02T07:00:00.000Z', closes_at: '2026-10-02T07:45:00.000Z', status: 'draft' })
+      : W(1, { opens_at: '2026-10-09T07:00:00.000Z', closes_at: '2026-10-09T07:45:00.000Z' }),
+    W(2, { opens_at: '2026-09-19T08:00:00.000Z', closes_at: '2026-09-19T08:45:00.000Z', status: 'submitted', submitted_at: '2026-09-19T08:38:00.000Z' }),
+    W(3, {
+      opens_at: '2026-09-22T12:00:00.000Z', closes_at: '2026-09-22T12:40:00.000Z', status: 'reviewed', submitted_at: '2026-09-22T12:35:00.000Z',
+      reviewed_at: '2026-09-23T15:00:00.000Z', score: 5,
+      tasks: [['1', 'correct'], ['2', 'correct'], ['3', 'correct'], ['4', 'correct'], ['5', 'partial'], ['6', 'correct']].map(([no, verdict]) => ({ no, verdict })),
+      group: { avg: 4.1, count: 16, submitted: 16, in_group: 18, better_pct: 70, best: false },
+    }),
+    W(4, { opens_at: '2026-09-12T12:00:00.000Z', closes_at: '2026-09-12T12:40:00.000Z', status: 'none' }),
+  ]
+  fx.rpc.my_course_assessments = (body) => (body.p_group_id === IDS.group
+    ? { server_now: R241.now, course_id: IDS.course, works: empty ? [] : works, mocks: empty ? [] : mockList }
+    : new Error('42501: Это не ваша группа'))
+  // Баннер и прежний блок читают `my_mock_exams` — то же время и те же пробники.
+  fx.rpc.my_mock_exams = (body) => (body.p_group_id === IDS.group && !empty
+    ? mockList.map(({ primary_score: _p, primary_max: _pm, part1_score: _a, part2_score: _b, prev_score: _v, group: _g, ...m }) => m)
+    : [])
+  fx.rpc.my_mock_exam_result = (body) => {
+    const m = mockList.find(x => x.id === body.p_mock_exam_id)
+    if (!m || !m.notified) return { status: 'pending' }
+    const max = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 2, 2, 3, 4, 4]
+    const pts = [1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 0, 1, 0, 1]
+    return {
+      status: 'ready', title: m.title, notified_at: plusMin(m.starts_at, 60 * 24 * 3), score: m.score, max_score: 100,
+      primary_score: m.primary_score, part1_score: m.part1_score, part2_score: m.part2_score, part1_last: 12, solution_path: null,
+      tasks: max.map((mx, k) => ({ n: k + 1, max: mx, points: pts[k], answer: null, correct: null })),
+    }
+  }
+}
+
+// Сводка учителя (o241): курс — таблица по классу; каркас — только список работ.
+function summary241(body) {
+  const now = R241.now
+  if (body.p_course_id === IDS.courseTemplate) {
+    return {
+      server_now: now, is_template: true, group_id: null, group_name: null, in_class: 0, mocks: [],
+      works: [
+        // Темы каркаса — настоящие строки программы: «Окно темы» открывает их окно.
+        { topic_id: IDS.topic(21), homework_id: null, kind: 'control', title: topics.find(t => t.id === IDS.topic(21)).title, module_title: 'Механика', published: false, opens_at: null, closes_at: null, grade_scale: 'five', status: 'unscheduled', submitted: 0, pending: 0, reviewed: 0, avg_score: null, writing: 0, personal_live: 0 },
+        { topic_id: IDS.topic(22), homework_id: null, kind: 'check', title: topics.find(t => t.id === IDS.topic(22)).title, module_title: 'Механика', published: false, opens_at: null, closes_at: null, grade_scale: 'five', status: 'unscheduled', submitted: 0, pending: 0, reviewed: 0, avg_score: null, writing: 0, personal_live: 0 },
+      ],
+    }
+  }
+  if (body.p_course_id !== IDS.course) return new Error('42501: Нет прав на этот курс')
+  const w = (i, p) => ({ topic_id: R241.topic(i), homework_id: U('2', 4100 + i), kind: T241[i - 1][3], title: T241[i - 1][2], module_title: T241[i - 1][1] === R241.module ? 'Контрольные работы' : modules[0].title, published: true, grade_scale: 'five', submitted: 0, pending: 0, reviewed: 0, avg_score: null, writing: 0, personal_live: 0, ...p })
+  const m = (i, p) => ({ id: R241.mock(i), title: MOCKS241[i - 1][1], template_id: U('c', 4199), max_score: 100, starts_at: MOCKS241[i - 1][2], ends_at: new Date(Date.parse(MOCKS241[i - 1][2]) + 235 * 60_000).toISOString(), in_group: 18, submitted: 0, pending: 0, avg_score: null, writing: 0, ...p })
+  return {
+    server_now: now, is_template: false, group_id: IDS.group, group_name: '11А', in_class: 18,
+    works: [
+      w(1, { opens_at: '2026-10-02T07:00:00.000Z', closes_at: '2026-10-02T07:45:00.000Z', status: 'live', submitted: 3, pending: 3, writing: 14 }),
+      w(2, { opens_at: '2026-09-19T08:00:00.000Z', closes_at: '2026-09-19T08:45:00.000Z', status: 'review', submitted: 17, pending: 5, reviewed: 12, avg_score: 3.8, personal_live: 1 }),
+      w(3, { opens_at: '2026-09-22T12:00:00.000Z', closes_at: '2026-09-22T12:40:00.000Z', status: 'done', submitted: 16, reviewed: 16, avg_score: 4.1 }),
+      w(4, { opens_at: '2026-09-12T12:00:00.000Z', closes_at: '2026-09-12T12:40:00.000Z', status: 'done', submitted: 15, reviewed: 15, avg_score: 3.9 }),
+    ],
+    mocks: [
+      m(5, { status: 'planned' }),
+      m(4, { status: 'done', submitted: 14, avg_score: 63 }),
+      m(3, { status: 'review', submitted: 15, pending: 2, avg_score: 60 }),
+      m(2, { status: 'done', submitted: 16, avg_score: 58 }),
+      m(1, { status: 'done', submitted: 15, avg_score: 55 }),
+    ],
+  }
 }

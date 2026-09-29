@@ -29,7 +29,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
-import { CourseMockExamsSection } from '@/components/courseProgram/CourseMockExamsSection'
+import { CourseAssessmentsSummarySection } from '@/components/courseProgram/CourseAssessmentsSummary'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
 import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
@@ -1746,6 +1746,24 @@ export function CourseProgramPage() {
   const isTemplate = !!selectedCourse?.is_template
   const tab: CourseTab = isTemplate && (STUDENT_TABS as readonly string[]).includes(urlTab) ? 'program' : urlTab
 
+  /**
+   * §241. Переходы из раздела «Контрольные, самостоятельные и пробники»:
+   * «Окно темы» — то же окно темы, что по клику в программе (там окно работы);
+   * «Кто пишет» / «Работы» — вкладка «Домашние задания» с раскрытой темой
+   * (по каждому ученику: черновик, сдано, оценка, «Открыть заново»).
+   */
+  const [hwFocusTopicId, setHwFocusTopicId] = useState<string | null>(null)
+  const openAssessmentTopic = useCallback((topicId: string) => {
+    for (const m of modules) {
+      const t = m.topics.find(x => x.id === topicId)
+      if (t) { openMaterials(t, m.title); return }
+    }
+  }, [modules, openMaterials])
+  const showAssessmentWorks = useCallback((topicId: string) => {
+    setHwFocusTopicId(topicId)
+    setTab('homework')
+  }, [setTab])
+
 
   // Load modules + groups when course selected
   useEffect(() => {
@@ -2278,12 +2296,20 @@ export function CourseProgramPage() {
                   </div>
                 )}
 
-                {/* §224. Раздел «Пробники» группы — над программой, как у ученика.
-                    У каркаса групп нет — и раздела нет. */}
-                {!isTemplate && selectedGroupId && !loadingMods && (
-                  <CourseMockExamsSection
-                    groupId={selectedGroupId}
+                {/* §241. Раздел «Контрольные, самостоятельные и пробники» — над
+                    программой, как у ученика: сводка по классу и переходы. Темы
+                    остаются и в своих модулях — там их редактируют. У каркаса —
+                    только список работ, без статистики (групп у него нет).
+                    Без миграции §241 внутри — прежний раздел «Пробники» (§224). */}
+                {!loadingMods && (
+                  <CourseAssessmentsSummarySection
+                    courseId={selectedCourse.id}
+                    isTemplate={isTemplate}
+                    groupId={isTemplate ? null : selectedGroupId}
                     groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+                    refreshKey={matRefreshKey}
+                    onOpenTopic={openAssessmentTopic}
+                    onShowWorks={showAssessmentWorks}
                   />
                 )}
 
@@ -2402,7 +2428,7 @@ export function CourseProgramPage() {
 
             {/* Homework tab */}
             {tab === 'homework' && (
-              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} onToggleTopicOpen={handleToggleTopicOpen} />
+              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} onToggleTopicOpen={handleToggleTopicOpen} focusTopicId={hwFocusTopicId} />
             )}
 
             {/* Test Results tab */}
