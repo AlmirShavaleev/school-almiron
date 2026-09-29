@@ -5,7 +5,7 @@
 # ДЗ темы, гейта, файлов, синхронизации, таблицы проверки §199, §234 (тренировка: track/subtopic, скрытые подтемы),
 # §240 (работы по времени, последняя редакция topic_material_items_student_select) + слепок пробников §241),
 # поверх — 05_slice_242 (auth_is_staff_of_topic дословно, ключ material_views), НАСТОЯЩИЕ файлы видео §204
-# (20260917230035, 20260917230444), данные §242, PENDING_242.sql ДВАЖДЫ (одной транзакцией, как apply_migration)
+# (20260917230035, 20260917230444), данные §242, 20260929072412_course_stats.sql ДВАЖДЫ (одной транзакцией, как apply_migration)
 # и пробы. Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_242:-/var/tmp/pg242}; PT=${PGPORT_242:-5642}
@@ -41,5 +41,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -1 -f $R/20260917230444_video_watch_add_staff_before_visibility.sql \
  && echo "slice + prod migrations (§241 chain + video §204) + slice 242: ok" \
  && $Q -f $S/10_data_242.sql \
- && $Q -1 -f $R/PENDING_242.sql && $Q -1 -f $R/PENDING_242.sql && echo "PENDING_242 applied twice: ok" \
+ && $Q -1 -f $R/20260929072412_course_stats.sql && $Q -1 -f $R/20260929072412_course_stats.sql && echo "PENDING_242 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe242 -f $S/20_probes.sql
