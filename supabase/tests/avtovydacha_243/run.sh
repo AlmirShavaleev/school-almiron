@@ -4,7 +4,7 @@
 # Слепок и миграции — цепочка §240 (../kontrolnaya_240/run.sh: слепок §221 + 05_slice_240 +
 # НАСТОЯЩИЕ файлы ДЗ темы, гейта, файлов, синхронизации каркаса, копирования, §198, §234, §240),
 # поверх — 05_slice_243 (очередь, колокольчик, Telegram, joined_at/is_active, card_title),
-# данные ДО миграции, PENDING_243.sql ДВАЖДЫ (одной транзакцией, как apply_migration; второй
+# данные ДО миграции, миграцию §243 ДВАЖДЫ (одной транзакцией, как apply_migration; второй
 # прогон — разовая выдача находит ноль) и пробы. Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_243:-/var/tmp/pg243}; PT=${PGPORT_243:-5643}
@@ -34,5 +34,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S/05_slice_243.sql \
  && echo "slice + prod migrations (§240 chain) + slice 243: ok" \
  && $Q -f $S/10_data_243.sql \
- && $Q -1 -f $R/PENDING_243.sql && $Q -1 -f $R/PENDING_243.sql && echo "PENDING_243 applied twice: ok" \
+ && $Q -1 -f $R/20260929085322_avtovydacha_dz_svodka.sql && $Q -1 -f $R/20260929085322_avtovydacha_dz_svodka.sql && echo "PENDING_243 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe243 -f $S/20_probes.sql
