@@ -4,7 +4,7 @@
 # Слепок и миграции — цепочка §242 (../stat_242/run.sh без данных §242: слепок §221 + 05_slice_240 +
 # НАСТОЯЩИЕ файлы ДЗ темы, гейта, синхронизации, проверки §199, §234, §240, слепок пробников §241, 05_slice_242,
 # видео §204) и применённая §242 (20260929072412_course_stats.sql) — чтобы проверка шла на схеме как на проде;
-# поверх — данные §244, PENDING_244.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
+# поверх — данные §244, 20260929140106_teacher_courses_overview.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
 # Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_244:-/var/tmp/pg244}; PT=${PGPORT_244:-5644}
@@ -42,5 +42,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -1 -f $R/20260929072412_course_stats.sql \
  && echo "slice + prod migrations (§242 chain + course_stats): ok" \
  && $Q -f $S/10_data_244.sql \
- && $Q -1 -f $R/PENDING_244.sql && $Q -1 -f $R/PENDING_244.sql && echo "PENDING_244 applied twice: ok" \
+ && $Q -1 -f $R/20260929140106_teacher_courses_overview.sql && $Q -1 -f $R/20260929140106_teacher_courses_overview.sql && echo "PENDING_244 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe244 -f $S/20_probes.sql
