@@ -61,8 +61,8 @@ function row(id: string, student: string, kind: QueueRow['topicKind'], attemptOv
   }
 }
 
-function renderPage() {
-  return render(<MemoryRouter><HomeworkReviewQueuePage /></MemoryRouter>)
+function renderPage(url = '/homework-queue') {
+  return render(<MemoryRouter initialEntries={[url]}><HomeworkReviewQueuePage /></MemoryRouter>)
 }
 
 describe('Очередь проверки: тип работы (§240)', () => {
@@ -112,6 +112,13 @@ describe('Очередь проверки: тип работы (§240)', () => {
     localStorage.setItem(WORK_KIND_FILTER_KEY, 'exam')
     renderPage()
     expect(screen.getAllByTestId('queue-attempt-card')).toHaveLength(4)
+  })
+
+  it('переход с `?topic=` (раздел курса, §241) не прячется запомненным фильтром типа', () => {
+    localStorage.setItem(WORK_KIND_FILTER_KEY, 'lesson')
+    renderPage('/homework-queue?topic=t-a3')
+    expect((screen.getByTestId('queue-kind-filter') as HTMLSelectElement).value).toBe('all')
+    expect(localStorage.getItem(WORK_KIND_FILTER_KEY)).toBe('lesson')
   })
 
   it('КР: на экране проверки нет «Вернуть на доработку», в шапке — «сдано автоматически»', () => {

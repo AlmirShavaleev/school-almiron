@@ -5,7 +5,7 @@
 # НАСТОЯЩИЕ файлы миграций ДЗ темы, гейта, файлов, синхронизации, §198, §234 и §240), поверх —
 # настоящие файлы таблицы проверки (§199: 20260917194018, 20260922081120), слепок пробников
 # 05_mock_slice_241.sql (столбцы/таблицы, которые читают функции §241; mock_exam_window — дословно),
-# данные §241, PENDING_241.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
+# данные §241, 20260929062903_course_assessments_section.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
 # Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_241:-/var/tmp/pg241}; PT=${PGPORT_241:-5641}
@@ -37,5 +37,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S/05_mock_slice_241.sql \
  && echo "slice + prod migrations (§240 chain) + mock slice: ok" \
  && $Q -f $S/10_data_241.sql \
- && $Q -1 -f $R/PENDING_241.sql && $Q -1 -f $R/PENDING_241.sql && echo "PENDING_241 applied twice: ok" \
+ && $Q -1 -f $R/20260929062903_course_assessments_section.sql && $Q -1 -f $R/20260929062903_course_assessments_section.sql && echo "PENDING_241 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe241 -f $S/20_probes.sql

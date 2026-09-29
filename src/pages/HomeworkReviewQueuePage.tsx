@@ -544,7 +544,10 @@ export function HomeworkReviewQueuePage() {
   const [onlyLate, setOnlyLate] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // §240. Тип работы: ДЗ / проверочная / КР. Запоминается между заходами.
-  const [kindFilter, setKindFilterState] = useState<WorkKindFilter>(() => readStoredKindFilter(safeLocalStorage()))
+  // §241: переход «Проверка» из раздела курса приходит с `?topic=` — сохранённый
+  // фильтр типа (§240) мог бы спрятать как раз эту тему, поэтому тогда он «Все».
+  const [kindFilter, setKindFilterState] = useState<WorkKindFilter>(() =>
+    searchParams.get('topic') ? 'all' : readStoredKindFilter(safeLocalStorage()))
   const setKindFilter = (value: WorkKindFilter) => {
     setKindFilterState(value)
     storeKindFilter(safeLocalStorage(), value)
