@@ -73,6 +73,11 @@ export const personas = {
   // §243: «тема открыта = ДЗ выдано» — статусы выдачи в окне темы и в разделе
   // «Домашние задания» (фикстуры `apply243`).
   o243: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  // §244: страница «Курсы» (фикстуры `apply244`): учитель со своими курсами,
+  // администратор с чужими, учитель без курсов.
+  o244: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  o244admin: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner },
+  o244empty: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1835,6 +1840,7 @@ export function baseFixtures(persona) {
   if (persona === 'o241') fx.rpc.course_assessments_summary = summary241
   if (persona === 'o242') { apply241(fx, 'o241'); fx.rpc.course_assessments_summary = summary241; apply242(fx) }
   if (persona === 'o243') apply243(fx)
+  if (persona.startsWith('o244')) apply244(fx, persona)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2344,5 +2350,58 @@ function apply243(fx) {
     if (body.p_homework_id !== IDS.hw(1)) return { pending: 0, due_at: null }
     const due = new Date(Math.ceil((Date.now() + 25 * 60e3) / 300e3) * 300e3)
     return { pending: 3, due_at: due.toISOString() }
+  }
+}
+
+// ── §244: страница «Курсы» у учителя ────────────────────────────────────────
+// Все данные выдуманы; раскладка — как в утверждённом макете: три шаблона
+// (математика 1 и 2 часть, физика), классы 11А (все три), 10А (без 2 части —
+// пунктирная плашка) и «Ученики 2026–2027» под разными написаниями, два
+// курса без шаблона и один архивный. Цифры отдаёт заглушка
+// `teacher_courses_overview` — по курсам из p_course_ids, как настоящая
+// функция (только то, что на странице).
+//   o244      — владелец в режиме учителя, все курсы свои;
+//   o244admin — он же администратором, 10А и шаблон физики — чужие
+//               (преподаватель «Лебедева Ольга Игоревна») — подпись владельца;
+//   o244empty — учитель без курсов.
+const T244 = U('a', 244)
+function apply244(fx, persona) {
+  if (persona === 'o244empty') { fx.tables.courses = []; fx.rpc.teacher_courses_overview = []; return }
+  const foreign = persona === 'o244admin'
+  const base = { ...course2, description: null, price: 0, start_date: '2026-09-01', end_date: '2027-05-31', enrollment_open_until: null, is_default_for_direction: false, owner_id: IDS.owner, copied_from_course_id: null, is_draft: false, is_active: true, is_template: false }
+  const C = (n, title, subject, over = {}) => ({ ...base, id: U('d', 2440 + n), title, subject, exam_type: 'ege', ...over })
+  const M1 = C(1, 'Математика ЕГЭ · 1 часть + джентльменский набор', 'math', { is_template: true })
+  const M2 = C(2, 'Математика ЕГЭ · Вторая часть', 'math', { is_template: true })
+  const PH = C(3, 'Физика ЕГЭ', 'physics', { is_template: true, owner_id: foreign ? T244 : IDS.owner })
+  const copy = (n, tpl, tail, over = {}) => C(n, `${tpl.title} ${tail}`, tpl.subject, { copied_from_course_id: tpl.id, ...over })
+  const list = [
+    M1, M2, PH,
+    copy(11, M1, '— 11А'), copy(12, M2, '11А'), copy(13, PH, '11А класс'),
+    copy(21, M1, '10А', { owner_id: foreign ? T244 : IDS.owner }), copy(23, PH, '10А', { owner_id: foreign ? T244 : IDS.owner }),
+    copy(31, M1, '2026-2027 Ученики'), copy(32, M2, 'Ученики 2026–2027', { is_draft: true, is_active: false }), copy(33, PH, 'Ученики 2026-2027'),
+    C(41, '10А', 'physics'), C(42, 'Песочница — пробник (тест)', 'math'),
+    copy(51, PH, '2025 (архив)', { is_active: false }),
+  ]
+  fx.tables.courses = list
+  fx.tables.profiles = [...fx.tables.profiles, { id: T244, email: 'lebedeva@harness.invalid', full_name: 'Лебедева Ольга Игоревна', role: 'teacher', phone: null, avatar_url: null, created_at: ago(24 * 200), updated_at: ago(24) }]
+  const ids = (p, n) => Array.from({ length: n }, (_, i) => U('b', 2440 * 10 + p * 100 + i))
+  const row = (n, over) => ({ course_id: U('d', 2440 + n), students: over.student_ids?.length ?? 0, student_ids: [], topics: 0, open_topics: 0, modules: 0, pending: 0, subs_7d: 0, next_open: null, next_open_count: 0, ...over })
+  const rows = [
+    row(1, { topics: 86, modules: 16 }), row(2, { topics: 131, modules: 6 }), row(3, { topics: 170, modules: 7, next_open: '2026-10-05', next_open_count: 3 }),
+    row(11, { student_ids: ids(1, 24), topics: 86, open_topics: 58, modules: 16, pending: 16, subs_7d: 49, next_open: '2026-11-09', next_open_count: 1 }),
+    row(12, { student_ids: ids(1, 14), topics: 131, open_topics: 23, modules: 6, next_open: '2026-10-12', next_open_count: 2 }),
+    row(13, { student_ids: ids(1, 11), topics: 170, open_topics: 60, modules: 7, pending: 1, subs_7d: 5, next_open: '2026-10-26', next_open_count: 1 }),
+    row(21, { student_ids: ids(2, 8), topics: 86, open_topics: 17, modules: 16, subs_7d: 1 }),
+    row(23, { student_ids: [...ids(2, 7), ...ids(3, 9)], topics: 172, open_topics: 9, modules: 7, pending: 7, subs_7d: 33 }),
+    row(31, { student_ids: ids(4, 2), topics: 86, open_topics: 19, modules: 16, subs_7d: 1 }),
+    row(32, { student_ids: ids(4, 1), topics: 131, open_topics: 14, modules: 6 }),
+    row(33, { student_ids: ids(4, 3), topics: 170, open_topics: 16, modules: 7, pending: 2, subs_7d: 2 }),
+    row(41, { topics: 1, open_topics: 1, modules: 1 }),
+    row(42, { student_ids: ids(5, 2), topics: 4, open_topics: 4, modules: 1 }),
+    row(51, { student_ids: ids(6, 18), topics: 168, open_topics: 168, modules: 7 }),
+  ]
+  fx.rpc.teacher_courses_overview = (body) => {
+    const want = Array.isArray(body?.p_course_ids) ? new Set(body.p_course_ids) : null
+    return rows.filter(r => !want || want.has(r.course_id))
   }
 }

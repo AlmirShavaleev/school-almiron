@@ -1141,6 +1141,29 @@ export const scenes = [
     ]
   }),
 
+  // §244: страница «Курсы» у учителя — по классам (по умолчанию), по
+  // программам, «＋ Класс» (окно копирования шаблона), учитель без курсов,
+  // администратор с чужими курсами. Вид каждая сцена выставляет сама (`ls`):
+  // localStorage общий на персону и ширину. В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d244 1280 ; node e2e/harness/tour.mjs d244 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const view = (v) => [{ ls: ['courses:view', v] }, { goto: '/course-program' }, { wait: 1200 }]
+    return [
+      { persona: 'o244', name: 'd244-classes', url: '/course-program', width, height, actions: view('classes') },
+      { persona: 'o244', name: 'd244-programs', url: '/course-program', width, height, actions: [
+        ...view('classes'), { clickRole: ['button', 'По программам'] }, { wait: 500 },
+      ] },
+      { persona: 'o244', name: 'd244-templates', url: '/course-program', width, height, full: false, actions: [
+        ...view('classes'), { eval: "document.querySelector('[data-testid=\"courses-templates\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 400 },
+      ] },
+      { persona: 'o244', name: 'd244-add-class', url: '/course-program', width, height, full: false, actions: [
+        ...view('classes'), { clickSel: '[data-testid="template-add-class"]' }, { wait: 600 },
+      ] },
+      { persona: 'o244empty', name: 'd244-empty', url: '/course-program', width, height, actions: [{ wait: 1200 }] },
+      { persona: 'o244admin', name: 'd244-admin', url: '/course-program', width, height, actions: view('classes') },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

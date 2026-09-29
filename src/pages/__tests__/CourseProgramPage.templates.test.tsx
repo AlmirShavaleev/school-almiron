@@ -3,13 +3,15 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 
 /**
- * §113. Шаблон — главная карточка, его копии рядом под ним. Проверяем не форму
- * раскладки (её считает `courseGrouping` со своими тестами), а то, что страница
- * действительно рисует копию ПОД шаблоном, показывает бейдж и сохраняет
- * галочку «Это шаблон».
+ * §244 (заменяет проверки полки копий §113–§115). Страница «Курсы» у учителя:
+ * классы строками, программы, шаблоны с «＋ Класс», прочие курсы, архив и
+ * полоса «что требует внимания». Раскладку и подписи проверяет
+ * `lib/__tests__/coursesOverview.test.ts`; здесь — что страница это рисует,
+ * ходит в базу одним вызовом и переживает её отказ.
  */
 
 const saveCourseSpy = vi.fn()
+const rpcSpy = vi.fn()
 
 function makeChain(result: { data: unknown; error: { message?: string } | null }) {
   const chain: any = new Proxy({}, {
@@ -34,18 +36,42 @@ const course = (over: Record<string, unknown>) => ({
 
 const COURSES = [
   course({ id: 'tpl', title: 'Физика ЕГЭ Шаблон', is_template: true }),
-  // Как на проде: копия — неактивный ЧЕРНОВИК. Ключуйся архив по is_active,
-  // она уехала бы туда, и полка под шаблоном опустела бы.
-  course({ id: 'copy', title: 'Физика ЕГЭ 11А класс', is_draft: true, is_active: false, copied_from_course_id: 'tpl' }),
+  course({ id: 'mtpl', title: 'Математика ЕГЭ. 1 часть', subject: 'math', is_template: true }),
+  // Как на проде: свежая копия — неактивный ЧЕРНОВИК; в архив она не уезжает.
+  course({ id: 'copy', title: 'Физика ЕГЭ Шаблон 11А класс', is_draft: true, is_active: false, copied_from_course_id: 'tpl' }),
+  course({ id: 'mcopy', title: 'Математика ЕГЭ. 1 часть 11А', subject: 'math', copied_from_course_id: 'mtpl' }),
+  course({ id: 'copy10', title: 'Физика ЕГЭ Шаблон 10А', copied_from_course_id: 'tpl' }),
   course({ id: 'plain', title: 'Курс сам по себе' }),
   course({ id: 'old', title: 'Убранный курс', is_active: false }),
 ]
 
-vi.mock('@/lib/supabase', () => ({ supabase: { from: () => makeChain({ data: [], error: null }) } }))
+const row = (course_id: string, over: Record<string, unknown> = {}) => ({
+  course_id, students: 0, student_ids: [], topics: 0, open_topics: 0, modules: 0,
+  pending: 0, subs_7d: 0, next_open: null, next_open_count: 0, ...over,
+})
+const OVERVIEW = [
+  row('tpl', { topics: 170, modules: 7 }),
+  row('mtpl', { topics: 86, modules: 16 }),
+  row('copy', { students: 11, student_ids: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11'], topics: 170, open_topics: 60, pending: 1, subs_7d: 5 }),
+  row('mcopy', { students: 3, student_ids: ['s1', 's2', 'm3'], topics: 86, open_topics: 58, pending: 16, subs_7d: 49, next_open: '2026-11-09', next_open_count: 1 }),
+  row('copy10', { students: 2, student_ids: ['t1', 't2'], topics: 170, open_topics: 9 }),
+  row('plain', { topics: 1 }),
+]
+
+let currentCourses: ReturnType<typeof course>[] = COURSES
+let currentProfile = { id: 'teacher-1', role: 'teacher' }
+let profilesRows: { id: string; full_name: string }[] = []
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: (table: string) => makeChain({ data: table === 'profiles' ? profilesRows : [], error: null }),
+    rpc: (fn: string, args: unknown) => rpcSpy(fn, args),
+  },
+}))
 
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: (s: { profile: { id: string; role: string } }) => unknown) =>
-    selector({ profile: { id: 'teacher-1', role: 'teacher' } }),
+    selector({ profile: currentProfile }),
 }))
 
 vi.mock('@/store/toastStore', () => ({
@@ -54,8 +80,9 @@ vi.mock('@/store/toastStore', () => ({
 
 vi.mock('@/hooks/useCourseProgram', () => ({
   useCourseProgram: () => ({
-    courses: COURSES,
+    courses: currentCourses,
     loading: false,
+    reload: vi.fn(),
     loadModules: vi.fn().mockResolvedValue([]),
     saveCourse: (...args: unknown[]) => saveCourseSpy(...args),
     createCourse: vi.fn(),
@@ -78,73 +105,219 @@ function renderPage() {
   )
 }
 
-describe('Список курсов: шаблон и его копии (§113)', () => {
+const classRows = () => screen.queryAllByTestId('class-row')
+const rowName = (el: HTMLElement) => within(el).getByTestId('row-name').textContent
+
+describe('Страница «Курсы» (§244)', () => {
   beforeEach(() => {
     saveCourseSpy.mockReset().mockResolvedValue(undefined)
+    rpcSpy.mockReset().mockResolvedValue({ data: OVERVIEW, error: null })
+    currentCourses = COURSES
+    currentProfile = { id: 'teacher-1', role: 'teacher' }
+    profilesRows = []
+    try { window.localStorage.clear() } catch { /* нет хранилища — и ладно */ }
   })
 
-  it('копия рисуется в ветви под своим шаблоном', () => {
+  it('цифры — одним вызовом базы по курсам со страницы', async () => {
     renderPage()
+    await screen.findByTestId('courses-attention')
 
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    // §114: в списке у копии короткое имя — общая с шаблоном часть отброшена.
-    expect(within(shelf).getByText('11А класс')).toBeInTheDocument()
-    expect(within(shelf).queryByText('Курс сам по себе')).not.toBeInTheDocument()
+    const calls = rpcSpy.mock.calls.filter(c => c[0] === 'teacher_courses_overview')
+    expect(calls).toHaveLength(1)
+    expect([...(calls[0][1] as { p_course_ids: string[] }).p_course_ids].sort())
+      .toEqual(COURSES.map(c => c.id).sort())
   })
 
-  it('полное название копии остаётся подсказкой — короткое имя только вид', () => {
+  it('по умолчанию — по классам: копии разных шаблонов с одним именем класса в одной строке', async () => {
     renderPage()
+    await screen.findByTestId('courses-attention')
 
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    expect(within(shelf).getByRole('link', { name: /11А класс/ }))
-      .toHaveAttribute('title', 'Физика ЕГЭ 11А класс')
+    const rows = classRows()
+    // 11А: 11 + 3 ученика, двое общих ⇒ 12 различных; 10А — 2. Классы — по убыванию учеников.
+    // «11А» и «11А класс» — один класс; написания поровну, показывается первое (шаблон математики — первый).
+    expect(rows.map(rowName)).toEqual(['11А', '10А'])
+    expect(within(rows[0]).getByText('2 курса · 12 учеников')).toBeInTheDocument()
+
+    // Порядок программ в строке — по названиям шаблонов: математика, потом физика.
+    const cards = within(rows[0]).getAllByTestId('course-card')
+    expect(cards.map(c => c.getAttribute('data-course-id'))).toEqual(['mcopy', 'copy'])
+    expect(within(cards[0]).getByText('Математика · 1 часть')).toBeInTheDocument()
+    expect(within(cards[1]).getByText('Физика')).toBeInTheDocument()
   })
 
-  it('ветвь копий сворачивается и разворачивается нажатием', () => {
+  it('карточка — настоящая ссылка в курс, полное название — подсказкой', async () => {
     renderPage()
+    await screen.findByTestId('courses-attention')
 
-    const toggle = screen.getByRole('button', { name: /Копии · 1/ })
-    // По умолчанию развёрнуто: копия одна, прятать её незачем.
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('11А класс')).toBeInTheDocument()
-
-    fireEvent.click(toggle)
-
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('11А класс')).not.toBeInTheDocument()
-    // Счётчик виден и в свёрнутом виде — иначе не понять, что там что-то есть.
-    expect(screen.getByRole('button', { name: /Копии · 1/ })).toBeInTheDocument()
-
-    fireEvent.click(toggle)
-    expect(screen.getByText('11А класс')).toBeInTheDocument()
+    const card = screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === 'copy')!
+    expect(card.tagName).toBe('A')
+    expect(card).toHaveAttribute('href', '/course-program?courseId=copy')
+    expect(card).toHaveAttribute('title', 'Физика ЕГЭ Шаблон 11А класс')
+    expect(card).not.toHaveAttribute('tabindex', '-1')
   })
 
-  it('у шаблона бейдж «шаблон», у копии-черновика — «черновик»', () => {
+  it('на карточке: ученики, открытые темы, чипы проверки/сдач/плана и метка черновика', async () => {
     renderPage()
+    await screen.findByTestId('courses-attention')
 
-    expect(screen.getByText('шаблон')).toBeInTheDocument()
-    expect(screen.getByText('черновик')).toBeInTheDocument()
+    const byId = (id: string) => screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === id)!
+    const phys = byId('copy')
+    expect(within(phys).getByText('11 учеников')).toBeInTheDocument()
+    expect(within(phys).getByText('60 из 170')).toBeInTheDocument()
+    expect(within(phys).getByText('1 ждёт проверки')).toBeInTheDocument()
+    expect(within(phys).getByText('5 сдач за неделю')).toBeInTheDocument()
+    expect(within(phys).getByText('плана нет')).toBeInTheDocument()
+    expect(within(phys).getByText('черновик')).toBeInTheDocument()
+
+    const math = byId('mcopy')
+    expect(within(math).getByText('16 ждут проверки')).toBeInTheDocument()
+    expect(within(math).getByText(/^далее 9 ноя/)).toBeInTheDocument()
+
+    const ten = byId('copy10')
+    expect(within(ten).getByText('нет работ на проверке')).toBeInTheDocument()
+    expect(within(ten).getByText('0 сдач за неделю')).toBeInTheDocument()
   })
 
-  it('копия-черновик НЕ уезжает в архив: там только убранное осознанно', () => {
+  it('полоса внимания: ждут проверки → очередь, сдачи за 7 дней, ближайшее открытие → план курса', async () => {
     renderPage()
+    const strip = await screen.findByTestId('courses-attention')
 
-    expect(screen.getByText(/Архив · 1/)).toBeInTheDocument()
-    expect(screen.getByText('Убранный курс')).toBeInTheDocument()
+    const pending = within(strip).getByTestId('attention-pending')
+    expect(pending).toHaveAttribute('href', '/homework-queue')
+    expect(pending).toHaveTextContent('17')
+    expect(pending).toHaveTextContent('работ ждут проверки · 2 курса')
+    expect(within(strip).getByTestId('attention-subs')).toHaveTextContent('54сдачи за 7 дней по всем классам')
+    const next = within(strip).getByTestId('attention-next')
+    expect(next).toHaveAttribute('href', '/course-program/mcopy/plan')
+    expect(next).toHaveTextContent('следующее открытие по плану · 11А, Математика · 1 часть')
   })
 
-  it('отдельной секции «Черновики» больше нет', () => {
+  it('плана открытия нет ни у одного курса — третьей плитки нет', async () => {
+    rpcSpy.mockResolvedValue({ data: OVERVIEW.map(r => ({ ...r, next_open: null })), error: null })
     renderPage()
+    const strip = await screen.findByTestId('courses-attention')
 
-    expect(screen.queryByText(/Черновики ·/)).not.toBeInTheDocument()
+    expect(within(strip).queryByTestId('attention-next')).not.toBeInTheDocument()
+    expect(within(strip).getByTestId('attention-pending')).toBeInTheDocument()
   })
 
-  it('курс без родства — обычной карточкой, не на полке', () => {
+  it('база не ответила (функции ещё нет) — курсы на месте, без цифр и без полосы', async () => {
+    rpcSpy.mockResolvedValue({ data: null, error: { message: 'Could not find the function' } })
     renderPage()
 
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    expect(within(shelf).queryByText('Курс сам по себе')).not.toBeInTheDocument()
-    expect(screen.getByText('Курс сам по себе')).toBeInTheDocument()
+    await waitFor(() => expect(rpcSpy).toHaveBeenCalled())
+    expect(classRows().map(rowName)).toContain('10А')
+    expect(screen.queryByTestId('courses-attention')).not.toBeInTheDocument()
+    expect(screen.queryByText(/ждут проверки|нет работ на проверке/)).not.toBeInTheDocument()
+  })
+
+  it('«По программам»: строка — шаблон, карточки — его классы; выбор запоминается', async () => {
+    const { unmount } = renderPage()
+    await screen.findByTestId('courses-attention')
+
+    fireEvent.click(screen.getByRole('button', { name: 'По программам' }))
+    expect(screen.getByRole('button', { name: 'По программам' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByTestId('courses-by-class')).not.toBeInTheDocument()
+
+    const rows = screen.getAllByTestId('program-row')
+    expect(rows.map(rowName)).toEqual(['Математика · 1 часть', 'Физика'])
+    expect(within(rows[1]).getByText('шаблон · 170 тем')).toBeInTheDocument()
+    const cards = within(rows[1]).getAllByTestId('course-card')
+    expect(cards.map(c => c.getAttribute('data-course-id'))).toEqual(['copy', 'copy10'])
+    expect(within(cards[0]).getByText('11А')).toBeInTheDocument()
+
+    unmount()
+    renderPage()
+    expect(screen.getByRole('button', { name: 'По программам' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getAllByTestId('program-row')).toHaveLength(2)
+  })
+
+  it('хранилище недоступно — вид по классам, переключатель всё равно работает', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
+    try {
+      renderPage()
+      await screen.findByTestId('courses-attention')
+      expect(screen.getByTestId('courses-by-class')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'По программам' }))
+      expect(screen.getByTestId('courses-by-program')).toBeInTheDocument()
+    } finally {
+      get.mockRestore()
+      set.mockRestore()
+    }
+  })
+
+  it('шаблоны программ: темы и модули, классы ссылками, «Открыть шаблон»', async () => {
+    renderPage()
+    await screen.findByTestId('courses-attention')
+
+    const tpl = screen.getAllByTestId('template-card').find(c => within(c).queryByText('Физика ЕГЭ Шаблон'))!
+    expect(within(tpl).getByText('170 тем · 7 модулей')).toBeInTheDocument()
+    expect(within(tpl).getByText('Классы · 2')).toBeInTheDocument()
+    const links = within(tpl).getAllByTestId('template-class-link')
+    expect(links.map(l => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['11А', '/course-program?courseId=copy'],
+      ['10А', '/course-program?courseId=copy10'],
+    ])
+    expect(within(tpl).getByRole('link', { name: 'Открыть шаблон' })).toHaveAttribute('href', '/course-program?courseId=tpl')
+  })
+
+  it('«＋ Класс» открывает то же окно копирования курса, что «Скопировать курс…» в настройках', async () => {
+    renderPage()
+    await screen.findByTestId('courses-attention')
+
+    const tpl = screen.getAllByTestId('template-card').find(c => within(c).queryByText('Физика ЕГЭ Шаблон'))!
+    fireEvent.click(within(tpl).getByTestId('template-add-class'))
+
+    const dialog = await screen.findByTestId('copy-course-dialog')
+    expect(within(dialog).getByText('Скопировать курс')).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue('Физика ЕГЭ Шаблон (копия)')).toBeInTheDocument()
+  })
+
+  it('ученику «＋ Класс» не показывается', async () => {
+    currentProfile = { id: 'teacher-1', role: 'student' }
+    renderPage()
+    await screen.findByTestId('courses-attention')
+    expect(screen.queryByTestId('template-add-class')).not.toBeInTheDocument()
+  })
+
+  it('курс без шаблона — в «Других курсах» компактной строкой; архив — под спойлером', async () => {
+    renderPage()
+    await screen.findByTestId('courses-attention')
+
+    const other = screen.getByTestId('courses-other')
+    const plain = within(other).getByRole('link', { name: /Курс сам по себе/ })
+    expect(plain).toHaveAttribute('href', '/course-program?courseId=plain')
+    expect(plain).toHaveTextContent('физика · 1 тема · без учеников')
+    expect(within(other).queryByText('Убранный курс')).not.toBeInTheDocument()
+
+    expect(screen.getByText('Архив · 1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Убранный курс/ })).toHaveAttribute('href', '/course-program?courseId=old')
+  })
+
+  it('пустой учитель: «Курсов пока нет», без полосы и без переключателя; база не зовётся', async () => {
+    currentCourses = []
+    renderPage()
+
+    expect(screen.getByTestId('courses-empty')).toHaveTextContent('Курсов пока нет')
+    expect(screen.queryByTestId('courses-attention')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('courses-view-toggle')).not.toBeInTheDocument()
+    expect(rpcSpy).not.toHaveBeenCalled()
+  })
+
+  it('админ смотрит чужие курсы: имя владельца тихой строкой на чужих, на своих — ничего', async () => {
+    currentProfile = { id: 'admin-1', role: 'admin' }
+    currentCourses = COURSES.map(c => (c.id === 'copy10' ? { ...c, owner_id: 'admin-1' } : c))
+    profilesRows = [{ id: 'teacher-1', full_name: 'Иванова Мария' }, { id: 'admin-1', full_name: 'Админ' }]
+    renderPage()
+    await screen.findByTestId('courses-attention')
+
+    const byId = (id: string) => screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === id)!
+    await waitFor(() => expect(within(byId('copy')).getByTestId('course-owner')).toHaveTextContent('Иванова Мария'))
+    expect(within(byId('copy10')).queryByTestId('course-owner')).not.toBeInTheDocument()
+    const tpl = screen.getAllByTestId('template-card').find(c => within(c).queryByText('Физика ЕГЭ Шаблон'))!
+    expect(within(tpl).getByTestId('course-owner')).toHaveTextContent('Иванова Мария')
+    expect(screen.queryByText('Ваш курс')).not.toBeInTheDocument()
   })
 
   it('галочка «Это шаблон» сохраняется вместе с остальными настройками', async () => {
@@ -170,39 +343,5 @@ describe('Список курсов: шаблон и его копии (§113)',
 
     expect(await screen.findByText('Шаблон — каркас. Учеников зачисляют в копии, не в шаблон.'))
       .toBeInTheDocument()
-  })
-
-  /**
-   * §115. На живом просмотре владелец не понял, что строка копии кликабельна.
-   * Проверяем не цвета (их ловит глаз, а не тест), а то, что осталось
-   * настоящей ссылкой с клавиатурным фокусом и получило видимый признак
-   * перехода.
-   */
-  it('копия — настоящая ссылка в курс, а не текст с обработчиком', () => {
-    renderPage()
-
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    const link = within(shelf).getByRole('link', { name: /11А класс/ })
-
-    expect(link).toHaveAttribute('href', expect.stringContaining('courseId=copy'))
-    // Ссылка фокусируется с клавиатуры по умолчанию: tabindex не отбирали.
-    expect(link).not.toHaveAttribute('tabindex', '-1')
-  })
-
-  it('у карточки копии есть стрелка перехода', () => {
-    renderPage()
-
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    expect(within(shelf).getByTestId('course-copy-arrow')).toBeInTheDocument()
-  })
-
-  it('свёрнутая ветвь не оставляет висящих карточек копий', () => {
-    renderPage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Копии · 1/ }))
-
-    const shelf = screen.getByTestId('course-copies-of-tpl')
-    expect(within(shelf).queryByTestId('course-copy-arrow')).not.toBeInTheDocument()
-    expect(within(shelf).queryByRole('link')).not.toBeInTheDocument()
   })
 })

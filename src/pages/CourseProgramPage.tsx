@@ -53,7 +53,9 @@ import {
   type TopicSection,
 } from '@/lib/topicMaterialItems'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
-import { groupCoursesByTemplate } from '@/lib/courseGrouping'
+import { buildCoursesLayout } from '@/lib/coursesOverview'
+import { useTeacherCoursesOverview } from '@/hooks/useTeacherCoursesOverview'
+import { CoursesOverview, CoursesViewToggle, useCoursesView } from '@/components/courseProgram/CoursesOverview'
 import { copyDisplayTitle } from '@/lib/courseDisplayName'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { onlyEgeTrack } from '@/lib/training'
@@ -1362,124 +1364,6 @@ type CourseTab = typeof COURSE_TABS[number]
 /** Вкладки про учеников — на каркасе курса их нет (§174). */
 const STUDENT_TABS = ['homework', 'testresults', 'students'] as const satisfies readonly CourseTab[]
 
-/**
- * Карточка курса в списке. Именно ссылка, а не кнопка: браузер сам умеет
- * открывать ссылки в новой вкладке, показывать адрес в статусной строке и
- * копировать его по правому клику. Кнопка всё это ломает.
- */
-function CourseCard({ course, ownerLabel }: { course: Course; ownerLabel?: string | null }) {
-  return (
-    <Link
-      to={`/course-program?courseId=${course.id}`}
-      data-testid={course.is_template ? 'course-card-template' : 'course-card'}
-      className={cn(
-        'group flex min-h-[92px] flex-col justify-between rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-        // Шаблон видно ещё до чтения бейджа: рамка заметнее, фон холоднее.
-        course.is_template ? 'border-primary-200 bg-primary-50/40' : 'border-gray-100 bg-white',
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold leading-snug text-gray-900 group-hover:text-primary-700">
-          {course.title}
-        </span>
-        {course.is_template ? (
-          <span className="mt-0.5 shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
-            шаблон
-          </span>
-        ) : course.is_draft ? (
-          <span className="mt-0.5 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-            черновик
-          </span>
-        ) : !course.is_active ? (
-          <span className="mt-0.5 shrink-0 text-xs text-gray-400">архив</span>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <Badge variant="info" className="text-xs">{SUBJECT_LABELS[course.subject] || course.subject}</Badge>
-        <Badge variant="default" className="text-xs">{EXAM_LABELS[course.exam_type] || course.exam_type}</Badge>
-      </div>
-      {/* Чей курс — тихой строкой внизу. Не плашкой: в списке из десятка
-          карточек громкая метка на каждой превращается в шум. */}
-      {ownerLabel && (
-        <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
-          <GraduationCap size={12} className="shrink-0" />
-          <span className="truncate">{ownerLabel}</span>
-        </span>
-      )}
-    </Link>
-  )
-}
-
-/**
- * Ветвь копий под карточкой шаблона: аккордеон с коротким именем каждой копии.
- *
- * Копия — не полноразмерная карточка, а строка: имя у неё короткое (общая с
- * шаблоном часть отброшена, см. `copyDisplayTitle`), а полное название висит
- * подсказкой. Так три шаблона со своими группами помещаются на один экран, а
- * не на три — ровно то, на что смотрел владелец 10.08 (§114).
- *
- * По умолчанию РАЗВЁРНУТО: сейчас у каждого шаблона по одной копии, и
- * свёрнутый список прятал бы ровно то, ради чего затевалась группировка.
- * Состояние живёт в памяти страницы: ни localStorage, ни sessionStorage —
- * цена ошибки выше пользы (правило §105 про хранилища).
- */
-function CourseCopiesShelf({ template, copies }: { template: Course; copies: Course[] }) {
-  const [open, setOpen] = useState(true)
-
-  return (
-    <div
-      data-testid={`course-copies-of-${template.id}`}
-      className="ml-3 rounded-xl border-l-2 border-primary-100 bg-primary-50/40 py-1.5 pl-3 pr-2"
-    >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(v => !v)}
-        className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-xs text-gray-500 transition-colors hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-      >
-        <ChevronRight size={12} className={cn('transition-transform', open && 'rotate-90')} />
-        Копии · {copies.length}
-      </button>
-
-      {open && (
-        <div className="mt-1 space-y-1">
-          {copies.map(c => (
-            <Link
-              key={c.id}
-              to={`/course-program?courseId=${c.id}`}
-              // Полное название — подсказкой: короткое имя не должно мешать
-              // убедиться, что это за курс, не открывая его.
-              title={c.title}
-              /*
-                Белая карточка-кнопка на голубоватой полке (§115). Строкой без
-                фона копия не читалась как нажимаемая — владелец на живом
-                просмотре не понял, ссылка это или просто текст. Высота
-                остаётся строчной: полноразмерная плитка сломала бы ряд
-                шаблонов, ради которого делался §114.
-              */
-              className="group/copy flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 transition-all hover:border-primary-300 hover:text-primary-700 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-            >
-              <span className="min-w-0 flex-1 truncate font-medium">{copyDisplayTitle(c.title, template.title)}</span>
-              {c.is_draft && (
-                <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                  черновик
-                </span>
-              )}
-              {/* Стрелка — признак перехода: по ней видно, что карточка ведёт
-                  в курс, а не просто подписана. */}
-              <ChevronRight
-                size={14}
-                data-testid="course-copy-arrow"
-                className="shrink-0 text-gray-300 transition-colors group-hover/copy:text-primary-400"
-              />
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
   const { readOnly } = useMyTeachingScope()
@@ -1570,9 +1454,10 @@ export function CourseProgramPage() {
     return () => { cancelled = true }
   }, [ownerIdsKey])
 
+  // §244: подпись владельца — только на чужих курсах (админ смотрит курсы
+  // преподавателей). «Ваш курс» на каждой карточке своего списка был шумом.
   const ownerLabelFor = (course: Course): string | null => {
-    if (!course.owner_id) return null
-    if (course.owner_id === profile?.id) return 'Ваш курс'
+    if (!course.owner_id || course.owner_id === profile?.id) return null
     return ownerNames[course.owner_id] || null
   }
 
@@ -1707,19 +1592,23 @@ export function CourseProgramPage() {
     [homeworkByTopic],
   )
 
-  // Рабочие курсы наверх, архивные — под спойлер. Раньше три технических
-  // «[E2E] Цикл ДЗ …» с пометкой «архив» стояли первыми и оттесняли живые
-  // курсы за пределы первого экрана.
   /**
-   * Раскладка списка живёт в `lib/courseGrouping` — там же её тесты (§113).
-   *
-   * Архив тут НЕ равен «неактивен»: свежая копия рождается неактивным
-   * черновиком, и по одному `is_active` обе копии уехали бы в архив, оставив
-   * шаблоны с пустыми полками.
+   * Раскладка списка (§244) — `lib/coursesOverview` поверх `lib/courseGrouping`
+   * (§113), тесты там же. Архив НЕ равен «неактивен»: свежая копия рождается
+   * неактивным черновиком и остаётся в своём классе.
    */
-  const grouped = useMemo(() => groupCoursesByTemplate(courses), [courses])
-
   const selectedCourse = courses.find(c => c.id === selectedId) || null
+
+  /**
+   * §244. Цифры по курсам — одним вызовом базы, только пока открыт список:
+   * вернулись из курса — перечитали (могли проверить работы, открыть темы).
+   */
+  const courseIds = useMemo(() => courses.map(c => c.id), [courses])
+  const overview = useTeacherCoursesOverview(courseIds, !loading && !selectedCourse)
+  const layout = useMemo(() => buildCoursesLayout(courses, overview.stats), [courses, overview.stats])
+  const [coursesView, setCoursesView] = useCoursesView()
+  /** «＋ Класс» у шаблона — то же окно копирования, что «Скопировать курс…» в настройках. */
+  const [addClassFrom, setAddClassFrom] = useState<Course | null>(null)
 
   /**
    * Классы-копии каркаса (§174) — из уже загруженного списка курсов, без
@@ -2034,17 +1923,19 @@ export function CourseProgramPage() {
               в курс на весь экран, Ctrl+клик и клик колёсиком открывают его в
               новой вкладке браузера, а адрес курса можно скопировать и
               переслать. С <button> ничего из этого не работает. */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">Курсы</h2>
-          {isAdmin && (
-            <button
-              onClick={() => setShowNew(v => !v)}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-800"
-            >
-              <Plus size={18} />
-              Новый курс
-            </button>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-extrabold text-gray-900">Курсы</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {!loading && layout.programs.length > 0 && (
+              <CoursesViewToggle view={coursesView} onChange={setCoursesView} />
+            )}
+            {isAdmin && (
+              <Button size="sm" onClick={() => setShowNew(v => !v)}>
+                <Plus size={16} />
+                Новый курс
+              </Button>
+            )}
+          </div>
         </div>
 
       {/* New course form */}
@@ -2092,50 +1983,20 @@ export function CourseProgramPage() {
             <Loader2 size={16} className="animate-spin" />Загрузка…
           </div>
         ) : courses.length === 0 ? (
-          <p className="py-4 text-sm text-gray-400">Нет курсов</p>
+          <div data-testid="courses-empty" className="rounded-2xl border border-dashed border-gray-300 bg-white/60 px-4 py-6 text-center">
+            <p className="text-sm font-semibold text-gray-700">Курсов пока нет</p>
+            {isAdmin && <p className="mt-1 text-sm text-gray-500">Создайте первый кнопкой «Новый курс».</p>}
+          </div>
         ) : (
-          <>
-            {/* Шаблоны — сеткой в ряд, ответвления вниз (§114).
-                Раньше каждый шаблон занимал свою строку вместе с полкой копий,
-                и три шаблона растягивались на три экрана. Теперь шаблон —
-                обычная плитка в общей сетке, а копии висят ветвью под своей
-                плиткой, в её же колонке: с короткими именами («11А») они
-                занимают строку, а не карточку, и ряд шаблонов не рвётся. */}
-            {grouped.groups.length > 0 && (
-              <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {grouped.groups.map(group => (
-                  <div key={group.template.id} className="space-y-2">
-                    <CourseCard course={group.template} ownerLabel={ownerLabelFor(group.template)} />
-                    {group.copies.length > 0 && (
-                      <CourseCopiesShelf template={group.template} copies={group.copies} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Всё, что живёт само по себе: обычные курсы и копии, потерявшие
-                шаблон. Потерять курс из списка страшнее, чем показать его без
-                родителя. */}
-            {grouped.loose.length > 0 && (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {grouped.loose.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
-              </div>
-            )}
-
-            {/* Архивные курсы уводим под спойлер: их не открывают каждый день,
-                а в общем списке они оттесняли рабочие курсы вниз. */}
-            {grouped.archived.length > 0 && (
-              <details className="rounded-2xl border border-gray-100 bg-white/60 px-4 py-3">
-                <summary className="cursor-pointer select-none text-sm font-medium text-gray-500 hover:text-gray-700">
-                  Архив · {grouped.archived.length}
-                </summary>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {grouped.archived.map(c => <CourseCard key={c.id} course={c} ownerLabel={ownerLabelFor(c)} />)}
-                </div>
-              </details>
-            )}
-          </>
+          <CoursesOverview
+            layout={layout}
+            stats={overview.stats}
+            statsLoading={overview.loading}
+            view={coursesView}
+            ownerLabelFor={ownerLabelFor}
+            canAddClass={canEdit}
+            onAddClass={setAddClassFrom}
+          />
         )}
       </div>
       ) : (
@@ -2521,6 +2382,21 @@ export function CourseProgramPage() {
         course={selectedCourse}
         onCopied={newCourseId => {
           setCopyCourseOpen(false)
+          void reloadCourses()
+          selectCourse(newCourseId)
+        }}
+      />
+    )}
+
+    {/* §244: «＋ Класс» у шаблона в списке — то же окно и та же механика
+        копирования (copyCourse), что «Скопировать курс…» в настройках курса. */}
+    {!selectedCourse && addClassFrom && (
+      <CopyCourseDialog
+        open
+        onClose={() => { setAddClassFrom(null); void reloadCourses() }}
+        course={addClassFrom}
+        onCopied={newCourseId => {
+          setAddClassFrom(null)
           void reloadCourses()
           selectCourse(newCourseId)
         }}
