@@ -608,7 +608,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     ? `Откроется сама ${new Date(willOpen + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`
     : dateAutomation
       ? 'Открытием управляет дата'
-      : 'Решает тумблер, дата не действует'
+      : 'Решает тумблер. Поставьте дату — тема откроется по ней'
 
   const activeSection = SECTIONS.find(s => s.type === activeTab)!
 
@@ -627,7 +627,16 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     if (dateVal === (availableFrom || '')) return
     setSavingDate(true)
     try {
-      await onSaveTopicMeta({ available_from: dateVal || null })
+      // §245. Дата — это просьба «открой тогда-то», поэтому она переводит тему
+      // на автоматику (is_open = null). Раньше писалась только дата, а у 80 %
+      // тем тумблер стоит вручную на «Закрыта» — дата молча не действовала, и
+      // у темы не появлялось «откроется …» (владелец 30.09).
+      // Дату стёрли — фиксируем то, что человек видит сейчас: null + пустая
+      // дата по правилу topic_open_now означает «открыта», и стирание даты у
+      // закрытой темы открыло бы её ученикам.
+      await onSaveTopicMeta(dateVal
+        ? { available_from: dateVal, is_open: null }
+        : { available_from: null, is_open: topicOpen })
       toast.saved()
     } catch (e) {
       saveFailed(e)
