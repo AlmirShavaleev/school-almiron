@@ -5,6 +5,7 @@ import { getSignedFileUrl } from '@/lib/storage'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { cn } from '@/utils/cn'
 import { onlyEgeTrack } from '@/lib/training'
+import { noteTaskKey } from '@/lib/reviewNotes'
 
 /**
  * Просмотрщик страниц грузится лениво: pdfjs весит ~450 КБ, а панель решения
@@ -250,6 +251,85 @@ export function SolutionReferenceColumn({
           </div>
         ) : (
           materials.map(m => <SolutionItem key={m.id} material={m} topicId={topicId} />)
+        )}
+      </div>
+    </aside>
+  )
+}
+
+/**
+ * §248. Эталон на спокойном экране проверки — выдвижная панель поверх фото
+ * слева. Постоянной колонки эталона больше нет: её место отдано работе.
+ *
+ * Сверху — ответы по заданиям из таблицы проверки (тот же «Эталон», что у
+ * текущего задания справа; текущее подсвечено), ниже — авторское решение
+ * целиком, тем же `SolutionItem`, что у колонки и блока. Три правила панели
+ * решения те же: только персонал, никогда не в ленте работы, скрытое видно.
+ */
+export function SolutionReferenceDrawer({
+  topicId, materials, loading, answers, currentNo, onClose, scrollRef,
+}: {
+  topicId: string
+  materials: TopicMaterial[]
+  loading: boolean
+  /** Номер задания → ожидаемый ответ, в порядке таблицы. */
+  answers: readonly { no: string; expected: string | null }[]
+  /** Ключ текущего задания — его строка подсвечена. */
+  currentNo?: string | null
+  onClose: () => void
+  scrollRef?: React.Ref<HTMLDivElement>
+}) {
+  const current = noteTaskKey(currentNo)
+  const shownAnswers = answers.filter(item => (item.expected ?? '').trim().length > 0)
+  return (
+    <aside
+      data-testid="solution-reference-drawer"
+      aria-label="Эталон"
+      data-review-keys="off"
+      className="absolute inset-y-0 left-0 z-30 flex w-[min(430px,92%)] flex-col border-r border-graphite-200 bg-white shadow-[8px_0_30px_rgba(18,35,74,.16)]"
+    >
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-graphite-100 px-4 py-3">
+        <span className="min-w-0">
+          <span className="block text-[15px] font-extrabold text-graphite-900">Ответы и критерии</span>
+          <span className="block text-xs text-graphite-500">Только для вас — ученик этого не увидит</span>
+        </span>
+        <button
+          type="button"
+          data-testid="solution-reference-drawer-close"
+          onClick={onClose}
+          className="shrink-0 rounded-lg border border-graphite-200 px-2.5 py-1 text-xs font-bold text-graphite-800 hover:border-graphite-300"
+        >
+          Закрыть
+        </button>
+      </div>
+      <div ref={scrollRef} data-testid="solution-reference-drawer-scroll" className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
+        {shownAnswers.length > 0 && (
+          <table data-testid="solution-reference-answers" className="w-full border-collapse text-sm">
+            <tbody>
+              {shownAnswers.map(item => {
+                const on = current !== '' && noteTaskKey(item.no) === current
+                return (
+                  <tr key={item.no} data-no={item.no} data-current={on ? 'true' : undefined} className={cn(on && 'bg-primary-50')}>
+                    <td className="w-9 border-t border-graphite-200 px-1 py-1.5 align-top font-bold tabular-nums text-graphite-400">{item.no}</td>
+                    <td className="break-words border-t border-graphite-200 px-1 py-1.5 align-top text-graphite-900">{item.expected}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+        {(loading || materials.length > 0) && (
+          <div className="space-y-4">
+            <p className="text-xs font-bold uppercase tracking-[0.04em] text-graphite-500">Авторское решение</p>
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-graphite-400">
+                <Loader2 size={14} className="animate-spin" />
+                Загружаю решение…
+              </div>
+            ) : (
+              materials.map(m => <SolutionItem key={m.id} material={m} topicId={topicId} />)
+            )}
+          </div>
         )}
       </div>
     </aside>

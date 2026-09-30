@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { SOLUTION_FRACTION_STORAGE_KEY } from '@/lib/reviewPaneLayout'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
 /**
- * §235. «Решение: Рядом / Внизу» на экране проверки.
+ * §235 → §248. Где на экране проверки эталон.
  *
- * Поведение, а не классы: где ОКАЗЫВАЕТСЯ эталон (колонка слева или блок под
- * заданиями), что его ровно одна копия, что выбор переживает повторное
- * открытие и падение хранилища, и что на узком экране и без эталона
- * переключателя нет. Блок и колонка — настоящие (эталон текстовый, сети нет),
- * подменён только хук загрузки материалов.
+ * До §248 здесь проверялся переключатель «Решение: Рядом / Внизу» — эталон
+ * постоянной колонкой слева от работы или блоком под заданиями. Владелец
+ * назвал постоянную колонку шумом (макет §248): теперь «Рядом» — это
+ * ВЫДВИЖНАЯ панель поверх фото по кнопке «Эталон», а «Внизу» — пункт меню
+ * «…» («Эталон снизу, а не сбоку»), блок под заданием как в §226. Ключ
+ * хранилища прежний, поэтому тесты памяти выбора остались по смыслу теми же.
+ *
+ * Поведение, а не классы: где ОКАЗЫВАЕТСЯ эталон, что он одной копией, что
+ * выбор переживает повторное открытие и падение хранилища, что Esc сначала
+ * закрывает панель, а не весь разбор. Панель и блок — настоящие (эталон
+ * текстовый, сети нет), подменён только хук загрузки материалов.
  */
 
 const materials = [{
@@ -45,25 +50,11 @@ const files = [{
   mime_type: 'image/jpeg', size_bytes: 10, position: 0, created_at: '',
 }]
 
-/** Ширина окна для `matchMedia('(min-width: 1024px)')` — с переключением на лету. */
-function stubScreen(wide: boolean) {
-  const listeners = new Set<() => void>()
-  const query = {
-    matches: wide,
-    media: '(min-width: 1024px)',
-    addEventListener: (_: string, fn: () => void) => { listeners.add(fn) },
-    removeEventListener: (_: string, fn: () => void) => { listeners.delete(fn) },
-  }
-  Object.defineProperty(window, 'matchMedia', {
-    configurable: true, writable: true, value: vi.fn(() => query),
-  })
-  return {
-    resize(next: boolean) {
-      query.matches = next
-      act(() => { listeners.forEach(fn => fn()) })
-    },
-  }
-}
+const answers = [
+  { no: '1', expected: '12 м/с' },
+  { no: '2', expected: '0,4' },
+  { no: '3', expected: null },
+]
 
 function renderReview(extra: Record<string, unknown> = {}) {
   return render(
@@ -72,12 +63,14 @@ function renderReview(extra: Record<string, unknown> = {}) {
       files={files}
       title="ДЗ"
       solutionTopicId="t1"
+      referenceAnswers={answers}
+      currentTaskNo="2"
       reviewPanel={({ reference, showReference }) => (
         <div data-testid="tasks">
           задания
           {showReference && (
             <button type="button" data-testid="show-reference" onClick={showReference}>
-              Авторское решение целиком ↓
+              Решение в эталоне
             </button>
           )}
           {reference}
@@ -90,210 +83,151 @@ function renderReview(extra: Record<string, unknown> = {}) {
   )
 }
 
-const column = () => screen.queryByTestId('solution-reference-column')
+const drawer = () => screen.queryByTestId('solution-reference-drawer')
 const block = () => screen.queryByTestId('solution-reference-panel')
-const sideBtn = () => screen.getByTestId('reference-placement-side')
-const belowBtn = () => screen.getByTestId('reference-placement-below')
+const toggle = () => screen.getByTestId('attempt-reference-toggle')
+const openMenu = () => fireEvent.click(screen.getByTestId('attempt-more-menu'))
+const placementItem = () => screen.getByTestId('reference-placement-toggle')
 
-describe('§235. Решение рядом или внизу', () => {
+describe('§248. Эталон по запросу: панель поверх фото или блок снизу', () => {
   beforeEach(() => {
     window.localStorage.clear()
   })
   afterEach(() => {
-    delete (window as { matchMedia?: unknown }).matchMedia
+    vi.restoreAllMocks()
   })
 
-  it('по умолчанию «Рядом»: эталон колонкой слева от работы, блока под заданиями нет', () => {
-    stubScreen(true)
+  it('по умолчанию эталона на экране нет — постоянной колонки больше нет', () => {
     renderReview()
-
-    expect(sideBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(belowBtn()).toHaveAttribute('aria-pressed', 'false')
-
-    const col = column()
-    expect(col).toBeInTheDocument()
-    expect(within(col as HTMLElement).getByText(/Ответ: 12 м\/с/)).toBeInTheDocument()
-    // Одна копия эталона на экране — не колонка плюс блок.
+    expect(drawer()).not.toBeInTheDocument()
     expect(block()).not.toBeInTheDocument()
-    expect(screen.getAllByText(/Ответ: 12 м\/с/)).toHaveLength(1)
-
-    // Порядок колонок: эталон, граница, работа, граница, задания.
-    const row = screen.getByTestId('attempt-split-row')
-    const order = Array.from(row.children).map(el => (el as HTMLElement).dataset.testid)
-    expect(order).toEqual([
-      'solution-reference-column', 'solution-split-handle', 'attempt-work-column',
-      'review-split-handle', 'review-side-column',
-    ])
-    // Нижняя строка решения на месте и вне колонок.
-    expect(row.contains(screen.getByTestId('review-bar'))).toBe(false)
-  })
-
-  it('«Внизу» — как в §226: колонки нет, блок под заданиями; и обратно', () => {
-    stubScreen(true)
-    renderReview()
-
-    fireEvent.click(belowBtn())
-    expect(belowBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(column()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('solution-reference-column')).not.toBeInTheDocument()
     expect(screen.queryByTestId('solution-split-handle')).not.toBeInTheDocument()
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false')
+    // Колонок две: работа и задание.
+    const order = Array.from(screen.getByTestId('attempt-split-row').children).map(el => (el as HTMLElement).dataset.testid)
+    expect(order).toEqual(['attempt-work-column', 'review-split-handle', 'review-side-column'])
+  })
+
+  it('«Эталон» открывает панель поверх фото: ответы, авторское решение, «только для вас»', () => {
+    renderReview()
+    fireEvent.click(toggle())
+    const panel = drawer() as HTMLElement
+    expect(panel).toBeInTheDocument()
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true')
+    // Панель — внутри колонки фото, а не отдельной колонкой.
+    expect(screen.getByTestId('attempt-work-column')).toContainElement(panel)
+    expect(panel).toHaveTextContent('Только для вас — ученик этого не увидит')
+    expect(within(panel).getByText(/Ответ: 12 м\/с/)).toBeInTheDocument()
+    // Ответы по заданиям: пустой эталон не печатается, текущее подсвечено.
+    const rows = within(panel).getByTestId('solution-reference-answers').querySelectorAll('tr')
+    expect(Array.from(rows).map(row => row.dataset.no)).toEqual(['1', '2'])
+    expect(rows[1]).toHaveAttribute('data-current', 'true')
+    expect(rows[0]).not.toHaveAttribute('data-current')
+
+    fireEvent.click(toggle())
+    expect(drawer()).not.toBeInTheDocument()
+  })
+
+  it('«Решение в эталоне» у задания открывает ту же панель; «Закрыть» закрывает', () => {
+    renderReview()
+    fireEvent.click(screen.getByTestId('show-reference'))
+    expect(drawer()).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('solution-reference-drawer-close'))
+    expect(drawer()).not.toBeInTheDocument()
+  })
+
+  it('Esc сначала закрывает панель эталона и только потом — сам разбор', () => {
+    const onClose = vi.fn()
+    renderReview({ onClose })
+    fireEvent.click(toggle())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(drawer()).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('«Эталон снизу, а не сбоку» из меню — блок под заданием, как в §226; и обратно', () => {
+    renderReview()
+    openMenu()
+    expect(placementItem()).toHaveTextContent('Эталон снизу, а не сбоку')
+    fireEvent.click(placementItem())
+
+    expect(window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY)).toBe('below')
     expect(within(screen.getByTestId('review-side-column')).getByTestId('solution-reference-panel')).toBeInTheDocument()
+    expect(drawer()).not.toBeInTheDocument()
     expect(screen.getAllByText(/Ответ: 12 м\/с/)).toHaveLength(1)
+    // «Эталон» в этом режиме сворачивает и раскрывает блок.
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(toggle())
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('attempt-solution-toggle')).toHaveAttribute('aria-expanded', 'false')
 
-    fireEvent.click(sideBtn())
-    expect(column()).toBeInTheDocument()
+    openMenu()
+    expect(placementItem()).toHaveTextContent('Эталон сбоку, поверх фото')
+    fireEvent.click(placementItem())
     expect(block()).not.toBeInTheDocument()
-  })
-
-  it('«Внизу ↓» в шапке колонки делает то же, что вторая кнопка', () => {
-    stubScreen(true)
-    renderReview()
-    fireEvent.click(screen.getByTestId('solution-reference-column-below'))
-    expect(column()).not.toBeInTheDocument()
-    expect(belowBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY)).toBe('below')
-  })
-
-  it('выбор запоминается и действует в следующей работе', () => {
-    stubScreen(true)
-    renderReview()
-    fireEvent.click(belowBtn())
-    expect(window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY)).toBe('below')
-
-    cleanup()
-    renderReview()
-    expect(belowBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(column()).not.toBeInTheDocument()
-    expect(block()).toBeInTheDocument()
-
-    fireEvent.click(sideBtn())
     expect(window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY)).toBe('side')
+  })
+
+  it('выбор «снизу» запоминается и действует в следующей работе', () => {
+    renderReview()
+    openMenu()
+    fireEvent.click(placementItem())
     cleanup()
     renderReview()
-    expect(column()).toBeInTheDocument()
+    expect(block()).toBeInTheDocument()
+    expect(drawer()).not.toBeInTheDocument()
   })
 
-  it('мусор в хранилище читается как «Рядом»', () => {
+  it('мусор в хранилище читается как «сбоку»', () => {
     window.localStorage.setItem(REFERENCE_PLACEMENT_STORAGE_KEY, 'поперёк')
-    stubScreen(true)
     renderReview()
-    expect(sideBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(column()).toBeInTheDocument()
+    expect(block()).not.toBeInTheDocument()
+    fireEvent.click(toggle())
+    expect(drawer()).toBeInTheDocument()
   })
 
-  it('хранилище недоступно — «Рядом», переключение работает, экран не падает', () => {
+  it('хранилище недоступно — «сбоку», переключение работает, экран не падает', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('SecurityError') })
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
-    stubScreen(true)
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('SecurityError') })
     renderReview()
-
-    expect(sideBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(column()).toBeInTheDocument()
-
-    fireEvent.click(belowBtn())
-    expect(column()).not.toBeInTheDocument()
+    fireEvent.click(toggle())
+    expect(drawer()).toBeInTheDocument()
+    openMenu()
+    fireEvent.click(placementItem())
     expect(block()).toBeInTheDocument()
   })
 
-  it('у темы нет эталона — нет ни переключателя, ни колонки', () => {
-    stubScreen(true)
-    renderReview({ solutionTopicId: undefined })
-    expect(screen.queryByTestId('reference-placement')).not.toBeInTheDocument()
-    expect(column()).not.toBeInTheDocument()
-    expect(block()).not.toBeInTheDocument()
+  it('у темы нет авторского решения, но есть ответы — «Эталон» показывает ответы, пункта «снизу» нет', () => {
+    renderReview({ solutionTopicId: null })
+    fireEvent.click(toggle())
+    expect(within(drawer() as HTMLElement).getByTestId('solution-reference-answers')).toBeInTheDocument()
+    expect(within(drawer() as HTMLElement).queryByText(/Авторское решение/)).not.toBeInTheDocument()
+    openMenu()
+    expect(screen.queryByTestId('reference-placement-toggle')).not.toBeInTheDocument()
+  })
+
+  it('ни решения, ни ответов — ни кнопки «Эталон», ни ссылки у задания', () => {
+    renderReview({ solutionTopicId: null, referenceAnswers: [] })
+    expect(screen.queryByTestId('attempt-reference-toggle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('show-reference')).not.toBeInTheDocument()
   })
 
-  it('узкий экран — всегда «Внизу», переключатель скрыт, даже если запомнено «Рядом»', () => {
-    window.localStorage.setItem(REFERENCE_PLACEMENT_STORAGE_KEY, 'side')
-    stubScreen(false)
-    renderReview()
-    expect(screen.queryByTestId('reference-placement')).not.toBeInTheDocument()
-    expect(column()).not.toBeInTheDocument()
-    expect(within(screen.getByTestId('review-side-column')).getByTestId('solution-reference-panel')).toBeInTheDocument()
+  it('режим чтения (в работе коллега): вердикта нет, а эталон по-прежнему открывается', () => {
+    renderReview({ locked: true, viewers: [{ profileId: 'p2', name: 'Коллега', attemptId: 'a1' }] })
+    expect(screen.queryByTestId('review-side-column')).not.toBeInTheDocument()
+    fireEvent.click(toggle())
+    expect(drawer()).toBeInTheDocument()
   })
 
-  it('окно сузили на ходу — эталон уезжает вниз; расширили — возвращается рядом, выбор не стёрт', () => {
-    const screenSize = stubScreen(true)
-    renderReview()
-    expect(column()).toBeInTheDocument()
-
-    screenSize.resize(false)
-    expect(column()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('reference-placement')).not.toBeInTheDocument()
-    expect(block()).toBeInTheDocument()
-
-    screenSize.resize(true)
-    expect(column()).toBeInTheDocument()
-    expect(window.localStorage.getItem(REFERENCE_PLACEMENT_STORAGE_KEY)).toBeNull()
-  })
-
-  it('«Авторское решение целиком» в режиме «Рядом» прокручивает колонку эталона к началу', () => {
-    stubScreen(true)
-    renderReview()
-    const scroller = screen.getByTestId('solution-reference-column-scroll')
-    const scrollTo = vi.fn()
-    ;(scroller as HTMLElement & { scrollTo: typeof scrollTo }).scrollTo = scrollTo
-
-    fireEvent.click(screen.getByTestId('show-reference'))
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }))
-    expect(column()).toHaveAttribute('data-flash', 'true')
-    // Режим не переключился и блок внизу не появился.
-    expect(block()).not.toBeInTheDocument()
-  })
-
-  it('«Авторское решение целиком» в режиме «Внизу» по-прежнему раскрывает блок', () => {
-    window.localStorage.setItem(REFERENCE_PLACEMENT_STORAGE_KEY, 'below')
-    window.localStorage.setItem('review:reference-open', '0')
-    stubScreen(true)
-    renderReview()
-    expect(screen.getByTestId('attempt-solution-toggle')).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(screen.getByTestId('show-reference'))
-    expect(screen.getByTestId('attempt-solution-toggle')).toHaveAttribute('aria-expanded', 'true')
-  })
-
-  it('граница «эталон | работа» двигается с клавиатуры и запоминается общей долей', () => {
-    stubScreen(true)
-    renderReview()
-    const handle = screen.getByTestId('solution-split-handle')
-    fireEvent.keyDown(handle, { key: 'ArrowRight' })
-    expect(column()?.style.getPropertyValue('--solution-pane-w')).toBe('42.0%')
-    expect(Number(window.localStorage.getItem(SOLUTION_FRACTION_STORAGE_KEY))).toBeCloseTo(0.42, 5)
-
-    cleanup()
-    renderReview()
-    expect(column()?.style.getPropertyValue('--solution-pane-w')).toBe('42.0%')
-  })
-
-  it('граница двигается указателем', () => {
-    stubScreen(true)
-    renderReview()
-    const row = screen.getByTestId('attempt-split-row')
-    row.getBoundingClientRect = () => ({
-      left: 0, width: 1000, right: 1000, top: 0, bottom: 800, height: 800, x: 0, y: 0, toJSON: () => ({}),
-    }) as DOMRect
-    const handle = screen.getByTestId('solution-split-handle')
-    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 400 })
-    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 300 })
-    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 300 })
-    expect(column()?.style.getPropertyValue('--solution-pane-w')).toBe('30.0%')
-    expect(window.localStorage.getItem(SOLUTION_FRACTION_STORAGE_KEY)).toBe('0.3')
-  })
-
-  it('режим чтения (в работе коллега) не трогаем: переключателя нет, эталон в своей колонке справа', () => {
-    stubScreen(true)
-    renderReview({ locked: true })
-    expect(screen.queryByTestId('reference-placement')).not.toBeInTheDocument()
-    expect(column()).not.toBeInTheDocument()
-    expect(within(screen.getByTestId('review-reference-column')).getByTestId('solution-reference-panel')).toBeInTheDocument()
-  })
-
-  it('экран ученика не трогаем: ни переключателя, ни колонки эталона', () => {
-    stubScreen(true)
+  it('экран ученика не трогаем: ни кнопки «Эталон», ни панели', () => {
     render(
       <AttemptAnnotationOverlay attemptId="a1" files={files} title="ДЗ" readOnly onClose={() => {}} />,
     )
-    expect(screen.queryByTestId('reference-placement')).not.toBeInTheDocument()
-    expect(column()).not.toBeInTheDocument()
-    expect(screen.queryByTestId('attempt-annotation-overlay')?.dataset.layout).toBeUndefined()
+    expect(screen.queryByTestId('attempt-reference-toggle')).not.toBeInTheDocument()
+    expect(drawer()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('solution-reference-column')).not.toBeInTheDocument()
   })
 })

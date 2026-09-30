@@ -415,6 +415,30 @@ export function nextPendingRow(rows: readonly QueueRow[], attemptId: string): Qu
 }
 
 /**
+ * §248. Мелкая строка шапки спокойного экрана проверки: «10А · попытка №2 ·
+ * сдано 28 сент., в срок». Группа — это курс (один курс = одна группа,
+ * §61/§64). Тема и число листов из строки ушли: тема — во всплывающей
+ * подсказке у имени, листы видно по номерам страниц над фото.
+ */
+export function reviewHeaderLine(row: QueueRow): string {
+  const parts: string[] = []
+  if (row.courseTitle) parts.push(row.courseTitle)
+  if (row.attempt.attempt_number > 1) parts.push(`попытка №${row.attempt.attempt_number}`)
+  const submitted = row.attempt.submitted_at ? new Date(row.attempt.submitted_at) : null
+  if (submitted && !Number.isNaN(submitted.getTime())) {
+    if (row.attempt.auto_submitted) {
+      const day = submitted.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' })
+      parts.push(`сдано автоматически ${day} в ${formatMoscowTime(submitted)}`)
+    } else {
+      const day = submitted.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+      const when = isSubmittedLate(row) ? ', с опозданием' : row.dueAt ? ', в срок' : ''
+      parts.push(`сдано ${day}${when}`)
+    }
+  }
+  return parts.join(' · ')
+}
+
+/**
  * §226. Строка под именем в шапке проверки: «Кинематика · Физика 11А · сдано
  * 22 сентября в 11:05, в срок · 2 фото». Всё, что преподаватель читает один
  * раз: где работа, когда сдана, успел ли ученик и сколько листов смотреть.

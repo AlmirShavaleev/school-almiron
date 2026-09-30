@@ -124,7 +124,7 @@ describe('Очередь проверки: тип работы (§240)', () => {
   it('КР: на экране проверки нет «Вернуть на доработку», в шапке — «сдано автоматически»', () => {
     renderPage()
     fireEvent.click(screen.getByText('Смирнов'))
-    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('сдано автоматически 2 октября в 10:45')
+    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent(/сдано автоматически 2 окт\.? в 10:45/)
     const bar = screen.getByTestId('overlay-review-bar')
     expect(within(bar).getByTestId('review-accept-button')).toBeInTheDocument()
     expect(within(bar).queryByTestId('review-return-button')).not.toBeInTheDocument()

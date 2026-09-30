@@ -22,6 +22,7 @@ import type { MutableRefObject, ReactNode } from 'react'
 import type { AttemptExportSourceRef } from '@/lib/attemptPdfSource'
 import type { ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import { frameLookOf, type FrameLook } from '@/lib/reviewFrameLook'
+import { noteTaskKey } from '@/lib/reviewNotes'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -81,6 +82,8 @@ type Row = { page: number; file_path: string; data: unknown; status: 'draft' | '
  * подписаны.
  */
 type RegionItem = Region & { filePath: string; page: number; globalPage: number; fileIndex: number; fileLabel: string; surfaceKey: string; displayRect: Rect; quarter: Quarter }
+/** §248. Куда докрутить работу: страница и рамка на ней в экранных долях. */
+type ScrollTarget = { surfaceKey: string; displayRect: Rect }
 type PageMetrics = { width: number; height: number; ratio: number }
 type DragState = { surfaceKey: string; rect: Rect } | null
 /** Правка существующей рамки: перенос целиком или растягивание за одну ручку. */
@@ -231,6 +234,40 @@ interface BaseProps {
    * рамки. Пусто или null — таблицы нет, и выбора нет.
    */
   taskNumbers?: readonly string[] | null
+  /**
+   * §248. Спокойный экран проверки. Вместо тулбара — номера страниц «1 2 3»
+   * и подсказка «рамку рисуйте прямо на фото», масштаб и поворот — плавающими
+   * кнопками в углу, «Очистить пометки» уезжает в меню «…» экрана
+   * (`clearMarksRef`). Рисование, правка и перенос рамок — прежние.
+   */
+  calm?: boolean
+  /**
+   * §248. Текущее задание экрана проверки. Его рамки выделены (остальные
+   * приглушены), работа докручивается к первой из них — или к месту находки
+   * ИИ (`ghostRegions`), если своей рамки нет. Новая рамка по умолчанию
+   * привязывается к нему. Только вместе с `calm`.
+   */
+  focusTaskNo?: string | null
+  /**
+   * §248. Где ИИ нашла что-то по заданию — пунктир поверх фото, не пометка:
+   * в `annotation_sets` он не пишется и ученику не уходит (граница §209 —
+   * рамка ИИ становится пометкой только по «взять»). Рисуется только у
+   * текущего задания.
+   */
+  ghostRegions?: readonly GhostRegion[] | null
+  /** §248. «Очистить пометки» из меню экрана: открыть то же подтверждение. */
+  clearMarksRef?: MutableRefObject<(() => void) | null>
+  /** §248. Есть ли что очищать — пункт меню выключен, когда нечего. */
+  onClearMarksAvailableChange?: (available: boolean) => void
+}
+
+/** §248. Место находки ИИ на странице — доли исходной страницы, как у рамок. */
+export interface GhostRegion {
+  id: string
+  filePath: string
+  page: number
+  rect: { x: number; y: number; w: number; h: number }
+  task: string | null
 }
 
 /**
@@ -478,6 +515,11 @@ export function SubmissionReviewer({
   initialPage = null,
   initialRegionId = null,
   taskNumbers = null,
+  calm = false,
+  focusTaskNo = null,
+  ghostRegions = null,
+  clearMarksRef,
+  onClearMarksAvailableChange,
 }: Props) {
   // Одна цель на весь компонент: колонка + значение. attemptId приоритетнее —
   // если по недосмотру передали оба, пишем в новый контур, а не молча в старый
@@ -571,6 +613,10 @@ export function SubmissionReviewer({
    * донести до сохранённой рамки, и потерять его по дороге нельзя.
    */
   const [noteTarget, setNoteTarget] = useState<string | null>(null)
+  /** §248. Текущее задание спокойного экрана — к нему по умолчанию новая рамка. */
+  const calmTask = calm && focusTaskNo?.trim() ? focusTaskNo.trim() : null
+  /** §248. Ключ текущего задания в том виде, в каком его сравнивают рамки. */
+  const focusKey = calm ? noteTaskKey(focusTaskNo) : ''
 
   // §156. «Очистить пометки». Числа для кнопки и подтверждения считает база
   // (dry run той же RPC): находки ИИ лежат по всем задачам попытки, а рамки
@@ -1141,9 +1187,12 @@ export function SubmissionReviewer({
       // §209. Под замечание к заданию рисование включили кнопкой «+ Заметка»,
       // и тип по умолчанию — «Ошибка»: рамку ставят, когда что-то не так.
       // Свободная рамка вне таблицы остаётся прежним «Комментарием».
-      category: noteTarget != null ? 'error' : 'comment',
+      // §248. На спокойном экране рамку рисуют прямо на фото, без кнопки, —
+      // она сразу привязана к текущему заданию (выбор «к заданию» в окне
+      // остаётся, привязку можно сменить или снять).
+      category: (noteTarget ?? calmTask) != null ? 'error' : 'comment',
       text: '',
-      task: noteTarget,
+      task: noteTarget ?? calmTask,
     })
   }
 
@@ -1204,7 +1253,7 @@ export function SubmissionReviewer({
    * `overflow-auto`), а не зовём `scrollIntoView`: тот заодно двигает все
    * прокручиваемые предки вплоть до окна, и в модалке очереди это лишнее.
    */
-  const scrollToRegion = useCallback((item: RegionItem, behavior: ScrollBehavior) => {
+  const scrollToRegion = useCallback((item: ScrollTarget, behavior: ScrollBehavior, onlyIfHidden = false) => {
     const area = frameRef.current
     const node = pageRefs.current[item.surfaceKey]
     if (!area || !node) return
@@ -1213,6 +1262,9 @@ export function SubmissionReviewer({
     if (!pageRect.height || !areaRect.height) return
     const regionTop = pageRect.top + item.displayRect.y * pageRect.height
     const regionHeight = item.displayRect.h * pageRect.height
+    // §248. Переход к заданию не дёргает работу, если его рамка уже целиком
+    // на экране: прокрутка ради прокрутки сбивает взгляд.
+    if (onlyIfHidden && regionTop >= areaRect.top && regionTop + regionHeight <= areaRect.bottom) return
     const gap = Math.max(REGION_MIN_GAP, Math.min(areaRect.height * REGION_TOP_GAP, (areaRect.height - regionHeight) / 2))
     const top = Math.max(0, area.scrollTop + (regionTop - areaRect.top) - gap)
     if (typeof area.scrollTo === 'function') area.scrollTo({ top, behavior })
@@ -1226,14 +1278,60 @@ export function SubmissionReviewer({
    * просто ref: повторный клик по тому же замечанию не меняет ни одного
    * состояния, React бы не перерисовал компонент — и эффект не сработал бы.
    */
-  const scrollTargetRef = useRef<{ item: RegionItem; behavior: ScrollBehavior } | null>(null)
+  const scrollTargetRef = useRef<{ item: ScrollTarget; behavior: ScrollBehavior; onlyIfHidden?: boolean } | null>(null)
   const [scrollTick, setScrollTick] = useState(0)
   useEffect(() => {
     const target = scrollTargetRef.current
     if (!target) return
     scrollTargetRef.current = null
-    scrollToRegion(target.item, target.behavior)
+    scrollToRegion(target.item, target.behavior, target.onlyIfHidden)
   }, [scrollTick, scrollToRegion])
+
+  /**
+   * §248. Текущее задание спокойного экрана → его рамка на фото. Своя рамка
+   * задания важнее места находки ИИ: её поставил человек. Нет ни той, ни
+   * другой — работа остаётся где была (задача: «нет рамки — просто
+   * страница»). Подпись цели, а не флаг «уже докрутили»: находки ИИ приходят
+   * позже страниц, и цель у того же задания может появиться со второго
+   * прохода; одна и та же цель второй раз не докручивается.
+   */
+  const focusSignatureRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusKey || !pagesLoaded || loading || !surfaces.length) return
+    const own = regions.find(region => noteTaskKey(region.task) === focusKey)
+    let target: (ScrollTarget & { id: string; globalPage: number }) | null = own
+      ? { id: own.id, surfaceKey: own.surfaceKey, displayRect: own.displayRect, globalPage: own.globalPage }
+      : null
+    if (!target) {
+      for (const ghost of ghostRegions ?? []) {
+        if (noteTaskKey(ghost.task) !== focusKey) continue
+        const surface = surfaces.find(item => item.filePath === ghost.filePath && item.page === ghost.page)
+        if (!surface) continue
+        target = {
+          id: `ghost:${ghost.id}`,
+          surfaceKey: surface.surfaceKey,
+          displayRect: rotateRect(ghost.rect, quarterOf(surface.filePath, surface.page)),
+          globalPage: surface.globalPage,
+        }
+        break
+      }
+    }
+    const signature = `${focusKey}|${target?.id ?? ''}`
+    if (focusSignatureRef.current === signature) return
+    if (target) {
+      // Высота фото-страниц известна только после загрузки картинок — до
+      // этого прокрутка промахнулась бы (та же причина, что у §239).
+      const goal = target
+      const settled = surfaces
+        .filter(surface => surface.kind === 'image' && surface.globalPage <= goal.globalPage)
+        .every(surface => imageRatios[surface.filePath] != null)
+      if (!settled) return
+      setVisiblePages(prev => (prev.has(goal.surfaceKey) ? prev : new Set([...prev, goal.surfaceKey])))
+      scrollTargetRef.current = { item: goal, behavior: 'smooth', onlyIfHidden: true }
+      setScrollTick(tick => tick + 1)
+    }
+    focusSignatureRef.current = signature
+  }, [focusKey, ghostRegions, imageRatios, loading, pagesLoaded, quarterOf, regions, surfaces])
 
   function activateRegion(item: RegionItem) {
     // Соседняя страница — плавно, чужая — мгновенно: смуз через два экрана
@@ -1663,6 +1761,19 @@ export function SubmissionReviewer({
     return () => { notesApiRef.current = null }
   })
 
+  /**
+   * §248. «Очистить пометки» переехала в меню «…» экрана проверки: кнопка
+   * там, а подтверждение с числами из базы и само удаление — здесь, как было
+   * (§156). Нечего чистить — пункт выключен, а не молча «успешно».
+   */
+  const clearAvailable = canClearMarks && (hasAnyMarks(markCounts) || regions.length > 0)
+  useEffect(() => {
+    if (!clearMarksRef) return
+    clearMarksRef.current = canClearMarks ? () => { void openClearDialog() } : null
+    return () => { clearMarksRef.current = null }
+  })
+  useEffect(() => { onClearMarksAvailableChange?.(clearAvailable) }, [clearAvailable, onClearMarksAvailableChange])
+
   if (!loading && !sourceFiles.length) return <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Предпросмотр доступен только для PDF и картинок.</div>
 
   const baseWidth = Math.max(0, frameWidth - 2)
@@ -1697,8 +1808,77 @@ export function SubmissionReviewer({
     </div>
   </div> : null
 
-  return <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]', className)}>
-    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
+  /**
+   * §248. Полоса над фото на спокойном экране: номера страниц, подсказка и
+   * тихое состояние сохранения. Масштаб и поворот — плавающими кнопками в
+   * углу фото (`review-float-tools`), «Очистить пометки» — в меню экрана.
+   */
+  const calmToolbar = calm ? (
+    <div data-testid="review-calm-toolbar" className="flex shrink-0 items-center gap-2 border-b border-graphite-200 bg-white px-3 py-2.5">
+      <div data-testid="review-page-tabs" role="tablist" aria-label="Страницы работы" className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+        {surfaces.map(surface => (
+          <button
+            key={surface.surfaceKey}
+            type="button"
+            role="tab"
+            data-testid={`review-page-tab-${surface.globalPage}`}
+            aria-selected={currentPage === surface.globalPage}
+            aria-label={`${surface.kind === 'pdf' ? 'Страница' : 'Фото'} ${surface.globalPage}`}
+            onClick={() => goToSurface(surface)}
+            className={cn(
+              'min-w-8 shrink-0 rounded-lg border px-2.5 py-1 text-[13px] font-bold tabular-nums transition-colors',
+              currentPage === surface.globalPage
+                ? 'border-primary-600 bg-primary-50 text-primary-700'
+                : 'border-graphite-200 bg-white text-graphite-500 hover:border-graphite-300 hover:text-graphite-900',
+            )}
+          >
+            {surface.globalPage}
+          </button>
+        ))}
+      </div>
+      <span className="min-w-0 flex-1" />
+      {!readOnly && hasOtherAuthor && (
+        <span
+          data-testid="review-other-author"
+          title="Очередь проверки общая для персонала курса. Ваше сохранение перезапишет страницу целиком — сверьтесь, прежде чем удалять чужие пометки."
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-800"
+        >
+          <AlertCircle size={12} />
+          <span className="hidden xl:inline">Работу уже смотрел другой преподаватель</span>
+        </span>
+      )}
+      {!readOnly && saving && (
+        <span data-testid="review-save-state" className="inline-flex shrink-0 items-center gap-1 text-xs text-graphite-400">
+          <Loader2 size={12} className="animate-spin" />
+          <span className="sr-only">Сохраняю</span>
+        </span>
+      )}
+      {!readOnly && !saving && saveState === 'error' && (
+        <span data-testid="review-save-state" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-700">
+          <AlertCircle size={12} />
+          Ошибка сохранения
+        </span>
+      )}
+      {!readOnly && (
+        <span data-testid="review-draw-hint" className="hidden shrink-0 text-xs text-graphite-400 sm:inline">
+          Рамку задания рисуйте мышью прямо на фото
+        </span>
+      )}
+      {!readOnly && !hideToolbarPublish && (
+        <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50">
+          {publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}
+        </button>
+      )}
+    </div>
+  ) : null
+
+  return <section className={cn(
+    calm
+      ? 'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-graphite-200 bg-white'
+      : 'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100 shadow-[0_1px_2px_rgba(0,0,0,.08),0_8px_24px_rgba(15,23,42,.08)]',
+    className,
+  )}>
+    {calm ? calmToolbar : <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
       {header ? <div className="min-w-0 flex-1">{header}</div> : pageTabs ? (
         <div className="min-w-0 flex-1">
           <div data-testid="review-page-tabs" role="tablist" aria-label="Страницы работы" className="flex max-w-full items-center gap-1 overflow-x-auto">
@@ -1800,7 +1980,7 @@ export function SubmissionReviewer({
           {!hideToolbarPublish && <button type="button" data-testid="review-toolbar-publish-button" onClick={() => triggerPublish()} disabled={publishing} className="min-h-10 rounded-xl bg-emerald-600 px-3.5 text-sm font-medium text-white transition-[transform,background-color] hover:bg-emerald-700 active:scale-[0.96] disabled:opacity-50">{publishing ? 'Публикую...' : published ? 'Опубликовать снова' : publishButtonLabel}</button>}
         </div>}
       </div>
-    </div>
+    </div>}
     {/* Строки задаём явно: у элементов грида min-height по умолчанию auto,
           и длинный список комментариев растягивал строку, а overflow-hidden
           снаружи просто обрезал её — прокрутка внутри становилась недостижимой.
@@ -1825,7 +2005,7 @@ export function SubmissionReviewer({
           ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
           : 'grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,45%)] [@media(min-width:700px)_and_(max-height:600px)]:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] [@media(min-width:700px)_and_(max-height:600px)]:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)]',
       )}>
-      <div ref={frameRef} data-testid="review-document-scroll-area" className="relative min-h-0 overflow-auto p-3 sm:p-4">
+      <div ref={frameRef} data-testid="review-document-scroll-area" className={cn('relative min-h-0 overflow-auto', calm ? 'bg-graphite-400 p-3 pb-16 sm:p-5 sm:pb-16' : 'p-3 sm:p-4')}>
         {/*
           §209. Полоса рисования: нажали «+ Заметка» у задания — обводим место
           в работе. Без неё нажатие ничего видимого не делает, и человек жмёт
@@ -1856,6 +2036,10 @@ export function SubmissionReviewer({
             const shouldRender = visiblePages.has(surface.surfaceKey) || currentPage === surface.globalPage || draft?.filePath === surface.filePath && draft.page === surface.page
             const dragRect = dragState?.surfaceKey === surface.surfaceKey ? dragState.rect : null
             const edit = editPreview?.surfaceKey === surface.surfaceKey ? editPreview : null
+            // §248. Пунктир находок ИИ — только у текущего задания и только на своей странице.
+            const pageGhosts = focusKey
+              ? (ghostRegions ?? []).filter(ghost => ghost.filePath === surface.filePath && ghost.page === surface.page && noteTaskKey(ghost.task) === focusKey)
+              : []
             return <div
               key={surface.surfaceKey}
               ref={node => { pageRefs.current[surface.surfaceKey] = node }}
@@ -1869,7 +2053,7 @@ export function SubmissionReviewer({
                 работу: ученик фотографирует листы по одному и разворачивает
                 телефон как придётся, боком приезжает обычно не вся работа.
               */}
-              {!readOnly && (
+              {!readOnly && !calm && (
                 <button
                   type="button"
                   data-testid={`review-rotate-${surface.globalPage}`}
@@ -1902,6 +2086,8 @@ export function SubmissionReviewer({
                     onPointerUp={pointerUp}
                     onActivate={setActiveId}
                     taskVerdicts={taskVerdicts}
+                    focusKey={focusKey}
+                    ghosts={pageGhosts}
                   />
                 : <ImagePageSurface
                     surface={surface}
@@ -1927,6 +2113,8 @@ export function SubmissionReviewer({
                     onPointerUp={pointerUp}
                     onActivate={setActiveId}
                     taskVerdicts={taskVerdicts}
+                    focusKey={focusKey}
+                    ghosts={pageGhosts}
                   />
               }
             </div>
@@ -1934,6 +2122,45 @@ export function SubmissionReviewer({
           {documentFooter}
         </div>}
       </div>
+      {/*
+        §248. Масштаб и поворот — плавающими кнопками в правом нижнем углу
+        фото, как в макете, вместо полосы инструментов. Середина — текущий
+        масштаб, нажатие на неё — «По ширине» (§211): режим остался, только
+        без отдельной кнопки со словом.
+      */}
+      {calm && !error && (
+        <div
+          data-testid="review-float-tools"
+          className="absolute bottom-3 right-3 z-20 flex items-center gap-0.5 rounded-xl border border-graphite-200 bg-white/95 p-1 shadow-[0_4px_14px_rgba(18,35,74,.14)]"
+        >
+          <FloatButton title="Уменьшить" disabled={zoom <= MIN_ZOOM} onClick={() => setManualZoom(z => z - ZOOM_STEP)}>−</FloatButton>
+          <button
+            type="button"
+            data-testid="review-fit-width"
+            aria-pressed={fitToWidth}
+            onClick={applyFitToWidth}
+            title="Вписать страницу в ширину"
+            aria-label={`Масштаб ${Math.round(zoom * 100)}%, вписать в ширину`}
+            className={cn(
+              'h-8 min-w-12 rounded-lg px-1.5 text-xs font-bold tabular-nums transition-colors',
+              fitToWidth ? 'text-graphite-400' : 'text-graphite-700 hover:bg-graphite-50',
+            )}
+          >
+            <span data-testid="review-zoom-value">{Math.round(zoom * 100)}%</span>
+          </button>
+          <FloatButton title="Увеличить" disabled={zoom >= MAX_ZOOM} onClick={() => setManualZoom(z => z + ZOOM_STEP)}>+</FloatButton>
+          {!readOnly && currentSurface && (
+            <FloatButton
+              title="Повернуть страницу на 90° по часовой стрелке"
+              testId="review-rotate-current"
+              disabled={!pagesLoaded}
+              onClick={() => { void rotatePage(currentSurface.filePath, currentSurface.page) }}
+            >
+              <RotateCw size={15} />
+            </FloatButton>
+          )}
+        </div>
+      )}
       {/* Граница переезжает вслед за раскладкой: когда колонка комментариев
           стоит сбоку, черта сверху рисовала бы линию поперёк пустого места.
           §209: на экране проверки колонки нет вовсе — замечания показывает
@@ -1986,6 +2213,10 @@ export function SubmissionReviewer({
 
 export default SubmissionReviewer
 
+function FloatButton({ disabled, title, onClick, testId, children }: { disabled?: boolean; title: string; onClick: () => void; testId?: string; children: React.ReactNode }) {
+  return <button type="button" data-testid={testId} title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-extrabold text-graphite-600 transition-colors hover:bg-graphite-50 hover:text-graphite-900 disabled:pointer-events-none disabled:opacity-30">{children}</button>
+}
+
 function ToolButton({ disabled, title, onClick, children }: { disabled?: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-[transform,background-color,color] hover:bg-white active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30">{children}</button>
 }
@@ -1999,9 +2230,13 @@ type RegionLayerProps = {
   onActivate: (id: string | null) => void
   /** §226. Вердикты заданий — рамки красятся ими (`frameLookOf`). */
   taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
+  /** §248. Ключ текущего задания: его рамки выделены, остальные приглушены. */
+  focusKey?: string
+  /** §248. Места находок ИИ текущего задания на ЭТОЙ странице — пунктиром. */
+  ghosts?: readonly GhostRegion[]
 }
 
-function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate, taskVerdicts }: RegionLayerProps & {
+function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate, taskVerdicts, focusKey = '', ghosts = [] }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
   pageData: PageData
@@ -2010,9 +2245,20 @@ function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedI
   // §211. Ручки правки должны остаться квадратными — значит соотношение
   // сторон берём у ПОВЁРНУТОЙ страницы, той, что сейчас на экране.
   const aspect = rotateRatio(surface.metrics?.ratio ?? 1 / 1.414, quarter)
-  return <>{pageData.objects.map(mark => <Shape
+  return <>{ghosts.map(ghost => {
+    const rect = rotateRect(ghost.rect, quarter)
+    return <rect
+      key={`ghost-${ghost.id}`}
+      data-testid={`ghost-region-${ghost.id}`}
+      x={rect.x} y={rect.y} width={rect.w} height={rect.h}
+      fill="#1f55e0" fillOpacity={0.06}
+      stroke="#1f55e0" strokeWidth={0.004} strokeDasharray="0.012 0.008"
+      pointerEvents="none"
+    />
+  })}{pageData.objects.map(mark => <Shape
     key={mark.id}
     mark={mark}
+    emphasis={focusKey && isRegion(mark) ? (noteTaskKey(mark.task) === focusKey ? 'current' : 'dim') : null}
     active={mark.id === activeId}
     selected={!readOnly && mark.id === selectedId}
     aspect={aspect}
@@ -2035,27 +2281,53 @@ function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedI
  * Рамка у самого верха страницы подписывается изнутри, иначе подпись срежет
  * край листа.
  */
-function FrameLabels({ pageData, quarter, edit, taskVerdicts }: {
+function FrameLabels({ pageData, quarter, edit, taskVerdicts, focusKey = '', ghosts = [] }: {
   pageData: PageData
   quarter: Quarter
   edit: { id: string; rect: Rect } | null
   taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
+  focusKey?: string
+  ghosts?: readonly GhostRegion[]
 }) {
   if (!taskVerdicts) return null
   const items = pageData.objects
     .filter(isRegion)
     .map(mark => ({ mark, look: frameLookOf(mark, taskVerdicts) }))
     .filter((item): item is { mark: Region; look: FrameLook } => item.look != null)
-  if (items.length === 0) return null
+  if (items.length === 0 && ghosts.length === 0) return null
   return <div aria-hidden className="pointer-events-none absolute inset-0">
+    {ghosts.map(ghost => {
+      const rect = rotateRect(ghost.rect, quarter)
+      const inside = rect.y < 0.035
+      return <span
+        key={`ghost-${ghost.id}`}
+        data-testid={`ghost-label-${ghost.id}`}
+        className="absolute max-w-[60%] truncate whitespace-nowrap rounded-t bg-primary-600 px-1.5 text-[11px] font-semibold leading-5 text-white"
+        style={{
+          left: `${rect.x * 100}%`,
+          top: `${rect.y * 100}%`,
+          transform: inside ? undefined : 'translateY(-100%)',
+          borderRadius: inside ? '0 0 4px 0' : undefined,
+        }}
+      >
+        ИИ · №{String(ghost.task ?? '').trim()}
+      </span>
+    })}
     {items.map(({ mark, look }) => {
       const rect = edit?.id === mark.id ? edit.rect : rotateRect(mark.rect, quarter)
       const inside = rect.y < 0.035
+      const current = focusKey !== '' && noteTaskKey(mark.task) === focusKey
+      const dim = focusKey !== '' && !current
       return <span
         key={mark.id}
         data-testid={`region-label-${mark.id}`}
         data-verdict={look.verdict}
-        className="absolute max-w-[60%] truncate whitespace-nowrap rounded-t px-1.5 text-[11px] font-semibold leading-5 text-white"
+        data-current={current ? 'true' : undefined}
+        className={cn(
+          'absolute max-w-[60%] truncate whitespace-nowrap rounded-t px-1.5 text-[11px] font-semibold leading-5 text-white',
+          current && 'text-[12px] font-bold ring-2 ring-white',
+          dim && 'opacity-50',
+        )}
         style={{
           left: `${rect.x * 100}%`,
           top: `${rect.y * 100}%`,
@@ -2089,6 +2361,8 @@ function PdfPageSurface({
   onPointerUp,
   onActivate,
   taskVerdicts,
+  focusKey,
+  ghosts,
 }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
@@ -2163,10 +2437,10 @@ function PdfPageSurface({
         onPointerUp={event => onPointerUp(surface, event)}
         onPointerCancel={event => onPointerUp(surface, event)}
       >
-        <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} />
+        <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} focusKey={focusKey} ghosts={ghosts} />
         {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008"/>}
       </svg>
-      <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} />
+      <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} focusKey={focusKey} ghosts={ghosts} />
     </div>
   </div>
 }
@@ -2191,6 +2465,8 @@ function ImagePageSurface({
   onPointerUp,
   onActivate,
   taskVerdicts,
+  focusKey,
+  ghosts,
 }: RegionLayerProps & {
   surface: DocumentSurface
   quarter: Quarter
@@ -2245,18 +2521,23 @@ function ImagePageSurface({
           onPointerUp={event => onPointerUp(surface, event)}
           onPointerCancel={event => onPointerUp(surface, event)}
         >
-          <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} />
+          <RegionLayer surface={surface} quarter={quarter} pageData={pageData} readOnly={readOnly} activeId={activeId} selectedId={selectedId} edit={edit} onBeginRegionEdit={onBeginRegionEdit} onActivate={onActivate} taskVerdicts={taskVerdicts} focusKey={focusKey} ghosts={ghosts} />
           {dragRect && <rect x={dragRect.x} y={dragRect.y} width={dragRect.w} height={dragRect.h} fill={CATEGORIES.comment.color} fillOpacity={0.12} stroke={CATEGORIES.comment.color} strokeWidth={0.003} strokeDasharray="0.012 0.008" />}
         </svg>
-        <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} />
+        <FrameLabels pageData={pageData} quarter={quarter} edit={edit} taskVerdicts={taskVerdicts} focusKey={focusKey} ghosts={ghosts} />
         {loading && <div className="absolute inset-0 flex min-h-60 items-center justify-center bg-white"><Loader2 className="animate-spin text-slate-400"/></div>}
       </div>
     </div>
   )
 }
 
-function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverride = null, look = null, onActivate, onBeginEdit }: {
+function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverride = null, look = null, emphasis = null, onActivate, onBeginEdit }: {
   mark: Mark
+  /**
+   * §248. Рамка текущего задания — толще и заметнее, чужие приглушены: на
+   * фото смотрят на одно задание. null — как было (экраны без текущего).
+   */
+  emphasis?: 'current' | 'dim' | null
   /** §226. Вид по вердикту задания; нет — цвет типа замечания, как раньше. */
   look?: FrameLook | null
   active: boolean
@@ -2273,7 +2554,8 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
     // §226. Рамка задания — цвет вердикта, заливки почти нет (её место — фото
     // под рамкой), «не сверено» пунктиром. Выделенная рамка пунктиром и так.
     const color = look?.color ?? category.color
-    const fillOpacity = look ? (active || selected ? 0.14 : 0.04) : (active || selected ? 0.24 : 0.14)
+    const lit = active || selected || emphasis === 'current'
+    const fillOpacity = look ? (lit ? 0.14 : 0.04) : (lit ? 0.24 : 0.14)
     const dash = selected || look?.dashed ? '0.012 0.008' : undefined
     const rect = rectOverride ?? mark.rect
     const handleW = HANDLE_UNIT
@@ -2296,14 +2578,15 @@ function Shape({ mark, active, selected = false, aspect = 1 / 1.414, rectOverrid
         { handle: 'e' as ResizeHandle, x: rect.x + rect.w, y: rect.y + rect.h / 2 },
       ] : []),
     ]
-    return <g>
+    return <g opacity={emphasis === 'dim' && !active && !selected ? 0.45 : undefined}>
       <rect
         data-testid={`region-${mark.id}`}
         x={rect.x} y={rect.y} width={rect.w} height={rect.h}
         data-look={look?.verdict}
+        data-emphasis={emphasis ?? undefined}
         data-dashed={look?.dashed ? 'true' : undefined}
         fill={color} fillOpacity={fillOpacity}
-        stroke={color} strokeWidth={active || selected ? 0.005 : 0.003}
+        stroke={color} strokeWidth={emphasis === 'current' ? 0.006 : active || selected ? 0.005 : 0.003}
         strokeDasharray={dash}
         className={cn('transition-opacity', selected ? 'cursor-move' : 'cursor-pointer')}
         onPointerEnter={onActivate}
@@ -2539,7 +2822,7 @@ function CommentList({ regions, readOnly, activeId, onActivate, onHover, onDelet
  * рамок проверяющих исчезнет.
  */
 function ClearMarksDialog({ text, busy, onConfirm, onCancel }: { text: string; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
-  return <div data-testid="clear-marks-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-marks-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+  return <div data-testid="clear-marks-dialog" data-review-keys="off" role="dialog" aria-modal="true" aria-labelledby="clear-marks-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
     <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600"><AlertCircle size={18} /></div>

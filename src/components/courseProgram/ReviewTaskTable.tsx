@@ -1688,7 +1688,7 @@ function VerdictSegment({
  * строке убирала строку целиком, и перепутать их было бы дорого. Кнопка
  * «убрать задание» уехала в неприметное меню строки.
  */
-function NoteLine({
+export function NoteLine({
   note,
   active,
   onFocus,
@@ -1800,7 +1800,7 @@ function NoteLine({
  * принимал») больше нет: именно оно и порождало мусор, на который жаловался
  * владелец.
  */
-function FindingSuggestion({
+export function FindingSuggestion({
   finding,
   onTake,
   onSkip,

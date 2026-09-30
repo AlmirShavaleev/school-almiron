@@ -1,27 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, CheckCircle2, Eye, Filter, Inbox, Loader2, Paperclip, RefreshCw, Sparkles,
+  AlertTriangle, CheckCircle2, Eye, Filter, Inbox, ListChecks, Loader2, Paperclip, RefreshCw, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
+import { ReviewTaskFocus } from '@/components/courseProgram/ReviewTaskFocus'
 import type {
-  AttemptNotesApi, AttemptNotesSnapshot, ImportedRegion,
+  AttemptNotesApi, AttemptNotesSnapshot, GhostRegion, ImportedRegion,
 } from '@/components/SubmissionReviewer'
 import {
   CONFIDENCE_LABEL, aiTasksOf, findingTransferRect, findingsToRegions, taskNoOfFinding,
   type AiFindingRow,
 } from '@/lib/aiHomeworkCheck'
 import {
-  REVIEW_TASK_VERDICT_LABEL, reviewTasksScore, sortReviewTasks, summarizeReviewTasks, uncheckedTaskNos,
+  reviewTasksScore, sortReviewTasks, uncheckedTaskNos,
   type ReviewTaskRow, type ReviewTaskVerdict,
 } from '@/lib/homeworkReviewTasks'
 import { verdictsByTask } from '@/lib/reviewFrameLook'
-import { MARK_OF_REVIEW_VERDICT, VerdictMark } from '@/components/ui/VerdictMark'
-import { noteTypeOfCategory, type ReviewNote } from '@/lib/reviewNotes'
+import { noteTypeOfCategory, pendingFindings, type ReviewNote } from '@/lib/reviewNotes'
 import { useHomeworkAiCheck } from '@/hooks/useHomeworkAiCheck'
 import { useHomeworkReviewTasks } from '@/hooks/useHomeworkReviewTasks'
 import { useHomeworkReviewQueue } from '@/hooks/useHomeworkReviewQueue'
@@ -29,7 +29,7 @@ import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 import { useReviewPresence } from '@/hooks/useReviewPresence'
 import {
   QUEUE_TABS, courseFilterOptions, groupByDay, isSubmittedLate, newerAttemptReason,
-  nextPendingRow, queuePosition, reviewHeaderMeta, topicFilterOptions, verdictAccess, verdictTrail,
+  nextPendingRow, queuePosition, reviewHeaderLine, topicFilterOptions, verdictAccess, verdictTrail,
   type QueueRow, type QueueTab,
 } from '@/lib/homeworkQueue'
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
@@ -432,49 +432,22 @@ function ReturnedNotice({
   )
 }
 
-/** §226. Порядок сводки в шапке — как в макете: сначала хорошее. */
-const SUMMARY_ORDER: readonly ReviewTaskVerdict[] = ['correct', 'partial', 'wrong', 'unchecked', 'unsolved']
-
 /**
- * §226. Правая часть шапки проверки: «Следующая работа →» и сводка вердиктов
- * метками («3 верно · 1 частично · 1 неверно · 1 не сверено»). Нулей в
- * сводке нет — «0 неверно» читается хуже, чем отсутствие строки. Кнопки
- * «Следующая» нет, когда очередь её не знает (открыто по ссылке, работа не
- * в видимом списке) или непроверенных больше нет.
+ * §226 → §248. Правая часть шапки проверки — «Следующая работа →». Сводки
+ * вердиктов здесь больше нет: она дублировала полосу номеров заданий, и
+ * владелец назвал вторую сводку шумом. Кнопки нет, когда очередь её не знает
+ * (открыто по ссылке, работа не в видимом списке) или непроверенных больше нет.
  */
-function ReviewHeaderAside({
-  tasks, hasNext, onNext,
-}: {
-  tasks: readonly ReviewTaskRow[]
-  hasNext: boolean
-  onNext: () => void
-}) {
-  const summary = summarizeReviewTasks(tasks)
-  const items = SUMMARY_ORDER.filter(kind => summary[kind] > 0)
-  if (!hasNext && items.length === 0) return null
+function NextWorkButton({ onNext }: { onNext: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-1.5 lg:items-end">
-      {hasNext && (
-        <button
-          type="button"
-          data-testid="review-next"
-          onClick={onNext}
-          className="text-sm font-medium text-graphite-900 transition-colors hover:text-primary-700"
-        >
-          Следующая работа →
-        </button>
-      )}
-      {items.length > 0 && (
-        <ul data-testid="review-verdict-summary" className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-          {items.map(kind => (
-            <li key={kind} data-kind={kind} className="inline-flex items-center gap-1.5 text-[13px] text-graphite-900">
-              <VerdictMark state={MARK_OF_REVIEW_VERDICT[kind]} size={16} label={null} />
-              {summary[kind]} {REVIEW_TASK_VERDICT_LABEL[kind]}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <button
+      type="button"
+      data-testid="review-next"
+      onClick={onNext}
+      className="whitespace-nowrap rounded-[10px] border border-graphite-200 bg-white px-3 py-1.5 text-[13px] font-bold text-graphite-900 transition-colors hover:border-graphite-300 hover:text-primary-700"
+    >
+      Следующая работа →
+    </button>
   )
 }
 
@@ -670,6 +643,17 @@ export function HomeworkReviewQueuePage() {
     { notes: [], dismissedFindings: [] },
   )
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
+  /**
+   * §248. Текущее задание спокойного экрана — одно на экран: его показывает
+   * панель справа, его рамку выделяет фото, его строку подсвечивает эталон.
+   */
+  const [currentTaskNo, setCurrentTaskNo] = useState<string | null>(null)
+  /**
+   * §248. Полная таблица заданий — всё, что с экрана убрано как шум
+   * (фильтры-счётчики, светофор, «+ Задание», «Все не сверенные — верные»,
+   * блок ИИ-проверки). Открывается из «…» в шапке, работает как раньше.
+   */
+  const [tableOpen, setTableOpen] = useState(false)
   /** Находка становится рамкой на своей странице — путь берём по file_id. */
   const pathOfFinding = (finding: AiFindingRow) =>
     attemptFiles.find(f => f.id === finding.file_id)?.storage_path ?? null
@@ -767,12 +751,40 @@ export function HomeworkReviewQueuePage() {
     setNotesSnapshot({ notes: [], dismissedFindings: [] })
     setActiveNoteId(null)
     setDuplicateFrames(0)
+    setCurrentTaskNo(null)
+    setTableOpen(false)
     setReviewing({ row, locked })
   }
 
   const taskVerdicts = useMemo(() => verdictsByTask(reviewTasks.rows), [reviewTasks.rows])
   /** §239. Номера заданий — выбор «к заданию №» у свободной рамки. */
   const taskNumbers = useMemo(() => sortReviewTasks(reviewTasks.rows).map(row => row.no), [reviewTasks.rows])
+  /** §248. «Ответы и критерии» в панели эталона — ожидаемые ответы таблицы. */
+  const referenceAnswers = useMemo(
+    () => sortReviewTasks(reviewTasks.rows).map(row => ({ no: row.no, expected: row.expected_answer })),
+    [reviewTasks.rows],
+  )
+  /**
+   * §248. Где ИИ нашла что-то по заданию — пунктиром на фото у текущего
+   * задания. Только неразобранные находки: взятая уже стала рамкой, от
+   * «мимо» отказались. В `annotation_sets` это не пишется (граница §209).
+   */
+  const ghostRegions = useMemo<GhostRegion[]>(() => {
+    const out: GhostRegion[] = []
+    for (const finding of pendingFindings(ai.findings, takenFindingIds, notesSnapshot.dismissedFindings)) {
+      const filePath = attemptFiles.find(f => f.id === finding.file_id)?.storage_path
+      const task = taskNoOfFinding(finding)
+      if (!filePath || !task) continue
+      out.push({
+        id: finding.id,
+        filePath,
+        page: finding.page,
+        rect: { x: finding.rect_x, y: finding.rect_y, w: finding.rect_w, h: finding.rect_h },
+        task,
+      })
+    }
+    return out
+  }, [ai.findings, attemptFiles, notesSnapshot.dismissedFindings, takenFindingIds])
 
   return (
     <div className="space-y-5">
@@ -1064,18 +1076,26 @@ export function HomeworkReviewQueuePage() {
           title={reviewing.row.homeworkTitle}
           // §208 → §226. Крупной строкой — чья работа и какое ДЗ, как в
           // макете; тема, курс, срок и число листов — строкой ниже.
-          lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} — ${reviewing.row.homeworkTitle}`}
-          subtitle={reviewHeaderMeta(reviewing.row, filesOf(reviewing.row.attempt.id))}
-          backLabel={position ? `Очередь проверки · ${position.index} из ${position.total}` : 'Очередь проверки'}
-          headerAside={(
-            <ReviewHeaderAside
-              tasks={reviewTasks.rows}
-              hasNext={nextRow != null}
-              onNext={() => { if (nextRow) openRow(nextRow, viewersOf(nextRow.attempt.id).length > 0) }}
-            />
-          )}
+          // §248. «Имя · ДЗ» одной строкой шапки, мелко — группа и срок.
+          lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.homeworkTitle}`}
+          leadTitle={reviewing.row.topicTitle !== reviewing.row.homeworkTitle ? reviewing.row.topicTitle : undefined}
+          subtitle={reviewHeaderLine(reviewing.row)}
+          backLabel={position ? `Очередь · ${position.index} из ${position.total}` : 'Очередь'}
+          headerAside={nextRow ? (
+            <NextWorkButton onNext={() => openRow(nextRow, viewersOf(nextRow.attempt.id).length > 0)} />
+          ) : null}
           taskVerdicts={taskVerdicts}
           taskNumbers={taskNumbers}
+          referenceAnswers={referenceAnswers}
+          currentTaskNo={verdictForm ? currentTaskNo : null}
+          ghostRegions={verdictForm ? ghostRegions : null}
+          menuExtras={verdictForm ? [{
+            id: 'table',
+            label: 'Все задания таблицей',
+            testId: 'review-open-table',
+            icon: <ListChecks size={14} />,
+            onSelect: () => setTableOpen(true),
+          }] : undefined}
           viewers={viewersOf(reviewing.row.attempt.id)}
           solutionTopicId={reviewing.row.topicId}
           // §156. После «Очистить пометки» находок в базе нет — панель ИИ и
@@ -1141,30 +1161,24 @@ export function HomeworkReviewQueuePage() {
                   attempt={reviewing.row.attempt}
                 />
               )}
-              <ReviewTaskTable
+              {/*
+                §248. Одно текущее задание вместо таблицы: полоса номеров,
+                ответ и эталон, три вердикта. Таблица целиком — из «…».
+              */}
+              <ReviewTaskFocus
+                tasks={reviewTasks.rows}
                 job={ai.job}
                 findings={ai.findings}
                 running={ai.running}
                 error={ai.error}
                 onRun={ai.runCheck}
-                duplicateFrames={duplicateFrames}
-                onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
-                // Новый объект на каждое нажатие: вставить один и тот же
-                // текст второй раз тоже должно получаться.
-                onUseText={text => setFillRequest({ comment: text })}
-                tasks={reviewTasks.rows}
-                gradeScale={reviewing.row.gradeScale}
                 saveState={reviewTasks.saveState}
-                onAddTask={reviewTasks.addRow}
-                onSeedTasks={reviewTasks.seedNow}
-                // §207. Таблица собрана из проверки старее последней —
-                // заменить её строками именно ТОГО прогона, о котором
-                // сказали преподавателю, а не «последнего завершённого».
-                onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
+                currentNo={currentTaskNo}
+                onCurrentChange={setCurrentTaskNo}
                 onPatchTask={reviewTasks.patchRow}
                 onRemoveTask={reviewTasks.removeRow}
-                // §209. Замечания, предложения ИИ и клавиатура — всё в одном
-                // списке: единственная сущность на экране это задание.
+                onAddTask={reviewTasks.addRow}
+                onSeedTasks={reviewTasks.seedNow}
                 notes={notes}
                 activeNoteId={activeNoteId}
                 dismissedFindings={notesSnapshot.dismissedFindings}
@@ -1175,17 +1189,18 @@ export function HomeworkReviewQueuePage() {
                 onEditNote={(id, text) => { void notesApiRef.current?.updateNote(id, text) }}
                 onTakeFinding={takeFinding}
                 onSkipFinding={skipFinding}
-                onBulkVerdict={bulkVerdict}
                 onShowReference={showReference ?? undefined}
-                // §238. Светофор: жёлтые сверху, зелёные свёрнуты.
-                triage
+                onOpenTable={() => setTableOpen(true)}
+                // Клавиши молчат, пока открыта полная таблица (у неё своя
+                // раскладка §209) и пока выбрана рамка (стрелки — её, §184).
+                keyboard={!tableOpen && activeNoteId == null}
               />
               {reference}
             </div>
           )}
           reviewBar={verdictForm ? ({ publishAnnotations }) => (
             <ReviewActions
-              layout="bar"
+              layout="calm"
               attempt={reviewing.row.attempt}
               gradeScale={reviewing.row.gradeScale}
               // §240. Проверочную и контрольную на доработку не возвращают —
@@ -1220,6 +1235,93 @@ export function HomeworkReviewQueuePage() {
           onClose={() => setReviewing(null)}
         />
       )}
+
+      {reviewing && verdictForm && tableOpen && (
+        <FullTaskTableSheet onClose={() => setTableOpen(false)}>
+          <ReviewTaskTable
+            job={ai.job}
+            findings={ai.findings}
+            running={ai.running}
+            error={ai.error}
+            onRun={ai.runCheck}
+            duplicateFrames={duplicateFrames}
+            onRemoveDuplicates={async () => (await dedupeFramesRef.current?.()) ?? 0}
+            // Новый объект на каждое нажатие: вставить один и тот же
+            // текст второй раз тоже должно получаться.
+            onUseText={text => setFillRequest({ comment: text })}
+            tasks={reviewTasks.rows}
+            gradeScale={reviewing.row.gradeScale}
+            saveState={reviewTasks.saveState}
+            onAddTask={reviewTasks.addRow}
+            onSeedTasks={reviewTasks.seedNow}
+            // §207. Таблица собрана из проверки старее последней —
+            // заменить её строками именно ТОГО прогона, о котором
+            // сказали преподавателю, а не «последнего завершённого».
+            onRefillFromAi={() => reviewTasks.refillFromAi(aiTasksOf(ai.job) ?? [])}
+            onPatchTask={reviewTasks.patchRow}
+            onRemoveTask={reviewTasks.removeRow}
+            notes={notes}
+            activeNoteId={activeNoteId}
+            dismissedFindings={notesSnapshot.dismissedFindings}
+            takenFindingIds={takenFindingIds}
+            onStartNote={no => { setTableOpen(false); setCurrentTaskNo(no); notesApiRef.current?.startNote(no) }}
+            onFocusNote={id => { setTableOpen(false); notesApiRef.current?.focusNote(id) }}
+            onDeleteNote={id => { void notesApiRef.current?.deleteNote(id) }}
+            onEditNote={(id, text) => { void notesApiRef.current?.updateNote(id, text) }}
+            onTakeFinding={takeFinding}
+            onSkipFinding={skipFinding}
+            onBulkVerdict={bulkVerdict}
+            // §238. Светофор: жёлтые сверху, зелёные свёрнуты.
+            triage
+          />
+        </FullTaskTableSheet>
+      )}
+    </div>
+  )
+}
+
+/**
+ * §248. Полная таблица заданий поверх экрана проверки — справа, во всю
+ * высоту. Здесь всё, что спокойный экран спрятал: фильтры-счётчики,
+ * светофор, добавление и удаление строк, «Все не сверенные — верные», блок
+ * ИИ-проверки («Проверить заново», предложенный балл, «Вставить в
+ * комментарий», «Убрать повторы»). Клавиши экрана внутри неё молчат
+ * (`data-review-keys="off"`): у таблицы своя раскладка §209.
+ */
+function FullTaskTableSheet({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const closeRef = useRef<HTMLButtonElement | null>(null)
+  // Фокус — внутрь: Esc и Tab должны работать в таблице, а не в экране под ней.
+  useEffect(() => { closeRef.current?.focus() }, [])
+  return (
+    <div
+      data-testid="review-table-sheet"
+      data-review-keys="off"
+      // Esc закрывает только таблицу: разбор под ней ловит Esc на document и
+      // пропускает уже обработанное (`defaultPrevented`).
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }}
+      className="fixed inset-0 z-[70] flex justify-end bg-graphite-900/30"
+    >
+      <button type="button" tabIndex={-1} aria-label="Закрыть таблицу заданий" onClick={onClose} className="min-w-0 flex-1 cursor-default" />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Все задания таблицей"
+        className="flex h-full w-full max-w-[560px] flex-col bg-white shadow-[-8px_0_30px_rgba(18,35,74,.16)]"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-graphite-200 px-4 py-3">
+          <span className="text-[15px] font-extrabold text-graphite-900">Все задания таблицей</span>
+          <button
+            ref={closeRef}
+            type="button"
+            data-testid="review-table-sheet-close"
+            onClick={onClose}
+            className="rounded-lg border border-graphite-200 px-2.5 py-1 text-xs font-bold text-graphite-800 hover:border-graphite-300"
+          >
+            Закрыть
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
+      </aside>
     </div>
   )
 }

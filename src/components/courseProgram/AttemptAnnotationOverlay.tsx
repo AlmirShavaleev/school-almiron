@@ -1,11 +1,11 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import type {
-  AttemptNotesApi, AttemptNotesSnapshot, ImportedRegion,
+  AttemptNotesApi, AttemptNotesSnapshot, GhostRegion, ImportedRegion,
 } from '@/components/SubmissionReviewer'
-import { BookOpen, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
+import { BookOpen, Eraser, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import {
-  SolutionReferenceBlock, SolutionReferenceColumn, SolutionReferencePanel, useTopicSolutionMaterials,
+  SolutionReferenceBlock, SolutionReferenceDrawer, SolutionReferencePanel, useTopicSolutionMaterials,
 } from './SolutionReferencePanel'
 import type { ReviewTaskVerdict } from '@/lib/homeworkReviewTasks'
 import { AttemptPdfButton, type AttemptPdfAudience } from './AttemptPdfButton'
@@ -24,6 +24,7 @@ import {
   fractionToPercent,
   readSolutionFraction,
   readStoredSolutionFraction,
+  readStoredTableFraction,
   readTableFraction,
   solutionShareOf,
   tableFractionFromPointer,
@@ -58,10 +59,12 @@ function writeReferenceOpen(open: boolean) {
 }
 
 /**
- * §235. Где на экране проверки стоит эталон: `side` — своей колонкой слева от
- * работы, `below` — блоком под таблицей заданий (как в §226). По умолчанию
- * «Рядом» — так решил владелец. Удобство проверяющего, не данные: живёт в его
- * браузере; хранилища нет — «Рядом».
+ * §235 → §248. Где на экране проверки эталон: `side` — выдвижной панелью
+ * поверх фото слева (§248; до него — постоянной колонкой), `below` — блоком
+ * под заданием (как в §226, пункт меню «Эталон снизу, а не сбоку»). Ключ
+ * хранилища прежний: кто выбрал «Внизу» в §235, тот его и получит.
+ * Удобство проверяющего, не данные: живёт в его браузере; хранилища нет —
+ * «Рядом».
  */
 export type ReferencePlacement = 'side' | 'below'
 export const REFERENCE_PLACEMENT_STORAGE_KEY = 'review:reference-placement'
@@ -80,82 +83,6 @@ function writeReferencePlacement(placement: ReferencePlacement) {
   } catch {
     // Хранилища нет — выбор действует до закрытия экрана.
   }
-}
-
-/**
- * §235. С этой ширины колонки экрана проверки стоят рядом (`lg`). Ниже три
- * колонки не помещаются, и эталон всегда «Внизу». Нет `matchMedia` (jsdom,
- * совсем старый браузер) — считаем экран узким: «Внизу» работает на любой
- * ширине, а три колонки на телефоне — нет.
- */
-const LAPTOP_QUERY = '(min-width: 1024px)'
-
-function readLaptopUp(): boolean {
-  try {
-    return typeof window.matchMedia === 'function' && window.matchMedia(LAPTOP_QUERY).matches
-  } catch {
-    return false
-  }
-}
-
-function useLaptopUp(): boolean {
-  const [wide, setWide] = useState(readLaptopUp)
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const query = window.matchMedia(LAPTOP_QUERY)
-    const sync = () => setWide(query.matches)
-    sync()
-    if (typeof query.addEventListener === 'function') {
-      query.addEventListener('change', sync)
-      return () => query.removeEventListener('change', sync)
-    }
-    query.addListener?.(sync)
-    return () => query.removeListener?.(sync)
-  }, [])
-  return wide
-}
-
-/** §235. Сегментный переключатель «Решение: Рядом / Внизу» в шапке экрана проверки. */
-function ReferencePlacementToggle({
-  value, onChange,
-}: {
-  value: ReferencePlacement
-  onChange: (next: ReferencePlacement) => void
-}) {
-  const options: { id: ReferencePlacement; label: string; title: string }[] = [
-    { id: 'side', label: 'Рядом', title: 'Решение отдельной колонкой слева от работы' },
-    { id: 'below', label: 'Внизу', title: 'Решение блоком под таблицей заданий' },
-  ]
-  return (
-    <div data-testid="reference-placement" className="mr-1 flex items-center gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-graphite-400">Решение</span>
-      <div
-        role="group"
-        aria-label="Где показывать решение"
-        className="inline-flex gap-0.5 rounded-xl border border-graphite-200 bg-graphite-50 p-0.5"
-      >
-        {options.map(o => (
-          <button
-            key={o.id}
-            type="button"
-            data-testid={`reference-placement-${o.id}`}
-            aria-pressed={value === o.id}
-            title={o.title}
-            onClick={() => onChange(o.id)}
-            className={cn(
-              'rounded-[10px] px-2.5 py-1 text-xs font-semibold transition-colors',
-              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary-500',
-              value === o.id
-                ? 'bg-white text-primary-700 shadow-[0_1px_4px_rgba(18,35,74,.12)]'
-                : 'text-graphite-500 hover:text-graphite-900',
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -275,6 +202,20 @@ export type AttemptReviewPanel = (context: {
   showReference?: (() => void) | null
 }) => React.ReactNode
 
+/** §248. Пункт меню «…» шапки, который приносит экран снаружи. */
+export interface ReviewMenuItem {
+  id: string
+  label: string
+  testId?: string
+  disabled?: boolean
+  /** Значок слева — как у соседних пунктов меню; нет — пустое место того же размера. */
+  icon?: React.ReactNode
+  onSelect: () => void
+}
+
+const NO_MENU_ITEMS: readonly ReviewMenuItem[] = []
+const NO_ANSWERS: readonly { no: string; expected: string | null }[] = []
+
 /**
  * Полноэкранный разбор работы ученика: фото/PDF с рамками поверх.
  * Одна и та же вьюха и для модалки аккордеона курса
@@ -293,6 +234,7 @@ export function AttemptAnnotationOverlay({
   files,
   title,
   lead,
+  leadTitle,
   subtitle,
   readOnly = false,
   viewers = [],
@@ -321,6 +263,10 @@ export function AttemptAnnotationOverlay({
   initialPage = null,
   initialRegionId = null,
   taskNumbers = null,
+  referenceAnswers = NO_ANSWERS,
+  currentTaskNo = null,
+  ghostRegions = null,
+  menuExtras = NO_MENU_ITEMS,
   onClose,
 }: {
   attemptId: string
@@ -332,6 +278,8 @@ export function AttemptAnnotationOverlay({
    * крупной строкой там остаётся название задания (`title`).
    */
   lead?: string
+  /** §248. Подсказка к крупной строке — тема работы: в строку она не влезает. */
+  leadTitle?: string
   subtitle?: string
   readOnly?: boolean
   /** Кто ещё сейчас в этой работе (из Supabase Presence). */
@@ -417,6 +365,18 @@ export function AttemptAnnotationOverlay({
    * свободной рамки. Нет таблицы — выбора нет.
    */
   taskNumbers?: readonly string[] | null
+  /**
+   * §248. Ответы по заданиям из таблицы проверки — верх панели «Эталон»
+   * («Ответы и критерии»). Есть ответы — кнопка «Эталон» есть и у темы без
+   * авторского решения.
+   */
+  referenceAnswers?: readonly { no: string; expected: string | null }[]
+  /** §248. Текущее задание: подсвечено в эталоне, выделено на фото. */
+  currentTaskNo?: string | null
+  /** §248. Места находок ИИ — пунктиром у текущего задания (не пометки). */
+  ghostRegions?: readonly GhostRegion[] | null
+  /** §248. Свои пункты экрана в меню «…» (например, «Все задания таблицей»). */
+  menuExtras?: readonly ReviewMenuItem[]
   onClose: () => void
 }) {
   const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
@@ -465,29 +425,72 @@ export function AttemptAnnotationOverlay({
   }
 
   /**
-   * §235. «Решение: Рядом / Внизу». Выбор человека — `placement`; действует он
-   * только там, где три колонки помещаются и есть что в них класть: с 1024,
-   * у темы есть эталон и экран не в режиме чтения (там своя колонка эталона
-   * справа, §226, её не трогаем). Во всех остальных случаях — «Внизу».
+   * §248. Эталон по запросу. «Сбоку» (по умолчанию) — выдвижная панель поверх
+   * фото, открывается кнопкой «Эталон» и ссылкой «Решение в эталоне» у
+   * задания; «Снизу» — прежний блок под заданием (§226), выбирается пунктом
+   * меню «…». Выбор помнится тем же ключом, что §235.
    */
-  const laptopUp = useLaptopUp()
   const [placement, setPlacement] = useState<ReferencePlacement>(() => readReferencePlacement())
   function choosePlacement(next: ReferencePlacement) {
     setPlacement(next)
     writeReferencePlacement(next)
+    if (next === 'below') setDrawerOpen(false)
   }
-  const columnScrollRef = useRef<HTMLDivElement | null>(null)
-  const [columnFlash, setColumnFlash] = useState(false)
+  const below = placement === 'below' && hasSolution
+  const hasAnswers = referenceAnswers.some(item => (item.expected ?? '').trim().length > 0)
+  const hasReference = hasSolution || hasAnswers
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerScrollRef = useRef<HTMLDivElement | null>(null)
+  function openReference() {
+    if (below) showReference()
+    else setDrawerOpen(true)
+  }
+  function toggleReference() {
+    if (below) {
+      if (referenceOpen) chooseReferenceOpen(false)
+      else showReference()
+    } else {
+      setDrawerOpen(value => !value)
+    }
+  }
+  // Открыли эталон или сменили задание — его строка в ответах на виду.
   useEffect(() => {
-    if (!columnFlash) return
-    const t = window.setTimeout(() => setColumnFlash(false), 1200)
-    return () => window.clearTimeout(t)
-  }, [columnFlash])
-  /** «Авторское решение целиком» в режиме «Рядом»: колонка эталона — к началу и подсветить. */
-  function showReferenceColumn() {
-    columnScrollRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' })
-    setColumnFlash(true)
+    if (!drawerOpen) return
+    const row = drawerScrollRef.current?.querySelector?.('[data-current="true"]') as HTMLElement | null
+    row?.scrollIntoView?.({ block: 'nearest' })
+  }, [drawerOpen, currentTaskNo])
+
+  /** §248. Меню «…» шапки: редкие действия над работой целиком. */
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuBoxRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * Место меню — от кнопки «…», но не за краем окна: на телефоне кнопка стоит
+   * слева от «Следующей работы», и меню, прижатое к её правому краю, уходило
+   * за левый край экрана.
+   */
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  function toggleMenu() {
+    const rect = menuBoxRef.current?.getBoundingClientRect()
+    if (rect && rect.width > 0) {
+      const width = 256
+      setMenuPos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+      })
+    }
+    setMenuOpen(value => !value)
   }
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (event: MouseEvent) => {
+      if (!menuBoxRef.current?.contains(event.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
+  /** §248. «Очистить пометки» живёт в аннотаторе, кнопка — в меню. */
+  const clearMarksRef = useRef<(() => void) | null>(null)
+  const [clearAvailable, setClearAvailable] = useState(false)
 
   /**
    * Ширина панели решения — доля рабочей области, запомненная между разборами
@@ -513,13 +516,15 @@ export function AttemptAnnotationOverlay({
    */
   const showReviewPanel = Boolean(reviewPanel) && !viewOnly
 
-  /** §235. Переключатель есть — эталон есть, колонки помещаются, вердикт ставится. */
-  const placementAvailable = reviewMode && showReviewPanel && hasSolution && laptopUp
-  const referenceSide = placementAvailable && placement === 'side'
-
   /** Ширина третьей колонки — своя доля, со своей памятью (§210). */
   const [tableFraction, setTableFraction] = useState(() => readTableFraction())
   const [tableDragging, setTableDragging] = useState(false)
+  /**
+   * §248. Пока границу не двигали — 380 px, как в макете: колонке одного
+   * задания доля в 37 % на 1280 давала лишние 90 px, отнятые у фото. Сдвинули
+   * хоть раз (сейчас или в прошлый раз) — действует выбор человека.
+   */
+  const [tableChosen, setTableChosen] = useState(() => readStoredTableFraction() != null)
 
   /**
    * Сколько рабочей области занимает решение прямо сейчас. Вторая граница
@@ -528,7 +533,7 @@ export function AttemptAnnotationOverlay({
    */
   function currentSolutionShare(areaWidth: number) {
     return solutionShareOf({
-      shown: showSolution || referenceSide, fraction: solutionFraction, chosen: fractionChosen, areaWidth,
+      shown: showSolution, fraction: solutionFraction, chosen: fractionChosen, areaWidth,
     })
   }
 
@@ -556,9 +561,16 @@ export function AttemptAnnotationOverlay({
     writeTableFraction(next)
   }
 
+  // §248. Esc сначала закрывает то, что открыто поверх (меню, эталон), и
+  // только потом — сам разбор.
+  const escRef = useRef({ menuOpen, drawerOpen })
+  useEffect(() => { escRef.current = { menuOpen, drawerOpen } })
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (escRef.current.menuOpen) { setMenuOpen(false); return }
+      if (escRef.current.drawerOpen) { setDrawerOpen(false); return }
+      onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
@@ -665,6 +677,11 @@ export function AttemptAnnotationOverlay({
               onNotesChange={onNotesChange}
               onSelectedNoteChange={onSelectedNoteChange}
               pageTabs={reviewMode}
+              calm={reviewMode}
+              focusTaskNo={reviewMode ? currentTaskNo : null}
+              ghostRegions={reviewMode ? ghostRegions : null}
+              clearMarksRef={reviewMode ? clearMarksRef : undefined}
+              onClearMarksAvailableChange={reviewMode ? setClearAvailable : undefined}
               taskVerdicts={reviewMode ? taskVerdicts : null}
               initialPage={initialPage}
               initialRegionId={initialRegionId}
@@ -676,8 +693,9 @@ export function AttemptAnnotationOverlay({
 
   if (reviewMode) {
     const secondary = subtitle ?? (lead ? title : null)
-    // §235. «Рядом» — эталон своей колонкой слева, блока под заданиями нет.
-    const reference = hasSolution && !referenceSide ? (
+    // §248. «Эталон снизу» — блок под заданием (как в §226), иначе — панель
+    // поверх фото. Блок кладёт в колонку тот, кто её рисует (`context.reference`).
+    const reference = hasSolution && below ? (
       <SolutionReferenceBlock
         topicId={solutionTopicId ?? ''}
         materials={solution}
@@ -690,11 +708,10 @@ export function AttemptAnnotationOverlay({
     const context = {
       publishAnnotations,
       reference,
-      showReference: !hasSolution ? null : referenceSide ? showReferenceColumn : showReference,
+      showReference: hasReference ? openReference : null,
     }
-    // Колонка заданий при эталоне рядом: вторая граница не должна отдавать ей
-    // место, которое уже занял эталон (та же подрезка, что у перетаскивания).
-    const sideShare = referenceSide ? currentSolutionShare(window.innerWidth) : 0
+    const referencePressed = below && hasSolution ? referenceOpen : drawerOpen
+    const menuItem = 'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-graphite-900 hover:bg-graphite-50 disabled:pointer-events-none disabled:opacity-40'
     return (
       <div
         data-testid="attempt-annotation-overlay"
@@ -702,165 +719,198 @@ export function AttemptAnnotationOverlay({
         role="dialog"
         aria-modal="true"
         aria-label={`Разбор работы: ${title}`}
-        // §226. На телефоне прокручивается весь экран: шапка уезжает вверх,
-        // строка решения прилипает к низу. С 1024 — колонки со своими
+        // §248. На телефоне прокручивается весь экран: шапка уезжает вверх,
+        // нижняя полоса прилипает. С 1024 — фото и задание со своими
         // свитками, сам экран не прокручивается.
         className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-graphite-50 lg:overflow-hidden"
+        // Меню стоит на месте окна — уехавшая шапка его закрывает.
+        onScroll={() => { if (menuOpen) setMenuOpen(false) }}
       >
         {/*
-          §226. Шапка: сверху «← Очередь проверки · N из M» и тихие действия,
-          ниже крупно «Имя — ДЗ» со строкой подробностей; справа от них (на
-          телефоне — под ними) «Следующая работа» и сводка вердиктов.
+          §248. Шапка — одна строка: «← Очередь · N из M», «Имя · ДЗ», мелко
+          группа и срок; справа «Эталон», «…» и «Следующая работа →». Вторая
+          сводка вердиктов и переключатель «Решение рядом/внизу» ушли: первая
+          дублировала полосу номеров, второй стал пунктом меню.
         */}
-        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-1.5 border-b border-graphite-200 bg-white px-4 py-3 lg:px-7 lg:py-4">
-          <div className="col-start-1 row-start-1 min-w-0 self-center">
-            {backLabel && (
-              <button
-                type="button"
-                data-testid="attempt-back"
-                onClick={onClose}
-                className="text-[13px] text-graphite-500 transition-colors hover:text-graphite-900"
-              >
-                ← {backLabel}
-              </button>
-            )}
-          </div>
-          {/*
-            Тихие действия над работой целиком: оригиналы файлов (§208),
-            «Скачать PDF» (§206) и «Закрыть». В макете их нет — на экране
-            они нужны редко, но убирать их нельзя.
-          */}
-          <div className="col-start-2 row-start-1 flex items-center justify-end gap-1 self-center">
-            {placementAvailable && (
-              <ReferencePlacementToggle value={placement} onChange={choosePlacement} />
-            )}
-            {files.length > 0 && (
-              <button
-                type="button"
-                data-testid="attempt-files-toggle"
-                aria-expanded={filesOpen}
-                onClick={() => setFilesOpen(v => !v)}
-                title="Открыть оригиналы файлов работы"
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors',
-                  filesOpen ? 'bg-graphite-100 text-graphite-900' : 'text-graphite-500 hover:bg-graphite-100 hover:text-graphite-900',
-                )}
-              >
-                <Paperclip size={13} />
-                <span className="hidden sm:inline">Файлы</span> ({files.length})
-              </button>
-            )}
-            {paths.length > 0 && (
-              <AttemptPdfButton audience={pdfAudience} report={pdfReport ?? null} sourceRef={exportSourceRef} quiet />
-            )}
+        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-graphite-200 bg-white px-4 py-2.5 lg:px-6">
+          <div className="flex min-w-0 flex-1 basis-[26rem] flex-wrap items-baseline gap-x-4 gap-y-0.5">
+          {backLabel && (
             <button
               type="button"
-              data-testid="attempt-annotation-close"
-              aria-label="Закрыть разбор"
+              data-testid="attempt-back"
               onClick={onClose}
-              className="rounded-full p-1.5 text-graphite-400 transition-colors hover:bg-graphite-100 hover:text-graphite-900"
+              className="shrink-0 whitespace-nowrap text-sm text-graphite-500 transition-colors hover:text-graphite-900"
             >
-              <X size={20} />
+              ← {backLabel}
             </button>
+          )}
+          <h2
+            data-testid="attempt-header-lead"
+            title={leadTitle ? `${lead ?? title} — ${leadTitle}` : lead ?? title}
+            className="min-w-0 max-w-full truncate text-[17px] font-extrabold leading-tight text-graphite-900"
+          >
+            {lead ?? title}
+          </h2>
+          {secondary && (
+            <p data-testid="attempt-header-secondary" title={secondary} className="min-w-0 max-w-full truncate text-[13px] text-graphite-500">
+              {secondary}
+            </p>
+          )}
           </div>
-          <div className="col-span-2 row-start-2 min-w-0 lg:col-span-1">
-            <h2 data-testid="attempt-header-lead" className="line-clamp-2 text-lg font-semibold leading-tight text-graphite-900 lg:truncate lg:text-2xl">
-              {lead ?? title}
-            </h2>
-            {secondary && (
-              <p data-testid="attempt-header-secondary" title={secondary} className="mt-1 line-clamp-2 text-[13px] text-graphite-500">
-                {secondary}
-              </p>
+          <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
+            {hasReference && (
+              <button
+                type="button"
+                data-testid="attempt-reference-toggle"
+                aria-pressed={referencePressed}
+                onClick={toggleReference}
+                className={cn(
+                  'rounded-[10px] border px-3 py-1.5 text-[13px] font-bold transition-colors',
+                  referencePressed
+                    ? 'border-primary-600 bg-primary-50 text-primary-700'
+                    : 'border-graphite-200 bg-white text-graphite-900 hover:border-graphite-300',
+                )}
+              >
+                Эталон
+              </button>
+            )}
+            <div ref={menuBoxRef} className="relative" data-review-keys="off">
+              <button
+                type="button"
+                data-testid="attempt-more-menu"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label="Ещё"
+                onClick={toggleMenu}
+                className="rounded-[10px] border border-graphite-200 bg-white px-3 py-1.5 text-[13px] font-bold leading-5 text-graphite-900 transition-colors hover:border-graphite-300"
+              >
+                …
+              </button>
+              {/*
+                Меню смонтировано всегда и только прячется: «Скачать PDF»
+                собирает файл секунды, и закрытое меню не должно обрывать
+                счёт «Готовлю 2 из 4».
+              */}
+              <div
+                role="menu"
+                data-testid="attempt-more-menu-list"
+                hidden={!menuOpen}
+                // `hidden` сам по себе проигрывает классу `grid` — прячем и классом.
+                style={menuPos ? { position: 'fixed', top: menuPos.top, left: menuPos.left } : undefined}
+                className={cn(
+                  'absolute right-0 top-[calc(100%+6px)] z-[65] w-64 rounded-xl border border-graphite-200 bg-white p-1.5 shadow-[0_10px_30px_rgba(18,35,74,.14)]',
+                  menuOpen ? 'grid' : 'hidden',
+                )}
+              >
+                {files.length > 0 && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={filesOpen}
+                    data-testid="attempt-files-toggle"
+                    aria-expanded={filesOpen}
+                    onClick={() => { setFilesOpen(v => !v); setMenuOpen(false) }}
+                    className={menuItem}
+                  >
+                    <Paperclip size={14} className="text-graphite-400" />
+                    Файлы работы ({files.length})
+                  </button>
+                )}
+                {paths.length > 0 && (
+                  <AttemptPdfButton audience={pdfAudience} report={pdfReport ?? null} sourceRef={exportSourceRef} menu />
+                )}
+                {hasSolution && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="reference-placement-toggle"
+                    data-placement={below ? 'below' : 'side'}
+                    onClick={() => { choosePlacement(below ? 'side' : 'below'); setMenuOpen(false) }}
+                    className={menuItem}
+                  >
+                    <BookOpen size={14} className="text-graphite-400" />
+                    {below ? 'Эталон сбоку, поверх фото' : 'Эталон снизу, а не сбоку'}
+                  </button>
+                )}
+                {!viewOnly && paths.length > 0 && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="clear-marks-button"
+                    disabled={!clearAvailable}
+                    onClick={() => { setMenuOpen(false); clearMarksRef.current?.() }}
+                    title="Удалить все пометки на работе: находки ИИ и рамки проверяющих"
+                    className={cn(menuItem, 'hover:bg-verdict-bad-tint hover:text-verdict-bad-ink')}
+                  >
+                    <Eraser size={14} className="text-graphite-400" />
+                    Очистить пометки
+                  </button>
+                )}
+                {menuExtras.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    data-testid={item.testId}
+                    disabled={item.disabled}
+                    onClick={() => { setMenuOpen(false); item.onSelect() }}
+                    className={menuItem}
+                  >
+                    <span aria-hidden className="inline-flex w-3.5 shrink-0 justify-center text-graphite-400">{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="attempt-annotation-close"
+                  onClick={() => { setMenuOpen(false); onClose() }}
+                  className={cn(menuItem, 'border-t border-graphite-100 text-graphite-500')}
+                >
+                  <X size={14} className="text-graphite-400" />
+                  Закрыть разбор
+                </button>
+              </div>
+            </div>
+            {headerAside && (
+              <div data-testid="attempt-header-aside" className="min-w-0">
+                {headerAside}
+              </div>
             )}
           </div>
-          {headerAside && (
-            <div data-testid="attempt-header-aside" className="col-span-2 row-start-3 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:justify-self-end">
-              {headerAside}
-            </div>
-          )}
         </header>
 
         <PresenceBanner viewers={viewers} locked={locked} onForceEdit={onForceEdit} />
         {filesStrip}
 
         {/*
-          Фото слева на всю оставшуюся ширину, задания справа своей колонкой со
-          своим свитком (§210 — колесо в списке не уводит работу). Ниже 1024
-          всё идёт одной лентой: фото, потом задания; строка решения остаётся
-          внизу экрана — она вне ленты.
+          §248. Слева — работа ученика крупно, справа — одно текущее задание.
+          Постоянной колонки эталона больше нет: «Эталон» — панель поверх фото
+          по запросу. Ниже 1024 — одна лента: фото, под ним задание; нижняя
+          полоса вне ленты и прилипает к низу.
         */}
         <div
           ref={splitRef}
           data-testid="attempt-split-row"
-          data-reference={referenceSide ? 'side' : 'below'}
-          className="flex shrink-0 flex-col lg:min-h-0 lg:flex-1 lg:shrink lg:flex-row lg:overflow-hidden"
+          data-reference={below ? 'below' : 'drawer'}
+          className="flex shrink-0 flex-col gap-3 p-3 lg:min-h-0 lg:flex-1 lg:shrink lg:flex-row lg:gap-0 lg:overflow-hidden lg:px-5 lg:py-4"
         >
-          {referenceSide && (
-            <SolutionReferenceColumn
-              topicId={solutionTopicId ?? ''}
-              materials={solution}
-              loading={solutionLoading}
-              widthPercent={fractionToPercent(solutionFraction)}
-              widthFromLaptop={fractionChosen}
-              scrollRef={columnScrollRef}
-              flash={columnFlash}
-              onMoveBelow={() => choosePlacement('below')}
-            />
-          )}
-
-          {/*
-            §235. Граница «эталон | работа» — тот же механизм и та же память
-            доли, что у колонки решения до §226 (§140, §208): Pointer Events,
-            стрелки с клавиатуры, `review:solution-pane-fraction`.
-          */}
-          {referenceSide && (
-            <div
-              data-testid="solution-split-handle"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Ширина колонки решения"
-              aria-valuemin={Math.round(MIN_SOLUTION_FRACTION * 100)}
-              aria-valuemax={Math.round(MAX_SOLUTION_FRACTION * 100)}
-              aria-valuenow={Math.round(solutionFraction * 100)}
-              tabIndex={0}
-              onPointerDown={e => {
-                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-                setDragging(true)
-              }}
-              onPointerMove={e => { if (dragging) moveSplit(e.clientX) }}
-              onPointerUp={() => {
-                if (!dragging) return
-                setDragging(false)
-                writeSolutionFraction(solutionFraction)
-              }}
-              onPointerCancel={() => setDragging(false)}
-              onKeyDown={e => {
-                const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0
-                if (!step) return
-                e.preventDefault()
-                const next = Math.min(
-                  MAX_SOLUTION_FRACTION,
-                  Math.max(MIN_SOLUTION_FRACTION, solutionFraction + step),
-                )
-                chooseFraction(next)
-                writeSolutionFraction(next)
-              }}
-              className={cn(
-                'hidden w-1 shrink-0 cursor-col-resize touch-none bg-graphite-200 transition-colors lg:block',
-                'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
-                dragging && 'bg-primary-400',
-              )}
-            />
-          )}
-
           <div
             data-testid="attempt-work-column"
-            className={cn(
-              'h-[62vh] min-h-0 shrink-0 overflow-auto p-3 lg:h-auto lg:flex-1 lg:shrink lg:py-4 lg:pl-7 lg:pr-5',
-              referenceSide && 'lg:min-w-0 lg:pl-5',
-            )}
+            className="relative h-[60vh] min-h-0 shrink-0 lg:h-auto lg:min-w-0 lg:flex-1 lg:shrink"
           >
             {workContent}
+            {drawerOpen && hasReference && (
+              <SolutionReferenceDrawer
+                topicId={solutionTopicId ?? ''}
+                materials={below ? [] : solution}
+                loading={below ? false : solutionLoading}
+                answers={referenceAnswers}
+                currentNo={currentTaskNo}
+                onClose={() => setDrawerOpen(false)}
+                scrollRef={drawerScrollRef}
+              />
+            )}
           </div>
 
           {showReviewPanel && (
@@ -877,7 +927,7 @@ export function AttemptAnnotationOverlay({
                 (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
                 setTableDragging(true)
               }}
-              onPointerMove={e => { if (tableDragging) moveTableSplit(e.clientX) }}
+              onPointerMove={e => { if (tableDragging) { setTableChosen(true); moveTableSplit(e.clientX) } }}
               onPointerUp={() => {
                 if (!tableDragging) return
                 setTableDragging(false)
@@ -888,45 +938,39 @@ export function AttemptAnnotationOverlay({
                 const step = e.key === 'ArrowLeft' ? 0.02 : e.key === 'ArrowRight' ? -0.02 : 0
                 if (!step) return
                 e.preventDefault()
+                e.stopPropagation()
+                setTableChosen(true)
                 stepTableSplit(step)
               }}
               className={cn(
-                'hidden w-1 shrink-0 cursor-col-resize touch-none bg-graphite-200 transition-colors lg:block',
+                'mx-1.5 hidden w-1 shrink-0 cursor-col-resize touch-none rounded-full bg-transparent transition-colors lg:block',
                 'hover:bg-primary-300 focus-visible:bg-primary-400 focus-visible:outline-none',
                 tableDragging && 'bg-primary-400',
               )}
             />
           )}
 
-          {showReviewPanel ? (
+          {showReviewPanel && (
             <aside
               data-testid="review-side-column"
-              style={{ ['--review-side-w' as string]: tableFractionToPercent(tableFraction, sideShare) }}
-              className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-graphite-200 bg-white lg:h-full lg:w-[var(--review-side-w,37%)] lg:border-t-0"
+              data-width={tableChosen ? 'chosen' : 'default'}
+              style={tableChosen ? { ['--review-side-w' as string]: tableFractionToPercent(tableFraction) } : undefined}
+              className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-graphite-200 bg-white lg:h-full lg:w-[var(--review-side-w,380px)]"
             >
               <div
                 data-testid="review-side-scroll-area"
-                className="flex min-h-0 flex-col p-3 sm:p-4 lg:flex-1 lg:overflow-y-auto lg:px-5"
+                className="flex min-h-0 flex-col gap-4 p-3.5 lg:flex-1 lg:overflow-y-auto"
               >
                 {reviewPanel?.(context)}
               </div>
             </aside>
-          ) : reference ? (
-            // Режим чтения (в работе коллега): решать нечего, но эталон
-            // по-прежнему нужен — сверять можно и глазами.
-            <aside
-              data-testid="review-reference-column"
-              className="shrink-0 border-t border-graphite-200 bg-white p-4 lg:w-[380px] lg:overflow-y-auto lg:border-l lg:border-t-0"
-            >
-              {reference}
-            </aside>
-          ) : null}
+          )}
         </div>
 
         {showReviewPanel && reviewBar && (
           <div
             data-testid="review-bar"
-            className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-graphite-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(31,85,224,0.06)] lg:static lg:px-7 lg:shadow-none"
+            className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-graphite-200 bg-white px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(31,85,224,0.06)] lg:static lg:px-6 lg:shadow-none"
           >
             {reviewBar(context)}
           </div>

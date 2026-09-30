@@ -28,6 +28,7 @@ export function AttemptPdfButton({
   report,
   sourceRef,
   quiet = false,
+  menu = false,
 }: {
   audience: AttemptPdfAudience
   report: AttemptPdfReport | null
@@ -37,6 +38,12 @@ export function AttemptPdfButton({
    * только значок (подпись — в `title` и для читалки).
    */
   quiet?: boolean
+  /**
+   * §248. Пункт меню «…» спокойного экрана проверки. Меню не закрывается от
+   * нажатия и не размонтируется, пока файл собирается, — «Готовлю 2 из 4»
+   * остаётся видно.
+   */
+  menu?: boolean
 }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const busyRef = useRef(false)
@@ -78,6 +85,23 @@ export function AttemptPdfButton({
       busyRef.current = false
       setProgress(null)
     }
+  }
+
+  if (menu) {
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        data-testid="attempt-pdf-download"
+        disabled={busy}
+        onClick={() => { void download() }}
+        title="Скачать работу с пометками и разбором одним файлом"
+        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-graphite-900 hover:bg-graphite-50 disabled:opacity-60"
+      >
+        {progress ? <Loader2 size={14} className="animate-spin text-graphite-400" /> : <Download size={14} className="text-graphite-400" />}
+        {progress ? `Готовлю ${progress.done} из ${progress.total}` : 'Скачать PDF'}
+      </button>
+    )
   }
 
   return (

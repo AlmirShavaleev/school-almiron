@@ -36,15 +36,15 @@ vi.mock('@/hooks/useHomeworkReviewQueue', () => ({
 // под работой. §226: форма вердикта — нижней строкой (`reviewBar`), в шапке —
 // «← Очередь проверки · N из M» и сводка со «Следующей работой».
 vi.mock('@/components/courseProgram/AttemptAnnotationOverlay', () => ({
-  AttemptAnnotationOverlay: ({ title, lead, subtitle, footer, reviewPanel, reviewBar, backLabel, headerAside, onClose }: {
-    title: string; lead?: string; subtitle?: string; footer?: any; reviewPanel?: any; reviewBar?: any
+  AttemptAnnotationOverlay: ({ title, lead, leadTitle, subtitle, footer, reviewPanel, reviewBar, backLabel, headerAside, onClose }: {
+    title: string; lead?: string; leadTitle?: string; subtitle?: string; footer?: any; reviewPanel?: any; reviewBar?: any
     backLabel?: string; headerAside?: any; onClose: () => void
   }) => (
     <div data-testid="attempt-annotation-overlay">
       <button type="button" data-testid="overlay-back" onClick={onClose}>{backLabel}</button>
       <div data-testid="overlay-header-aside">{headerAside}</div>
       <span>{title}</span>
-      <span data-testid="overlay-lead">{lead}</span>
+      <span data-testid="overlay-lead" title={leadTitle}>{lead}</span>
       <span data-testid="overlay-subtitle">{subtitle}</span>
       {footer?.({ publishing: false, published: false, publishAnnotations: async () => true })}
       <div data-testid="overlay-review-panel">
@@ -163,9 +163,11 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     const overlay = screen.getByTestId('attempt-annotation-overlay')
     expect(overlay).toBeInTheDocument()
     // В шапке разбора — работа, от кого, тема, и отметка об опоздании.
-    // §226: крупно «Имя — ДЗ», как в макете; тема и срок — строкой ниже.
-    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик — Домашнее задание')
-    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('Новая тема1')
+    // §248: крупно «Имя · ДЗ», как в макете; мелко — группа (курс) и срок.
+    // Тема — подсказкой у имени: в одну строку шапки она не помещается.
+    expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Ученик · Домашнее задание')
+    expect(screen.getByTestId('overlay-lead')).toHaveAttribute('title', 'Новая тема1')
+    expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('Тестовый курс')
     expect(screen.getByTestId('overlay-subtitle')).toHaveTextContent('с опозданием')
   })
 
@@ -178,11 +180,11 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     ]
     renderPage()
     openRow('Второй')
-    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 2 из 3')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь · 2 из 3')
 
     fireEvent.click(screen.getByTestId('review-next'))
     expect(screen.getByTestId('overlay-lead')).toHaveTextContent('Третий')
-    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 3 из 3')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь · 3 из 3')
 
     // С конца списка — к пропущенным в начале.
     fireEvent.click(screen.getByTestId('review-next'))
@@ -195,7 +197,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     renderPage()
     openRow()
     expect(screen.queryByTestId('review-next')).not.toBeInTheDocument()
-    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь проверки · 1 из 1')
+    expect(screen.getByTestId('overlay-back')).toHaveTextContent('Очередь · 1 из 1')
     fireEvent.click(screen.getByTestId('overlay-back'))
     expect(screen.queryByTestId('attempt-annotation-overlay')).not.toBeInTheDocument()
   })
@@ -206,7 +208,10 @@ describe('HomeworkReviewQueuePage — список только для выбо�
     openRow()
     expect(within(screen.getByTestId('overlay-review-bar')).getByTestId('review-accept-button')).toBeInTheDocument()
     expect(within(screen.getByTestId('overlay-review-panel')).queryByTestId('review-accept-button')).not.toBeInTheDocument()
-    expect(within(screen.getByTestId('overlay-review-panel')).getByTestId('ai-check-panel')).toBeInTheDocument()
+    // §248: в колонке — одно текущее задание (таблицы у этой работы нет —
+    // пустое состояние с «Проверить с ИИ»), полная таблица — из «…».
+    expect(within(screen.getByTestId('overlay-review-panel')).getByTestId('review-focus-empty')).toBeInTheDocument()
+    expect(within(screen.getByTestId('overlay-review-panel')).queryByTestId('ai-check-panel')).not.toBeInTheDocument()
   })
 
   it('повторную попытку помечает номером, первую — нет', () => {
@@ -391,6 +396,8 @@ describe('HomeworkReviewQueuePage — принять работу с дораб�
 
     // Форма, а не «вердикт уже вынесен»: балл у этого ДЗ по шкале, поэтому
     // «Принять» включается после его ввода — как и у сданной работы.
+    // §248: комментарий в полосе одной строкой, поле раскрывается «Написать».
+    fireEvent.click(screen.getByTestId('review-comment-edit'))
     expect(screen.getByTestId('review-comment-input')).toBeEnabled()
     fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '5' } })
     expect(screen.getByTestId('review-accept-button')).toBeEnabled()

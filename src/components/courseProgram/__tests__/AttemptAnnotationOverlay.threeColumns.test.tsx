@@ -14,6 +14,12 @@ import { TABLE_FRACTION_STORAGE_KEY } from '@/lib/reviewPaneLayout'
  * §226: отдельной колонки решения слева больше нет — эталон приезжает в
  * колонку заданий сворачиваемым блоком (`reference` в контексте панели), а
  * форма вердикта — нижней строкой (`reviewBar`).
+ *
+ * §248: эталон по умолчанию — выдвижная панель поверх фото (её проверяет
+ * `…referencePlacement.test.tsx`); блок в колонке заданий — только в режиме
+ * «Эталон снизу». Колонка заданий по умолчанию 380 px, как в макете, а не
+ * 37 %: доля включается, как только границу сдвинули руками. Свиток работы —
+ * внутри аннотатора, у самой колонки фото своего свитка нет.
  */
 
 const materials = [{
@@ -26,6 +32,7 @@ vi.mock('@/components/courseProgram/SolutionReferencePanel', () => ({
   SolutionReferenceBlock: ({ open, onToggle }: { open: boolean; onToggle: () => void }) => (
     <button type="button" data-testid="solution-reference-block" aria-expanded={open} onClick={onToggle} />
   ),
+  SolutionReferenceDrawer: () => <div data-testid="solution-reference-drawer" />,
   // Как в жизни: без темы решения нет. Ученический экран `solutionTopicId` не
   // передаёт вовсе, и панели у него не появляется ни при каких условиях.
   useTopicSolutionMaterials: (topicId?: string | null) => ({
@@ -96,7 +103,8 @@ describe('три колонки на экране проверки', () => {
     window.localStorage.clear()
   })
 
-  it('§226. Колонок две — работа и задания; эталон блоком в колонке заданий', () => {
+  it('§226. Колонок две — работа и задания; эталон блоком в колонке заданий (режим «снизу», §248)', () => {
+    window.localStorage.setItem('review:reference-placement', 'below')
     renderStaff()
     expect(screen.getByTestId('attempt-annotation-overlay').dataset.layout).toBe('review')
     expect(screen.queryByTestId('solution-reference-panel')).not.toBeInTheDocument()
@@ -115,12 +123,14 @@ describe('три колонки на экране проверки', () => {
   })
 
   it('§226. Блок эталона сворачивается, и выбор запоминается', () => {
+    window.localStorage.setItem('review:reference-placement', 'below')
     renderStaff()
     const block = screen.getByTestId('solution-reference-block')
     expect(block).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(block)
     expect(screen.getByTestId('solution-reference-block')).toHaveAttribute('aria-expanded', 'false')
     cleanup()
+    window.localStorage.setItem('review:reference-placement', 'below')
     renderStaff()
     expect(screen.getByTestId('solution-reference-block')).toHaveAttribute('aria-expanded', 'false')
   })
@@ -153,8 +163,10 @@ describe('три колонки на экране проверки', () => {
     expect(screen.queryByTestId('review-side-column')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-split-handle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-bar')).not.toBeInTheDocument()
-    // §226. Эталон при этом остаётся — сверять глазами можно и на чтении.
-    expect(within(screen.getByTestId('review-reference-column')).getByTestId('solution-reference-block')).toBeInTheDocument()
+    // §226 → §248. Эталон при этом остаётся — сверять глазами можно и на
+    // чтении: кнопка «Эталон» открывает ту же панель поверх фото.
+    fireEvent.click(screen.getByTestId('attempt-reference-toggle'))
+    expect(screen.getByTestId('solution-reference-drawer')).toBeInTheDocument()
   })
 
   it('таблица лежит снаружи свитка работы — колесо в ней работу не уводит', () => {
@@ -165,9 +177,11 @@ describe('три колонки на экране проверки', () => {
     expect(work.contains(side)).toBe(false)
     expect(side.contains(work)).toBe(false)
     expect(work.parentElement).toBe(side.parentElement)
-    // У каждой колонки свой свиток.
-    expect(work.className).toContain('overflow-auto')
+    // У каждой колонки свой свиток: у работы — внутри аннотатора (§248), у
+    // заданий — своя область с прокруткой.
+    expect(work.className).not.toContain('overflow-y-auto')
     expect(side.className).toContain('overflow-hidden')
+    expect(screen.getByTestId('review-side-scroll-area').className).toContain('lg:overflow-y-auto')
   })
 
   it('колонка есть и тогда, когда размечать нечего — вердикт всё равно ставят', () => {
@@ -193,9 +207,12 @@ describe('вторая граница', () => {
     window.localStorage.clear()
   })
 
-  it('по умолчанию таблица получает 37 % рабочей области', () => {
+  it('§248. Пока границу не двигали — 380 px, как в макете; доли нет', () => {
     renderStaff()
-    expect(widthOfSideColumn()).toBe('37.0%')
+    const side = screen.getByTestId('review-side-column')
+    expect(widthOfSideColumn()).toBe('')
+    expect(side.dataset.width).toBe('default')
+    expect(side.className).toContain('lg:w-[var(--review-side-w,380px)]')
   })
 
   it('видна с ноутбука и спрятана на узком экране — как первая', () => {

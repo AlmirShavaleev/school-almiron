@@ -1182,6 +1182,30 @@ export const scenes = [
     { persona: 'o246', name: 'd246-teacher', url: '/catalog', width, height, actions: [{ wait: 1200 }] },
   ]),
 
+  // §248: спокойный экран проверки по утверждённому макету. Работа «светофора»
+  // (attempt 38) — черновик ИИ с заметками по заданиям; attempt 2 — без ИИ
+  // вовсе; первая в очереди (attempt 15) — пара «до/после» к o06-review-head.
+  // В базу сцены не пишут: вердиктов не ставят, рамку только обводят.
+  //   node e2e/harness/tour.mjs d248 1280 ; node e2e/harness/tour.mjs d248 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const open = id => [{ goto: `/homework-queue?attempt=${id}` }, { wait: 3000 }]
+    const pick = no => [{ clickSel: `[data-testid="review-focus-cell"][data-no="${no}"]` }, { wait: 700 }]
+    const toPanel = { eval: "document.querySelector('[data-testid=\"review-side-column\"]')?.scrollIntoView({ block: 'start' })" }
+    return [
+      { persona: 'owner', name: 'd248-queue-first', url: '/homework-queue', width, height, full: false, actions: [{ clickSel: 'button:has-text("Проверить")' }, { wait: 3000 }] },
+      { persona: 'owner', name: 'd248-ai', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('5')] },
+      { persona: 'owner', name: 'd248-ai-panel', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('9'), toPanel, { wait: 400 }] },
+      { persona: 'owner', name: 'd248-noai', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(2)), toPanel, { wait: 400 }] },
+      { persona: 'owner', name: 'd248-etalon', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('9'), { clickSel: '[data-testid="attempt-reference-toggle"]' }, { wait: 1500 }] },
+      { persona: 'owner', name: 'd248-menu', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), { clickSel: '[data-testid="attempt-more-menu"]' }, { wait: 500 }] },
+      { persona: 'owner', name: 'd248-last', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('14'), toPanel, { wait: 400 }] },
+      { persona: 'owner', name: 'd248-remark', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('9'), { clickSel: '[data-testid="review-focus-remark-toggle"]' }, { wait: 300 }, toPanel, { wait: 400 }] },
+      { persona: 'owner', name: 'd248-draw', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...pick('12'), { drag: { sel: '[data-testid="review-overlay-1"]', from: [0.12, 0.2], to: [0.72, 0.28] } }, { wait: 600 }] },
+      { persona: 'owner', name: 'd248-table', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), { clickSel: '[data-testid="attempt-more-menu"]' }, { wait: 300 }, { clickSel: '[data-testid="review-open-table"]' }, { wait: 800 }] },
+      { persona: 'owner', name: 'd248-comment', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), { clickSel: '[data-testid="review-comment-edit"]' }, { wait: 500 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },
