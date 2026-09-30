@@ -15,5 +15,5 @@ S=$(cd "$(dirname "$0")" && pwd)
 $Q -f $S221/00_slice.sql && $Q -f $S/05_slice_246.sql && echo "slice: ok" \
  && $Q -f $S/10_data_246.sql && echo "data: ok" \
  && $Q -1 -f $R/20260930142414_catalog_my_overview.sql && echo "20260930142414_catalog_my_overview (как на проде): ok" \
- && $Q -1 -f $R/PENDING_246_1.sql && $Q -1 -f $R/PENDING_246_1.sql && echo "PENDING_246_1 applied twice: ok" \
+ && $Q -1 -f $R/20260930193358_catalog_my_overview_all_viewers.sql && $Q -1 -f $R/20260930193358_catalog_my_overview_all_viewers.sql && echo "PENDING_246_1 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe246 -f $S/20_probes.sql
