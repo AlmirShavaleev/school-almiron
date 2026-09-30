@@ -71,7 +71,7 @@ immutable
 set search_path = public, pg_temp
 as $$
   select lower(regexp_replace(coalesce(p_no, ''),
-    '[[:space:]   -     　﻿№.]', '', 'g'));
+    U&'[[:space:]\00A0\1680\2000-\200A\2028\2029\202F\205F\3000\FEFF\2116.]', '', 'g'));
 $$;
 
 comment on function public.ai_benchmark_task_key(text) is
