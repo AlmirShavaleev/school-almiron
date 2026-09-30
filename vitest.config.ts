@@ -7,6 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // §247. Deno-импорт edge-функции check-homework-ai: в vitest вместо
+      // настоящего клиента — записывающая заглушка (src/test/checkHomeworkAiHarness.ts).
+      'jsr:@supabase/supabase-js@2': path.resolve(__dirname, './src/test/jsrSupabaseStub.ts'),
+      // Рендер PDF в тестах не гоняется (работы — фотографии); импорт должен лишь разрешиться.
+      'npm:@hyzyla/pdfium@2.1.13': path.resolve(__dirname, './src/test/denoNpmStub.ts'),
+      'npm:jpeg-js@0.4.4': path.resolve(__dirname, './src/test/denoNpmStub.ts'),
     },
   },
   test: {

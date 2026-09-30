@@ -1,0 +1,53 @@
+psql:/home/claude/agents/a247/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:84: NOTICE:  trigger "topic_homework_review_tasks_touch_trg" for relation "public.topic_homework_review_tasks" does not exist, skipping
+psql:/home/claude/agents/a247/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:110: NOTICE:  policy "topic_homework_review_tasks_staff_all" for relation "public.topic_homework_review_tasks" does not exist, skipping
+psql:/home/claude/agents/a247/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:117: NOTICE:  policy "topic_homework_review_tasks_student_select" for relation "public.topic_homework_review_tasks" does not exist, skipping
+psql:/home/claude/agents/a247/repo/supabase/migrations/PENDING_247.sql:48: NOTICE:  relation "ai_benchmark_results" already exists, skipping
+psql:/home/claude/agents/a247/repo/supabase/migrations/PENDING_247.sql:52: NOTICE:  relation "ai_benchmark_results_attempt_idx" already exists, skipping
+PENDING_247 applied twice: ok
+BEGIN
+CREATE FUNCTION
+CREATE TABLE
+INSERT 0 9
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 5
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+UPDATE 1
+DELETE 1
+INSERT 0 1
+INSERT 0 1
+DELETE 1
+INSERT 0 1
+ n  |       who       |                                                 action                                                  | verdict |                                                               expected                                                               |                                                                actual                                                                
+----+-----------------+---------------------------------------------------------------------------------------------------------+---------+--------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------
+  1 | преподаватель   | select из ai_benchmark_results                                                                          | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for table ai_benchmark_results
+  2 | админ платформы | select из ai_benchmark_results                                                                          | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for table ai_benchmark_results
+  3 | ученик          | select из ai_benchmark_results                                                                          | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for table ai_benchmark_results
+  4 | преподаватель   | insert в ai_benchmark_results                                                                           | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for table ai_benchmark_results
+  5 | anon            | select из ai_benchmark_results                                                                          | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for table ai_benchmark_results
+  6 | админ платформы | ai_benchmark_report('r1')                                                                               | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for function ai_benchmark_report
+  7 | преподаватель   | ai_benchmark_candidates()                                                                               | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for function ai_benchmark_candidates
+  8 | anon            | ai_benchmark_report('r1')                                                                               | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for function ai_benchmark_report
+  9 | преподаватель   | ai_benchmark_task_key('1')                                                                              | ok      | ОТКАЗ 42501                                                                                                                          | ОТКАЗ 42501: permission denied for function ai_benchmark_task_key
+ 10 | каталог         | RLS включена / политик / привилегии authenticated,anon / service_role                                   | ok      | rls=t; policies=0; auth=f,f,f,f; anon=f; service=t,t,t                                                                               | rls=t; policies=0; auth=f,f,f,f; anon=f; service=t,t,t
+ 11 | postgres        | ai_benchmark_task_key: «№␣4», « 4. », «12 А», «1 a» (тонкий), BOM+7, «Nº5»                              | ok      | 4|4|12а|1a|7|nº5                                                                                                                     | 4|4|12а|1a|7|nº5
+ 12 | postgres        | ai_benchmark_five: 4/five, 89, 90, 49, 50/hundred, null, без шкалы                                      | ok      | 4|4|5|2|3|-|-                                                                                                                        | 4|4|5|2|3|-|-
+ 13 | service_role    | ai_benchmark_report('r1'): Qwen                                                                         | ok      | (qwen/qwen3-vl-235b-a22b-instruct,3,2,1,0,2,8,6,75.0,5,62.5,1,1,0,0,1,50.0,1,50.0,2,1,50.0,0,2000.0,283.3,0.015000,0.03,11666.7)     | (qwen/qwen3-vl-235b-a22b-instruct,3,2,1,0,2,8,6,75.0,5,62.5,1,1,0,0,1,50.0,1,50.0,2,1,50.0,0,2000.0,283.3,0.015000,0.03,11666.7)
+ 14 | service_role    | ai_benchmark_report('r1'): Gemini                                                                       | ok      | (google/gemini-3.8-flash,3,3,0,1,2,6,3,50.0,3,50.0,1,1,1,1,1,50.0,1,50.0,1,0,0.0,1,3750.0,450.0,0.003000,0.006,19000.0)              | (google/gemini-3.8-flash,3,3,0,1,2,6,3,50.0,3,50.0,1,1,1,1,1,50.0,1,50.0,1,0,0.0,1,3750.0,450.0,0.003000,0.006,19000.0)
+ 15 | service_role    | ai_benchmark_report('r1'): моделей (A4 не итог, A5 без таблицы, r0 — не в счёт)                         | ok      | 2                                                                                                                                    | 2
+ 16 | service_role    | ai_benchmark_report('нет такого')                                                                       | ok      | 0                                                                                                                                    | 0
+ 17 | postgres        | ai_benchmark_report('r0'): одна работа Gemini, 1 пара, не совпала (ИИ wrong / учитель correct — строже) | ok      | (google/gemini-3.8-flash,1,1,0,0,1,1,0,0.0,0,0.0,0,1,0,4,0,0.0,1,100.0,1,0,0.0,1,1.0,1.0,1.000000,1,1.0)                             | (google/gemini-3.8-flash,1,1,0,0,1,1,0,0.0,0,0.0,0,1,0,4,0,0.0,1,100.0,1,0,0.0,1,1.0,1.0,1.000000,1,1.0)
+ 18 | service_role    | ai_benchmark_candidates(): A3, A1, A2 (A4 не итог, A5 без таблицы, A6 без файлов)                       | ok      | …03 returned_for_revision балл - строк 2/2 файлов 1; …01 accepted балл 4 строк 6/5 файлов 2; …02 accepted балл 80 строк 3/3 файлов 1 | …03 returned_for_revision балл - строк 2/2 файлов 1; …01 accepted балл 4 строк 6/5 файлов 2; …02 accepted балл 80 строк 3/3 файлов 1
+ 19 | service_role    | upsert того же ключа дважды (как edge-функция): строк 1, в ней второй статус                            | ok      | 1 error                                                                                                                              | 1 error
+ 21 | service_role    | второй insert того же ключа без on conflict                                                             | ok      | ОТКАЗ 23505                                                                                                                          | ОТКАЗ 23505: duplicate key value violates unique constraint "ai_benchmark_results_run_attempt_model_key"
+ 22 | service_role    | статус вне ok/error                                                                                     | ok      | ОТКАЗ 23514                                                                                                                          | ОТКАЗ 23514: new row for relation "ai_benchmark_results" violates check constraint "ai_benchmark_results_status_check"
+ 23 | postgres        | удалили попытку A3 — её строк замера не осталось                                                        | ok      | 0                                                                                                                                    | 0
+
+ failed | total 
+--------+-------
+      0 |    22
+
+ROLLBACK

@@ -13,6 +13,11 @@
 // углу. Так их ждёт и аннотатор (MIN_REGION_SIZE = 0.015), и CHECK-ограничения
 // в topic_homework_ai_findings. Пиксели сюда класть нельзя: страницы
 // масштабируются под ширину экрана.
+//
+// ЗАМЕР (§247). Тело `{ benchmark: true, … }` с заголовком X-Cron-Secret —
+// прогон той же работы тем же путём (`runCheck`) другой моделью, результат в
+// `ai_benchmark_results`, без заявки, ai_jobs и находок (`handleBenchmark`,
+// чистая часть — `benchmark.ts`). Боевой путь от замера не зависит.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -50,12 +55,27 @@ import {
   withLoweredNote,
   withUncheckedNote,
   type Category,
+  type FilterResult,
   type FindingDraft,
+  type TaskRow,
 } from './findings.ts'
+import {
+  BENCHMARK_MODEL_TIMEOUT_MS,
+  DEFAULT_AI_MODEL,
+  benchmarkMaxTokens,
+  benchmarkRequestBody,
+  benchmarkResultRow,
+  chatRequestBody,
+  checkCronSecret,
+  describeBenchmarkError,
+  isBenchmarkRequest,
+  parseBenchmarkRequest,
+  type BenchmarkOutcome,
+} from './benchmark.ts'
 
 const ATTEMPTS_BUCKET = 'topic-homework-attempts'
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
-const DEFAULT_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
+const DEFAULT_MODEL = DEFAULT_AI_MODEL
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
 const IMAGE_MIME = /^image\/(png|jpe?g|webp|heic|heif)$/i
 const PDF_MIME = /^application\/pdf$/i
@@ -157,6 +177,12 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}))
+
+    // §247. Замер на других моделях — своя ветка ДО заявки: без
+    // topic_homework_ai_request_check, без ai_jobs и находок. Пускает только
+    // секрет CRON_SECRET; клиент приложения поля `benchmark` не шлёт.
+    if (isBenchmarkRequest(body)) return await handleBenchmark(req, body, admin)
+
     const attemptId = String(body?.attempt_id ?? '').trim()
     if (!attemptId) return fail(400, 'Не передан идентификатор работы')
 
@@ -181,196 +207,15 @@ Deno.serve(async (req) => {
     const model = Deno.env.get('AI_MODEL') || DEFAULT_MODEL
     const baseUrl = (Deno.env.get('AI_BASE_URL') || DEFAULT_BASE_URL).replace(/\/+$/, '')
 
-    // Шаг 2. Условие задания и решение из материалов темы — контекст для модели.
-    const { data: attempt } = await admin
-      .from('topic_homework_attempts')
-      .select('id, homework_id, homework:topic_homework!inner(id, title, instructions, grade_scale, topic_id)')
-      .eq('id', attemptId)
-      .single()
-
-    const homework = (attempt as Record<string, any> | null)?.homework
-    const topicId: string | null = homework?.topic_id ?? null
-    const gradeScale: string | null = homework?.grade_scale ?? null
-
-    // Эталон. До §135 здесь стояло `.eq('kind','text')`, а на проде ВСЕ 844
-    // решения рубрики `solution` — PDF-файлы: эталон не доезжал до модели ни
-    // разу, и она сверяла ученика со своим же решением.
-    // Любой сбой эталона — это «проверим без эталона», а не падение всей
-    // проверки: за всё время было восемь попыток, ещё одна причина падать нам
-    // не нужна (требование владельца 16.08).
-    let reference: ReferenceResult
-    try {
-      reference = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, SOLUTION_SPEC)
-    } catch (err) {
-      reference = {
-        text: '', truncated: false, state: 'failed', engine: null, cached: false,
-        error: `Эталон не получен: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
-      }
-    }
-    const solutionText = reference.text
-
-    // §149.1. Условие ДЗ — рабочий лист. Поле `instructions` пустое почти везде,
-    // и до этого модель узнавала состав заданий из решения, с обратной стороны.
-    // Тот же путь и те же правила, что у эталона: разбор бесплатным движком,
-    // кэш по материалу, провал — «проверим без условия», а не падение.
-    let worksheet: ReferenceResult
-    try {
-      worksheet = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, WORKSHEET_SPEC)
-    } catch (err) {
-      worksheet = {
-        text: '', truncated: false, state: 'failed', engine: null, cached: false,
-        error: `Условие не получено: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
-      }
-    }
-
-    // §240. Ответы и критерии оценивания (проверочная/контрольная) — тем же
-    // путём и с тем же правилом «провал — проверим без них». У обычного ДЗ
-    // рубрики нет: 'missing', блока в промпте нет.
-    let criteria: ReferenceResult
-    try {
-      criteria = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, CRITERIA_SPEC)
-    } catch (err) {
-      criteria = {
-        text: '', truncated: false, state: 'failed', engine: null, cached: false,
-        error: `Критерии не получены: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
-      }
-    }
-
-    // Шаг 3. Страницы работы.
-    const { data: rawFiles } = await admin
-      .from('topic_homework_attempt_files')
-      .select('id, storage_path, file_name, mime_type, position')
-      .eq('attempt_id', attemptId)
-      .order('position', { ascending: true })
-
-    const all = (rawFiles ?? []) as AttemptFile[]
-    if (all.length === 0) throw new Error('В работе нет файлов')
-
-    const usable = all.filter(f => {
-      const mime = f.mime_type ?? guessMime(f)
-      return IMAGE_MIME.test(mime) || PDF_MIME.test(mime)
+    // Шаги 2–5 — общие с замером §247 (`runCheck`): эталон, условие,
+    // критерии, страницы, промпт, модель, таблица и фильтр находок.
+    const check = await runCheck(admin, attemptId, { apiKey, baseUrl, model }, {
+      requestBody: messages => chatRequestBody(model, messages),
+      logTag: { model, jobId },
     })
-    if (usable.length === 0) {
-      throw new Error('В работе нет ни фотографий, ни PDF — проверять нечего')
-    }
-
-    const { pages: sent, skipped } = await collectPages(admin, usable)
-    // Причину НЕЛЬЗЯ терять: без неё в панели остаётся «ИИ не смог» без единого
-    // слова о том, что чинить. Один раз уже наступили — три работы упали, а
-    // почему, пришлось выяснять запросами к базе.
-    if (sent.length === 0) {
-      throw new Error(skipped.length > 0
-        ? `Не удалось прочитать ни одной страницы: ${skipped.join('; ')}`
-        : 'Не удалось прочитать ни одной страницы работы')
-    }
-
-    const content: Record<string, unknown>[] = []
-    for (const [index, item] of sent.entries()) {
-      content.push({ type: 'text', text: `Страница #${index + 1}: ${item.label}` })
-      content.push({ type: 'image_url', image_url: { url: `data:${item.mime};base64,${base64(item.bytes)}` } })
-    }
-
-    // Шаг 4. Запрос к модели.
-    const prompt = buildPrompt({
-      title: homework?.title ?? 'Домашнее задание',
-      instructions: homework?.instructions ?? '',
-      worksheetText: worksheet.text,
-      worksheetTruncated: worksheet.truncated,
-      solutionText,
-      referenceTruncated: reference.truncated,
-      criteriaText: criteria.text,
-      criteriaTruncated: criteria.truncated,
-      gradeScale,
-      pageCount: sent.length,
-    })
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://alminion.ru',
-        'X-Title': 'School Almiron',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...content] }],
-        response_format: { type: 'json_object' },
-        // §180. Таблица по заданиям удлиняет ответ: 20 строк — это ещё ~1,5 тыс.
-        // токенов сверх находок. В выгрузке 15.09 выход был до 1,7 тыс.
-        max_tokens: 6000,
-      }),
-    })
-
-    const payload = await response.json().catch(() => null)
-    if (!response.ok) {
-      const detail = payload?.error?.message ?? `HTTP ${response.status}`
-      throw new Error(`Модель отказала: ${response.status} ${detail}`)
-    }
-
-    const text = extractText(payload)
-    if (!text) throw new Error('Модель вернула пустой ответ')
-
-    const parsed = parseJson(text)
-    if (!parsed) throw new Error(`Не удалось разобрать ответ модели: ${text.slice(0, 200)}`)
-
-    // Шаг 5. Таблица заданий и находки (§180).
-    //
-    // Балл считает КОД из таблицы, а не модель: в выгрузке 15.09 «ошибка в
-    // одной задаче из шести» давала 5 из 5, а две ошибки из 16 — 94. Число из
-    // ответа модели в базу не идёт (кроме случая, когда таблицы нет вовсе —
-    // тогда оно сохраняется с confidence low, и панель его не показывает).
-    const tasksRaw = parseTasks(parsed.tasks)
-
-    // Рамки проверяем ДО фильтра по таблице: если первую находку строки
-    // отбросить после лимита «одна на задание», строка останется без находки,
-    // хотя у второй рамка была годной. Кривые выбрасываем поштучно: одна
-    // плохая рамка не должна отменять весь разбор.
-    const findings = Array.isArray(parsed.findings) ? parsed.findings : []
-    let badRects = 0
-    const drafts: (FindingDraft & { target: PageImage; rect: { x: number; y: number; w: number; h: number } })[] = []
-    for (const raw of findings) {
-      const index = Number(raw?.page_index ?? raw?.file_index)
-      const target = sent[Number.isFinite(index) ? index - 1 : -1]
-      if (!target) { badRects += 1; continue }
-
-      const rect = raw?.rect ?? {}
-      const x = clamp01(rect.x)
-      const y = clamp01(rect.y)
-      let w = clamp01(rect.w)
-      let h = clamp01(rect.h)
-      if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) { badRects += 1; continue }
-      w = Math.min(w, 1 - x)
-      h = Math.min(h, 1 - y)
-      if (w <= 0 || h <= 0) { badRects += 1; continue }
-
-      const note = String(raw?.text ?? '').trim().slice(0, 2000)
-      if (!note) { badRects += 1; continue }
-
-      const category: Category = (CATEGORIES as readonly string[]).includes(raw?.category) ? raw.category : 'comment'
-      drafts.push({
-        category,
-        text: note,
-        task: String(raw?.task ?? raw?.task_no ?? '').trim().slice(0, 16),
-        target,
-        rect: { x, y, w, h },
-      })
-    }
-
-    // Самопротиворечия («должно быть 0,78, а не 0,78»), находки по верным
-    // строкам, лимиты praise/format, потолок — всё здесь, в проверяемом тестом
-    // модуле. Счётчик отброшенных — в лог и в столбец dropped_findings.
-    const filtered = filterFindings(drafts, tasksRaw)
-    const tasks = filtered.tasks
-    const droppedFindings = filtered.dropped + badRects
-    if (droppedFindings > 0) {
-      console.log(`findings: отброшено ${droppedFindings} —`, { ...filtered.droppedBy, badRect: badRects, model, jobId })
-    }
-    // §189. Понижения вердикта считаем ОТДЕЛЬНО от dropped_findings: там мера
-    // выдумок модели, а это правка кода по числам, и её видно в summary.
-    if (filtered.lowered.length > 0) {
-      console.log(`tasks: понижено вердиктов ${filtered.lowered.length} —`, { tasks: filtered.lowered, model, jobId })
-    }
+    const { reference, worksheet, skipped, filtered, tasks, droppedFindings, readable, suggestedScore, confidence } = check
+    const parsed = check.parsed
+    const payload = check.payload
 
     const rows: Record<string, unknown>[] = filtered.kept.map((f, position) => ({
       job_id: jobId,
@@ -393,26 +238,6 @@ Deno.serve(async (req) => {
       const { error: insertError } = await admin.from('topic_homework_ai_findings').insert(rows)
       if (insertError) throw new Error(`Не удалось сохранить находки: ${insertError.message}`)
     }
-
-    const readable = parsed.readable !== false
-    const score = computeScore(tasks, gradeScale)
-    // Таблицы нет — модель не выполнила формат. Её свободное число сохраняем
-    // для истории, но с confidence low: панель такой балл не показывает
-    // (shouldShowScore), а в сравнении версий он виден.
-    const modelScore = numberOrNull(parsed.suggested_score)
-    // §189. Работа прочитана не целиком — балла не будет ни своего, ни
-    // модельного. Балл по двум третям работы выглядит как результат проверки и
-    // принимается не глядя; «балл не выводится» заставляет открыть работу.
-    const pagesSkipped = skipped.length > 0
-    const partialCheck = isPartialCheck({ tasks, pagesSkipped })
-    const suggestedScore = partialCheck
-      ? null
-      : tasks.length > 0
-        ? score.score
-        : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
-    const confidence = tasks.length > 0 || !readable
-      ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state, pagesSkipped })
-      : 'low'
 
     const usage = payload?.usage ?? {}
     const { error: doneError } = await admin.from('topic_homework_ai_jobs').update({
@@ -471,6 +296,403 @@ Deno.serve(async (req) => {
     return fail(200, message, jobId)
   }
 })
+
+/** Находка с рамкой и страницей — то, что проходит фильтр и ложится в базу. */
+type PlacedFinding = FindingDraft & { target: PageImage; rect: { x: number; y: number; w: number; h: number } }
+
+/**
+ * Следы прогона для замера §247: что успели узнать до провала. Боевой путь
+ * его не передаёт — ему нужна только причина ошибки, она в тексте исключения.
+ */
+interface CheckProbe {
+  /** Сырой ответ поставщика — токены и стоимость даже у неразобранного ответа. */
+  payload?: unknown
+  /** Время запроса к модели, мс. */
+  modelMs?: number
+  pagesSent?: number
+  pagesSkipped?: string[]
+  referenceState?: ReferenceState
+  worksheetState?: ReferenceState
+  criteriaState?: ReferenceState
+}
+
+/** Всё, что общий путь узнал о работе: из этого боевой путь пишет ai_jobs, замер — свою строку. */
+interface CheckResult {
+  reference: ReferenceResult
+  worksheet: ReferenceResult
+  criteria: ReferenceResult
+  sent: PageImage[]
+  skipped: string[]
+  // Ответ поставщика и разобранный JSON — чужие данные без схемы.
+  // deno-lint-ignore no-explicit-any
+  payload: any
+  // deno-lint-ignore no-explicit-any
+  parsed: Record<string, any>
+  filtered: FilterResult<PlacedFinding>
+  droppedFindings: number
+  tasks: TaskRow[]
+  readable: boolean
+  suggestedScore: number | null
+  confidence: string | null
+}
+
+/**
+ * Шаги 2–5 проверки — ОБЩИЕ у боевого пути и у замера §247: эталон, условие,
+ * критерии, страницы, промпт, запрос к модели, разбор ответа, таблица,
+ * фильтр находок, балл и уверенность. Ничего не пишет ни в ai_jobs, ни в
+ * находки (кэш разбора PDF — да, он общий и никому не показывается).
+ * Ошибки — исключениями с тем же текстом, что был до §247: боевой путь кладёт
+ * их в job.last_error, замер — в строку результата.
+ *
+ * Отличается у путей только тело запроса к модели (`requestBody`), метка в
+ * логе и, у замера, предельное время ответа модели.
+ */
+async function runCheck(
+  admin: ReturnType<typeof createClient>,
+  attemptId: string,
+  ai: { apiKey: string; baseUrl: string; model: string },
+  opts: {
+    requestBody: (messages: unknown[]) => Record<string, unknown>
+    logTag: Record<string, unknown>
+    probe?: CheckProbe
+    timeoutMs?: number
+  },
+): Promise<CheckResult> {
+  const { apiKey, baseUrl, model } = ai
+  const probe = opts.probe
+
+  // Шаг 2. Условие задания и решение из материалов темы — контекст для модели.
+  const { data: attempt } = await admin
+    .from('topic_homework_attempts')
+    .select('id, homework_id, homework:topic_homework!inner(id, title, instructions, grade_scale, topic_id)')
+    .eq('id', attemptId)
+    .single()
+
+  const homework = (attempt as Record<string, any> | null)?.homework
+  const topicId: string | null = homework?.topic_id ?? null
+  const gradeScale: string | null = homework?.grade_scale ?? null
+
+  // Эталон. До §135 здесь стояло `.eq('kind','text')`, а на проде ВСЕ 844
+  // решения рубрики `solution` — PDF-файлы: эталон не доезжал до модели ни
+  // разу, и она сверяла ученика со своим же решением.
+  // Любой сбой эталона — это «проверим без эталона», а не падение всей
+  // проверки: за всё время было восемь попыток, ещё одна причина падать нам
+  // не нужна (требование владельца 16.08).
+  let reference: ReferenceResult
+  try {
+    reference = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, SOLUTION_SPEC)
+  } catch (err) {
+    reference = {
+      text: '', truncated: false, state: 'failed', engine: null, cached: false,
+      error: `Эталон не получен: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+    }
+  }
+  const solutionText = reference.text
+  if (probe) probe.referenceState = reference.state
+
+  // §149.1. Условие ДЗ — рабочий лист. Поле `instructions` пустое почти везде,
+  // и до этого модель узнавала состав заданий из решения, с обратной стороны.
+  // Тот же путь и те же правила, что у эталона: разбор бесплатным движком,
+  // кэш по материалу, провал — «проверим без условия», а не падение.
+  let worksheet: ReferenceResult
+  try {
+    worksheet = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, WORKSHEET_SPEC)
+  } catch (err) {
+    worksheet = {
+      text: '', truncated: false, state: 'failed', engine: null, cached: false,
+      error: `Условие не получено: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+    }
+  }
+  if (probe) probe.worksheetState = worksheet.state
+
+  // §240. Ответы и критерии оценивания (проверочная/контрольная) — тем же
+  // путём и с тем же правилом «провал — проверим без них». У обычного ДЗ
+  // рубрики нет: 'missing', блока в промпте нет.
+  let criteria: ReferenceResult
+  try {
+    criteria = await loadMaterialText(admin, topicId, { apiKey, baseUrl }, CRITERIA_SPEC)
+  } catch (err) {
+    criteria = {
+      text: '', truncated: false, state: 'failed', engine: null, cached: false,
+      error: `Критерии не получены: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300),
+    }
+  }
+  if (probe) probe.criteriaState = criteria.state
+
+  // Шаг 3. Страницы работы.
+  const { data: rawFiles } = await admin
+    .from('topic_homework_attempt_files')
+    .select('id, storage_path, file_name, mime_type, position')
+    .eq('attempt_id', attemptId)
+    .order('position', { ascending: true })
+
+  const all = (rawFiles ?? []) as AttemptFile[]
+  if (all.length === 0) throw new Error('В работе нет файлов')
+
+  const usable = all.filter(f => {
+    const mime = f.mime_type ?? guessMime(f)
+    return IMAGE_MIME.test(mime) || PDF_MIME.test(mime)
+  })
+  if (usable.length === 0) {
+    throw new Error('В работе нет ни фотографий, ни PDF — проверять нечего')
+  }
+
+  const { pages: sent, skipped } = await collectPages(admin, usable)
+  if (probe) {
+    probe.pagesSent = sent.length
+    probe.pagesSkipped = skipped
+  }
+  // Причину НЕЛЬЗЯ терять: без неё в панели остаётся «ИИ не смог» без единого
+  // слова о том, что чинить. Один раз уже наступили — три работы упали, а
+  // почему, пришлось выяснять запросами к базе.
+  if (sent.length === 0) {
+    throw new Error(skipped.length > 0
+      ? `Не удалось прочитать ни одной страницы: ${skipped.join('; ')}`
+      : 'Не удалось прочитать ни одной страницы работы')
+  }
+
+  const content: Record<string, unknown>[] = []
+  for (const [index, item] of sent.entries()) {
+    content.push({ type: 'text', text: `Страница #${index + 1}: ${item.label}` })
+    content.push({ type: 'image_url', image_url: { url: `data:${item.mime};base64,${base64(item.bytes)}` } })
+  }
+
+  // Шаг 4. Запрос к модели.
+  const prompt = buildPrompt({
+    title: homework?.title ?? 'Домашнее задание',
+    instructions: homework?.instructions ?? '',
+    worksheetText: worksheet.text,
+    worksheetTruncated: worksheet.truncated,
+    solutionText,
+    referenceTruncated: reference.truncated,
+    criteriaText: criteria.text,
+    criteriaTruncated: criteria.truncated,
+    gradeScale,
+    pageCount: sent.length,
+  })
+
+  // Тело — `chatRequestBody` (бой, §180: max_tokens 6000) или
+  // `benchmarkRequestBody` (замер §247); сообщения у обоих одни и те же.
+  const modelStartedAt = Date.now()
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://alminion.ru',
+      'X-Title': 'School Almiron',
+    },
+    body: JSON.stringify(opts.requestBody([{ role: 'user', content: [{ type: 'text', text: prompt }, ...content] }])),
+    ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (probe) {
+    probe.payload = payload
+    probe.modelMs = Date.now() - modelStartedAt
+  }
+  if (!response.ok) {
+    const detail = payload?.error?.message ?? `HTTP ${response.status}`
+    throw new Error(`Модель отказала: ${response.status} ${detail}`)
+  }
+
+  const text = extractText(payload)
+  if (!text) throw new Error('Модель вернула пустой ответ')
+
+  const parsed = parseJson(text)
+  if (!parsed) throw new Error(`Не удалось разобрать ответ модели: ${text.slice(0, 200)}`)
+
+  // Шаг 5. Таблица заданий и находки (§180).
+  //
+  // Балл считает КОД из таблицы, а не модель: в выгрузке 15.09 «ошибка в
+  // одной задаче из шести» давала 5 из 5, а две ошибки из 16 — 94. Число из
+  // ответа модели в базу не идёт (кроме случая, когда таблицы нет вовсе —
+  // тогда оно сохраняется с confidence low, и панель его не показывает).
+  const tasksRaw = parseTasks(parsed.tasks)
+
+  // Рамки проверяем ДО фильтра по таблице: если первую находку строки
+  // отбросить после лимита «одна на задание», строка останется без находки,
+  // хотя у второй рамка была годной. Кривые выбрасываем поштучно: одна
+  // плохая рамка не должна отменять весь разбор.
+  const findings = Array.isArray(parsed.findings) ? parsed.findings : []
+  let badRects = 0
+  const drafts: PlacedFinding[] = []
+  for (const raw of findings) {
+    const index = Number(raw?.page_index ?? raw?.file_index)
+    const target = sent[Number.isFinite(index) ? index - 1 : -1]
+    if (!target) { badRects += 1; continue }
+
+    const rect = raw?.rect ?? {}
+    const x = clamp01(rect.x)
+    const y = clamp01(rect.y)
+    let w = clamp01(rect.w)
+    let h = clamp01(rect.h)
+    if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) { badRects += 1; continue }
+    w = Math.min(w, 1 - x)
+    h = Math.min(h, 1 - y)
+    if (w <= 0 || h <= 0) { badRects += 1; continue }
+
+    const note = String(raw?.text ?? '').trim().slice(0, 2000)
+    if (!note) { badRects += 1; continue }
+
+    const category: Category = (CATEGORIES as readonly string[]).includes(raw?.category) ? raw.category : 'comment'
+    drafts.push({
+      category,
+      text: note,
+      task: String(raw?.task ?? raw?.task_no ?? '').trim().slice(0, 16),
+      target,
+      rect: { x, y, w, h },
+    })
+  }
+
+  // Самопротиворечия («должно быть 0,78, а не 0,78»), находки по верным
+  // строкам, лимиты praise/format, потолок — всё здесь, в проверяемом тестом
+  // модуле. Счётчик отброшенных — в лог и в столбец dropped_findings.
+  const filtered = filterFindings(drafts, tasksRaw)
+  const tasks = filtered.tasks
+  const droppedFindings = filtered.dropped + badRects
+  if (droppedFindings > 0) {
+    console.log(`findings: отброшено ${droppedFindings} —`, { ...filtered.droppedBy, badRect: badRects, ...opts.logTag })
+  }
+  // §189. Понижения вердикта считаем ОТДЕЛЬНО от dropped_findings: там мера
+  // выдумок модели, а это правка кода по числам, и её видно в summary.
+  if (filtered.lowered.length > 0) {
+    console.log(`tasks: понижено вердиктов ${filtered.lowered.length} —`, { tasks: filtered.lowered, ...opts.logTag })
+  }
+
+  const readable = parsed.readable !== false
+  const score = computeScore(tasks, gradeScale)
+  // Таблицы нет — модель не выполнила формат. Её свободное число сохраняем
+  // для истории, но с confidence low: панель такой балл не показывает
+  // (shouldShowScore), а в сравнении версий он виден.
+  const modelScore = numberOrNull(parsed.suggested_score)
+  // §189. Работа прочитана не целиком — балла не будет ни своего, ни
+  // модельного. Балл по двум третям работы выглядит как результат проверки и
+  // принимается не глядя; «балл не выводится» заставляет открыть работу.
+  const pagesSkipped = skipped.length > 0
+  const partialCheck = isPartialCheck({ tasks, pagesSkipped })
+  const suggestedScore = partialCheck
+    ? null
+    : tasks.length > 0
+      ? score.score
+      : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
+  const confidence = tasks.length > 0 || !readable
+    ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state, pagesSkipped })
+    : 'low'
+
+  return {
+    reference, worksheet, criteria, sent, skipped, payload, parsed, filtered,
+    droppedFindings, tasks, readable, suggestedScore, confidence,
+  }
+}
+
+/**
+ * §247. Замер: та же работа тем же путём (`runCheck`), но другой моделью и с
+ * результатом в `ai_benchmark_results` — не в ai_jobs/находки, ученик и
+ * преподаватель его не видят. Зовёт оркестратор, не приложение:
+ *
+ *   POST /functions/v1/check-homework-ai
+ *   X-Cron-Secret: <CRON_SECRET>
+ *   { "benchmark": true, "attempt_id": "…", "model": "google/gemini-3.8-flash", "run_id": "2026-10-01-a" }
+ *
+ * Без верного секрета — 401 и ни одного обращения к базе и модели. Кривое
+ * тело или модель не из списка — 400. Провал проверки (модель, разбор,
+ * страницы) — строка со `status = 'error'` и причиной, HTTP 200: замер
+ * должен оставлять след, а не 500 без следа. Повтор с тем же
+ * (run_id, attempt_id, model) перезаписывает строку.
+ */
+async function handleBenchmark(
+  req: Request,
+  body: unknown,
+  admin: ReturnType<typeof createClient>,
+): Promise<Response> {
+  const secret = Deno.env.get('CRON_SECRET')
+  if (!checkCronSecret(req.headers.get('X-Cron-Secret'), secret)) {
+    if (!secret) console.error('check-homework-ai: замер отклонён — CRON_SECRET не настроен')
+    else console.warn('check-homework-ai: замер отклонён (нет или неверный X-Cron-Secret)')
+    return json({ error: 'Unauthorized' }, 401)
+  }
+
+  const currentModel = Deno.env.get('AI_MODEL') || DEFAULT_MODEL
+  const request = parseBenchmarkRequest(body, currentModel)
+  if (!request.ok) return json({ error: request.error }, 400)
+  const bench = request.value
+
+  // Строка результата ссылается на попытку: без неё писать некуда.
+  const { data: attemptRow, error: attemptError } = await admin
+    .from('topic_homework_attempts')
+    .select('id')
+    .eq('id', bench.attemptId)
+    .maybeSingle()
+  if (attemptError) return json({ error: `Работа не прочиталась: ${attemptError.message}` }, 500)
+  if (!attemptRow) return json({ error: 'Работа не найдена' }, 404)
+
+  const startedAt = Date.now()
+  const probe: CheckProbe = {}
+  let outcome: BenchmarkOutcome
+  try {
+    const apiKey = Deno.env.get('AI_API_KEY') ?? Deno.env.get('OPENROUTER_API_KEY')
+    if (!apiKey) throw new Error('Переменная AI_API_KEY не настроена в проекте')
+    const baseUrl = (Deno.env.get('AI_BASE_URL') || DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const check = await runCheck(admin, bench.attemptId, { apiKey, baseUrl, model: bench.model }, {
+      requestBody: messages => benchmarkRequestBody(bench.model, messages, { maxTokens: bench.maxTokens }),
+      logTag: { model: bench.model, benchmark: bench.runId },
+      probe,
+      timeoutMs: BENCHMARK_MODEL_TIMEOUT_MS,
+    })
+    outcome = {
+      tasks: check.tasks,
+      suggestedScore: check.suggestedScore,
+      readable: check.readable,
+      error: null,
+      payload: check.payload,
+      latencyMs: probe.modelMs ?? null,
+      meta: {
+        confidence: check.confidence,
+        dropped_findings: check.droppedFindings,
+        lowered: check.filtered.lowered,
+      },
+    }
+  } catch (err) {
+    console.log('benchmark: провал —', { model: bench.model, run: bench.runId, attempt: bench.attemptId })
+    outcome = {
+      tasks: null,
+      suggestedScore: null,
+      readable: null,
+      error: describeBenchmarkError(err, probe.payload),
+      payload: probe.payload,
+      latencyMs: probe.modelMs ?? null,
+    }
+  }
+  outcome.meta = {
+    ...(outcome.meta ?? {}),
+    pages_sent: probe.pagesSent ?? null,
+    pages_skipped: (probe.pagesSkipped ?? []).slice(0, 20),
+    reference_state: probe.referenceState ?? null,
+    worksheet_state: probe.worksheetState ?? null,
+    criteria_state: probe.criteriaState ?? null,
+    max_tokens: bench.maxTokens ?? benchmarkMaxTokens(bench.model),
+    total_ms: Date.now() - startedAt,
+  }
+
+  const row = benchmarkResultRow(bench, outcome, new Date())
+  const { error: saveError } = await admin
+    .from('ai_benchmark_results')
+    .upsert(row, { onConflict: 'run_id,attempt_id,model' })
+  if (saveError) return json({ error: `Не удалось сохранить результат замера: ${saveError.message}` }, 500)
+
+  return json({
+    status: row.status,
+    run_id: row.run_id,
+    attempt_id: row.attempt_id,
+    model: row.model,
+    tasks: row.tasks?.length ?? 0,
+    suggested_score: row.suggested_score,
+    latency_ms: row.latency_ms,
+    cost_usd: row.cost_usd,
+    error: row.error,
+  })
+}
 
 /**
  * Страницы работы в том виде, в каком их понимает модель, — картинками.
