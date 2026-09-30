@@ -268,3 +268,24 @@ describe('ответ базы', () => {
     expect(normalizeOverview({ error: 'x' })).toEqual({})
   })
 })
+
+describe('§244.1: плашки «здесь нет» только внутри одного уровня', () => {
+  it('программа 8 класса не дырявит ЕГЭ-классы и не сдвигает их карточки', () => {
+    const PH8 = course({ id: 'ph8', title: 'Физика 8 класс', subject: 'physics', exam_type: 'grade_8', is_template: true })
+    const all = [
+      ...COURSES,
+      PH8,
+      course({ id: 'ph8-a', title: 'Физика 8А класс', subject: 'physics', exam_type: 'grade_8', copied_from_course_id: 'ph8' }),
+    ]
+    const layout = buildCoursesLayout(all, STATS)
+    for (const row of layout.classes) {
+      const missing = row.slots.filter(s => s.kind === 'missing').map(s => s.kind === 'missing' ? s.program.name : '')
+      expect(missing.some(n => n.includes('8 класс'))).toBe(false)
+    }
+    const ind = layout.classes.find(r => r.name.includes('2026'))!
+    expect(ind.slots.every(s => s.kind === 'course')).toBe(true)
+    const eighth = layout.classes.find(r => r.name.includes('8А'))!
+    expect(eighth.slots).toHaveLength(1)
+    expect(eighth.slots[0].kind).toBe('course')
+  })
+})

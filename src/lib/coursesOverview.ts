@@ -246,6 +246,7 @@ export function buildCoursesLayout<T extends OverviewCourse>(
   }
 
   const usedTemplates = groups.filter(g => g.copies.length > 0).map(g => g.template.id)
+  const levelOf = new Map(groups.map(g => [g.template.id, g.template.exam_type]))
   const classes: ClassRow<T>[] = [...drafts.values()].map(d => {
     const name = pickDisplayName(d.raw)
     for (const c of d.cards) c.card.className = name
@@ -253,10 +254,15 @@ export function buildCoursesLayout<T extends OverviewCourse>(
       (templateOrder.get(a.templateId)! - templateOrder.get(b.templateId)!) || byTitle(a.card.course, b.card.course))
 
     const present = new Set(cards.map(c => c.templateId))
-    const missing = usedTemplates.filter(id => !present.has(id))
+    // §244.1. Дыры — только среди программ того же уровня (exam_type), что и
+    // курсы класса: у ЕГЭ-класса не должно быть плашки «Физика · 8 класс
+    // здесь нет», а физика 8 класса не должна сдвигать карточки ЕГЭ.
+    const levels = new Set([...present].map(id => levelOf.get(id)))
+    const candidates = usedTemplates.filter(id => levels.has(levelOf.get(id)))
+    const missing = candidates.filter(id => !present.has(id))
     const withGaps = present.size >= 2 && missing.length > 0 && missing.length < present.size
     const slots: ClassSlot<T>[] = withGaps
-      ? usedTemplates.flatMap((id): ClassSlot<T>[] => present.has(id)
+      ? candidates.flatMap((id): ClassSlot<T>[] => present.has(id)
         ? cards.filter(c => c.templateId === id).map(c => ({ kind: 'course' as const, card: c.card }))
         : [{ kind: 'missing' as const, templateId: id, program: programs.get(id)! }])
       : cards.map(c => ({ kind: 'course' as const, card: c.card }))
