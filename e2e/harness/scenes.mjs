@@ -1164,6 +1164,24 @@ export const scenes = [
     ]
   }),
 
+  // §246: главная «Каталога заданий» — ученик решает активно, «мало сравнения»,
+  // новичок, учитель; плюс подсказка столбика (наведение на №12 математики ЕГЭ).
+  // Данные — одна заглушка `catalog_my_overview` (apply246). В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d246 1280 ; node e2e/harness/tour.mjs d246 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 's246active', name: 'd246-active', url: '/catalog', width, height, actions: [{ wait: 1200 }] },
+    { persona: 's246active', name: 'd246-tip', url: '/catalog', width, height, full: false, actions: [
+      { wait: 1200 },
+      { eval: "document.querySelector('[data-exam=\"Математика ЕГЭ\"]')?.scrollIntoView({ block: 'center' })" },
+      { wait: 300 },
+      { eval: "document.querySelector('[data-exam=\"Математика ЕГЭ\"] [data-testid=\"number-bar\"][data-n=\"12\"]')?.focus()" },
+      { wait: 300 },
+    ] },
+    { persona: 's246few', name: 'd246-few', url: '/catalog', width, height, actions: [{ wait: 1200 }] },
+    { persona: 's246new', name: 'd246-new', url: '/catalog', width, height, actions: [{ wait: 1200 }] },
+    { persona: 'o246', name: 'd246-teacher', url: '/catalog', width, height, actions: [{ wait: 1200 }] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

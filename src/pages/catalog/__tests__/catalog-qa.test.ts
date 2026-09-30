@@ -26,6 +26,7 @@ import {
   SUBJECT_SLUGS, SUBJECT_FROM_SLUG, ALL_SUBJECTS, safeDecodeStoragePath,
   EXAM_SLUGS, EXAM_FROM_SLUG, EXAMS_FOR_SUBJECT, DEFAULT_EXAM, DIRECTIONS,
 } from '@/hooks/useCatalog'
+import { examHref } from '@/lib/catalogOverview'
 
 // ── Пути к файлам ──────────────────────────────────────────────────────────────
 const ROOT    = process.cwd()
@@ -545,10 +546,12 @@ describe('Математика ОГЭ — exam routing & data separation', () =>
 
   it('числа на карточках лендинга берутся из константы, а не из запроса', () => {
     // Решение владельца 2026-07-30: числа фиксированные, лендинг не должен
-    // ничего ждать (RPC счётчиков занимала 2645 мс на проде).
+    // ничего ждать (RPC счётчиков занимала 2645 мс на проде). С §246 главная
+    // рисует столбики из catalog_my_overview(), а эти числа стоят на карточках,
+    // пока функция не ответила — поведение проверяет CatalogHome.test.tsx
+    // («загрузка: карточки экзаменов и вход в номера сразу»).
     const src = read('src/pages/catalog/CatalogPage.tsx')
     const hookSrc = read('src/hooks/useCatalog.ts')
-    expect(src).toContain('count={d.taskCount}')
     expect(src).not.toContain('useCatalogDirectionCounts')
     expect(hookSrc).not.toContain('useCatalogDirectionCounts(')
     expect(hookSrc).not.toContain("db.rpc('get_catalog_direction_counts')")
@@ -569,9 +572,11 @@ describe('Математика ОГЭ — exam routing & data separation', () =>
   })
 
   it('при выборе направления передаётся правильный subject и exam в URL', () => {
-    // Each DirectionCard navigates to /catalog?subject=X&exam=Y
-    const src = read('src/pages/catalog/CatalogPage.tsx')
-    expect(src).toContain('/catalog?subject=${d.subjectSlug}&exam=${d.examSlug}')
+    // §246: карточка экзамена на главной ведёт в /catalog?subject=X&exam=Y —
+    // те же адреса, что строились из DIRECTIONS до §246.
+    for (const d of DIRECTIONS) {
+      expect(examHref(d.subject, d.examType)).toBe(`/catalog?subject=${d.subjectSlug}&exam=${d.examSlug}`)
+    }
   })
 
   // ── Navigation propagation ─────────────────────────────────────────────────
@@ -1314,8 +1319,7 @@ describe('CatalogPage — direction picker', () => {
   // 1. Четыре направления отображаются
   it('отображаются четыре карточки направлений (DIRECTIONS array длиной 4)', () => {
     // DIRECTIONS is imported from useCatalog.ts and used in render
-    expect(src).toContain('DIRECTIONS')
-    expect(src).toContain('direction-card')
+    // §246: сами карточки рисует CatalogHome (поведение — CatalogHome.test.tsx);
     // useCatalog exports DIRECTIONS with 4 items
     const hookSrc = read('src/hooks/useCatalog.ts')
     expect(hookSrc).toContain("key: 'math-ege'")
@@ -1327,7 +1331,8 @@ describe('CatalogPage — direction picker', () => {
 
   // 2. Каждое направление формирует правильный URL
   it('каждое направление строит URL с правильными subject/exam параметрами', () => {
-    expect(src).toContain('/catalog?subject=${d.subjectSlug}&exam=${d.examSlug}')
+    expect(examHref('Математика', 'ЕГЭ')).toBe('/catalog?subject=math&exam=ege')
+    expect(examHref('Физика', 'ОГЭ')).toBe('/catalog?subject=physics&exam=oge')
     // All 4 keys exist in DIRECTIONS
     const keys = DIRECTIONS.map(d => d.key)
     expect(keys).toContain('math-ege')
@@ -1348,9 +1353,8 @@ describe('CatalogPage — direction picker', () => {
     // CatalogPage routes based on searchParams.get('subject')
     expect(src).toContain("searchParams.get('subject')")
     expect(src).toContain('SectionsView')
-    expect(src).toContain('DirectionPicker')
-    // If no subject → DirectionPicker; if subject → SectionsView
-    expect(src).toContain('if (!subjectParam) return <DirectionPicker />')
+    // If no subject → главная каталога (§246); if subject → SectionsView
+    expect(src).toContain('if (!subjectParam) return <CatalogHome />')
   })
 
   // 4. Разделы сортируются численно
@@ -1400,8 +1404,7 @@ describe('CatalogPage — direction picker', () => {
 
   // 7. Mobile layout — одна колонка
   it('мобильный layout использует одну колонку (grid-cols-1)', () => {
-    // Direction grid: grid-cols-1 sm:grid-cols-2
-    expect(src).toContain('grid-cols-1 sm:grid-cols-2')
+    // Главная (§246) проверяется на харнессе d246-* на 390: переполнений нет.
     // Sections grid: gap-2 sm:grid-cols-2 (1 col on mobile by default)
     expect(src).toContain('sm:grid-cols-2')
   })

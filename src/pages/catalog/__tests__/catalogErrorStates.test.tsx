@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   useCatalogPhysicsTopicSections: vi.fn(),
   useCatalogSearch: vi.fn(),
   useCatalogTasks: vi.fn(),
+  useCatalogOverview: vi.fn(),
 }))
 
 vi.mock('@/hooks/useCatalog', () => ({
@@ -24,6 +25,10 @@ vi.mock('@/hooks/useCatalog', () => ({
   DIRECTIONS: [
     { key: 'math-ege', subject: 'Математика', examType: 'ЕГЭ', subjectSlug: 'math', examSlug: 'ege', label: 'Математика ЕГЭ', desc: 'desc', taskCount: 9515 },
   ],
+}))
+
+vi.mock('@/hooks/useCatalogOverview', () => ({
+  useCatalogOverview: (...args: unknown[]) => mocks.useCatalogOverview(...args),
 }))
 
 vi.mock('@/store/authStore', () => ({
@@ -53,11 +58,13 @@ describe('Catalog error states', () => {
     })
   })
 
-  it('лендинг каталога показывает числа сразу и ничего не грузит — падать нечему', () => {
-    // Раньше здесь проверялось состояние ошибки с кнопкой «Повторить»: числа
-    // тянулись RPC get_catalog_direction_counts (2645 мс на проде), и запрос мог
-    // упасть. Теперь они зафиксированы в DIRECTIONS, поэтому у лендинга нет ни
-    // загрузки, ни ошибки, ни скелетона — только готовые числа.
+  it('лендинг каталога: статистика не загрузилась — карточки с числами на месте, «Повторить» есть', () => {
+    // До §246 здесь проверялось, что лендинг ничего не грузит: числа зафиксированы
+    // в DIRECTIONS (RPC счётчиков занимала 2645 мс на проде). С §246 главная
+    // рисует столбики из catalog_my_overview(); если функция упала (или ещё не
+    // применена), карточки экзаменов с числами из DIRECTIONS всё равно стоят и
+    // ведут в номера, а сверху — строка с «Повторить».
+    mocks.useCatalogOverview.mockReturnValue({ overview: null, loading: false, error: 'overview failed', retry: vi.fn() })
     render(
       <MemoryRouter initialEntries={['/catalog']}>
         <Routes>
@@ -66,9 +73,10 @@ describe('Catalog error states', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId('direction-card')).toBeInTheDocument()
-    expect(screen.getByText('9.5 тыс.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('exam-card')).toBeInTheDocument()
+    expect(screen.getByText('9 515')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Открыть номера/ })).toHaveAttribute('href', '/catalog?subject=math&exam=ege')
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(document.querySelector('.animate-pulse')).toBeNull()
   })
 

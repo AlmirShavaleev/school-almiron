@@ -1,0 +1,130 @@
+slice: ok
+data: ok
+PENDING_246 applied twice: ok
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+GRANT
+== P1. Ученик A: свои цифры = ручной подсчёт (10_data_246.sql), 9 решающих → сравнения нет
+BEGIN
+SET
+ viewer=student overall: solved=7 7d=3 solvers=9 pct=-
+
+ Математика ЕГЭ mine=true total=12 solved=5 7d=2 solvers=9 pct=- | 1:3/5 2:1/3 12:1/4+
+ Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2             +
+ Физика ЕГЭ mine=false total=3 solved=1 7d=1 solvers=2 pct=- | 1:1/3                 +
+ Физика ОГЭ mine=false total=7 solved=1 7d=0 solvers=1 pct=- | 1:0/2 20:1/5
+
+ ok   P1 итог A
+
+ ok   P1 экзамены A
+
+-- №20 физики ОГЭ = три раздела (0 + 2 + 3 задачи); столбик ведёт в первый НЕпустой (sO20b)
+ ok   P1 раздел №20
+
+-- Пустой №0 физики ЕГЭ, снятый раздел №5, раздел без номера и снятая задача в выдачу не попадают
+ ok   P1 нет №0 и №5
+
+-- Таблицы вариантов закрыты RLS: напрямую A не видит даже своих ответов — функция читает сама (definer)
+ ok   P1 RLS вариантов
+
+ROLLBACK
+== P2. Отметка + верный ответ по одной задаче = 1 (B: m1a отмечена и решена в варианте)
+BEGIN
+SET
+ Математика ЕГЭ mine=false total=12 solved=1 7d=1 solvers=9 pct=- | 1:1/5 2:0/3 12:0/4+
+ Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2              +
+ Физика ЕГЭ mine=false total=3 solved=0 7d=0 solvers=- pct=- | 1:0/3                  +
+ Физика ОГЭ mine=true total=7 solved=0 7d=0 solvers=- pct=- | 1:0/2 20:0/5
+
+ ok   P2 B математика ЕГЭ
+
+ ok   P2 B свой экзамен — физика ОГЭ
+
+ROLLBACK
+== P3. Порог 10: добавляем десятого решающего J (1 задача) — у A появляется доля
+BEGIN
+INSERT 0 1
+SET
+ viewer=student overall: solved=7 7d=3 solvers=10 pct=60
+
+ Математика ЕГЭ mine=true total=12 solved=5 7d=2 solvers=10 pct=50 | 1:3/5 2:1/3 12:1/4+
+ Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2               +
+ Физика ЕГЭ mine=false total=3 solved=1 7d=1 solvers=2 pct=- | 1:1/3                   +
+ Физика ОГЭ mine=false total=7 solved=1 7d=0 solvers=1 pct=- | 1:0/2 20:1/5
+
+ ok   P3 итог A
+
+ ok   P3 мат. ЕГЭ A
+
+ROLLBACK
+== P4. «0 %» → null: при 10 решающих у B (1 задача) меньше ни у кого
+BEGIN
+INSERT 0 1
+SET
+ viewer=student overall: solved=1 7d=1 solvers=10 pct=-
+
+ ok   P4 итог B
+
+ ok   P4 мат. ЕГЭ B
+
+ROLLBACK
+== P5. Новичок X: ноль везде, сравнения нет, структура каталога та же
+BEGIN
+SET
+ viewer=student overall: solved=0 7d=0 solvers=0 pct=-
+
+ ok   P5 итог X
+
+ ok   P5 экзамены X
+
+ROLLBACK
+== P6. W: только неверные/непроверенные ответы — решённого нет
+BEGIN
+SET
+ ok   P6 итог W
+
+ROLLBACK
+== P7. Преподаватель T: только число задач по номерам, без «решено», без сравнения (его 10 отметок не видны и не считаются)
+BEGIN
+SET
+ viewer=staff overall: -
+
+ Математика ЕГЭ mine=false total=12 solved=- 7d=- solvers=- pct=- | 1:-/5 2:-/3 12:-/4+
+ Математика ОГЭ mine=false total=2 solved=- 7d=- solvers=- pct=- | 1:-/2              +
+ Физика ЕГЭ mine=false total=3 solved=- 7d=- solvers=- pct=- | 1:-/3                  +
+ Физика ОГЭ mine=false total=7 solved=- 7d=- solvers=- pct=- | 1:-/2 20:-/5
+
+ ok   P7 итог T
+
+ ok   P7 экзамены T
+
+ROLLBACK
+== P8. Чужое не утекает: в ответе A нет ни id, ни имён других людей; набор ключей фиксирован
+BEGIN
+SET
+ ok   P8 нет чужих id/имён
+
+ ok   P8 ключи верха
+
+ ok   P8 ключи экзамена
+
+ ok   P8 ключи номера
+
+ROLLBACK
+== P9. Аноним — отказ (execute отозван)
+BEGIN
+SET
+psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:140: ERROR:  permission denied for function catalog_my_overview
+ROLLBACK
+== P10. authenticated без sub — отказ функцией
+BEGIN
+SET
+psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:147: ERROR:  catalog_my_overview: нужен вход
+ROLLBACK
+== P11. Повторный вызов в той же транзакции (stable) — тот же ответ
+BEGIN
+SET
+ ok   P11 повтор = первый
+
+ROLLBACK

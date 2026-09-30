@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { BookOpen, Calculator, ChevronLeft, ChevronRight, FlaskConical, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
+import { BookOpen, ChevronLeft, ChevronRight, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useCatalogSections,
@@ -13,29 +13,8 @@ import {
   type CatalogTopic,
 } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
+import { CatalogHome } from '@/components/catalog/CatalogHome'
 import type { CatalogSection } from '@/hooks/useCatalog'
-
-// ── Icons per subject ──────────────────────────────────────────────────────────
-const SUBJECT_ICON: Record<string, typeof Calculator> = {
-  math:    Calculator,
-  physics: FlaskConical,
-}
-
-// ── Exam badge styles ──────────────────────────────────────────────────────────
-const EXAM_BADGE: Record<string, string> = {
-  ege: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  oge: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
-}
-
-const SUBJECT_ACCENT: Record<string, string> = {
-  math:    'bg-gradient-to-br from-blue-50 to-white border-blue-100 group-hover:border-blue-300',
-  physics: 'bg-gradient-to-br from-amber-50 to-white border-amber-100 group-hover:border-amber-300',
-}
-
-const SUBJECT_ICON_BG: Record<string, string> = {
-  math:    'bg-blue-100 text-blue-600',
-  physics: 'bg-amber-100 text-amber-600',
-}
 
 function numFmt(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')} тыс.`
@@ -43,7 +22,7 @@ function numFmt(n: number) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Main export — routes to picker or sections view
+// Main export — главная каталога (§246) или список разделов экзамена
 // ══════════════════════════════════════════════════════════════════════════════
 
 export function CatalogPage() {
@@ -52,83 +31,12 @@ export function CatalogPage() {
   const examParam      = searchParams.get('exam')
   const viewParam      = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'
 
-  if (!subjectParam) return <DirectionPicker />
+  if (!subjectParam) return <CatalogHome />
   return <SectionsView subjectSlug={subjectParam} examSlug={examParam ?? 'ege'} view={viewParam} />
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 1. Direction picker — 4-card landing
-// ══════════════════════════════════════════════════════════════════════════════
-
-function DirectionPicker() {
-  // Ни запросов, ни состояний загрузки/ошибки: числа задач зафиксированы в
-  // DIRECTIONS. Раньше лендинг ждал RPC get_catalog_direction_counts — 2645 мс
-  // на проде, и до её ответа карточки стояли без чисел.
-  return (
-    <div className="max-w-[1100px] mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Каталог заданий</h1>
-        <p className="text-gray-500 mt-1">Выберите предмет и формат экзамена</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="direction-grid">
-        {DIRECTIONS.map(d => (
-          <DirectionCard key={d.key} direction={d} count={d.taskCount} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function DirectionCard({
-  direction: d,
-  count,
-}: {
-  direction: typeof DIRECTIONS[number]
-  count: number
-}) {
-  const navigate = useNavigate()
-  const Icon     = SUBJECT_ICON[d.subjectSlug] ?? BookOpen
-  const accent   = SUBJECT_ACCENT[d.subjectSlug] ?? ''
-  const iconBg   = SUBJECT_ICON_BG[d.subjectSlug] ?? ''
-  const badge    = EXAM_BADGE[d.examSlug] ?? ''
-
-  return (
-    <button
-      onClick={() => navigate(`/catalog?subject=${d.subjectSlug}&exam=${d.examSlug}`)}
-      className={`group relative flex flex-col w-full text-left rounded-2xl border p-5 transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${accent}`}
-      data-testid="direction-card"
-      data-direction={d.key}
-    >
-      {/* Icon + badge */}
-      <div className="flex items-start justify-between mb-4">
-        <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
-          <Icon className="w-5 h-5" />
-        </span>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge}`}>
-          {d.examSlug.toUpperCase()}
-        </span>
-      </div>
-
-      {/* Subject + desc */}
-      <div className="flex-1">
-        <div className="font-semibold text-gray-900 text-base mb-0.5">{d.subject}</div>
-        <div className="text-sm text-gray-500 mb-3">{d.desc}</div>
-      </div>
-
-      {/* Footer. Скелетона больше нет: число известно на момент рендера. */}
-      <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-        <span className="text-sm font-medium text-gray-700">
-          {numFmt(count)} <span className="text-gray-400 font-normal">задач</span>
-        </span>
-        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all" />
-      </div>
-    </button>
-  )
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 2. Sections view — compact numbered list
+// Sections view — compact numbered list
 // ══════════════════════════════════════════════════════════════════════════════
 
 function SectionsView({ subjectSlug, examSlug, view }: { subjectSlug: string; examSlug: string; view: CatalogViewMode }) {
