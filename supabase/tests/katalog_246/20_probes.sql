@@ -15,10 +15,10 @@ create or replace function probe.s(v jsonb) returns text language sql immutable 
          E'\n' order by e->>'subject', e->>'exam_type')
     from jsonb_array_elements(v->'exams') e $$;
 create or replace function probe.o(v jsonb) returns text language sql immutable as $$
-  select format('viewer=%s overall: %s', v->>'viewer',
+  select format('viewer=%s compare=%s overall: %s', v->>'viewer', v->>'compare',
     case when jsonb_typeof(v->'overall') = 'object'
          then format('solved=%s 7d=%s solvers=%s pct=%s', v->'overall'->>'solved', v->'overall'->>'solved_7d',
-                     v->'overall'->>'solvers', coalesce(v->'overall'->>'better_pct', '-'))
+                     coalesce(v->'overall'->>'solvers', '-'), coalesce(v->'overall'->>'better_pct', '-'))
          else '-' end) $$;
 create or replace function probe.chk(name text, got text, want text) returns text language sql immutable as $$
   select case when got is not distinct from want then 'ok   ' || name
@@ -31,7 +31,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', probe.id('pA'), 'role', 'authenticated')::text, true) \g /dev/null
 select probe.o(catalog_my_overview());
 select probe.s(catalog_my_overview());
-select probe.chk('P1 итог A', probe.o(catalog_my_overview()), 'viewer=student overall: solved=7 7d=3 solvers=9 pct=-');
+select probe.chk('P1 итог A', probe.o(catalog_my_overview()), 'viewer=student compare=true overall: solved=7 7d=3 solvers=9 pct=-');
 select probe.chk('P1 экзамены A', probe.s(catalog_my_overview()),
   E'Математика ЕГЭ mine=true total=12 solved=5 7d=2 solvers=9 pct=- | 1:3/5 2:1/3 12:1/4\n'
   'Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2\n'
@@ -69,7 +69,7 @@ select probe.o(catalog_my_overview());
 select probe.s(catalog_my_overview());
 -- математика ЕГЭ: решающих 10, меньше 5 у B1 C1 D2 E3 J1 = 5 → 50 %;
 -- объединение (мат. ЕГЭ + физ. ЕГЭ + физ. ОГЭ): у A 7, меньше у B1 C1 D2 E3 F5 J1 = 6 (у G 6+1 = 7) → 60 %.
-select probe.chk('P3 итог A', probe.o(catalog_my_overview()), 'viewer=student overall: solved=7 7d=3 solvers=10 pct=60');
+select probe.chk('P3 итог A', probe.o(catalog_my_overview()), 'viewer=student compare=true overall: solved=7 7d=3 solvers=10 pct=60');
 select probe.chk('P3 мат. ЕГЭ A', (select format('%s/%s', e->>'solvers', e->>'better_pct') from jsonb_array_elements(catalog_my_overview()->'exams') e
          where e->>'subject' = 'Математика' and e->>'exam_type' = 'ЕГЭ'), '10/50');
 rollback;
@@ -80,7 +80,7 @@ insert into catalog_task_progress (user_id, task_id, is_completed, completed_at)
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', probe.id('pB'), 'role', 'authenticated')::text, true) \g /dev/null
 select probe.o(catalog_my_overview());
-select probe.chk('P4 итог B', probe.o(catalog_my_overview()), 'viewer=student overall: solved=1 7d=1 solvers=10 pct=-');
+select probe.chk('P4 итог B', probe.o(catalog_my_overview()), 'viewer=student compare=true overall: solved=1 7d=1 solvers=10 pct=-');
 select probe.chk('P4 мат. ЕГЭ B', (select format('%s/%s', e->>'solvers', coalesce(e->>'better_pct', '-')) from jsonb_array_elements(catalog_my_overview()->'exams') e
          where e->>'subject' = 'Математика' and e->>'exam_type' = 'ЕГЭ'), '10/-');
 rollback;
@@ -90,7 +90,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', probe.id('pX'), 'role', 'authenticated')::text, true) \g /dev/null
 select probe.o(catalog_my_overview());
-select probe.chk('P5 итог X', probe.o(catalog_my_overview()), 'viewer=student overall: solved=0 7d=0 solvers=0 pct=-');
+select probe.chk('P5 итог X', probe.o(catalog_my_overview()), 'viewer=student compare=true overall: solved=0 7d=0 solvers=0 pct=-');
 select probe.chk('P5 экзамены X', probe.s(catalog_my_overview()),
   E'Математика ЕГЭ mine=false total=12 solved=0 7d=0 solvers=- pct=- | 1:0/5 2:0/3 12:0/4\n'
   'Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2\n'
@@ -102,21 +102,38 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', probe.id('pW'), 'role', 'authenticated')::text, true) \g /dev/null
-select probe.chk('P6 итог W', probe.o(catalog_my_overview()), 'viewer=student overall: solved=0 7d=0 solvers=0 pct=-');
+select probe.chk('P6 итог W', probe.o(catalog_my_overview()), 'viewer=student compare=true overall: solved=0 7d=0 solvers=0 pct=-');
 rollback;
 
-\echo '== P7. Преподаватель T: только число задач по номерам, без «решено», без сравнения (его 10 отметок не видны и не считаются)'
+\echo '== P7. Преподаватель T (§246.1): свои 10 отметок видит, сравнения нет (compare=false); в «решающих» учеников его нет (P1: у A их 9)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', probe.id('pT'), 'role', 'authenticated')::text, true) \g /dev/null
 select probe.o(catalog_my_overview());
 select probe.s(catalog_my_overview());
-select probe.chk('P7 итог T', probe.o(catalog_my_overview()), 'viewer=staff overall: -');
+select probe.chk('P7 итог T', probe.o(catalog_my_overview()), 'viewer=staff compare=false overall: solved=10 7d=10 solvers=- pct=-');
 select probe.chk('P7 экзамены T', probe.s(catalog_my_overview()),
-  E'Математика ЕГЭ mine=false total=12 solved=- 7d=- solvers=- pct=- | 1:-/5 2:-/3 12:-/4\n'
-  'Математика ОГЭ mine=false total=2 solved=- 7d=- solvers=- pct=- | 1:-/2\n'
-  'Физика ЕГЭ mine=false total=3 solved=- 7d=- solvers=- pct=- | 1:-/3\n'
-  'Физика ОГЭ mine=false total=7 solved=- 7d=- solvers=- pct=- | 1:-/2 20:-/5');
+  E'Математика ЕГЭ mine=false total=12 solved=10 7d=10 solvers=- pct=- | 1:5/5 2:3/3 12:2/4\n'
+  'Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2\n'
+  'Физика ЕГЭ mine=false total=3 solved=0 7d=0 solvers=- pct=- | 1:0/3\n'
+  'Физика ОГЭ mine=false total=7 solved=0 7d=0 solvers=- pct=- | 1:0/2 20:0/5');
+rollback;
+
+\echo '== P7a. Админ платформы с одной отметкой (отзыв владельца): solved=1, compare=false, solvers/better_pct = null'
+begin;
+insert into profiles (id, full_name, role) values (probe.id('pAdm'), 'Админ', 'admin');
+insert into catalog_task_progress (user_id, task_id, is_completed, completed_at) values (probe.id('pAdm'), probe.id('p1b'), true, now() - interval '1 day');
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', probe.id('pAdm'), 'role', 'authenticated')::text, true) \g /dev/null
+select probe.o(catalog_my_overview());
+select probe.s(catalog_my_overview());
+select probe.chk('P7a итог админа', probe.o(catalog_my_overview()), 'viewer=staff compare=false overall: solved=1 7d=1 solvers=- pct=-');
+select probe.chk('P7a физика ЕГЭ админа', (select format('%s/%s/%s/%s', e->>'solved', e->>'is_mine', coalesce(e->>'solvers', '-'), coalesce(e->>'better_pct', '-'))
+         from jsonb_array_elements(catalog_my_overview()->'exams') e where e->>'subject' = 'Физика' and e->>'exam_type' = 'ЕГЭ'), '1/false/-/-');
+select probe.chk('P7a №1 физики ЕГЭ', (select x->>'solved' from jsonb_array_elements(catalog_my_overview()->'exams') e, jsonb_array_elements(e->'numbers') x
+         where e->>'subject' = 'Физика' and e->>'exam_type' = 'ЕГЭ' and x->>'n' = '1'), '1');
+select probe.chk('P7a нигде нет сравнения', (select count(*)::text from jsonb_array_elements(catalog_my_overview()->'exams') e
+         where e->'solvers' <> 'null'::jsonb or e->'better_pct' <> 'null'::jsonb), '0');
 rollback;
 
 \echo '== P8. Чужое не утекает: в ответе A нет ни id, ни имён других людей; набор ключей фиксирован'
@@ -127,7 +144,7 @@ select probe.chk('P8 нет чужих id/имён', (select string_agg(k, ',') 
          where position(probe.id('p' || k)::text in catalog_my_overview()::text) > 0
             or position(probe.id('s' || k)::text in catalog_my_overview()::text) > 0
             or position('Ученик' in catalog_my_overview()::text) > 0), null);
-select probe.chk('P8 ключи верха', (select string_agg(k, ',' order by k) from jsonb_object_keys(catalog_my_overview()) k), 'exams,min_solvers,overall,viewer');
+select probe.chk('P8 ключи верха', (select string_agg(k, ',' order by k) from jsonb_object_keys(catalog_my_overview()) k), 'compare,exams,min_solvers,overall,viewer');
 select probe.chk('P8 ключи экзамена', (select string_agg(k, ',' order by k) from jsonb_object_keys(catalog_my_overview()->'exams'->0) k),
   'better_pct,exam_type,is_mine,numbers,solved,solved_7d,solvers,subject,total');
 select probe.chk('P8 ключи номера', (select string_agg(k, ',' order by k) from jsonb_object_keys(catalog_my_overview()->'exams'->0->'numbers'->0) k),

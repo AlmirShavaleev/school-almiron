@@ -1,6 +1,7 @@
 slice: ok
 data: ok
-PENDING_246 applied twice: ok
+20260930142414_catalog_my_overview (как на проде): ok
+PENDING_246_1 applied twice: ok
 CREATE FUNCTION
 CREATE FUNCTION
 CREATE FUNCTION
@@ -8,7 +9,7 @@ GRANT
 == P1. Ученик A: свои цифры = ручной подсчёт (10_data_246.sql), 9 решающих → сравнения нет
 BEGIN
 SET
- viewer=student overall: solved=7 7d=3 solvers=9 pct=-
+ viewer=student compare=true overall: solved=7 7d=3 solvers=9 pct=-
 
  Математика ЕГЭ mine=true total=12 solved=5 7d=2 solvers=9 pct=- | 1:3/5 2:1/3 12:1/4+
  Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2             +
@@ -46,7 +47,7 @@ ROLLBACK
 BEGIN
 INSERT 0 1
 SET
- viewer=student overall: solved=7 7d=3 solvers=10 pct=60
+ viewer=student compare=true overall: solved=7 7d=3 solvers=10 pct=60
 
  Математика ЕГЭ mine=true total=12 solved=5 7d=2 solvers=10 pct=50 | 1:3/5 2:1/3 12:1/4+
  Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2               +
@@ -62,7 +63,7 @@ ROLLBACK
 BEGIN
 INSERT 0 1
 SET
- viewer=student overall: solved=1 7d=1 solvers=10 pct=-
+ viewer=student compare=true overall: solved=1 7d=1 solvers=10 pct=-
 
  ok   P4 итог B
 
@@ -72,7 +73,7 @@ ROLLBACK
 == P5. Новичок X: ноль везде, сравнения нет, структура каталога та же
 BEGIN
 SET
- viewer=student overall: solved=0 7d=0 solvers=0 pct=-
+ viewer=student compare=true overall: solved=0 7d=0 solvers=0 pct=-
 
  ok   P5 итог X
 
@@ -85,19 +86,40 @@ SET
  ok   P6 итог W
 
 ROLLBACK
-== P7. Преподаватель T: только число задач по номерам, без «решено», без сравнения (его 10 отметок не видны и не считаются)
+== P7. Преподаватель T (§246.1): свои 10 отметок видит, сравнения нет (compare=false); в «решающих» учеников его нет (P1: у A их 9)
 BEGIN
 SET
- viewer=staff overall: -
+ viewer=staff compare=false overall: solved=10 7d=10 solvers=- pct=-
 
- Математика ЕГЭ mine=false total=12 solved=- 7d=- solvers=- pct=- | 1:-/5 2:-/3 12:-/4+
- Математика ОГЭ mine=false total=2 solved=- 7d=- solvers=- pct=- | 1:-/2              +
- Физика ЕГЭ mine=false total=3 solved=- 7d=- solvers=- pct=- | 1:-/3                  +
- Физика ОГЭ mine=false total=7 solved=- 7d=- solvers=- pct=- | 1:-/2 20:-/5
+ Математика ЕГЭ mine=false total=12 solved=10 7d=10 solvers=- pct=- | 1:5/5 2:3/3 12:2/4+
+ Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2                +
+ Физика ЕГЭ mine=false total=3 solved=0 7d=0 solvers=- pct=- | 1:0/3                    +
+ Физика ОГЭ mine=false total=7 solved=0 7d=0 solvers=- pct=- | 1:0/2 20:0/5
 
  ok   P7 итог T
 
  ok   P7 экзамены T
+
+ROLLBACK
+== P7a. Админ платформы с одной отметкой (отзыв владельца): solved=1, compare=false, solvers/better_pct = null
+BEGIN
+INSERT 0 1
+INSERT 0 1
+SET
+ viewer=staff compare=false overall: solved=1 7d=1 solvers=- pct=-
+
+ Математика ЕГЭ mine=false total=12 solved=0 7d=0 solvers=- pct=- | 1:0/5 2:0/3 12:0/4+
+ Математика ОГЭ mine=false total=2 solved=0 7d=0 solvers=- pct=- | 1:0/2              +
+ Физика ЕГЭ mine=false total=3 solved=1 7d=1 solvers=- pct=- | 1:1/3                  +
+ Физика ОГЭ mine=false total=7 solved=0 7d=0 solvers=- pct=- | 1:0/2 20:0/5
+
+ ok   P7a итог админа
+
+ ok   P7a физика ЕГЭ админа
+
+ ok   P7a №1 физики ЕГЭ
+
+ ok   P7a нигде нет сравнения
 
 ROLLBACK
 == P8. Чужое не утекает: в ответе A нет ни id, ни имён других людей; набор ключей фиксирован
@@ -115,12 +137,12 @@ ROLLBACK
 == P9. Аноним — отказ (execute отозван)
 BEGIN
 SET
-psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:140: ERROR:  permission denied for function catalog_my_overview
+psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:157: ERROR:  permission denied for function catalog_my_overview
 ROLLBACK
 == P10. authenticated без sub — отказ функцией
 BEGIN
 SET
-psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:147: ERROR:  catalog_my_overview: нужен вход
+psql:/home/claude/agents/a246/repo/supabase/tests/katalog_246/20_probes.sql:164: ERROR:  catalog_my_overview: нужен вход
 ROLLBACK
 == P11. Повторный вызов в той же транзакции (stable) — тот же ответ
 BEGIN

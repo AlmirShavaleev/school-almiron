@@ -15,10 +15,11 @@ import {
 /**
  * §246. Главная «Каталога заданий» (`/catalog` без параметров).
  *
- * Ученику: личный итог (решено, +за неделю, сильнее всего, не начатые номера,
- * место в школе), строки предметов, у каждого экзамена — столбики «решено по
- * номерам» (нажатие — в номер), чипы и «Продолжить/Начать →».
- * Персоналу — та же страница без личного: столбики по числу задач в номерах.
+ * Личный итог (решено, +за неделю, сильнее всего, не начатые номера, место в
+ * школе), строки предметов, у каждого экзамена — столбики «решено по номерам»
+ * (нажатие — в номер), чипы и «Продолжить/Начать →».
+ * §246.1: одна раскладка для всех вошедших — учитель и админ тоже видят своё
+ * решённое; сравнение со школой — только ученику (`compare`).
  *
  * Раскладку и тексты считает `lib/catalogOverview`, здесь только отрисовка.
  * Пока цифры грузятся (или не загрузились), карточки экзаменов стоят сразу —
@@ -26,8 +27,7 @@ import {
  * не должен ничего ждать, чтобы в каталог можно было войти).
  */
 
-const LEAD_STUDENT = 'Решай по номерам и отмечай «Выполнено» — здесь видно, где ты уже силён, а какие номера ещё не трогал'
-const LEAD_STAFF = 'Задачи ЕГЭ и ОГЭ по номерам экзамена — сколько задач в каждом номере'
+const LEAD = 'Решай по номерам и отмечай «Выполнено» — здесь видно, где ты уже силён, а какие номера ещё не трогал'
 
 const TONE_ICON: Record<SubjectTone, string> = {
   math: 'bg-primary-50 text-primary-700',
@@ -58,18 +58,17 @@ const CHIP: Record<Chip['tone'], string> = {
 export function CatalogHome() {
   const { profile } = useAuthStore()
   const { overview, loading, error, retry } = useCatalogOverview(profile?.id)
-  const isStudent = overview ? overview.viewer === 'student' : profile?.role === 'student'
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6" data-testid="catalog-home">
       <header>
         <h1 className="text-2xl font-extrabold text-gray-900 sm:text-[1.9rem]">Каталог заданий</h1>
-        <p className="mt-1 text-gray-500">{isStudent ? LEAD_STUDENT : LEAD_STAFF}</p>
+        <p className="mt-1 text-gray-500">{LEAD}</p>
       </header>
 
       {overview ? (
         <>
-          {overview.viewer === 'student' && <Summary o={overview} />}
+          <Summary o={overview} />
           {subjectRows(overview).map(row => (
             <SubjectBlock key={row.subject} subject={row.subject} tone={row.tone} glyph={row.glyph} solved={row.solved}>
               {row.exams.map(e => <ExamCard key={`${e.subject}|${e.examType}`} o={overview} e={e} />)}
@@ -78,7 +77,7 @@ export function CatalogHome() {
         </>
       ) : (
         <>
-          {isStudent && loading && <SummarySkeleton />}
+          {loading && <SummarySkeleton />}
           {error && !loading && (
             <div role="status" data-testid="catalog-home-error" className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
               <span>Не удалось загрузить статистику — разделы открываются как обычно.</span>
@@ -103,7 +102,7 @@ export function CatalogHome() {
 
 function Summary({ o }: { o: CatalogOverview }) {
   const state = summaryState(o)
-  const solved = o.overall?.solved ?? 0
+  const solved = o.overall.solved
   const rank = overallRank(o)
   return (
     <section
@@ -163,7 +162,7 @@ function ChipRow({ chips, testId }: { chips: Chip[]; testId?: string }) {
 // ─── Предмет ─────────────────────────────────────────────────────────────────
 
 function SubjectBlock({ subject, tone, glyph, solved, children }: {
-  subject: string; tone: SubjectTone; glyph: string; solved: number | null; children: ReactNode
+  subject: string; tone: SubjectTone; glyph: string; solved: number; children: ReactNode
 }) {
   return (
     <section className="grid gap-3" data-testid="subject-row" data-subject={subject}>
@@ -172,7 +171,7 @@ function SubjectBlock({ subject, tone, glyph, solved, children }: {
           {glyph}
         </span>
         <h2 className="text-xl font-extrabold text-gray-900">{subject}</h2>
-        {solved != null && solved > 0 && (
+        {solved > 0 && (
           <span className="text-sm text-gray-500 tabular-nums">решено {formatCount(solved)}</span>
         )}
       </div>
@@ -185,10 +184,9 @@ function SubjectBlock({ subject, tone, glyph, solved, children }: {
 
 function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
   const tone = subjectTone(e.subject)
-  const student = o.viewer === 'student'
   const dim = isDimmed(o, e)
-  const solved = e.solved ?? 0
-  const go = !student ? 'Открыть номера' : solved > 0 ? 'Продолжить' : 'Начать'
+  const solved = e.solved
+  const go = solved > 0 ? 'Продолжить' : 'Начать'
   return (
     <article
       data-testid="exam-card"
@@ -204,10 +202,10 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
       )}
     >
       <ExamHead subject={e.subject} examType={e.examType}>
-        <b className="block text-2xl font-extrabold leading-none tabular-nums text-gray-900">{formatCount(student ? solved : e.total)}</b>
-        <span className="text-xs text-gray-500">{student ? `решено из ${formatCount(e.total)}` : tasksWord(e.total)}</span>
+        <b className="block text-2xl font-extrabold leading-none tabular-nums text-gray-900">{formatCount(solved)}</b>
+        <span className="text-xs text-gray-500">решено из {formatCount(e.total)}</span>
       </ExamHead>
-      <Bars o={o} e={e} tone={tone} />
+      <Bars e={e} tone={tone} />
       <div className="self-start"><ChipRow chips={examChips(o, e)} testId="exam-chips" /></div>
       <Link
         to={examHref(e.subject, e.examType)}
@@ -242,8 +240,8 @@ function labelHidden(n: number, i: number, count: number) {
   return n % 5 !== 0 || i === count - 2
 }
 
-function Bars({ o, e, tone }: { o: CatalogOverview; e: OverviewExam; tone: SubjectTone }) {
-  const bars = examBars(o, e)
+function Bars({ e, tone }: { e: OverviewExam; tone: SubjectTone }) {
+  const bars = examBars(e)
   const [tip, setTip] = useState<number | null>(null)
   const count = bars.length
   const shown = tip != null ? bars[tip] : null
@@ -253,7 +251,7 @@ function Bars({ o, e, tone }: { o: CatalogOverview; e: OverviewExam; tone: Subje
   return (
     <div className="relative z-10">
       <div className="mb-1.5 flex justify-between text-xs text-gray-500">
-        <span>{o.viewer === 'student' ? 'Решено по номерам' : 'Задач по номерам'}</span>
+        <span>Решено по номерам</span>
         <span className="tabular-nums">{numberRange(e)}</span>
       </div>
       <div className="relative">
@@ -324,7 +322,7 @@ function FallbackRows({ loading }: { loading: boolean }) {
       {subjects.map(subject => {
         const tone = subjectTone(subject)
         return (
-          <SubjectBlock key={subject} subject={subject} tone={tone} glyph={subjectGlyph(subject)} solved={null}>
+          <SubjectBlock key={subject} subject={subject} tone={tone} glyph={subjectGlyph(subject)} solved={0}>
             {DIRECTIONS.filter(d => d.subject === subject).map(d => (
               <article
                 key={d.key}

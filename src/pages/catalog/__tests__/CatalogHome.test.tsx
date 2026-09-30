@@ -4,9 +4,10 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { normalizeCatalogOverview, type CatalogOverview } from '@/lib/catalogOverview'
 
 /**
- * §246. Главная «Каталога заданий» глазами ученика (три состояния) и
- * персонала. Функция базы подменена хуком; всё остальное — настоящее:
- * CatalogPage → CatalogHome → lib/catalogOverview.
+ * §246/§246.1. Главная «Каталога заданий» глазами ученика (три состояния) и
+ * персонала (§246.1: своё решённое видит, сравнения нет). Функция базы
+ * подменена хуком; всё остальное — настоящее: CatalogPage → CatalogHome →
+ * lib/catalogOverview.
  */
 
 const state = vi.hoisted(() => ({
@@ -30,30 +31,33 @@ vi.mock('@/hooks/useCatalog', async (orig) => ({
 
 import { CatalogPage } from '@/pages/catalog/CatalogPage'
 
-const n = (spec: Array<[number, number, number?]>, staff = false) =>
-  spec.map(([num, total, solved]) => ({ n: num, total, solved: staff ? null : (solved ?? 0), section_id: `sec-${num}` }))
+const n = (spec: Array<[number, number, number?]>) =>
+  spec.map(([num, total, solved]) => ({ n: num, total, solved: solved ?? 0, section_id: `sec-${num}` }))
 
+/** staff — учитель с двумя отметками в математике ЕГЭ, как отдаёт PENDING_246_1 (compare=false, «своих» нет). */
 function raw(kind: 'active' | 'few' | 'new' | 'staff') {
   const staff = kind === 'staff'
-  const s = (v: number) => (kind === 'new' ? 0 : v)
+  const s = (v: number, t = v) => (kind === 'new' ? 0 : staff ? t : v)
+  const cmp = <T,>(v: T) => (staff ? null : v)
   return {
     viewer: staff ? 'staff' : 'student',
+    compare: !staff,
     min_solvers: 10,
-    overall: staff ? null : {
-      solved: s(41), solved_7d: s(18), solvers: kind === 'few' ? 5 : kind === 'new' ? 0 : 23,
+    overall: {
+      solved: s(41, 2), solved_7d: s(18, 2), solvers: cmp(kind === 'few' ? 5 : kind === 'new' ? 0 : 23),
       better_pct: kind === 'active' ? 68 : null,
     },
     exams: [
-      { subject: 'Математика', exam_type: 'ЕГЭ', is_mine: !staff, total: 1714, solved: s(33), solved_7d: s(7),
-        solvers: kind === 'few' ? 5 : 23, better_pct: kind === 'active' ? 72 : null,
-        numbers: n([[1, 1036, s(24)], [2, 255, s(9)], [12, 423, 0]], staff) },
+      { subject: 'Математика', exam_type: 'ЕГЭ', is_mine: !staff, total: 1714, solved: s(33, 2), solved_7d: s(7, 2),
+        solvers: cmp(kind === 'few' ? 5 : 23), better_pct: kind === 'active' ? 72 : null,
+        numbers: n([[1, 1036, s(24, 1)], [2, 255, s(9, 1)], [12, 423, 0]]) },
       { subject: 'Математика', exam_type: 'ОГЭ', is_mine: false, total: 480, solved: 0, solved_7d: 0, solvers: null, better_pct: null,
-        numbers: n([[1, 480]], staff) },
-      { subject: 'Физика', exam_type: 'ЕГЭ', is_mine: !staff, total: 279, solved: s(8), solved_7d: s(11),
-        solvers: kind === 'few' ? 5 : 14, better_pct: kind === 'active' ? 64 : null,
-        numbers: n([[1, 146, s(8)], [2, 133, 0]], staff) },
+        numbers: n([[1, 480]]) },
+      { subject: 'Физика', exam_type: 'ЕГЭ', is_mine: !staff, total: 279, solved: s(8, 0), solved_7d: s(11, 0),
+        solvers: cmp(kind === 'few' ? 5 : 14), better_pct: kind === 'active' ? 64 : null,
+        numbers: n([[1, 146, s(8, 0)], [2, 133, 0]]) },
       { subject: 'Физика', exam_type: 'ОГЭ', is_mine: false, total: 501, solved: 0, solved_7d: 0, solvers: null, better_pct: null,
-        numbers: n([[1, 126], [20, 375]], staff) },
+        numbers: n([[1, 126], [20, 375]]) },
     ],
   }
 }
@@ -145,22 +149,27 @@ describe('CatalogHome — ученик', () => {
   })
 })
 
-describe('CatalogHome — персонал', () => {
-  it('без личного: ни итога, ни «решено», ни сравнения; столбики — число задач', () => {
+describe('CatalogHome — персонал (§246.1)', () => {
+  it('учитель с отметками видит своё решённое как ученик, но без сравнения со школой; карточки не бледные', () => {
     renderHome('staff')
-    expect(screen.queryByTestId('catalog-summary')).toBeNull()
-    expect(screen.queryByText(/решено/i)).toBeNull()
+    const summary = screen.getByTestId('catalog-summary')
+    expect(summary).toHaveAttribute('data-state', 'active')
+    expect(within(summary).getByTestId('summary-solved')).toHaveTextContent('2')
+    expect(within(summary).getByTestId('summary-chips')).toHaveTextContent('+2 за неделю')
+    expect(within(summary).getByTestId('summary-chips')).toHaveTextContent('сильнее всего: математика №1')
+    expect(screen.queryByTestId('summary-rank')).toBeNull()
     expect(screen.queryByText(/больше, чем|сравнение/i)).toBeNull()
-    expect(screen.getAllByText('Задач по номерам')).toHaveLength(4)
+
+    expect(screen.getAllByTestId('exam-card').every(c => c.getAttribute('data-dim') === 'false')).toBe(true)
     const math = card('Математика ЕГЭ')
-    expect(math).toHaveAttribute('data-dim', 'false')
-    expect(within(math).getByText('1 714')).toBeInTheDocument()
-    expect(within(math).getByText('задач')).toBeInTheDocument()
-    expect(within(math).getAllByTestId('number-bar').every(b => b.getAttribute('data-on') === 'true')).toBe(true)
-    expect(within(math).getByTestId('exam-chips')).toHaveTextContent('3 номера')
+    expect(within(math).getByText('решено из 1 714')).toBeInTheDocument()
+    expect(within(math).getAllByTestId('number-bar').map(b => b.getAttribute('data-on'))).toEqual(['true', 'true', 'false'])
+    expect(within(math).getByTestId('exam-chips')).toHaveTextContent('+2 за неделю')
+    expect(within(math).getByTestId('exam-chips')).toHaveTextContent('не начато: 1 номер')
     fireEvent.mouseEnter(within(math).getAllByTestId('number-bar')[0])
-    expect(screen.getByTestId('bar-tip')).toHaveTextContent('№1 · 1 036 задач')
-    expect(within(math).getByRole('link', { name: 'Открыть номера: Математика ЕГЭ' })).toBeInTheDocument()
+    expect(screen.getByTestId('bar-tip')).toHaveTextContent('№1 · решено 1 из 1 036')
+    expect(within(math).getByRole('link', { name: 'Продолжить: Математика ЕГЭ' })).toBeInTheDocument()
+    expect(within(card('Физика ОГЭ')).getByTestId('exam-chips')).toHaveTextContent('пока ничего не отмечено')
   })
 })
 

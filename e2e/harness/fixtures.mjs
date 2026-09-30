@@ -2422,7 +2422,8 @@ function apply244(fx, persona) {
 //   s246active — сравнение есть (23 и 14 решающих, доли 72 % и 64 %, итог 68 %);
 //   s246few    — те же задачи, но решающих в школе 5: вместо доли «появится, когда…»;
 //   s246new    — ничего не решал;
-//   o246       — учитель: только число задач по номерам.
+//   o246       — учитель (§246.1): своё решённое видит (две отметки в математике
+//                ЕГЭ, №1 и №3), сравнения нет (compare=false), «своих» нет — не бледнеет ничего.
 const TOTAL246 = {
   'Математика|ЕГЭ': [[1,1036],[2,255],[3,420],[4,312],[5,272],[6,548],[7,716],[8,340],[9,287],[10,401],[11,315],[12,503],[13,514],[14,496],[15,525],[16,366],[17,653],[18,859],[19,697]],
   'Математика|ОГЭ': [[1,480],[6,220],[7,240],[8,476],[9,261],[10,252],[11,166],[12,245],[13,250],[14,233],[15,443],[16,447],[17,432],[18,205],[19,302],[20,369],[21,298],[22,216],[23,181],[24,87],[25,169]],
@@ -2433,6 +2434,7 @@ const SOLVED246 = {
   'Математика|ЕГЭ': { 1: 24, 2: 9, 3: 15, 4: 11, 5: 8, 6: 14, 7: 6, 8: 12, 10: 5, 12: 3, 13: 4, 15: 2 },
   'Физика|ЕГЭ': { 1: 12, 2: 10, 3: 8, 4: 9, 5: 4, 6: 3, 7: 2, 22: 1 },
 }
+const STAFF246 = { 'Математика|ЕГЭ': { 1: 1, 3: 1 } }
 function apply246(fx, persona) {
   const staff = persona === 'o246'
   const fresh = persona === 's246new'
@@ -2441,25 +2443,28 @@ function apply246(fx, persona) {
   const cmp = { 'Математика|ЕГЭ': { week: 7, solvers: 23, pct: 72 }, 'Физика|ЕГЭ': { week: 11, solvers: 14, pct: 64 } }
   const exams = Object.entries(TOTAL246).map(([key, rows]) => {
     const [subject, exam_type] = key.split('|')
-    const solvedBy = fresh || staff ? {} : (SOLVED246[key] ?? {})
-    const numbers = rows.map(([n, total]) => ({ n, total, solved: staff ? null : (solvedBy[n] ?? 0), section_id: U('7', 2460 + (++sec)) }))
-    const solved = numbers.reduce((s, r) => s + (r.solved ?? 0), 0)
+    const solvedBy = fresh ? {} : staff ? (STAFF246[key] ?? {}) : (SOLVED246[key] ?? {})
+    const numbers = rows.map(([n, total]) => ({ n, total, solved: solvedBy[n] ?? 0, section_id: U('7', 2460 + (++sec)) }))
+    const solved = numbers.reduce((s, r) => s + r.solved, 0)
     const c = cmp[key]
     return {
       subject, exam_type, is_mine: !staff && exam_type === 'ЕГЭ',
       total: rows.reduce((s, [, t]) => s + t, 0),
-      solved: staff ? null : solved,
-      solved_7d: staff ? null : (solved > 0 && c ? c.week : 0),
+      solved,
+      solved_7d: staff ? solved : (solved > 0 && c ? c.week : 0),
       solvers: staff || !c || solved === 0 ? null : (few ? 5 : c.solvers),
       better_pct: staff || !c || solved === 0 || few ? null : c.pct,
       numbers,
     }
   })
-  const all = exams.reduce((s, e) => s + (e.solved ?? 0), 0)
+  const all = exams.reduce((s, e) => s + e.solved, 0)
   fx.rpc.catalog_my_overview = {
     viewer: staff ? 'staff' : 'student',
+    compare: !staff,
     min_solvers: 10,
-    overall: staff ? null : { solved: all, solved_7d: all > 0 ? 18 : 0, solvers: fresh ? 0 : few ? 5 : 31, better_pct: fresh || few ? null : 68 },
+    overall: staff
+      ? { solved: all, solved_7d: all, solvers: null, better_pct: null }
+      : { solved: all, solved_7d: all > 0 ? 18 : 0, solvers: fresh ? 0 : few ? 5 : 31, better_pct: fresh || few ? null : 68 },
     exams,
   }
 }

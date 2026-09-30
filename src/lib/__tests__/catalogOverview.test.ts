@@ -6,16 +6,18 @@ import {
 } from '@/lib/catalogOverview'
 
 /**
- * §246. Разбор ответа `catalog_my_overview()` и всё, что из него рисует главная
- * каталога. Ответ — в форме функции (snake_case, числа), как с прода.
+ * §246/§246.1. Разбор ответа `catalog_my_overview()` и всё, что из него рисует
+ * главная каталога. Ответ — в форме функции (snake_case, числа), как с прода.
+ * С §246.1 личное — всем вошедшим, сравнение — только при compare (ученик).
  */
 
 type RawNum = { n: number; total: number; solved?: number | null; section_id?: string | null }
-const nums = (spec: Array<[number, number, number?]>, withSolved = true): RawNum[] =>
-  spec.map(([n, total, solved]) => ({ n, total, solved: withSolved ? (solved ?? 0) : null, section_id: `sec-${n}` }))
+const nums = (spec: Array<[number, number, number?]>): RawNum[] =>
+  spec.map(([n, total, solved]) => ({ n, total, solved: solved ?? 0, section_id: `sec-${n}` }))
 
 const rawStudent = (over: Record<string, unknown> = {}) => ({
   viewer: 'student',
+  compare: true,
   min_solvers: 10,
   overall: { solved: 12, solved_7d: 5, solvers: 23, better_pct: 68 },
   exams: [
@@ -33,6 +35,18 @@ const rawStudent = (over: Record<string, unknown> = {}) => ({
 })
 
 const student = (over: Record<string, unknown> = {}) => normalizeCatalogOverview(rawStudent(over)) as CatalogOverview
+/** Учитель/админ после §246.1: своё решённое есть, сравнения нет, «своих» экзаменов нет. */
+const staffRaw = () => ({
+  viewer: 'staff', compare: false, min_solvers: 10,
+  overall: { solved: 2, solved_7d: 2, solvers: null, better_pct: null },
+  exams: [
+    { subject: 'Математика', exam_type: 'ЕГЭ', is_mine: false, total: 15, solved: 2, solved_7d: 2, solvers: null, better_pct: null,
+      numbers: nums([[1, 8, 1], [2, 3, 1], [12, 4, 0]]) },
+    { subject: 'Физика', exam_type: 'ОГЭ', is_mine: false, total: 7, solved: 0, solved_7d: 0, solvers: null, better_pct: null,
+      numbers: nums([[1, 2], [20, 5]]) },
+  ],
+})
+const staff = () => normalizeCatalogOverview(staffRaw()) as CatalogOverview
 const exam = (o: CatalogOverview, subject: string, examType: string) =>
   o.exams.find(e => e.subject === subject && e.examType === examType)!
 
@@ -52,16 +66,32 @@ describe('normalizeCatalogOverview', () => {
     expect(student({ overall: { solved: 1, solved_7d: 0, solvers: 12, better_pct: 100 } }).overall?.betterPct).toBeNull()
   })
 
-  it('персоналу — ни решённого, ни сравнения, ни «своих», даже если в ответе что-то есть', () => {
-    const o = normalizeCatalogOverview({ ...rawStudent(), viewer: 'staff', overall: null })!
-    expect(o.viewer).toBe('staff')
-    expect(o.overall).toBeNull()
-    for (const e of o.exams) {
-      expect(e.solved).toBeNull()
-      expect(e.betterPct).toBeNull()
-      expect(e.isMine).toBe(false)
-      expect(e.numbers.every(r => r.solved === null)).toBe(true)
-    }
+  it('учитель/админ (§246.1): своё решённое есть, сравнения нет', () => {
+    const o = staff()
+    expect(o.compare).toBe(false)
+    expect(o.overall).toEqual({ solved: 2, solved7d: 2, solvers: null, betterPct: null })
+    expect(exam(o, 'Математика', 'ЕГЭ')).toMatchObject({ solved: 2, solvers: null, betterPct: null })
+    expect(exam(o, 'Математика', 'ЕГЭ').numbers.map(r => r.solved)).toEqual([1, 1, 0])
+  })
+
+  it('compare=false гасит сравнение, даже если числа пришли', () => {
+    const o = normalizeCatalogOverview({ ...rawStudent(), compare: false })!
+    expect(o.overall.betterPct).toBeNull()
+    expect(o.overall.solvers).toBeNull()
+    expect(o.exams.every(e => e.betterPct === null && e.solvers === null)).toBe(true)
+  })
+
+  it('ответ функции §246 без compare: сравнение — по viewer, у персонала решённого нет → 0', () => {
+    const old: Record<string, unknown> = { ...rawStudent() }
+    delete old.compare
+    expect(normalizeCatalogOverview(old)!.compare).toBe(true)
+    const oldStaff = normalizeCatalogOverview({
+      viewer: 'staff', min_solvers: 10, overall: null,
+      exams: [{ subject: 'Математика', exam_type: 'ЕГЭ', total: 3, solved: null, numbers: [{ n: 1, total: 3, solved: null, section_id: 's' }] }],
+    })!
+    expect(oldStaff.compare).toBe(false)
+    expect(oldStaff.overall.solved).toBe(0)
+    expect(oldStaff.exams[0].numbers[0].solved).toBe(0)
   })
 
   it('экзамен без единой задачи не рисуется', () => {
@@ -88,17 +118,17 @@ describe('mergeNumbers — несколько разделов одного но
 
   it('пустой №0 и номер без задач столбика не получают', () => {
     expect(mergeNumbers([
-      { n: 0, total: 0, solved: null, sectionId: 'old' },
-      { n: 3, total: 0, solved: null, sectionId: 'empty' },
-      { n: 2, total: 5, solved: null, sectionId: 's2' },
+      { n: 0, total: 0, solved: 0, sectionId: 'old' },
+      { n: 3, total: 0, solved: 0, sectionId: 'empty' },
+      { n: 2, total: 5, solved: 0, sectionId: 's2' },
     ]).map(r => r.n)).toEqual([2])
   })
 
-  it('у персонала решённое остаётся null и после сложения', () => {
+  it('первый раздел номера непустой — ссылка на него', () => {
     expect(mergeNumbers([
-      { n: 4, total: 1, solved: null, sectionId: 'a' },
-      { n: 4, total: 2, solved: null, sectionId: 'b' },
-    ])[0]).toEqual({ n: 4, total: 3, solved: null, sectionId: 'a' })
+      { n: 4, total: 1, solved: 0, sectionId: 'a' },
+      { n: 4, total: 2, solved: 1, sectionId: 'b' },
+    ])[0]).toEqual({ n: 4, total: 3, solved: 1, sectionId: 'a' })
   })
 })
 
@@ -113,7 +143,7 @@ describe('раскладка по предметам и номерам', () => {
 
   it('столбики ученика: высота от лучшего номера, не начатый — короткий серый, ссылка в раздел', () => {
     const o = student()
-    const bars = examBars(o, exam(o, 'Математика', 'ЕГЭ'))
+    const bars = examBars(exam(o, 'Математика', 'ЕГЭ'))
     expect(bars.map(b => [b.n, b.on, b.heightPx])).toEqual([[1, true, 70], [2, true, 35], [12, false, 6]])
     expect(bars[0].href).toBe('/catalog/sec-1?subject=math&exam=ege')
     expect(bars[2].tip).toBe('№12 · не начат · 4 задачи')
@@ -125,22 +155,22 @@ describe('раскладка по предметам и номерам', () => {
       exams: [{ subject: 'Математика', exam_type: 'ЕГЭ', is_mine: true, total: 1300, solved: 101,
         numbers: nums([[1, 1000, 100], [2, 300, 1]]) }],
     })
-    expect(examBars(o, o.exams[0]).map(b => b.heightPx)).toEqual([70, 8])
+    expect(examBars(o.exams[0]).map(b => b.heightPx)).toEqual([70, 8])
   })
 
-  it('персоналу высота — число задач в номере, все столбики закрашены', () => {
-    const o = normalizeCatalogOverview({ ...rawStudent(), viewer: 'staff', overall: null })!
-    const bars = examBars(o, exam(o, 'Математика', 'ЕГЭ'))
-    expect(bars.map(b => [b.on, b.heightPx])).toEqual([[true, 70], [true, 26], [true, 35]])
-    expect(bars[0].tip).toBe('№1 · 8 задач')
+  it('учителю столбики — тоже по его решённому (§246.1)', () => {
+    const o = staff()
+    const bars = examBars(exam(o, 'Математика', 'ЕГЭ'))
+    expect(bars.map(b => [b.on, b.heightPx])).toEqual([[true, 70], [true, 70], [false, 6]])
+    expect(bars[0].tip).toBe('№1 · решено 1 из 8')
   })
 
   it('подсказки: склонения из plural.ts и разряды', () => {
-    expect(barTip({ n: 12, total: 503, solved: 3, sectionId: 'x' }, true)).toBe('№12 · решено 3 из 503')
-    expect(barTip({ n: 12, total: 503, solved: 0, sectionId: 'x' }, true)).toBe('№12 · не начат · 503 задачи')
-    expect(barTip({ n: 1, total: 1036, solved: 0, sectionId: 'x' }, true)).toBe('№1 · не начат · 1 036 задач')
-    expect(barTip({ n: 21, total: 1, solved: null, sectionId: 'x' }, false)).toBe('№21 · 1 задача')
-    expect(barTip({ n: 3, total: 11, solved: null, sectionId: 'x' }, false)).toBe('№3 · 11 задач')
+    expect(barTip({ n: 12, total: 503, solved: 3, sectionId: 'x' })).toBe('№12 · решено 3 из 503')
+    expect(barTip({ n: 12, total: 503, solved: 0, sectionId: 'x' })).toBe('№12 · не начат · 503 задачи')
+    expect(barTip({ n: 1, total: 1036, solved: 0, sectionId: 'x' })).toBe('№1 · не начат · 1\u00a0036 задач')
+    expect(barTip({ n: 21, total: 1, solved: 0, sectionId: 'x' })).toBe('№21 · не начат · 1 задача')
+    expect(barTip({ n: 3, total: 11, solved: 0, sectionId: 'x' })).toBe('№3 · не начат · 11 задач')
   })
 
   it('диапазон номеров над столбиками', () => {
@@ -186,10 +216,16 @@ describe('чипы экзамена', () => {
     expect(examChips(o, exam(o, 'Математика', 'ОГЭ')).map(c => c.text)).toEqual(['пока ничего не отмечено'])
   })
 
-  it('персоналу — только число номеров', () => {
-    const o = normalizeCatalogOverview({ ...rawStudent(), viewer: 'staff', overall: null })!
-    expect(examChips(o, exam(o, 'Математика', 'ЕГЭ')).map(c => c.text)).toEqual(['3 номера'])
-    expect(examChips(o, exam(o, 'Математика', 'ОГЭ')).map(c => c.text)).toEqual(['1 номер'])
+  it('учителю — неделя и не начатые номера, никакого сравнения; без «своих» ничего не бледнеет', () => {
+    const o = staff()
+    expect(examChips(o, exam(o, 'Математика', 'ЕГЭ')).map(c => c.text)).toEqual(['+2 за неделю', 'не начато: 1 номер'])
+    expect(examChips(o, exam(o, 'Физика', 'ОГЭ')).map(c => c.text)).toEqual(['пока ничего не отмечено'])
+    expect(o.exams.some(e => isDimmed(o, e))).toBe(false)
+  })
+
+  it('решающих мало, но compare=false — «когда решающих будет 10+» не пишем', () => {
+    const o = normalizeCatalogOverview({ ...rawStudent(), compare: false })!
+    expect(examChips(o, exam(o, 'Физика', 'ЕГЭ')).map(c => c.text)).toEqual(['+1 за неделю'])
   })
 })
 
@@ -228,9 +264,20 @@ describe('личный итог — три состояния', () => {
     expect(overallRank(o)).toEqual({ kind: 'wait', text: 'Сравнение со школой появится после первых решённых задач' })
   })
 
-  it('персонал — без итога', () => {
-    const o = normalizeCatalogOverview({ ...rawStudent(), viewer: 'staff', overall: null })!
-    expect(summaryState(o)).toBe('staff')
+  it('учитель с отметками — итог как у ученика, без правой части сравнения', () => {
+    const o = staff()
+    expect(summaryState(o)).toBe('active')
+    expect(summaryChips(o).map(c => c.text)).toEqual(['+2 за неделю', 'сильнее всего: математика №1', 'не начаты: 1 номер'])
+    expect(overallRank(o)).toEqual({ kind: 'none' })
+  })
+
+  it('учитель-новичок — «0», но и «сравнение появится после первых задач» не пишем', () => {
+    const raw = staffRaw()
+    const o = normalizeCatalogOverview({
+      ...raw, overall: { solved: 0, solved_7d: 0, solvers: null, better_pct: null },
+      exams: raw.exams.map(e => ({ ...e, solved: 0, solved_7d: 0, numbers: e.numbers.map(r => ({ ...r, solved: 0 })) })),
+    })!
+    expect(summaryState(o)).toBe('new')
     expect(overallRank(o)).toEqual({ kind: 'none' })
   })
 

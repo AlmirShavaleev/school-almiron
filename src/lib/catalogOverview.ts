@@ -10,13 +10,17 @@ import { plural } from '@/lib/plural'
  * «Решено» определяет база (отметка «Выполнено» ИЛИ верный ответ в варианте,
  * одна задача — один раз); клиент ничего не пересчитывает, только
  * складывает номера и подписывает.
+ *
+ * §246.1: личная статистика — ВСЕМ вошедшим (владелец-админ отметил задачу и не
+ * видел её): одна раскладка для всех, отдельного вида «персонал» нет.
+ * Сравнение со школой — только при `compare` (ученик); иначе ни процента, ни
+ * «когда решающих будет 10+», ни правой части итога.
  */
 
 export interface OverviewNumber {
   n: number
   total: number
-  /** null — у персонала (решённого нет вовсе). */
-  solved: number | null
+  solved: number
   /** Куда ведёт столбик: первый непустой раздел номера. */
   sectionId: string | null
 }
@@ -26,8 +30,9 @@ export interface OverviewExam {
   examType: string
   isMine: boolean
   total: number
-  solved: number | null
-  solved7d: number | null
+  solved: number
+  solved7d: number
+  /** null — сравнения нет (не ученик). */
   solvers: number | null
   betterPct: number | null
   numbers: OverviewNumber[]
@@ -36,14 +41,18 @@ export interface OverviewExam {
 export interface OverviewOverall {
   solved: number
   solved7d: number
-  solvers: number
+  /** null — сравнения нет (не ученик). */
+  solvers: number | null
   betterPct: number | null
 }
 
 export interface CatalogOverview {
+  /** Для совместимости; раскладку по нему больше не выбираем (§246.1). */
   viewer: 'student' | 'staff'
+  /** Показывать ли сравнение со школой (только ученику). */
+  compare: boolean
   minSolvers: number
-  overall: OverviewOverall | null
+  overall: OverviewOverall
   exams: OverviewExam[]
 }
 
@@ -79,7 +88,7 @@ export function mergeNumbers(rows: OverviewNumber[]): OverviewNumber[] {
     byN.set(r.n, {
       n: r.n,
       total: prev.total + r.total,
-      solved: prev.solved == null && r.solved == null ? null : (prev.solved ?? 0) + (r.solved ?? 0),
+      solved: prev.solved + r.solved,
       sectionId: prev.sectionId ?? (r.total > 0 ? r.sectionId : null),
     })
   }
@@ -90,7 +99,8 @@ export function normalizeCatalogOverview(raw: unknown): CatalogOverview | null {
   const root = obj(raw)
   if (!root) return null
   const viewer = root.viewer === 'student' ? 'student' : 'staff'
-  const isStudent = viewer === 'student'
+  // Функция §246 (до PENDING_246_1) ключа compare не знала: сравнивала только ученику.
+  const compare = typeof root.compare === 'boolean' ? root.compare : viewer === 'student'
   const exams: OverviewExam[] = []
   for (const item of Array.isArray(root.exams) ? root.exams : []) {
     const e = obj(item)
@@ -103,36 +113,34 @@ export function normalizeCatalogOverview(raw: unknown): CatalogOverview | null {
         return [{
           n,
           total: num(r.total) ?? 0,
-          solved: isStudent ? (num(r.solved) ?? 0) : null,
+          solved: num(r.solved) ?? 0,
           sectionId: typeof r.section_id === 'string' ? r.section_id : null,
         }]
       }),
     )
     if (numbers.length === 0) continue
     const total = numbers.reduce((s, r) => s + r.total, 0)
-    const solvedSum = numbers.reduce((s, r) => s + (r.solved ?? 0), 0)
+    const solvedSum = numbers.reduce((s, r) => s + r.solved, 0)
     exams.push({
       subject: e.subject,
       examType: e.exam_type,
-      isMine: isStudent && e.is_mine === true,
+      isMine: e.is_mine === true,
       total,
-      solved: isStudent ? (num(e.solved) ?? solvedSum) : null,
-      solved7d: isStudent ? (num(e.solved_7d) ?? 0) : null,
-      solvers: isStudent ? num(e.solvers) : null,
-      betterPct: isStudent ? positivePct(num(e.better_pct)) : null,
+      solved: num(e.solved) ?? solvedSum,
+      solved7d: num(e.solved_7d) ?? 0,
+      solvers: compare ? num(e.solvers) : null,
+      betterPct: compare ? positivePct(num(e.better_pct)) : null,
       numbers,
     })
   }
   const o = obj(root.overall)
-  const overall: OverviewOverall | null = isStudent
-    ? {
-      solved: num(o?.solved) ?? exams.reduce((s, e) => s + (e.solved ?? 0), 0),
-      solved7d: num(o?.solved_7d) ?? 0,
-      solvers: num(o?.solvers) ?? 0,
-      betterPct: positivePct(num(o?.better_pct)),
-    }
-    : null
-  return { viewer, minSolvers: num(root.min_solvers) ?? DEFAULT_MIN_SOLVERS, overall, exams }
+  const overall: OverviewOverall = {
+    solved: num(o?.solved) ?? exams.reduce((s, e) => s + e.solved, 0),
+    solved7d: num(o?.solved_7d) ?? 0,
+    solvers: compare ? (num(o?.solvers) ?? 0) : null,
+    betterPct: compare ? positivePct(num(o?.better_pct)) : null,
+  }
+  return { viewer, compare, minSolvers: num(root.min_solvers) ?? DEFAULT_MIN_SOLVERS, overall, exams }
 }
 
 /** «0 %» не показываем (правило §223), как и мусор вне 1..99. */
@@ -195,7 +203,7 @@ export interface SubjectRow {
   subject: string
   tone: SubjectTone
   glyph: string
-  solved: number | null
+  solved: number
   exams: OverviewExam[]
 }
 
@@ -209,7 +217,7 @@ export function subjectRows(o: CatalogOverview): SubjectRow[] {
       subject,
       tone: subjectTone(subject),
       glyph: subjectGlyph(subject),
-      solved: o.viewer === 'student' ? exams.reduce((s, e) => s + (e.solved ?? 0), 0) : null,
+      solved: exams.reduce((s, e) => s + e.solved, 0),
       exams: [...exams].sort((a, b) =>
         rank(EXAM_ORDER, a.examType) - rank(EXAM_ORDER, b.examType) || a.examType.localeCompare(b.examType, 'ru')),
     }))
@@ -220,7 +228,6 @@ export function subjectRows(o: CatalogOverview): SubjectRow[] {
  * одного своего экзамена (без групп), бледнеть нечему: все равны.
  */
 export function isDimmed(o: CatalogOverview, e: OverviewExam): boolean {
-  if (o.viewer !== 'student') return false
   return o.exams.some(x => x.isMine) && !e.isMine
 }
 
@@ -233,7 +240,7 @@ const BAR_STUB_PX = 6
 export interface Bar {
   n: number
   heightPx: number
-  /** Закрашен: у ученика — номер начат, у персонала — всегда. */
+  /** Закрашен — номер начат. */
   on: boolean
   tip: string
   href: string | null
@@ -244,13 +251,11 @@ export const tasksWord = (n: number) => plural(n, 'задача', 'задачи'
 export const numbersWord = (n: number) => plural(n, 'номер', 'номера', 'номеров')
 
 /**
- * Ученику высота — решённое в номере относительно лучшего номера экзамена,
- * не начатый номер — короткий серый столбик. Персоналу — число задач в номере
- * относительно самого большого номера (как было в первой версии макета).
+ * Высота — решённое в номере относительно лучшего номера экзамена, не начатый
+ * номер — короткий серый столбик. Одинаково для всех (§246.1).
  */
-export function examBars(o: CatalogOverview, e: OverviewExam): Bar[] {
-  const student = o.viewer === 'student'
-  const values = e.numbers.map(r => (student ? (r.solved ?? 0) : r.total))
+export function examBars(e: OverviewExam): Bar[] {
+  const values = e.numbers.map(r => r.solved)
   const max = Math.max(1, ...values)
   return e.numbers.map((r, i) => {
     const v = values[i]
@@ -260,16 +265,15 @@ export function examBars(o: CatalogOverview, e: OverviewExam): Bar[] {
       n: r.n,
       heightPx,
       on,
-      tip: barTip(r, student),
+      tip: barTip(r),
       href: r.sectionId ? numberHref(e.subject, e.examType, r.sectionId) : null,
     }
   })
 }
 
-/** «№12 · решено 3 из 503» / «№12 · не начат · 503 задачи»; персоналу — «№12 · 503 задачи». */
-export function barTip(r: OverviewNumber, student: boolean): string {
-  if (!student) return `№${r.n} · ${fmt(r.total)} ${tasksWord(r.total)}`
-  const s = r.solved ?? 0
+/** «№12 · решено 3 из 503» / «№12 · не начат · 503 задачи». */
+export function barTip(r: OverviewNumber): string {
+  const s = r.solved
   return s > 0
     ? `№${r.n} · решено ${fmt(s)} из ${fmt(r.total)}`
     : `№${r.n} · не начат · ${fmt(r.total)} ${tasksWord(r.total)}`
@@ -283,7 +287,7 @@ export function numberRange(e: OverviewExam): string {
 }
 
 export function untouchedCount(e: OverviewExam): number {
-  return e.numbers.filter(r => (r.solved ?? 0) === 0).length
+  return e.numbers.filter(r => r.solved === 0).length
 }
 
 // ─── Чипы экзамена ───────────────────────────────────────────────────────────
@@ -294,18 +298,16 @@ export interface Chip { tone: ChipTone; text: string }
 const PCT = ' %'
 
 export function examChips(o: CatalogOverview, e: OverviewExam): Chip[] {
-  if (o.viewer !== 'student') {
-    const k = e.numbers.length
-    return [{ tone: 'mute', text: `${k} ${numbersWord(k)}` }]
-  }
-  const solved = e.solved ?? 0
-  if (solved === 0) {
+  if (e.solved === 0) {
     return [{ tone: 'mute', text: isDimmed(o, e) ? 'не твой экзамен — можно потренироваться' : 'пока ничего не отмечено' }]
   }
   const chips: Chip[] = []
-  if ((e.solved7d ?? 0) > 0) chips.push({ tone: 'ok', text: `+${fmt(e.solved7d ?? 0)} за неделю` })
-  if (e.betterPct != null) chips.push({ tone: 'acc', text: `больше, чем ${e.betterPct}${PCT} школы` })
-  else if ((e.solvers ?? 0) < o.minSolvers) chips.push({ tone: 'mute', text: `сравнение — когда решающих будет ${o.minSolvers}+` })
+  if (e.solved7d > 0) chips.push({ tone: 'ok', text: `+${fmt(e.solved7d)} за неделю` })
+  // Не ученику сравнения нет вовсе — ни процента, ни «когда будет 10+».
+  if (o.compare) {
+    if (e.betterPct != null) chips.push({ tone: 'acc', text: `больше, чем ${e.betterPct}${PCT} школы` })
+    else if ((e.solvers ?? 0) < o.minSolvers) chips.push({ tone: 'mute', text: `сравнение — когда решающих будет ${o.minSolvers}+` })
+  }
   const k = untouchedCount(e)
   if (k > 0) chips.push({ tone: 'mute', text: `не начато: ${k} ${numbersWord(k)}` })
   return chips
@@ -313,11 +315,10 @@ export function examChips(o: CatalogOverview, e: OverviewExam): Chip[] {
 
 // ─── Личный итог ─────────────────────────────────────────────────────────────
 
-export type SummaryState = 'staff' | 'new' | 'active'
+export type SummaryState = 'new' | 'active'
 
 export function summaryState(o: CatalogOverview): SummaryState {
-  if (o.viewer !== 'student') return 'staff'
-  return (o.overall?.solved ?? 0) > 0 ? 'active' : 'new'
+  return o.overall.solved > 0 ? 'active' : 'new'
 }
 
 /** «1 задача решена», «2 задачи решено», «7 задач решено». */
@@ -335,14 +336,14 @@ export function strongestLabel(o: CatalogOverview): string | null {
   for (const row of subjectRows(o)) {
     for (const e of row.exams) {
       for (const r of e.numbers) {
-        const v = r.solved ?? 0
+        const v = r.solved
         if (v > 0 && (!best || v > best.v)) best = { e, n: r.n, v }
       }
     }
   }
   if (!best) return null
   const b = best
-  const both = o.exams.filter(x => x.subject === b.e.subject && (x.solved ?? 0) > 0).length > 1
+  const both = o.exams.filter(x => x.subject === b.e.subject && x.solved > 0).length > 1
   return `${b.e.subject.toLowerCase()}${both ? ` ${b.e.examType}` : ''} №${b.n}`
 }
 
@@ -352,7 +353,7 @@ export function strongestLabel(o: CatalogOverview): string | null {
  */
 export function untouchedMine(o: CatalogOverview): number {
   const mine = o.exams.filter(e => e.isMine)
-  const scope = mine.length > 0 ? mine : o.exams.filter(e => (e.solved ?? 0) > 0)
+  const scope = mine.length > 0 ? mine : o.exams.filter(e => e.solved > 0)
   return scope.reduce((s, e) => s + untouchedCount(e), 0)
 }
 
@@ -364,20 +365,21 @@ export type Rank =
 /**
  * Сравнение сверху — по объединению экзаменов, в которых ученик решает.
  * Подпись называет экзамен, если он у всех решаемых один («…решают в каталоге ЕГЭ»).
+ * Не ученику (compare=false) — ничего, даже «появится после первых задач».
  */
 export function overallRank(o: CatalogOverview): Rank {
   const ov = o.overall
-  if (o.viewer !== 'student' || !ov) return { kind: 'none' }
+  if (!o.compare) return { kind: 'none' }
   if (ov.solved === 0) return { kind: 'wait', text: 'Сравнение со школой появится после первых решённых задач' }
   if (ov.betterPct != null) {
-    const types = [...new Set(o.exams.filter(e => (e.solved ?? 0) > 0).map(e => e.examType))]
+    const types = [...new Set(o.exams.filter(e => e.solved > 0).map(e => e.examType))]
     const tail = types.length === 1 ? ` ${types[0]}` : ''
     return { kind: 'pct', pct: ov.betterPct, caption: `учеников школы, которые решают в каталоге${tail}` }
   }
-  if (ov.solvers < o.minSolvers) {
+  if ((ov.solvers ?? 0) < o.minSolvers) {
     return {
       kind: 'wait',
-      text: `Сравнение появится, когда в каталоге будут решать хотя бы ${o.minSolvers} учеников школы (сейчас ${fmt(ov.solvers)})`,
+      text: `Сравнение появится, когда в каталоге будут решать хотя бы ${o.minSolvers} учеников школы (сейчас ${fmt(ov.solvers ?? 0)})`,
     }
   }
   // Решающих достаточно, но меньше, чем у ученика, ни у кого: «0 %» не пишем.
@@ -386,7 +388,7 @@ export function overallRank(o: CatalogOverview): Rank {
 
 export function summaryChips(o: CatalogOverview): Chip[] {
   const ov = o.overall
-  if (!ov || ov.solved === 0) return []
+  if (ov.solved === 0) return []
   const chips: Chip[] = []
   if (ov.solved7d > 0) chips.push({ tone: 'ok', text: `+${fmt(ov.solved7d)} за неделю` })
   const strong = strongestLabel(o)
