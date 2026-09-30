@@ -62,6 +62,7 @@ import {
 import {
   BENCHMARK_MODEL_TIMEOUT_MS,
   DEFAULT_AI_MODEL,
+  PARSE_DEFAULT_MODEL,
   benchmarkMaxTokens,
   benchmarkRequestBody,
   benchmarkResultRow,
@@ -471,7 +472,7 @@ async function runCheck(
     pageCount: sent.length,
   })
 
-  // Тело — `chatRequestBody` (бой, §180: max_tokens 6000) или
+  // Тело — `chatRequestBody` (бой; max_tokens по модели, у Gemini 16000) или
   // `benchmarkRequestBody` (замер §247); сообщения у обоих одни и те же.
   const modelStartedAt = Date.now()
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -981,7 +982,7 @@ const MATERIAL_BUCKETS = ['topic-materials', 'course-materials'] as const
  * позволяет владельцу поставить самую дешёвую текстовую модель, не трогая
  * модель проверки и не передеплоивая функцию.
  */
-const parseModelOf = () => Deno.env.get('AI_PARSE_MODEL') || Deno.env.get('AI_MODEL') || DEFAULT_MODEL
+const parseModelOf = () => Deno.env.get('AI_PARSE_MODEL') || PARSE_DEFAULT_MODEL
 
 interface ReferenceResult {
   text: string

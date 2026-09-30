@@ -17,14 +17,31 @@
  *  — модель (из тела запроса, по белому списку) и, где без этого модель не
  *    отдаёт целый JSON, потолок `max_tokens`.
  *
- * Боевой путь берёт отсюда ровно одну вещь — `chatRequestBody`, и тест
- * фиксирует, что его тело запроса побайтно прежнее.
+ * Боевой путь берёт отсюда `chatRequestBody` и модели по умолчанию; тест
+ * фиксирует порядок ключей тела запроса. С 30.09 потолок `max_tokens` в бою
+ * зависит от модели (`modelMaxTokens`), как в замере.
  */
 
 import { compareAnswers, type TaskRow, type TaskVerdict } from './findings.ts'
 
-/** Модель проверки по умолчанию (переменная `AI_MODEL` не задана). */
-export const DEFAULT_AI_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
+/** Qwen — боевая модель до 30.09 и модель разбора PDF (см. PARSE_DEFAULT_MODEL). */
+export const QWEN_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
+
+/**
+ * Модель проверки по умолчанию (переменная `AI_MODEL` не задана). С 30.09 —
+ * Gemini 3.8 Flash: замер §247 (96 работ, прогон 2026-09-30-a) — совпадение с
+ * учителем по заданиям 85 % против 79 % у Qwen, «опасных» 40 против 50.
+ */
+export const DEFAULT_AI_MODEL = 'google/gemini-3.8-flash'
+
+/**
+ * Модель РАЗБОРА PDF (эталон, условие, критерии) — если `AI_PARSE_MODEL` не
+ * задана. Намеренно не Gemini: от модели здесь нужна только работа плагина
+ * file-parser при `max_tokens: 1`, а у моделей с родным чтением PDF поставщик
+ * может отдать файл модели мимо плагина — тогда текста в аннотациях не будет.
+ * Qwen разбирал все материалы до 30.09, кэш собран им же.
+ */
+export const PARSE_DEFAULT_MODEL = QWEN_MODEL
 
 /**
  * Потолок ответа боевого пути. §180: таблица по заданиям удлиняет ответ —
@@ -42,7 +59,7 @@ export const COMBAT_MAX_TOKENS = 6000
  * `isBenchmarkModel`: сравнивать надо с тем, что реально стоит в бою.
  */
 export const BENCHMARK_MODELS = [
-  DEFAULT_AI_MODEL,
+  QWEN_MODEL,
   'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview',
   'anthropic/claude-sonnet-5.5',
@@ -188,13 +205,22 @@ export function chatRequestBody(model: string, messages: readonly unknown[]): Re
     model,
     messages,
     response_format: { type: 'json_object' },
-    max_tokens: COMBAT_MAX_TOKENS,
+    max_tokens: modelMaxTokens(model),
   }
+}
+
+/**
+ * Потолок ответа по модели — и в бою, и в замере. У Gemini рассуждение идёт
+ * в тот же `max_tokens` (в замере 30.09 — 5,5–6 тыс. токенов рассуждения на
+ * работу), поэтому при боевых 6000 ответ обрывался бы на середине JSON.
+ */
+export function modelMaxTokens(model: string): number {
+  return model.startsWith('google/') ? THINKING_MAX_TOKENS : COMBAT_MAX_TOKENS
 }
 
 /** Потолок ответа модели в замере, если его не задали в теле запроса. */
 export function benchmarkMaxTokens(model: string): number {
-  return model.startsWith('google/') ? THINKING_MAX_TOKENS : COMBAT_MAX_TOKENS
+  return modelMaxTokens(model)
 }
 
 /**

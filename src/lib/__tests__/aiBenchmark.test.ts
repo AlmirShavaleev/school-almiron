@@ -4,6 +4,9 @@ import {
   BENCHMARK_MODEL_TIMEOUT_MS,
   COMBAT_MAX_TOKENS,
   DEFAULT_AI_MODEL,
+  PARSE_DEFAULT_MODEL,
+  QWEN_MODEL,
+  modelMaxTokens,
   THINKING_MAX_TOKENS,
   benchmarkMaxTokens,
   benchmarkRequestBody,
@@ -29,23 +32,31 @@ const ATTEMPT = '6f1c2b0e-8a44-4c1e-9d7a-2b9d4f0a1c33'
 const MESSAGES = [{ role: 'user', content: [{ type: 'text', text: 'промпт' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA==' } }] }]
 
 describe('§247 тело запроса к модели', () => {
-  it('боевое тело — побайтно то, что index.ts отправлял до §247', () => {
+  it('боевое тело Qwen — побайтно то, что index.ts отправлял до §247', () => {
     // Литерал — дословно JSON.stringify({ model, messages, response_format, max_tokens: 6000 })
     // из index.ts на 38eb8aa. Порядок ключей тоже часть «побайтно».
     const expected = '{"model":"qwen/qwen3-vl-235b-a22b-instruct","messages":[{"role":"user","content":[{"type":"text","text":"промпт"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,AA=="}}]}],"response_format":{"type":"json_object"},"max_tokens":6000}'
-    expect(JSON.stringify(chatRequestBody(DEFAULT_AI_MODEL, MESSAGES))).toBe(expected)
-    expect(DEFAULT_AI_MODEL).toBe('qwen/qwen3-vl-235b-a22b-instruct')
+    expect(JSON.stringify(chatRequestBody(QWEN_MODEL, MESSAGES))).toBe(expected)
+    expect(QWEN_MODEL).toBe('qwen/qwen3-vl-235b-a22b-instruct')
     expect(COMBAT_MAX_TOKENS).toBe(6000)
   })
 
-  it('боевое тело берёт любую модель из AI_MODEL как есть, без профилей замера', () => {
+  it('30.09: модель по умолчанию — Gemini 3.8 Flash, разбор PDF остаётся на Qwen', () => {
+    expect(DEFAULT_AI_MODEL).toBe('google/gemini-3.8-flash')
+    expect(PARSE_DEFAULT_MODEL).toBe(QWEN_MODEL)
+  })
+
+  it('боевое тело Gemini: потолок под рассуждение, без полей замера', () => {
     const body = chatRequestBody('google/gemini-3.8-flash', MESSAGES)
-    expect(body).toEqual({ model: 'google/gemini-3.8-flash', messages: MESSAGES, response_format: { type: 'json_object' }, max_tokens: 6000 })
+    expect(body).toEqual({ model: 'google/gemini-3.8-flash', messages: MESSAGES, response_format: { type: 'json_object' }, max_tokens: THINKING_MAX_TOKENS })
+    expect(Object.keys(body)).toEqual(['model', 'messages', 'response_format', 'max_tokens'])
     expect(body).not.toHaveProperty('usage')
+    expect(modelMaxTokens('anthropic/claude-sonnet-5.5')).toBe(6000)
+    expect(modelMaxTokens('some/other-model')).toBe(6000)
   })
 
   it('замер Qwen: те же сообщения и response_format, потолок боевой, плюс usage.include', () => {
-    const body = benchmarkRequestBody(DEFAULT_AI_MODEL, MESSAGES)
+    const body = benchmarkRequestBody(QWEN_MODEL, MESSAGES)
     expect(body.messages).toBe(MESSAGES)
     expect(body.response_format).toEqual({ type: 'json_object' })
     expect(body.max_tokens).toBe(6000)
@@ -65,7 +76,7 @@ describe('§247 тело запроса к модели', () => {
 
   it('ручной max_tokens из тела запроса побеждает профиль', () => {
     expect(benchmarkRequestBody('google/gemini-3.8-flash', MESSAGES, { maxTokens: 24000 }).max_tokens).toBe(24000)
-    expect(benchmarkRequestBody(DEFAULT_AI_MODEL, MESSAGES, { maxTokens: null }).max_tokens).toBe(6000)
+    expect(benchmarkRequestBody(QWEN_MODEL, MESSAGES, { maxTokens: null }).max_tokens).toBe(6000)
   })
 })
 
@@ -134,6 +145,7 @@ describe('§247 разбор тела замера', () => {
   it('текущая боевая модель (AI_MODEL) допускается, даже если её нет в списке', () => {
     expect(isBenchmarkModel('qwen/qwen3.5-vl', 'qwen/qwen3.5-vl')).toBe(true)
     expect(isBenchmarkModel('qwen/qwen3.5-vl', DEFAULT_AI_MODEL)).toBe(false)
+    expect(isBenchmarkModel(QWEN_MODEL, DEFAULT_AI_MODEL)).toBe(true)
     expect(parseBenchmarkRequest({ ...good, model: 'qwen/qwen3.5-vl' }, 'qwen/qwen3.5-vl').ok).toBe(true)
   })
 

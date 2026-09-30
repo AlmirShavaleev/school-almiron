@@ -82,7 +82,7 @@ describe('боевой путь (без benchmark)', () => {
     expect(jobs.map(c => (c.ops[0][1] as Record<string, unknown>).status)).toEqual(['processing', 'done'])
     const done = jobs[1].ops[0][1] as Record<string, unknown>
     expect(done).toMatchObject({
-      status: 'done', provider: 'openrouter.ai', model: 'qwen/qwen3-vl-235b-a22b-instruct',
+      status: 'done', provider: 'openrouter.ai', model: 'google/gemini-3.8-flash',
       readable: true, suggested_score: 3, dropped_findings: 2, input_tokens: 1200, output_tokens: 340,
       reference_state: 'missing', worksheet_state: 'missing',
     })
@@ -102,7 +102,7 @@ describe('боевой путь (без benchmark)', () => {
     expect(call.hasSignal).toBe(false)
     expect(call.headers.Authorization).toBe(`Bearer ${ENV.AI_API_KEY}`)
     expect(Object.keys(call.body as object)).toEqual(['model', 'messages', 'response_format', 'max_tokens'])
-    expect(call.body).toMatchObject({ model: 'qwen/qwen3-vl-235b-a22b-instruct', response_format: { type: 'json_object' }, max_tokens: 6000 })
+    expect(call.body).toMatchObject({ model: 'google/gemini-3.8-flash', response_format: { type: 'json_object' }, max_tokens: 16000 })
   })
 
   it('AI_MODEL проекта идёт в бой как есть', async () => {
@@ -207,8 +207,9 @@ describe('замер §247: прогон', () => {
     await handler(post({ attempt_id: ATTEMPT_ID }))
     const combat = state.fetches[0].body as Record<string, unknown>
     resetHarness({ env: { ...ENV }, rpc: { data: 'job-1', error: null }, tables: workTables(), model: { status: 200, body: modelAnswer() } })
-    await handler(post({ ...BENCH, model: 'qwen/qwen3-vl-235b-a22b-instruct' }, SECRET))
+    await handler(post(BENCH, SECRET))
     const bench = state.fetches[0].body as Record<string, unknown>
+    expect(bench.model).toBe(combat.model)
     expect(bench.messages).toEqual(combat.messages)
     expect(bench.max_tokens).toBe(combat.max_tokens)
   })
