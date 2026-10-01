@@ -165,7 +165,7 @@ interface BaseProps {
    * вердикта: она сначала публикует пометки, потом ставит оценку — чтобы
    * ученик не получил вердикт без пометок, на которые тот ссылается.
    */
-  publishRef?: MutableRefObject<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>
+  publishRef?: MutableRefObject<((targetStatus?: 'checked' | 'revision', options?: PublishOptions) => Promise<boolean>) | null>
   /**
    * Императивный перенос готовых рамок в разбор — им пользуется панель
    * черновика ИИ. Возвращает, сколько рамок реально легло на страницы.
@@ -255,6 +255,13 @@ interface BaseProps {
    * текущего задания.
    */
   ghostRegions?: readonly GhostRegion[] | null
+  /**
+   * §252. «Посмотреть на фото» у строки «Показать ученику N пометок ИИ»: эти
+   * места находок рисуются пунктиром на своих страницах независимо от текущего
+   * задания, ярче обычного, и работа докручивается к первому. Как и
+   * `ghostRegions`, в `annotation_sets` это не пишется. null/пусто — подсветки нет.
+   */
+  highlightGhostIds?: readonly string[] | null
   /** §248. «Очистить пометки» из меню экрана: открыть то же подтверждение. */
   clearMarksRef?: MutableRefObject<(() => void) | null>
   /** §248. Есть ли что очищать — пункт меню выключен, когда нечего. */
@@ -269,6 +276,9 @@ export interface GhostRegion {
   rect: { x: number; y: number; w: number; h: number }
   task: string | null
 }
+
+/** §252. Место находки на странице, как его рисуют: подсвеченное «посмотреть на фото» — ярче. */
+type ShownGhost = GhostRegion & { highlight?: boolean }
 
 /**
  * §209. Замечание глазами того, кто рисует таблицу заданий: рамка на работе
@@ -336,6 +346,16 @@ export interface ImportedRegion {
   jobId?: string | null
   /** §209. Номер задания, если находка его назвала (`findings.task`). */
   task?: string | null
+}
+
+/**
+ * §252. Что ещё сделать в той же публикации. `takeFindings` — находки ИИ,
+ * которые вердикт с галочкой «Показать ученику» переносит в пометки учителя:
+ * тем же путём, что «взять» (`addFindingRegions`), до публикации и до
+ * вердикта. Перенос не удался — публикации нет, и вызывающий не ставит вердикт.
+ */
+export interface PublishOptions {
+  takeFindings?: readonly ImportedRegion[]
 }
 
 type Props = BaseProps & AnnotationTarget
@@ -518,6 +538,7 @@ export function SubmissionReviewer({
   calm = false,
   focusTaskNo = null,
   ghostRegions = null,
+  highlightGhostIds = null,
   clearMarksRef,
   onClearMarksAvailableChange,
 }: Props) {
@@ -617,6 +638,8 @@ export function SubmissionReviewer({
   const calmTask = calm && focusTaskNo?.trim() ? focusTaskNo.trim() : null
   /** §248. Ключ текущего задания в том виде, в каком его сравнивают рамки. */
   const focusKey = calm ? noteTaskKey(focusTaskNo) : ''
+  /** §252. Находки, подсвеченные «посмотреть на фото». */
+  const highlightSet = useMemo(() => new Set(highlightGhostIds ?? []), [highlightGhostIds])
 
   // §156. «Очистить пометки». Числа для кнопки и подтверждения считает база
   // (dry run той же RPC): находки ИИ лежат по всем задачам попытки, а рамки
@@ -1333,6 +1356,40 @@ export function SubmissionReviewer({
     focusSignatureRef.current = signature
   }, [focusKey, ghostRegions, imageRatios, loading, pagesLoaded, quarterOf, regions, surfaces])
 
+  /**
+   * §252. «Посмотреть на фото» — докрутить к первому подсвеченному месту
+   * (по порядку страниц). Один раз на включение подсветки: дальше учитель
+   * листает сам, и пересчёт списка не должен дёргать работу.
+   */
+  const highlightSignatureRef = useRef('')
+  useEffect(() => {
+    const signature = [...highlightSet].sort().join('|')
+    if (!signature) { highlightSignatureRef.current = ''; return }
+    if (highlightSignatureRef.current === signature || !pagesLoaded || loading || !surfaces.length) return
+    let goal: (ScrollTarget & { globalPage: number }) | null = null
+    for (const surface of surfaces) {
+      const ghost = (ghostRegions ?? []).find(item => highlightSet.has(item.id)
+        && item.filePath === surface.filePath && item.page === surface.page)
+      if (!ghost) continue
+      goal = {
+        surfaceKey: surface.surfaceKey,
+        displayRect: rotateRect(ghost.rect, quarterOf(surface.filePath, surface.page)),
+        globalPage: surface.globalPage,
+      }
+      break
+    }
+    if (!goal) return
+    const target = goal
+    const settled = surfaces
+      .filter(surface => surface.kind === 'image' && surface.globalPage <= target.globalPage)
+      .every(surface => imageRatios[surface.filePath] != null)
+    if (!settled) return
+    highlightSignatureRef.current = signature
+    setVisiblePages(prev => (prev.has(target.surfaceKey) ? prev : new Set([...prev, target.surfaceKey])))
+    scrollTargetRef.current = { item: target, behavior: 'smooth', onlyIfHidden: true }
+    setScrollTick(tick => tick + 1)
+  }, [ghostRegions, highlightSet, imageRatios, loading, pagesLoaded, quarterOf, surfaces])
+
   function activateRegion(item: RegionItem) {
     // Соседняя страница — плавно, чужая — мгновенно: смуз через два экрана
     // читается как «зависло», да и смотреть по дороге не на что.
@@ -1457,8 +1514,21 @@ export function SubmissionReviewer({
   // сдвиг стрелками, нельзя.
   useEffect(() => () => { void flushNudge() }, [selectedId])
 
-  async function publish(targetStatus: 'checked' | 'revision' = 'checked'): Promise<boolean> {
+  async function publish(targetStatus: 'checked' | 'revision' = 'checked', options?: PublishOptions): Promise<boolean> {
     setPublishing(true)
+    // §252. Сначала находки ИИ становятся пометками учителя — до публикации и
+    // до вердикта: ученик не должен получить «неверно» без рамки, ради которой
+    // учитель оставил галочку. Сбой — ничего не публикуем, вердикта не будет.
+    let current = pages
+    if (options?.takeFindings?.length) {
+      const taken = await addFindingRegions(options.takeFindings, current)
+      if (!taken.ok) {
+        setPublishing(false)
+        onPublishComplete?.(false)
+        return false
+      }
+      current = taken.pages
+    }
     if (onPublish && await onPublish(targetStatus) === false) {
       setPublishing(false)
       onPublishComplete?.(false)
@@ -1467,7 +1537,10 @@ export function SubmissionReviewer({
     // Every edit is already persisted by the time it's made (saveDraft/
     // deleteRegion await savePage immediately) — this re-save is just a
     // belt-and-suspenders confirmation pass, not catching up on a backlog.
-    const ok = await Promise.all(Object.entries(pages).map(([key, data]) => {
+    // §252: страницы — те, что вышли из переноса, а не из замыкания рендера:
+    // перерисовка после переноса ещё не наступила, и старые `pages` молча
+    // стёрли бы только что положенные рамки.
+    const ok = await Promise.all(Object.entries(current).map(([key, data]) => {
       const parsed = parsePageKey(key)
       return savePage(parsed.filePath, parsed.page, data ?? EMPTY)
     }))
@@ -1670,25 +1743,70 @@ export function SubmissionReviewer({
    */
   async function takeFinding(item: ImportedRegion): Promise<boolean> {
     if (readOnly) return false
-    const text = item.text.trim()
-    if (!text) return false
-    const key = pageKey(item.filePath, item.page)
-    const base = pages[key] ?? EMPTY
-    // Та же находка уже лежит рамкой — второе нажатие не должно её удваивать.
-    if (base.objects.some(mark => isRegion(mark) && mark.source?.finding === item.sourceId)) return true
-    const region: Region = {
-      id: id(),
-      type: 'region',
-      rect: item.rect,
-      category: item.category,
-      text,
-      source: { kind: 'ai', finding: item.sourceId, job: item.jobId ?? null },
-      ...(item.task ? { task: item.task } : {}),
+    if (!item.text.trim()) return false
+    return (await addFindingRegions([item], pages)).ok
+  }
+
+  /**
+   * §209 / §252. Находки ИИ → замечания преподавателя. Один путь на «взять»
+   * (одна находка) и на вердикт с галочкой «Показать ученику» (пачка):
+   * рамка та же, с пометкой источника (§207) и номером задания (§209),
+   * черновиком — публикует её общая публикация вместе с остальными.
+   *
+   * Дублей нет ни при двойном нажатии, ни при повторе после сбоя: находка,
+   * которая уже лежит рамкой (тот же `source.finding`), пропускается. Рамки
+   * одной страницы складываются в ОДНУ запись: `savePage` пишет страницу
+   * целиком, и две записи подряд из одного состояния стёрли бы первую.
+   *
+   * `base` — страницы, от которых считать (обычно текущие). Возвращает
+   * страницы после переноса: публикация сразу следом пересохраняет именно их.
+   * Сбой на странице — `ok: false`, но уже записанные страницы остаются (они в
+   * базе, «откатить» их значило бы стереть заодно ручные пометки) и при
+   * повторе не удвоятся.
+   */
+  async function addFindingRegions(
+    items: readonly ImportedRegion[],
+    base: Record<string, PageData>,
+  ): Promise<{ ok: boolean; pages: Record<string, PageData>; added: number }> {
+    if (readOnly) return { ok: false, pages: base, added: 0 }
+    const byPage = new Map<string, { filePath: string; page: number; regions: Region[] }>()
+    const seen = new Set<string>()
+    for (const item of items) {
+      const text = item.text.trim()
+      if (!text || seen.has(item.sourceId)) continue
+      seen.add(item.sourceId)
+      const key = pageKey(item.filePath, item.page)
+      // Та же находка уже лежит рамкой — второе нажатие не должно её удваивать.
+      if ((base[key] ?? EMPTY).objects.some(mark => isRegion(mark) && mark.source?.finding === item.sourceId)) continue
+      const bucket = byPage.get(key) ?? { filePath: item.filePath, page: item.page, regions: [] }
+      bucket.regions.push({
+        id: id(),
+        type: 'region',
+        rect: item.rect,
+        category: item.category,
+        text,
+        source: { kind: 'ai', finding: item.sourceId, job: item.jobId ?? null },
+        ...(item.task ? { task: item.task } : {}),
+      })
+      byPage.set(key, bucket)
     }
-    const nextData = pageWithVersion([...base.objects, region], base)
-    if (!(await savePage(item.filePath, item.page, nextData))) return false
-    setPages(value => ({ ...value, [key]: nextData }))
-    return true
+    let ok = true
+    let added = 0
+    const next: Record<string, PageData> = { ...base }
+    const changed: Record<string, PageData> = {}
+    for (const [key, bucket] of byPage) {
+      const pageData = next[key] ?? EMPTY
+      const nextData = pageWithVersion([...pageData.objects, ...bucket.regions], pageData)
+      if (!(await savePage(bucket.filePath, bucket.page, nextData))) {
+        ok = false
+        continue
+      }
+      next[key] = nextData
+      changed[key] = nextData
+      added += bucket.regions.length
+    }
+    if (Object.keys(changed).length > 0) setPages(value => ({ ...value, ...changed }))
+    return { ok, pages: next, added }
   }
 
   /**
@@ -2037,9 +2155,11 @@ export function SubmissionReviewer({
             const dragRect = dragState?.surfaceKey === surface.surfaceKey ? dragState.rect : null
             const edit = editPreview?.surfaceKey === surface.surfaceKey ? editPreview : null
             // §248. Пунктир находок ИИ — только у текущего задания и только на своей странице.
-            const pageGhosts = focusKey
-              ? (ghostRegions ?? []).filter(ghost => ghost.filePath === surface.filePath && ghost.page === surface.page && noteTaskKey(ghost.task) === focusKey)
-              : []
+            // §252. Подсвеченные «посмотреть на фото» — на своих страницах при любом текущем задании.
+            const pageGhosts: ShownGhost[] = (ghostRegions ?? [])
+              .filter(ghost => ghost.filePath === surface.filePath && ghost.page === surface.page)
+              .map(ghost => (highlightSet.has(ghost.id) ? { ...ghost, highlight: true } : ghost))
+              .filter(ghost => ('highlight' in ghost) || (focusKey !== '' && noteTaskKey(ghost.task) === focusKey))
             return <div
               key={surface.surfaceKey}
               ref={node => { pageRefs.current[surface.surfaceKey] = node }}
@@ -2233,7 +2353,7 @@ type RegionLayerProps = {
   /** §248. Ключ текущего задания: его рамки выделены, остальные приглушены. */
   focusKey?: string
   /** §248. Места находок ИИ текущего задания на ЭТОЙ странице — пунктиром. */
-  ghosts?: readonly GhostRegion[]
+  ghosts?: readonly ShownGhost[]
 }
 
 function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedId, edit, onBeginRegionEdit, onActivate, taskVerdicts, focusKey = '', ghosts = [] }: RegionLayerProps & {
@@ -2250,9 +2370,10 @@ function RegionLayer({ surface, quarter, pageData, readOnly, activeId, selectedI
     return <rect
       key={`ghost-${ghost.id}`}
       data-testid={`ghost-region-${ghost.id}`}
+      data-highlight={ghost.highlight ? 'true' : undefined}
       x={rect.x} y={rect.y} width={rect.w} height={rect.h}
-      fill="#1f55e0" fillOpacity={0.06}
-      stroke="#1f55e0" strokeWidth={0.004} strokeDasharray="0.012 0.008"
+      fill="#1f55e0" fillOpacity={ghost.highlight ? 0.16 : 0.06}
+      stroke="#1f55e0" strokeWidth={ghost.highlight ? 0.006 : 0.004} strokeDasharray="0.012 0.008"
       pointerEvents="none"
     />
   })}{pageData.objects.map(mark => <Shape
@@ -2287,7 +2408,7 @@ function FrameLabels({ pageData, quarter, edit, taskVerdicts, focusKey = '', gho
   edit: { id: string; rect: Rect } | null
   taskVerdicts?: Readonly<Record<string, ReviewTaskVerdict>> | null
   focusKey?: string
-  ghosts?: readonly GhostRegion[]
+  ghosts?: readonly ShownGhost[]
 }) {
   if (!taskVerdicts) return null
   const items = pageData.objects

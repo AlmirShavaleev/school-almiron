@@ -300,6 +300,8 @@ function pickAsset(rest, assetsDir) {
   // она подменилась бы обычной прямой фотографией и поворачивать было бы
   // нечего.
   if (lower.includes('sideways')) return path.join(assetsDir, 'photo-sideways.png')
+  // §252: лист проверочной «Производная» — до общего правила про 'photo'.
+  if (lower.includes('photo-derivative')) return path.join(assetsDir, 'photo-derivative.png')
   if (lower.includes('photo') || lower.includes('homework') || lower.includes('submission')) return path.join(assetsDir, 'photo.png')
   return path.join(assetsDir, 'figure.png')
 }

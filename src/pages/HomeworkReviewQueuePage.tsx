@@ -9,6 +9,9 @@ import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import { ReviewTaskFocus } from '@/components/courseProgram/ReviewTaskFocus'
+import { AiMarksList, AiMarksToggle } from '@/components/courseProgram/AiMarksForStudent'
+import { planAiMarksForStudent, verdictToastText } from '@/lib/aiMarksForStudent'
+import { toast } from '@/store/toastStore'
 import type {
   AttemptNotesApi, AttemptNotesSnapshot, GhostRegion, ImportedRegion,
 } from '@/components/SubmissionReviewer'
@@ -657,6 +660,15 @@ export function HomeworkReviewQueuePage() {
   /** Находка становится рамкой на своей странице — путь берём по file_id. */
   const pathOfFinding = (finding: AiFindingRow) =>
     attemptFiles.find(f => f.id === finding.file_id)?.storage_path ?? null
+  /**
+   * §252. «Показать ученику N пометок ИИ» — галочка включена сразу (решение
+   * владельца 01.10), крестиком убранные находки и подсветка на фото. Всё это
+   * — состояние ОДНОЙ открытой работы: `openRow` сбрасывает его, иначе снятая
+   * галочка или убранная находка уехали бы на следующую работу.
+   */
+  const [aiMarksOn, setAiMarksOn] = useState(true)
+  const [aiMarksRemoved, setAiMarksRemoved] = useState<ReadonlySet<string>>(() => new Set())
+  const [aiMarksLook, setAiMarksLook] = useState(false)
 
   const notes: ReviewNote[] = useMemo(() => notesSnapshot.notes.map(note => ({
     id: note.id,
@@ -678,11 +690,14 @@ export function HomeworkReviewQueuePage() {
    * это мера пользы ИИ, и её сбой не должен выглядеть как несработавшее
    * нажатие.
    */
-  async function takeFinding(finding: AiFindingRow) {
-    const api = notesApiRef.current
+  /**
+   * Находка → рамка учителя (данные рамки). Один на «взять» и на перенос при
+   * вердикте (§252): место, текст, номер задания и источник — одинаково.
+   */
+  function regionOfFinding(finding: AiFindingRow): ImportedRegion | null {
     const filePath = pathOfFinding(finding)
-    if (!api || !filePath) return false
-    const region: ImportedRegion = {
+    if (!filePath) return null
+    return {
       filePath,
       page: finding.page,
       /*
@@ -698,10 +713,20 @@ export function HomeworkReviewQueuePage() {
       jobId: finding.job_id ?? null,
       task: taskNoOfFinding(finding) ? finding.task ?? taskNoOfFinding(finding) : null,
     }
+  }
+
+  /** Отметка «ИИ пригодилась» — на первом принятом предложении (взять или перенос при вердикте). */
+  async function markAiAccepted() {
+    if (!ai.job || ai.job.accepted_at) return
+    try { await ai.markAccepted(ai.job.id) } catch { /* рамка уже легла */ }
+  }
+
+  async function takeFinding(finding: AiFindingRow) {
+    const api = notesApiRef.current
+    const region = regionOfFinding(finding)
+    if (!api || !region) return false
     const ok = await api.takeFinding(region)
-    if (ok && ai.job && !ai.job.accepted_at) {
-      try { await ai.markAccepted(ai.job.id) } catch { /* рамка уже легла */ }
-    }
+    if (ok) await markAiAccepted()
     return ok
   }
 
@@ -753,6 +778,9 @@ export function HomeworkReviewQueuePage() {
     setDuplicateFrames(0)
     setCurrentTaskNo(null)
     setTableOpen(false)
+    setAiMarksOn(true)
+    setAiMarksRemoved(new Set())
+    setAiMarksLook(false)
     setReviewing({ row, locked })
   }
 
@@ -785,6 +813,29 @@ export function HomeworkReviewQueuePage() {
     }
     return out
   }, [ai.findings, attemptFiles, notesSnapshot.dismissedFindings, takenFindingIds])
+
+  /**
+   * §252. Что уйдёт ученику при вердикте — по вердиктам таблицы ПРЯМО СЕЙЧАС:
+   * поменяли вердикт задания или убрали находку — число и номера пересчитаны.
+   * Находки без файла работы (перенести некуда) в план не попадают.
+   */
+  const aiMarksPlan = useMemo(() => planAiMarksForStudent({
+    findings: ai.findings.filter(finding => attemptFiles.some(file => file.id === finding.file_id)),
+    tasks: reviewTasks.rows,
+    takenNotes: notesSnapshot.notes,
+    dismissedFindingIds: notesSnapshot.dismissedFindings,
+    removedIds: aiMarksRemoved,
+  }), [ai.findings, aiMarksRemoved, attemptFiles, notesSnapshot.dismissedFindings, notesSnapshot.notes, reviewTasks.rows])
+  const highlightGhostIds = useMemo(
+    () => (aiMarksLook && aiMarksOn ? aiMarksPlan.chosen.map(item => item.finding.id) : null),
+    [aiMarksLook, aiMarksOn, aiMarksPlan.chosen],
+  )
+  const toggleAiMark = (findingId: string, removed: boolean) => setAiMarksRemoved(prev => {
+    const next = new Set(prev)
+    if (removed) next.add(findingId)
+    else next.delete(findingId)
+    return next
+  })
 
   return (
     <div className="space-y-5">
@@ -1089,6 +1140,7 @@ export function HomeworkReviewQueuePage() {
           referenceAnswers={referenceAnswers}
           currentTaskNo={verdictForm ? currentTaskNo : null}
           ghostRegions={verdictForm ? ghostRegions : null}
+          highlightGhostIds={verdictForm ? highlightGhostIds : null}
           menuExtras={verdictForm ? [{
             id: 'table',
             label: 'Все задания таблицей',
@@ -1195,6 +1247,14 @@ export function HomeworkReviewQueuePage() {
                 // раскладка §209) и пока выбрана рамка (стрелки — её, §184).
                 keyboard={!tableOpen && activeNoteId == null}
               />
+              <AiMarksList
+                plan={aiMarksPlan}
+                enabled={aiMarksOn}
+                ownNotes={notesSnapshot.notes.length}
+                onRemove={id => toggleAiMark(id, true)}
+                onRestore={id => toggleAiMark(id, false)}
+                onGoTask={setCurrentTaskNo}
+              />
               {reference}
             </div>
           )}
@@ -1220,13 +1280,38 @@ export function HomeworkReviewQueuePage() {
               uncheckedNos={uncheckedTaskNos(reviewTasks.rows)}
               tableScore={tableScore}
               fillRequest={fillRequest}
+              above={(
+                <AiMarksToggle
+                  plan={aiMarksPlan}
+                  checked={aiMarksOn}
+                  onCheckedChange={value => { setAiMarksOn(value); if (!value) setAiMarksLook(false) }}
+                  highlighted={aiMarksLook && aiMarksOn}
+                  onHighlightChange={setAiMarksLook}
+                  disabled={verdictKind === 'blocked'}
+                />
+              )}
               onReview={async (attemptId, decision, comment, score) => {
+                // §252. С галочкой выбранные находки ИИ становятся пометками
+                // учителя в той же публикации — до вердикта. Без галочки не
+                // переносится ничего (граница §209: переносит действие учителя).
+                const take = aiMarksOn
+                  ? aiMarksPlan.chosen.map(item => regionOfFinding(item.finding)).filter((r): r is ImportedRegion => r != null)
+                  : []
                 // Сначала пометки, потом вердикт: иначе ученик мог бы увидеть
                 // «на доработку» без рамок, на которые ссылается комментарий.
                 // Ошибку не глотаем — ReviewActions покажет её и оставит форму.
-                const ok = await publishAnnotations(decision === 'accepted' ? 'checked' : 'revision')
-                if (!ok) throw new Error('Не удалось опубликовать пометки — вердикт не сохранён')
+                const ok = await publishAnnotations(
+                  decision === 'accepted' ? 'checked' : 'revision',
+                  take.length > 0 ? { takeFindings: take } : undefined,
+                )
+                if (!ok) {
+                  throw new Error(take.length > 0
+                    ? 'Не удалось перенести пометки ИИ на фото — вердикт не сохранён. Попробуйте ещё раз.'
+                    : 'Не удалось опубликовать пометки — вердикт не сохранён')
+                }
+                if (take.length > 0) await markAiAccepted()
                 await reviewAttempt(attemptId, decision, comment, score)
+                toast.success(verdictToastText(decision, score, notesSnapshot.notes.length + take.length))
                 setReviewing(null)
                 reloadAi()
               }}

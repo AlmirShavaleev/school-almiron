@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import type {
-  AttemptNotesApi, AttemptNotesSnapshot, GhostRegion, ImportedRegion,
+  AttemptNotesApi, AttemptNotesSnapshot, GhostRegion, ImportedRegion, PublishOptions,
 } from '@/components/SubmissionReviewer'
 import { BookOpen, Eraser, Eye, Loader2, Paperclip, Pencil, X } from 'lucide-react'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
@@ -191,7 +191,11 @@ export type AttemptAnnotationFooter = (context: {
  * обработчика вердикта.
  */
 export type AttemptReviewPanel = (context: {
-  publishAnnotations: (targetStatus?: 'checked' | 'revision') => Promise<boolean>
+  /**
+   * §252. `options.takeFindings` — находки ИИ, которые до публикации
+   * становятся пометками учителя (вердикт с галочкой «Показать ученику»).
+   */
+  publishAnnotations: (targetStatus?: 'checked' | 'revision', options?: PublishOptions) => Promise<boolean>
   /**
    * §226. Эталон — сворачиваемый блок «авторское решение целиком». Колонки
    * решения слева на экране проверки больше нет: блок кладёт в колонку
@@ -266,6 +270,7 @@ export function AttemptAnnotationOverlay({
   referenceAnswers = NO_ANSWERS,
   currentTaskNo = null,
   ghostRegions = null,
+  highlightGhostIds = null,
   menuExtras = NO_MENU_ITEMS,
   onClose,
 }: {
@@ -375,11 +380,13 @@ export function AttemptAnnotationOverlay({
   currentTaskNo?: string | null
   /** §248. Места находок ИИ — пунктиром у текущего задания (не пометки). */
   ghostRegions?: readonly GhostRegion[] | null
+  /** §252. «Посмотреть на фото»: эти находки подсвечены на своих страницах. */
+  highlightGhostIds?: readonly string[] | null
   /** §248. Свои пункты экрана в меню «…» (например, «Все задания таблицей»). */
   menuExtras?: readonly ReviewMenuItem[]
   onClose: () => void
 }) {
-  const publishRef = useRef<((targetStatus?: 'checked' | 'revision') => Promise<boolean>) | null>(null)
+  const publishRef = useRef<((targetStatus?: 'checked' | 'revision', options?: PublishOptions) => Promise<boolean>) | null>(null)
   /** Заполняет аннотатор; читает кнопка «Скачать PDF» в момент нажатия. */
   const exportSourceRef = useRef<(() => AttemptExportSnapshot) | null>(null)
   // Мягкая защита = тот же режим чтения, что и обычный readOnly: рисовать
@@ -578,10 +585,10 @@ export function AttemptAnnotationOverlay({
 
   // Пробрасываем публикацию наружу через ref: сам аннотатор выставит его
   // в publishRef.current, а футер вызовет уже через эту обёртку.
-  const publishAnnotations = async (targetStatus?: 'checked' | 'revision') => {
+  const publishAnnotations = async (targetStatus?: 'checked' | 'revision', options?: PublishOptions) => {
     const fn = publishRef.current
     if (!fn) return false
-    return fn(targetStatus)
+    return fn(targetStatus, options)
   }
 
 
@@ -680,6 +687,7 @@ export function AttemptAnnotationOverlay({
               calm={reviewMode}
               focusTaskNo={reviewMode ? currentTaskNo : null}
               ghostRegions={reviewMode ? ghostRegions : null}
+              highlightGhostIds={reviewMode ? highlightGhostIds : null}
               clearMarksRef={reviewMode ? clearMarksRef : undefined}
               onClearMarksAvailableChange={reviewMode ? setClearAvailable : undefined}
               taskVerdicts={reviewMode ? taskVerdicts : null}
@@ -970,7 +978,7 @@ export function AttemptAnnotationOverlay({
         {showReviewPanel && reviewBar && (
           <div
             data-testid="review-bar"
-            className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-graphite-200 bg-white px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(31,85,224,0.06)] lg:static lg:px-6 lg:shadow-none"
+            className="sticky bottom-0 z-30 mt-auto shrink-0 border-t border-graphite-200 bg-white px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(31,85,224,0.06)] lg:static lg:px-6 lg:shadow-none"
           >
             {reviewBar(context)}
           </div>

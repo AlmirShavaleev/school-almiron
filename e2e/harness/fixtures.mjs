@@ -93,6 +93,11 @@ export const personas = {
   ])),
   // §250: вкладки «Курс» и «Домашние задания» у учителя (фикстуры `apply250`).
   o250: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §252: учитель ставит вердикт с галочкой «Показать ученику N пометок ИИ», и
+  // тот же ученик видит работу. Фикстуры ОБЩИЕ на процесс (`apply252`): что
+  // записал учитель, то ученик и прочитает.
+  o252: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  s252: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1860,6 +1865,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('o249')) apply249(fx, persona)
   if (persona === 'o250') apply250(fx)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
+  if (persona === 'o252' || persona === 's252') apply252(fx, persona)
   return fx
 }
 
@@ -2710,3 +2716,152 @@ function apply250(fx) {
     }
   }
 }
+
+// ── §252: пометки ИИ уходят ученику при вердикте ────────────────────────────
+// Всё выдумано (ответы — из ключа «Производная», вариант 1, как в макете).
+// Работа A — 16 заданий: «неверно» 4, 5, 12, 13, «частично» 14, остальные
+// «верно». Находки ИИ — по 4, 5, 10, 12, 14: №10 ИИ сочла ошибкой, а учитель
+// поставил «верно» — она не уйдёт. Своя рамка учителя — на №13. Работа B —
+// находки только по «верно»: строки над вердиктом нет.
+// Состояние ОДНО на процесс и общее для `o252` и `s252`: таблицы — функции
+// от него, записи учителя (рамки, публикация, вердикт) ложатся сюда же, и
+// ученик в следующей сцене читает ровно то, что записал учитель.
+export const D252 = { hw: IDS.hw(1), a: U('3', 2520), b: U('3', 2521) }
+const T252 = [
+  ['15x⁴ − 4/(3∛x²)', 'correct'], ['−3/x⁴ − 1/√x', 'correct'], ['3/2·√x − 5/x²', 'correct'],
+  ['1/(2cos²x) + sin x/3', 'wrong', '1/(2cos²x) − sin x/3'], ['1/2 + 1/sin²x', 'wrong', '1/2 − 1/sin²x'],
+  ['7', 'correct'], ['13', 'correct'], ['7x⁶ − 4x³ − 2', 'correct'], ['(5x² − 3)/(2√x) + 2x', 'correct'],
+  ['cos 2x', 'correct'], ['2x·tg x + x²/cos²x', 'correct'], ['4x/(x² − 1)²', 'wrong', '−4x/(x² − 1)²'],
+  ['(x − 1)/(2√x(x + 1)²)', 'wrong', '(1 − x)/(2√x(x + 1)²)'], ['−2/(x − 1)²', 'partial', '−2/(x − 1)²'],
+  ['6x − 1', 'correct'], ['3cos 3x', 'correct'],
+]
+/** Строка задания n на листе `photo-derivative.png` (см. `assets.mjs`) — доли страницы. */
+const line252 = (n, x = 0.06, w = 0.44) => ({ x, y: (200 + (n - 1) * 78 - 3) / 1600, w, h: 70 / 1600 })
+let STATE252 = null
+function state252() {
+  if (STATE252) return STATE252
+  const hw = { ...hwById(D252.hw), title: 'Проверочная «Производная»', grade_scale: 'five' }
+  const attempt = (id, studentId, minutes) => ({
+    id, homework_id: hw.id, student_id: studentId, attempt_number: 1, status: 'submitted',
+    submitted_at: ago(minutes / 60), created_at: ago(minutes / 60 + 0.5), updated_at: ago(minutes / 60),
+  })
+  const file = (n, attemptId, studentId) => ({
+    id: U('4', 2520 + n), attempt_id: attemptId, storage_path: `homeworks/${studentId}/${attemptId}/photo-derivative-${n}.jpg`,
+    file_name: `IMG_20260928_проверочная_${n}.jpg`, mime_type: 'image/jpeg', size_bytes: 2100000, width: 1200, height: 1600,
+    page_number: 1, position: 1, rotation: 0, sha256: null, metadata: {}, created_at: ago(30),
+  })
+  const files = [file(1, D252.a, IDS.studentRow), file(2, D252.b, IDS.otherStudent(2))]
+  const tasks = T252.map(([answer, verdict, expected], i) => reviewTaskRow(2520 + i, D252.a, {
+    no: String(i + 1), verdict, student_answer: answer, expected_answer: expected ?? answer, updated_at: ago(0.1),
+  }))
+  const tasksB = ['correct', 'correct', 'wrong', 'correct'].map((verdict, i) => reviewTaskRow(2560 + i, D252.b, {
+    no: String(i + 1), verdict, student_answer: T252[i][0], expected_answer: T252[i][0], updated_at: ago(0.1),
+  }))
+  const job = (id, attemptId, summary, taskRows) => ({
+    ...aiJobBase, id, attempt_id: attemptId, status: 'done', accepted_at: null, suggested_score: 4, confidence: 'medium',
+    reference_state: 'used', reference_chars: 4200, started_at: ago(0.3), created_at: ago(0.3), completed_at: ago(0.3),
+    summary, tasks: taskRows.map(t => ({ no: t.no, verdict: t.verdict === 'unsolved' ? 'wrong' : t.verdict, student_answer: t.student_answer, expected_answer: t.expected_answer, note: '' })),
+    dropped_findings: 0,
+  })
+  const jobs = [
+    job(U('c', 2520), D252.a, 'Работа аккуратная, большинство заданий верно. Ошибки в 4, 5, 12, 13; в 14 ответ верный, но упрощение с ошибкой.', tasks.map(t => (t.no === '10' ? { ...t, verdict: 'wrong' } : t))),
+    job(U('c', 2521), D252.b, 'Задания 1, 2 и 4 верно, в 3 ошибка в степени.', tasksB),
+  ]
+  const finding = (n, jobId, fileId, no, text, category = 'calc', x, w) => {
+    const rect = line252(Number(no), x, w)
+    return { id: U('c', 2530 + n), job_id: jobId, file_id: fileId, page: 1, position: n, rect_x: rect.x, rect_y: rect.y, rect_w: rect.w, rect_h: rect.h, category, text, task: no }
+  }
+  const findings = [
+    finding(1, jobs[0].id, files[0].id, '4', 'Знак у второго слагаемого: производная cos x — это −sin x', 'calc'),
+    finding(2, jobs[0].id, files[0].id, '5', 'Производная котангенса со знаком минус: (ctg x)′ = −1/sin²x', 'calc'),
+    finding(3, jobs[0].id, files[0].id, '10', 'Ответ не упрощён до cos 2x', 'format'),
+    finding(4, jobs[0].id, files[0].id, '12', 'Ошибка в знаке при упрощении числителя', 'calc'),
+    finding(5, jobs[0].id, files[0].id, '14', 'Ответ верный, но в числителе потерян множитель 2', 'logic'),
+    // Работа B: обе находки — по заданиям, где учитель поставил «верно».
+    finding(6, jobs[1].id, files[1].id, '1', 'Можно было не раскрывать скобки', 'format'),
+    finding(7, jobs[1].id, files[1].id, '2', 'Запись ответа без знака производной', 'format'),
+  ]
+  const sets = [{
+    id: U('d', 2520), attempt_id: D252.a, submission_id: null, file_path: files[0].storage_path, page: 1, status: 'draft',
+    author_id: IDS.owner, created_at: ago(0.2), updated_at: ago(0.2),
+    data: { version: 2, objects: [{ id: 'r252-13', type: 'region', category: 'error', task: '13', text: 'Перепутан порядок в числителе: u′v − uv′', rect: line252(13) }] },
+  }]
+  STATE252 = {
+    hw,
+    attempts: [attempt(D252.a, IDS.studentRow, 40), attempt(D252.b, IDS.otherStudent(2), 25)],
+    files, tasks: [...tasks, ...tasksB], jobs, findings, sets, reviews: [],
+  }
+  return STATE252
+}
+/** PostgREST-фильтры `eq`/`in`, которых хватает записям экрана проверки. */
+function rowMatches252(row, filters) {
+  return filters.every(([col, expr]) => {
+    const dot = expr.indexOf('.')
+    const op = expr.slice(0, dot), raw = expr.slice(dot + 1)
+    if (op === 'eq') return String(row[col]) === raw
+    if (op === 'in') return raw.replace(/^\(|\)$/g, '').split(',').map(v => v.replace(/^"|"$/g, '')).includes(String(row[col]))
+    return true
+  })
+}
+function apply252(fx, persona) {
+  const st = state252()
+  // Ученику — только свои попытки (как сделала бы RLS); учителю — обе работы.
+  const visible = (a) => persona !== 's252' || a.student_id === IDS.studentRow
+  fx.tables.topic_homework = fx.tables.topic_homework.map(h => (h.id === st.hw.id ? st.hw : h))
+  const otherAttempts = fx.tables.topic_homework_attempts.filter(a => a.homework_id !== st.hw.id)
+  const own = (list) => new Set(list.map(a => a.id))
+  const ours = own(st.attempts)
+  const keep = (rows) => rows.filter(r => !ours.has(r.attempt_id))
+  const baseFiles = keep(fx.tables.topic_homework_attempt_files.filter(f => !own(fx.tables.topic_homework_attempts.filter(a => a.homework_id === st.hw.id)).has(f.attempt_id)))
+  const baseReviews = keep(fx.tables.topic_homework_reviews)
+  const baseTasks = keep(fx.tables.topic_homework_review_tasks)
+  const baseSets = keep(fx.tables.annotation_sets)
+  fx.tables.topic_homework_attempts = () => [...otherAttempts, ...st.attempts.filter(visible).map(a => ({
+    ...a, homework: st.hw, topic_homework: st.hw, students: studentById(a.student_id),
+    topic_homework_reviews: st.reviews.filter(r => r.attempt_id === a.id),
+  }))]
+  fx.tables.topic_homework_attempt_files = () => [...baseFiles, ...st.files]
+  fx.tables.topic_homework_reviews = () => [...baseReviews, ...st.reviews]
+  fx.tables.topic_homework_review_tasks = () => [...baseTasks, ...st.tasks]
+  fx.tables.annotation_sets = () => [...baseSets, ...st.sets]
+  fx.tables.topic_homework_ai_jobs = () => [...fx_jobs(fx), ...st.jobs]
+  fx.tables.topic_homework_ai_findings = () => [...fx_findings(fx), ...st.findings]
+  fx.rpc.topic_homework_ai_mark_accepted = (body) => {
+    const job = st.jobs.find(j => j.id === body.p_job_id)
+    if (job && !job.accepted_at) job.accepted_at = new Date().toISOString()
+    return null
+  }
+  fx.rpc.topic_homework_review_attempt = (body) => {
+    const attempt = st.attempts.find(a => a.id === body.p_attempt_id)
+    if (!attempt) return new Error('NOT_FOUND: attempt')
+    attempt.status = body.p_decision
+    attempt.updated_at = new Date().toISOString()
+    st.reviews.push({
+      id: U('5', 2520 + st.reviews.length), attempt_id: attempt.id, reviewer_id: IDS.owner, decision: body.p_decision,
+      score: body.p_score ?? null, comment: body.p_comment ?? null, created_at: new Date().toISOString(),
+    })
+    return null
+  }
+  const plain = fx.onWrite
+  fx.onWrite = (table, method, rows, filters) => {
+    if (table === 'annotation_sets' && method === 'POST') {
+      // upsert по (attempt_id, file_path, page) — как `onConflict` у аннотатора.
+      for (const row of rows) {
+        const at = st.sets.findIndex(r => r.attempt_id === row.attempt_id && r.file_path === row.file_path && r.page === row.page)
+        const next = { ...(at >= 0 ? st.sets[at] : { id: U('d', 2530 + st.sets.length), submission_id: null, created_at: row.created_at }), ...row, author_id: IDS.owner, updated_at: new Date().toISOString() }
+        if (at >= 0) st.sets[at] = next
+        else st.sets.push(next)
+      }
+      return
+    }
+    const patchable = { annotation_sets: st.sets, topic_homework_review_tasks: st.tasks }
+    if (method === 'PATCH' && patchable[table]) {
+      const { id: _id, created_at: _c, ...patch } = rows[0] ?? {}
+      for (const row of patchable[table]) if (rowMatches252(row, filters)) Object.assign(row, patch)
+      return
+    }
+    plain(table, method, rows, filters)
+  }
+}
+const fx_jobs = () => aiJobs.filter(j => ![D252.a, D252.b].includes(j.attempt_id))
+const fx_findings = () => aiFindings

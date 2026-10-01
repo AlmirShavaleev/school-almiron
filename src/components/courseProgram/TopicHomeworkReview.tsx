@@ -71,7 +71,10 @@ export function ReviewActions({
    * написано на кнопке (в разборе с рамками оно ещё и публикует пометки).
    */
   hint?: string
-  /** Блок над формой вердикта — сюда попадает таблица проверки (§199). */
+  /**
+   * Блок над формой вердикта — сюда попадает таблица проверки (§199). В
+   * раскладке `calm` (§252) — строка «Показать ученику N пометок ИИ».
+   */
   above?: React.ReactNode
   /**
    * Почему вердикт сейчас невозможен (§198). Форма остаётся на месте, но
@@ -220,6 +223,8 @@ export function ReviewActions({
     const commentText = comment.trim()
     return (
       <div data-testid="review-actions" data-layout="calm" className="space-y-2">
+        {/* §252. Строка «Показать ученику N пометок ИИ» — над вердиктом, её рисует экран. */}
+        {above}
         {(disabledReason || rewriteError || error || suggestion != null) && (
           <div className="space-y-2">
             {disabledReason && (

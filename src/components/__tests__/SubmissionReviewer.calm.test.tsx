@@ -169,6 +169,21 @@ describe('§248 — текущее задание на фото', () => {
     expect(screen.queryByTestId('ghost-region-g5')).not.toBeInTheDocument()
   })
 
+  it('§252 «посмотреть на фото»: подсвеченные находки видны при любом текущем задании, ярче обычных', async () => {
+    const ghosts: GhostRegion[] = [
+      { id: 'g5', filePath: PHOTO, page: 1, rect: { x: 0.2, y: 0.6, w: 0.4, h: 0.1 }, task: '5' },
+      { id: 'g3', filePath: PHOTO, page: 1, rect: { x: 0.2, y: 0.1, w: 0.4, h: 0.1 }, task: '3' },
+      { id: 'g6', filePath: PHOTO, page: 1, rect: { x: 0.2, y: 0.3, w: 0.4, h: 0.1 }, task: '6' },
+    ]
+    renderCalm({ focusTaskNo: '3', ghostRegions: ghosts, highlightGhostIds: ['g5'] })
+    const highlighted = await screen.findByTestId('ghost-region-g5')
+    expect(highlighted).toHaveAttribute('data-highlight', 'true')
+    expect(screen.getByTestId('ghost-label-g5')).toHaveTextContent('ИИ · №5')
+    // Находка текущего задания — как раньше, без подсветки; чужая и не подсвеченная — не видна.
+    expect(screen.getByTestId('ghost-region-g3')).not.toHaveAttribute('data-highlight')
+    expect(screen.queryByTestId('ghost-region-g6')).not.toBeInTheDocument()
+  })
+
   it('рамку рисуют прямо на фото — она сразу к текущему заданию', async () => {
     renderCalm({ focusTaskNo: '5' })
     await screen.findByTestId('region-f3')

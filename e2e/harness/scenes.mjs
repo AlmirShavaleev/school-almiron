@@ -1,4 +1,4 @@
-import { D227, D228, D229, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1266,6 +1266,49 @@ export const scenes = [
       ] },
       { persona: 'o250', name: 'd250-dz-topics', url: `${base}&tab=homework`, width, height, actions: [
         { wait: 2500 }, { clickSel: '[data-testid="hw-view"] button[data-key="topics"]' }, { wait: 1500 },
+      ] },
+    ]
+  }),
+
+  // §252: пометки ИИ уходят ученику при вердикте. Учитель (o252): галочка над
+  // «Принять», список в колонке заданий, «посмотреть на фото», убранная
+  // крестиком находка, работа без подходящих находок (строки нет) и «Принять»
+  // с тостом. Потом тот же ученик (s252) видит рамки ИИ на фото и в «По
+  // заданиям». Сцены ПИШУТ в базу и идут по порядку — каждую ширину своим
+  // процессом:
+  //   node e2e/harness/tour.mjs d252 1280 ; node e2e/harness/tour.mjs d252 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const open = id => [{ goto: `/homework-queue?attempt=${id}` }, { wait: 3000 }]
+    const toList = { eval: "document.querySelector('[data-testid=\"ai-marks-list\"]')?.scrollIntoView({ block: 'center' })" }
+    const toBar = { eval: "document.querySelector('[data-testid=\"ai-marks-toggle\"]')?.scrollIntoView({ block: 'end' })" }
+    const hwTab = [{ clickSel: 'button[role="tab"]:has-text("Домашнее задание")' }, { wait: 2500 }]
+    const walk = { eval: '(async () => { for (let y = 0; y < document.body.scrollHeight; y += 350) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 150)) } })()' }
+    const toFeedback = { eval: "(() => { document.querySelector('[data-testid=\"attempt-feedback\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -84) })()" }
+    const toTask = no => ({ eval: `(() => { document.querySelector('[data-testid="feedback-task"][data-no="${no}"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -84) })()` })
+    const topic1 = `/my-course/${S.group}/topic/${S.topic(1)}`
+    return [
+      { persona: 'o252', name: 'd252-review', url: '/homework-queue', width, height, full: false, actions: [...open(D252.a), toBar, { wait: 300 }] },
+      { persona: 'o252', name: 'd252-list', url: '/homework-queue', width, height, full: false, actions: [...open(D252.a), toList, { wait: 400 }] },
+      { persona: 'o252', name: 'd252-look', url: '/homework-queue', width, height, full: false, actions: [...open(D252.a), { clickSel: '[data-testid="ai-marks-look"]' }, { wait: 1500 }] },
+      { persona: 'o252', name: 'd252-removed', url: '/homework-queue', width, height, full: false, actions: [
+        ...open(D252.a), toList, { wait: 300 },
+        { clickSel: '[data-testid="ai-marks-item"]:has-text("множитель 2") [data-testid="ai-marks-remove"]' }, { wait: 400 }, toList, { wait: 300 },
+      ] },
+      { persona: 'o252', name: 'd252-removed-bar', url: '/homework-queue', width, height, full: false, actions: [
+        ...open(D252.a), { clickSel: '[data-testid="ai-marks-item"]:has-text("множитель 2") [data-testid="ai-marks-remove"]' }, { wait: 400 }, toBar, { wait: 300 },
+      ] },
+      { persona: 'o252', name: 'd252-unchecked', url: '/homework-queue', width, height, full: false, actions: [
+        ...open(D252.a), { clickSel: '[data-testid="ai-marks-checkbox"]' }, { wait: 300 }, toList, { wait: 300 },
+      ] },
+      { persona: 'o252', name: 'd252-none', url: '/homework-queue', width, height, full: false, actions: [...open(D252.b), toList, { wait: 400 }] },
+      // Пишет: вердикт по работе A с галочкой (все пять подходящих находок, кроме №10 «верно»).
+      { persona: 'o252', name: 'd252-accept', url: '/homework-queue', width, height, full: false, actions: [
+        ...open(D252.a), { clickSel: '[data-testid="review-accept-button"]' }, { wait: 900 },
+      ] },
+      { persona: 's252', name: 'd252-student', url: topic1, width, height, actions: [...hwTab, walk, { wait: 2000 }, toFeedback, { wait: 800 }] },
+      { persona: 's252', name: 'd252-student-task', url: topic1, width, height, full: false, actions: [...hwTab, walk, { wait: 1500 }, toTask('4'), { wait: 800 }] },
+      { persona: 's252', name: 'd252-student-open', url: topic1, width, height, full: false, actions: [
+        ...hwTab, { clickSel: '[data-testid="feedback-task"][data-no="12"] [data-testid="feedback-open-page"]' }, { wait: 3500 },
       ] },
     ]
   }),

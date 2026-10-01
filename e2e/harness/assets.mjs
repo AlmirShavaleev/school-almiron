@@ -20,6 +20,15 @@ const pages = {
       <div style="margin-top:60px">Ответ: t ≈ 0,45 с; S ≈ 0,68 м</div>
       <div style="margin-top:200px;opacity:.25;font-size:30px">линия сгиба · тетрадь в клетку</div>
     </div>` },
+  // §252: проверочная «Производная» (вариант 1, ответы из ключа — как в
+  // макете), 16 строк. Строки стоят ровно: строка n — сверху 200 + (n − 1)·78 px,
+  // по этим долям в фикстурах лежат находки ИИ и рамки (`line252`).
+  'photo-derivative.png': { w: 1200, h: 1600, html: `
+    <div style="width:1200px;height:1600px;position:relative;background:#fbfaf6;background-image:linear-gradient(#dfe6ef 1px,transparent 1px),linear-gradient(90deg,#dfe6ef 1px,transparent 1px);background-size:39px 39px;font-family:'Segoe Script','Comic Sans MS',cursive;color:#243c8f">
+      <div style="position:absolute;left:80px;top:90px;font-size:44px">Проверочная работа · Вариант 1</div>
+      ${['15x⁴ − 4/(3∛x²)', '−3/x⁴ − 1/√x', '3/2·√x − 5/x²', '1/(2cos²x) + sin x/3', '1/2 + 1/sin²x', '7', '13', '7x⁶ − 4x³ − 2', '(5x² − 3)/(2√x) + 2x', 'cos 2x', '2x·tg x + x²/cos²x', '4x/(x² − 1)²', '(x − 1)/(2√x(x + 1)²)', '−2/(x − 1)²', '6x − 1', '3cos 3x']
+        .map((a, i) => `<div style="position:absolute;left:84px;top:${200 + i * 78}px;height:64px;line-height:64px;font-size:42px;white-space:nowrap">${i + 1}) y′ = ${a}</div>`).join('')}
+    </div>` },
   // §211 (board/062): та же тетрадь, но СНЯТАЯ БОКОМ — ученик держал телефон
   // поперёк. Именно такие страницы и разворачивает кнопка поворота. Наклон
   // против часовой выбран не случайно: кнопка крутит ПО часовой, и такая
