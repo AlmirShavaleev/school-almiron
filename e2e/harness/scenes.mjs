@@ -1313,6 +1313,21 @@ export const scenes = [
     ]
   }),
 
+  // §253: отчёты по физике ушли из сборки (useCatalog 1,1 МБ → 43 КБ), а страница
+  // темы во вкладке «Курс» учителя грузится лениво. Внешне ничего не меняется —
+  // сцены для сверки «до/после»: тема каталога физики с метками сложности, задачи
+  // темы ученика и тема во вкладке «Курс». В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d253 1280 ; node e2e/harness/tour.mjs d253 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const kurs = '/course-program?courseId=d000000-0000-4000-8000-000000002500&module=e000000-0000-4000-8000-000000002510&topic=1000000-0000-4000-8000-000000026006'
+    return [
+      { persona: 'student', name: 'd253-catalog-topic', url: `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'owner', name: 'd253-catalog-section', url: `/catalog/${S.section(1)}?subject=physics&exam=ege`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'student', name: 'd253-topic-tasks', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width, height, actions: [{ clickSel: 'button:has-text("Задачи")' }, { wait: 1200 }] },
+      { persona: 'o250', name: 'd253-kurs-topic', url: kurs, width, height, actions: [{ wait: 2500 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

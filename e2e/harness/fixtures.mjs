@@ -1143,7 +1143,8 @@ const STATEMENTS = [
 export const catalog_tasks = Array.from({ length: 14 }, (_, k) => ({
   id: IDS.task(k + 1), section_id: IDS.section(1 + (k % 2 === 0 ? 0 : 0)), subject: 'Физика', exam_type: 'ЕГЭ', external_id: 124600 + k, position: k + 1, is_published: true,
   statement_html: STATEMENTS[k % STATEMENTS.length], has_answer: true, has_solution: k % 3 === 0, answer_html: `<p>${(k + 1) * 2}</p>`, solution_html: k % 3 === 0 ? '<p>v_ср = Δx / Δt = (50 − 2) / 4 = 12 м/с.</p>' : null, solution_plan_html: null, grade_criteria_html: null,
-  difficulty: ['base', 'advanced', 'high'][k % 3], exam_part: k < 10 ? 1 : 2, max_points: k < 10 ? 1 : 3, partial_type: k % 4 === 3 ? 'matching' : null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+  // §253: сложность — как у физики на проде (`лёгкая`/`средняя`/`сложная`), иначе в каталоге нет меток.
+  difficulty: ['лёгкая', 'средняя', 'сложная'][k % 3], exam_part: k < 10 ? 1 : 2, max_points: k < 10 ? 1 : 3, partial_type: k % 4 === 3 ? 'matching' : null, source_url: null, created_at: ago(9000), updated_at: ago(900),
 }))
 // §201: задачи части 2 — собственного ответа у них нет по природе (ответ живёт
 // внутри решения), зато есть критерии оценивания и максимум баллов. Ровно на
