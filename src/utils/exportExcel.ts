@@ -118,6 +118,21 @@ export function exportPayments(rows: PaymentExportRow[]) {
   download(wb, 'platezhi.xlsx')
 }
 
+// ─── §249. Журнал «Проверочные и контрольные» ─────────────────────────────────
+/**
+ * Таблица собрана заранее (`journalSheet` в `lib/courseGrades.ts`) — ровно то,
+ * что на экране: тот же фильтр типа и тот же порядок учеников. Модуль `xlsx`
+ * тяжёлый — вызывающий подгружает этот файл динамически, по нажатию.
+ */
+export function exportAssessmentGrades(sheet: (string | number)[][], groupName?: string | null) {
+  const ws = XLSX.utils.aoa_to_sheet(sheet)
+  const cols = sheet[0]?.length ?? 0
+  setColWidths(ws, [30, ...Array.from({ length: Math.max(0, cols - 2) }, () => 18), 10])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Оценки')
+  download(wb, `ocenki${groupName ? '_' + groupName : ''}.xlsx`)
+}
+
 // ─── helpers ─────────────────────────────────────────────────────
 function setColWidths(ws: XLSX.WorkSheet, widths: number[]) {
   ws['!cols'] = widths.map(w => ({ wch: w }))

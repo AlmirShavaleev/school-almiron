@@ -29,10 +29,9 @@ import { useAuthStore } from '@/store/authStore'
 import { useCourseProgram, type Course, type Module, type Topic } from '@/hooks/useCourseProgram'
 import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
-import { CourseAssessmentsSummarySection } from '@/components/courseProgram/CourseAssessmentsSummary'
+import { CourseAssessmentsTab } from '@/components/courseProgram/CourseAssessmentsTab'
 import { CourseStatsSection } from '@/components/courseProgram/CourseStatsSection'
 import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
-import { CourseTestResultsSection } from '@/components/courseProgram/CourseTestResultsSection'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { CopyCourseDialog } from '@/components/modals/CopyCourseDialog'
@@ -1359,10 +1358,22 @@ function MaterialsMatrix({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 /** Вкладки курса. Значение живёт в адресе, поэтому список нужен и для разбора. */
-const COURSE_TABS = ['program', 'materials', 'homework', 'testresults', 'students', 'settings'] as const
+const COURSE_TABS = ['program', 'materials', 'homework', 'assessments', 'students', 'settings'] as const
 type CourseTab = typeof COURSE_TABS[number]
 /** Вкладки про учеников — на каркасе курса их нет (§174). */
-const STUDENT_TABS = ['homework', 'testresults', 'students'] as const satisfies readonly CourseTab[]
+const STUDENT_TABS = ['homework', 'students'] as const satisfies readonly CourseTab[]
+/**
+ * §249. Старые ключи вкладок → новые. «Результаты тестов» (§174) убраны из
+ * списка: по факту там был пустой блок «Задачи к уроку». Ссылки и закладки с
+ * `?tab=testresults` открывают «Проверочные и контрольные». Сам раздел §174
+ * (`CourseTestResultsSection`) не удалён — просто нигде не показывается.
+ */
+const LEGACY_TABS: Record<string, CourseTab> = { testresults: 'assessments' }
+/** Разбор `?tab=`: неизвестное — «Программа курса», старое — по `LEGACY_TABS`. */
+function parseCourseTab(raw: string | null): CourseTab {
+  if (raw && raw in LEGACY_TABS) return LEGACY_TABS[raw]
+  return (COURSE_TABS as readonly string[]).includes(raw ?? '') ? raw as CourseTab : 'program'
+}
 
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
@@ -1409,7 +1420,7 @@ export function CourseProgramPage() {
   const [loadError,   setLoadError]   = useState<string | null>(null)
   const [loadKey,     setLoadKey]     = useState(0)
   const tabParam = searchParams.get('tab')
-  const urlTab = ((COURSE_TABS as readonly string[]).includes(tabParam ?? '') ? tabParam : 'program') as CourseTab
+  const urlTab = parseCourseTab(tabParam)
   const setTab = useCallback((t: CourseTab) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -1622,11 +1633,6 @@ export function CourseProgramPage() {
       : []),
     [courses, selectedCourse],
   )
-  /** Название каркаса для копии — подсказка «где прикреплять задачи» (§174). */
-  const templateTitle = selectedCourse?.copied_from_course_id
-    ? (courses.find(c => c.id === selectedCourse.copied_from_course_id)?.title ?? null)
-    : null
-
   /**
    * Каркас без ученических вкладок (§174): ученики, ДЗ и результаты живут в
    * классах-копиях, и «В курсе пока нет учеников» на каркасе — правда, которая
@@ -1635,6 +1641,22 @@ export function CourseProgramPage() {
    */
   const isTemplate = !!selectedCourse?.is_template
   const tab: CourseTab = isTemplate && (STUDENT_TABS as readonly string[]).includes(urlTab) ? 'program' : urlTab
+
+  /**
+   * §249. На телефоне полоса вкладок шире экрана, и открытая по ссылке вкладка
+   * («Проверочные и контрольные» — четвёртая) оказывалась за краем: не видно,
+   * где ты. Докручиваем полосу до выбранной — только её саму, не страницу.
+   */
+  const tabListRef = useRef<HTMLDivElement>(null)
+  const selectedCourseId = selectedCourse?.id ?? null
+  useEffect(() => {
+    const list = tabListRef.current
+    const on = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!list || !on) return
+    const l = list.getBoundingClientRect()
+    const r = on.getBoundingClientRect()
+    if (r.left < l.left || r.right > l.right) list.scrollLeft += r.left - l.left - 16
+  }, [tab, selectedCourseId])
 
   /**
    * §241. Переходы из раздела «Контрольные, самостоятельные и пробники»:
@@ -2104,15 +2126,15 @@ export function CourseProgramPage() {
             {/* Вкладки курса. role=tablist/tab — не украшение: с ними
                 скринридер объявляет «вкладка 3 из 6», а стрелки влево-вправо
                 воспринимаются как переключение, а не как обход кнопок. */}
-            <div role="tablist" aria-label="Разделы курса" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+            <div ref={tabListRef} role="tablist" aria-label="Разделы курса" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
               {[
                 { key: 'program',   label: 'Программа курса' },
                 { key: 'materials', label: 'Материалы' },
-                ...(isTemplate ? [] : [
-                  { key: 'homework',  label: 'Домашние задания' },
-                  { key: 'testresults', label: 'Результаты тестов' },
-                  { key: 'students',  label: 'Ученики' },
-                ]),
+                ...(isTemplate ? [] : [{ key: 'homework',  label: 'Домашние задания' }]),
+                // §249: вместо «Результатов тестов». На каркасе тоже есть —
+                // там список работ без статистики (раньше он стоял над программой).
+                { key: 'assessments', label: 'Проверочные и контрольные' },
+                ...(isTemplate ? [] : [{ key: 'students',  label: 'Ученики' }]),
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
                 <button
@@ -2158,22 +2180,9 @@ export function CourseProgramPage() {
                   </div>
                 )}
 
-                {/* §241. Раздел «Контрольные, самостоятельные и пробники» — над
-                    программой, как у ученика: сводка по классу и переходы. Темы
-                    остаются и в своих модулях — там их редактируют. У каркаса —
-                    только список работ, без статистики (групп у него нет).
-                    Без миграции §241 внутри — прежний раздел «Пробники» (§224). */}
-                {!loadingMods && (
-                  <CourseAssessmentsSummarySection
-                    courseId={selectedCourse.id}
-                    isTemplate={isTemplate}
-                    groupId={isTemplate ? null : selectedGroupId}
-                    groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
-                    refreshKey={matRefreshKey}
-                    onOpenTopic={openAssessmentTopic}
-                    onShowWorks={showAssessmentWorks}
-                  />
-                )}
+                {/* §241 → §249. Сводка «Контрольные, самостоятельные и пробники»
+                    над программой больше не стоит — она во вкладке «Проверочные
+                    и контрольные» (вместе с журналом оценок и пробниками). */}
 
                 {loadingMods ? (
                   <div className="flex items-center gap-2 text-gray-400 py-8 justify-center">
@@ -2309,9 +2318,24 @@ export function CourseProgramPage() {
               <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} onToggleTopicOpen={handleToggleTopicOpen} focusTopicId={hwFocusTopicId} />
             )}
 
-            {/* Test Results tab */}
-            {tab === 'testresults' && (
-              <CourseTestResultsSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} templateTitle={templateTitle} />
+            {/* §249. «Проверочные и контрольные»: работы, журнал оценок, пробники. */}
+            {tab === 'assessments' && (
+              loadingMods ? (
+                <div className="flex items-center gap-2 text-gray-400 py-8 justify-center">
+                  <Loader2 size={18} className="animate-spin" />Загрузка…
+                </div>
+              ) : (
+                <CourseAssessmentsTab
+                  courseId={selectedCourse.id}
+                  isTemplate={isTemplate}
+                  groupId={isTemplate ? null : selectedGroupId}
+                  groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+                  refreshKey={matRefreshKey}
+                  onOpenTopic={openAssessmentTopic}
+                  onShowWorks={showAssessmentWorks}
+                  onGoToProgram={() => setTab('program')}
+                />
+              )
             )}
 
             {/* Students tab */}

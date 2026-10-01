@@ -44,12 +44,16 @@ export function CourseAssessmentsSummarySection({ courseId, isTemplate, groupId,
   return <SummaryView data={data} now={now} groupName={groupName} onOpenTopic={onOpenTopic} onShowWorks={onShowWorks} />
 }
 
-export function SummaryView({ data, now, groupName, onOpenTopic, onShowWorks }: {
+export function SummaryView({ data, now, groupName, onOpenTopic, onShowWorks, title = 'Контрольные, самостоятельные и пробники', emptyText, testId = 'course-assessments' }: {
   data: CourseAssessmentsSummary
   now: number
   groupName?: string | null
   onOpenTopic: (topicId: string) => void
   onShowWorks: (topicId: string) => void
+  /** §249: во вкладке «Проверочные и контрольные» тот же блок — только «Пробники». */
+  title?: string
+  emptyText?: string
+  testId?: string
 }) {
   const profile = useAuthStore(s => s.profile)
   const canCreate = !data.isTemplate && !!data.groupId && !!profile?.role && ['teacher', 'admin', 'owner'].includes(profile.role)
@@ -61,14 +65,14 @@ export function SummaryView({ data, now, groupName, onOpenTopic, onShowWorks }: 
   return (
     <section
       className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
-      data-testid="course-assessments"
+      data-testid={testId}
       data-template={template ? 'true' : 'false'}
-      aria-labelledby="course-assessments-title"
+      aria-labelledby={`${testId}-title`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-100 px-4 py-3">
-        <h2 id="course-assessments-title" className="flex min-w-0 items-center gap-2 text-sm font-bold text-primary-900">
+        <h2 id={`${testId}-title`} className="flex min-w-0 items-center gap-2 text-sm font-bold text-primary-900">
           <ClipboardCheck size={16} className="shrink-0 text-primary-600" aria-hidden />
-          <span>Контрольные, самостоятельные и пробники{!template && name ? ` · ${name}` : ''}</span>
+          <span>{title}{!template && name ? ` · ${name}` : ''}</span>
         </h2>
         <span className="text-xs text-graphite-600" data-testid="course-assessments-note">
           {template ? 'каркас: окно, сдача и результаты — в классах' : `в классе ${data.inClass}`}
@@ -87,10 +91,10 @@ export function SummaryView({ data, now, groupName, onOpenTopic, onShowWorks }: 
 
       {blocks.length === 0 ? (
         <p className="px-4 py-3 text-sm text-graphite-600" data-testid="course-assessments-empty">
-          Контрольных, проверочных и пробников пока нет — ученики этого раздела не видят.
+          {emptyText ?? 'Контрольных, проверочных и пробников пока нет — ученики этого раздела не видят.'}
         </p>
       ) : (
-        <div role="table" aria-label="Контрольные, самостоятельные и пробники" className="text-[13.5px]">
+        <div role="table" aria-label={title} className="text-[13.5px]">
           <div role="rowgroup" className="hidden md:block">
             <div role="row" className={cn('grid items-center gap-3 border-b border-gray-100 bg-slate-50 px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-graphite-600', template ? GRID_TPL : GRID)}>
               <span role="columnheader">Работа</span>

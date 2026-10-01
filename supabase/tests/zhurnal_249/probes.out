@@ -1,0 +1,205 @@
+slice + prod migrations (§241 chain) + mock slice: ok
+              set_config              
+--------------------------------------
+ 00000000-0000-4000-8000-00000c040005
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+§241 (applied on prod) : ok
+              set_config              
+--------------------------------------
+ 00000000-0000-4000-8000-0000009a0004
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+data §249: ok
+PENDING_249 applied twice: ok
+Null display is "∅".
+CREATE FUNCTION
+CREATE FUNCTION
+=== 1. Преподаватель 10А: ученики (6, по имени), работы — только check/control с ОПУБЛИКОВАННЫМ ДЗ, по дате окна
+=== (P −3 дня, R −3 дня 1 ч → R раньше P; C −2 ч; K идёт; F завтра; N без окна — в конце). Урок L и U (ДЗ не опубликовано) — нет.
+ as_user 
+---------
+ ∅
+(1 row)
+
+  tpl  | grp | students | works | cells 
+-------+-----+----------+-------+-------
+ false | 10А |        6 |     6 |    36
+(1 row)
+
+   name   
+----------
+ Ученик 1
+ Ученик 2
+ Ученик 3
+ Ученик 4
+ Ученик 5
+ Ученик 6
+(6 rows)
+
+            title             |  kind   |  scale  |    win    
+------------------------------+---------+---------+-----------
+ R: Проверочная с пересдачами | check   | five    | открылась
+ P: Проверочная (стобалльная) | check   | hundred | открылась
+ C: Контрольная (закрылась)   | control | five    | открылась
+ K: Контрольная (идёт)        | control | five    | открылась
+ F: Проверочная (завтра)      | check   | five    | впереди
+ N: Контрольная без времени   | control | five    | без окна
+(6 rows)
+
+=== 2. C (пятибалльная, закрылась): S1 5, S2 4, S3 3, S4 4 — reviewed; S5 — submitted (сдано автоматически, балла нет); S6 — none
+ work | student  |  status   | score | att | has_attempt_id 
+------+----------+-----------+-------+-----+----------------
+ C    | Ученик 1 | reviewed  |     5 |   1 | t
+ C    | Ученик 2 | reviewed  |     4 |   1 | t
+ C    | Ученик 3 | reviewed  |     3 |   1 | t
+ C    | Ученик 4 | reviewed  |     4 |   1 | t
+ C    | Ученик 5 | submitted |     ∅ |   1 | t
+ C    | Ученик 6 | none      |     ∅ |   ∅ | f
+(6 rows)
+
+   name   | auto 
+----------+------
+ Ученик 5 | true
+(1 row)
+
+=== 3. K (идёт): S1, S2 — черновики (draft, балла нет); S3 — сдал (submitted); S4..S6 — none
+ work | student  |  status   | score | att | has_attempt_id 
+------+----------+-----------+-------+-----+----------------
+ K    | Ученик 1 | draft     |     ∅ |   1 | t
+ K    | Ученик 2 | draft     |     ∅ |   1 | t
+ K    | Ученик 3 | submitted |     ∅ |   1 | t
+ K    | Ученик 4 | none      |     ∅ |   ∅ | f
+ K    | Ученик 5 | none      |     ∅ |   ∅ | f
+ K    | Ученик 6 | none      |     ∅ |   ∅ | f
+(6 rows)
+
+=== 4. P (стобалльная): S1 80, S2 60, S3 70 — reviewed; остальные none
+ work | student  |  status  | score | att | has_attempt_id 
+------+----------+----------+-------+-----+----------------
+ P    | Ученик 1 | reviewed |    80 |   1 | t
+ P    | Ученик 2 | reviewed |    60 |   1 | t
+ P    | Ученик 3 | reviewed |    70 |   1 | t
+ P    | Ученик 4 | none     |     ∅ |   ∅ | f
+ P    | Ученик 5 | none     |     ∅ |   ∅ | f
+ P    | Ученик 6 | none     |     ∅ |   ∅ | f
+(6 rows)
+
+=== 5. R (пересдачи): S1 — reviewed 4 по попытке №2 (№1 возвращена); S2 — returned, балла нет;
+=== S3 — draft (попытка №2 после возврата); S4 — reviewed 3 (вернули, потом приняли как есть — последний вердикт);
+=== S5 — submitted по попытке №2; S6 — none
+ work | student  |  status   | score | att | has_attempt_id 
+------+----------+-----------+-------+-----+----------------
+ R    | Ученик 1 | reviewed  |     4 |   2 | t
+ R    | Ученик 2 | returned  |     ∅ |   1 | t
+ R    | Ученик 3 | draft     |     ∅ |   2 | t
+ R    | Ученик 4 | reviewed  |     3 |   1 | t
+ R    | Ученик 5 | submitted |     ∅ |   2 | t
+ R    | Ученик 6 | none      |     ∅ |   ∅ | f
+(6 rows)
+
+=== 6. Владелец курсов (не преподаватель группы) — тоже персонал: то же число клеток
+ as_user 
+---------
+ ∅
+(1 row)
+
+ students | works | cells 
+----------+-------+-------
+        6 |     6 |    36
+(1 row)
+
+=== 7. Шаблон курса: работы есть (проверочная каркаса), учеников и клеток нет
+ tpl  | grp | students |         works          | cells 
+------+-----+----------+------------------------+-------
+ true | ∅   |        0 | T: Проверочная каркаса |     0
+(1 row)
+
+=== 8. Курс 11А его преподавателем: работ по времени нет → пустые работы и клетки, ученик один
+ as_user 
+---------
+ ∅
+(1 row)
+
+ students | works | cells 
+----------+-------+-------
+        1 |     0 |     0
+(1 row)
+
+=== 9. Отказы (42501): преподаватель 11А о 10А, посторонний, ученик S1 (свой курс!), аноним
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a249/repo/supabase/tests/zhurnal_249/20_probes.sql:74: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessment_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a249/repo/supabase/tests/zhurnal_249/20_probes.sql:76: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessment_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a249/repo/supabase/tests/zhurnal_249/20_probes.sql:78: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_assessment_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+psql:/home/claude/agents/a249/repo/supabase/tests/zhurnal_249/20_probes.sql:82: ERROR:  42501: permission denied for function course_assessment_grades
+LOCATION:  aclcheck_error, aclchk.c:2812
+RESET
+=== 10. Права на функцию: anon — нет, authenticated — есть; SECURITY DEFINER со своим search_path
+         proname          | prosecdef |            proconfig            | anon_exec | auth_exec | public_exec 
+--------------------------+-----------+---------------------------------+-----------+-----------+-------------
+ course_assessment_grades | t         | {"search_path=public, pg_temp"} | f         | t         | f
+(1 row)
+
+=== 11. Сводка §241 не сломана: по R — сдали 4 (S1, S2 вернули, S4, S5 — не черновики), ждут 1, средний принятых (4+3)/2
+ as_user 
+---------
+ ∅
+(1 row)
+
+            title             | sub | pend | avg  
+------------------------------+-----+------+------
+ R: Проверочная с пересдачами | 4   | 1    | 3.50
+(1 row)
+
+=== 12. Без N+1: один план на вызов; время одного вызова на 10А
+RESET
+ as_user 
+---------
+ ∅
+(1 row)
+
+Timing is on.
+ ok 
+----
+ t
+(1 row)
+
+Time: 1.703 ms
+Timing is off.

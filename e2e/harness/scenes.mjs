@@ -1206,6 +1206,31 @@ export const scenes = [
     ]
   }),
 
+  // §249: вкладка курса «Проверочные и контрольные» — работы со сводкой и журнал
+  // «ученик × работа»: одна проверочная (как сейчас в 11А), несколько работ к
+  // концу четверти, «Сначала слабые», нажатая оценка (строка с переходом к
+  // работе), курс без работ. В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d249 1280 ; node e2e/harness/tour.mjs d249 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const url = `/course-program?courseId=${S.course}&tab=assessments`
+    const to = (sel) => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -16) })()` })
+    return [
+      { persona: 'o249', name: 'd249-one', url, width, height, actions: [{ wait: 2000 }] },
+      { persona: 'o249', name: 'd249-one-journal', url, width, height, full: false, actions: [{ wait: 2000 }, to('[data-testid="assessments-journal"]'), { wait: 300 }] },
+      { persona: 'o249many', name: 'd249-many', url, width, height, actions: [{ wait: 2000 }] },
+      { persona: 'o249many', name: 'd249-many-weak', url, width, height, full: false, actions: [
+        { wait: 2000 }, { clickSel: '[data-testid="grades-sort"] button[data-key="weak"]' }, { wait: 300 }, to('[data-testid="assessments-journal"]'), { wait: 300 },
+      ] },
+      { persona: 'o249many', name: 'd249-many-scrolled', url, width, height, full: false, actions: [
+        { wait: 2000 }, to('[data-testid="assessments-journal"]'), { eval: "document.querySelector('[data-testid=\"grades-scroll\"]').scrollLeft = 10000" }, { wait: 300 },
+      ] },
+      { persona: 'o249', name: 'd249-detail', url, width, height, full: false, actions: [
+        { wait: 2000 }, { clickSel: '[data-testid="grades-cell"][data-state="wait"] >> nth=0' }, { wait: 300 }, to('[data-testid="assessments-journal"]'), { wait: 300 },
+      ] },
+      { persona: 'o249empty', name: 'd249-empty', url, width, height, actions: [{ wait: 2000 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

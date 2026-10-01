@@ -325,7 +325,7 @@ export function mskHm(iso: string | null | undefined): string {
 }
 
 /** «пт» по Москве. */
-function mskWeekday(iso: string): string {
+export function mskWeekday(iso: string): string {
   const t = ms(iso)
   if (t == null) return ''
   return new Intl.DateTimeFormat('ru-RU', { timeZone: MSK, weekday: 'short' }).format(new Date(t)).replace(/\.$/, '')

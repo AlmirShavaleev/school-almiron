@@ -85,6 +85,12 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o246: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §249: вкладка «Проверочные и контрольные» (фикстуры `apply249`): одна
+  // проверочная (распределение как у 11А на проде, имена выдуманы), несколько
+  // работ «к концу четверти», курс без работ.
+  ...Object.fromEntries(['o249', 'o249many', 'o249empty'].map(k => [
+    k, { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  ])),
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1849,6 +1855,7 @@ export function baseFixtures(persona) {
   if (persona === 'o243') apply243(fx)
   if (persona.startsWith('o244')) apply244(fx, persona)
   if (persona.startsWith('s246') || persona === 'o246') apply246(fx, persona)
+  if (persona.startsWith('o249')) apply249(fx, persona)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2466,5 +2473,98 @@ function apply246(fx, persona) {
       ? { solved: all, solved_7d: all, solvers: null, better_pct: null }
       : { solved: all, solved_7d: all > 0 ? 18 : 0, solvers: fresh ? 0 : few ? 5 : 31, better_pct: fresh || few ? null : 68 },
     exams,
+  }
+}
+
+// ── §249: вкладка «Проверочные и контрольные» ───────────────────────────────
+// Всё выдумано. Имена — из утверждённого макета; распределение «Производных»
+// повторяет 11А на проде (8×5, 2×4, 2×3, 4×2, 5 ждут, 3 не сдали), раскладка по
+// именам — выдумана. Заглушки повторяют форму ответов §241
+// (`course_assessments_summary`) и PENDING_249 (`course_assessment_grades`).
+//   o249       — «сейчас»: одна проверочная, ждут проверки 5;
+//   o249many   — «к концу четверти»: три проверочные и две КР + запланированная КР;
+//   o249empty  — в курсе нет ни проверочных, ни контрольных.
+const R249 = {
+  now: '2026-10-01T09:00:00.000Z',
+  nowLate: '2026-11-24T09:00:00.000Z',
+  topic: (i) => U('1', 4900 + i),
+  student: (i) => U('b', 4900 + i),
+  attempt: (t, i) => U('3', 490000 + t * 100 + i),
+  mock: U('c', 4901),
+}
+const N249 = ['Абрамова Софья', 'Белов Кирилл', 'Валиев Тимур', 'Гарипова Алина', 'Давыдов Артём', 'Евсеева Милана', 'Жуков Матвей', 'Закирова Диана', 'Ибрагимов Руслан', 'Карпова Ева', 'Латыпов Арслан', 'Миронова Полина', 'Насибуллин Данияр', 'Орлова Вероника', 'Петров Глеб', 'Рахимова Камила', 'Сафин Эмиль', 'Тихонова Анна', 'Усманов Ильдар', 'Фёдорова Ксения', 'Хабибуллин Амир', 'Чернова Злата', 'Шарипов Булат', 'Юсупова Лейла']
+const DER249 = [5, 'w', 5, 2, 5, 4, '-', 5, 3, 5, 2, 'w', 5, 4, 'w', 2, 5, '-', 3, 'w', 5, 2, 'w', '-']
+function gen249(seed) {
+  return N249.map((_, i) => {
+    const x = (i * 7 + seed * 13) % 17
+    let g = x < 6 ? 5 : x < 10 ? 4 : x < 14 ? 3 : 2
+    if (DER249[i] === 2 && x % 3 === 0) g = Math.max(2, g - 1)
+    if (i === 6 && seed === 2) g = '-'
+    return g
+  })
+}
+function apply249(fx, persona) {
+  const late = persona === 'o249many'
+  const empty = persona === 'o249empty'
+  const now = late ? R249.nowLate : R249.now
+  const plusMin = (iso, m) => new Date(Date.parse(iso) + m * 60_000).toISOString()
+  // [i, kind, название, начало (UTC), длительность, оценки по ученикам]
+  const works = empty ? [] : late ? [
+    [1, 'check', 'Проверочная работа. Производные', '2026-09-29T07:00:00.000Z', 45, DER249.map((v, i) => (v === 'w' ? [4, 3, 5, 4, 2][i % 5] : v))],
+    [2, 'check', 'Тригонометрия', '2026-10-13T07:00:00.000Z', 45, gen249(1)],
+    [3, 'control', 'КР №1. Алгебра', '2026-10-25T07:00:00.000Z', 90, gen249(2)],
+    [4, 'check', 'Логарифмы', '2026-11-10T07:00:00.000Z', 45, gen249(3)],
+    [5, 'control', 'КР №2. Функции', '2026-11-22T07:00:00.000Z', 90, gen249(4).map((v, i) => (i % 5 === 1 ? 'w' : v))],
+    [6, 'control', 'КР №3. Интеграл', '2026-12-20T07:00:00.000Z', 90, null],
+  ] : [
+    [1, 'check', 'Проверочная работа. Производные', '2026-09-29T07:00:00.000Z', 45, DER249],
+  ]
+  const students = N249.map((name, i) => ({ student_id: R249.student(i), name }))
+  const status = (col, opens, mins) => {
+    if (!col) return Date.parse(opens) > Date.parse(now) ? 'planned' : 'unscheduled'
+    if (Date.parse(plusMin(opens, mins)) > Date.parse(now)) return 'live'
+    return col.includes('w') ? 'review' : 'done'
+  }
+  fx.rpc.course_assessments_summary = (body) => {
+    if (body.p_course_id !== IDS.course) return new Error('42501: Нет прав на этот курс')
+    return {
+      server_now: now, is_template: false, group_id: IDS.group, group_name: '11А', in_class: N249.length,
+      works: works.map(([i, kind, title, opens, mins, col]) => {
+        const graded = (col ?? []).filter(v => typeof v === 'number')
+        const pending = (col ?? []).filter(v => v === 'w').length
+        return {
+          topic_id: R249.topic(i), homework_id: U('2', 4900 + i), kind, title, module_title: 'Математический анализ', published: true,
+          opens_at: opens, closes_at: plusMin(opens, mins), grade_scale: 'five', status: status(col, opens, mins),
+          submitted: graded.length + pending, pending, reviewed: graded.length,
+          avg_score: graded.length ? Math.round((graded.reduce((a, b) => a + b, 0) / graded.length) * 100) / 100 : null,
+          writing: 0, personal_live: 0,
+        }
+      }),
+      mocks: empty ? [] : [
+        { id: R249.mock, title: 'Пробник №1', template_id: U('c', 4199), max_score: 100, starts_at: '2026-09-20T07:00:00.000Z', ends_at: '2026-09-20T10:55:00.000Z', status: 'done', submitted: 22, pending: 0, avg_score: 61, writing: 0, in_group: N249.length },
+      ],
+    }
+  }
+  fx.rpc.course_assessment_grades = (body) => {
+    if (body.p_course_id !== IDS.course) return new Error('42501: Нет прав на этот курс')
+    const cells = []
+    for (const [i, , , , , col] of works) {
+      students.forEach((s, k) => {
+        const v = col ? col[k] : '-'
+        const st = v === 'w' ? 'submitted' : v === '-' ? 'none' : 'reviewed'
+        cells.push({
+          topic_id: R249.topic(i), student_id: s.student_id, status: st, score: st === 'reviewed' ? v : null,
+          attempt_id: st === 'none' ? null : R249.attempt(i, k), attempt_number: st === 'none' ? null : 1, auto_submitted: false,
+        })
+      })
+    }
+    return {
+      server_now: now, is_template: false, group_id: IDS.group, group_name: '11А', students,
+      works: works.map(([i, kind, title, opens, mins]) => ({
+        topic_id: R249.topic(i), homework_id: U('2', 4900 + i), kind, title, module_title: 'Математический анализ',
+        opens_at: opens, closes_at: plusMin(opens, mins), grade_scale: 'five',
+      })),
+      cells,
+    }
   }
 }
