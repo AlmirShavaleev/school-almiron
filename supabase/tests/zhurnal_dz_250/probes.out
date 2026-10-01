@@ -1,0 +1,165 @@
+slice + prod migrations (§241 chain) + mock slice: ok
+              set_config              
+--------------------------------------
+ 00000000-0000-4000-8000-00000c040005
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+§241 (applied on prod) : ok
+              set_config              
+--------------------------------------
+ 00000000-0000-4000-8000-0000009a0004
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+data §249: ok
+§249 (applied on prod) : ok
+data §250: ok
+PENDING_250 applied twice: ok
+Null display is "∅".
+CREATE FUNCTION
+CREATE FUNCTION
+=== 1. Преподаватель 10А: 6 учеников; ДЗ — только опубликованные ДЗ тем-уроков, по разделу (Кинематика order 0,
+=== потом Механика), внутри по порядку темы: A, B, Z (закрыта — topic_open false), L. Нет: D (не опубликовано),
+=== E (без ДЗ), K/F/C/P/U/N/R (работы по времени), Y (другой курс).
+ as_user 
+---------
+ ∅
+(1 row)
+
+  tpl  | grp | students | homeworks | cells | today_msk 
+-------+-----+----------+-----------+-------+-----------
+ false | 10А |        6 |         4 |     8 | t
+(1 row)
+
+   module   | mord |            topic            |    hw    |  scale  | due_in_days | open  
+------------+------+-----------------------------+----------+---------+-------------+-------
+ Кинематика | 0    | A: Равномерное движение     | ДЗ A     | ∅       |          -3 | true
+ Кинематика | 0    | B: Равноускоренное движение | ДЗ B     | hundred |           5 | true
+ Кинематика | 0    | Z: Закрыта до даты          | ДЗ Z     | five    |          10 | false
+ Механика   | 1    | L: Законы Ньютона           | Работа 1 | five    |           ∅ | true
+(4 rows)
+
+=== 2. A (без шкалы, срок прошёл): S1 reviewed ∅ (принято без балла); S2 submitted; S3 returned;
+=== S4 draft; S5 — строки нет (попыток нет); S6 reviewed по попытке №2 (№1 вернули).
+ topic | student  |  status   | score | att | has_attempt_id 
+-------+----------+-----------+-------+-----+----------------
+ A     | Ученик 1 | reviewed  |     ∅ |   1 | t
+ A     | Ученик 2 | submitted |     ∅ |   1 | t
+ A     | Ученик 3 | returned  |     ∅ |   1 | t
+ A     | Ученик 4 | draft     |     ∅ |   1 | t
+ A     | Ученик 6 | reviewed  |     ∅ |   2 | t
+(5 rows)
+
+=== 3. B (стобалльная, срок впереди): S1 reviewed 85; S2 submitted. L (пятибалльная): S1 reviewed 5. Z: клеток нет.
+ topic | student  |  status   | score | att | has_attempt_id 
+-------+----------+-----------+-------+-----+----------------
+ B     | Ученик 1 | reviewed  |    85 |   1 | t
+ B     | Ученик 2 | submitted |     ∅ |   1 | t
+ L     | Ученик 1 | reviewed  |     5 |   1 | t
+(3 rows)
+
+=== 4. Работ по времени (K, C, P, R…) в клетках нет — у них свой журнал (§249)
+ timed_cells 
+-------------
+           0
+(1 row)
+
+=== 5. Владелец курсов (не преподаватель группы) — тоже персонал: то же число ДЗ и клеток
+ as_user 
+---------
+ ∅
+(1 row)
+
+ students | homeworks | cells 
+----------+-----------+-------
+        6 |         4 |     8
+(1 row)
+
+=== 6. Каркас: учеников и клеток нет; ДЗ уроков каркаса нет (в каркасе — только проверочная) → пусто
+ tpl  | grp | students | homeworks | cells 
+------+-----+----------+-----------+-------
+ true | ∅   |        0 |         0 |     0
+(1 row)
+
+=== 7. Курс 11А его преподавателем: один ученик, ДЗ Y, клетка S7 submitted
+ as_user 
+---------
+ ∅
+(1 row)
+
+ topic | student  |  status   | score | att | has_attempt_id 
+-------+----------+-----------+-------+-----+----------------
+ Y     | Ученик 7 | submitted |     ∅ |   1 | t
+(1 row)
+
+=== 8. Отказы (42501): преподаватель 11А о 10А, посторонний, ученик S1 (свой курс!), аноним
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a250/repo/supabase/tests/zhurnal_dz_250/20_probes.sql:67: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_homework_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a250/repo/supabase/tests/zhurnal_dz_250/20_probes.sql:69: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_homework_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ as_user 
+---------
+ ∅
+(1 row)
+
+psql:/home/claude/agents/a250/repo/supabase/tests/zhurnal_dz_250/20_probes.sql:71: ERROR:  42501: Нет прав на этот курс
+CONTEXT:  PL/pgSQL function course_homework_grades(uuid) line 8 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+psql:/home/claude/agents/a250/repo/supabase/tests/zhurnal_dz_250/20_probes.sql:75: ERROR:  42501: permission denied for function course_homework_grades
+LOCATION:  aclcheck_error, aclchk.c:2812
+RESET
+=== 9. Права на функцию: anon — нет, authenticated — есть; SECURITY DEFINER со своим search_path
+        proname         | prosecdef |            proconfig            | anon_exec | auth_exec | public_exec 
+------------------------+-----------+---------------------------------+-----------+-----------+-------------
+ course_homework_grades | t         | {"search_path=public, pg_temp"} | f         | t         | f
+(1 row)
+
+=== 10. Соседи не сломаны: журнал §249 — по-прежнему 6 работ × 6 учеников; статистика тем §242 не тронута
+=== (её в цепочке нет — функция §242 в этой базе не создавалась, проба только про §249).
+ as_user 
+---------
+ ∅
+(1 row)
+
+ works | cells 
+-------+-------
+     6 |    36
+(1 row)
+
+=== 11. Без N+1: один вызов на курс; время одного вызова на 10А
+Timing is on.
+ ok 
+----
+ t
+(1 row)
+
+Time: 1.415 ms
+Timing is off.

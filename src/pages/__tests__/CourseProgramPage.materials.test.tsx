@@ -108,6 +108,8 @@ async function openMaterialsTab() {
   // Карточка курса теперь ссылка, а не кнопка: обычный клик проваливает в
   // курс, Ctrl+клик открывает его в новой вкладке браузера.
   fireEvent.click(screen.getByRole('link', { name: /Физика/i }))
+  // §250: по умолчанию курс открывается на «Курсе»; программа — во вкладке «Сроки и статистика».
+  fireEvent.click(screen.getByRole('tab', { name: 'Сроки и статистика' }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
   fireEvent.click(screen.getByRole('tab', { name: /Материалы/i }))
@@ -183,7 +185,7 @@ describe('CourseProgramPage materials tab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Перейти к программе/i }))
 
-    await waitFor(() => expect(screen.getByRole('tab', { name: /Программа курса/i })).toHaveClass('border-primary-600'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Сроки и статистика/i })).toHaveClass('border-primary-600'))
   })
 
   it('в шапке курса есть ссылка на учебный план (§151)', async () => {

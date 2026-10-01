@@ -133,6 +133,21 @@ export function exportAssessmentGrades(sheet: (string | number)[][], groupName?:
   download(wb, `ocenki${groupName ? '_' + groupName : ''}.xlsx`)
 }
 
+// ─── §250. Журнал домашних заданий ────────────────────────────────────────────
+/**
+ * Таблица собрана заранее (`homeworkJournalSheet` в `lib/courseHomeworkJournal.ts`):
+ * все разделы раскрыты, ученики — в порядке на экране. Модуль `xlsx` тяжёлый —
+ * вызывающий подгружает этот файл динамически, по нажатию.
+ */
+export function exportHomeworkJournal(sheet: (string | number)[][], groupName?: string | null) {
+  const ws = XLSX.utils.aoa_to_sheet(sheet)
+  const cols = sheet[0]?.length ?? 0
+  setColWidths(ws, [30, ...Array.from({ length: Math.max(0, cols - 3) }, () => 18), 14, 12])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Домашние задания')
+  download(wb, `dz${groupName ? '_' + groupName : ''}.xlsx`)
+}
+
 // ─── helpers ─────────────────────────────────────────────────────
 function setColWidths(ws: XLSX.WorkSheet, widths: number[]) {
   ws['!cols'] = widths.map(w => ({ wch: w }))

@@ -89,7 +89,8 @@ beforeEach(() => rpcSpy.mockClear())
 describe('Вкладка «Проверочные и контрольные» (§249)', () => {
   it('«Результатов тестов» нет; новая вкладка — после «Домашних заданий»', () => {
     renderAt('/course-program?courseId=c1')
-    expect(tabNames()).toEqual(['Программа курса', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки'])
+    // §250: первой — «Курс», «Программа курса» переименована в «Сроки и статистика».
+    expect(tabNames()).toEqual(['Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки'])
     expect(tabNames()).not.toContain('Результаты тестов')
   })
 
@@ -102,7 +103,8 @@ describe('Вкладка «Проверочные и контрольные» (�
   })
 
   it('сводки §241 над программой больше нет — и её RPC программа не зовёт', async () => {
-    renderAt('/course-program?courseId=c1')
+    // §250: программа — во вкладке «Сроки и статистика» (ключ прежний, program).
+    renderAt('/course-program?courseId=c1&tab=program')
     // Дождаться загрузки программы: пустой курс показывает «В курсе пока нет модулей».
     expect(await screen.findByText('В курсе пока нет модулей')).toBeInTheDocument()
     expect(screen.queryByTestId('course-assessments')).not.toBeInTheDocument()

@@ -84,6 +84,8 @@ async function openProgramForCourse() {
   renderPage()
   // Карточка курса теперь ссылка, а не кнопка (см. CourseCard).
   fireEvent.click(screen.getByRole('link', { name: /10А/i }))
+  // §250: по умолчанию курс открывается на «Курсе»; программа — во вкладке «Сроки и статистика».
+  fireEvent.click(screen.getByRole('tab', { name: 'Сроки и статистика' }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
 }
 

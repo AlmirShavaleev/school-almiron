@@ -88,13 +88,20 @@ const tabNames = () => screen.getAllByRole('tab').map(t => t.textContent)
 describe('Каркас курса без ученических вкладок (§174)', () => {
   it('на каркасе нет вкладок «Домашние задания», «Ученики»; «Проверочные и контрольные» — есть', () => {
     renderAt('/course-program?courseId=tpl')
-    expect(tabNames()).toEqual(['Программа курса', 'Материалы', 'Проверочные и контрольные', 'Настройки'])
+    // §250: «Курса» у каркаса нет (класса нет); «Программа курса» теперь «Сроки и статистика».
+    expect(tabNames()).toEqual(['Сроки и статистика', 'Материалы', 'Проверочные и контрольные', 'Настройки'])
+  })
+
+  it('каркас без вкладки в адресе открывается на «Сроках и статистике», а не на «Курсе» (§250)', () => {
+    renderAt('/course-program?courseId=tpl')
+    expect(screen.getByRole('tab', { name: 'Сроки и статистика' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('kurs-sections')).not.toBeInTheDocument()
   })
 
   it('в обычном курсе все вкладки на месте', () => {
     renderAt('/course-program?courseId=plain')
     expect(tabNames()).toEqual([
-      'Программа курса', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки',
+      'Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки',
     ])
     expect(screen.queryByTestId('template-classes-row')).not.toBeInTheDocument()
   })
@@ -119,9 +126,9 @@ describe('Каркас курса без ученических вкладок (
     expect(within(row).queryByRole('link')).not.toBeInTheDocument()
   })
 
-  it('?tab=students на каркасе открывает «Программу курса», а не ученический раздел', () => {
+  it('?tab=students на каркасе открывает «Сроки и статистику» (бывшая «Программа курса»), а не ученический раздел', () => {
     renderAt('/course-program?courseId=tpl&tab=students')
-    expect(screen.getByRole('tab', { name: 'Программа курса' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Сроки и статистика' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByTestId('students-section')).not.toBeInTheDocument()
   })
 

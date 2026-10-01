@@ -1231,6 +1231,45 @@ export const scenes = [
     ]
   }),
 
+  // §250: вкладка «Курс» (разделы → раздел №13 → тема глазами ученика с полосой
+  // учителя) и «Домашние задания» журналом (свёрнут; раскрыты №13 и №15, прокрутка
+  // вбок; нажатая «ждёт»; «Сначала отстающие») и прежним видом «По темам». В базу
+  // сцены не пишут.
+  //   node e2e/harness/tour.mjs d250 1280 ; node e2e/harness/tour.mjs d250 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const C = 'd000000-0000-4000-8000-000000002500'
+    const M13 = 'e000000-0000-4000-8000-000000002510'
+    const T = '1000000-0000-4000-8000-000000026006'
+    const base = `/course-program?courseId=${C}`
+    const to = (sel) => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -110) })()` })
+    const openSec = (n) => ({ eval: `document.querySelectorAll('[data-testid="hw-section-toggle"]')[${n}]?.click()` })
+    return [
+      { persona: 'o250', name: 'd250-kurs', url: base, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o250', name: 'd250-section', url: `${base}&module=${M13}`, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o250', name: 'd250-topic', url: `${base}&module=${M13}&topic=${T}`, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o250', name: 'd250-topic-hw', url: `${base}&module=${M13}&topic=${T}`, width, height, full: false, actions: [
+        { wait: 2500 }, { clickSel: '[role="tab"]:has-text("Домашнее задание")' }, { wait: 800 }, to('[role="tablist"][aria-label="Разделы темы"]'), { wait: 300 },
+      ] },
+      { persona: 'o250', name: 'd250-dz', url: `${base}&tab=homework`, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o250', name: 'd250-dz-open', url: `${base}&tab=homework`, width, height, full: false, actions: [
+        { wait: 2500 }, openSec(7), { wait: 200 }, to('[data-testid="hw-table"]'), { wait: 300 },
+      ] },
+      { persona: 'o250', name: 'd250-dz-open-scrolled', url: `${base}&tab=homework`, width, height, full: false, actions: [
+        { wait: 2500 }, openSec(7), openSec(8), { wait: 200 }, to('[data-testid="hw-table"]'),
+        { eval: "document.querySelector('[data-testid=\"hw-scroll\"]').scrollLeft = document.querySelector('[data-testid=\"hw-section-toggle\"][aria-expanded=\"true\"]').closest('th').offsetLeft - 180" }, { wait: 300 },
+      ] },
+      { persona: 'o250', name: 'd250-dz-detail', url: `${base}&tab=homework`, width, height, full: false, actions: [
+        { wait: 2500 }, openSec(7), { wait: 200 }, { clickSel: '[data-testid="hw-cell"][data-state="wait"] >> nth=0' }, { wait: 300 }, to('[data-testid="hw-detail"]'), { wait: 300 },
+      ] },
+      { persona: 'o250', name: 'd250-dz-behind', url: `${base}&tab=homework`, width, height, full: false, actions: [
+        { wait: 2500 }, { clickSel: '[data-testid="hw-sort-behind"]' }, { wait: 300 }, to('[data-testid="hw-table"]'), { wait: 300 },
+      ] },
+      { persona: 'o250', name: 'd250-dz-topics', url: `${base}&tab=homework`, width, height, actions: [
+        { wait: 2500 }, { clickSel: '[data-testid="hw-view"] button[data-key="topics"]' }, { wait: 1500 },
+      ] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

@@ -90,6 +90,8 @@ function stats(fn: string, args: { p_period: string }) {
 async function openCourse() {
   render(<MemoryRouter><CourseProgramPage /></MemoryRouter>)
   fireEvent.click(screen.getByRole('link', { name: /10А/i }))
+  // §250: по умолчанию курс открывается на «Курсе»; программа — во вкладке «Сроки и статистика».
+  fireEvent.click(screen.getByRole('tab', { name: 'Сроки и статистика' }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
 }
 

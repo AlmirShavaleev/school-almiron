@@ -91,6 +91,8 @@ export const personas = {
   ...Object.fromEntries(['o249', 'o249many', 'o249empty'].map(k => [
     k, { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   ])),
+  // §250: вкладки «Курс» и «Домашние задания» у учителя (фикстуры `apply250`).
+  o250: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1856,6 +1858,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('o244')) apply244(fx, persona)
   if (persona.startsWith('s246') || persona === 'o246') apply246(fx, persona)
   if (persona.startsWith('o249')) apply249(fx, persona)
+  if (persona === 'o250') apply250(fx)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   return fx
 }
@@ -2564,6 +2567,145 @@ function apply249(fx, persona) {
         topic_id: R249.topic(i), homework_id: U('2', 4900 + i), kind, title, module_title: 'Математический анализ',
         opens_at: opens, closes_at: plusMin(opens, mins), grade_scale: 'five',
       })),
+      cells,
+    }
+  }
+}
+
+// ── §250: вкладки «Курс» и «Домашние задания» у учителя ─────────────────────
+// Всё выдумано, кроме названий разделов и тем №13 — они из утверждённого
+// макета (`agents/a250/maket.html`: «разделы и темы — настоящие из 11А»).
+// Цифры класса и имена — выдуманы (имена — те же, что у §249). Даты считаются
+// от сегодняшнего дня машины, на которой идёт прогон: открытость темы и
+// «просроч.» клиент считает по своим часам, и фиксированная дата через месяц
+// превратила бы снимки в сплошные «просроч.».
+//   o250 — владелец в режиме учителя: курс «Математика ЕГЭ … — 11А» (16 разделов),
+//          класс из 24 учеников, журнал ДЗ (заглушка PENDING_250
+//          `course_homework_grades`), те же попытки — в таблицах для «По темам».
+const R250 = {
+  course: U('d', 2500), group: U('f', 2500),
+  module: (j) => U('e', 2500 + j),
+  topic: (j, k) => U('1', 25000 + j * 100 + k),
+  hw: (j, k) => U('2', 25000 + j * 100 + k),
+  student: (i) => U('b', 25000 + i), profile: (i) => U('a', 25000 + i),
+}
+// [название, тем, открыто, ДЗ]
+const SECTIONS250 = [
+  ['№1 Планиметрия', 1, 1, 0], ['№2 Векторы', 2, 2, 2], ['№3 Стереометрия', 3, 3, 3], ['№4-5 Теория вероятности', 4, 4, 2],
+  ['№6-7 Уравнения. Преобразование выражений', 7, 7, 4], ['№8 Производная', 2, 2, 2], ['№9 Задачи прикладного характера', 3, 0, 0],
+  ['№10 Текстовые задачи', 5, 2, 2], ['№11 Графики', 4, 2, 2], ['№12 Исследование функций', 3, 0, 0],
+  ['№13', 12, 12, 9], ['№15', 10, 10, 10], ['№16', 12, 5, 5], ['МЕГАДЗ', 16, 7, 7], ['Оформление', 1, 0, 0], ['Проверочные работы', 1, 1, 1],
+]
+const T13_250 = [
+  '№6,7 Тригонометрия с нуля — тригонометрическая окружность', '№6,13 Логарифмические и показательные уравнения',
+  '№7 Тригонометрия — формулы приведения. Практика', '№7 Тотальная практика по тригонометрии',
+  '№6,7 Элементарные тригонометрические уравнения. Прототипы ФИПИ', 'Элементарные уравнения с tg и ctg',
+  '№13 Методы решения. Отбор корней', '№13 Задачи из ЕГЭ 2025, 2024, 2023', 'Прототипы №13 из сборника Ященко, варианты 1–18',
+  'Прототипы №13 из сборника Ященко, варианты 19–36', 'Прототипы №13 из сборника Ященко 2026', 'Все №13, которые будут на ЕГЭ 2026',
+]
+function apply250(fx) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const dayOf = (offset) => { const d = new Date(Date.now() + offset * 864e5); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+  const today = dayOf(0)
+  const C = { ...course2, id: R250.course, title: 'Математика ЕГЭ. 1 часть + джентльменский набор — 11А', subject: 'math', exam_type: 'ege', description: null, owner_id: IDS.owner, is_template: false, copied_from_course_id: null, is_active: true, is_draft: false }
+  const G = { id: R250.group, name: '11А', course_id: R250.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 30, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 60), teachers: teachers[0], curators: null, courses: C }
+  const mods = []; const tps = []; const hws = []; const items = []; const files = []
+  SECTIONS250.forEach(([title, n, open, hwN], j) => {
+    const m = { id: R250.module(j), course_id: R250.course, title, order_index: j + 1, created_at: ago(24 * 60), courses: C, topics: [] }
+    // У №13 ДЗ — с 4-й темы (первые три — теория без ДЗ, как в макете).
+    const hwFrom = j === 10 ? 3 : 0
+    for (let k = 0; k < n; k++) {
+      const isOpen = k < open
+      const t = {
+        id: R250.topic(j, k), module_id: m.id, title: j === 10 ? T13_250[k] : `${title.replace(/^№[\d-]+ ?/, '') || title}: занятие ${k + 1}`,
+        order_index: k + 1, max_score: 100, is_open: null, kind: 'lesson', ege_task_numbers: [], source_template_id: null, created_at: ago(24 * 60),
+        available_from: isOpen ? dayOf(-60 + j * 3) : dayOf(10 + j * 4 + (k - open) * 7),
+      }
+      tps.push({ ...t, modules: { ...m, topics: undefined } })
+      m.topics.push(t)
+      if (isOpen) {
+        items.push(
+          { id: U('6', 250000 + j * 100 + k * 4), topic_id: t.id, kind: 'video', title: 'Видеоурок', content: null, position: 1, is_visible: true, section: 'theory', url: 'https://iframe.mediadelivery.net/embed/726880/00000000-0000-4000-8000-00000000abcd', storage_path: null, file_name: null, mime_type: null, size_bytes: null, lesson_id: null, source_topic_material_id: null, track: 'ege', subtopic_code: null, subtopic_title: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
+          ...[['notes', 'Конспект'], ['tasks', 'Задачи к уроку'], ['task_solution', 'Разбор задач']].map(([section, ttl], q) => ({
+            id: U('6', 250000 + j * 100 + k * 4 + q + 1), topic_id: t.id, kind: 'file', title: ttl, content: null, position: q + 2, is_visible: true, section, url: null,
+            storage_path: `course-materials/250/${t.id}/${section}.pdf`, file_name: `${section}.pdf`, mime_type: 'application/pdf', size_bytes: 420000, lesson_id: null, source_topic_material_id: null, track: 'ege', subtopic_code: null, subtopic_title: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
+          })),
+        )
+      }
+      if (isOpen && k >= hwFrom && k < hwFrom + hwN) {
+        const idx = k - hwFrom
+        // «Методы решения. Отбор корней» — с пятибалльной шкалой и прошедшим
+        // сроком (как в макете: средний 4,1 и «просрочили»); остальные — без шкалы
+        // (на проде 74 из 77 ДЗ без шкалы).
+        const five = j === 10 && k === 6
+        hws.push({
+          id: R250.hw(j, k), topic_id: t.id, title: `ДЗ: ${t.title}`, instructions: 'Решить задачи рабочего листа и сфотографировать решение.',
+          due_at: five ? dayOf(-8) : dayOf(-36 + j * 3 + idx * 4), grade_scale: five ? 'five' : null, is_published: true, opens_at: null, closes_at: null,
+          created_by: IDS.owner, created_at: ago(24 * 50), updated_at: ago(24 * 50), topics: t, topic: t,
+        })
+        files.push({ id: U('4', 25000 + j * 100 + k), homework_id: R250.hw(j, k), storage_path: `250/${t.id}/list.pdf`, original_filename: 'Рабочий лист.pdf', mime_type: 'application/pdf', size_bytes: 300000, position: 1 })
+      }
+    }
+    mods.push(m)
+  })
+
+  const studs = N249.map((name, i) => ({ id: R250.student(i), profile_id: R250.profile(i), grade: 11, target_exam: 'ege', target_subject: 'math', target_score: 80, xp_points: 0, league: 'bronze', is_active: true, notes: null, created_at: ago(24 * 60), name }))
+  const profs = studs.map(s => ({ id: s.profile_id, email: `u250-${s.id.slice(-3)}@harness.invalid`, full_name: s.name, role: 'student', phone: null, avatar_url: null, created_at: ago(24 * 60), updated_at: ago(24) }))
+  const studentRows = studs.map(({ name: _n, ...s }) => ({ ...s, profiles: profs.find(p => p.id === s.profile_id), profile: profs.find(p => p.id === s.profile_id) }))
+  const gs = studentRows.map((s, i) => ({ id: U('f', 25000 + i), group_id: R250.group, student_id: s.id, joined_at: ago(24 * 50), groups: G, students: s }))
+
+  // Клетки: детерминированная раскладка (как в макете), «просроч.» — только у ДЗ с прошедшим сроком.
+  const attempts = []; const cells = []
+  hws.forEach((h, hi) => {
+    const j = Math.floor((parseInt(h.id.slice(-12), 10) - 25000) / 100)
+    studs.forEach((s, i) => {
+      const x = (i * 5 + j * 7 + hi * 3) % 11
+      let v = x < 5 ? 'ok' : x < 6 ? '5' : x < 7 ? '4' : x < 8 ? 'w' : x < 9 ? 'r' : x < 10 ? 'late' : '-'
+      if (h.due_at >= today && v === 'late') v = '-'
+      // «Ждёт» — только у свежих ДЗ (давние уже проверены): иначе очередь в сотню работ.
+      if (v === 'w' && h.due_at < dayOf(-10)) v = 'ok'
+      if (!h.grade_scale && (v === '5' || v === '4')) v = 'ok'
+      if (v === '-' || (v === 'late' && i % 3 !== 0)) return
+      const id = U('3', 2500000 + hi * 100 + i)
+      const status = v === 'late' ? 'draft' : v === 'w' ? 'submitted' : v === 'r' ? 'returned_for_revision' : 'accepted'
+      const score = v === '5' ? 5 : v === '4' ? 4 : (h.grade_scale && status === 'accepted') ? 3 + (i % 3) : null
+      const reviews = status === 'accepted' || status === 'returned_for_revision'
+        ? [{ decision: status === 'accepted' ? 'accepted' : 'returned_for_revision', score, created_at: ago(24) }] : []
+      attempts.push({ id, homework_id: h.id, student_id: s.id, attempt_number: 1, status, submitted_at: status === 'draft' ? null : ago(48), created_at: ago(72), updated_at: ago(24), topic_homework_reviews: reviews })
+      cells.push({ topic_id: h.topic_id, student_id: s.id, status: status === 'accepted' ? 'reviewed' : status === 'returned_for_revision' ? 'returned' : status, score: status === 'accepted' ? score : null, attempt_id: id, attempt_number: 1, submitted_at: status === 'draft' ? null : ago(48) })
+    })
+  })
+
+  fx.tables.courses = [...fx.tables.courses, C]
+  fx.tables.groups = [...fx.tables.groups, G]
+  fx.tables.modules = [...fx.tables.modules, ...mods]
+  fx.tables.topics = [...fx.tables.topics, ...tps]
+  fx.tables.topic_material_items = [...fx.tables.topic_material_items, ...items]
+  fx.tables.topic_homework = [...fx.tables.topic_homework, ...hws]
+  fx.tables.topic_homework_files = [...(fx.tables.topic_homework_files ?? []), ...files]
+  fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts, ...attempts]
+  fx.tables.profiles = [...fx.tables.profiles, ...profs]
+  fx.tables.students = [...fx.tables.students, ...studentRows]
+  fx.tables.group_students = [...fx.tables.group_students, ...gs]
+  // Решения ДЗ у этих тем нет — вкладка «Решение ДЗ» не нужна.
+  const solution = fx.rpc.topic_solution_state
+  fx.rpc.topic_solution_state = (body) => (tps.some(t => t.id === body.p_topic_id)
+    ? { has_solution: false, has_homework: true, unlocked: false }
+    : (typeof solution === 'function' ? solution(body) : solution))
+  fx.rpc.course_homework_grades = (body) => {
+    if (body.p_course_id !== R250.course) return new Error('42501: Нет прав на этот курс')
+    const order = new Map(mods.map(m => [m.id, m.order_index]))
+    return {
+      server_now: new Date().toISOString(), today, is_template: false, group_id: R250.group, group_name: '11А',
+      students: studs.map(s => ({ student_id: s.id, name: s.name })).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+      homeworks: hws.map(h => {
+        const t = tps.find(x => x.id === h.topic_id)
+        return {
+          topic_id: t.id, homework_id: h.id, module_id: t.module_id, module_title: mods.find(m => m.id === t.module_id).title,
+          module_order: order.get(t.module_id), topic_title: t.title, topic_order: t.order_index, hw_title: h.title,
+          due_at: h.due_at, grade_scale: h.grade_scale, topic_open: true,
+        }
+      }),
       cells,
     }
   }

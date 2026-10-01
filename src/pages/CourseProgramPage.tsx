@@ -31,7 +31,8 @@ import { useCourseHomeworkTemplates } from '@/hooks/useCourseHomeworkTemplates'
 import { TopicMaterialsModal } from '@/components/modals/TopicMaterialsModal'
 import { CourseAssessmentsTab } from '@/components/courseProgram/CourseAssessmentsTab'
 import { CourseStatsSection } from '@/components/courseProgram/CourseStatsSection'
-import { CourseTopicHomeworkSection } from '@/components/courseProgram/CourseTopicHomeworkSection'
+import { CourseHomeworkTab } from '@/components/courseProgram/CourseHomeworkTab'
+import { CourseKursTab } from '@/components/courseProgram/CourseKursTab'
 import { CourseStudentsSection } from '@/components/courseProgram/CourseStudentsSection'
 import { AddLessonTemplateToCourseModal } from '@/components/modals/AddLessonTemplateToCourseModal'
 import { CopyCourseDialog } from '@/components/modals/CopyCourseDialog'
@@ -1357,11 +1358,26 @@ function MaterialsMatrix({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-/** Вкладки курса. Значение живёт в адресе, поэтому список нужен и для разбора. */
-const COURSE_TABS = ['program', 'materials', 'homework', 'assessments', 'students', 'settings'] as const
+/**
+ * Вкладки курса. Значение живёт в адресе, поэтому список нужен и для разбора.
+ *
+ * §250: первая — «Курс» (`course`, по умолчанию: адрес без `?tab=`), курс так,
+ * как его видит ученик. «Программа курса» переименована в «Сроки и статистика»
+ * — только подпись, ключ `program` прежний: старые ссылки `?tab=program`
+ * открывают её же.
+ */
+const COURSE_TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'students', 'settings'] as const
 type CourseTab = typeof COURSE_TABS[number]
-/** Вкладки про учеников — на каркасе курса их нет (§174). */
-const STUDENT_TABS = ['homework', 'students'] as const satisfies readonly CourseTab[]
+/** Вкладка по умолчанию — та, у которой в адресе нет `?tab=`. */
+const DEFAULT_TAB: CourseTab = 'course'
+/**
+ * Вкладки про учеников — на каркасе курса их нет (§174). §250: «Курс» тоже —
+ * курс глазами ученика строится по классу (группе), а у каркаса класса нет;
+ * каркас открывается на «Сроках и статистике», как раньше на «Программе».
+ */
+const STUDENT_TABS = ['course', 'homework', 'students'] as const satisfies readonly CourseTab[]
+/** Параметры адреса вкладки «Курс»: открытый раздел и тема (§250). */
+const KURS_PARAMS = ['module', 'topic'] as const
 /**
  * §249. Старые ключи вкладок → новые. «Результаты тестов» (§174) убраны из
  * списка: по факту там был пустой блок «Задачи к уроку». Ссылки и закладки с
@@ -1369,10 +1385,10 @@ const STUDENT_TABS = ['homework', 'students'] as const satisfies readonly Course
  * (`CourseTestResultsSection`) не удалён — просто нигде не показывается.
  */
 const LEGACY_TABS: Record<string, CourseTab> = { testresults: 'assessments' }
-/** Разбор `?tab=`: неизвестное — «Программа курса», старое — по `LEGACY_TABS`. */
+/** Разбор `?tab=`: нет или неизвестное — «Курс» (§250), старое — по `LEGACY_TABS`. */
 function parseCourseTab(raw: string | null): CourseTab {
   if (raw && raw in LEGACY_TABS) return LEGACY_TABS[raw]
-  return (COURSE_TABS as readonly string[]).includes(raw ?? '') ? raw as CourseTab : 'program'
+  return (COURSE_TABS as readonly string[]).includes(raw ?? '') ? raw as CourseTab : DEFAULT_TAB
 }
 
 export function CourseProgramPage() {
@@ -1411,7 +1427,10 @@ export function CourseProgramPage() {
       const next = new URLSearchParams(prev)
       if (id) next.set('courseId', id)
       else next.delete('courseId')
-      next.delete('tab')   // новый курс всегда открываем на «Программе курса»
+      // Новый курс всегда открываем на вкладке по умолчанию («Курс», §250;
+      // у каркаса — «Сроки и статистика»), с начала.
+      next.delete('tab')
+      for (const k of KURS_PARAMS) next.delete(k)
       return next
     })
   }, [setSearchParams])
@@ -1424,10 +1443,31 @@ export function CourseProgramPage() {
   const setTab = useCallback((t: CourseTab) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
-      if (t === 'program') next.delete('tab')
+      if (t === DEFAULT_TAB) next.delete('tab')
       else next.set('tab', t)
+      // Раздел и тема «Курса» — только внутри «Курса»; вкладка открывается с начала.
+      for (const k of KURS_PARAMS) next.delete(k)
       return next
     }, { replace: true })
+  }, [setSearchParams])
+  /**
+   * §250. Переход внутри «Курса»: разделы → раздел → тема. В адрес и С
+   * записью в историю (не replace): «назад» браузера возвращает на уровень
+   * выше, как у ученика.
+   */
+  const kursModuleId = searchParams.get('module')
+  const kursTopicId = searchParams.get('topic')
+  const navigateKurs = useCallback((moduleId: string | null, topicId: string | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('tab')
+      if (moduleId) next.set('module', moduleId)
+      else next.delete('module')
+      if (topicId) next.set('topic', topicId)
+      else next.delete('topic')
+      return next
+    })
+    window.scrollTo?.({ top: 0 })
   }, [setSearchParams])
   const [addingMod,   setAddingMod]   = useState(false)
   const [showNew,     setShowNew]     = useState(false)
@@ -1637,7 +1677,8 @@ export function CourseProgramPage() {
    * Каркас без ученических вкладок (§174): ученики, ДЗ и результаты живут в
    * классах-копиях, и «В курсе пока нет учеников» на каркасе — правда, которая
    * только сбивает. `COURSE_TABS` не трогаем: адрес `?tab=students` на каркасе
-   * просто открывает «Программу курса», а не ломается.
+   * просто открывает «Программу курса» (с §250 — «Сроки и статистика»), а не
+   * ломается; так же и адрес без вкладки («Курс» по умолчанию).
    */
   const isTemplate = !!selectedCourse?.is_template
   const tab: CourseTab = isTemplate && (STUDENT_TABS as readonly string[]).includes(urlTab) ? 'program' : urlTab
@@ -2128,7 +2169,10 @@ export function CourseProgramPage() {
                 воспринимаются как переключение, а не как обход кнопок. */}
             <div ref={tabListRef} role="tablist" aria-label="Разделы курса" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
               {[
-                { key: 'program',   label: 'Программа курса' },
+                // §250: «Курс» — первой (курс глазами ученика), кроме каркаса.
+                ...(isTemplate ? [] : [{ key: 'course', label: 'Курс' }]),
+                // §250: бывшая «Программа курса» — только новая подпись.
+                { key: 'program',   label: 'Сроки и статистика' },
                 { key: 'materials', label: 'Материалы' },
                 ...(isTemplate ? [] : [{ key: 'homework',  label: 'Домашние задания' }]),
                 // §249: вместо «Результатов тестов». На каркасе тоже есть —
@@ -2154,7 +2198,22 @@ export function CourseProgramPage() {
               ))}
             </div>
 
-            {/* Program tab */}
+            {/* §250. «Курс»: разделы → раздел → тема глазами ученика + цифры класса. */}
+            {tab === 'course' && (
+              <CourseKursTab
+                courseId={selectedCourse.id}
+                groupId={selectedGroupId}
+                canEdit={canEdit}
+                refreshKey={matRefreshKey}
+                moduleId={kursModuleId}
+                topicId={kursTopicId}
+                onNavigate={navigateKurs}
+                onEditTopic={openAssessmentTopic}
+                onOpenTopicEarly={id => handleToggleTopicOpen(id, true)}
+              />
+            )}
+
+            {/* «Сроки и статистика» (до §250 — «Программа курса»). */}
             {tab === 'program' && (
               <div className="space-y-4">
 
@@ -2314,8 +2373,16 @@ export function CourseProgramPage() {
             )}
 
             {/* Homework tab */}
+            {/* §250: журнал по разделам (основной вид) и прежний список «По темам». */}
             {tab === 'homework' && (
-              <CourseTopicHomeworkSection courseId={selectedCourse.id} modules={modules} refreshKey={matRefreshKey} onToggleTopicOpen={handleToggleTopicOpen} focusTopicId={hwFocusTopicId} />
+              <CourseHomeworkTab
+                courseId={selectedCourse.id}
+                modules={modules}
+                refreshKey={matRefreshKey}
+                onToggleTopicOpen={handleToggleTopicOpen}
+                focusTopicId={hwFocusTopicId}
+                groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+              />
             )}
 
             {/* §249. «Проверочные и контрольные»: работы, журнал оценок, пробники. */}

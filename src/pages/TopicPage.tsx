@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Check, ChevronRight, Circle, Clock, ExternalLink, GraduationCap,
@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { usePreviewMode } from '@/store/staffModeStore'
+import { PREVIEW_NOOP_MESSAGE, useInStudentViewScope, usePreviewMode } from '@/store/staffModeStore'
 import { isTopicOpen } from '@/lib/topicAvailability'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
@@ -78,14 +78,33 @@ function getVimeoEmbed(url: string): string | null {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function TopicPage() {
-  const { groupId, topicId } = useParams<{ groupId: string; topicId: string }>()
+/**
+ * §250. Встраивание в страницу персонала (вкладка курса «Курс»): группа и тема
+ * приходят пропсами, а не из адреса; своя шапка ученика («Назад», «Мои курсы ›
+ * курс › раздел») не рисуется — хлебные крошки у вкладки свои, — а под
+ * названием темы встаёт полоса учителя `staffBar`. Режим «как ученик» задаёт
+ * `<StudentViewScope>` снаружи (`usePreviewMode()` = true), второй ветки здесь
+ * нет. На маршруте ученика пропсов нет — страница та же, что была.
+ */
+export interface TopicPageProps {
+  groupId?: string
+  topicId?: string
+  staffBar?: ReactNode
+}
+
+export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar }: TopicPageProps = {}) {
+  const params = useParams<{ groupId: string; topicId: string }>()
+  const groupId = groupIdProp ?? params.groupId
+  const topicId = topicIdProp ?? params.topicId
+  const embedded = staffBar !== undefined
   const profile  = useAuthStore(s => s.profile)
   const navigate = useNavigate()
   // Предпросмотр глазами ученика (§178): строки `students` у владельца нет,
   // тему берём под RLS персонала; личные хуки ниже в этом режиме отдают
   // пустое состояние и ничего не пишут.
   const preview  = usePreviewMode()
+  // §250: учитель на своей странице («Курс») — самоотметку не трогает вовсе.
+  const staffView = useInStudentViewScope()
   // В предпросмотре обход закрытой темы не действует: ученик закрытую тему
   // не видит — и владелец в его роли не должен.
   const canBypassAvailability = !preview && !!profile?.role && ['teacher', 'curator', 'admin', 'owner'].includes(profile.role)
@@ -167,7 +186,10 @@ export function TopicPage() {
             .eq('id', topicId!).single(),
           supabase.from('groups')
             .select('id, name').eq('id', groupId!).single(),
-          supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
+          // §250. В предпросмотре черновик ДЗ не считается: ученику он не виден.
+          preview
+            ? supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!).eq('is_published', true)
+            : supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
           supabase.from('topic_test_assignments').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
         ])
         if (cancelled) return
@@ -250,6 +272,7 @@ export function TopicPage() {
   if (isLocked) return (
     <div className="max-w-2xl mx-auto space-y-4">
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} className="text-left" />}
+      {staffBar}
       <div className="mt-12 text-center space-y-4">
       <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
         <Lock size={28} className="text-gray-400" />
@@ -383,7 +406,8 @@ export function TopicPage() {
         type="button"
         data-testid={`topic-group-mark-${groupKey}`}
         aria-pressed={marked}
-        disabled={sectionMarks.loading}
+        disabled={sectionMarks.loading || staffView}
+        title={staffView ? PREVIEW_NOOP_MESSAGE : undefined}
         onClick={async () => {
           setMarkError(null)
           try {
@@ -506,17 +530,21 @@ export function TopicPage() {
 
       {/* ── Header ── */}
       <div>
-        <button onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-3">
-          <ArrowLeft size={15} />Назад
-        </button>
-        <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2 flex-wrap">
-          <Link to="/my-course" className="hover:text-gray-700 transition-colors">Мои курсы</Link>
-          <ChevronRight size={11} />
-          <Link to={`/my-course/${groupId}`} className="hover:text-gray-700 transition-colors">{topic.course_title}</Link>
-          <ChevronRight size={11} />
-          <span className="text-primary-600 font-medium">{topic.module_title}</span>
-        </div>
+        {!embedded && (
+          <>
+            <button onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-3">
+              <ArrowLeft size={15} />Назад
+            </button>
+            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2 flex-wrap">
+              <Link to="/my-course" className="hover:text-gray-700 transition-colors">Мои курсы</Link>
+              <ChevronRight size={11} />
+              <Link to={`/my-course/${groupId}`} className="hover:text-gray-700 transition-colors">{topic.course_title}</Link>
+              <ChevronRight size={11} />
+              <span className="text-primary-600 font-medium">{topic.module_title}</span>
+            </div>
+          </>
+        )}
         {/* §240. Метка типа: «⏱ Контрольная работа» над названием, как в макете. */}
         {timed && (
           <span data-testid="topic-kind-badge" className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-primary-900 px-2.5 py-1 text-xs font-extrabold text-white">
@@ -532,6 +560,9 @@ export function TopicPage() {
           <span className="min-w-0 flex-1">{topic.group_name}</span>
         </div>
       </div>
+
+      {/* §250. Полоса учителя — только во встроенном виде («Курс» у персонала). */}
+      {staffBar}
 
       {/* ── Tab panel ──
           Вкладки переносятся, а не скроллятся (§116), и сгруппированы по

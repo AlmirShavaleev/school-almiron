@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { useEffect } from 'react'
+import { createContext, createElement, useContext, useEffect, type ReactNode } from 'react'
 import type { UserRole } from '@/types'
 import { useAuthStore } from '@/store/authStore'
 
@@ -366,9 +366,42 @@ export function useEffectiveRole(): UserRole | null {
  * `record_material_view`) в этом режиме не уходит — это условие приёмки §178.
  */
 export function usePreviewMode(): boolean {
+  const scoped  = useContext(StudentViewScopeContext)
   const profile = useAuthStore(s => s.profile)
   const mode    = useModeForProfile(profile?.id)
-  return isPreviewMode(profile?.role, mode)
+  return scoped || isPreviewMode(profile?.role, mode)
+}
+
+/**
+ * §250. «Учитель смотрит как ученик» внутри страницы персонала — вкладка
+ * курса «Курс»: разделы, темы и страница темы ученика показываются на месте,
+ * без переключения режима в шапке (у обычного учителя переключателя нет
+ * вовсе — он только у admin/owner).
+ *
+ * Это ТО ЖЕ представление, что предпросмотр §178, только включённое для
+ * поддерева: всё, что ниже `<StudentViewScope>`, получает от
+ * `usePreviewMode()` true. Значит, ученические хуки читают staff-источник,
+ * личное показывают пустым, каждая мутация — noop с тостом, кнопки «Сдать»
+ * и т. п. выключены — ровно как в предпросмотре, второй ветки нет.
+ *
+ * ⚠️ Как и режим, это не права: доступ к данным решает RLS по настоящей
+ * роли. Вне поддерева (шапка, сторожа маршрутов, остальные страницы) ничего
+ * не меняется — у настоящего ученика провайдера нет нигде.
+ */
+const StudentViewScopeContext = createContext(false)
+
+export function StudentViewScope({ children }: { children: ReactNode }) {
+  return createElement(StudentViewScopeContext.Provider, { value: true }, children)
+}
+
+/**
+ * Внутри ли `<StudentViewScope>` (учитель смотрит тему на своей странице), а не
+ * в предпросмотре владельца. Нужно ровно там, где предпросмотр §178 нарочно
+ * оставляет кнопку живой «в памяти» (самоотметка рубрики): у учителя на его
+ * странице такая кнопка выключена — отмечать за ученика нечего.
+ */
+export function useInStudentViewScope(): boolean {
+  return useContext(StudentViewScopeContext)
 }
 
 /**

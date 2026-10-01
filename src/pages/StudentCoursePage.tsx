@@ -420,7 +420,7 @@ const OTHER_SECTIONS: readonly TopicSection[] = [
 /** Нейтральный сигнал: состояние есть, но радоваться нечему. */
 const SIGNAL_NEUTRAL = 'bg-gray-100 text-gray-600'
 
-interface Signal { label: string; cls: string; icon: React.ReactNode }
+export interface Signal { label: string; cls: string; icon: React.ReactNode }
 
 /**
  * Состояние ДЗ словами. Палитра — из LIST_STATE той же страницы: вторая на
@@ -476,11 +476,18 @@ function SignalPill({ signal }: { signal: Signal }) {
   )
 }
 
-/** Одна строка сигналов — и в списке, и в карточке. Второго набора нет. */
-function TopicSignals({ topic }: { topic: TopicProgress }) {
+/**
+ * Одна строка сигналов — и в списке, и в карточке. Второго набора нет.
+ *
+ * §250. Её же рисует вкладка «Курс» у учителя (тема глазами ученика). Там
+ * сигнал ДЗ — не «моё состояние» (у учителя своей работы нет, в предпросмотре
+ * он всегда «не сдано»), а срок задания: его передают `homework`. Без пропа —
+ * как было у ученика.
+ */
+export function TopicSignals({ topic, homework }: { topic: TopicProgress; homework?: Signal | null }) {
   const hasVideo = topic.sections.has('video')
   const tasks    = tasksSignal(topic)
-  const hw       = homeworkSignal(topic)
+  const hw       = homework !== undefined ? homework : homeworkSignal(topic)
   const rest     = OTHER_SECTIONS.filter(s => topic.sections.has(s)).length
 
   if (!hasVideo && !tasks && !hw && rest === 0) return null

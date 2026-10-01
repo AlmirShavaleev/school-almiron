@@ -93,6 +93,8 @@ async function openCourseInEditMode() {
   renderPage()
   // Карточка курса теперь ссылка, а не кнопка (см. CourseCard).
   fireEvent.click(screen.getByRole('link', { name: /Физика/i }))
+  // §250: по умолчанию курс открывается на «Курсе»; программа — во вкладке «Сроки и статистика».
+  fireEvent.click(screen.getByRole('tab', { name: 'Сроки и статистика' }))
   await waitFor(() => expect(loadModulesSpy).toHaveBeenCalledWith('course-1'))
   await waitFor(() => expect(screen.getByText('Модуль 1')).toBeInTheDocument())
   fireEvent.click(screen.getByRole('button', { name: /Редактировать программу/i }))

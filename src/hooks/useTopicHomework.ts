@@ -81,7 +81,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
     setError(null)
 
     async function load() {
-      const { data: hw, error: hwErr } = await supabase
+      const { data: hwRow, error: hwErr } = await supabase
         .from('topic_homework')
         .select('*')
         .eq('topic_id', topicId!)
@@ -89,6 +89,11 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
 
       if (cancelled) return
       if (hwErr) { setError(hwErr.message); setLoading(false); return }
+      // §250. Предпросмотр «как ученик»: черновик ДЗ ученику не виден (его
+      // прячет RLS ученика), а персоналу RLS его отдаёт — без этой строки
+      // учитель видел бы задание, которого у учеников нет. У ученика ничего не
+      // меняется: неопубликованное к нему и так не приходит.
+      const hw = preview && (hwRow as { is_published?: boolean } | null)?.is_published === false ? null : hwRow
 
       applyHomework((hw as TopicHomeworkRow) ?? null)
       if (!hw) {

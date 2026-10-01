@@ -282,10 +282,14 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
             .in('topic_id', topicIds))
             .range(from, to)),
         (async () => {
-          const { data, error } = await supabase
+          // §250. В предпросмотре — только опубликованные: ученику черновик
+          // ДЗ не виден (RLS), а персоналу отдаётся. У ученика фильтр ничего
+          // не меняет — неопубликованное к нему и так не приходит.
+          const base = supabase
             .from('topic_homework')
             .select('id, topic_id, title, instructions, due_at, grade_scale')
             .in('topic_id', topicIds)
+          const { data, error } = await (preview ? base.eq('is_published', true) : base)
           if (error) throw new Error(error.message ?? 'Не удалось загрузить домашние задания')
           return (data || []) as unknown as {
             id: string; topic_id: string; title: string; instructions: string | null
