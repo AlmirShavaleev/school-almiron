@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, ClipboardList, Eye, Loader2, Lock } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -7,7 +7,7 @@ import { toast } from '@/store/toastStore'
 import { useStudentCourseProgram, type ModuleProgress, type TopicProgress } from '@/hooks/useStudentCourseProgram'
 import { useCourseHomeworkGrades } from '@/hooks/useCourseHomeworkGrades'
 import { TopicSignals, type Signal } from '@/pages/StudentCoursePage'
-import { TopicPage } from '@/pages/TopicPage'
+import { lazyPage } from '@/lib/lazyPage'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { isTopicOpen, topicClosedLabel, willOpenByDate } from '@/lib/topicAvailability'
 import { formatAvg } from '@/lib/courseGrades'
@@ -17,6 +17,15 @@ import {
   type CourseHomeworkGrades, type ModuleClassStats, type TopicClassStats,
 } from '@/lib/courseHomeworkJournal'
 import { plural } from '@/lib/plural'
+
+/**
+ * §253. Страница темы ученика — лениво: она нужна только когда учитель открыл
+ * тему, а статически тянула в чанк «Курса» (вкладка по умолчанию) весь граф
+ * темы — каталог задач, рендер условий, сдачу ДЗ (~120 КБ gzip). Через
+ * `lazyPage` — тот же чанк, что у маршрута ученика, и та же защита от
+ * «старого хеша» после деплоя.
+ */
+const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
 
 /**
  * §250. Вкладка курса «Курс» у учителя (макет владельца 01.10): курс так, как
@@ -106,11 +115,7 @@ function KursInner({ courseId, groupId, canEdit, refreshKey = 0, moduleId, topic
   }
 
   if (program.loading && program.modules.length === 0) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-10 text-sm text-graphite-500" data-testid="kurs-loading">
-        <Loader2 size={18} className="animate-spin" aria-hidden />Загрузка курса…
-      </div>
-    )
+    return <KursLoading label="Загрузка курса…" />
   }
   if (program.error) {
     return (
@@ -136,12 +141,14 @@ function KursInner({ courseId, groupId, canEdit, refreshKey = 0, moduleId, topic
           ...(mod ? [{ label: mod.title, onClick: () => onNavigate(mod.id, null) }] : []),
           { label: topicEntry ? `Тема ${topicEntry.index + 1}` : 'Тема' },
         ]} />
-        <TopicPage
-          key={`${topicId}:${refreshKey}`}
-          groupId={groupId}
-          topicId={topicId}
-          staffBar={<TeacherBar stats={s} topicId={topicId} canEdit={canEdit} onEdit={() => onEditTopic(topicId)} />}
-        />
+        <Suspense fallback={<KursLoading label="Загрузка темы…" />}>
+          <TopicPage
+            key={`${topicId}:${refreshKey}`}
+            groupId={groupId}
+            topicId={topicId}
+            staffBar={<TeacherBar stats={s} topicId={topicId} canEdit={canEdit} onEdit={() => onEditTopic(topicId)} />}
+          />
+        </Suspense>
       </div>
     )
   }
@@ -187,6 +194,15 @@ function KursInner({ courseId, groupId, canEdit, refreshKey = 0, moduleId, topic
       stats={stats}
       onOpen={id => onNavigate(id, null)}
     />
+  )
+}
+
+/** Индикатор вкладки: курс грузится — «Загрузка курса…», страница темы — «Загрузка темы…». */
+function KursLoading({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-10 text-sm text-graphite-500" data-testid="kurs-loading">
+      <Loader2 size={18} className="animate-spin" aria-hidden />{label}
+    </div>
   )
 }
 

@@ -196,7 +196,8 @@ describe('«Курс»: разделы → раздел → тема (§250)', (
 
     fireEvent.click(screen.getByRole('button', { name: 'Открыть тему Методы решения' }))
     await waitFor(() => expect(where()).toContain('topic=t1'))
-    const page = screen.getByTestId('student-topic-page')
+    // §253: страница темы во вкладке грузится лениво (React.lazy) — ждём её.
+    const page = await screen.findByTestId('student-topic-page')
     expect(page).toHaveAttribute('data-group', 'g1')
     expect(page).toHaveAttribute('data-topic', 't1')
     expect(page).toHaveAttribute('data-preview', 'true')
