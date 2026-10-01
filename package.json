@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "import-course": "node scripts/import-lessons.mjs",
-    "import-videos": "node scripts/import-bunny-videos.mjs"
+    "import-videos": "node scripts/import-bunny-videos.mjs",
+    "build:physics-data": "node scripts/build-physics-catalog-data.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
