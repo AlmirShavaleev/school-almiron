@@ -252,3 +252,53 @@ describe('замер §247: прогон', () => {
     expect(state.fetches[0].body).toMatchObject({ max_tokens: 24000 })
   })
 })
+
+describe('01.10: перепроверка очереди сервером (queue_recheck)', () => {
+  const QUEUE = { queue_recheck: true, attempt_id: ATTEMPT_ID }
+
+  it('без секрета — 401: ни заявки, ни модели, ни записей', async () => {
+    const res = await handler(post(QUEUE))
+    expect(res.status).toBe(401)
+    expect(state.db.filter(c => c.kind === 'rpc')).toHaveLength(0)
+    expect(writes()).toHaveLength(0)
+    expect(state.fetches).toHaveLength(0)
+  })
+
+  it('с секретом: заявка сервисным ключом без пользователя, боевая проверка, модель из тела', async () => {
+    state.tables['topic_homework_ai_jobs#inserted'] = { id: 'job-q' }
+    state.env.AI_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
+    const res = await handler(post({ ...QUEUE, model: 'google/gemini-3.8-flash' }, SECRET))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ job_id: 'job-q', findings: 1 })
+    expect(state.db.filter(c => c.kind === 'rpc')).toHaveLength(0)
+    const jobs = touched('topic_homework_ai_jobs')
+    const insert = jobs.find(c => firstOp(c) === 'insert')!
+    expect(insert.client).toBe('service')
+    expect(insert.ops[0][1]).toEqual({ attempt_id: ATTEMPT_ID, requested_by: null })
+    const done = jobs.filter(c => firstOp(c) === 'update').map(c => c.ops[0][1] as Record<string, unknown>)
+    expect(done.map(d => d.status)).toEqual(['processing', 'done'])
+    expect(done[1]).toMatchObject({ model: 'google/gemini-3.8-flash' })
+    expect(state.fetches[0].body).toMatchObject({ model: 'google/gemini-3.8-flash', max_tokens: 16000 })
+    expect(touched('topic_homework_ai_findings')).toHaveLength(1)
+    expect(touched('ai_benchmark_results')).toHaveLength(0)
+  })
+
+  it('без модели в теле — боевая; модель не из списка — 400 без записей', async () => {
+    state.tables['topic_homework_ai_jobs#inserted'] = { id: 'job-q' }
+    await handler(post(QUEUE, SECRET))
+    expect(state.fetches[0].body).toMatchObject({ model: 'google/gemini-3.8-flash' })
+    resetHarness({ env: { ...ENV }, rpc: { data: 'job-1', error: null }, tables: workTables(), model: { status: 200, body: modelAnswer() } })
+    const res = await handler(post({ ...QUEUE, model: 'openai/gpt-9' }, SECRET))
+    expect(res.status).toBe(400)
+    expect(writes()).toHaveLength(0)
+  })
+
+  it('активная задача уже есть — 409, новую не создаём', async () => {
+    state.tables.topic_homework_ai_jobs = [{ id: 'job-active' }]
+    const res = await handler(post(QUEUE, SECRET))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ skipped: 'active_job', job_id: 'job-active' })
+    expect(writes()).toHaveLength(0)
+    expect(state.fetches).toHaveLength(0)
+  })
+})

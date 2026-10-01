@@ -69,6 +69,7 @@ import {
   chatRequestBody,
   checkCronSecret,
   describeBenchmarkError,
+  isBenchmarkModel,
   isBenchmarkRequest,
   parseBenchmarkRequest,
   type BenchmarkOutcome,
@@ -187,15 +188,27 @@ Deno.serve(async (req) => {
     const attemptId = String(body?.attempt_id ?? '').trim()
     if (!attemptId) return fail(400, 'Не передан идентификатор работы')
 
-    // Шаг 1. Права и заявка — одним вызовом, от имени преподавателя.
-    const asUser = createClient(url, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const { data: newJobId, error: rpcError } = await asUser.rpc('topic_homework_ai_request_check', {
-      p_attempt_id: attemptId,
-    })
-    if (rpcError) return fail(403, rpcError.message)
-    jobId = String(newJobId)
+    // 01.10. Перепроверка очереди по просьбе владельца (новая модель): та же
+    // боевая проверка, но заявку создаёт сервер — пользователя нет, пускает
+    // только секрет CRON_SECRET. Модель — из тела (по белому списку замера)
+    // или боевая. Результат — обычная задача в ai_jobs, черновик для учителя.
+    let modelOverride: string | null = null
+    if (isQueueRecheckRequest(body)) {
+      const queued = await createQueueRecheckJob(req, body, admin, attemptId)
+      if (queued instanceof Response) return queued
+      jobId = queued.jobId
+      modelOverride = queued.model
+    } else {
+      // Шаг 1. Права и заявка — одним вызовом, от имени преподавателя.
+      const asUser = createClient(url, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { data: newJobId, error: rpcError } = await asUser.rpc('topic_homework_ai_request_check', {
+        p_attempt_id: attemptId,
+      })
+      if (rpcError) return fail(403, rpcError.message)
+      jobId = String(newJobId)
+    }
 
     await admin.from('topic_homework_ai_jobs')
       .update({ status: 'processing', started_at: new Date().toISOString() })
@@ -205,7 +218,7 @@ Deno.serve(async (req) => {
     // панели, а не молчаливый отказ на кнопке.
     const apiKey = Deno.env.get('AI_API_KEY') ?? Deno.env.get('OPENROUTER_API_KEY')
     if (!apiKey) throw new Error('Переменная AI_API_KEY не настроена в проекте')
-    const model = Deno.env.get('AI_MODEL') || DEFAULT_MODEL
+    const model = modelOverride ?? (Deno.env.get('AI_MODEL') || DEFAULT_MODEL)
     const baseUrl = (Deno.env.get('AI_BASE_URL') || DEFAULT_BASE_URL).replace(/\/+$/, '')
 
     // Шаги 2–5 — общие с замером §247 (`runCheck`): эталон, условие,
@@ -602,6 +615,49 @@ async function runCheck(
  * должен оставлять след, а не 500 без следа. Повтор с тем же
  * (run_id, attempt_id, model) перезаписывает строку.
  */
+/** Перепроверка очереди сервером: `{ queue_recheck: true, attempt_id, model? }` + X-Cron-Secret. */
+function isQueueRecheckRequest(body: unknown): boolean {
+  return !!body && typeof body === 'object' && (body as Record<string, unknown>).queue_recheck === true
+}
+
+/**
+ * Заявка перепроверки без пользователя. Повторяет проверки
+ * `topic_homework_ai_request_check` (работа есть и сдана, активную задачу не
+ * плодим), кроме прав учителя — их заменяет секрет. `requested_by` пустой:
+ * просил сервер, а не человек.
+ */
+async function createQueueRecheckJob(
+  req: Request,
+  body: unknown,
+  admin: ReturnType<typeof createClient>,
+  attemptId: string,
+): Promise<Response | { jobId: string; model: string | null }> {
+  if (!checkCronSecret(req.headers.get('X-Cron-Secret'), Deno.env.get('CRON_SECRET'))) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
+  const currentModel = Deno.env.get('AI_MODEL') || DEFAULT_MODEL
+  const rawModel = (body as Record<string, unknown>).model
+  const model = typeof rawModel === 'string' && rawModel.trim() ? rawModel.trim() : null
+  if (model && !isBenchmarkModel(model, currentModel)) {
+    return json({ error: `Модель не из белого списка: ${model}` }, 400)
+  }
+  const { data: attempt, error: attemptError } = await admin
+    .from('topic_homework_attempts').select('id, status').eq('id', attemptId).maybeSingle()
+  if (attemptError) return json({ error: attemptError.message }, 500)
+  if (!attempt) return json({ error: 'Работа не найдена' }, 404)
+  if ((attempt as { status: string }).status === 'draft') return json({ error: 'Работа ещё не сдана' }, 409)
+  const { data: active } = await admin
+    .from('topic_homework_ai_jobs').select('id').eq('attempt_id', attemptId)
+    .in('status', ['pending', 'processing']).limit(1)
+  if (active && active.length > 0) {
+    return json({ skipped: 'active_job', job_id: (active[0] as { id: string }).id }, 409)
+  }
+  const { data: inserted, error: insertError } = await admin
+    .from('topic_homework_ai_jobs').insert({ attempt_id: attemptId, requested_by: null }).select('id').single()
+  if (insertError || !inserted) return json({ error: insertError?.message ?? 'Заявка не создалась' }, 500)
+  return { jobId: String((inserted as { id: string }).id), model }
+}
+
 async function handleBenchmark(
   req: Request,
   body: unknown,

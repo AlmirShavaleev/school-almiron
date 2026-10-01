@@ -67,7 +67,9 @@ type Result = { data: unknown; error: { message: string } | null }
 function resultOf(call: DbCall): Result {
   const first = call.ops[0]?.[0]
   if (first === 'insert' || first === 'update' || first === 'upsert' || first === 'delete') {
-    return { data: null, error: state.writeErrors[call.target] ?? null }
+    // insert(...).select().single() — вставленная строка из tables['<таблица>#inserted'].
+    const returning = call.ops.some(op => op[0] === 'single') ? (state.tables[`${call.target}#inserted`] ?? null) : null
+    return { data: returning, error: state.writeErrors[call.target] ?? null }
   }
   const data = state.tables[call.target]
   const one = call.ops.some(op => op[0] === 'single' || op[0] === 'maybeSingle')
@@ -75,7 +77,7 @@ function resultOf(call: DbCall): Result {
   return { data: data ?? [], error: null }
 }
 
-const CHAIN_OPS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'order', 'single', 'maybeSingle'] as const
+const CHAIN_OPS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'limit', 'order', 'single', 'maybeSingle'] as const
 
 function queryBuilder(call: DbCall): Record<string, unknown> {
   const builder: Record<string, unknown> = {}
