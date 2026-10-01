@@ -4,7 +4,7 @@
 # Слепок и миграции — ровно цепочка §241 (../razdel_241/run.sh: слепок §221 + 05_slice_240 + НАСТОЯЩИЕ
 # файлы миграций ДЗ темы … §240, таблица проверки §199, слепок пробников 05_mock_slice_241), данные §241,
 # применённая миграция §241 (20260929062903_course_assessments_section.sql), данные §249 (пересдачи и
-# возвраты), PENDING_249.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
+# возвраты), 20261001074629_course_assessment_grades.sql ДВАЖДЫ (одной транзакцией, как apply_migration) и пробы.
 # Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_249:-/var/tmp/pg249}; PT=${PGPORT_249:-5649}
@@ -39,5 +39,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S241/10_data_241.sql \
  && $Q -1 -f $R/20260929062903_course_assessments_section.sql && echo "§241 (applied on prod) : ok" \
  && $Q -f $S/15_data_249.sql && echo "data §249: ok" \
- && $Q -1 -f $R/PENDING_249.sql && $Q -1 -f $R/PENDING_249.sql && echo "PENDING_249 applied twice: ok" \
+ && $Q -1 -f $R/20261001074629_course_assessment_grades.sql && $Q -1 -f $R/20261001074629_course_assessment_grades.sql && echo "PENDING_249 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe249 -f $S/20_probes.sql
