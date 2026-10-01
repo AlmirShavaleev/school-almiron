@@ -143,6 +143,30 @@ describe('во время', () => {
     // Подсказка есть и до ошибки — прямо над загрузкой.
     expect(screen.getByTestId('mock-lesson-photos')).toHaveTextContent('не ProRAW')
   })
+
+  it('кнопка камеры: на сенсорном экране (iPad, телефон боком) видна при любой ширине, без пальца — только на узком', async () => {
+    const original = window.matchMedia
+    const stub = (coarse: boolean) => ((q: string) => ({
+      matches: coarse && q.includes('coarse'), media: q, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia
+    try {
+      window.matchMedia = stub(true)
+      const touch = mount()
+      await waitFor(() => expect(screen.getByTestId('mock-lesson-camera').className).not.toContain('sm:hidden'))
+      const cam = screen.getByTestId('mock-lesson-camera')
+      const input = cam.querySelector('input[type="file"]')!
+      expect(input.getAttribute('capture')).toBe('environment')
+      expect(input.getAttribute('accept')).toBe('image/*')
+      touch.unmount()
+
+      window.matchMedia = stub(false)
+      mount()
+      expect((await screen.findByTestId('mock-lesson-camera')).className).toContain('sm:hidden')
+    } finally {
+      window.matchMedia = original
+    }
+  })
 })
 
 describe('после сдачи', () => {

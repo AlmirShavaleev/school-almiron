@@ -17,6 +17,7 @@ import {
 import { cn } from '@/utils/cn'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
+import { useCoarsePointer } from '@/hooks/useCoarsePointer'
 import { deltaToPrevious, taskMark } from '@/lib/mockExamV3'
 import { fileNameFromStoragePath } from '@/lib/storage'
 
@@ -401,6 +402,8 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }
   const [rejected, setRejected] = useState<RejectedHomeworkFile[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
+  // Камера — на любом сенсорном экране (iPad, телефон боком), как в ДЗ темы; без пальца — только на узком экране.
+  const coarse = useCoarsePointer()
   const busy = progress.length > 0
   const first = state.part1_last + 1
   const last = state.task_count
@@ -441,7 +444,7 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }
                 <input type="file" multiple accept={HOMEWORK_FILE_ACCEPT} className="hidden" data-testid="mock-lesson-file-input"
                   onChange={async e => { const f = Array.from(e.target.files ?? []); e.target.value = ''; await pick(f) }} />
               </label>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-graphite-800 hover:bg-primary-50 sm:hidden">
+              <label data-testid="mock-lesson-camera" className={cn('inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-graphite-800 hover:bg-primary-50', !coarse && 'sm:hidden')}>
                 <Camera size={14} />снять
                 <input type="file" accept="image/*" capture="environment" className="hidden"
                   onChange={async e => { const f = Array.from(e.target.files ?? []); e.target.value = ''; await pick(f) }} />
