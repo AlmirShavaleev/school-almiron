@@ -528,6 +528,8 @@ interface Props {
   /** §216. Номера заданий ЕГЭ темы. Пусто — не проставлено. */
   egeTaskNumbers?: number[] | null
   onSaveTopicMeta?: (values: {
+    /** §258. Название темы — правка прямо в окне темы. */
+    title?: string
     available_from?: string | null
     is_open?: boolean | null
     ege_task_numbers?: number[]
@@ -565,6 +567,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   const [kindVal, setKindVal] = useState<TopicKind>(normalizeTopicKind(kind))
   const [savingKind, setSavingKind] = useState(false)
   const [activeTile, setActiveTile] = useState<TopicSection | null>(null)
+  // §258. Название темы. Держим строкой у себя: сохраняем по Enter и уходу из
+  // поля, как дату и номера ЕГЭ рядом — кнопки «Сохранить» в окне нет.
+  const [titleVal, setTitleVal] = useState(topicTitle)
+  const [titleError, setTitleError] = useState<string | null>(null)
+  const [savingTitle, setSavingTitle] = useState(false)
   const { materials, loading, saveMaterial, uploadFile, createLinkMaterial, deleteMaterial } = useTopicMaterials(open ? topicId : null)
 
   // Новые хуки для новой системы материалов
@@ -579,6 +586,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   useEffect(() => {
     setKindVal(normalizeTopicKind(kind))
   }, [kind, open, topicId])
+
+  useEffect(() => {
+    setTitleVal(topicTitle)
+    setTitleError(null)
+  }, [topicTitle, open, topicId])
 
   useEffect(() => {
     setNumbersVal(formatEgeNumbers(egeTaskNumbers))
@@ -706,6 +718,34 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
       saveFailed(e)
     } finally {
       setSavingKind(false)
+    }
+  }
+
+  /**
+   * §258. Название темы. Владелец не нашёл, где переименовать тему: правка
+   * жила только в «Редактировать программу». Правило то же, что у строки
+   * программы (`InlineEdit`): пробелы по краям срезаем, пустое не сохраняем.
+   * Ошибку показываем ПОД полем и набранное не стираем — тост исчезает, а
+   * человек должен понять, что название осталось прежним.
+   */
+  async function handleTitleCommit() {
+    if (!canEdit || !onSaveTopicMeta) return
+    const next = titleVal.trim()
+    if (!next) { setTitleError('Название не может быть пустым'); return }
+    if (next !== titleVal) setTitleVal(next)
+    if (next === topicTitle) { setTitleError(null); return }
+    setSavingTitle(true)
+    setTitleError(null)
+    try {
+      await onSaveTopicMeta({ title: next })
+      toast.saved()
+    } catch (e) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code ?? '') : ''
+      setTitleError(code === '42501'
+        ? 'Недостаточно прав, чтобы переименовать тему'
+        : `Не удалось сохранить название${e instanceof Error && e.message ? `: ${e.message}` : ''}`)
+    } finally {
+      setSavingTitle(false)
     }
   }
 
@@ -880,6 +920,40 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
 
         {canEdit && (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/* §258. Название темы — первым: его ищут в окне темы, а не в программе. */}
+            <div data-testid="topic-title-field" className="rounded-2xl border border-gray-200 bg-white p-4">
+              <label htmlFor="topic-title-input" className="block text-sm font-semibold text-gray-900">Название темы</label>
+              <div className="relative mt-2">
+                <input
+                  id="topic-title-input"
+                  data-testid="topic-title-input"
+                  type="text"
+                  value={titleVal}
+                  disabled={!onSaveTopicMeta}
+                  aria-invalid={titleError ? true : undefined}
+                  aria-describedby="topic-title-hint"
+                  onChange={e => { setTitleVal(e.target.value); setTitleError(null) }}
+                  onBlur={() => { void handleTitleCommit() }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+                    if (e.key === 'Escape') { setTitleVal(topicTitle); setTitleError(null) }
+                  }}
+                  className={cn(
+                    'h-10 w-full rounded-xl border bg-white px-3 pr-9 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 disabled:bg-gray-50',
+                    titleError ? 'border-red-300 focus:ring-red-300' : 'border-gray-200 focus:ring-primary-400',
+                  )}
+                />
+                {savingTitle && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-primary-500" />}
+              </div>
+              {titleError
+                ? <div id="topic-title-hint" data-testid="topic-title-error" role="alert" className="mt-1.5 text-xs text-red-600">{titleError}</div>
+                : (
+                  <div id="topic-title-hint" className="mt-1.5 text-xs text-gray-400">
+                    Enter или клик мимо поля — сохранить.{isTemplate ? ' Курс-шаблон: название обновится и в классах-копиях.' : ''}
+                  </div>
+                )}
+            </div>
+
             {/*
               §216. Номера заданий ЕГЭ — первым блоком, до плиток рубрик.
               Владельцу предстоит проставить их у сотни тем по ходу работы, и

@@ -15,7 +15,10 @@ import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
 import { useVideoWatchMarks } from '@/hooks/useVideoWatchMarks'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import { TopicTimedWorkStudent } from '@/components/courseProgram/TopicTimedWorkStudent'
-import { TOPIC_KIND_LABEL, isTimedKind, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
+import {
+  TOPIC_KIND_LABEL, formatMoscowDay, formatMoscowShort, formatMoscowTime, isTimedKind, normalizeTopicKind, type TopicKind,
+} from '@/lib/timedWork'
+import { useTopicTimedWindow } from '@/hooks/useTimedWork'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
 import { useTopicTasks } from '@/hooks/useTopicTasks'
@@ -120,11 +123,11 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // Видео темы живёт в topic_material_items: плитка «Видео» в модалке
   // преподавателя пишет ссылку туда (kind='video'), старая topic_materials
   // здесь больше не читается.
-  const { materials, reload: reloadMaterials } = useTopicMaterialItems(topicId ?? null)
+  const { materials, loading: materialsLoading, reload: reloadMaterials } = useTopicMaterialItems(topicId ?? null)
 
   // Существует ли решение и открыто ли оно этому ученику. Сами материалы
-  // решения до проверки не приходят вовсе — здесь только три флага, без путей
-  // к файлам.
+  // решения до проверки не приходят вовсе — здесь только флаги, без путей
+  // к файлам (§258: плюс «есть критерии» и «есть условие»).
   const solutionState = useTopicSolutionState(topicId ?? null)
 
   // Тестирования из раздела «Тесты», выданные этому ученику. Отдельным хуком, а
@@ -221,6 +224,20 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     return () => { cancelled = true }
   }, [topicId, groupId, profile, preview])
 
+  // §258. Окно работы по времени — для замка на «Условии» и плашки
+  // предпросмотра. У урока не читается вовсе.
+  const timedWindow = useTopicTimedWindow(topicId ?? null, !!topic && isTimedKind(topic.kind), preview)
+  // Окно открылось, пока страница открыта: ученику база теперь отдаёт условие —
+  // перечитываем материалы (вкладка «Работа» делает это сама, но ученик может
+  // ждать и на вкладке «Условие»). Первый ответ — не «открытие».
+  const prevOpened = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!timedWindow.loaded) return
+    const before = prevOpened.current
+    prevOpened.current = timedWindow.opened
+    if (before === false && timedWindow.opened) reloadMaterials?.()
+  }, [timedWindow.loaded, timedWindow.opened, reloadMaterials])
+
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const videoMaterial = materials.find(m => m.kind === 'video') ?? null
@@ -310,10 +327,27 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     STUDENT_SECTION_ORDER.map(s => [s, materials.filter(m => m.section === s).length]),
   ) as Record<TopicMaterialSection, number>
 
+  // §258. «Ответы и критерии» — за тем же гейтом, что решение (RLS:
+  // `topic_solution_unlocked`). В предпросмотре персоналу строки отдаются все,
+  // поэтому замок ставим и по ним — до PENDING_258 сервер флага не знает.
+  const hasCriteria = !!solutionState.hasCriteria || (preview && sectionCounts.criteria > 0)
+  const criteriaLocked = hasCriteria && !solutionState.unlocked
+
+  // §258. «Условие» работы по времени. Ученику база отдаёт его с открытием
+  // окна (или после сдачи) — закрыто ровно тогда, когда строк нет, а условие
+  // есть. Персоналу строки отдаются всегда: в предпросмотре закрываем по окну,
+  // как у ученика без сданной работы.
+  const hasConditionRows = sectionCounts.worksheet_homework > 0
+  const conditionLocked = timed && (hasConditionRows || !!solutionState.hasCondition)
+    && (preview ? !timedWindow.opened : !hasConditionRows && !materialsLoading)
+
   for (const s of STUDENT_SECTION_ORDER) {
     // «Решение ДЗ» — особый случай: вкладка нужна и тогда, когда материалов не
-    // видно из-за гейта, иначе рубрика выглядит пропавшей.
+    // видно из-за гейта, иначе рубрика выглядит пропавшей. С §258 так же —
+    // «Ответы и критерии» и «Условие» работы по времени.
     if (s === 'solution') continue
+    if (s === 'criteria' && hasCriteria) { availableTabs.push(s); continue }
+    if (s === 'worksheet_homework' && conditionLocked) { availableTabs.push(s); continue }
     if (sectionCounts[s] > 0) availableTabs.push(s)
   }
   if (solutionState.hasSolution || sectionCounts.solution > 0) availableTabs.push('solution')
@@ -445,6 +479,8 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       label = sectionLabel(s, timed)
       count = sectionCounts[s]
       if (s === 'solution') isLocked = solutionState.hasSolution && !solutionState.unlocked
+      if (s === 'criteria') isLocked = criteriaLocked
+      if (s === 'worksheet_homework') isLocked = conditionLocked
     } else if (tabKey === 'homework') {
       label = timed ? 'Работа' : 'Домашнее задание'
     } else if (tabKey === 'test') {
@@ -564,6 +600,18 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       {/* §250. Полоса учителя — только во встроенном виде («Курс» у персонала). */}
       {staffBar}
 
+      {/* §258. Предпросмотр работы по времени: чьи это замки и когда они
+          откроются. Без строки владелец читал вкладки персонала как ученические. */}
+      {preview && timed && (
+        <p data-testid="topic-preview-locks" className="flex items-start gap-1.5 text-[12.5px] leading-snug text-graphite-600">
+          <Lock size={13} className="mt-0.5 shrink-0 text-graphite-400" />
+          <span>
+            Замки показаны как у ученика: условие — {timedWindow.opensAt ? `с ${formatMoscowShort(timedWindow.opensAt)}` : 'когда будет назначено время'},
+            {' '}решение и критерии — после проверки.
+          </span>
+        </p>
+      )}
+
       {/* ── Tab panel ──
           Вкладки переносятся, а не скроллятся (§116), и сгруппированы по
           смыслу (§121): «Теория», «Урок», «Домашнее задание». Раньше они шли
@@ -667,6 +715,30 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           <p className="mt-2 text-sm font-medium text-amber-900">Решение пока закрыто</p>
           <p className="mt-1 text-sm text-amber-800">
             Оно откроется, когда преподаватель проверит вашу работу. Так задание остаётся заданием.
+          </p>
+        </div>
+      ) : active === 'criteria' && criteriaLocked ? (
+        <div data-testid="topic-criteria-locked" className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
+          <Lock size={20} className="mx-auto text-amber-500" />
+          <p className="mt-2 text-sm font-medium text-amber-900">Ответы и критерии пока закрыты</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Откроются, когда преподаватель проверит вашу работу.
+          </p>
+        </div>
+      ) : active === 'worksheet_homework' && conditionLocked ? (
+        <div data-testid="topic-condition-locked" className="rounded-2xl border border-dashed border-graphite-300 bg-white px-4 py-8 text-center">
+          <Lock size={20} className="mx-auto text-graphite-400" />
+          <p className="mt-2 text-sm font-medium text-graphite-900">
+            {timedWindow.opensAt && !timedWindow.opened
+              ? `Условие откроется ${formatMoscowDay(timedWindow.opensAt)} в ${formatMoscowTime(timedWindow.opensAt)}`
+              : timedWindow.opensAt
+                ? 'Условие открывается — обновите страницу'
+                : 'Время работы ещё не назначено'}
+          </p>
+          <p className="mt-1 text-sm text-graphite-600">
+            {timedWindow.opensAt
+              ? 'Оно появится в момент начала работы — до этого его не видно.'
+              : 'Условие откроется в момент начала — учитель поставит дату и время.'}
           </p>
         </div>
       ) : isMaterialSection(active) ? (

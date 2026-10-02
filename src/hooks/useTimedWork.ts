@@ -77,6 +77,66 @@ export function useMyTimedWindow(
 }
 
 /**
+ * §258. Окно работы по времени для СТРАНИЦЫ темы: замок на «Условии» и
+ * плашка предпросмотра. Данные — те же, что у `TopicTimedWorkStudent`:
+ * строка ДЗ темы (общее окно) и `useMyTimedWindow` (личное окно ученика и
+ * серверное время). Вместо тиканья раз в секунду — один таймер на момент
+ * открытия: страница перерисовывается ровно тогда, когда окно открылось.
+ *
+ * `opened` — окно уже началось по серверному времени. Это ровно то правило,
+ * по которому база отдаёт условие ученику без сданной работы
+ * (`topic_homework_condition_open`); предпросмотр — как раз такой ученик.
+ */
+export function useTopicTimedWindow(topicId: string | null, enabled: boolean, preview: boolean) {
+  const [got, setGot] = useState<{ key: string; row: { id: string; opens_at: string | null; closes_at: string | null } | null } | null>(null)
+
+  useEffect(() => {
+    if (!topicId || !enabled) return
+    let cancelled = false
+    // `*`, а не перечень: так же читает строку `useTopicHomework`.
+    supabase.from('topic_homework').select('*').eq('topic_id', topicId).maybeSingle().then(({ data }) => {
+      if (cancelled) return
+      const raw = (data ?? null) as { id?: string; opens_at?: string | null; closes_at?: string | null; is_published?: boolean } | null
+      // Черновик ДЗ ученику не виден (§250) — в предпросмотре его как бы нет.
+      const row = raw?.id && !(preview && raw.is_published === false)
+        ? { id: raw.id, opens_at: raw.opens_at ?? null, closes_at: raw.closes_at ?? null }
+        : null
+      setGot({ key: topicId, row })
+    })
+    return () => { cancelled = true }
+  }, [topicId, enabled, preview])
+
+  const mine = got && got.key === topicId && enabled ? got : null
+  const row = mine?.row ?? null
+  const { window: win, offsetMs } = useMyTimedWindow(
+    row?.id ?? null,
+    { opensAt: row?.opens_at ?? null, closesAt: row?.closes_at ?? null },
+    enabled && !!row,
+  )
+
+  const opensMs = win.opensAt ? Date.parse(win.opensAt) : NaN
+  const [, rerender] = useState(0)
+  useEffect(() => {
+    if (!enabled || !Number.isFinite(opensMs)) return
+    const wait = opensMs - (Date.now() + offsetMs)
+    if (wait <= 0) return
+    // setTimeout держит не больше ~24,8 суток; дальше — перезапуск эффекта не
+    // нужен: страницу столько не держат открытой.
+    const id = setTimeout(() => rerender(n => n + 1), Math.min(wait + 50, 2 ** 31 - 1))
+    return () => clearTimeout(id)
+  }, [enabled, opensMs, offsetMs])
+
+  const opened = Number.isFinite(opensMs) && Date.now() + offsetMs >= opensMs
+  return {
+    /** Строка ДЗ прочитана (или читать нечего). */
+    loaded: !enabled || !!mine,
+    opensAt: win.opensAt,
+    closesAt: win.closesAt,
+    opened,
+  }
+}
+
+/**
  * «Сейчас» по серверу, раз в секунду. Пока `active` ложно — не тикает (экран
  * проверенной работы таймер не показывает, перерисовывать его незачем).
  */

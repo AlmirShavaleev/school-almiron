@@ -1,0 +1,89 @@
+slice + prod migrations: ok
+migration 240: ok
+data 258: ok
+=== B0. До §258: права на функцию (anon получает EXECUTE через PUBLIC, явного revoke не было)
+ anon_exec | auth_exec 
+-----------+-----------
+ t         | t
+
+SET
+=== B1. До §258: S2, тема K — только has_solution / has_homework / unlocked
+                      topic_solution_state                       
+-----------------------------------------------------------------
+ {"unlocked": false, "has_homework": true, "has_solution": true}
+
+RESET
+PENDING_258 applied twice: ok
+=== 0. Права: anon — нет, authenticated — есть; тело — одна редакция (create or replace, без drop)
+ anon_exec | auth_exec | versions | security_definer 
+-----------+-----------+----------+------------------
+ f         | t         |        1 | t
+
+=== 1. anon: вызов — отказ (permission denied)
+SET
+psql:/home/claude/agents/a258/repo/supabase/tests/preview_zamki_258/20_probes.sql:24: ERROR:  permission denied for function topic_solution_state
+RESET
+SET
+=== 2. S2: флаги по темам. Ожидается: has_criteria — K, C, N (у F критерии скрыты учителем, у L их нет); has_condition — у всех пяти; unlocked — везде false (принятой работы у S2 нет; возврат на доработку в N гейт не открывает, правило 20260805220729)
+ code | has_solution | has_homework | unlocked | has_criteria | has_condition 
+------+--------------+--------------+----------+--------------+---------------
+ C    | t            | t            | f        | t            | t
+ F    | t            | t            | f        | f            | t
+ K    | t            | t            | f        | t            | t
+ L    | t            | t            | f        | f            | t
+ N    | t            | t            | f        | t            | t
+
+=== 2a. S2: строки, которые ученик реально получает (criteria / worksheet_homework): флаг говорит «есть», строк может не быть
+ code | criteria_rows | condition_rows 
+------+---------------+----------------
+ C    |             0 |              1
+ F    |             0 |              0
+ K    |             0 |              1
+ L    |             0 |              1
+ N    |             0 |              1
+
+=== 2b. B1 и после — прежние три поля S2 по теме K совпадают (old = new без has_criteria/has_condition)
+                           old_fields                            
+-----------------------------------------------------------------
+ {"unlocked": false, "has_homework": true, "has_solution": true}
+
+RESET
+=== 3. S3 (C: сдал, ждёт проверки): unlocked=false, has_criteria=true, строк критериев 0
+SET
+ unlocked | has_criteria | criteria_rows 
+----------+--------------+---------------
+ f        | t            |             0
+
+RESET
+=== 3a. После «Принято» у S3 (откатываемо): unlocked=true, has_criteria=true, строка критериев видна (1)
+BEGIN
+UPDATE 1
+SET
+ unlocked | has_criteria | criteria_rows | solution_rows 
+----------+--------------+---------------+---------------
+ t        | t            |             1 |             1
+
+ROLLBACK
+=== 4. Преподаватель 10А (A): флаги те же, unlocked=false (своей попытки нет) — на этом стоит предпросмотр; строки ему видны все
+SET
+ unlocked | has_criteria | has_condition 
+----------+--------------+---------------
+ f        | t            | t
+
+RESET
+=== 5. Каркас: правка названия темы шаблона уходит в копии триггером template_sync_topic_write (откатываемо, под postgres — RLS topics в слепке нет)
+BEGIN
+       course        |          title          
+---------------------+-------------------------
+ Физика ЕГЭ (каркас) | Контрольная. Кинематика
+ Физика ЕГЭ 10А      | Контрольная. Кинематика
+ Физика ЕГЭ 11А      | Контрольная. Кинематика
+
+UPDATE 1
+       course        |                  title                   
+---------------------+------------------------------------------
+ Физика ЕГЭ (каркас) | Контрольная. Кинематика (новое название)
+ Физика ЕГЭ 10А      | Контрольная. Кинематика (новое название)
+ Физика ЕГЭ 11А      | Контрольная. Кинематика (новое название)
+
+ROLLBACK
