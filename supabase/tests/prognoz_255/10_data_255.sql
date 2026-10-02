@@ -118,12 +118,13 @@ insert into public.test_variant_answers (student_assignment_id, variant_item_id,
   ('92300000-0000-4000-8000-000000000001', '92100000-0000-4000-8000-000000000001', true, now() - interval '2 days');
 
 -- Тест темы физики №5: задача из каталога (раздел №7) — 1 из 1; своя задача — 1 из 2.
-insert into public.topic_tests (id, title, topic_id) values ('93000000-0000-4000-8000-000000000001', 'Тест №5', '60000000-0000-4000-8000-000000000005');
+insert into public.topic_tests (id, title) values ('93000000-0000-4000-8000-000000000001', 'Тест №5');
+insert into public.topic_test_assignments (id, test_id, topic_id) values ('93300000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000005');
 insert into public.topic_test_items (id, test_id, task_id, max_points) values
   ('93100000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000003', 1),
   ('93100000-0000-4000-8000-000000000002', '93000000-0000-4000-8000-000000000001', null, 2);
-insert into public.topic_test_attempts (id, test_id, student_id, status, completed_at) values
-  ('93200000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000000a1', 'completed', now() - interval '2 days');
+insert into public.topic_test_attempts (id, test_id, assignment_id, student_id, status, completed_at) values
+  ('93200000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', '93300000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-0000000000a1', 'completed', now() - interval '2 days');
 insert into public.topic_test_answers (attempt_id, item_id, awarded_points, is_correct) values
   ('93200000-0000-4000-8000-000000000001', '93100000-0000-4000-8000-000000000001', 1, true),
   ('93200000-0000-4000-8000-000000000001', '93100000-0000-4000-8000-000000000002', 1, false);

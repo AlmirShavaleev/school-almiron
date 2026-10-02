@@ -1,9 +1,10 @@
--- §255. Добавка к слепку §254 (../glavnaya_254/00_slice_254.sql) — то, что читают функции PENDING_255.
+-- §255. Добавка к слепку §254 (../glavnaya_254/00_slice_254.sql) — то, что читают функции §255 (миграции 20261002152136…153604).
 -- Колонки и таблицы — подмножество настоящих:
 --   courses.subject/exam_type/owner_id и enum-ы — src/types/database.ts;
 --   topics.ege_task_numbers, student_subject_targets + политики — 20260925182457 (ДОСЛОВНО политики);
 --   mock_exam_templates, mock_exams.template_id/subject/exam_type/group_id — 20260925201156;
---   topic_tests.topic_id, topic_test_items.task_id/max_points — 20260726130727;
+--   topic_test_assignments(test_id, topic_id) + topic_test_attempts.assignment_id (тема теста — через назначение,
+--   у topic_tests своей topic_id НЕТ — сверено оркестратором с продом 02.10), topic_test_items.task_id/max_points — 20260726130727;
 --   catalog_sections / catalog_tasks — src/types/database.ts;
 --   teachers / curators / course_curators, groups.teacher_id/curator_id;
 --   course_is_staff — 20260727203959 (дословно), course_is_admin — 20260725222605,
@@ -27,7 +28,11 @@ create table public.mock_exam_templates (
 alter table public.mock_exams add column subject public.subject_type, add column exam_type public.exam_type,
   add column template_id uuid references public.mock_exam_templates(id), add column group_id uuid references public.groups(id);
 
-alter table public.topic_tests add column topic_id uuid references public.topics(id);
+create table public.topic_test_assignments (
+  id uuid primary key default gen_random_uuid(), test_id uuid not null references public.topic_tests(id),
+  topic_id uuid not null references public.topics(id)
+);
+alter table public.topic_test_attempts add column assignment_id uuid references public.topic_test_assignments(id);
 create table public.catalog_sections (
   id uuid primary key default gen_random_uuid(), subject text not null, exam_type text not null, exam_number int,
   title text not null, position int not null default 0, is_published boolean not null default true
@@ -140,6 +145,6 @@ alter table public.catalog_sections enable row level security;
 alter table public.catalog_tasks enable row level security;
 
 -- Как у Supabase: новые таблицы в public получают ВСЕ права anon/authenticated
--- (слепок §254 эмулирует только select). Тогда revoke в PENDING_255 обязан
+-- (слепок §254 эмулирует только select). Тогда revoke в миграции §255 обязан
 -- сработать по-настоящему, иначе проба «ученик пишет цель напрямую» покажет дыру.
 alter default privileges in schema public grant all on tables to anon, authenticated;

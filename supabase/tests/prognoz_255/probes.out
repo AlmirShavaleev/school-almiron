@@ -2,9 +2,7 @@ slice 254: ok
 slice 255: ok
 migration 254: ok
 data 255: ok
-psql:supabase/migrations/PENDING_255.sql:51: NOTICE:  policy "student_exam_goals_select" for relation "public.student_exam_goals" does not exist, skipping
-psql:supabase/migrations/PENDING_255.sql:42: NOTICE:  relation "student_exam_goals" already exists, skipping
-PENDING_255 applied twice: ok
+migrations 255: ok
 == 1. Аноним: все три функции — отказ (execute только authenticated)
 BEGIN
 SET
