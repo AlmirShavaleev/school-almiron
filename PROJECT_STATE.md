@@ -22493,7 +22493,7 @@ external_id → сложность, `src/lib/physicsTopicsCatalog.ts` — `dry-r
 переименовать тему (только «Сроки и статистика → Редактировать программу»).
 
 **Сделано.**
-* `PENDING_258.sql`: `topic_solution_state` — `create or replace` (тело из 20260927153810), прежние поля без изменений, добавлены
+* `20261002203702_topic_solution_state_criteria_condition_flags.sql`: `topic_solution_state` — `create or replace` (тело из 20260927153810), прежние поля без изменений, добавлены
   `has_criteria` и `has_condition` (видимые строки `track='ege'`, тем же правилом, что `has_solution`); `revoke … from public,
   anon` + `grant … to authenticated`. Без `drop`, повтор безопасен.
 * `useTopicSolutionState` — поля `hasCriteria`, `hasCondition` (старая база → false).

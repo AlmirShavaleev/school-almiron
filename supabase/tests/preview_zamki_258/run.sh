@@ -3,7 +3,7 @@
 # Кластер: initdb + pg_ctl -o "-p 5958 -k /var/tmp/pg258 -c listen_addresses=''" (под пользователем postgres).
 # Слепок и миграции — ровно как в ../kontrolnaya_240/run.sh (00_slice §221 + 05_slice_240 + настоящие
 # миграции до §234 включительно), затем данные §240, применённая миграция §240 (20260928122420), данные
-# после §240, данные 10_data_258, проба «до» (прежнее тело функции), PENDING_258.sql ДВАЖДЫ (каждый раз
+# после §240, данные 10_data_258, проба «до» (прежнее тело функции), 20261002203702_topic_solution_state_criteria_condition_flags.sql ДВАЖДЫ (каждый раз
 # одной транзакцией, как apply_migration) и пробы 20_probes. Вывод — probes.out рядом.
 export PGOPTIONS="-c client_min_messages=warning"
 H=${PGHOST_258:-/var/tmp/pg258}; PT=${PGPORT_258:-5958}
@@ -35,5 +35,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S240/15_data_after_240.sql \
  && $Q -f $S/10_data_258.sql && echo "data 258: ok" \
  && psql -h $H -p $PT -U postgres probe258 -f $S/05_probe_before.sql \
- && $Q -1 -f $R/PENDING_258.sql && $Q -1 -f $R/PENDING_258.sql && echo "PENDING_258 applied twice: ok" \
+ && $Q -1 -f $R/20261002203702_topic_solution_state_criteria_condition_flags.sql && $Q -1 -f $R/20261002203702_topic_solution_state_criteria_condition_flags.sql && echo "PENDING_258 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe258 -f $S/20_probes.sql
