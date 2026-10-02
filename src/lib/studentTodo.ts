@@ -1,6 +1,7 @@
 import { collapseToWorks, toQueueRows, type QueueRow } from '@/lib/homeworkQueue'
 import { dueUrgency } from '@/lib/topicHomework'
 import { isTopicOpen, todayLocal, type TopicOpenState } from '@/lib/topicAvailability'
+import { plural } from '@/lib/plural'
 
 /**
  * Раскладка «что мне сдать» для кабинета ученика.
@@ -36,6 +37,8 @@ export interface TodoTest {
   topicId:      string
   topicTitle:   string
   completed:    boolean
+  /** Группа курса темы — для ссылки на тему (§254). Нет — строка без ссылки. */
+  groupId?:     string | null
 }
 
 /** Вердикт по работе — для раздела «Проверено». */
@@ -47,6 +50,10 @@ export interface TodoVerdict {
   gradeScale:    'five' | 'hundred' | null
   comment:       string | null
   createdAt:     string
+  /** ДЗ этой работы: по нему страница ДЗ открывает «Новые оценки» (§254). */
+  homeworkId?:   string
+  /** Тема работы — подпись кнопки «Новые оценки»: название ДЗ часто «Домашнее задание». */
+  topicTitle?:   string
 }
 
 export interface StudentTodoInput {
@@ -84,6 +91,11 @@ export interface StudentTodo {
   tests:       TodoTest[]
   newlyOpened: TodoTopic[]
   checked:     TodoVerdict[]
+  /**
+   * §254. «Новые оценки»: работа ПРИНЯТА (последний вердикт по попытке) не
+   * раньше NEW_GRADES_DAYS дней назад. Свежие сверху.
+   */
+  newGrades:   TodoVerdict[]
   /** Ничего не ждёт действий ученика. */
   isClear:     boolean
 }
@@ -99,6 +111,25 @@ export interface TodoTopic {
 
 /** Темы, открывшиеся не раньше этого числа дней назад, считаются новыми. */
 const NEWLY_OPENED_DAYS = 7
+
+/**
+ * §254. Окно кнопки «Сдать за 2 недели»: срок через 0…14 календарных дней.
+ * Всё, что дальше, — «Сдать позже» (кнопкой, только когда окно пусто).
+ */
+export const SOON_WINDOW_DAYS = 14
+
+/**
+ * §254. «Новые оценки» — принятые работы за последние 7 дней. Не «с последнего
+ * просмотра»: отметки «видел» у вердиктов нет, а прочитанность уведомления
+ * зависит от того, открывал ли ученик колокольчик и включены ли у него
+ * уведомления, — счёт прыгал бы от постороннего действия.
+ */
+export const NEW_GRADES_DAYS = 7
+
+/** Календарный день YYYY-MM-DD момента времени — по часам устройства, как `todayLocal`. */
+function localDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA')
+}
 
 function daysBetween(fromDay: string, toDay: string): number {
   return Math.round((new Date(toDay).getTime() - new Date(fromDay).getTime()) / 86400000)
@@ -215,9 +246,21 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
     })
   }
 
-  const checked = [...input.verdicts]
+  const sortedVerdicts = [...input.verdicts]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 5)
+  const checked = sortedVerdicts.slice(0, 5)
+
+  // Последний вердикт по каждой попытке; принятые за NEW_GRADES_DAYS дней.
+  const lastByAttempt = new Set<string>()
+  const newGrades: TodoVerdict[] = []
+  for (const verdict of sortedVerdicts) {
+    if (lastByAttempt.has(verdict.attemptId)) continue
+    lastByAttempt.add(verdict.attemptId)
+    if (verdict.decision !== 'accepted') continue
+    const age = daysBetween(localDay(verdict.createdAt), today)
+    if (age < 0 || age > NEW_GRADES_DAYS) continue
+    newGrades.push(verdict)
+  }
 
   return {
     overdue,
@@ -227,6 +270,7 @@ export function buildStudentTodo(input: StudentTodoInput): StudentTodo {
     tests,
     newlyOpened,
     checked,
+    newGrades,
     // «Всё сдано» обязано учитывать и работы без срока: иначе экран говорил бы
     // «ничего не ждёт» поверх списка того, что надо сдать.
     isClear: overdue.length === 0 && returned.length === 0
@@ -255,4 +299,132 @@ function pluralDays(n: number): string {
   if (ones === 1) return 'день'
   if (ones >= 2 && ones <= 4) return 'дня'
   return 'дней'
+}
+
+// ── §254. Кнопки-счётчики главной и отбор страницы ДЗ ───────────────────────
+//
+// Одно определение на обе стороны: кнопка главной считает ровно то, что
+// страница «Домашние задания» покажет по её ссылке (`?show=…`). Корзины — те
+// же, что выше (`overdue`/`returned`/`dueSoon`/`noDue`/`newGrades`); новых
+// правил «просрочено/срок» здесь нет, только окно в 14 дней поверх `dueSoon`.
+
+/** Какой список открывает ссылка `/my-homework?show=…`. */
+export type HomeworkShow = 'overdue' | 'returned' | 'soon' | 'later' | 'checked' | 'nodue'
+
+export const HOMEWORK_SHOW_VALUES: readonly HomeworkShow[] =
+  ['overdue', 'returned', 'soon', 'later', 'checked', 'nodue'] as const
+
+export function parseHomeworkShow(value: string | null | undefined): HomeworkShow | null {
+  return HOMEWORK_SHOW_VALUES.includes(value as HomeworkShow) ? (value as HomeworkShow) : null
+}
+
+/** «Сдать за 2 недели» и «позже»: `dueSoon`, разрезанный окном SOON_WINDOW_DAYS. */
+export function splitDueWindow(todo: Pick<StudentTodo, 'dueSoon'>): { soon: TodoItem[]; later: TodoItem[] } {
+  return {
+    soon:  todo.dueSoon.filter(item => item.days <= SOON_WINDOW_DAYS),
+    later: todo.dueSoon.filter(item => item.days > SOON_WINDOW_DAYS),
+  }
+}
+
+/** ДЗ списка `show` — в том порядке, в каком их показывает страница. */
+export function homeworkIdsFor(todo: StudentTodo, show: HomeworkShow): string[] {
+  const window = splitDueWindow(todo)
+  switch (show) {
+    case 'overdue':  return todo.overdue.map(i => i.homeworkId)
+    case 'returned': return todo.returned.map(i => i.homeworkId)
+    case 'soon':     return window.soon.map(i => i.homeworkId)
+    case 'later':    return window.later.map(i => i.homeworkId)
+    case 'nodue':    return todo.noDue.map(i => i.homeworkId)
+    case 'checked':  return todo.newGrades.map(v => v.homeworkId).filter((id): id is string => !!id)
+  }
+}
+
+/** Заголовок списка — один на кнопку и на страницу ДЗ. */
+export const HOMEWORK_SHOW_TITLE: Record<HomeworkShow, string> = {
+  overdue:  'Просрочено',
+  returned: 'Вернули на доработку',
+  soon:     'Сдать за 2 недели',
+  later:    'Сдать позже',
+  checked:  'Новые оценки',
+  nodue:    'Без срока',
+}
+
+export type HomeActionTone = 'bad' | 'warn' | 'soon' | 'ok'
+
+export interface HomeAction {
+  show:    HomeworkShow
+  count:   number
+  title:   string
+  caption: string
+  tone:    HomeActionTone
+  href:    string
+}
+
+const MONTHS_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+
+/** «14 ноября» по дате YYYY-MM-DD — без часового пояса: это календарный день. */
+export function formatDayMonth(day: string): string {
+  const [, m, d] = day.slice(0, 10).split('-').map(Number)
+  return `${d} ${MONTHS_GENITIVE[m - 1]}`
+}
+
+function quoted(title: string, more: number): string {
+  return `«${title}»${more > 0 ? ` и ещё ${more}` : ''}`
+}
+
+/** Оценка словами для подписи: «4/5», «87/100», без шкалы — «принято». */
+export function verdictMark(verdict: Pick<TodoVerdict, 'score' | 'gradeScale'>): string {
+  const max = verdict.gradeScale === 'five' ? 5 : verdict.gradeScale === 'hundred' ? 100 : null
+  if (verdict.score == null) return 'принято'
+  return max ? `${verdict.score}/${max}` : String(verdict.score)
+}
+
+/**
+ * Кнопки-счётчики главной (§254), по важности: просрочено → вернули →
+ * сдать за 2 недели (или «позже», если окно пусто) → новые оценки. Кнопка с
+ * нулём не рождается вовсе.
+ */
+export function homeActions(todo: StudentTodo): HomeAction[] {
+  const out: HomeAction[] = []
+  const href = (show: HomeworkShow) => `/my-homework?show=${show}`
+
+  if (todo.overdue.length > 0) {
+    // Список отсортирован «самое давнее сверху» — первое и есть самое давнее.
+    const oldest = Math.abs(todo.overdue[0].days)
+    out.push({
+      show: 'overdue', count: todo.overdue.length, title: HOMEWORK_SHOW_TITLE.overdue, tone: 'bad', href: href('overdue'),
+      caption: `самое давнее — ${oldest} ${plural(oldest, 'день', 'дня', 'дней')}`,
+    })
+  }
+
+  if (todo.returned.length > 0) {
+    out.push({
+      show: 'returned', count: todo.returned.length, title: HOMEWORK_SHOW_TITLE.returned, tone: 'warn', href: href('returned'),
+      caption: quoted(todo.returned[0].topicTitle, todo.returned.length - 1),
+    })
+  }
+
+  const { soon, later } = splitDueWindow(todo)
+  if (soon.length > 0) {
+    const nearest = soon[0].days
+    out.push({
+      show: 'soon', count: soon.length, title: HOMEWORK_SHOW_TITLE.soon, tone: 'soon', href: href('soon'),
+      caption: `ближайшее — ${formatDueIn(nearest)}`,
+    })
+  } else if (later.length > 0) {
+    out.push({
+      show: 'later', count: later.length, title: HOMEWORK_SHOW_TITLE.later, tone: 'soon', href: href('later'),
+      caption: `ближайшее — ${later[0].dueAt ? formatDayMonth(later[0].dueAt) : formatDueIn(later[0].days)}`,
+    })
+  }
+
+  if (todo.newGrades.length > 0) {
+    const last = todo.newGrades[0]
+    out.push({
+      show: 'checked', count: todo.newGrades.length, title: HOMEWORK_SHOW_TITLE.checked, tone: 'ok', href: href('checked'),
+      caption: `«${last.topicTitle || last.homeworkTitle}» — ${verdictMark(last)}`,
+    })
+  }
+
+  return out
 }

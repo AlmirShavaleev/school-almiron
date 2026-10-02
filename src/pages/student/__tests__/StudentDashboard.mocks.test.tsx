@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 /**
  * §224.2. Кабинет — первый экран после входа: идущий пробник стоит над
  * списком дел, с подписью курса и одной кнопкой на страницу пробника.
+ * §254: хук главной отдаёт только курсы; активность и журнал подменены пустыми.
  */
 
 const MIN = 60_000
@@ -18,13 +19,18 @@ vi.mock('@/hooks/useStudentDashboard', () => ({
       { courseId: 'c1', groupId: 'g-phys', courseTitle: 'Физика ЕГЭ', subject: 'Физика' },
       { courseId: 'c2', groupId: 'g-sand', courseTitle: 'Песочница — пробник (тест)', subject: 'Математика' },
     ],
-    hwItems: [], testItems: [],
-    stats: { courses: 2, hwTotal: 0, hwAccepted: 0, hwWaiting: 0, hwRevision: 0, testsAvailable: 0, testsCompleted: 0 },
+    studentId: 'st-1',
     loading: false,
   }),
 }))
 vi.mock('@/hooks/useStudentTodo', () => ({
-  useStudentTodo: () => ({ todo: { overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true }, loading: false, error: null }),
+  useStudentTodo: () => ({ todo: { overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], newGrades: [], isClear: true }, loading: false, error: null }),
+}))
+vi.mock('@/hooks/useStudentHomeActivity', () => ({
+  useStudentHomeActivity: () => ({ activity: null, loading: false, error: null, retry: () => {} }),
+}))
+vi.mock('@/hooks/useStudentTopicJournal', () => ({
+  useStudentTopicJournal: () => ({ journal: null, loading: false, error: null, reload: () => {} }),
 }))
 const loadMockExamsByGroup = vi.fn(async (ids: string[], _preview: boolean) => {
   const now = Date.now()

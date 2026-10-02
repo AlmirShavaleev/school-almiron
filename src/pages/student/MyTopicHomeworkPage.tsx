@@ -1,8 +1,13 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
+  AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
 } from 'lucide-react'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
+import { useStudentTodo } from '@/hooks/useStudentTodo'
+import { useAuthStore } from '@/store/authStore'
+import {
+  HOMEWORK_SHOW_TITLE, homeworkIdsFor, parseHomeworkShow, type HomeworkShow,
+} from '@/lib/studentTodo'
 import {
   JOURNAL_HW_STATUS_LABEL,
   JOURNAL_HW_STATUS_TONE,
@@ -278,11 +283,18 @@ export function MyTopicHomeworkPage() {
   // возвращается «назад» — состояние страницы должно вернуться вместе с ней.
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('course')
+  // §254. `?show=overdue|returned|soon|later|checked|nodue` — список, который
+  // открывает кнопка главной. Состав списка берётся из того же `studentTodo`,
+  // что считает кнопку, — число на кнопке и строки здесь не могут разойтись.
+  const show = parseHomeworkShow(searchParams.get('show'))
+  const profileId = useAuthStore(s => s.profile?.id)
+  const { todo, loading: todoLoading } = useStudentTodo(show ? profileId : undefined)
 
   const {
     buckets, totalRows, courseOptions, activeCourseId, topicLink, courseSubject,
-    loading, error, reload, noStudentRecord,
+    loading: hwLoading, error, reload, noStudentRecord,
   } = useMyTopicHomework(requested)
+  const loading = hwLoading || (show != null && todoLoading)
 
   const pickCourse = (courseId: string | null) => {
     const next = new URLSearchParams(searchParams)
@@ -307,6 +319,27 @@ export function MyTopicHomeworkPage() {
       <div className="rounded-2xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">
         Эта страница — для учеников.
       </div>
+    )
+  }
+
+  if (show) {
+    const all = [...buckets.todo, ...buckets.awaiting, ...buckets.done]
+    const byId = new Map(all.map(row => [row.homework_id, row]))
+    const rows = homeworkIdsFor(todo, show)
+      .map(id => byId.get(id))
+      .filter((row): row is TopicJournalHomework => !!row)
+    const rest = new URLSearchParams(searchParams)
+    rest.delete('show')
+    const allHref = `/my-homework${rest.toString() ? `?${rest}` : ''}`
+    return (
+      <ShowList
+        show={show}
+        rows={rows}
+        allHref={allHref}
+        error={error}
+        topicLink={topicLink}
+        courseSubject={courseSubject}
+      />
     )
   }
 
@@ -437,6 +470,75 @@ export function MyTopicHomeworkPage() {
             ))}
           </Section>
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * §254. Один список по кнопке главной: «Просрочено», «Сдать за 2 недели»,
+ * «Новые оценки»… Над ним — путь ко всем заданиям: отбор не должен
+ * запирать ученика в одном списке.
+ */
+function ShowList({
+  show, rows, allHref, error, topicLink, courseSubject,
+}: {
+  show: HomeworkShow
+  rows: TopicJournalHomework[]
+  allHref: string
+  error: string | null
+  topicLink: (row: TopicJournalHomework) => string | null
+  courseSubject: (row: TopicJournalHomework) => string | null
+}) {
+  const title = HOMEWORK_SHOW_TITLE[show]
+  const done = show === 'checked'
+  return (
+    <div className="space-y-5" data-testid="my-hw-show" data-show={show}>
+      <div>
+        <Link
+          to={allHref}
+          data-testid="my-hw-show-all"
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary-700 hover:underline"
+        >
+          <ArrowLeft size={14} />
+          Все задания
+        </Link>
+        <h1 className="mt-1 text-xl font-bold text-gray-900">{title}</h1>
+        <p data-testid="my-hw-count" className="mt-0.5 text-sm text-gray-500">
+          {rows.length === 0
+            ? 'Здесь пусто'
+            : show === 'checked'
+              ? `Принято за последние 7 дней: ${rows.length}`
+              : show === 'soon'
+                ? `Срок в ближайшие 14 дней: ${rows.length}`
+                : `Работ: ${rows.length}`}
+        </p>
+      </div>
+
+      {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      {rows.length === 0 ? (
+        <div data-testid="my-hw-show-empty" className="rounded-2xl border border-dashed border-gray-200 py-12 text-center">
+          <CheckCircle2 size={28} className="mx-auto text-emerald-400" />
+          <p className="mt-2 text-sm font-medium text-gray-700">В этом списке ничего не осталось</p>
+          <Link to={allHref} className="mt-2 inline-block text-xs font-medium text-primary-600 hover:text-primary-700">
+            Показать все задания
+          </Link>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map(row => (
+            <HomeworkRow
+              key={row.homework_id}
+              row={row}
+              href={topicLink(row)}
+              subject={courseSubject(row)}
+              showDue={!done}
+              showScore={done}
+              action={done ? 'open' : 'submit'}
+            />
+          ))}
+        </ul>
       )}
     </div>
   )

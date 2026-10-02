@@ -20,7 +20,7 @@ import {
  */
 
 const EMPTY: StudentTodo = {
-  overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], isClear: true,
+  overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], newGrades: [], isClear: true,
 }
 
 export function useStudentTodo(profileId: string | undefined) {
@@ -76,7 +76,7 @@ export function useStudentTodo(profileId: string | undefined) {
           .order('created_at', { ascending: false }),
         supabase
           .from('topic_test_assignments')
-          .select('id, test_id, topic_id, topic:topics!inner(id, title), test:topic_tests!inner(id, title)'),
+          .select('id, test_id, topic_id, topic:topics!inner(id, title, module:modules!inner(course_id)), test:topic_tests!inner(id, title)'),
         supabase
           .from('topic_test_attempts')
           .select('id, test_id, status, completed_at')
@@ -123,17 +123,22 @@ export function useStudentTodo(profileId: string | undefined) {
       }
 
       // Названия работ для «Проверено» — по своим же попыткам.
-      const titleByAttempt = new Map<string, { title: string; scale: 'five' | 'hundred' | null }>()
+      const titleByAttempt = new Map<string, { title: string; scale: 'five' | 'hundred' | null; homeworkId?: string; topicTitle?: string }>()
       for (const row of (attemptsRes.data ?? []) as any[]) {
         titleByAttempt.set(row.id, {
           title: row.homework?.title ?? 'Домашнее задание',
           scale: row.homework?.grade_scale ?? null,
+          // §254: ДЗ и тема — для «Новых оценок» (подпись кнопки и отбор страницы ДЗ).
+          homeworkId: row.homework?.id ?? row.homework_id ?? undefined,
+          topicTitle: row.homework?.topic?.title ?? undefined,
         })
       }
       for (const verdict of verdicts) {
         const meta = titleByAttempt.get(verdict.attemptId)
         verdict.homeworkTitle = meta?.title ?? 'Домашнее задание'
         verdict.gradeScale = meta?.scale ?? null
+        verdict.homeworkId = meta?.homeworkId
+        verdict.topicTitle = meta?.topicTitle
       }
 
       const completedTests = new Set(
@@ -150,6 +155,8 @@ export function useStudentTodo(profileId: string | undefined) {
           topicId:      row.topic_id,
           topicTitle:   row.topic?.title ?? 'Тема',
           completed:    completedTests.has(row.test_id),
+          // §254: ссылка на тему тестирования с главной — через группу курса.
+          groupId:      groupByCourse.get(row.topic?.module?.course_id) ?? null,
         })
       }
 

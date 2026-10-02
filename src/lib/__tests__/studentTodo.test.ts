@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildStudentTodo, formatDueIn, type TodoHomework } from '@/lib/studentTodo'
+import {
+  buildStudentTodo, formatDueIn, homeActions, homeworkIdsFor, parseHomeworkShow, splitDueWindow,
+  type TodoHomework, type TodoVerdict,
+} from '@/lib/studentTodo'
 
 /**
  * Правила «что мне сдать». Проверяются здесь, без сети и без рендера, потому
@@ -264,5 +267,110 @@ describe('formatDueIn', () => {
     expect(formatDueIn(21)).toBe('через 21 день')
     expect(formatDueIn(-2)).toBe('просрочено на 2 дня')
     expect(formatDueIn(-11)).toBe('просрочено на 11 дней')
+  })
+})
+
+// ── §254. Кнопки-счётчики главной и отбор страницы ДЗ ─────────────────────────
+describe('кнопки главной (§254)', () => {
+  const verdict = (attemptId: string, createdAt: string, over: Partial<TodoVerdict> = {}): TodoVerdict => ({
+    attemptId, homeworkTitle: 'Домашнее задание', decision: 'accepted', score: 4, gradeScale: 'five',
+    comment: null, createdAt, homeworkId: `hw-${attemptId}`, topicTitle: `Тема ${attemptId}`, ...over,
+  })
+
+  it('счёт и подписи: просрочено (самое давнее), сдать за 2 недели (ближайшее), новые оценки (последняя)', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [
+        hw({ homeworkId: 'o1', dueAt: '2026-06-27' }), // 40 дней назад
+        hw({ homeworkId: 'o2', dueAt: '2026-08-01' }),
+        hw({ homeworkId: 's1', dueAt: '2026-08-15' }), // через 9 дней
+        hw({ homeworkId: 's2', dueAt: '2026-08-20' }), // через 14 — ещё в окне
+        hw({ homeworkId: 'l1', dueAt: '2026-08-21' }), // через 15 — позже
+      ],
+      verdicts: [verdict('a1', '2026-08-03T12:00:00Z'), verdict('a2', '2026-08-05T12:00:00Z', { topicTitle: 'Производные', score: 4 })],
+    })
+    const actions = homeActions(todo)
+    expect(actions.map(a => [a.show, a.count])).toEqual([['overdue', 2], ['soon', 2], ['checked', 2]])
+    expect(actions[0].caption).toBe('самое давнее — 40 дней')
+    expect(actions[1].caption).toBe('ближайшее — через 9 дней')
+    expect(actions[2].caption).toBe('«Производные» — 4/5')
+    expect(actions.map(a => a.href)).toEqual(['/my-homework?show=overdue', '/my-homework?show=soon', '/my-homework?show=checked'])
+  })
+
+  it('кнопка с нулём не рождается; всё по нулям — кнопок нет вовсе', () => {
+    expect(homeActions(buildStudentTodo(base))).toEqual([])
+    const onlyOverdue = buildStudentTodo({ ...base, homework: [hw({ homeworkId: 'o1', dueAt: '2026-08-05' })] })
+    expect(homeActions(onlyOverdue).map(a => a.show)).toEqual(['overdue'])
+    expect(homeActions(onlyOverdue)[0].caption).toBe('самое давнее — 1 день')
+  })
+
+  it('окно 14 дней пусто, а работы позже есть — «Сдать позже» с датой ближайшей', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 'l1', dueAt: '2026-11-14' }), hw({ homeworkId: 'l2', dueAt: '2027-05-20' })],
+    })
+    expect(splitDueWindow(todo).soon).toHaveLength(0)
+    const actions = homeActions(todo)
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toMatchObject({ show: 'later', count: 2, title: 'Сдать позже', caption: 'ближайшее — 14 ноября', href: '/my-homework?show=later' })
+  })
+
+  it('есть работы в окне — «Сдать позже» кнопкой не показывается', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 's1', dueAt: '2026-08-06' }), hw({ homeworkId: 'l1', dueAt: '2026-12-01' })],
+    })
+    expect(homeActions(todo).map(a => [a.show, a.count, a.caption])).toEqual([['soon', 1, 'ближайшее — сегодня']])
+  })
+
+  it('«Вернули на доработку» — своей кнопкой сразу после просрочки, важнее новых оценок', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [hw({ homeworkId: 'o1', dueAt: '2026-08-01' }), hw({ homeworkId: 'r1', topicTitle: 'Кинематика' }), hw({ homeworkId: 's1', dueAt: '2026-08-10' })],
+      rawAttempts: [attempt('r1', 'returned_for_revision')],
+      verdicts: [verdict('a9', '2026-08-05T12:00:00Z')],
+    })
+    const actions = homeActions(todo)
+    expect(actions.map(a => a.show)).toEqual(['overdue', 'returned', 'soon', 'checked'])
+    expect(actions[1].caption).toBe('«Кинематика»')
+  })
+
+  it('новые оценки — только принятые за 7 дней и по последнему вердикту работы', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      verdicts: [
+        verdict('old', '2026-07-29T12:00:00Z'), // 8 дней назад — уже не новая
+        verdict('ok', '2026-07-30T12:00:00Z'), // ровно 7 дней — ещё новая
+        verdict('ret', '2026-08-04T12:00:00Z', { decision: 'returned_for_revision', score: null }),
+        // по этой работе последний вердикт — возврат: принятие раньше не считается
+        verdict('flip', '2026-08-01T12:00:00Z'),
+        verdict('flip', '2026-08-02T12:00:00Z', { decision: 'returned_for_revision', score: null }),
+      ],
+    })
+    expect(todo.newGrades.map(v => v.attemptId)).toEqual(['ok'])
+    expect(homeworkIdsFor(todo, 'checked')).toEqual(['hw-ok'])
+  })
+
+  it('отбор страницы ДЗ — те же корзины, тем же порядком, что у кнопок', () => {
+    const todo = buildStudentTodo({
+      ...base,
+      homework: [
+        hw({ homeworkId: 'o2', dueAt: '2026-08-01' }), hw({ homeworkId: 'o1', dueAt: '2026-07-01' }),
+        hw({ homeworkId: 's1', dueAt: '2026-08-12' }), hw({ homeworkId: 'l1', dueAt: '2026-09-30' }),
+        hw({ homeworkId: 'n1' }),
+      ],
+    })
+    expect(homeworkIdsFor(todo, 'overdue')).toEqual(['o1', 'o2'])
+    expect(homeworkIdsFor(todo, 'soon')).toEqual(['s1'])
+    expect(homeworkIdsFor(todo, 'later')).toEqual(['l1'])
+    expect(homeworkIdsFor(todo, 'nodue')).toEqual(['n1'])
+    for (const a of homeActions(todo)) expect(homeworkIdsFor(todo, a.show)).toHaveLength(a.count)
+  })
+
+  it('show из адреса: чужое значение — не отбор', () => {
+    expect(parseHomeworkShow('overdue')).toBe('overdue')
+    expect(parseHomeworkShow('later')).toBe('later')
+    expect(parseHomeworkShow('всё')).toBeNull()
+    expect(parseHomeworkShow(null)).toBeNull()
   })
 })

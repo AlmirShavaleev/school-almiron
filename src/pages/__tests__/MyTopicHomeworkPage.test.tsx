@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import {
   filterHomeworkByCourse, homeworkCourseOptions, splitHomeworkBuckets,
   type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { myTopicHref } from '@/lib/studentTopicAccess'
+import { buildStudentTodo, type TodoHomework } from '@/lib/studentTodo'
 
 /**
  * Страница списка ДЗ ученика.
@@ -46,6 +47,15 @@ vi.mock('@/hooks/useMyTopicHomework', () => ({
       noStudentRecord: state.noStudentRecord,
     }
   },
+}))
+
+// §254: список по кнопке главной (`?show=…`) берёт состав из `studentTodo` —
+// подменён хук загрузки, сама раскладка — настоящий `buildStudentTodo`.
+const todoState = { todo: buildStudentTodo({ rawAttempts: [], homework: [], tests: [], verdicts: [] }) }
+const useStudentTodoMock = vi.fn((profileId?: string) => ({ todo: todoState.todo, loading: false, error: null, reload: vi.fn(), profileId }))
+vi.mock('@/hooks/useStudentTodo', () => ({ useStudentTodo: (p?: string) => useStudentTodoMock(p) }))
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (selector: (s: unknown) => unknown) => selector({ profile: { id: 'profile-1', full_name: 'Иванова Анна' } }),
 }))
 
 import { MyTopicHomeworkPage } from '@/pages/student/MyTopicHomeworkPage'
@@ -283,5 +293,74 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
 
     expect(screen.getByText('Кинематика')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Все/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('MyTopicHomeworkPage — список по кнопке главной (§254)', () => {
+  const day = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
+  const todoHw = (id: string, dueAt: string | null, courseId = 'c1'): TodoHomework => ({
+    homeworkId: id, homeworkTitle: 'ДЗ', topicId: `t-${id}`, topicTitle: `Т ${id}`, courseId, courseTitle: 'Физика ЕГЭ',
+    groupId: 'g1', dueAt, topic: { is_open: true, available_from: null },
+  })
+
+  beforeEach(() => {
+    state.courses = TWO_COURSES
+    state.groups = new Map([['c1', 'g1'], ['c2', 'g2']])
+    state.loading = false
+    state.error = null
+    state.noStudentRecord = false
+    state.rows = [
+      hw({ homework_id: 'o1', topic_title: 'Давняя', status: 'not_started', is_overdue: true }),
+      hw({ homework_id: 'o2', topic_title: 'Свежая просрочка', status: 'not_started', is_overdue: true }),
+      hw({ homework_id: 's1', topic_title: 'Скоро', status: 'not_started' }),
+      hw({ homework_id: 'l1', topic_title: 'В мае', status: 'not_started', course_id: 'c2' }),
+      hw({ homework_id: 'x1', topic_title: 'Сдано', status: 'submitted' }),
+    ]
+    todoState.todo = buildStudentTodo({
+      rawAttempts: [], tests: [], verdicts: [],
+      homework: [todoHw('o2', day(-2)), todoHw('o1', day(-30)), todoHw('s1', day(5)), todoHw('l1', day(200), 'c2')],
+    })
+    useStudentTodoMock.mockClear()
+  })
+
+  it('?show=overdue — только просроченное, самое давнее сверху; путь ко всем заданиям', () => {
+    renderPage('/my-homework?show=overdue')
+    const list = screen.getByTestId('my-hw-show')
+    expect(within(list).getByRole('heading', { level: 1 })).toHaveTextContent('Просрочено')
+    expect(within(list).getAllByTestId('my-hw-row').map(r => r.querySelector('h3')?.textContent)).toEqual(['Давняя', 'Свежая просрочка'])
+    expect(screen.getByTestId('my-hw-count')).toHaveTextContent('Работ: 2')
+    fireEvent.click(screen.getByTestId('my-hw-show-all'))
+    expect(screen.queryByTestId('my-hw-show')).toBeNull()
+    expect(screen.getByTestId('address')).toHaveTextContent(/^\/my-homework$/)
+    expect(screen.getAllByTestId('my-hw-row')).toHaveLength(5)
+  })
+
+  it('?show=soon и ?show=later — окно 14 дней и всё, что позже', () => {
+    renderPage('/my-homework?show=soon')
+    expect(within(screen.getByTestId('my-hw-show')).getAllByTestId('my-hw-row').map(r => r.querySelector('h3')?.textContent)).toEqual(['Скоро'])
+    expect(screen.getByTestId('my-hw-count')).toHaveTextContent('Срок в ближайшие 14 дней: 1')
+  })
+
+  it('?show=later — работы позже окна, другие курсы тоже', () => {
+    renderPage('/my-homework?show=later')
+    expect(within(screen.getByTestId('my-hw-show')).getAllByTestId('my-hw-row').map(r => r.querySelector('h3')?.textContent)).toEqual(['В мае'])
+  })
+
+  it('пустой список — словами и с выходом, а не голый экран', () => {
+    renderPage('/my-homework?show=returned')
+    expect(screen.getByTestId('my-hw-show-empty')).toHaveTextContent('В этом списке ничего не осталось')
+  })
+
+  it('отбор курса в адресе переживает «Все задания»', () => {
+    renderPage('/my-homework?course=c1&show=overdue')
+    expect(screen.getByTestId('my-hw-show-all')).toHaveAttribute('href', '/my-homework?course=c1')
+  })
+
+  it('без show и с чужим show — обычная страница, список дел не грузится', () => {
+    renderPage('/my-homework?show=что-то')
+    expect(screen.queryByTestId('my-hw-show')).toBeNull()
+    expect(screen.getAllByTestId('my-hw-row')).toHaveLength(5)
+    expect(useStudentTodoMock).toHaveBeenCalledWith(undefined)
+    expect(useStudentTodoMock).not.toHaveBeenCalledWith('profile-1')
   })
 })
