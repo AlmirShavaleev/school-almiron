@@ -1364,6 +1364,30 @@ export const scenes = [
     { persona: 'owner', name: 'd255-teacher-goal', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1200 }, { eval: 'document.querySelector("[data-testid=student-subject-targets]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
   ]),
 
+  // §256: каталог поднимает прогноз — задача дня, цель недели, «Решите в каталоге», проверка
+  // ответа в каталоге (верно / неверно / ответ открыт), таблица наград, раздел, учитель.
+  // Персона `s256` (фикстуры `apply256`, состояние попыток — на процесс). Сцены ПИШУТ —
+  // каждую ширину своим процессом: node e2e/harness/tour.mjs d256 1280 ; … d256 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const topic = '/catalog/d000000-0000-4000-8000-000000002566/topic/d000000-0000-4000-8000-000000002600?subject=math&exam=ege'
+    const task = (k) => `[data-task-id="d000000-0000-4000-8000-0000000026${10 + k}"]`
+    const toTask = (k) => ({ eval: `document.querySelector('${task(k)}').scrollIntoView({ block: "center" })` })
+    return [
+      { persona: 's256', name: 'd256-home', url: '/student', width, height, actions: [{ wait: 1600 }] },
+      { persona: 's256', name: 'd256-home-forecast', url: '/student', width, height, full: false, actions: [{ wait: 1600 }, { eval: 'document.querySelector("[data-testid=forecast-catalog]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+      { persona: 's256', name: 'd256-home-daily-bad', url: '/student', width, height, full: false, actions: [{ wait: 1600 }, { fill: ['[data-testid=daily-task-card] [data-testid=task-answer-input]', '4'] }, { clickSel: '[data-testid=daily-task-card] [data-testid=task-answer-submit]' }, { wait: 600 }, { eval: 'document.querySelector("[data-testid=daily-task-card]").scrollIntoView({ block: "start" }); window.scrollBy(0, -20)' }] },
+      { persona: 's256', name: 'd256-home-daily-ok', url: '/student', width, height, full: false, actions: [{ wait: 1600 }, { fill: ['[data-testid=daily-task-card] [data-testid=task-answer-input]', '5'] }, { clickSel: '[data-testid=daily-task-card] [data-testid=task-answer-submit]' }, { wait: 900 }, { eval: 'document.querySelector("[data-testid=daily-task-card]").scrollIntoView({ block: "start" }); window.scrollBy(0, -20)' }, { wait: 200 }] },
+      { persona: 's256', name: 'd256-task', url: topic, width, height, actions: [{ wait: 1800 }] },
+      { persona: 's256', name: 'd256-task-bad', url: topic, width, height, full: false, actions: [{ wait: 1800 }, toTask(3), { fill: [`${task(3)} [data-testid=task-answer-input]`, '6'] }, { clickSel: `${task(3)} [data-testid=task-answer-submit]` }, { wait: 600 }, toTask(3)] },
+      { persona: 's256', name: 'd256-task-ok', url: topic, width, height, full: false, actions: [{ wait: 1800 }, toTask(1), { fill: [`${task(1)} [data-testid=task-answer-input]`, '7'] }, { clickSel: `${task(1)} [data-testid=task-answer-submit]` }, { wait: 1000 }, toTask(1)] },
+      { persona: 's256', name: 'd256-task-revealed', url: topic, width, height, full: false, actions: [{ wait: 1800 }, toTask(4), { clickSel: `${task(4)} [data-testid=task-show-answer]` }, { wait: 500 }, { fill: [`${task(4)} [data-testid=task-answer-input]`, '2'] }, { clickSel: `${task(4)} [data-testid=task-answer-submit]` }, { wait: 700 }, toTask(4)] },
+      { persona: 's256', name: 'd256-rewards', url: topic, width, height, full: false, actions: [{ wait: 1800 }, { clickSel: '[data-testid=catalog-rewards-toggle]' }, { wait: 300 }, { eval: 'document.querySelector("[data-testid=catalog-rewards-table]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+      { persona: 's256', name: 'd256-section', url: '/catalog/d000000-0000-4000-8000-000000002566?subject=math&exam=ege', width, height, actions: [{ wait: 1600 }] },
+      { persona: 's256', name: 'd256-home-after', url: '/student', width, height, actions: [{ wait: 1600 }] },
+      { persona: 'o256', name: 'd256-teacher', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1400 }, { eval: 'document.querySelector("[data-testid=student-catalog-week]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

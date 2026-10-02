@@ -109,6 +109,9 @@ export const personas = {
   ...Object.fromEntries(['s255', 's255few'].map(k => [
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
+  // §256: каталог поднимает прогноз (фикстуры `apply256` поверх §254/§255).
+  s256: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  o256: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1882,6 +1885,8 @@ export function baseFixtures(persona) {
   if (persona === 'o252' || persona === 's252') apply252(fx, persona)
   if (persona.startsWith('s254')) apply254(fx, persona)
   if (persona.startsWith('s255')) { apply254(fx, persona === 's255few' ? 's254new' : 's254'); apply255(fx, persona) }
+  if (persona === 's256') apply256(fx, persona)
+  if (persona === 'o256') fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
   return fx
 }
 
@@ -3142,4 +3147,174 @@ function apply255(fx, persona) {
         ],
         badges: [{ key: 'streak7', have: 0, need: 7 }, { key: 'ontime10', have: 1, need: 10 }, { key: 'mock1', have: 0, need: 1 }, { key: 'catalog100', have: 2, need: 100 }],
       }
+}
+
+// ── §256: каталог поднимает прогноз ──────────────────────────────────────────
+// Всё выдумано. Поверх `apply254` + `apply255('s255')`: математика ЕГЭ с
+// прогнозом; в каталоге — раздел №6 «Простейшие уравнения» (тема из 6 задач,
+// эталоны как в макете: 2^(x−3) = 16 → 7, задача дня log₃(x+4) = 2 → 5), зона №6
+// — «зона роста», засчитано 3. RPC — функции от СОСТОЯНИЯ процесса (`state256`):
+// проверка пишет попытку, раскрытие — отметку, свидетельства прогноза
+// пересчитываются из попыток, поэтому «+1 к прогнозу» на снимке — та же модель
+// до/после, что у ученика. Сцены пишут — каждую ширину своим процессом:
+//   node e2e/harness/tour.mjs d256 1280 ; node e2e/harness/tour.mjs d256 390
+const SEC256 = (n) => U('d', 2560 + n)
+const TOPIC256 = U('d', 2600)
+const TASK256 = (k) => U('d', 2610 + k)
+const TASKS256 = [
+  ['<p>Найдите корень уравнения 2<sup>x − 3</sup> = 16.</p>', '7'],
+  ['<p>Найдите корень уравнения log<sub>3</sub>(x + 4) = 2.</p>', '5'],
+  ['<p>Найдите корень уравнения √(3x + 1) = 4.</p>', '5'],
+  ['<p>Найдите корень уравнения (1/5)<sup>x − 4</sup> = 25.</p>', '2'],
+  ['<p>Решите уравнение x² − 9 = 0. Если корней несколько, в ответе укажите меньший.</p>', '-3'],
+  ['<p>Решите уравнение sin x = 0 и запишите общий вид решений.</p>', 'x = πk, k ∈ Z'],
+]
+const state256 = { attempts: [], reveals: new Set() }
+function apply256(fx, persona) {
+  apply254(fx, 's254')
+  apply255(fx, 's255')
+  const nowMs = Date.now()
+  const T = new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
+  const dow = (new Date(`${T}T12:00:00Z`).getUTCDay() + 6) % 7
+  const day = (n) => { const d = new Date(`${T}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+  const rules = {
+    window_days: 60, low: 0.4, high: 0.7, daily_task: 10, weekly_goal: 40, weekly_target: 10, weekly_numbers: 2, checks_per_minute: 30,
+    zones: [
+      { key: 'growth', per_task: 5, milestones: [{ at: 10, bonus: 30 }, { at: 20, bonus: 50 }, { at: 30, bonus: 80 }] },
+      { key: 'progress', per_task: 3, milestones: [{ at: 10, bonus: 20 }, { at: 20, bonus: 30 }, { at: 30, bonus: 40 }] },
+      { key: 'confident', per_task: 1, milestones: [{ at: 10, bonus: 5 }, { at: 20, bonus: 5 }, { at: 30, bonus: 5 }] },
+    ],
+  }
+  // Разделы математики ЕГЭ №1–12 вместо общих (там нумерация §202 для печати).
+  const mathSections = TITLES_255.math.slice(0, 12).map((title, i) => ({
+    id: SEC256(i + 1), title, subject: 'Математика', exam_type: 'ЕГЭ', exam_number: i + 1, external_id: 2560 + i,
+    is_published: true, position: i + 1, created_at: ago(9000), updated_at: ago(900),
+  }))
+  fx.tables.catalog_sections = [...fx.tables.catalog_sections.filter(s => s.subject !== 'Математика'), ...mathSections]
+  const tasks = TASKS256.map(([statement, answer], k) => ({
+    id: TASK256(k + 1), section_id: SEC256(6), subject: 'Математика', exam_type: 'ЕГЭ', external_id: 256100 + k, position: k + 1, is_published: true,
+    statement_html: statement, has_answer: true, has_solution: k === 0, answer_html: `<p>${answer}</p>`,
+    solution_html: k === 0 ? '<p>16 = 2⁴, значит x − 3 = 4, x = 7.</p>' : null, solution_plan_html: null, grade_criteria_html: null,
+    difficulty: null, exam_part: 1, max_points: 1, partial_type: null, source_url: null, created_at: ago(9000), updated_at: ago(900),
+  }))
+  const checkable = (id) => id !== TASK256(6)
+  fx.tables.catalog_tasks = [...fx.tables.catalog_tasks, ...tasks]
+  fx.tables.catalog_topics = [...fx.tables.catalog_topics, { id: TOPIC256, title: 'Показательные, логарифмические и иррациональные уравнения', parent_id: null, position: 1, subject: 'Математика', exam_type: 'ЕГЭ', external_id: 2600, is_published: true, slug: 'uravneniya', created_at: ago(9000), updated_at: ago(900) }]
+  fx.tables.catalog_task_topics = [...fx.tables.catalog_task_topics, ...tasks.map(t => ({ task_id: t.id, topic_id: TOPIC256, is_primary: true, source: 'import', catalog_tasks: t, catalog_topics: null }))]
+  const tree = fx.rpc.get_catalog_section_topic_tree
+  fx.rpc.get_catalog_section_topic_tree = (body) => (body.p_section_id === SEC256(6)
+    ? [{ id: TOPIC256, title: 'Показательные, логарифмические и иррациональные уравнения', parent_id: null, position: 1, slug: 'uravneniya', external_id: 2600, task_count: 6, completed_count: 0 }]
+    : typeof tree === 'function' ? tree(body) : tree)
+  const counts = fx.rpc.get_catalog_section_counts
+  fx.rpc.get_catalog_section_counts = (body) => [
+    ...(typeof counts === 'function' ? counts(body) : counts ?? []),
+    ...mathSections.map(s => ({ section_id: s.id, task_count: s.exam_number === 6 ? 6 : 40, part1_count: 40, part2_count: 0 })),
+  ]
+
+  // Зона и засчитанное по номерам — «считает база».
+  const zoneOf = { 1: ['confident', 0.9, 4], 2: ['confident', 0.82, 9], 3: ['confident', 0.78, 2], 4: ['confident', 0.9, 0], 5: ['progress', 0.66, 1], 6: ['growth', 0.25, 3],
+    7: ['progress', 0.55, 6], 8: ['progress', 0.6, 0], 9: ['growth', 0.38, 4], 10: ['growth', null, 0], 11: ['progress', 0.6, 0], 12: ['progress', 0.5, 0] }
+  const counted = () => state256.attempts.filter(a => a.verdict === 'correct' && !a.revealed).length
+  const forecast = fx.rpc.student_exam_forecast_evidence()
+  const baseEvidence = forecast.evidence
+  fx.rpc.student_exam_forecast_evidence = () => {
+    const byTask = new Map()
+    for (const a of state256.attempts) {
+      if (a.revealed) continue
+      const x = byTask.get(a.task_id) ?? { first: a.verdict, correctAt: null, at: a.at }
+      if (a.verdict === 'correct' && !x.correctAt) x.correctAt = a.at
+      byTask.set(a.task_id, x)
+    }
+    const rows = [...byTask.entries()].map(([taskId, x]) => ({
+      subject: 'math', ns: [6], source: 'catalog', score: x.first === 'correct' ? 1 : x.correctAt ? 0.5 : 0,
+      at: x.correctAt ?? x.at, item: `catalog:${taskId}`, kim_total: null,
+    }))
+    return {
+      ...forecast,
+      now: new Date().toISOString(),
+      titles: forecast.titles.map(t => (t.subject === 'math' && t.n <= 12 ? { ...t, section_id: SEC256(t.n) } : t)),
+      numbers: Object.entries(zoneOf).map(([n, [zone, share, solved]]) => ({ subject: 'math', n: Number(n), zone, share, solved: Number(n) === 6 ? solved + counted() : solved })),
+      catalog_rules: rules,
+      evidence: [...baseEvidence, ...rows],
+    }
+  }
+
+  const daily = () => {
+    const att = state256.attempts.filter(a => a.task_id === TASK256(2))
+    const ok = att.some(a => a.verdict === 'correct')
+    return {
+      day: T, subject: 'math', n: 6, zone: 'growth', share: 0.25, bonus: 10, section_id: SEC256(6), title: 'Простейшие уравнения',
+      task: { id: TASK256(2), statement_html: tasks[1].statement_html, subject: 'Математика', exam_type: 'ЕГЭ', assets: [] },
+      attempts: att.length, revealed: state256.reveals.has(TASK256(2)), solved: ok, done: ok && !state256.reveals.has(TASK256(2)),
+    }
+  }
+  fx.rpc.student_daily_task = (body) => (body.p_subject === 'math' ? daily() : { day: T, subject: body.p_subject, task: null })
+  const weekProgress = () => 3 + counted()
+  fx.rpc.student_weekly_goal = (body) => (body.p_subject === 'math'
+    ? { week_start: day(-dow), week_end: day(6 - dow), subject: 'math', numbers: [6, 9],
+        sections: [{ n: 6, section_id: SEC256(6), title: 'Простейшие уравнения' }, { n: 9, section_id: SEC256(9), title: TITLES_255.math[8] }],
+        target: 10, progress: weekProgress(), done: weekProgress() >= 10, bonus: 40 }
+    : { week_start: day(-dow), subject: body.p_subject, numbers: null })
+
+  fx.rpc.catalog_practice_state = (body) => ({
+    rules,
+    number: body.p_section_id === SEC256(6) ? { subject: 'math', n: 6, title: 'Простейшие уравнения', zone: 'growth', share: 0.25, solved: 3 + counted() }
+      : mathSections.some(s => s.id === body.p_section_id)
+        ? (() => { const n = mathSections.find(s => s.id === body.p_section_id).exam_number; const [zone, share, solved] = zoneOf[n]; return { subject: 'math', n, title: TITLES_255.math[n - 1], zone, share, solved } })()
+        : null,
+    tasks: (body.p_task_ids ?? []).map(id => {
+      const att = state256.attempts.filter(a => a.task_id === id)
+      return {
+        task_id: id, checkable: tasks.some(t => t.id === id) ? checkable(id) : true, attempts: att.length,
+        last_verdict: att.length ? att[att.length - 1].verdict : null,
+        solved: att.some(a => a.verdict === 'correct'), counted: att.some(a => a.verdict === 'correct' && !a.revealed),
+        revealed: state256.reveals.has(id),
+      }
+    }),
+  })
+  const norm = (s) => String(s ?? '').replace(/<[^>]+>/g, '').replace(/,/g, '.').replace(/\s+/g, ' ').trim().toLowerCase()
+  fx.rpc.catalog_check_answer = (body) => {
+    const t = tasks.find(x => x.id === body.p_task_id)
+    if (!t) return new Error('NOT_FOUND: задача не найдена')
+    if (!checkable(t.id)) return new Error('NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки')
+    const verdict = norm(body.p_answer) === norm(t.answer_html) ? 'correct' : 'wrong'
+    const prev = state256.attempts.filter(a => a.task_id === t.id)
+    if (prev.some(a => a.verdict === 'correct')) {
+      return { verdict, already_solved: true, counted: false, revealed_before: prev.find(a => a.verdict === 'correct').revealed, points: 0, milestone_bonus: 0, daily_bonus: 0, weekly_bonus: 0, subject: 'math', n: 6, answer_html: verdict === 'correct' ? t.answer_html : null }
+    }
+    const revealed = state256.reveals.has(t.id)
+    state256.attempts.push({ task_id: t.id, verdict, revealed, at: new Date().toISOString() })
+    const isCounted = verdict === 'correct' && !revealed
+    return {
+      verdict, already_solved: false, counted: isCounted, revealed_before: revealed, subject: 'math', n: 6, zone: 'growth', share: 0.25,
+      points: isCounted ? 5 : 0, solved: 3 + counted(), milestone_bonus: 0,
+      daily_bonus: isCounted && t.id === TASK256(2) ? 10 : 0, weekly_bonus: 0,
+      weekly: isCounted ? { progress: weekProgress(), target: 10 } : null,
+      answer_html: verdict === 'correct' ? t.answer_html : null,
+    }
+  }
+  fx.rpc.catalog_reveal_answer = (body) => {
+    state256.reveals.add(body.p_task_id)
+    return { answer_html: tasks.find(x => x.id === body.p_task_id)?.answer_html ?? null, solved_before: false }
+  }
+
+  // Серия по дням с решением: 5 дней подряд, сегодня ещё не решал.
+  const act = fx.rpc.student_home_activity
+  fx.rpc.student_home_activity = {
+    ...act,
+    streak: 5, record: 12, streak_rule: 'solve', solved_today: false,
+    streak_days: act.solved.map(s => s.day).filter(d => d < T),
+  }
+  const sp = fx.rpc.student_school_points
+  fx.rpc.student_school_points = {
+    ...sp,
+    rules: { ...sp.rules, variant: 2 },
+    catalog_rules: rules,
+    feed: [
+      { kind: 'daily', at: new Date(nowMs - 26 * 3600e3).toISOString(), points: 10, title: null, n: 6 },
+      { kind: 'catalog', at: new Date(nowMs - 26 * 3600e3).toISOString(), points: 13, title: null, n: 3 },
+      ...sp.feed.filter(f => f.kind !== 'catalog').slice(0, 4),
+    ],
+  }
+  if (persona === 'o256') fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
 }
