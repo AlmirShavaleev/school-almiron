@@ -104,6 +104,11 @@ export const personas = {
   ...Object.fromEntries(['s254', 's254ret', 's254clear', 's254new'].map(k => [
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
+  // §255: главная, этап 2 (фикстуры `apply255` поверх `apply254`): s255 —
+  // математика и физика ЕГЭ с прогнозом по обоим; s255few — данных мало.
+  ...Object.fromEntries(['s255', 's255few'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1754,6 +1759,8 @@ export function baseFixtures(persona) {
       catalog_sections, catalog_tasks: [...catalog_tasks, ...catalog_tasks_math, ...catalog_tasks_formula], catalog_task_assets: [...catalog_task_assets, ...catalog_task_assets_formula], catalog_topics, catalog_task_topics, catalog_task_progress: [{ user_id: persona === 'student' ? IDS.student : IDS.owner, task_id: IDS.task(2), is_completed: true, completed_at: ago(10), updated_at: ago(10), catalog_tasks: catalog_tasks[1] }],
       task_collections, task_collection_items, notifications, notification_queue, telegram_connections, course_curators: [], demo_users: [],
       student_subject_targets, student_report_next_steps,
+      // §255: цель, которую ученик карточки поставил себе сам на главной.
+      student_exam_goals: [{ profile_id: IDS.profile(0), subject: 'physics', goal: 90, updated_at: ago(24) }],
       lesson_templates: [], topic_section_marks: [{ topic_id: IDS.topic(3), student_id: IDS.studentRow, group_key: 'theory', marked_at: ago(100) }],
       topic_homework_ai_jobs: aiJobs,
       topic_homework_ai_findings: aiFindings,
@@ -1874,6 +1881,7 @@ export function baseFixtures(persona) {
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   if (persona === 'o252' || persona === 's252') apply252(fx, persona)
   if (persona.startsWith('s254')) apply254(fx, persona)
+  if (persona.startsWith('s255')) { apply254(fx, persona === 's255few' ? 's254new' : 's254'); apply255(fx, persona) }
   return fx
 }
 
@@ -3024,4 +3032,114 @@ function apply254(fx, persona) {
       ? [{ course_id: IDS.course, topics_total: 3, topics_done: 0 }, { course_id: IDS.course2, topics_total: 1, topics_done: 0 }]
       : [{ course_id: IDS.course, topics_total: 52, topics_done: 9 }, { course_id: IDS.course2, topics_total: 48, topics_done: 6 }],
   }
+}
+
+// ── §255: «Примерный балл на ЕГЭ», «Баллы школы», «N дней до ЕГЭ» ──────────
+// Всё выдумано. Поверх `apply254` (ДЗ, серия, курсы): вторая группа ученика
+// становится математикой ЕГЭ (в общих фикстурах это ОГЭ), база отвечает
+// СВИДЕТЕЛЬСТВАМИ (`student_exam_forecast_evidence`) — балл считает клиент,
+// как на проде. Даты — от настоящего «сейчас», чтобы окно 180 дней, «+N за
+// месяц» и 8 недель не устаревали.
+//   s255    — математика: 11 номеров части 1, рост за месяц, цель 80;
+//             физика: 13 номеров части 1 из 20, цели нет (учитель предлагает 85);
+//   s255few — новичок: по 2–3 номера — «решите ещё N задач».
+const TITLES_255 = {
+  math: ['Планиметрия', 'Векторы', 'Стереометрия', 'Теория вероятностей', 'Вероятности сложных событий', 'Простейшие уравнения',
+    'Вычисления и преобразования', 'Производная и первообразная', 'Задачи с прикладным содержанием', 'Текстовые задачи',
+    'Графики функций', 'Наибольшее и наименьшее значение', 'Уравнения', 'Стереометрическая задача', 'Неравенства',
+    'Экономическая задача', 'Планиметрическая задача', 'Задача с параметром', 'Числа и их свойства'],
+  physics: ['Кинематика', 'Динамика', 'Законы сохранения', 'Статика, колебания и волны', 'Механика: изменение величин',
+    'Механика: графики и формулы', 'МКТ', 'Термодинамика', 'МКТ и термодинамика: процессы', 'МКТ: графики и формулы',
+    'Электрическое поле и ток', 'Магнитное поле', 'Электромагнитная индукция', 'Электродинамика: процессы',
+    'Электродинамика: графики', 'Квантовая физика', 'Квантовая физика: процессы', 'Методы познания', 'Погрешности измерений',
+    'Опыт и наблюдение'],
+}
+function apply255(fx, persona) {
+  const nowMs = Date.now()
+  const iso = (daysAgo, h = 0) => new Date(nowMs - daysAgo * 86_400_000 - h * 3_600_000).toISOString()
+  let seed = 25
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280
+  // Математика — ЕГЭ (группа 2). Общие объекты не трогаем: копии.
+  const mathCourse = { ...course2, title: 'Математика ЕГЭ, профиль · 11А', exam_type: 'ege' }
+  const mathGroup = { ...groups[1], name: 'ЕГЭ Математика 11А', courses: mathCourse }
+  fx.tables.courses = fx.tables.courses.map(c => (c.id === IDS.course2 ? mathCourse : c))
+  fx.tables.group_students = fx.tables.group_students.map(g => (g.student_id === IDS.studentRow && g.group_id === IDS.group2 ? { ...g, groups: mathGroup } : g))
+
+  const evidence = []
+  let item = 0
+  // [номер, сколько задач, доля верного сейчас, источник]; доля растёт к сегодняшнему дню
+  const push = (subject, plan, opts = {}) => {
+    for (const [n, k, rate, src = 'hw'] of plan) {
+      for (let j = 0; j < k; j++) {
+        const daysAgo = Math.round((opts.spread ?? 110) * (j + 0.5) / k + rnd() * 4)
+        const r = Math.max(0, Math.min(1, rate - (daysAgo / 120) * (opts.growth ?? 0.25)))
+        const score = src === 'catalog' ? 1 : rnd() < r ? 1 : rnd() < 0.25 ? 0.5 : 0
+        const ns = Array.isArray(n) ? n : [n]
+        evidence.push({ subject, ns, source: src, score, at: iso(daysAgo, rnd() * 8), item: `${src}:${subject}:${item++}`, kim_total: null })
+      }
+    }
+  }
+  if (persona === 's255') {
+    push('math', [
+      [1, 6, 0.95], [2, 4, 0.9], [3, 5, 0.85], [4, 6, 0.95], [5, 5, 0.75], [6, 8, 0.35], [7, 6, 0.7], [8, 5, 0.65],
+      [9, 6, 0.4], [11, 4, 0.6], [12, 5, 0.5], [13, 4, 0.55], [[15, 16], 2, 0.4],
+      [7, 6, 1, 'catalog'], [9, 4, 1, 'catalog'], [6, 2, 1, 'catalog'],
+    ], { growth: 0.55 })
+    // пробник 7 недель назад: часть 1 и №13
+    const mockAt = iso(50, 2)
+    const mockScores = [1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    mockScores.forEach((pts, i) => evidence.push({ subject: 'math', ns: [i + 1], source: 'mock', score: i === 12 ? pts / 2 : pts, at: mockAt, item: 'mock:math:1', kim_total: 19 }))
+    push('physics', [
+      [1, 6, 0.9], [2, 5, 0.75], [3, 4, 0.6], [4, 3, 0.45], [5, 4, 0.3], [7, 3, 0.55], [8, 3, 0.2], [11, 4, 0.65],
+      [12, 3, 0.5], [13, 3, 0.3], [15, 2, 0.4], [16, 3, 0.35], [19, 2, 0.6], [24, 2, 0.3], [1, 3, 1, 'catalog'],
+    ], { growth: 0.15 })
+  } else {
+    push('math', [[1, 2, 0.8], [4, 2, 0.6], [6, 1, 0.5]], { spread: 12, growth: 0 })
+    push('physics', [[1, 2, 0.7], [2, 1, 0.5]], { spread: 10, growth: 0 })
+  }
+  evidence.sort((a, b) => a.at.localeCompare(b.at))
+  const subjects = persona === 's255'
+    ? [{ subject: 'math', goal: 80, goal_updated_at: iso(12), teacher_goal: 75 }, { subject: 'physics', goal: null, goal_updated_at: null, teacher_goal: 85 }]
+    : [{ subject: 'math', goal: null, goal_updated_at: null, teacher_goal: null }, { subject: 'physics', goal: null, goal_updated_at: null, teacher_goal: null }]
+  const forecast = {
+    today: new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' }),
+    now: new Date(nowMs).toISOString(),
+    subjects,
+    titles: Object.entries(TITLES_255).flatMap(([subject, list]) => list.map((title, i) => ({ subject, n: i + 1, title }))),
+    evidence,
+  }
+  fx.rpc.student_exam_forecast_evidence = () => forecast
+  fx.rpc.set_my_exam_goal = (body) => {
+    const s = forecast.subjects.find(x => x.subject === body.p_subject)
+    if (s) { s.goal = body.p_goal ?? null; s.goal_updated_at = new Date().toISOString() }
+    return body.p_goal ?? null
+  }
+
+  const rules = { hw_ontime: 10, hw_late: 4, grade5: 10, grade4: 6, accepted: 6, catalog: 2, mock_point: 1, streak_day: 3 }
+  fx.rpc.student_school_points = persona === 's255'
+    ? {
+        total: 340,
+        level: { n: 4, name: 'Упорство', from: 300, next: 450, next_name: 'Система' },
+        levels: [0, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500], rules,
+        feed: [
+          { kind: 'streak', at: iso(0, 1), points: 3, title: null, n: 5 },
+          { kind: 'hw_ontime', at: iso(0, 3), points: 10, title: 'Динамика. Теория', n: null },
+          { kind: 'catalog', at: iso(1, 2), points: 6, title: null, n: 3 },
+          { kind: 'hw_grade', at: iso(1, 5), points: 6, title: 'Производные', n: 4 },
+          { kind: 'mock', at: iso(50, 2), points: 10, title: 'Пробник №1 · профиль', n: 10 },
+          { kind: 'hw_late', at: iso(36), points: 4, title: 'Импульс тела', n: null },
+        ],
+        badges: [{ key: 'streak7', have: 12, need: 7 }, { key: 'ontime10', have: 14, need: 10 }, { key: 'mock1', have: 1, need: 1 }, { key: 'catalog100', have: 37, need: 100 }],
+      }
+    : {
+        total: 24,
+        level: { n: 1, name: 'Старт', from: 0, next: 100, next_name: 'Разгон' },
+        levels: [0, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500], rules,
+        feed: [
+          { kind: 'catalog', at: iso(1), points: 4, title: null, n: 2 },
+          { kind: 'hw_ontime', at: iso(3), points: 10, title: 'Вводное занятие', n: null },
+          { kind: 'hw_grade', at: iso(2), points: 10, title: 'Вводное занятие', n: 5 },
+        ],
+        badges: [{ key: 'streak7', have: 0, need: 7 }, { key: 'ontime10', have: 1, need: 10 }, { key: 'mock1', have: 0, need: 1 }, { key: 'catalog100', have: 2, need: 100 }],
+      }
 }

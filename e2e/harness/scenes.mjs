@@ -1349,6 +1349,21 @@ export const scenes = [
   // снимок показывает, что при системной тёмной теме главная читается.
   { persona: 's254', name: 'd254-home-dark', url: '/student', width: 390, height: 844, colorScheme: 'dark', actions: [{ wait: 1500 }] },
 
+  // §255: «Примерный балл на ЕГЭ», «Баллы школы», «N дней до ЕГЭ». Персоны
+  // `s255*` (фикстуры `apply255`). Сцена ввода цели пишет в фикстуры процесса —
+  // гонять по ширине отдельно: node e2e/harness/tour.mjs d255 1280 ; … d255 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 's255', name: 'd255-home', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's255', name: 'd255-forecast-math', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { eval: 'document.querySelector("[data-testid=forecast-card]").scrollIntoView({ block: "start" }); window.scrollBy(0, -110)' }, { wait: 200 }] },
+    { persona: 's255', name: 'd255-forecast-physics', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { eval: 'document.querySelector("[data-testid=forecast-card]").scrollIntoView({ block: "start" }); window.scrollBy(0, -110)' }, { wait: 200 }, { clickSel: '[data-testid=forecast-subject-physics]' }, { wait: 300 }] },
+    { persona: 's255', name: 'd255-kim-tip', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { eval: 'document.querySelector("[data-testid=kim-part1] [data-n=\'6\']").scrollIntoView({ block: "center" })' }, { focus: '[data-testid=kim-part1] [data-n="6"]' }, { wait: 300 }] },
+    { persona: 's255', name: 'd255-goal', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { clickSel: '[data-testid=forecast-subject-physics]' }, { clickSel: '[data-testid=forecast-goal-edit]' }, { fill: ['[data-testid=forecast-goal-input]', '120'] }, { clickSel: '[data-testid=forecast-goal-form] button[type=submit]' }, { wait: 200 }, { eval: 'document.querySelector("[data-testid=forecast-goal-form]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+    { persona: 's255', name: 'd255-goal-saved', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { clickSel: '[data-testid=forecast-subject-physics]' }, { clickSel: '[data-testid=forecast-goal-edit]' }, { fill: ['[data-testid=forecast-goal-input]', '70'] }, { clickSel: '[data-testid=forecast-goal-form] button[type=submit]' }, { wait: 500 }, { eval: 'document.querySelector("[data-testid=forecast-scale]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+    { persona: 's255', name: 'd255-points', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { eval: 'document.querySelector("[data-testid=points-card]").scrollIntoView({ block: "center" })' }, { focus: '[data-badge=forecast5]' }, { wait: 300 }] },
+    { persona: 's255few', name: 'd255-few', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 'owner', name: 'd255-teacher-goal', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1200 }, { eval: 'document.querySelector("[data-testid=student-subject-targets]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },
