@@ -1,0 +1,373 @@
+slice 254: ok
+slice 255: ok
+slice 256: ok
+migration 254: ok
+migrations 255: ok
+PENDING_256 (1): ok
+PENDING_256 (2, повтор): ok
+data 255: ok
+data 256: ok
+== 1. Права на функции: аноним — ничего; authenticated — только клиентские; внутренние — никому
+                                   fn                                   | anon | auth | ok 
+------------------------------------------------------------------------+------+------+----
+ public.catalog_check_answer(uuid, text)                                | f    | t    | t
+ public.catalog_reveal_answer(uuid)                                     | f    | t    | t
+ public.catalog_practice_state(uuid, uuid[])                            | f    | t    | t
+ public.catalog_reward_rules()                                          | f    | t    | t
+ public.student_daily_task(text)                                        | f    | t    | t
+ public.student_weekly_goal(text)                                       | f    | t    | t
+ public.student_catalog_week_for_staff(uuid)                            | f    | t    | t
+ public.student_home_activity(integer)                                  | f    | t    | t
+ public.student_exam_forecast_evidence()                                | f    | t    | t
+ public.student_school_points()                                         | f    | t    | t
+ public.student_exam_evidence_rows(uuid, timestamptz)                   | f    | f    | t
+ public.student_kim_zone_shares(uuid, text[], integer[], timestamptz[]) | f    | f    | t
+ public.catalog_counted_solutions(uuid)                                 | f    | f    | t
+ public.student_weak_numbers(uuid, text)                                | f    | f    | t
+ public.student_solve_days(uuid)                                        | f    | f    | t
+ public.student_solve_streak(uuid, date)                                | f    | f    | t
+ public.catalog_zone_of(numeric)                                        | f    | f    | t
+ public.catalog_task_verdict(text, text, text)                          | f    | f    | t
+ public.catalog_task_checkable(integer, text, text)                     | f    | f    | t
+
+== 2. Аноним: проверка, раскрытие, задача дня — отказ; таблицы — отказ
+BEGIN
+SET
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:39: NOTICE:  OK: check — permission denied for function catalog_check_answer
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:41: NOTICE:  OK: reveal — permission denied for function catalog_reveal_answer
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:43: NOTICE:  OK: daily — permission denied for function student_daily_task
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:45: NOTICE:  OK: attempts select — permission denied for table catalog_task_attempts
+DO
+ROLLBACK
+== 3. authenticated без sub: «нужен вход»
+BEGIN
+SET
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:53: NOTICE:  OK: check — catalog_check_answer: нужен вход
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:55: NOTICE:  OK: weekly — student_weekly_goal: нужен вход
+DO
+ROLLBACK
+== 4. Ученик A: прямые insert/update/delete в новые таблицы — 42501
+BEGIN
+SET
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:65: NOTICE:  OK: insert attempts — permission denied for table catalog_task_attempts (42501)
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:69: NOTICE:  OK: update attempts — permission denied for table catalog_task_attempts (42501)
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:73: NOTICE:  OK: delete reveals — permission denied for table catalog_task_reveals (42501)
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:77: NOTICE:  OK: insert reveals — permission denied for table catalog_task_reveals (42501)
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:81: NOTICE:  OK: insert daily — permission denied for table student_daily_tasks (42501)
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:85: NOTICE:  OK: insert weekly — permission denied for table student_weekly_goals (42501)
+DO
+ROLLBACK
+== 5. Видит только своё: A — 18 своих попыток; B — 0 (чужие не видны)
+BEGIN
+SET
+ ok | a_sees 
+----+--------
+ t  |     18
+
+ ok | b_sees 
+----+--------
+ t  |      0
+
+ROLLBACK
+== 6. Проверка: неверно → верно (засчитано, +5 «зона роста»), повтор — без записи и без баллов
+BEGIN
+SET
+ ok | verdict |  zone  | answer 
+----+---------+--------+--------
+ t  | wrong   | growth | null
+
+ ok |  zone  | points |  answer  
+----+--------+--------+----------
+ t  | growth | 5      | <p>7</p>
+
+ ok | verdict 
+----+---------
+ t  | correct
+
+ ok | attempts_7a 
+----+-------------
+ t  |           2
+
+RESET
+ ok 
+----
+ t
+
+SET
+RESET
+UPDATE 1
+SET
+ ok | score 
+----+-------
+ t  | 0.500
+
+ROLLBACK
+== 7. Набор «-6; 7»: «7 -6» — верно, «7» — неверно; множественный выбор физики: «31» при эталоне «13» — верно
+BEGIN
+SET
+ ok 
+----
+ t
+
+ ok 
+----
+ t
+
+ ok |   zone    | points 
+----+-----------+--------
+ t  | confident | 1
+
+ROLLBACK
+== 8. Раскрыл ответ → верная попытка НЕ засчитана (0 баллов, вне прогноза и баллов школы)
+BEGIN
+SET
+SELECT 1
+ ok 
+----
+ t
+
+ ok | counted 
+----+---------
+ t  | false
+
+ ok 
+----
+ t
+
+ ok | before | after 
+----+--------+-------
+ t  |    119 |   119
+
+ROLLBACK
+== 9. Непроверяемые: эталон не берётся автопроверкой, вторая часть, снятая задача, пустой ответ
+BEGIN
+SET
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:156: NOTICE:  OK: NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:158: NOTICE:  OK: часть 2 — NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:160: NOTICE:  OK: снятая — NOT_FOUND: задача не найдена
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:162: NOTICE:  OK: пусто — EMPTY_ANSWER: введите ответ
+DO
+ROLLBACK
+== 10. Зона и награды по таблице: границы 40 % / 70 % (как сервер), очки 5/3/1, вехи
+ share  |   zone    | ok 
+--------+-----------+----
+        | growth    | t
+    0.0 | growth    | t
+ 0.3999 | growth    | t
+    0.4 | progress  | t
+   0.55 | progress  | t
+    0.7 | progress  | t
+ 0.7001 | confident | t
+    1.0 | confident | t
+
+   zone    | per_task |    miles     | ok 
+-----------+----------+--------------+----
+ growth    |        5 | {30,50,80,0} | t
+ progress  |        3 | {20,30,40,0} | t
+ confident |        1 | {5,5,5,0}    | t
+
+== 11. Зона на МОМЕНТ попытки: №6 «уверенно» (ДЗ: верно + частично = 0,75) → +1; №1: 10-я верная в «в процессе» (10/19 = 0,53) → +3 и веха +20
+BEGIN
+SET
+SELECT 1
+ ok |   zone    | share  | points 
+----+-----------+--------+--------
+ t  | confident | 0.7500 | 1
+
+ ok |   zone   | share  | points | solved | milestone 
+----+----------+--------+--------+--------+-----------
+ t  | progress | 0.5263 | 3      | 10     | 20
+
+ ok | before | after 
+----+--------+-------
+ t  |    119 |   143
+
+ ok 
+----
+ t
+
+ ok | have 
+----+------
+ t  | 11
+
+ROLLBACK
+== 12. Прогноз: каталог — проверенные ответы (верные и неверные), самоотметки вне; вариант/урок — источник catalog
+BEGIN
+SET
+ ok | catalog_rows 
+----+--------------
+ t  |           19
+
+ ok 
+----
+ t
+
+ROLLBACK
+== 13. Задача дня: самый слабый номер (№4 — нет данных), стабильна в течение дня, +10 за верный в тот же день
+BEGIN
+SET
+SELECT 1
+ ok | n |                 task                 
+----+---+--------------------------------------
+ t  | 4 | a5614000-0000-4000-8000-000000000002
+
+ ok_same_task 
+--------------
+ t
+
+ ok 
+----
+ t
+
+ ok | daily | points 
+----+-------+--------
+ t  | 10    | 5
+
+ ok 
+----
+ t
+
+ ok | before | after 
+----+--------+-------
+ t  |    119 |   134
+
+ ok 
+----
+ t
+
+ ok 
+----
+ t
+
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:235: NOTICE:  OK: чужой предмет — BAD_SUBJECT: предмет math или physics
+DO
+ROLLBACK
+== 14. Цель недели: неделя с понедельника по Москве, два слабых номера, +40 один раз
+BEGIN
+SET
+ ok | week_start | numbers 
+----+------------+---------
+ t  | 2026-09-28 | [4, 7]
+
+ ok_fixed 
+----------
+ t
+
+RESET
+UPDATE 1
+SET
+SELECT 1
+ ok 
+----
+ t
+
+ ok 
+----
+ t
+
+ ok_no_second_bonus 
+--------------------
+ t
+
+ ok 
+----
+ t
+
+ ok | before | after 
+----+--------+-------
+ t  |    119 |   174
+
+ROLLBACK
+== 15. Серия по дням с решением: заход без решения не продлевает, «сегодня ещё нет» не обнуляет
+BEGIN
+SET
+ ok | streak | visited 
+----+--------+---------
+ t  | 0      | true
+
+ROLLBACK
+ ok | streak | record 
+----+--------+--------
+ t  |      2 |      2
+
+ ok | streak 
+----+--------
+ t  |      0
+
+BEGIN
+SET
+ checked 
+---------
+ t
+
+ ok | streak 
+----+--------
+ t  | 1
+
+ROLLBACK
+BEGIN
+SET
+ wrong_checked 
+---------------
+ t
+
+ ?column? | ?column? 
+----------+----------
+ t        | t
+
+ ok 
+----
+ t
+
+ROLLBACK
+== 16. Лимит: не больше 30 проверок в минуту
+BEGIN
+INSERT 0 30
+SET
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:303: NOTICE:  OK: RATE_LIMIT: не больше 30 проверок в минуту
+DO
+ROLLBACK
+== 17. Учитель: «каталог за 7 дней»: учитель курса A — видит; посторонний и сам ученик — отказ; админ — видит
+BEGIN
+SET
+ ok |                   r                    
+----+----------------------------------------
+ t  | {"days": 7, "tried": 18, "correct": 9}
+
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:314: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика
+DO
+psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:317: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика
+DO
+ ok_admin 
+----------
+ t
+
+ROLLBACK
+== 18. Состояние страницы каталога: номер, зона, задачи (проверяема, попытки, раскрыта)
+BEGIN
+SET
+ revealed 
+----------
+ t
+
+ ok 
+----
+ t
+
+ ok 
+----
+ t
+
+ROLLBACK
