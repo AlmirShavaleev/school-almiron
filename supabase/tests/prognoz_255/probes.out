@@ -1,0 +1,208 @@
+slice 254: ok
+slice 255: ok
+migration 254: ok
+data 255: ok
+psql:supabase/migrations/PENDING_255.sql:51: NOTICE:  policy "student_exam_goals_select" for relation "public.student_exam_goals" does not exist, skipping
+psql:supabase/migrations/PENDING_255.sql:42: NOTICE:  relation "student_exam_goals" already exists, skipping
+PENDING_255 applied twice: ok
+== 1. Аноним: все три функции — отказ (execute только authenticated)
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:15: NOTICE:  OK: evidence — отказ: permission denied for function student_exam_forecast_evidence
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:20: NOTICE:  OK: points — отказ: permission denied for function student_school_points
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:25: NOTICE:  OK: goal — отказ: permission denied for function set_my_exam_goal
+DO
+ROLLBACK
+      who      | evidence | set_goal | points 
+---------------+----------+----------+--------
+ anon          | f        | f        | f
+ authenticated | t        | t        | t
+
+ожидается: anon f/f/f, authenticated t/t/t
+== 2. authenticated без sub: «нужен вход»
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:42: NOTICE:  OK: evidence — student_exam_forecast_evidence: нужен вход
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:47: NOTICE:  OK: points — student_school_points: нужен вход
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:52: NOTICE:  OK: goal — set_my_exam_goal: нужен вход
+DO
+ROLLBACK
+== 3. Ученик A: предметы — только ЕГЭ (math, physics; ОГЭ нет); своей цели нет, цель учителя по математике 70
+BEGIN
+SET
+ ok |      subjects       |    goals     | teacher_goals |                                                             titles                                                             
+----+---------------------+--------------+---------------+--------------------------------------------------------------------------------------------------------------------------------
+ t  | ["math", "physics"] | [null, null] | [70, null]    | [{"n": 6, "title": "Простейшие уравнения", "subject": "math"}, {"n": 7, "title": "Молекулярная физика", "subject": "physics"}]
+
+ROLLBACK
+== 4. Ученик A: свидетельства по источникам — math: hw 4 (№6: верно+частично, «не сверено» пропущено; №13-14: верно+не решал),
+   mock 3 (1/1, 1/2, 0/4; kim_total 19), catalog 2 (№6; снятые задача/раздел и ОГЭ — нет); physics: test 2 (№7 из каталога 1, №5 0,5), catalog 1 (вариант).
+   Нет: непроверенной работы, ОГЭ, работы 200-дневной давности, данных ученика Б.
+BEGIN
+SET
+ ok | rows |                                                                                                                                               evidence                                                                                                                                                
+----+------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ t  |   12 | math catalog [6] 1.000; math catalog [6] 1.000; math hw [13, 14] 0.000; math hw [13, 14] 1.000; math hw [6] 0.500; math hw [6] 1.000; math mock [13] 0.500 kim=19; math mock [18] 0.000 kim=19; math mock [1] 1.000 kim=19; physics catalog [7] 1.000; physics test [5] 0.500; physics test [7] 1.000
+
+ROLLBACK
+== 5. Ученик Б видит только своё: предмет physics, цель учителя 90, свидетельства — его ДЗ №1 и его каталог №7 (ни строки ученика A)
+BEGIN
+SET
+ ok |                                      subjects                                       |                                             items                                             
+----+-------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------
+ t  | [{"goal": null, "subject": "physics", "teacher_goal": 90, "goal_updated_at": null}] | ["hw:70000000-0000-4000-8000-000000000006:1", "catalog:91000000-0000-4000-8000-000000000003"]
+
+ROLLBACK
+== 6. Учитель Т (нет строки students): функция ученика пуста — ни предметов, ни свидетельств
+BEGIN
+SET
+ ok | subjects | ev 
+----+----------+----
+ t  | []       |  0
+
+ROLLBACK
+== 7. Цель: ученик A ставит 80 по математике и 75 по физике; цель учителя (70) не меняется; снять — null
+BEGIN
+SET
+ math | physics 
+------+---------
+   80 |      75
+
+ math_again 
+------------
+         82
+
+ ok |  goals   | teacher_goals 
+----+----------+---------------
+ t  | [82, 75] | [70, null]
+
+ cleared 
+---------
+ t
+
+ ok | my_rows | goal 
+----+---------+------
+ t  |       1 |   82
+
+ ok | teacher_target_untouched 
+----+--------------------------
+ t  |                       70
+
+ROLLBACK
+== 8. Цель: проверки ввода и предмета — 0, 101, algebra, математика у Б (нет такого курса ЕГЭ)
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:129: NOTICE:  OK: 0 — Цель — целое число от 1 до 100
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:131: NOTICE:  OK: 101 — Цель — целое число от 1 до 100
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:133: NOTICE:  OK: algebra — Цель ставится только по профильной математике и физике
+DO
+ROLLBACK
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:139: NOTICE:  OK: Б math — Цель можно поставить только по предмету своего курса ЕГЭ
+DO
+ROLLBACK
+== 9. Ученик напрямую в таблицы целей не пишет: student_exam_goals — нет прав записи; student_subject_targets — политики §216
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:149: NOTICE:  OK: insert student_exam_goals напрямую — permission denied for table student_exam_goals
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:153: NOTICE:  OK: update student_exam_goals напрямую — permission denied for table student_exam_goals
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:157: NOTICE:  OK: delete student_exam_goals напрямую — permission denied for table student_exam_goals
+DO
+psql:supabase/tests/prognoz_255/20_probes.sql:162: NOTICE:  OK: insert student_subject_targets — new row violates row-level security policy for table "student_subject_targets"
+DO
+UPDATE 0
+ ok | visible | teacher_goal_after_update 
+----+---------+---------------------------
+ t  |       1 |                        70
+
+ROLLBACK
+BEGIN
+SET
+psql:supabase/tests/prognoz_255/20_probes.sql:171: NOTICE:  OK: anon select student_exam_goals — permission denied for table student_exam_goals
+DO
+ROLLBACK
+== 10. Чтение цели ученика: A ставит 85 (математика), Б — 60 (физика). Ученик видит только свою;
+    учитель Т (курсы A) — только A; посторонний учитель О (курс Б) — только Б; админ — обе
+BEGIN
+SET
+RESET
+SET
+ who |    rows    | ok 
+-----+------------+----
+ Б   | physics=60 | t
+
+RESET
+SET
+ who |  rows   | ok 
+-----+---------+----
+ A   | math=85 | t
+
+RESET
+SET
+ who |                     rows                     | ok 
+-----+----------------------------------------------+----
+ T   | 00000000-0000-4000-8000-0000000000a1:math=85 | t
+
+RESET
+SET
+ who |                      rows                       | ok 
+-----+-------------------------------------------------+----
+ O   | 00000000-0000-4000-8000-0000000000b1:physics=60 | t
+
+RESET
+SET
+    who    | rows | ok 
+-----------+------+----
+ M (админ) |    2 | t
+
+ROLLBACK
+== 11. Баллы школы ученика A: 109 = ДЗ вовремя 4×10 + после срока 4 + оценки 10+6+6+6 + каталог 4×2 + пробник 2 + серия 9×3
+    уровень 2 «Разгон» (100..200), значки: рекорд 8 ≥ 7, вовремя 4/10, пробник 1/1, каталог 4/100
+BEGIN
+SET
+ ok | total |                                   level                                   |                                                                                    badges                                                                                     
+----+-------+---------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ t  | 109   | {"n": 2, "from": 100, "name": "Разгон", "next": 200, "next_name": "Ритм"} | [{"key": "streak7", "have": 8, "need": 7}, {"key": "ontime10", "have": 4, "need": 10}, {"key": "mock1", "have": 1, "need": 1}, {"key": "catalog100", "have": 4, "need": 100}]
+
+                                                                     feed                                                                     | items 
+----------------------------------------------------------------------------------------------------------------------------------------------+-------
+ streak +3 n=3 | catalog +6 n=3 | streak +3 n=2 | catalog +2 n=1 | hw_grade +6 «№13, 14 Тригонометрия» n=4 | hw_ontime +10 «Повторение №1-12» |     6
+
+                                                           rules                                                           
+---------------------------------------------------------------------------------------------------------------------------
+ {"grade4": 6, "grade5": 10, "catalog": 2, "hw_late": 4, "accepted": 6, "hw_ontime": 10, "mock_point": 1, "streak_day": 3}
+
+ROLLBACK
+== 12. Баллы школы ученика Б — только его: ДЗ вовремя 10 + оценка 5 → 10 + каталог 1×2 + серия 1×3 = 25, уровень 1
+BEGIN
+SET
+ ok | total |                                  level                                   
+----+-------+--------------------------------------------------------------------------
+ t  | 25    | {"n": 1, "from": 0, "name": "Старт", "next": 100, "next_name": "Разгон"}
+
+ROLLBACK
+== 13. Новичок (профиль без ученика и истории): 0 баллов, уровень 1 «Старт», лента пуста
+BEGIN
+SET
+ ok | total |                                  level                                   
+----+-------+--------------------------------------------------------------------------
+ t  | 0     | {"n": 1, "from": 0, "name": "Старт", "next": 100, "next_name": "Разгон"}
+
+ROLLBACK
+== 14. Функции не пишут: student_exam_forecast_evidence и student_school_points объявлены STABLE (PostgREST — read-only транзакция)
+            proname             | provolatile | prosecdef 
+--------------------------------+-------------+-----------
+ set_my_exam_goal               | v           | t
+ student_exam_forecast_evidence | s           | t
+ student_school_points          | s           | t
+
+ожидается: evidence s/t, points s/t, set_my_exam_goal v/t
