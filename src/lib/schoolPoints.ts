@@ -38,7 +38,7 @@ export interface PointsRules {
   grade5:     number
   grade4:     number
   accepted:   number
-  /** Задача варианта / к уроку (§256; до PENDING_256 база звала это `catalog`). */
+  /** Задача варианта / к уроку (§256; до миграции §256 (20261002174213…174501) база звала это `catalog`). */
   variant:    number
   mock_point: number
   streak_day: number

@@ -3,8 +3,14 @@ slice 255: ok
 slice 256: ok
 migration 254: ok
 migrations 255: ok
-PENDING_256 (1): ok
-PENDING_256 (2, повтор): ok
+migrations 256 (1): ok
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:176: NOTICE:  relation "catalog_task_attempts" already exists, skipping
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:178: NOTICE:  relation "catalog_task_attempts_profile_task_idx" already exists, skipping
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:180: NOTICE:  relation "catalog_task_attempts_profile_at_idx" already exists, skipping
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:188: NOTICE:  relation "catalog_task_reveals" already exists, skipping
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:199: NOTICE:  relation "student_daily_tasks" already exists, skipping
+psql:supabase/migrations/20261002174213_catalog_practice_rules_and_tables.sql:210: NOTICE:  relation "student_weekly_goals" already exists, skipping
+migrations 256 (2, повтор): ok
 data 255: ok
 data 256: ok
 == 1. Права на функции: аноним — ничего; authenticated — только клиентские; внутренние — никому
@@ -33,37 +39,37 @@ data 256: ok
 == 2. Аноним: проверка, раскрытие, задача дня — отказ; таблицы — отказ
 BEGIN
 SET
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:39: NOTICE:  OK: check — permission denied for function catalog_check_answer
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:39: NOTICE:  OK: check — permission denied for function catalog_check_answer
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:41: NOTICE:  OK: reveal — permission denied for function catalog_reveal_answer
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:41: NOTICE:  OK: reveal — permission denied for function catalog_reveal_answer
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:43: NOTICE:  OK: daily — permission denied for function student_daily_task
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:43: NOTICE:  OK: daily — permission denied for function student_daily_task
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:45: NOTICE:  OK: attempts select — permission denied for table catalog_task_attempts
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:45: NOTICE:  OK: attempts select — permission denied for table catalog_task_attempts
 DO
 ROLLBACK
 == 3. authenticated без sub: «нужен вход»
 BEGIN
 SET
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:53: NOTICE:  OK: check — catalog_check_answer: нужен вход
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:53: NOTICE:  OK: check — catalog_check_answer: нужен вход
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:55: NOTICE:  OK: weekly — student_weekly_goal: нужен вход
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:55: NOTICE:  OK: weekly — student_weekly_goal: нужен вход
 DO
 ROLLBACK
 == 4. Ученик A: прямые insert/update/delete в новые таблицы — 42501
 BEGIN
 SET
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:65: NOTICE:  OK: insert attempts — permission denied for table catalog_task_attempts (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:65: NOTICE:  OK: insert attempts — permission denied for table catalog_task_attempts (42501)
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:69: NOTICE:  OK: update attempts — permission denied for table catalog_task_attempts (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:69: NOTICE:  OK: update attempts — permission denied for table catalog_task_attempts (42501)
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:73: NOTICE:  OK: delete reveals — permission denied for table catalog_task_reveals (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:73: NOTICE:  OK: delete reveals — permission denied for table catalog_task_reveals (42501)
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:77: NOTICE:  OK: insert reveals — permission denied for table catalog_task_reveals (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:77: NOTICE:  OK: insert reveals — permission denied for table catalog_task_reveals (42501)
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:81: NOTICE:  OK: insert daily — permission denied for table student_daily_tasks (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:81: NOTICE:  OK: insert daily — permission denied for table student_daily_tasks (42501)
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:85: NOTICE:  OK: insert weekly — permission denied for table student_weekly_goals (42501)
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:85: NOTICE:  OK: insert weekly — permission denied for table student_weekly_goals (42501)
 DO
 ROLLBACK
 == 5. Видит только своё: A — 18 своих попыток; B — 0 (чужие не видны)
@@ -151,13 +157,13 @@ ROLLBACK
 == 9. Непроверяемые: эталон не берётся автопроверкой, вторая часть, снятая задача, пустой ответ
 BEGIN
 SET
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:156: NOTICE:  OK: NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:156: NOTICE:  OK: NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:158: NOTICE:  OK: часть 2 — NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:158: NOTICE:  OK: часть 2 — NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:160: NOTICE:  OK: снятая — NOT_FOUND: задача не найдена
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:160: NOTICE:  OK: снятая — NOT_FOUND: задача не найдена
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:162: NOTICE:  OK: пусто — EMPTY_ANSWER: введите ответ
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:162: NOTICE:  OK: пусто — EMPTY_ANSWER: введите ответ
 DO
 ROLLBACK
 == 10. Зона и награды по таблице: границы 40 % / 70 % (как сервер), очки 5/3/1, вехи
@@ -251,7 +257,7 @@ SELECT 1
 ----
  t
 
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:235: NOTICE:  OK: чужой предмет — BAD_SUBJECT: предмет math или physics
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:235: NOTICE:  OK: чужой предмет — BAD_SUBJECT: предмет math или physics
 DO
 ROLLBACK
 == 14. Цель недели: неделя с понедельника по Москве, два слабых номера, +40 один раз
@@ -336,7 +342,7 @@ ROLLBACK
 BEGIN
 INSERT 0 30
 SET
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:303: NOTICE:  OK: RATE_LIMIT: не больше 30 проверок в минуту
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:303: NOTICE:  OK: RATE_LIMIT: не больше 30 проверок в минуту
 DO
 ROLLBACK
 == 17. Учитель: «каталог за 7 дней»: учитель курса A — видит; посторонний и сам ученик — отказ; админ — видит
@@ -346,9 +352,9 @@ SET
 ----+----------------------------------------
  t  | {"days": 7, "tried": 18, "correct": 9}
 
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:314: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:314: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика
 DO
-psql:/home/claude/agents/a256/repo/supabase/tests/katalog_prognoz_256/20_probes.sql:317: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика
+psql:supabase/tests/katalog_prognoz_256/20_probes.sql:317: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика
 DO
  ok_admin 
 ----------

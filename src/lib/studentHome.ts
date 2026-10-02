@@ -41,7 +41,7 @@ export interface HomeActivity {
   /**
    * §256: серия считается по дням, когда ученик что-то РЕШИЛ (задача каталога
    * с проверкой, сдал ДЗ, тест, пробник), а не по заходам. Дни окна, которые
-   * идут в серию, и решал ли сегодня. До PENDING_256 база их не отдаёт —
+   * идут в серию, и решал ли сегодня. До миграции §256 (20261002174213…174501) база их не отдаёт —
    * тогда (старое правило) точки недели — по заходам.
    */
   streakDays?:  string[]
@@ -187,7 +187,7 @@ export function buildCalendar(activity: Pick<HomeActivity, 'today' | 'visits' | 
 
 /**
  * Точки текущей недели пн…вс в плашке серии: день засчитан в серию (§256 —
- * был день с решением; до PENDING_256 — заходил).
+ * был день с решением; до миграции §256 (20261002174213…174501) — заходил).
  */
 export function weekDots(activity: Pick<HomeActivity, 'today' | 'visits' | 'streakDays'>): boolean[] {
   const visits = new Set(activity.streakDays ?? activity.visits)
