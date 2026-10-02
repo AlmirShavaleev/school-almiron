@@ -1388,6 +1388,24 @@ export const scenes = [
     ]
   }),
 
+  // §257: «Достижения» вместо «Мой прогресс» — все / полученные / ближайшие / одна категория,
+  // подсказка «как получить», подробная статистика; главная с последними наградами и
+  // счётчиком в меню, тост новой награды (s257new — один раз на процесс), учитель.
+  // Сцены пишут (seen) — каждую ширину своим процессом: node e2e/harness/tour.mjs d257 1280 ; … d257 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 's257', name: 'd257-home', url: '/student', width, height, full: false, actions: [{ wait: 1800 }, { eval: 'document.querySelector("[data-testid=points-card]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+    ...(width === 390 ? [{ persona: 's257', name: 'd257-menu', url: '/student', width, height, full: false, actions: [{ wait: 1500 }, { clickSel: '[aria-label="Открыть меню"]' }, { wait: 500 }, { eval: 'document.querySelector("aside nav").scrollTop = 400' }, { wait: 200 }] }] : []),
+    { persona: 's257', name: 'd257-ach', url: '/achievements', width, height, actions: [{ wait: 1800 }] },
+    { persona: 's257', name: 'd257-ach-done', url: '/achievements', width, height, actions: [{ wait: 1500 }, { clickSel: '[data-filter=done]' }, { wait: 300 }] },
+    { persona: 's257', name: 'd257-ach-near', url: '/achievements', width, height, actions: [{ wait: 1500 }, { clickSel: '[data-filter=near]' }, { wait: 300 }] },
+    { persona: 's257', name: 'd257-ach-cat', url: '/achievements', width, height, actions: [{ wait: 1500 }, { clickSel: '[data-filter=streak]' }, { wait: 300 }] },
+    { persona: 's257', name: 'd257-ach-tip', url: '/achievements', width, height, full: false, actions: [{ wait: 1500 }, { eval: 'document.querySelector("[data-key=\'catalog:50\']").scrollIntoView({ block: "center" })' }, { focus: '[data-key="catalog:50"]' }, { wait: 300 }] },
+    { persona: 's257', name: 'd257-ach-details', url: '/achievements', width, height, full: false, actions: [{ wait: 1500 }, { clickSel: '[data-testid=ach-details] summary' }, { wait: 300 }, { eval: 'window.scrollTo(0, document.body.scrollHeight)' }, { wait: 300 }] },
+    { persona: 's257new', name: 'd257-home-toast', url: '/student', width, height, full: false, actions: [{ wait: 1800 }] },
+    { persona: 's257', name: 'd257-journal', url: '/my-journal', width, height, actions: [{ wait: 1500 }] },
+    { persona: 'o257', name: 'd257-teacher', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1400 }, { eval: 'document.querySelector("[data-testid=student-achievements-line]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
+  ]),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

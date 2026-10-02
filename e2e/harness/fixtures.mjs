@@ -112,6 +112,12 @@ export const personas = {
   // §256: каталог поднимает прогноз (фикстуры `apply256` поверх §254/§255).
   s256: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   o256: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §257: «Достижения» (фикстуры `apply257` поверх §254–§256): s257 — две новые
+  // награды (счётчик в меню), s257new — только что получена «20 ДЗ» (тост), o257 — учитель.
+  ...Object.fromEntries(['s257', 's257new'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
+  o257: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1887,6 +1893,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('s255')) { apply254(fx, persona === 's255few' ? 's254new' : 's254'); apply255(fx, persona) }
   if (persona === 's256') apply256(fx, persona)
   if (persona === 'o256') fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
+  if (persona.startsWith('s257') || persona === 'o257') apply257(fx, persona)
   return fx
 }
 
@@ -3317,4 +3324,95 @@ function apply256(fx, persona) {
     ],
   }
   if (persona === 'o256') fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
+}
+
+// ── §257: «Достижения» ───────────────────────────────────────────────────────
+// Всё выдумано. Поверх `apply256` (главная с прогнозом, задачей дня, баллами).
+// Пороги и уровни наград — копия `achievement_rules()` из PENDING_257.sql (как
+// данные харнесса; клиент берёт их из ответа). «have» — как у ученика из макета
+// (каталог 23, ДЗ 18, серия 9…). RPC — от состояния процесса (`state257`):
+// mark_achievements_seen гасит «новые», s257new получает «20 ДЗ» ровно на
+// первом вызове sync (тост один раз).
+//   node e2e/harness/tour.mjs d257 1280 ; node e2e/harness/tour.mjs d257 390
+const STEPS257 = {
+  catalog: [1, 5, 10, 20, 50, 100, 200, 500, 1000], hw: [1, 5, 10, 20, 30, 50, 75, 100], ontime: [1, 5, 10, 25, 50],
+  five: [1, 5, 10, 25], mock: [1, 3, 5, 10], mockscore: [27, 60, 70, 80, 90], streak: [3, 7, 14, 30, 60, 100],
+  daily: [1, 7, 30, 100], weekly: [1, 4, 10, 20], confident: [1, 3, 6, 9, 12], closed: [1, 3, 5], forecast: [5, 10, 20, 30],
+  tests: [1, 10, 25, 50], topics: [1, 10, 25, 50, 100], redo: [1, 5, 10],
+}
+const SPECIAL257 = [['special:flawless', 10], ['special:marathon', 30], ['special:early', 1], ['special:all_numbers', 1], ['special:full_kim', 10], ['special:goal', 1]]
+const state257 = { seen: false, freshGiven: false }
+function achievements257(persona) {
+  const have = { catalog: 23, hw: persona === 's257new' ? 20 : 18, ontime: 14, five: 3, mock: 1, mockscore: 62, streak: 9, daily: 4, weekly: 1,
+    confident: 5, closed: 2, forecast: 6, tests: 2, topics: 15, redo: 1, 'special:flawless': 12, 'special:marathon': 9, 'special:early': 1,
+    'special:all_numbers': 9, 'special:full_kim': 2 }
+  const tierAt = (i, len) => { const r = i / Math.max(len - 1, 1); return r < 0.34 ? 1 : r < 0.67 ? 2 : r < 0.95 ? 3 : 4 }
+  const pts = [0, 10, 25, 50, 100]
+  const nowMs = Date.now()
+  // моменты получения: свежие — последние дни, старые — недели назад
+  const recent = { 'catalog:20': 0.2, 'streak:7': 1.1, 'hw:10': 2.3, 'special:flawless': 3.5, 'confident:3': 4.2, 'hw:20': 0.05 }
+  let k = 0
+  const items = []
+  const fresh = persona === 's257new' && !state257.freshGiven ? ['hw:20'] : []
+  const newKeys = state257.seen ? [] : persona === 's257new' ? ['hw:20', 'catalog:20'] : ['catalog:20', 'streak:7']
+  const push = (key, category, threshold, tier, points, h, need) => {
+    const earned = h >= need
+    const daysAgo = recent[key] ?? 8 + (k++) * 2.5
+    items.push({ key, category, threshold, tier, points, have: h, need,
+      earned_at: earned ? new Date(nowMs - daysAgo * 86_400_000).toISOString() : null,
+      is_new: earned && newKeys.includes(key), fresh: earned && fresh.includes(key) })
+  }
+  for (const [category, steps] of Object.entries(STEPS257)) {
+    steps.forEach((t, i) => { const tier = tierAt(i, steps.length); push(`${category}:${t}`, category, t, tier, category === 'forecast' ? 0 : pts[tier], have[category], t) })
+  }
+  for (const [key, t] of SPECIAL257) {
+    const need = key === 'special:all_numbers' || key === 'special:full_kim' ? 12 : t
+    push(key, 'special', t, 3, key === 'special:goal' ? 0 : 50, have[key] ?? 0, need)
+  }
+  if (fresh.length) state257.freshGiven = true
+  return {
+    total: items.length, earned: items.filter(i => i.earned_at).length, new: items.filter(i => i.is_new).length,
+    tiers: [{ tier: 1, points: 10 }, { tier: 2, points: 25 }, { tier: 3, points: 50 }, { tier: 4, points: 100 }],
+    items,
+  }
+}
+function apply257(fx, persona) {
+  if (persona === 'o257') {
+    fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
+    const nowMs = Date.now()
+    fx.rpc.student_achievements_for_staff = {
+      total: 79, earned: 31,
+      latest: [
+        { key: 'catalog:20', category: 'catalog', threshold: 20, tier: 2, points: 25, earned_at: new Date(nowMs - 0.2 * 86_400_000).toISOString() },
+        { key: 'streak:7', category: 'streak', threshold: 7, tier: 1, points: 10, earned_at: new Date(nowMs - 1.1 * 86_400_000).toISOString() },
+        { key: 'hw:10', category: 'hw', threshold: 10, tier: 1, points: 10, earned_at: new Date(nowMs - 2.3 * 86_400_000).toISOString() },
+      ],
+    }
+    return
+  }
+  apply256(fx, 's256')
+  fx.rpc.student_achievements_sync = () => achievements257(persona)
+  fx.rpc.mark_achievements_seen = () => { state257.seen = true; return 2 }
+  fx.rpc.claim_forecast_achievement = (body) => ({ subject: body.p_subject, first: body.p_first_score, current: body.p_current_score, growth: 6, goal: null, fresh: [] })
+  // Счётчик меню при входе — строки student_achievements с seen_at is null (RLS: только свои).
+  fx.tables.student_achievements = achievements257(persona).items.filter(i => i.earned_at)
+    .map(i => ({ profile_id: IDS.student, key: i.key, earned_at: i.earned_at, seen_at: i.is_new ? null : i.earned_at }))
+  if (persona === 's257new') state257.freshGiven = false
+  const sp = fx.rpc.student_school_points
+  const nowMs = Date.now()
+  const at = (d) => new Date(nowMs - d * 86_400_000).toISOString()
+  fx.rpc.student_school_points = {
+    ...sp,
+    total: 612,
+    achievement_points: 330,
+    level: { n: 6, name: 'Уверенность', from: 600, next: 800, next_name: 'Опыт' },
+    levels: [0, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500, 1800, 2150, 2550, 3000, 3500, 4100, 4800, 5600, 6500, 7500],
+    feed: [
+      { kind: 'achievement', at: at(0.2), points: 25, title: 'catalog:20', n: 20 },
+      ...sp.feed.slice(0, 2),
+      { kind: 'achievement', at: at(1.1), points: 10, title: 'streak:7', n: 7 },
+      ...sp.feed.slice(2, 4),
+    ],
+  }
+  delete fx.rpc.student_school_points.badges
 }

@@ -13,7 +13,7 @@ fs.writeFileSync(logPath, '')
 const routes = {
   student: ['/login', '/register', '/forgot-password', '/student', '/my-course', '/my-course/g1', '/my-course/g1/topic/t1',
     '/my-homework', '/catalog', '/student/variants', '/student/variants/generate', '/student/variants/build',
-    '/student/variants/stats', '/my-progress', '/notifications', '/settings'],
+    '/student/variants/stats', '/achievements', '/my-journal', '/notifications', '/settings'],
   owner: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/course-program', '/catalog', '/cart', '/collections/c1',
     '/homework-queue', '/variants', '/variants/all', '/tests', '/students', '/students/st-1', '/notifications', '/settings',
     '/variant-builder', '/students/st-1/journal'],
