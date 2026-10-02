@@ -5,11 +5,11 @@ slice 257: ok
 migration 254: ok
 migrations 255: ok
 migrations 256: ok
-PENDING_257 (1): ok
-psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:112: NOTICE:  relation "student_achievements" already exists, skipping
-psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:114: NOTICE:  relation "student_achievements_unseen_idx" already exists, skipping
-psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:127: NOTICE:  relation "student_forecast_marks" already exists, skipping
-PENDING_257 (2, повтор): ok
+migrations 257 (1): ok
+psql:supabase/migrations/20261002194006_achievements_rules_tables_progress.sql:115: NOTICE:  relation "student_achievements" already exists, skipping
+psql:supabase/migrations/20261002194006_achievements_rules_tables_progress.sql:117: NOTICE:  relation "student_achievements_unseen_idx" already exists, skipping
+psql:supabase/migrations/20261002194006_achievements_rules_tables_progress.sql:130: NOTICE:  relation "student_forecast_marks" already exists, skipping
+migrations 257 (2, повтор): ok
 data 255: ok
 data 256: ok
 data 257: ok
@@ -27,43 +27,43 @@ data 257: ok
 == 2. Аноним: функции и таблицы — отказ
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:30: NOTICE:  OK: sync — permission denied for function student_achievements_sync
+psql:supabase/tests/dostizheniya_257/20_probes.sql:30: NOTICE:  OK: sync — permission denied for function student_achievements_sync
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:32: NOTICE:  OK: seen — permission denied for function mark_achievements_seen
+psql:supabase/tests/dostizheniya_257/20_probes.sql:32: NOTICE:  OK: seen — permission denied for function mark_achievements_seen
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:34: NOTICE:  OK: claim — permission denied for function claim_forecast_achievement
+psql:supabase/tests/dostizheniya_257/20_probes.sql:34: NOTICE:  OK: claim — permission denied for function claim_forecast_achievement
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:36: NOTICE:  OK: staff — permission denied for function student_achievements_for_staff
+psql:supabase/tests/dostizheniya_257/20_probes.sql:36: NOTICE:  OK: staff — permission denied for function student_achievements_for_staff
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:38: NOTICE:  OK: select student_achievements — permission denied for table student_achievements
+psql:supabase/tests/dostizheniya_257/20_probes.sql:38: NOTICE:  OK: select student_achievements — permission denied for table student_achievements
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:40: NOTICE:  OK: select student_forecast_marks — permission denied for table student_forecast_marks
+psql:supabase/tests/dostizheniya_257/20_probes.sql:40: NOTICE:  OK: select student_forecast_marks — permission denied for table student_forecast_marks
 DO
 ROLLBACK
 == 3. authenticated без sub: «нужен вход»
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:48: NOTICE:  OK: sync — student_achievements_sync: нужен вход
+psql:supabase/tests/dostizheniya_257/20_probes.sql:48: NOTICE:  OK: sync — student_achievements_sync: нужен вход
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:50: NOTICE:  OK: seen — mark_achievements_seen: нужен вход
+psql:supabase/tests/dostizheniya_257/20_probes.sql:50: NOTICE:  OK: seen — mark_achievements_seen: нужен вход
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:52: NOTICE:  OK: claim — claim_forecast_achievement: нужен вход
+psql:supabase/tests/dostizheniya_257/20_probes.sql:52: NOTICE:  OK: claim — claim_forecast_achievement: нужен вход
 DO
 ROLLBACK
 == 4. Ученик A: прямые insert/update/delete в новые таблицы — 42501
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:62: NOTICE:  OK: insert student_achievements — permission denied for table student_achievements (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:62: NOTICE:  OK: insert student_achievements — permission denied for table student_achievements (42501)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:66: NOTICE:  OK: update student_achievements — permission denied for table student_achievements (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:66: NOTICE:  OK: update student_achievements — permission denied for table student_achievements (42501)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:70: NOTICE:  OK: delete student_achievements — permission denied for table student_achievements (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:70: NOTICE:  OK: delete student_achievements — permission denied for table student_achievements (42501)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:74: NOTICE:  OK: insert student_forecast_marks — permission denied for table student_forecast_marks (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:74: NOTICE:  OK: insert student_forecast_marks — permission denied for table student_forecast_marks (42501)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:78: NOTICE:  OK: update student_forecast_marks — permission denied for table student_forecast_marks (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:78: NOTICE:  OK: update student_forecast_marks — permission denied for table student_forecast_marks (42501)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:82: NOTICE:  OK: student_achievement_progress — permission denied for function student_achievement_progress (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:82: NOTICE:  OK: student_achievement_progress — permission denied for function student_achievement_progress (42501)
 DO
 ROLLBACK
 == 5. Правила: 79 наград, 16 категорий, уровень по месту в лестнице, особые — золото +50, прогноз — +0
@@ -98,7 +98,7 @@ ROLLBACK
 SET
 Timing is on.
 SELECT 1
-Time: 96.069 ms
+Time: 76.753 ms
 Timing is off.
 RESET
  total | earned | new | fresh | rows | ok 
@@ -135,11 +135,11 @@ RESET
 -- earned_at — момент события из истории (не now())
        key        |           earned_at           |             want              | ok 
 ------------------+-------------------------------+-------------------------------+----
- catalog:10       | 2026-09-30 18:36:33.757515+00 | 2026-09-30 18:36:33.757515+00 | t
- hw:1             | 2026-03-16 18:34:33.657165+00 | 2026-03-16 18:34:33.657165+00 | t
- mockscore:27     | 2026-09-22 18:34:33.672337+00 | 2026-09-22 18:34:33.672337+00 | t
- redo:1           | 2026-09-27 18:34:33.657165+00 | 2026-09-27 18:34:33.657165+00 | t
- special:flawless | 2026-09-30 18:36:33.757515+00 | 2026-09-30 18:36:33.757515+00 | t
+ catalog:10       | 2026-09-30 19:44:01.870957+00 | 2026-09-30 19:44:01.870957+00 | t
+ hw:1             | 2026-03-16 19:42:01.783046+00 | 2026-03-16 19:42:01.783046+00 | t
+ mockscore:27     | 2026-09-22 19:42:01.795092+00 | 2026-09-22 19:42:01.795092+00 | t
+ redo:1           | 2026-09-27 19:42:01.783046+00 | 2026-09-27 19:42:01.783046+00 | t
+ special:flawless | 2026-09-30 19:44:01.870957+00 | 2026-09-30 19:44:01.870957+00 | t
 
 == 7. Повторный sync не дублирует: строк столько же, fresh = 0, is_new остаётся
 BEGIN
@@ -228,13 +228,13 @@ ROLLBACK
 BEGIN
 SET
 SELECT 1
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:243: NOTICE:  OK: 101 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:243: NOTICE:  OK: 101 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:245: NOTICE:  OK: −1 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:245: NOTICE:  OK: −1 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:247: NOTICE:  OK: null — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:247: NOTICE:  OK: null — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
 DO
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:249: NOTICE:  OK: chemistry — BAD_SUBJECT: предмет math или physics (22023)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:249: NOTICE:  OK: chemistry — BAD_SUBJECT: предмет math или physics (22023)
 DO
      fresh      | growth | ok 
 ----------------+--------+----
@@ -272,7 +272,7 @@ SELECT 1
 ROLLBACK
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:274: NOTICE:  OK: B math — NOT_YOUR_SUBJECT: у вас нет курса ЕГЭ по этому предмету (22023)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:274: NOTICE:  OK: B math — NOT_YOUR_SUBJECT: у вас нет курса ЕГЭ по этому предмету (22023)
 DO
 ROLLBACK
 == 12. Ученик видит только своё: B не видит наград и прогноза A
@@ -297,11 +297,11 @@ SET
 --------+-------+--------+----
  19     | 79    |      3 | t
 
-     key     |            earned_at             
--------------+----------------------------------
- closed:1    | 2026-10-02T18:34:33.870485+00:00
- confident:1 | 2026-10-02T18:34:33.870485+00:00
- daily:1     | 2026-10-01T18:34:33.752128+00:00
+     key     |            earned_at            
+-------------+---------------------------------
+ closed:1    | 2026-10-02T19:42:01.95251+00:00
+ confident:1 | 2026-10-02T19:42:01.95251+00:00
+ daily:1     | 2026-10-01T19:42:01.8678+00:00
 
  teacher_earned | ok 
 ----------------+----
@@ -310,12 +310,12 @@ SET
 ROLLBACK
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:307: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:307: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика (42501)
 DO
 ROLLBACK
 BEGIN
 SET
-psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:313: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика (42501)
+psql:supabase/tests/dostizheniya_257/20_probes.sql:313: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика (42501)
 DO
 ROLLBACK
 BEGIN
@@ -333,17 +333,17 @@ Timing is on.
 ----------------
              45
 
-Time: 152.540 ms
+Time: 177.881 ms
  x_earned_again 
 ----------------
              45
 
-Time: 169.160 ms
+Time: 157.367 ms
  x_points 
 ----------
      3719
 
-Time: 145.951 ms
+Time: 108.068 ms
 Timing is off.
 ROLLBACK
 BEGIN
@@ -353,6 +353,6 @@ Timing is on.
 ----------
        19
 
-Time: 63.194 ms
+Time: 64.397 ms
 Timing is off.
 ROLLBACK
