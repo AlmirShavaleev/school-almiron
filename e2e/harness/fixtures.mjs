@@ -118,6 +118,12 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o257: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §258: честные замки — предпросмотр проверочной до окна у учителя (`o258`, поверх §250) и тот же ученик,
+  // что §240, до начала / сдал и ждёт / после «Принято» (`s258*` = `s240*` + флаги has_criteria/has_condition).
+  ...Object.fromEntries(['s258before', 's258sent', 's258done'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
+  o258: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1894,6 +1900,8 @@ export function baseFixtures(persona) {
   if (persona === 's256') apply256(fx, persona)
   if (persona === 'o256') fx.rpc.student_catalog_week_for_staff = { days: 7, tried: 12, correct: 9 }
   if (persona.startsWith('s257') || persona === 'o257') apply257(fx, persona)
+  if (persona.startsWith('s258')) apply258student(fx, persona)
+  if (persona === 'o258') { apply250(fx); apply258(fx) }
   return fx
 }
 
@@ -3415,4 +3423,53 @@ function apply257(fx, persona) {
     ],
   }
   delete fx.rpc.student_school_points.badges
+}
+
+// ── §258: честные замки у работы по времени ─────────────────────────────────
+// Всё выдумано. Учитель (`o258`, курс §250): раздел «Проверочные работы» —
+// проверочная «Производная» с окном пн 5 октября 10:00–10:45 по Москве;
+// «сейчас» по серверу — пт 2 октября 12:30. Персоналу RLS отдаёт все
+// материалы (условие, решение, критерии), а предпросмотр обязан показать их
+// как ученику до окна: замки и заглушки. Ученик (`s258*`) — тот же, что §240
+// (контрольная «Кинематика»), плюс флаги PENDING_258: сервер говорит, что
+// критерии и условие есть, даже когда строк ученику не отдаёт.
+export const D258 = {
+  topic: R250.topic(15, 0), module: R250.module(15), course: R250.course, hw: R250.hw(15, 0),
+  opens: '2026-10-05T07:00:00.000Z', closes: '2026-10-05T07:45:00.000Z', now: '2026-10-02T09:30:00.000Z',
+}
+function apply258(fx) {
+  const title = 'Проверочная работа. Производная'
+  const patch = (t) => (t.id === D258.topic ? { ...t, kind: 'check', title } : t)
+  fx.tables.topics = fx.tables.topics.map(patch)
+  fx.tables.modules = fx.tables.modules.map(m => (m.topics ? { ...m, topics: m.topics.map(patch) } : m))
+  fx.tables.topic_homework = fx.tables.topic_homework.map(h => (h.id === D258.hw
+    ? { ...h, title: 'Проверочная работа', due_at: null, grade_scale: 'five', opens_at: D258.opens, closes_at: D258.closes, topics: patch(h.topics), topic: patch(h.topic) }
+    : h))
+  const mat = (n, section, ttl, file) => ({
+    id: IDS.material(2580 + n), topic_id: D258.topic, kind: 'file', title: ttl, content: null, position: n, is_visible: true, section,
+    url: null, storage_path: `${D258.topic}/${file}`, file_name: file, mime_type: 'application/pdf', size_bytes: 380000,
+    lesson_id: null, source_topic_material_id: null, track: 'ege', subtopic_code: null, subtopic_title: null,
+    created_by: IDS.owner, created_at: ago(24 * 3), updated_at: ago(24 * 3),
+  })
+  fx.tables.topic_material_items = [
+    ...fx.tables.topic_material_items.filter(m => m.topic_id !== D258.topic),
+    mat(1, 'worksheet_homework', 'Проверочная «Производная» — задания', 'proizvodnaya-zadaniya.pdf'),
+    mat(2, 'solution', 'Проверочная «Производная» — решения', 'proizvodnaya-resheniya.pdf'),
+    mat(3, 'criteria', 'Проверочная «Производная» — ключ и критерии', 'proizvodnaya-klyuch.pdf'),
+  ]
+  fx.rpc.app_server_now = D258.now
+  // Окна ученика у учителя нет: настоящая RPC отвечает null.
+  fx.rpc.topic_homework_my_window = () => null
+  const prev = fx.rpc.topic_solution_state
+  fx.rpc.topic_solution_state = (body) => (body.p_topic_id === D258.topic
+    ? { has_solution: true, has_homework: true, unlocked: false, has_criteria: true, has_condition: true }
+    : (typeof prev === 'function' ? prev(body) : prev))
+}
+function apply258student(fx, persona) {
+  apply240(fx, persona.replace('s258', 's240'))
+  const prev = fx.rpc.topic_solution_state
+  fx.rpc.topic_solution_state = (body) => {
+    const base = typeof prev === 'function' ? prev(body) : prev
+    return body.p_topic_id === KR.topic ? { ...base, has_criteria: true, has_condition: true } : base
+  }
 }

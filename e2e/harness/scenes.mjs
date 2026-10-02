@@ -1,4 +1,4 @@
-import { D227, D228, D229, D252, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, D258, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1405,6 +1405,42 @@ export const scenes = [
     { persona: 's257', name: 'd257-journal', url: '/my-journal', width, height, actions: [{ wait: 1500 }] },
     { persona: 'o257', name: 'd257-teacher', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1400 }, { eval: 'document.querySelector("[data-testid=student-achievements-line]").scrollIntoView({ block: "center" })' }, { wait: 200 }] },
   ]),
+
+  // §258: честные замки. Учитель во вкладке «Курс» смотрит проверочную до окна «как ученик»: вкладки с замками,
+  // заглушки «Условие откроется …» и «Ответы и критерии пока закрыты», строка-пояснение под полосой учителя;
+  // окно «Редактировать тему» с полем «Название темы» (сохранение — PATCH topics, пустое — ошибка). Ученик (контрольная §240): до начала — «Условие» с замком,
+  // сдал и ждёт — критерии закрыты, после «Принято» — открыты. Пишет только `-title-saved` (PATCH; фикстуры
+  // PATCH не применяют, следующая сцена видит прежнее название). Каждую ширину своим процессом:
+  //   node e2e/harness/tour.mjs d258 1280 ; node e2e/harness/tour.mjs d258 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const kurs = `/course-program?courseId=${D258.course}&module=${D258.module}&topic=${D258.topic}`
+    const kr = `/my-course/${S.group}/topic/${KR.topic}`
+    // Плашка предпросмотра (или ряд вкладок у ученика) — под шапку приложения.
+    const toTabs = { eval: "(() => { (document.querySelector('[data-testid=\"topic-preview-locks\"]') ?? document.querySelector('[role=\"tablist\"][aria-label=\"Разделы темы\"]'))?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -84) })()" }
+    // Окно «Привяжи Telegram» у ученика закрывает экран на 390 — «Позже».
+    const later = { click: 'Позже', exact: true }
+    const tab = (name) => ({ clickSel: `[role="tab"]:has-text("${name}")` })
+    return [
+      { persona: 'o258', name: 'd258-preview', url: kurs, width, height, actions: [{ wait: 2500 }, toTabs, { wait: 300 }] },
+      { persona: 'o258', name: 'd258-preview-condition', url: kurs, width, height, actions: [{ wait: 2500 }, tab('Условие'), { wait: 500 }, toTabs, { wait: 300 }] },
+      { persona: 'o258', name: 'd258-preview-criteria', url: kurs, width, height, actions: [{ wait: 2500 }, tab('Ответы и критерии'), { wait: 500 }, toTabs, { wait: 300 }] },
+      { persona: 'o258', name: 'd258-modal-title', url: kurs, width, height, full: false, actions: [{ wait: 2500 }, { clickSel: '[data-testid="kurs-teacher-edit"]' }, { wait: 1500 }] },
+      // Переименование: новое название уходит PATCH'ем в topics, заголовок окна берёт его сразу.
+      { persona: 'o258', name: 'd258-modal-title-saved', url: kurs, width, height, full: false, actions: [
+        { wait: 2500 }, { clickSel: '[data-testid="kurs-teacher-edit"]' }, { wait: 1500 },
+        { fill: ['[data-testid="topic-title-input"]', '  Проверочная работа. Производная и касательная  '] },
+        { eval: "document.querySelector('[data-testid=\"topic-title-input\"]').blur()" }, { wait: 800 },
+      ] },
+      { persona: 'o258', name: 'd258-modal-title-empty', url: kurs, width, height, full: false, actions: [
+        { wait: 2500 }, { clickSel: '[data-testid="kurs-teacher-edit"]' }, { wait: 1500 },
+        { fill: ['[data-testid="topic-title-input"]', '   '] },
+        { eval: "document.querySelector('[data-testid=\"topic-title-input\"]').blur()" }, { wait: 500 },
+      ] },
+      { persona: 's258before', name: 'd258-student-before', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Условие'), { wait: 500 }, toTabs, { wait: 300 }] },
+      { persona: 's258sent', name: 'd258-student-sent', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Ответы и критерии'), { wait: 500 }, toTabs, { wait: 300 }] },
+      { persona: 's258done', name: 'd258-student-done', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Ответы и критерии'), { wait: 500 }, toTabs, { wait: 300 }] },
+    ]
+  }),
 
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
