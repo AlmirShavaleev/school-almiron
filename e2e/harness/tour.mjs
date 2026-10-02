@@ -53,7 +53,9 @@ for (const s of scenes) {
    * ширину, поэтому носитель ставится КАЖДОЙ сцене, а не только печатной:
    * иначе печатная сцена оставила бы `print` следующей за ней.
    */
-  await page.emulateMedia({ media: s.media ?? 'screen' }).catch(() => {})
+  // §254: `colorScheme: 'dark'` — системная тёмная тема для одного снимка;
+  // ставится каждой сцене, как носитель, чтобы не «заражать» следующую.
+  await page.emulateMedia({ media: s.media ?? 'screen', colorScheme: s.colorScheme ?? 'light' }).catch(() => {})
   try {
     if (s.url) await page.goto(BASE + s.url, { waitUntil: 'networkidle', timeout: 30000 })
     for (const a of s.actions ?? []) {

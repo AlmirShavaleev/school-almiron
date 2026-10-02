@@ -98,6 +98,12 @@ export const personas = {
   // записал учитель, то ученик и прочитает.
   o252: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   s252: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  // §254: главная ученика (фикстуры `apply254`): обычный ученик (просрочки,
+  // сроки, оценки), он же с возвратом на доработку (4 кнопки), «всё сдано»,
+  // новичок без истории.
+  ...Object.fromEntries(['s254', 's254ret', 's254clear', 's254new'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1867,6 +1873,7 @@ export function baseFixtures(persona) {
   if (persona === 'o250') apply250(fx)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
   if (persona === 'o252' || persona === 's252') apply252(fx, persona)
+  if (persona.startsWith('s254')) apply254(fx, persona)
   return fx
 }
 
@@ -2866,3 +2873,155 @@ function apply252(fx, persona) {
 }
 const fx_jobs = () => aiJobs.filter(j => ![D252.a, D252.b].includes(j.attempt_id))
 const fx_findings = () => aiFindings
+
+// ── §254: главная ученика ───────────────────────────────────────────────────
+// Все данные выдуманы. Даты — от НАСТОЯЩЕГО «сегодня» по Москве (как считает
+// база): главная печатает сегодняшнюю дату и считает сроки по часам браузера,
+// поэтому фикстуры с NOW на 12.09 дали бы на снимке просрочку в месяц у всего.
+// Ученик учится в двух курсах (физика — группа 1, математика — группа 2).
+//   s254      — 4 просрочки (давняя — 40 дней), 3 в окне 14 дней, 5 позже (до
+//               мая), 2 свежие оценки, одна без срока, тест и новая тема;
+//   s254ret   — то же + работа вернулась на доработку (четвёртая кнопка);
+//   s254clear — всё сдано или принято, свежих оценок нет;
+//   s254new   — новичок: заходов и решений нет, работы только впереди.
+function apply254(fx, persona) {
+  const T = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
+  const shift = (n) => { const d = new Date(`${T}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+  const at = (n, hh = 12) => new Date(`${shift(n)}T${String(hh).padStart(2, '0')}:00:00+03:00`).toISOString()
+  const mathModule = modules[3]
+  const physModule = modules[0]
+
+  // [ключ, тема, курс, срок (дней от сегодня | null), статус, оценка, вердикт (дней назад), открыта (дней назад)]
+  const plan = {
+    s254: [
+      ['o1', 'Кинематика: графики движения', 'p', -40, null],
+      ['o2', 'Законы Ньютона', 'p', -12, 'draft'],
+      ['o3', 'Квадратные уравнения', 'm', -5, null],
+      ['o4', 'Импульс тела', 'p', -2, null],
+      ['s1', 'Статика. Момент силы', 'p', 9, null],
+      ['s2', 'Основы МКТ', 'p', 11, null, null, null, 2],
+      ['s3', 'Текстовые задачи', 'm', 13, null],
+      ['l1', 'Первый закон термодинамики', 'p', 30, null],
+      ['l2', 'Электростатика', 'p', 60, null],
+      ['l3', 'Тригонометрия', 'm', 75, null],
+      ['l4', 'Оптика', 'p', 150, null],
+      ['l5', 'Планиметрия', 'm', 220, null],
+      ['a1', 'Производные', 'm', -6, 'accepted', 4, 1],
+      ['a2', 'Движение по окружности', 'p', -8, 'accepted', 5, 3],
+      ['a3', 'Равноускоренное движение', 'p', -30, 'accepted', 4, 25],
+      ['a4', 'Линейные уравнения', 'm', -35, 'accepted', 3, 30],
+      ['x1', 'Работа и мощность', 'p', 2, 'submitted'],
+      ['n1', 'Повторение: проценты', 'm', null, null],
+    ],
+  }
+  plan.s254ret = [...plan.s254, ['r1', 'Закон сохранения энергии', 'p', 4, 'returned_for_revision']]
+  plan.s254clear = [
+    ['a1', 'Производные', 'm', -6, 'accepted', 4, 9],
+    ['a2', 'Движение по окружности', 'p', -8, 'accepted', 5, 12],
+    ['a3', 'Равноускоренное движение', 'p', -30, 'accepted', 4, 25],
+    ['x1', 'Работа и мощность', 'p', 2, 'submitted'],
+    ['x2', 'Текстовые задачи', 'm', 5, 'submitted'],
+  ]
+  plan.s254new = [
+    ['s1', 'Вводное занятие: что такое ЕГЭ по физике', 'p', 10, null],
+    ['l1', 'Кинематика: графики движения', 'p', 24, null],
+    ['l2', 'Линейные уравнения', 'm', 31, null],
+  ]
+  const rows = plan[persona]
+  const homework = [], attempts = [], reviews = [], journalRows = [], topics254 = []
+  rows.forEach(([key, title, c, due, status, score, verdictAgo, openedAgo], i) => {
+    const course = c === 'p' ? courses[0] : courses[1]
+    const module = c === 'p' ? physModule : mathModule
+    const topic = {
+      id: U('1', 2540 + i), module_id: module.id, title, order_index: 100 + i, max_score: 100,
+      is_open: openedAgo == null ? true : null, available_from: openedAgo == null ? null : shift(-openedAgo),
+      source_template_id: null, created_at: at(-120), ege_task_numbers: [],
+      modules: module, module,
+    }
+    topics254.push(topic)
+    const h = {
+      id: U('2', 2540 + i), topic_id: topic.id, title: 'Домашнее задание', instructions: null,
+      grade_scale: 'five', due_at: due == null ? null : shift(due), is_published: true, created_by: IDS.owner,
+      created_at: at(-60), updated_at: at(-60), topics: topic, topic,
+    }
+    homework.push(h)
+    let att = null, rev = null
+    if (status) {
+      att = {
+        id: U('3', 2540 + i), homework_id: h.id, student_id: IDS.studentRow, attempt_number: 1, status,
+        submitted_at: status === 'draft' ? null : at(-(verdictAgo ?? 1) - 2), created_at: at(-20), updated_at: at(-1),
+        homework: h, topic_homework: h, topic_homework_reviews: [],
+      }
+      attempts.push(att)
+      if (status === 'accepted' || status === 'returned_for_revision') {
+        rev = {
+          id: U('5', 2540 + i), attempt_id: att.id, reviewer_id: IDS.owner, decision: status, score: status === 'accepted' ? score : null,
+          comment: status === 'returned_for_revision' ? 'Задача 3: потерян знак у проекции импульса. Переделайте и пришлите заново.' : null,
+          created_at: at(-(verdictAgo ?? 1), 16),
+        }
+        reviews.push(rev)
+        att.topic_homework_reviews.push(rev)
+      }
+    }
+    const jStatus = !att ? 'not_started' : status === 'returned_for_revision' ? 'returned' : status
+    journalRows.push({
+      homework_id: h.id, title: h.title, topic_id: topic.id, topic_title: title, module_title: module.title,
+      course_id: course.id, course_title: course.title, due_at: h.due_at, grade_scale: 'five', status: jStatus,
+      score: rev?.score ?? null, comment: rev?.comment ?? null, submitted_at: att?.submitted_at ?? null,
+      reviewed_at: rev?.created_at ?? null, attempts_count: att ? 1 : 0,
+      is_overdue: due != null && due < 0 && (!att || status === 'draft' || status === 'returned_for_revision'),
+    })
+  })
+  fx.tables.topics = [...fx.tables.topics, ...topics254]
+  fx.tables.topic_homework = homework
+  fx.tables.topic_homework_attempts = attempts
+  fx.tables.topic_homework_reviews = reviews
+  // Ровно два курса: физика (группа 1) и математика (группа 2). Группы
+  // пробников §221/§224 у этого ученика здесь не нужны — на главной они дали
+  // бы карточки курсов без единой темы.
+  const mine = fx.tables.group_students.find(g => g.student_id === IDS.studentRow && g.group_id === IDS.group)
+  fx.tables.group_students = [
+    ...fx.tables.group_students.filter(g => g.student_id !== IDS.studentRow),
+    mine,
+    { ...mine, id: U('f', 254), group_id: IDS.group2, groups: groups[1], joined_at: at(-90) },
+  ]
+  // Тест темы «Статика» — выдан, не пройден: строка под кнопками.
+  const testTopic = topics254.find(t => t.title.startsWith('Статика'))
+  fx.tables.topic_test_assignments = persona === 's254' || persona === 's254ret'
+    ? [{ id: U('c', 2540), test_id: IDS.test(2), topic_id: testTopic.id, assigned_by: IDS.owner, created_at: at(-3), topic: { id: testTopic.id, title: testTopic.title, module: { course_id: IDS.course } }, test: { id: IDS.test(2), title: 'Статика: 8 вопросов' } }]
+    : []
+  fx.tables.topic_test_attempts = []
+  fx.tables.mock_exams = []
+  fx.rpc.my_mock_exams = []
+  fx.rpc.student_week_plan = []
+  fx.rpc.get_student_topic_journal = { homework: journalRows, tests: [], summary: {} }
+
+  // Активность: серия 5 (пн–пт этой недели, если сегодня пятница), рекорд 12,
+  // задачи по дням — псевдослучайно, но одинаково на каждом прогоне.
+  let seed = 7
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280
+  const visits = [], solved = []
+  if (persona !== 's254new') {
+    for (let back = 83; back >= 0; back--) {
+      const r = rnd()
+      const visited = back <= 4 || (back >= 29 && back <= 40) || (back > 4 && back < 29 && r > 0.45) || (back > 40 && r > 0.7)
+      // разрыв: вчера-позавчера серии 5 — заход точно был; T-5 — точно нет
+      if (back === 5 || back === 28 || back === 41) continue
+      if (!visited) continue
+      visits.push(shift(-back))
+      const n = back <= 4 ? 2 + Math.floor(r * 9) : r < 0.35 ? 0 : Math.ceil(r * 8)
+      if (n > 0) solved.push({ day: shift(-back), n, hw: Math.ceil(n / 2), catalog: Math.floor(n / 2), mock: 0, test: 0 })
+    }
+    // Пробник на бумаге: задачи есть, захода не было.
+    solved.push({ day: shift(-19), n: 14, hw: 0, catalog: 0, mock: 14, test: 0 })
+    solved.sort((a, b) => a.day.localeCompare(b.day))
+  }
+  const streakNow = persona === 's254new' ? 0 : 5
+  fx.rpc.student_home_activity = {
+    today: T, from: shift(-83), streak: streakNow, record: persona === 's254new' ? 0 : 12, visited_today: persona !== 's254new',
+    visits, solved,
+    courses: persona === 's254new'
+      ? [{ course_id: IDS.course, topics_total: 3, topics_done: 0 }, { course_id: IDS.course2, topics_total: 1, topics_done: 0 }]
+      : [{ course_id: IDS.course, topics_total: 52, topics_done: 9 }, { course_id: IDS.course2, topics_total: 48, topics_done: 6 }],
+  }
+}

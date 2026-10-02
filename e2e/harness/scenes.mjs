@@ -1328,6 +1328,27 @@ export const scenes = [
     ]
   }),
 
+  // §254: главная ученика — кнопки-счётчики, серия, задачи по неделям, «Мои курсы».
+  // Персоны `s254*` (фикстуры `apply254`, даты от настоящего «сегодня»). Ничего
+  // не пишут, обе ширины можно одним процессом: node e2e/harness/tour.mjs d254
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => [
+    { persona: 's254', name: 'd254-home', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's254', name: 'd254-home-tip', url: '/student', width, height, full: false, actions: [{ wait: 1200 }, { eval: 'document.querySelector("[data-testid=activity-calendar] [data-today]").scrollIntoView({ block: "center" })' }, { focus: '[data-testid=activity-calendar] [data-today]' }, { wait: 300 }] },
+    { persona: 's254', name: 'd254-home-weeks-tip', url: '/student', width, height, full: false, actions: [{ wait: 1200 }, { eval: 'document.querySelector("[data-testid=week-bars] li:nth-child(9)").scrollIntoView({ block: "center" })' }, { focus: '[data-testid=week-bars] li:nth-child(9)' }, { wait: 300 }] },
+    { persona: 's254ret', name: 'd254-home-returned', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's254clear', name: 'd254-home-clear', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's254new', name: 'd254-home-new', url: '/student', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's254', name: 'd254-hw-overdue', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid=home-action-overdue]' }, { wait: 1500 }] },
+    { persona: 's254', name: 'd254-hw-soon', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid=home-action-soon]' }, { wait: 1500 }] },
+    { persona: 's254', name: 'd254-hw-checked', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid=home-action-checked]' }, { wait: 1500 }] },
+    { persona: 's254ret', name: 'd254-hw-returned', url: '/student', width, height, actions: [{ wait: 1200 }, { clickSel: '[data-testid=home-action-returned]' }, { wait: 1500 }] },
+    { persona: 's254new', name: 'd254-hw-later', url: '/my-homework?show=later', width, height, actions: [{ wait: 1500 }] },
+    { persona: 's254', name: 'd254-hw-nodue', url: '/student', width, height, actions: [{ wait: 1200 }, { click: 'Без срока: 1' }, { wait: 1500 }] },
+  ]),
+  // Тёмная тема — один снимок: в проекте её нет (Tailwind без darkMode, §248),
+  // снимок показывает, что при системной тёмной теме главная читается.
+  { persona: 's254', name: 'd254-home-dark', url: '/student', width: 390, height: 844, colorScheme: 'dark', actions: [{ wait: 1500 }] },
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },
