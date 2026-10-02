@@ -1,0 +1,358 @@
+slice 254: ok
+slice 255: ok
+slice 256: ok
+slice 257: ok
+migration 254: ok
+migrations 255: ok
+migrations 256: ok
+PENDING_257 (1): ok
+psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:112: NOTICE:  relation "student_achievements" already exists, skipping
+psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:114: NOTICE:  relation "student_achievements_unseen_idx" already exists, skipping
+psql:/home/claude/agents/a257/repo/supabase/migrations/PENDING_257.sql:127: NOTICE:  relation "student_forecast_marks" already exists, skipping
+PENDING_257 (2, повтор): ok
+data 255: ok
+data 256: ok
+data 257: ok
+== 1. Права на функции: аноним — ничего; authenticated — только клиентские; внутренние — никому
+                            fn                             | anon | auth | ok 
+-----------------------------------------------------------+------+------+----
+ public.achievement_rules()                                | f    | t    | t
+ public.student_achievements_sync()                        | f    | t    | t
+ public.mark_achievements_seen()                           | f    | t    | t
+ public.claim_forecast_achievement(text, integer, integer) | f    | t    | t
+ public.student_achievements_for_staff(uuid)               | f    | t    | t
+ public.student_school_points()                            | f    | t    | t
+ public.student_achievement_progress(uuid)                 | f    | f    | t
+
+== 2. Аноним: функции и таблицы — отказ
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:30: NOTICE:  OK: sync — permission denied for function student_achievements_sync
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:32: NOTICE:  OK: seen — permission denied for function mark_achievements_seen
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:34: NOTICE:  OK: claim — permission denied for function claim_forecast_achievement
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:36: NOTICE:  OK: staff — permission denied for function student_achievements_for_staff
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:38: NOTICE:  OK: select student_achievements — permission denied for table student_achievements
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:40: NOTICE:  OK: select student_forecast_marks — permission denied for table student_forecast_marks
+DO
+ROLLBACK
+== 3. authenticated без sub: «нужен вход»
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:48: NOTICE:  OK: sync — student_achievements_sync: нужен вход
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:50: NOTICE:  OK: seen — mark_achievements_seen: нужен вход
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:52: NOTICE:  OK: claim — claim_forecast_achievement: нужен вход
+DO
+ROLLBACK
+== 4. Ученик A: прямые insert/update/delete в новые таблицы — 42501
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:62: NOTICE:  OK: insert student_achievements — permission denied for table student_achievements (42501)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:66: NOTICE:  OK: update student_achievements — permission denied for table student_achievements (42501)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:70: NOTICE:  OK: delete student_achievements — permission denied for table student_achievements (42501)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:74: NOTICE:  OK: insert student_forecast_marks — permission denied for table student_forecast_marks (42501)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:78: NOTICE:  OK: update student_forecast_marks — permission denied for table student_forecast_marks (42501)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:82: NOTICE:  OK: student_achievement_progress — permission denied for function student_achievement_progress (42501)
+DO
+ROLLBACK
+== 5. Правила: 79 наград, 16 категорий, уровень по месту в лестнице, особые — золото +50, прогноз — +0
+ n  | keys | cats | ok 
+----+------+------+----
+ 79 |   79 |   16 | t
+
+ category  |                                        ladder                                        
+-----------+--------------------------------------------------------------------------------------
+ catalog   | 1→1/+10 5→1/+10 10→1/+10 20→2/+25 50→2/+25 100→2/+25 200→3/+50 500→3/+50 1000→4/+100
+ hw        | 1→1/+10 5→1/+10 10→1/+10 20→2/+25 30→2/+25 50→3/+50 75→3/+50 100→4/+100
+ ontime    | 1→1/+10 5→1/+10 10→2/+25 25→3/+50 50→4/+100
+ five      | 1→1/+10 5→1/+10 10→2/+25 25→4/+100
+ mock      | 1→1/+10 3→1/+10 5→2/+25 10→4/+100
+ mockscore | 27→1/+10 60→1/+10 70→2/+25 80→3/+50 90→4/+100
+ streak    | 3→1/+10 7→1/+10 14→2/+25 30→2/+25 60→3/+50 100→4/+100
+ daily     | 1→1/+10 7→1/+10 30→2/+25 100→4/+100
+ weekly    | 1→1/+10 4→1/+10 10→2/+25 20→4/+100
+ confident | 1→1/+10 3→1/+10 6→2/+25 9→3/+50 12→4/+100
+ closed    | 1→1/+10 3→2/+25 5→4/+100
+ forecast  | 5→1/+0 10→1/+0 20→2/+0 30→4/+0
+ tests     | 1→1/+10 10→1/+10 25→2/+25 50→4/+100
+ topics    | 1→1/+10 10→1/+10 25→2/+25 50→3/+50 100→4/+100
+ redo      | 1→1/+10 5→2/+25 10→4/+100
+ special   | 10→3/+50 30→3/+50 1→3/+50 1→3/+50 10→3/+50 1→3/+0
+
+ ok 
+----
+ t
+
+== 6. Ученик A: первый sync — have по категориям, полученные вставлены с моментом из истории, fresh у всех
+SET
+Timing is on.
+SELECT 1
+Time: 96.069 ms
+Timing is off.
+RESET
+ total | earned | new | fresh | rows | ok 
+-------+--------+-----+-------+------+----
+    79 |     19 |  19 |    19 |   19 | t
+
+ category  | have | want | ok |                                    why                                    
+-----------+------+------+----+---------------------------------------------------------------------------
+ catalog   |   14 |   14 | t  | №1: 9 верных 3 дня назад + 1 вчера; №4: 4 верных
+ closed    |    1 |    1 | t  | №4: первая неверная 20 дней назад — зона роста с данными, сейчас уверенно
+ confident |    2 |    2 | t  | №4 математики (0,8) и №7 физики
+ daily     |    1 |    1 | t  | задача дня вчера, решена вчера
+ five      |    1 |    1 | t  | «5» за ДЗ №6 после доработки
+ forecast  |    0 |    0 | t  | прогноз ещё не заявлен
+ hw        |    6 |    6 | t  | 6 разных сданных ДЗ (одно — 200 дней назад, одно ОГЭ)
+ mock      |    1 |    1 | t  | один пробник с баллами
+ mockscore |   27 |   27 | t  | первичный 2 → score_scale[3] = 27
+ ontime    |    5 |    5 | t  | все, кроме №13-14 (сдано после срока)
+ redo      |    1 |    1 | t  | ДЗ №6: вернули → пересдал
+ streak    |    3 |    3 | t  | дни с решением: 3, 2, 1 день назад
+ tests     |    1 |    1 | t  | один завершённый тест
+ topics    |    4 |    4 | t  | topic_done_events: темы с принятым ДЗ
+ weekly    |    0 |    0 | t  | целей недели нет
+
+         key         | have | need | earned | ok 
+---------------------+------+------+--------+----
+ special:flawless    |   14 |   10 | t      | t
+ special:marathon    |    9 |   30 | f      | t
+ special:early       |    1 |    1 | t      | t
+ special:all_numbers |    2 |   12 | f      | t
+ special:full_kim    |    1 |   12 | f      | t
+ special:goal        |    0 |    1 | f      | t
+
+-- earned_at — момент события из истории (не now())
+       key        |           earned_at           |             want              | ok 
+------------------+-------------------------------+-------------------------------+----
+ catalog:10       | 2026-09-30 18:36:33.757515+00 | 2026-09-30 18:36:33.757515+00 | t
+ hw:1             | 2026-03-16 18:34:33.657165+00 | 2026-03-16 18:34:33.657165+00 | t
+ mockscore:27     | 2026-09-22 18:34:33.672337+00 | 2026-09-22 18:34:33.672337+00 | t
+ redo:1           | 2026-09-27 18:34:33.657165+00 | 2026-09-27 18:34:33.657165+00 | t
+ special:flawless | 2026-09-30 18:36:33.757515+00 | 2026-09-30 18:36:33.757515+00 | t
+
+== 7. Повторный sync не дублирует: строк столько же, fresh = 0, is_new остаётся
+BEGIN
+SET
+SELECT 1
+ earned | fresh | my_rows | ok 
+--------+-------+---------+----
+     19 |     0 |      19 | t
+
+ROLLBACK
+== 8. Полученная награда не отнимается: сняли раздел №1 с публикации — have упал, награды остались
+BEGIN
+UPDATE 1
+SET
+SELECT 1
+    key     | have | need | earned | ok 
+------------+------+------+--------+----
+ catalog:5  |    4 |    5 | t      | t
+ catalog:10 |    4 |   10 | t      | t
+
+ earned_after | earned_before | lost | ok 
+--------------+---------------+------+----
+           20 |            19 |    0 | t
+
+ROLLBACK
+== 9. Баллы школы: + баллы наград (без двойного счёта), 20 уровней, старых значков нет
+BEGIN
+SET
+SELECT 1
+SELECT 1
+ total | from_awards | want | ok 
+-------+-------------+------+----
+   447 |         270 |  270 | t
+
+ levels | last_name |                                     level                                      | has_badges | ok 
+--------+-----------+--------------------------------------------------------------------------------+------------+----
+     20 | Вершина   | {"n": 4, "from": 300, "name": "Упорство", "next": 450, "next_name": "Система"} | f          | t
+
+       kind        |    title    | points 
+-------------------+-------------+--------
+ achievement       | closed:1    | 10
+ achievement       | confident:1 | 10
+ achievement       | daily:1     | 10
+ daily             |             | 10
+ catalog_milestone |             | 20
+ catalog           |             | 3
+
+ ok_feed_has_awards 
+--------------------
+ t
+
+ROLLBACK
+BEGIN
+SET
+SELECT 1
+SELECT 1
+ before | after | awards | ok 
+--------+-------+--------+----
+     20 |    70 |     50 | t
+
+ROLLBACK
+== 10. Новые и увиденные: mark_achievements_seen → new 0; новая награда после — new 1, fresh 1
+BEGIN
+SET
+ marked | marked_again 
+--------+--------------
+     19 |            0
+
+ new_after_seen | ok 
+----------------+----
+              0 | t
+
+RESET
+INSERT 0 6
+SET
+ new |   fresh    | ok 
+-----+------------+----
+   1 | catalog:20 | t
+
+ unseen_rows | ok 
+-------------+----
+           1 | t
+
+ROLLBACK
+== 11. claim_forecast_achievement: правдоподобие, первый показ запоминается один раз, без баллов школы
+BEGIN
+SET
+SELECT 1
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:243: NOTICE:  OK: 101 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:245: NOTICE:  OK: −1 — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:247: NOTICE:  OK: null — BAD_SCORE: балл прогноза — целое от 0 до 100 (22023)
+DO
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:249: NOTICE:  OK: chemistry — BAD_SUBJECT: предмет math или physics (22023)
+DO
+     fresh      | growth | ok 
+----------------+--------+----
+ ["forecast:5"] | 6      | t
+
+                     fresh                     | first | growth | ok 
+-----------------------------------------------+-------+--------+----
+ ["forecast:10", "forecast:20", "forecast:30"] | 40    | 50     | t
+
+ fresh_no_goal | ok 
+---------------+----
+ []            | t
+
+      fresh       | ok 
+------------------+----
+ ["special:goal"] | t
+
+ growth | kept | ok 
+--------+------+----
+ -20    |    5 | t
+
+SELECT 1
+ before | after | ok_no_points 
+--------+-------+--------------
+    447 |   447 | t
+
+     key      | have | earned | points 
+--------------+------+--------+--------
+ forecast:5   |    0 | t      |      0
+ forecast:10  |    0 | t      |      0
+ forecast:20  |    0 | t      |      0
+ forecast:30  |    0 | t      |      0
+ special:goal |    1 | t      |      0
+
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:274: NOTICE:  OK: B math — NOT_YOUR_SUBJECT: у вас нет курса ЕГЭ по этому предмету (22023)
+DO
+ROLLBACK
+== 12. Ученик видит только своё: B не видит наград и прогноза A
+BEGIN
+SET
+ visible_to_b | of_a | ok 
+--------------+------+----
+            0 |    0 | t
+
+ROLLBACK
+BEGIN
+SET
+ visible_to_a | ok 
+--------------+----
+           19 | t
+
+ROLLBACK
+== 13. Учитель курса видит, посторонний и ученик — 42501, админ видит
+BEGIN
+SET
+ earned | total | latest | ok 
+--------+-------+--------+----
+ 19     | 79    |      3 | t
+
+     key     |            earned_at             
+-------------+----------------------------------
+ closed:1    | 2026-10-02T18:34:33.870485+00:00
+ confident:1 | 2026-10-02T18:34:33.870485+00:00
+ daily:1     | 2026-10-01T18:34:33.752128+00:00
+
+ teacher_earned | ok 
+----------------+----
+              0 | t
+
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:307: NOTICE:  OK: посторонний — ACCESS_DENIED: только персонал курса ученика (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a257/repo/supabase/tests/dostizheniya_257/20_probes.sql:313: NOTICE:  OK: ученик — ACCESS_DENIED: только персонал курса ученика (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+ admin_sees | ok 
+------------+----
+         19 | t
+
+ROLLBACK
+== 14. Время sync: A (малый) и X (12 номеров × 50 задач, 60 ДЗ с таблицей проверки, 6 пробников, 40 тестов, серия 120+ дней)
+BEGIN
+SET
+Timing is on.
+ x_earned_first 
+----------------
+             45
+
+Time: 152.540 ms
+ x_earned_again 
+----------------
+             45
+
+Time: 169.160 ms
+ x_points 
+----------
+     3719
+
+Time: 145.951 ms
+Timing is off.
+ROLLBACK
+BEGIN
+SET
+Timing is on.
+ a_earned 
+----------
+       19
+
+Time: 63.194 ms
+Timing is off.
+ROLLBACK
