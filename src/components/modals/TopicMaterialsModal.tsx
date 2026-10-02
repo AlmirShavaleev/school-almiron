@@ -606,8 +606,19 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     // Ключ приходит из адреса — сверяем с перечнем рубрик, а не верим строке.
     if ((TOPIC_SECTION_ORDER as readonly string[]).includes(initialTile)) {
       setActiveTile(initialTile as TopicSection)
+      setScrollToPanel(true)
     }
   }, [open, topicId, initialTile])
+  // §259. Открыли «на рубрике» (срок ДЗ из таблицы «По темам», возврат из
+  // каталога) — панель рубрики под сеткой плиток прокручивается в вид, иначе
+  // она остаётся ниже края окна и человек её не видит.
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [scrollToPanel, setScrollToPanel] = useState(false)
+  useEffect(() => {
+    if (!scrollToPanel || !panelRef.current) return
+    panelRef.current.scrollIntoView?.({ block: 'start' })
+    setScrollToPanel(false)
+  }, [scrollToPanel, activeTile])
 
   if (!open || !topicId) return null
 
@@ -1091,7 +1102,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
             {/* Панель под сеткой. Плитки нет в сетке (у работы по времени —
                 всё, кроме трёх рубрик) — нет и панели. */}
             {activeTile && TILES.some(t => t.key === activeTile) && (
-              <div className="rounded-2xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
+              <div ref={panelRef} data-testid="topic-tile-panel" className="scroll-mt-4 rounded-2xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
                 <div className="text-sm font-semibold text-primary-700">
                   {TILES.find(t => t.key === activeTile)?.label}
                 </div>
@@ -1120,7 +1131,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 )}
 
                 {activeTile === 'homework' && (
-                  <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} isOpen={isOpen} availableFrom={availableFrom} />
+                  <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} isOpen={isOpen} availableFrom={availableFrom} focusDue={initialTile === 'homework'} />
                 )}
 
                 {activeTile === 'test' && (

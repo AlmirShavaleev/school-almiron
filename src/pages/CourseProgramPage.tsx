@@ -1712,6 +1712,18 @@ export function CourseProgramPage() {
       if (t) { openMaterials(t, m.title); return }
     }
   }, [modules, openMaterials])
+  /**
+   * §259. «изменить / задать» у срока ДЗ во вкладке «Домашние задания» → «По
+   * темам»: то же окно темы, сразу на блоке ДЗ (там поле срока). Своего поля
+   * срока у таблицы нет; после закрытия окна список перечитывается
+   * (`matRefreshKey`).
+   */
+  const openTopicHomework = useCallback((topicId: string) => {
+    for (const m of modules) {
+      const t = m.topics.find(x => x.id === topicId)
+      if (t) { openMaterials(t, m.title, 'homework'); return }
+    }
+  }, [modules, openMaterials])
   const showAssessmentWorks = useCallback((topicId: string) => {
     setHwFocusTopicId(topicId)
     setTab('homework')
@@ -2382,6 +2394,7 @@ export function CourseProgramPage() {
                 onToggleTopicOpen={handleToggleTopicOpen}
                 focusTopicId={hwFocusTopicId}
                 groupName={groups.find(group => group.id === selectedGroupId)?.name ?? null}
+                onEditDeadline={openTopicHomework}
               />
             )}
 

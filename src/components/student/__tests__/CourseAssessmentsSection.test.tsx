@@ -1,9 +1,14 @@
 /**
- * §241. Раздел «Контрольные, самостоятельные и пробники» у ученика: блоки по
- * типам со сводкой, сворачивание (запоминается), строка с результатом —
- * лист подробностей, без результата — переход на работу, идущая работа —
- * строкой сверху с одной главной кнопкой (без дубля с баннером пробника),
- * график: меньше двух итогов — одно число.
+ * §241/§259. Раздел «Контрольные, самостоятельные и пробники» у ученика —
+ * только то, что ещё ждёт (§259): работа до начала или идёт и не сдана,
+ * пробник до начала или идёт. Прошедшее (сдано, проверено, пропущено, итог
+ * пробника) в раздел не попадает, графика пробников и листа результата в
+ * разделе нет; ничего не ждёт — раздела нет. Блоки по типам со сводкой,
+ * сворачивание (запоминается), строка — переход на работу, идущая работа —
+ * строкой сверху с одной главной кнопкой (без дубля с баннером пробника).
+ *
+ * Лист результата и график (в разделе больше не показываются) проверяются
+ * сами по себе — `AssessmentResults.test.tsx`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
@@ -76,18 +81,49 @@ beforeEach(() => {
   })
 })
 
-describe('CourseAssessmentsSection', () => {
-  it('блоки по типам в порядке макета, в заголовке — число и сводка', () => {
+describe('CourseAssessmentsSection — только ожидающие (§259)', () => {
+  it('в разделе — идущая КР и будущий пробник; сданная, проверенная и итоги пробников — нет', () => {
     renderSection(data())
     const blocks = screen.getAllByTestId('assessments-block')
-    expect(blocks.map(b => b.getAttribute('data-block'))).toEqual(['mock', 'control', 'check'])
-    expect(blocks[0]).toHaveTextContent('Пробники · 3')
-    expect(within(blocks[0]).getByTestId('assessments-block-summary')).toHaveTextContent('последний 72 · средний по группе 63')
-    expect(within(blocks[2]).getByTestId('assessments-block-summary')).toHaveTextContent('средняя оценка 5 · группа 4,1')
-    // Внутри — новые сверху.
-    expect(within(blocks[0]).getAllByTestId('assessments-row').map(r => r.textContent)).toEqual([
-      expect.stringContaining('Пробник №5'), expect.stringContaining('Пробник №4'), expect.stringContaining('Пробник №3'),
-    ])
+    expect(blocks.map(b => b.getAttribute('data-block'))).toEqual(['mock', 'control'])
+    expect(blocks[0]).toHaveTextContent('Пробники · 1')
+    expect(within(blocks[0]).getByTestId('assessments-block-summary')).toHaveTextContent('ближайший 5 окт')
+    expect(blocks[1]).toHaveTextContent('Контрольные · 1')
+    expect(within(blocks[1]).getByTestId('assessments-block-summary')).toHaveTextContent('идёт 1')
+    expect(screen.getAllByTestId('assessments-row').map(r => r.getAttribute('data-phase'))).toEqual(['upcoming', 'live'])
+    for (const past of ['Тригонометрия', 'Производные', 'Пробник №3', 'Пробник №4']) expect(screen.queryByText(past)).toBeNull()
+  })
+
+  it('графика пробников и листа результата в разделе нет', () => {
+    renderSection(data())
+    expect(screen.queryByTestId('mock-chart')).toBeNull()
+    expect(screen.queryByTestId('mock-chart-single')).toBeNull()
+    fireEvent.click(screen.getByText('Пробник №5'))
+    expect(screen.queryByTestId('assessment-sheet')).toBeNull()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('работа без времени (не назначено) в раздел не попадает', () => {
+    const { container } = renderSection(data({ works: [work({ topic_id: 'u', title: 'Без времени' })], mocks: [] }))
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('работа сдана прямо в окне — из раздела ушла', () => {
+    const { container } = renderSection(data({
+      works: [work({ topic_id: 'k', title: 'Кинематика', opens_at: at(-10), closes_at: at(35), status: 'submitted', submitted_at: at(-1) })],
+      mocks: [],
+    }))
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('всё прошло (написана, проверена, пропущена, итог пробника) — раздела нет', () => {
+    const d = data()
+    const { container } = renderSection({
+      ...d,
+      works: [...d.works.filter(w => w.topic_id !== 'k'), work({ topic_id: 'miss', title: 'Пропущенная', opens_at: at(-3 * DAY), closes_at: at(-3 * DAY + 40) })],
+      mocks: d.mocks.filter(m => m.id !== 'm5'),
+    })
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('блок сворачивается, и это запоминается', () => {
@@ -102,46 +138,13 @@ describe('CourseAssessmentsSection', () => {
     expect(within(screen.getAllByTestId('assessments-block')[0]).getByTestId('assessments-block-toggle')).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('строка пробника с итогом открывает лист: вторичный/первичный, части, баллы по номерам, группа и «+N»; ссылка на работу', async () => {
-    renderSection(data())
-    fireEvent.click(screen.getByText('Пробник №4'))
-    const sheet = await screen.findByTestId('assessment-sheet')
-    expect(within(sheet).getByTestId('sheet-secondary')).toHaveTextContent('72из 100')
-    expect(within(sheet).getByTestId('sheet-primary')).toHaveTextContent('18из 32')
-    expect(within(sheet).getByTestId('sheet-group')).toHaveTextContent('средний 63 · написали 14 · ты лучше, чем 70 % группы')
-    expect(within(sheet).getByTestId('sheet-group')).toHaveTextContent('Прошлый пробник — 58, сейчас +14')
-    expect(rpc).toHaveBeenCalledWith('my_mock_exam_result', { p_mock_exam_id: 'm4' })
-    const cells = await within(sheet).findAllByTestId('sheet-mock-task')
-    expect(cells.map(c => c.textContent)).toEqual(['11', '20', '31/3'])
-    expect(within(sheet).getByTestId('sheet-part1')).toHaveTextContent('Часть 111из 2')
-    expect(within(sheet).getByTestId('sheet-part2')).toHaveTextContent('Часть 27из 3')
-    fireEvent.click(within(sheet).getByTestId('sheet-open-work'))
-    expect(await screen.findByText('страница пробника')).toBeInTheDocument()
-  })
-
-  it('лист проверочной: оценка, отметки по заданиям, группа; «Назад» и Esc закрывают', async () => {
-    renderSection(data())
-    fireEvent.click(screen.getByText('Производные'))
-    const sheet = screen.getByTestId('assessment-sheet')
-    expect(within(sheet).getByTestId('sheet-grade')).toHaveTextContent('Оценка5пятибалльная')
-    expect(within(sheet).getByTestId('sheet-marks')).toHaveTextContent('1 из 3')
-    expect(within(sheet).getAllByTestId('sheet-work-task').map(t => t.getAttribute('data-verdict'))).toEqual(['correct', 'partial', 'wrong'])
-    expect(within(sheet).getByTestId('sheet-group')).toHaveTextContent('средняя оценка 4,1 · сдали 16 из 18 · ты лучше, чем 70 % группы')
-    expect(document.activeElement).toBe(within(sheet).getByTestId('assessment-sheet-back'))
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByTestId('assessment-sheet')).toBeNull()
-    fireEvent.click(screen.getByText('Производные'))
-    fireEvent.click(screen.getByTestId('assessment-sheet-back'))
-    expect(screen.queryByTestId('assessment-sheet')).toBeNull()
-    expect(rpc).not.toHaveBeenCalled()
-  })
-
-  it('без результата — сразу на работу: КР — страница темы, пробник — страница пробника', async () => {
-    const { unmount } = renderSection(data())
-    fireEvent.click(screen.getByText('Тригонометрия'))
+  it('строка ведёт на работу: КР — страница темы, пробник — страница пробника', async () => {
+    const d = data({ works: [work({ topic_id: 'b', title: 'Статика', opens_at: at(DAY), closes_at: at(DAY + 45) })] })
+    const { unmount } = renderSection(d)
+    fireEvent.click(screen.getByText('Статика'))
     expect(await screen.findByText('страница темы')).toBeInTheDocument()
     unmount()
-    renderSection(data())
+    renderSection(d)
     fireEvent.click(screen.getByText('Пробник №5'))
     expect(await screen.findByText('страница пробника')).toBeInTheDocument()
   })
@@ -164,28 +167,6 @@ describe('CourseAssessmentsSection', () => {
     expect(strips.map(s => s.textContent)).toEqual([expect.stringContaining('Кинематика')])
     expect(screen.queryByTestId('assessments-live-primary')).toBeNull()
     expect(screen.getByTestId('assessments-live-open')).toHaveTextContent('Продолжить')
-  })
-
-  it('график: два и больше итогов — линия с подсказкой; меньше двух — одно число', () => {
-    const { unmount } = renderSection(data())
-    expect(screen.getAllByTestId('mock-chart-dot')).toHaveLength(2)
-    expect(screen.getByTestId('mock-chart-last')).toHaveTextContent('72')
-    expect(screen.getAllByTestId('mock-chart-group-dot')).toHaveLength(2)
-    expect(screen.getByTestId('mock-chart-svg').getAttribute('aria-label')).toContain('Пробник №4 (26 сент) — 72')
-    fireEvent.click(screen.getAllByTestId('mock-chart-hit')[1])
-    expect(screen.getByTestId('mock-chart-tip')).toHaveTextContent('Ты: 72 · группа: 63')
-    expect(screen.getByTestId('mock-chart-tip')).toHaveTextContent('+14 к прошлому')
-    unmount()
-    renderSection(data({ mocks: [data().mocks[1]] }))
-    expect(screen.queryByTestId('mock-chart')).toBeNull()
-    expect(screen.getByTestId('mock-chart-single')).toHaveTextContent('72вторичный · Пробник №4 · средний по группе 63')
-  })
-
-  it('группа на графике — только там, где правило троих выполнено', () => {
-    const d = data()
-    d.mocks[0] = { ...d.mocks[0], group: null }
-    renderSection(d)
-    expect(screen.getAllByTestId('mock-chart-group-dot')).toHaveLength(1)
   })
 
   it('нет ни работ, ни пробников — раздела нет', () => {

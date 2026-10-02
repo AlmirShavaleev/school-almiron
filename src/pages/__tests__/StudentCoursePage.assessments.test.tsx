@@ -1,9 +1,12 @@
 /**
- * §241. Страница курса ученика: раздел «Контрольные, самостоятельные и
- * пробники» над программой вместо прежнего блока «Пробники»; без дублей —
- * работы по времени не показываются в своих модулях, модуль, где кроме них
- * ничего не было, скрыт; прогресс курса и модулей не меняется. Без данных
- * раздела (RPC ещё нет на базе, сбой, предпросмотр) — всё как раньше.
+ * §241/§259. Страница курса ученика: раздел «Контрольные, самостоятельные и
+ * пробники» над программой вместо прежнего блока «Пробники» — с §259 только
+ * ожидающие (прошедших нет; ничего не ждёт — раздела нет). Модуль, где все
+ * темы — работы по времени, снова виден карточкой «только работы» (названия и
+ * когда, без оценок, без «N из M тем»), внутри — те же работы списком и
+ * карточками, клик → страница темы. В модулях с уроками работ нет, как с §241.
+ * Прогресс курса и модулей не меняется. Без данных раздела (RPC ещё нет на
+ * базе, сбой, предпросмотр) — темы на своих местах.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
@@ -30,7 +33,7 @@ const moduleOf = (id: string, title: string, ts: any[]): ModuleProgress => ({
 
 const modules: ModuleProgress[] = [
   moduleOf('m1', 'Механика', [topic('t1', 'Законы Ньютона'), topic('t2', 'КР: Кинематика', 'control')]),
-  moduleOf('m2', 'Контрольные работы', [topic('t3', 'Проверочная: Импульс', 'check')]),
+  moduleOf('m2', 'Контрольные работы', [topic('t3', 'Проверочная: Импульс', 'check'), topic('t5', 'КР: Статика', 'control')]),
   moduleOf('m3', 'Оптика', [topic('t4', 'Линзы')]),
 ]
 const now = Date.now()
@@ -43,7 +46,10 @@ const READY: MyAssessments = {
   serverNow: iso(0),
   works: [
     { topic_id: 't2', homework_id: 'h2', kind: 'control', title: 'КР: Кинематика', module_id: 'm1', module_title: 'Механика', topic_open: true, available_from: null, grade_scale: 'five', opens_at: iso(24 * 60), closes_at: iso(24 * 60 + 45), personal: false, status: 'none', submitted_at: null, reviewed_at: null, score: null, tasks: null, group: null },
-    { topic_id: 't3', homework_id: 'h3', kind: 'check', title: 'Проверочная: Импульс', module_id: 'm2', module_title: 'Контрольные работы', topic_open: true, available_from: null, grade_scale: 'five', opens_at: null, closes_at: null, personal: false, status: 'none', submitted_at: null, reviewed_at: null, score: null, tasks: null, group: null },
+    // Прошедшая и проверенная, с оценкой 5: в раздел не попадает, в модуле работ — без оценки.
+    { topic_id: 't3', homework_id: 'h3', kind: 'check', title: 'Проверочная: Импульс', module_id: 'm2', module_title: 'Контрольные работы', topic_open: true, available_from: null, grade_scale: 'five', opens_at: '2026-09-22T12:00:00.000Z', closes_at: '2026-09-22T12:40:00.000Z', personal: false, status: 'reviewed', submitted_at: '2026-09-22T12:35:00.000Z', reviewed_at: '2026-09-23T15:00:00.000Z', score: 5, tasks: [{ no: '1', verdict: 'correct' }], group: { avg: 4.1, count: 16, submitted: 16, in_group: 18, better_pct: 70, best: false } },
+    // Без времени — ни в разделе, ни времени в модуле.
+    { topic_id: 't5', homework_id: 'h5', kind: 'control', title: 'КР: Статика', module_id: 'm2', module_title: 'Контрольные работы', topic_open: true, available_from: null, grade_scale: 'five', opens_at: null, closes_at: null, personal: false, status: 'none', submitted_at: null, reviewed_at: null, score: null, tasks: null, group: null },
   ],
   mocks: [mockRow],
 }
@@ -85,32 +91,29 @@ beforeEach(() => {
   localStorage.clear()
 })
 
+const worksCard = () => screen.getByTestId('module-works-card')
+
 describe('StudentCoursePage — раздел «Контрольные, самостоятельные и пробники»', () => {
-  it('над программой вместо блока «Пробники»; внутри — пробник, контрольная и проверочная', () => {
+  it('над программой вместо блока «Пробники»; внутри — только ожидающие: пробник и КР до начала', () => {
     renderPage()
     const section = screen.getByTestId('assessments-section')
     expect(section).toHaveTextContent('Контрольные, самостоятельные и пробники')
     expect(screen.queryByTestId('mock-exams-section')).toBeNull()
-    expect(within(section).getAllByTestId('assessments-block').map(b => b.getAttribute('data-block'))).toEqual(['mock', 'control', 'check'])
+    expect(within(section).getAllByTestId('assessments-block').map(b => b.getAttribute('data-block'))).toEqual(['mock', 'control'])
+    // Проверенная (с оценкой) и без времени — не в разделе.
+    expect(section).not.toHaveTextContent('Проверочная: Импульс')
+    expect(section).not.toHaveTextContent('КР: Статика')
     const firstModule = screen.getByText('Механика')
     expect(section.compareDocumentPosition(firstModule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(hookArgs[0]).toEqual(['g1', true])
   })
 
-  it('без дублей: модуль «Контрольные работы» (в нём только работа по времени) скрыт, в «Механике» КР нет', () => {
+  it('ничего не ждёт — раздела нет, а модуль «Контрольные работы» на месте', () => {
+    assessments = { status: 'ready', data: { ...READY, works: READY.works.filter(w => w.topic_id !== 't2'), mocks: [] } }
     renderPage()
-    expect(screen.queryByText('Контрольные работы')).toBeNull()
-    expect(screen.getByText('Оптика')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Механика'))
-    const list = screen.getByTestId('topics-list-view')
-    expect(list).toHaveTextContent('Законы Ньютона')
-    expect(list).not.toHaveTextContent('КР: Кинематика')
-    expect(screen.getByText(/1 тема/)).toBeInTheDocument()
-  })
-
-  it('прогресс не трогаем: счётчик курса считает все темы, как раньше', () => {
-    renderPage()
-    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('4')
+    expect(screen.queryByTestId('assessments-section')).toBeNull()
+    expect(screen.queryByTestId('mock-exams-section')).toBeNull()
+    expect(worksCard()).toHaveTextContent('Контрольные работы')
   })
 
   it('строка КР без результата ведёт на страницу темы', async () => {
@@ -118,13 +121,76 @@ describe('StudentCoursePage — раздел «Контрольные, само�
     fireEvent.click(screen.getByText('КР: Кинематика'))
     expect(await screen.findByText('страница темы')).toBeInTheDocument()
   })
+})
 
+describe('StudentCoursePage — модуль «Контрольные работы» (§259)', () => {
+  it('виден карточкой: только работы с датой, «2 работы», без оценок и без «N из M тем»', () => {
+    renderPage()
+    const card = worksCard()
+    expect(card).toHaveTextContent('Контрольные работы')
+    expect(within(card).getAllByTestId('module-works-item').map(li => li.textContent)).toEqual([
+      'Проверочная: Импульс22 сент, 15:00',
+      'КР: Статика',
+    ])
+    expect(within(card).getByTestId('module-works-count')).toHaveTextContent('2 работы')
+    expect(within(card).queryByTestId('module-topics-counter')).toBeNull()
+    expect(within(card).queryByTestId('module-homework-counter')).toBeNull()
+    expect(card).not.toHaveTextContent(/тем|оценка|провер(ено|ена)|верно/)
+    // Обычные модули — прежними карточками со счётчиком тем.
+    expect(screen.getAllByTestId('module-topics-counter')).toHaveLength(2)
+  })
+
+  it('в модуле с уроками работ нет: в «Механике» — только урок', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Механика'))
+    const list = screen.getByTestId('topics-list-view')
+    expect(list).toHaveTextContent('Законы Ньютона')
+    expect(list).not.toHaveTextContent('КР: Кинематика')
+    expect(screen.getByText(/1 тема/)).toBeInTheDocument()
+  })
+
+  it('внутри модуля работ — те же работы списком: когда, без оценок; клик → страница темы', async () => {
+    renderPage()
+    fireEvent.click(worksCard())
+    expect(screen.getByTestId('module-topics-count')).toHaveTextContent('2 работы в разделе')
+    // Без «N из M тем» и прогресса раздела.
+    expect(screen.queryByTestId('course-topics-counter')).toBeNull()
+    const rows = within(screen.getByTestId('works-module-view')).getAllByTestId('works-module-row')
+    expect(rows.map(r => r.getAttribute('data-view'))).toEqual(['list', 'list'])
+    expect(rows[0].textContent).toBe('Проверочная работаПроверочная: Импульсвт 22 сент, 15:00–15:40')
+    expect(rows[1]).toHaveTextContent('КР: Статикавремя ещё не назначено')
+    expect(screen.queryByTestId('topic-signals')).toBeNull()
+    fireEvent.click(rows[0])
+    expect(await screen.findByText('страница темы')).toBeInTheDocument()
+  })
+
+  it('вид «карточки» — те же работы карточками, тоже без оценок', async () => {
+    renderPage()
+    fireEvent.click(worksCard())
+    fireEvent.click(screen.getByTestId('view-toggle-cards'))
+    const rows = within(screen.getByTestId('works-module-view')).getAllByTestId('works-module-row')
+    expect(rows.map(r => r.getAttribute('data-view'))).toEqual(['cards', 'cards'])
+    expect(rows[0]).toHaveTextContent('вт 22 сент, 15:00–15:40')
+    expect(rows[0]).not.toHaveTextContent(/оценка|Пройдено|ДЗ/)
+    fireEvent.click(rows[1])
+    expect(await screen.findByText('страница темы')).toBeInTheDocument()
+  })
+
+  it('прогресс не трогаем: счётчик курса считает все темы, как раньше', () => {
+    renderPage()
+    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('5')
+  })
+})
+
+describe('StudentCoursePage — без данных раздела', () => {
   it('RPC недоступна (миграции нет, сбой) — прежний блок «Пробники», темы на своих местах', () => {
     assessments = { status: 'error', data: null }
     renderPage()
     expect(screen.queryByTestId('assessments-section')).toBeNull()
     expect(screen.getByTestId('mock-exams-section')).toBeInTheDocument()
-    expect(screen.getByText('Контрольные работы')).toBeInTheDocument()
+    expect(worksCard()).toHaveTextContent('Контрольные работы')
+    fireEvent.click(screen.getByText('Механика'))
+    expect(screen.getByTestId('topics-list-view')).toHaveTextContent('КР: Кинематика')
   })
 
   it('пока грузится — ни раздела, ни прежнего блока, темы на месте', () => {

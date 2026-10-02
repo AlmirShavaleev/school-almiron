@@ -1,14 +1,12 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { formatSpan } from '@/lib/mockExamLive'
 import {
-  BLOCK_TAG, assessmentBlocks, assessmentItems, liveItems, mockChartPoints, mskHm, readCollapsed, rowView,
+  BLOCK_TAG, assessmentBlocks, assessmentItems, liveItems, mskHm, pendingItems, readCollapsed, rowView,
   safeStorage, storeCollapsed, type AssessmentBlock, type AssessmentItem, type BlockKey, type MyAssessments, type Tone,
 } from '@/lib/courseAssessments'
-import { MockScoreChart } from './MockScoreChart'
-import { AssessmentDetailSheet } from './AssessmentDetailSheet'
 
 /**
  * §241. Раздел «Контрольные, самостоятельные и пробники» у ученика — над
@@ -21,10 +19,14 @@ import { AssessmentDetailSheet } from './AssessmentDetailSheet'
  * над блоками с одной кнопкой «Продолжить» / «Начать»; если идёт пробник и
  * сверху уже стоит его баннер (§224.2), кнопку не дублируем (`primaryInBanner`).
  *
- * Строка с результатом открывает лист подробностей; без результата — сразу
- * работу: пробник — `/my-course/:group/mock/:id`, КР — страницу темы.
+ * §259 (решение владельца 02.10): в разделе — только то, что ещё ждёт ученика
+ * (`pendingItems`: работа до начала или идёт и не сдана, пробник до начала или
+ * идёт). Прошедшее — написана, проверена, пропущена, итог пробника — сюда не
+ * попадает; график пробников (прошлые итоги) и лист результата из раздела
+ * убраны. Строка ведёт на работу: пробник — `/my-course/:group/mock/:id`,
+ * КР — страницу темы.
  *
- * Раздела нет вовсе, если у курса нет ни работ по времени, ни пробников.
+ * Раздела нет вовсе, если ничего не ждёт.
  */
 export function CourseAssessmentsSection({ data, groupId, now, primaryInBanner = false }: {
   data: MyAssessments
@@ -34,13 +36,10 @@ export function CourseAssessmentsSection({ data, groupId, now, primaryInBanner =
   primaryInBanner?: boolean
 }) {
   const navigate = useNavigate()
-  const items = useMemo(() => assessmentItems(data, now), [data, now])
+  const items = useMemo(() => pendingItems(assessmentItems(data, now)), [data, now])
   const blocks = useMemo(() => assessmentBlocks(items, now), [items, now])
   const live = useMemo(() => liveItems(items), [items])
-  const chart = useMemo(() => mockChartPoints(data.mocks, now), [data.mocks, now])
   const [collapsed, setCollapsed] = useState<Set<BlockKey>>(() => readCollapsed(safeStorage(), groupId))
-  const [open, setOpen] = useState<AssessmentItem | null>(null)
-  const close = useCallback(() => setOpen(null), [])
 
   if (items.length === 0) return null
 
@@ -58,10 +57,7 @@ export function CourseAssessmentsSection({ data, groupId, now, primaryInBanner =
     ? `/my-course/${groupId}/mock/${i.mock.id}`
     : `/my-course/${groupId}/topic/${i.work.topic_id}`
 
-  const onRow = (i: AssessmentItem) => {
-    if (i.hasResult) setOpen(i)
-    else navigate(workPath(i))
-  }
+  const onRow = (i: AssessmentItem) => navigate(workPath(i))
 
   // Идущий пробник уже стоит баннером наверху страницы — его строку не повторяем.
   const strips = live.filter(i => !(primaryInBanner && i.block === 'mock'))
@@ -85,12 +81,8 @@ export function CourseAssessmentsSection({ data, groupId, now, primaryInBanner =
           onToggle={() => toggle(block.key)}
           now={now}
           onRow={onRow}
-          chart={block.key === 'mock' ? <MockScoreChart points={chart} /> : null}
-          hasChart={block.key === 'mock' && chart.length > 0}
         />
       ))}
-
-      {open && <AssessmentDetailSheet item={open} groupId={groupId} onClose={close} />}
     </section>
   )
 }
@@ -140,14 +132,12 @@ function LiveStrip({ item, to, now, primary }: { item: AssessmentItem; to: strin
   )
 }
 
-function Block({ block, collapsed, onToggle, now, onRow, chart, hasChart }: {
+function Block({ block, collapsed, onToggle, now, onRow }: {
   block: AssessmentBlock
   collapsed: boolean
   onToggle: () => void
   now: number
   onRow: (i: AssessmentItem) => void
-  chart: ReactNode
-  hasChart: boolean
 }) {
   const bodyId = `assessments-block-${block.key}`
   return (
@@ -169,7 +159,6 @@ function Block({ block, collapsed, onToggle, now, onRow, chart, hasChart }: {
       </button>
       {!collapsed && (
         <div id={bodyId}>
-          {hasChart && <div className="border-t border-slate-100 px-3.5 pb-3 pt-2">{chart}</div>}
           <ul>
             {block.items.map(i => <Row key={i.key} item={i} now={now} onClick={() => onRow(i)} />)}
           </ul>
@@ -199,8 +188,6 @@ function Row({ item, now, onClick }: { item: AssessmentItem; now: number; onClic
         onClick={onClick}
         data-testid="assessments-row"
         data-phase={item.phase}
-        data-result={item.hasResult ? 'true' : 'false'}
-        aria-haspopup={item.hasResult ? 'dialog' : undefined}
         className={cn(
           'grid w-full grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400',
           item.live && 'bg-primary-50 shadow-[inset_3px_0_0_#1f55e0] hover:bg-primary-50',

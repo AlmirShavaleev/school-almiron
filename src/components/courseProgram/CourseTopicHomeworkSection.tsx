@@ -11,6 +11,10 @@ import {
   WORK_KIND_TAG, formatMoscowShort, formatMoscowTime, isTimedKind, normalizeTopicKind, parseWindowDraft,
   windowDraftOf, type WindowDraft,
 } from '@/lib/timedWork'
+import {
+  deadlineLabel, deadlineSummary, deadlineTone, formatDueDate, homeworkDeadline,
+  type DeadlineState, type DeadlineTone,
+} from '@/lib/homeworkDeadline'
 
 interface Module {
   id: string
@@ -34,6 +38,8 @@ interface TopicHomework {
   /** §240. Окно работы по времени. */
   opens_at?: string | null
   closes_at?: string | null
+  /** §259. Срок ДЗ (date, «до» включительно). */
+  due_at?: string | null
 }
 
 interface TopicHomeworkAttempt {
@@ -76,6 +82,31 @@ const ISSUE_TEXT: Record<HomeworkIssueState, string> = {
 }
 const ISSUE_DOT: Record<HomeworkIssueState, string> = {
   issued: 'bg-emerald-500', closed: 'bg-gray-400', no_files: 'bg-amber-500', template: 'bg-primary-400',
+}
+
+/**
+ * §259. Колонка «Срок» и сводка: вовремя — зелёный, опоздание — янтарный,
+ * просрочено — красный, ещё / сегодня — серый (токены verdict дизайна v2).
+ */
+const DEADLINE_CHIP: Record<DeadlineTone, string> = {
+  ok: 'bg-verdict-ok-tint text-verdict-ok-ink',
+  late: 'bg-verdict-part-tint text-verdict-part-ink',
+  bad: 'bg-verdict-bad-tint text-verdict-bad-ink',
+  wait: 'bg-graphite-100 text-graphite-600',
+  none: 'text-graphite-400',
+}
+
+function DeadlineChip({ state }: { state: DeadlineState }) {
+  const tone = deadlineTone(state)
+  return (
+    <span
+      data-testid="hw-deadline"
+      data-kind={state.kind}
+      className={cn('inline-block whitespace-nowrap rounded-full text-xs font-bold', tone !== 'none' && 'px-2 py-0.5', DEADLINE_CHIP[tone])}
+    >
+      {deadlineLabel(state)}
+    </span>
+  )
 }
 
 const ATTEMPT_STATUS_BADGE_COLORS: Record<TopicHomeworkAttemptStatus, string> = {
@@ -133,7 +164,7 @@ function getStudentAttemptStatus(
   return { status: latest.status, score: null, submittedAt: latest.submitted_at }
 }
 
-export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, onToggleTopicOpen, focusTopicId = null }: {
+export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, onToggleTopicOpen, focusTopicId = null, onEditDeadline }: {
   courseId: string
   modules: Module[]
   refreshKey?: number
@@ -144,6 +175,11 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
    * пробники» («Кто пишет» / «Работы»): раскрыта сразу и прокручена в вид.
    */
   focusTopicId?: string | null
+  /**
+   * §259. «изменить / задать» у срока: открыть окно темы на блоке ДЗ, где срок
+   * уже редактируется (`TopicHomeworkEditor`). Своего поля срока здесь нет.
+   */
+  onEditDeadline?: (topicId: string) => void
 }) {
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [homeworks, setHomeworks] = useState<TopicHomework[]>([])
@@ -376,6 +412,14 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
     if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }, [loading, focusTopicId])
 
+  /** §259. Срок у ученика — по ВСЕМ его попыткам этого ДЗ (первая сдача). */
+  const nowMs = Date.now()
+  const deadlineOf = (hw: TopicHomework, studentId: string): DeadlineState => homeworkDeadline(
+    hw.due_at ?? null,
+    attempts.filter(a => a.homework_id === hw.id && a.student_id === studentId),
+    nowMs,
+  )
+
   const totalStats = getTotalStats()
   const totalHomeworks = homeworks.length
   const totalAssignments = totalHomeworks * roster.length
@@ -451,6 +495,12 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                 fileCount: topicHomeworks.reduce((n, hw) => n + (fileCounts[hw.id] ?? 0), 0),
                 timed: timedTopic,
               })
+              // §259. Срок — у обычного ДЗ (у проверочной/контрольной — окно).
+              const deadlineHw = !timedTopic ? topicHomeworks[0] ?? null : null
+              const dueText = deadlineHw ? formatDueDate(deadlineHw.due_at) : null
+              const dueSummary = deadlineHw && dueText
+                ? deadlineSummary(roster.map(st => deadlineOf(deadlineHw, st.studentId)))
+                : null
 
               if (topicHomeworks.length === 0) {
                 return (
@@ -470,12 +520,14 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                   {/* Topic header (collapsible). Тумблер — СОСЕД кнопки, а не
                       её потомок: кнопка внутри кнопки невалидна, и клик по
                       тумблеру всё равно сворачивал бы тему. */}
-                  <div className="flex items-center gap-2 pr-4">
+                  {/* §259: на телефоне бейджи и тумблер уходят на следующую строку —
+                      раньше они сжимали название темы до нуля. */}
+                  <div className="flex flex-wrap items-center gap-x-2 pr-4 max-sm:pb-2 max-sm:pl-11">
                   <button
                     onClick={() => toggleTopic(topic.id)}
-                    className="min-w-0 flex-1 px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
+                    className="min-w-0 flex-1 basis-[16rem] px-4 py-3 hover:bg-gray-50 transition-colors flex flex-wrap items-center justify-between gap-2 max-sm:-ml-11"
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 min-w-[12rem] flex-1">
                       {isExpanded ? <ChevronDown size={16} className="text-gray-400 shrink-0" /> : <ChevronRight size={16} className="text-gray-400 shrink-0" />}
                       {timedTopic && (
                         <span
@@ -537,11 +589,47 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                   )}
                   </div>
 
+                  {/* §259. Срок и «вовремя / с опозданием / не сдали». У работы
+                      по времени срока нет — у неё окно (строка выше). */}
+                  {deadlineHw && (
+                    <div data-testid="hw-due-line" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 pl-11">
+                      <span
+                        data-testid="hw-due"
+                        data-set={dueText ? 'true' : 'false'}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-graphite-200 bg-graphite-50 px-2.5 py-1 text-[13px] font-bold text-graphite-900"
+                      >
+                        {dueText ? `Срок: до ${dueText}` : 'Срок не задан'}
+                        {onEditDeadline && (
+                          <>
+                            {!dueText && <span aria-hidden className="font-normal text-graphite-400">·</span>}
+                            <button
+                              type="button"
+                              data-testid="hw-due-edit"
+                              onClick={() => onEditDeadline(topic.id)}
+                              aria-label={`${dueText ? 'Изменить' : 'Задать'} срок ДЗ: ${topic.title}`}
+                              className="rounded text-xs font-semibold text-primary-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                            >
+                              {dueText ? 'изменить' : 'задать'}
+                            </button>
+                          </>
+                        )}
+                      </span>
+                      {dueSummary && (
+                        <span data-testid="hw-due-summary" className="flex flex-wrap gap-1.5">
+                          <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold', DEADLINE_CHIP.ok)}>вовремя {dueSummary.ontime}</span>
+                          <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold', DEADLINE_CHIP.late)}>с опозданием {dueSummary.late}</span>
+                          <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold', dueSummary.missing > 0 ? DEADLINE_CHIP.bad : DEADLINE_CHIP.wait)}>не сдали {dueSummary.missing}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Expanded table */}
                   {isExpanded && (
                     <div className="border-t border-gray-100">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                      {/* §259: на телефоне таблица листается внутри себя, страница не шире экрана. */}
+                      <div className="overflow-x-auto" data-testid="hw-section-scroll">
+                        <table className={cn('w-full text-sm', !timedTopic && 'min-w-[600px]')}>
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-100">
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Ученик</th>
@@ -549,6 +637,7 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Балл</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Дата сдачи</th>
                               {timedTopic && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Время</th>}
+                              {!timedTopic && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Срок</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -600,6 +689,11 @@ export function CourseTopicHomeworkSection({ courseId, modules, refreshKey = 0, 
                                   <td className="px-4 py-2">
                                     <span className="text-sm text-gray-600">{formatDate(studentStatus.submittedAt)}</span>
                                   </td>
+                                  {!timedTopic && (
+                                    <td className="px-4 py-2">
+                                      <DeadlineChip state={deadlineOf(firstHw, student.studentId)} />
+                                    </td>
+                                  )}
                                   {timedTopic && (
                                     <td className="px-4 py-2">
                                       {formHere && reopen ? (

@@ -15,14 +15,18 @@ type HwView = 'table' | 'topics'
  * `focusTopicId` (§241: «Работы» / «Кто пишет» из «Проверочных и контрольных»)
  * открывает «По темам» с раскрытой темой — как раньше: туда ведут ссылки, и
  * таблица уроков им не ответ (проверочных и контрольных в ней нет вовсе).
+ *
+ * §259. `onEditDeadline` — «изменить / задать» у срока ДЗ в «По темам»:
+ * страница открывает окно темы на блоке ДЗ.
  */
-export function CourseHomeworkTab({ courseId, modules, refreshKey = 0, onToggleTopicOpen, focusTopicId = null, groupName }: {
+export function CourseHomeworkTab({ courseId, modules, refreshKey = 0, onToggleTopicOpen, focusTopicId = null, groupName, onEditDeadline }: {
   courseId: string
   modules: ComponentProps<typeof CourseTopicHomeworkSection>['modules']
   refreshKey?: number
   onToggleTopicOpen?: (topicId: string, isOpen: boolean) => Promise<void>
   focusTopicId?: string | null
   groupName: string | null
+  onEditDeadline?: (topicId: string) => void
 }) {
   const [view, setView] = useState<HwView>(focusTopicId ? 'topics' : 'table')
   // Пришли по ссылке «Работы» уже на открытой вкладке — тоже «По темам»
@@ -56,7 +60,7 @@ export function CourseHomeworkTab({ courseId, modules, refreshKey = 0, onToggleT
       {view === 'table' ? (
         <CourseHomeworkJournal status={journal.status} data={journal.data} groupName={groupName} onShowTopics={() => setView('topics')} />
       ) : (
-        <CourseTopicHomeworkSection courseId={courseId} modules={modules} refreshKey={refreshKey} onToggleTopicOpen={onToggleTopicOpen} focusTopicId={focusTopicId} />
+        <CourseTopicHomeworkSection courseId={courseId} modules={modules} refreshKey={refreshKey} onToggleTopicOpen={onToggleTopicOpen} focusTopicId={focusTopicId} onEditDeadline={onEditDeadline} />
       )}
     </div>
   )

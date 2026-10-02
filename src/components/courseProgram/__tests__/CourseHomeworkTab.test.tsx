@@ -17,8 +17,11 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { rpc: (fn: string, args: unknown) => { rpcSpy(fn, args); return Promise.resolve(rpcResult) } },
 }))
 vi.mock('@/components/courseProgram/CourseTopicHomeworkSection', () => ({
-  CourseTopicHomeworkSection: ({ focusTopicId }: { focusTopicId?: string | null }) => (
-    <div data-testid="by-topics" data-focus={focusTopicId ?? ''}>Список по темам</div>
+  CourseTopicHomeworkSection: ({ focusTopicId, onEditDeadline }: { focusTopicId?: string | null; onEditDeadline?: (topicId: string) => void }) => (
+    <div data-testid="by-topics" data-focus={focusTopicId ?? ''}>
+      Список по темам
+      {onEditDeadline && <button type="button" onClick={() => onEditDeadline('t1')}>изменить срок</button>}
+    </div>
   ),
 }))
 
@@ -146,5 +149,16 @@ describe('Вкладка «Домашние задания» — журнал (�
     rpcResult = { data: { ...JOURNAL, homeworks: JOURNAL.homeworks.map(h => ({ ...h, topic_open: false })), cells: [] }, error: null }
     renderTab()
     expect(await screen.findByTestId('hw-journal-empty')).toHaveTextContent('Выданных домашних заданий пока нет')
+  })
+
+  it('§259: «изменить / задать» срок из «По темам» уходит странице (окно темы на блоке ДЗ)', () => {
+    const onEditDeadline = vi.fn()
+    render(
+      <MemoryRouter>
+        <CourseHomeworkTab courseId="c1" modules={[]} groupName="11А" focusTopicId="t1" onEditDeadline={onEditDeadline} />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'изменить срок' }))
+    expect(onEditDeadline).toHaveBeenCalledWith('t1')
   })
 })

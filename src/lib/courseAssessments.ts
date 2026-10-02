@@ -16,6 +16,10 @@
  * ноль на всякий случай тоже не показывается.
  *
  * Время — по часам базы (`server_now`), даты и часы — по Москве, как везде.
+ *
+ * §259: у ученика в разделе остаются только ожидающие (`pendingItems`), график
+ * и лист результата из раздела убраны; модуль, где все темы — работы по
+ * времени, снова виден в программе (`studentProgramModules`).
  */
 import { lessonStatus, type MockLessonListRow, type MockLessonStatus } from './mockExamLesson'
 import { formatSpan } from './mockExamLive'
@@ -549,27 +553,85 @@ export function chartAriaLabel(points: readonly ChartPoint[]): string {
   return `Вторичный балл по пробникам: ${you}${grp ? `; средний по группе: ${grp}` : ''}`
 }
 
-// ─── Ученик: без дублей в модулях ──────────────────────────────────────────
+// ─── Ученик: раздел — только ожидающие (§259) ──────────────────────────────
+
+/**
+ * §259 (решение владельца 02.10). Раздел сверху — только то, что ЕЩЁ ЖДЁТ
+ * ученика: работа до начала или идёт и не сдана (`before` / `live`), пробник
+ * до начала или идёт (`upcoming` / `open`). Прошедшее — написана, проверена,
+ * пропущена, закрыта, результат пробника — в раздел не попадает: работы по
+ * времени живут в модуле «Контрольные работы» (без оценок), пробники — на
+ * странице «Пробники» в меню.
+ *
+ * Работа без назначенного времени (`unscheduled`) — тоже нет: ждать нечего,
+ * дня нет, а строка «время не назначено» висела бы наверху курса неделями.
+ * Она видна в модуле работ.
+ */
+export function isPendingItem(i: AssessmentItem): boolean {
+  if (i.block === 'mock') return i.phase === 'upcoming' || i.phase === 'open'
+  return i.phase === 'before' || i.phase === 'live'
+}
+
+export function pendingItems(items: readonly AssessmentItem[]): AssessmentItem[] {
+  return items.filter(isPendingItem)
+}
+
+// ─── Ученик: работы по времени в программе курса ───────────────────────────
 
 export function isAssessmentTopic(kind: unknown): boolean {
   return kind === 'check' || kind === 'control'
 }
 
 /**
- * У ученика работы по времени живут в разделе, а не в своих модулях. Модуль,
- * в котором после этого не осталось тем, скрыт (пустой изначально — нет: это
- * не наше решение). Счётчики модулей и курса НЕ пересчитываются — прогресс
- * (§141/§152/§162) не трогаем, меняется только список.
+ * Модуль работ: в нём есть темы, и ВСЕ — работы по времени (check/control).
+ * Пустой модуль — не модуль работ.
  */
-export function withoutAssessmentTopics<M extends { topics: readonly { kind?: unknown }[] }>(modules: readonly M[]): M[] {
-  const out: M[] = []
-  for (const m of modules) {
+export function isWorksOnlyModule(m: { topics: readonly { kind?: unknown }[] }): boolean {
+  return m.topics.length > 0 && m.topics.every(t => isAssessmentTopic(t.kind))
+}
+
+/**
+ * §259. Модули программы у ученика.
+ *  - Модуль, где ВСЕ темы — работы по времени, остаётся карточкой, как
+ *    остальные (§241 его прятал — владелец вернул): в нём только работы, без
+ *    оценок (как рисовать — решает страница по `isWorksOnlyModule`).
+ *  - В модуле с уроками работы по времени по-прежнему не показываются (если
+ *    `hideWorksInMixed`): их место — в разделе сверху, пока ждут, и в модуле
+ *    работ.
+ * Счётчики модулей и курса НЕ пересчитываются — прогресс (§141/§152/§162) не
+ * трогаем, меняется только список тем.
+ */
+export function studentProgramModules<M extends { topics: readonly { kind?: unknown }[] }>(
+  modules: readonly M[],
+  hideWorksInMixed: boolean,
+): M[] {
+  if (!hideWorksInMixed) return [...modules]
+  return modules.map(m => {
+    if (isWorksOnlyModule(m)) return m
     const kept = m.topics.filter(t => !isAssessmentTopic(t.kind))
-    if (kept.length === m.topics.length) { out.push(m); continue }
-    if (kept.length === 0) continue
-    out.push({ ...m, topics: kept })
-  }
-  return out
+    return kept.length === m.topics.length ? m : { ...m, topics: kept }
+  })
+}
+
+/** «2 работы» — подпись карточки модуля работ. */
+export function worksCountLabel(n: number): string {
+  return `${n} ${plural(n, 'работа', 'работы', 'работ')}`
+}
+
+/**
+ * Когда работа: «сб 3 окт, 08:45–09:30» (по Москве), «· личное время», или
+ * null, если окна нет. Оценок и состояния здесь нет намеренно (§259).
+ */
+export function workWhenLabel(w: Pick<AssessmentWork, 'opens_at' | 'closes_at' | 'personal'> | null | undefined): string | null {
+  if (!w?.opens_at) return null
+  const span = w.closes_at ? `${mskHm(w.opens_at)}–${mskHm(w.closes_at)}` : mskHm(w.opens_at)
+  return `${mskWeekday(w.opens_at)} ${mskShortDate(w.opens_at)}, ${span}${w.personal ? ' · личное время' : ''}`
+}
+
+/** Коротко для карточки модуля: «3 окт, 08:45». */
+export function workWhenShort(w: Pick<AssessmentWork, 'opens_at'> | null | undefined): string | null {
+  if (!w?.opens_at) return null
+  return `${mskShortDate(w.opens_at)}, ${mskHm(w.opens_at)}`
 }
 
 // ─── Свёрнутые блоки (localStorage) ────────────────────────────────────────

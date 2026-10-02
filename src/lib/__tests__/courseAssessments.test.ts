@@ -2,14 +2,18 @@
  * §241. Раздел «Контрольные, самостоятельные и пробники» — поведение чистой
  * логики: группировка по типам и порядок, сводки блоков, правило троих
  * (сравнение приходит от базы только при ≥ 3 других; «0 %» не пишем),
- * «+N к прошлому», скрытие дублей и пустых модулей у ученика, точки графика,
- * таблица учителя.
+ * «+N к прошлому», точки графика, таблица учителя.
+ *
+ * §259: в разделе ученика — только ожидающие (`pendingItems`); модуль, где все
+ * темы — работы по времени, снова виден (`studentProgramModules`), в модулях с
+ * уроками работ нет.
  */
 import { describe, expect, it } from 'vitest'
 import {
   assessmentBlocks, assessmentItems, blockSummary, chartAriaLabel, dateColumn, formatNumber, groupStanding,
   liveItems, mockChartPoints, parseMyAssessments, parseSummary, prevDelta, readCollapsed, rowView, storeCollapsed,
-  teacherBlocks, untilLabel, withoutAssessmentTopics, workPhase,
+  teacherBlocks, untilLabel, workPhase, pendingItems, studentProgramModules, isWorksOnlyModule, worksCountLabel,
+  workWhenLabel, workWhenShort,
   type AssessmentWork, type AssessmentMock, type MyAssessments,
 } from '@/lib/courseAssessments'
 
@@ -189,20 +193,87 @@ describe('график', () => {
   })
 })
 
-describe('без дублей у ученика', () => {
+describe('§259: раздел ученика — только ожидающие', () => {
+  it('работа до начала и идущая — да; сдана, проверена, пропущена, без времени — нет', () => {
+    const keys = pendingItems(assessmentItems({ ...DATA, mocks: [] }, NOW)).map(i => `${i.key}:${i.phase}`)
+    expect(keys).toEqual(['work:k:live'])
+    const more = pendingItems(assessmentItems({
+      serverNow: at(0), mocks: [],
+      works: [
+        work({ topic_id: 'b', title: 'До начала', opens_at: at(60), closes_at: at(105) }),
+        work({ topic_id: 's', title: 'Сдана в окне', opens_at: at(-10), closes_at: at(35), status: 'submitted', submitted_at: at(-2) }),
+        work({ topic_id: 'u', title: 'Без времени' }),
+      ],
+    }, NOW)).map(i => i.key)
+    expect(more).toEqual(['work:b'])
+  })
+
+  it('пробник до начала и идущий — да; сдан, время вышло, на проверке, пропущен, с итогом — нет', () => {
+    const phases = (m: AssessmentMock) => pendingItems(assessmentItems({ serverNow: at(0), works: [], mocks: [m] }, NOW)).map(i => i.phase)
+    expect(phases(mock({ id: 'u', title: 'Скоро', starts_at: at(3 * DAY) }))).toEqual(['upcoming'])
+    expect(phases(mock({ id: 'o', title: 'Идёт', starts_at: at(-30) }))).toEqual(['open'])
+    expect(phases(mock({ id: 's', title: 'Сдан', starts_at: at(-30), submitted_at: at(-5) }))).toEqual([])
+    expect(phases(mock({ id: 't', title: 'Время вышло', starts_at: at(-240) }))).toEqual([])
+    expect(phases(mock({ id: 'c', title: 'Проверка', starts_at: at(-13 * DAY), has_work: true }))).toEqual([])
+    expect(phases(mock({ id: 'mi', title: 'Пропущен', starts_at: at(-13 * DAY) }))).toEqual([])
+    expect(phases(mock({ id: 'r', title: 'Итог', starts_at: at(-6 * DAY), notified: true, score: 72 }))).toEqual([])
+  })
+
+  it('всё прошло — пусто (раздела нет)', () => {
+    const past = { ...DATA, works: DATA.works.filter(w => w.topic_id !== 'k'), mocks: DATA.mocks.filter(m => m.id !== 'm5') }
+    expect(pendingItems(assessmentItems(past, NOW))).toEqual([])
+  })
+
+  it('блоки из ожидающих: без результатов, сводка — «идёт» или «ближайшая»', () => {
+    const blocks = assessmentBlocks(pendingItems(assessmentItems(DATA, NOW)), NOW)
+    expect(blocks.map(b => [b.key, b.items.map(i => i.key), b.summary])).toEqual([
+      ['mock', ['mock:m5'], 'ближайший 5 окт'],
+      ['control', ['work:k'], 'идёт 1'],
+    ])
+  })
+})
+
+describe('§259: модули программы у ученика', () => {
   const t = (id: string, kind?: string) => ({ id, kind })
-  it('темы check/control убираются из модулей; модуль, где ничего не осталось, скрыт', () => {
-    const mods = [
-      { id: 'a', topics: [t('1', 'lesson'), t('2', 'control')] },
-      { id: 'kr', topics: [t('3', 'control'), t('4', 'check')] },
-      { id: 'empty', topics: [] as { id: string; kind?: string }[] },
-      { id: 'old', topics: [t('5')] },
-    ]
-    const out = withoutAssessmentTopics(mods)
-    expect(out.map(m => m.id)).toEqual(['a', 'empty', 'old'])
+  const mods = [
+    { id: 'a', topics: [t('1', 'lesson'), t('2', 'control')] },
+    { id: 'kr', topics: [t('3', 'control'), t('4', 'check')] },
+    { id: 'empty', topics: [] as { id: string; kind?: string }[] },
+    { id: 'old', topics: [t('5')] },
+  ]
+
+  it('модуль только из работ — модуль работ; пустой и смешанный — нет', () => {
+    expect(mods.map(isWorksOnlyModule)).toEqual([false, true, false, false])
+  })
+
+  it('модуль работ остаётся целиком; в смешанном работ нет; остальные — те же объекты', () => {
+    const out = studentProgramModules(mods, true)
+    expect(out.map(m => m.id)).toEqual(['a', 'kr', 'empty', 'old'])
     expect(out[0].topics.map(x => x.id)).toEqual(['1'])
-    // Модуль без изменений — тот же объект (счётчики и прочее не трогаем).
-    expect(out[1]).toBe(mods[2])
+    expect(out[1]).toBe(mods[1])
+    expect(out[2]).toBe(mods[2])
+    expect(out[3]).toBe(mods[3])
+  })
+
+  it('без данных раздела (RPC нет) — список как есть', () => {
+    const out = studentProgramModules(mods, false)
+    expect(out.map(m => m.topics.length)).toEqual([2, 2, 0, 1])
+  })
+
+  it('счётчики модуля не пересчитываются: у смешанного модуля — прежние', () => {
+    const counters = { openTopics: 2, totalTopics: 2, homeworkAvailable: 0, homeworkSubmitted: 0 }
+    const [a] = studentProgramModules([{ id: 'a', topics: [t('1', 'lesson'), t('2', 'control')], counters }], true)
+    expect(a.counters).toBe(counters)
+    expect(a.topics).toHaveLength(1)
+  })
+
+  it('подписи: «2 работы», когда — по Москве, без оценок', () => {
+    expect([1, 2, 5, 11, 21].map(worksCountLabel)).toEqual(['1 работа', '2 работы', '5 работ', '11 работ', '21 работа'])
+    expect(workWhenLabel({ opens_at: '2026-10-03T05:45:00Z', closes_at: '2026-10-03T06:30:00Z', personal: false })).toBe('сб 3 окт, 08:45–09:30')
+    expect(workWhenLabel({ opens_at: '2026-10-03T05:45:00Z', closes_at: '2026-10-03T06:30:00Z', personal: true })).toBe('сб 3 окт, 08:45–09:30 · личное время')
+    expect(workWhenLabel({ opens_at: null, closes_at: null, personal: false })).toBeNull()
+    expect(workWhenLabel(undefined)).toBeNull()
+    expect(workWhenShort({ opens_at: '2026-10-03T05:45:00Z' })).toBe('3 окт, 08:45')
   })
 })
 

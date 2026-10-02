@@ -24,7 +24,9 @@ import { plural, pluralTopics } from '@/lib/plural'
 import { MockExamsSection } from '@/components/student/MockExamsSection'
 import { CourseAssessmentsSection } from '@/components/student/CourseAssessmentsSection'
 import { useMyCourseAssessments } from '@/hooks/useCourseAssessments'
-import { withoutAssessmentTopics } from '@/lib/courseAssessments'
+import {
+  isWorksOnlyModule, studentProgramModules, workWhenLabel, workWhenShort, worksCountLabel, type AssessmentWork,
+} from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
@@ -153,6 +155,101 @@ function ModuleBigCard({
       </div>
 
     </button>
+  )
+}
+
+// ─── МОДУЛЬ РАБОТ (§259) ──────────────────────────────────────────────────────
+
+/** Окна работ по теме — из `my_course_assessments` (есть, только когда RPC ответила). */
+type WorksByTopic = ReadonlyMap<string, AssessmentWork>
+
+/** Сколько работ показать в самой карточке; остальные — «ещё N» и внутри модуля. */
+const WORKS_IN_CARD = 4
+
+/**
+ * §259 (решение владельца 02.10). Модуль, где все темы — работы по времени,
+ * снова стоит карточкой в программе, как остальные (§241 его прятал). Внутри —
+ * только работы: название и когда проводится. Без оценок, без прогресса
+ * «N из M тем» и без «тем» вообще — подпись «2 работы». Счётчики модуля
+ * (§141) не пересчитываются: карточка их просто не показывает.
+ */
+function ModuleWorksCard({ mod, works, onClick }: { mod: ModuleProgress; works: WorksByTopic; onClick: () => void }) {
+  const shown = mod.topics.slice(0, WORKS_IN_CARD)
+  const rest  = mod.topics.length - shown.length
+  return (
+    <button
+      onClick={onClick}
+      data-testid="module-works-card"
+      className="group flex w-full flex-col overflow-hidden rounded-2xl border border-primary-900 bg-white text-left transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+    >
+      <div className="flex h-full flex-col gap-3 bg-gradient-to-br from-primary-950 to-primary-800 p-5 text-white">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20 text-sm font-bold">{mod.order_index}</span>
+        </div>
+        <h3 className="text-base font-bold leading-snug">{mod.title}</h3>
+        <ul className="flex flex-col gap-1.5">
+          {shown.map(t => {
+            const when = workWhenShort(works.get(t.id))
+            return (
+              <li key={t.id} data-testid="module-works-item" className="flex items-center justify-between gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs">
+                <span className="min-w-0 truncate">{t.title}</span>
+                {when && <span className="shrink-0 tabular-nums text-white/80">{when}</span>}
+              </li>
+            )
+          })}
+        </ul>
+        {rest > 0 && <p className="text-xs text-white/70">и ещё {rest}</p>}
+        <div className="mt-auto flex justify-between text-xs text-white/75">
+          <span data-testid="module-works-count">{worksCountLabel(mod.topics.length)}</span>
+          <span className="flex items-center gap-1">
+            Открыть <ChevronRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+/**
+ * Работа внутри модуля работ: тип, название, когда (или почему закрыта). Ни
+ * оценки, ни статуса сдачи (§259) — клик ведёт на страницу темы, там всё есть.
+ * Закрытая тема не кликается — то же правило, что у тем (`topicAvailability`).
+ */
+function WorkItem({ topic, work, view, onOpen }: { topic: TopicProgress; work: AssessmentWork | undefined; view: CourseView; onOpen: () => void }) {
+  const isLocked = !isTopicOpen(topic)
+  const when     = workWhenLabel(work)
+  const note     = isLocked ? topicClosedLabel(topic) : when ? null : 'время ещё не назначено'
+  return (
+    <div
+      role={isLocked ? 'listitem' : 'button'}
+      tabIndex={isLocked ? -1 : 0}
+      aria-disabled={isLocked || undefined}
+      onClick={() => !isLocked && onOpen()}
+      onKeyDown={e => !isLocked && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
+      data-testid="works-module-row"
+      data-view={view}
+      className={cn(
+        'border bg-white transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+        isLocked ? 'cursor-default border-gray-100 opacity-60' : 'cursor-pointer border-gray-200 hover:border-primary-300 hover:shadow-md',
+        view === 'list' ? 'flex items-center gap-3 rounded-xl px-4 py-3' : 'flex flex-col gap-2 rounded-2xl p-4',
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : 'text-gray-800')}>
+          {isLocked && <Lock size={10} className="mb-0.5 mr-1 inline text-gray-300" aria-hidden />}
+          <TopicKindMark kind={topic.kind} className="mr-1.5" />
+          {topic.title}
+        </p>
+        {when && <p className="mt-1 text-xs tabular-nums text-gray-600" data-testid="works-module-when">{when}</p>}
+        {note && <p className="mt-0.5 text-xs text-gray-400">{note}</p>}
+      </div>
+      {!isLocked && (
+        <span className={cn('flex items-center gap-1 text-xs font-medium text-primary-600', view === 'cards' && 'mt-auto')}>
+          {view === 'cards' && 'Открыть'}
+          <ChevronRight size={14} aria-hidden />
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -942,13 +1039,19 @@ export function StudentCoursePage() {
   const assessments = useMyCourseAssessments(groupId, !preview)
   const assessmentsReady = assessments.status === 'ready' && !!assessments.data
     && (assessments.data.works.length > 0 || assessments.data.mocks.length > 0)
-  // Без дублей: работы по времени живут в разделе, а не в своих модулях; модуль,
-  // где кроме них ничего нет, скрыт. Только когда раздел действительно на
-  // экране — иначе (миграция не применена, сбой) темы остаются на месте.
+  // §259. Модуль, где все темы — работы по времени, — карточкой «только работы»
+  // (без оценок). В модулях с уроками работ нет, как с §241: их место — раздел
+  // сверху (пока ждут) и модуль работ; прячем, только когда RPC ответила —
+  // иначе (миграция не применена, сбой, предпросмотр) темы остаются на месте.
   // Счётчики модулей и курса не трогаем (§141/§152/§162): меняется только список.
   const modules = useMemo(
-    () => (assessmentsReady ? withoutAssessmentTopics(programModules) : programModules),
+    () => studentProgramModules(programModules, assessmentsReady),
     [assessmentsReady, programModules],
+  )
+  // Когда проводится работа — из той же RPC; без неё — просто названия.
+  const worksByTopic = useMemo<WorksByTopic>(
+    () => new Map((assessments.data?.works ?? []).map(w => [w.topic_id, w])),
+    [assessments.data],
   )
 
   const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
@@ -1016,6 +1119,8 @@ export function StudentCoursePage() {
   const activeMod = selectedModule
     ? modules.find(m => m.id === selectedModule.id) ?? selectedModule
     : null
+  // §259. Внутри модуля работ — без «тем» и прогресса: только работы.
+  const activeWorksOnly = !!activeMod && isWorksOnlyModule(activeMod)
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -1063,7 +1168,8 @@ export function StudentCoursePage() {
           </h1>
         </div>
 
-        {/* Overall progress pill */}
+        {/* Overall progress pill — у модуля работ его нет (§259: без «N из M тем») */}
+        {!activeWorksOnly && (
         <div className="w-full sm:w-auto flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 sm:shrink-0">
           <Ring pct={activeMod ? openPercent(activeMod.counters) : overallPct} size={40} stroke={4} />
           <div>
@@ -1090,6 +1196,7 @@ export function StudentCoursePage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* §241. Раздел «Контрольные, самостоятельные и пробники» — над разделами
@@ -1119,12 +1226,16 @@ export function StudentCoursePage() {
       {!activeMod && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {modules.map((mod, i) => (
-            <ModuleBigCard
-              key={mod.id}
-              mod={mod}
-              idx={i}
-              onClick={() => setSelectedModule(mod)}
-            />
+            isWorksOnlyModule(mod) ? (
+              <ModuleWorksCard key={mod.id} mod={mod} works={worksByTopic} onClick={() => setSelectedModule(mod)} />
+            ) : (
+              <ModuleBigCard
+                key={mod.id}
+                mod={mod}
+                idx={i}
+                onClick={() => setSelectedModule(mod)}
+              />
+            )
           ))}
         </div>
       )}
@@ -1137,13 +1248,23 @@ export function StudentCoursePage() {
             {/* Склонение по правилам, а не «одна/все остальные»: прежняя
                 развилка давала «2 тем в разделе» — с этим ученик и написал
                 через «Сообщить о проблеме». */}
-            <p className="text-sm text-gray-500">
-              {pluralTopics(activeMod.topics.length)}&nbsp;в разделе
+            <p className="text-sm text-gray-500" data-testid="module-topics-count">
+              {activeWorksOnly ? worksCountLabel(activeMod.topics.length) : pluralTopics(activeMod.topics.length)}&nbsp;в разделе
             </p>
             <ViewToggle view={view} onChange={handleViewChange} />
           </div>
 
-          {view === 'list' ? (
+          {activeWorksOnly ? (
+            <div
+              className={view === 'list' ? 'space-y-2' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'}
+              data-testid="works-module-view"
+              data-view={view}
+            >
+              {activeMod.topics.map(topic => (
+                <WorkItem key={topic.id} topic={topic} work={worksByTopic.get(topic.id)} view={view} onOpen={() => openTopic(topic)} />
+              ))}
+            </div>
+          ) : view === 'list' ? (
             <div className="space-y-2" data-testid="topics-list-view">
               {activeMod.topics.map((topic, i) => (
                 <TopicListRow

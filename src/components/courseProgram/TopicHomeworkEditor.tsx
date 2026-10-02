@@ -53,7 +53,7 @@ const ISSUE_DOT: Record<HomeworkIssueState, string> = {
  * значило бы чинить его дважды.
  */
 export function TopicHomeworkEditor({
-  topicId, className, kind = null, isTemplate = false, isOpen = null, availableFrom = null,
+  topicId, className, kind = null, isTemplate = false, isOpen = null, availableFrom = null, focusDue = false,
 }: {
   topicId: string
   className?: string
@@ -64,6 +64,11 @@ export function TopicHomeworkEditor({
   /** §243. Открытость темы (тумблер и дата) — от неё зависит, выдано ли ДЗ. */
   isOpen?: boolean | null
   availableFrom?: string | null
+  /**
+   * §259. Пришли «изменить / задать срок» из таблицы ДЗ: поле дедлайна — в
+   * вид и в фокус, как только задание загрузилось (один раз).
+   */
+  focusDue?: boolean
 }) {
   const timed = isTimedKind(kind)
   const {
@@ -92,6 +97,15 @@ export function TopicHomeworkEditor({
   // Не даём создать два ДЗ на тему, если преподаватель успел кликнуть дважды:
   // одно и то же обещание переиспользуется, пока оно не упало с ошибкой.
   const ensuringRef = useRef<Promise<void> | null>(null)
+
+  const dueRef = useRef<HTMLInputElement>(null)
+  const dueFocused = useRef(false)
+  useEffect(() => {
+    if (!focusDue || loading || dueFocused.current || !dueRef.current) return
+    dueFocused.current = true
+    dueRef.current.scrollIntoView?.({ block: 'center' })
+    dueRef.current.focus({ preventScroll: true })
+  }, [focusDue, loading])
 
   useEffect(() => {
     setDueAt(homework?.due_at ? homework.due_at.slice(0, 10) : '')
@@ -491,7 +505,9 @@ export function TopicHomeworkEditor({
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Дедлайн</label>
             <input
+              ref={dueRef}
               type="date"
+              data-testid="hw-due-input"
               value={dueAt}
               onChange={e => {
                 const next = e.target.value
