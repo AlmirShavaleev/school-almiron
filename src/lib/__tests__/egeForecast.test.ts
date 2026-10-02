@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EGE_SPECS, toTestScore } from '@/lib/egeScales'
 import { plural } from '@/lib/plural'
 import {
-  bestMonthDelta, buildForecastView, catalogGain, catalogTips, coverageNeed, forecastChange, gainText, forecastAt, missingText, normalizeEvidence, SOURCE_WEIGHT,
+  forecastClaims, buildForecastView, catalogGain, catalogTips, coverageNeed, forecastChange, gainText, forecastAt, missingText, normalizeEvidence, SOURCE_WEIGHT,
   normalizeForecastResponse, numberStats, parseGoalInput, PART2_TIP_MIN_P, PRIOR_PART1, PRIOR_PART2, tileHint, tileLevel, trendDates,
   type Evidence, type EvidenceSource,
 } from '@/lib/egeForecast'
@@ -235,12 +235,16 @@ describe('прогноз: «+N за месяц» и 8 недель', () => {
     expect(v.trend[6].score).toBe(Math.round(sunday.score))
   })
 
-  it('лучший «+N за месяц» по предметам — для значка «Прогноз +5»', () => {
+  it('§257: что сообщить базе для «Роста прогноза» — текущий балл и первая неделя с баллом; без балла — ничего', () => {
     const rows = [...solid(4, 0.5, 40), ...solid(4, 1, 5)]
     const data = { now: NOW, subjects: [{ subject: 'math' as const, goal: null, teacherGoal: null }], titles: {}, sections: {}, zones: {}, catalogRules: null, evidence: rows }
-    expect(bestMonthDelta(data)).toBe(buildForecastView(MATH, rows, NOW).monthDelta)
-    expect(bestMonthDelta({ ...data, evidence: [] })).toBeNull()
-    expect(bestMonthDelta(null)).toBeNull()
+    const view = buildForecastView(MATH, rows, NOW)
+    const claims = forecastClaims(data)
+    expect(claims).toEqual([{ subject: 'math', first: view.trend.find(t => t.score != null)!.score, current: view.score }])
+    // балл рос: первый показ ниже текущего
+    expect(claims[0].first).toBeLessThan(claims[0].current)
+    expect(forecastClaims({ ...data, evidence: [] })).toEqual([])
+    expect(forecastClaims(null)).toEqual([])
   })
 })
 

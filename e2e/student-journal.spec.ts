@@ -193,8 +193,8 @@ test('teacher: journal of student B never shows student A\'s score (group indepe
 // Student journal
 // ══════════════════════════════════════════════════════════════════════════════
 
-test('student A: /my-progress journal section shows own lessons/hw, no other student data', async () => {
-  await studentAPage.goto('/my-progress')
+test('student A: /my-journal journal page shows own lessons/hw, no other student data', async () => {
+  await studentAPage.goto('/my-journal')
   await studentAPage.waitForSelector('text=Журнал занятий и заданий', { timeout: 20_000 })
 
   await expect(studentAPage.locator('text=E2E JOURNAL group lesson')).toBeVisible({ timeout: 15_000 })
@@ -227,7 +227,7 @@ test('student A network responses never leak teacher_notes, other submissions, o
       try { responses.push(await res.text()) } catch { /* ignore */ }
     }
   })
-  await studentAPage.goto('/my-progress')
+  await studentAPage.goto('/my-journal')
   await studentAPage.waitForSelector('text=Журнал занятий и заданий', { timeout: 20_000 })
   await studentAPage.waitForTimeout(1000)
 
@@ -241,7 +241,7 @@ test('student A network responses never leak teacher_notes, other submissions, o
 })
 
 test('student B: sees own not_started/overdue homework, never sees student A\'s score', async () => {
-  await studentBPage.goto('/my-progress')
+  await studentBPage.goto('/my-journal')
   await studentBPage.waitForSelector('text=Журнал занятий и заданий', { timeout: 20_000 })
 
   await expect(studentBPage.locator('text=qqq').first()).toBeVisible({ timeout: 15_000 })

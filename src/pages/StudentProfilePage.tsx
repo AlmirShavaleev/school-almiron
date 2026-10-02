@@ -12,6 +12,7 @@ import { StudentNumberStatsSection } from '@/components/student/StudentNumberSta
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 import { StudentSubjectTargets } from '@/components/student/StudentSubjectTargets'
 import { StudentCatalogWeek } from '@/components/student/StudentCatalogWeek'
+import { StudentAchievementsLine } from '@/components/student/StudentAchievementsLine'
 import { StudentReportTab } from '@/components/report/StudentReportTab'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -239,6 +240,9 @@ export function StudentProfilePage() {
 
       {/* §256: решённое учеником в каталоге с проверкой ответа за неделю. */}
       {s.student_id && <StudentCatalogWeek studentId={s.student_id} />}
+
+      {/* §257: сколько наград у ученика и три последние. */}
+      {s.student_id && <StudentAchievementsLine studentId={s.student_id} />}
 
       {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
 

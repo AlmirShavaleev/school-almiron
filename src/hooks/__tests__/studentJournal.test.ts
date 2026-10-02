@@ -138,12 +138,12 @@ describe('journal cross-navigation reuses existing routes', () => {
   // ДЗ и тесты теперь показывает TopicJournalSection, переход — на страницу темы.
   it('журнал больше не ведёт на легаси-страницы сдач', () => {
     expect(read('src/pages/StudentJournalPage.tsx')).not.toContain('/review-submissions/')
-    expect(read('src/pages/student/MyProgressPage.tsx')).not.toContain('/my-assignments/${a.assigned_id}')
+    expect(read('src/pages/student/MyJournalPage.tsx')).not.toContain('/my-assignments/${a.assigned_id}')
   })
 
   it('both pages link lessons to the existing /lessons/:id route', () => {
     expect(read('src/pages/StudentJournalPage.tsx')).toContain('/lessons/${lessonId}')
-    expect(read('src/pages/student/MyProgressPage.tsx')).toContain('/lessons/${lessonId}')
+    expect(read('src/pages/student/MyJournalPage.tsx')).toContain('/lessons/${lessonId}')
   })
 })
 

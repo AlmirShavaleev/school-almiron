@@ -484,22 +484,25 @@ export function parseGoalInput(text: string): { ok: true; goal: number | null } 
 }
 
 /**
- * Лучший «+N за месяц» по предметам ученика — для значка «Прогноз +5» в
- * «Баллах школы». null — прогноза нет ни по одному предмету (данных мало).
+ * §257. Что главная сообщает базе для наград «Рост прогноза» и «Цель
+ * достигнута» (`claim_forecast_achievement`): по каждому ЕГЭ-предмету, где
+ * балл уже показывается, — текущий (как на карточке, округлённый) и «первый
+ * показ» — самая ранняя неделя графика с баллом. База запоминает «первый»
+ * один раз, дальше берёт свой. Предмет без балла не сообщается.
  */
-export function bestMonthDelta(data: ForecastResponse | null): number | null {
-  if (!data) return null
-  let best: number | null = null
+export function forecastClaims(data: ForecastResponse | null): { subject: EgeSubject; first: number; current: number }[] {
+  if (!data) return []
+  const out: { subject: EgeSubject; first: number; current: number }[] = []
   for (const s of data.subjects) {
     const spec = activeSpec(s.subject)
     if (!spec) continue
-    const now = forecastAt(spec, data.evidence, data.now)
-    const ago = forecastAt(spec, data.evidence, new Date(data.now.getTime() - 30 * DAY_MS))
-    if (!now.ready || !ago.ready) continue
-    const d = Math.round(now.score) - Math.round(ago.score)
-    if (best == null || d > best) best = d
+    const v = buildForecastView(spec, data.evidence, data.now)
+    if (!v.current.ready) continue
+    const first = v.trend.find(t => t.score != null)?.score ?? v.score
+    const clamp = (x: number) => Math.min(100, Math.max(0, Math.round(x)))
+    out.push({ subject: s.subject, first: clamp(first), current: clamp(v.score) })
   }
-  return best
+  return out
 }
 
 // ── §256. «Решите в каталоге — и балл вырастет» ─────────────────────────

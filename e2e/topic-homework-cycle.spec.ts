@@ -405,7 +405,7 @@ test('teacher assigns homework, student submits/revises/is graded, and the grade
     })
 
     await test.step('student: see the grade in the progress journal', async () => {
-      await studentPage.goto('/my-progress')
+      await studentPage.goto('/my-journal')
       const journalRow = studentPage.locator('[data-testid="journal-homework-row"]', { hasText: topicTitle })
       await expect(journalRow).toBeVisible({ timeout: 20_000 })
       await expect(journalRow).toContainText('Принято')

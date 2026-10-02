@@ -28,7 +28,7 @@ export interface StudentProfileData {
   // `homeworks`/`homework_submissions` (старый контур, 0 строк) и с §111 не
   // читались ни одной из трёх страниц хука — плитки ДЗ на карточке ученика
   // убрали тогда же. Живой контур ученика — `topic_homework*`
-  // (`StudentInsightSection`, `useMyProgress`).
+  // (`StudentInsightSection`; «Мой прогресс» с §257 — «Достижения»).
   mock_results: {
     id: string; title: string; date: string
     score: number; max_score: number; subject: string

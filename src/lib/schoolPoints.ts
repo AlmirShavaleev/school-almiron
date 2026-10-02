@@ -8,12 +8,16 @@
  * `levels`, `need` у значков) — у клиента своих копий чисел нет, поэтому
  * владелец меняет правило в одном месте.
  *
- * Здесь — только тексты: лента «за что», подсказки значков «как получить»,
- * полоса до следующего уровня. Единственный значок, который считает клиент, —
- * «Прогноз +5»: прогноз балла живёт на клиенте (`egeForecast.ts`).
+ * Здесь — только тексты: лента «за что» и полоса до следующего уровня.
+ *
+ * §257: пять значков §255 сняты — их место заняли награды «Достижений»
+ * (`achievements.ts`, одна таблица правил в базе). Баллы полученных наград
+ * база добавляет в сумму сама (`achievement` в ленте, ключ награды — в title);
+ * уровней 20.
  */
 import { plural } from '@/lib/plural'
 import { normalizeCatalogRules, type CatalogRules } from '@/lib/catalogRewards'
+import { achievementNameByKey } from '@/lib/achievements'
 
 /**
  * §256: каталог — только задачи с ПРОВЕРЕННЫМ ответом, награда по зоне номера
@@ -23,6 +27,7 @@ import { normalizeCatalogRules, type CatalogRules } from '@/lib/catalogRewards'
  */
 export type FeedKind =
   | 'hw_ontime' | 'hw_late' | 'hw_grade' | 'catalog' | 'catalog_milestone' | 'daily' | 'weekly' | 'variant' | 'mock' | 'streak'
+  | 'achievement'
 
 export interface FeedItem {
   kind:   FeedKind
@@ -51,14 +56,11 @@ export interface SchoolPoints {
   /** §256: правила каталога (зоны, вехи, задача дня, цель недели); null — база старая. */
   catalogRules: CatalogRules | null
   feed:  FeedItem[]
-  /** Значки из базы: ключ, сколько есть, сколько нужно. */
-  badges: { key: string; have: number; need: number }[]
+  /** §257: из суммы — баллы полученных наград (0 — база до §257). */
+  achievementPoints: number
 }
 
-/** Сколько должен вырасти прогноз за 30 дней ради значка «Прогноз +5». */
-export const FORECAST_BADGE_DELTA = 5
-
-const KINDS: readonly FeedKind[] = ['hw_ontime', 'hw_late', 'hw_grade', 'catalog', 'catalog_milestone', 'daily', 'weekly', 'variant', 'mock', 'streak']
+const KINDS: readonly FeedKind[] = ['hw_ontime', 'hw_late', 'hw_grade', 'catalog', 'catalog_milestone', 'daily', 'weekly', 'variant', 'mock', 'streak', 'achievement']
 const num = (v: unknown, d = 0): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
   return Number.isFinite(n) ? n : d
@@ -95,10 +97,7 @@ export function normalizeSchoolPoints(raw: unknown): SchoolPoints | null {
     rules,
     catalogRules: normalizeCatalogRules(r.catalog_rules),
     feed,
-    badges: (Array.isArray(r.badges) ? r.badges : []).flatMap((item: unknown) => {
-      const x = (item ?? {}) as Record<string, unknown>
-      return typeof x.key === 'string' ? [{ key: x.key, have: num(x.have), need: Math.max(1, num(x.need, 1)) }] : []
-    }),
+    achievementPoints: Math.max(0, Math.round(num(r.achievement_points))),
   }
 }
 
@@ -133,6 +132,7 @@ export function feedText(f: FeedItem): string {
       const n = f.n ?? 2
       return `${n} ${plural(n, 'день', 'дня', 'дней')} подряд`
     }
+    case 'achievement': return f.title ? `Награда «${achievementNameByKey(f.title)}»` : 'Награда'
   }
 }
 
@@ -141,64 +141,20 @@ export interface LevelProgress {
   ratio: number
   /** «до 5-го уровня — 60 баллов» / «высший уровень». */
   text:  string
+  /** §257, «Достижения»: «до уровня 5 «Система» — 110 баллов». */
+  long:  string
 }
 
 export function levelProgress(p: Pick<SchoolPoints, 'total' | 'level'>): LevelProgress {
-  const { next, from, n } = p.level
-  if (next == null || next <= from) return { ratio: 1, text: 'высший уровень' }
+  const { next, from, n, nextName } = p.level
+  if (next == null || next <= from) return { ratio: 1, text: 'высший уровень', long: 'высший уровень — дальше только награды' }
   const left = Math.max(0, next - p.total)
+  const pts = `${left} ${plural(left, 'балл', 'балла', 'баллов')}`
   return {
     ratio: Math.min(1, Math.max(0, (p.total - from) / (next - from))),
-    text: `до ${n + 1}-го уровня — ${left} ${plural(left, 'балл', 'балла', 'баллов')}`,
+    text: `до ${n + 1}-го уровня — ${pts}`,
+    long: `до уровня ${n + 1}${nextName ? ` «${nextName}»` : ''} — ${pts}`,
   }
-}
-
-export interface BadgeView {
-  key:   string
-  title: string
-  got:   boolean
-  /** Подсказка: получен — за что; ещё нет — как получить и сколько осталось. */
-  hint:  string
-}
-
-/**
- * Пять значков в порядке макета. `forecastDelta` — лучший «+N за месяц» по
- * предметам ученика (null — прогноза нет ни по одному).
- */
-export function buildBadges(p: Pick<SchoolPoints, 'badges'>, forecastDelta: number | null): BadgeView[] {
-  const b = (key: string) => p.badges.find(x => x.key === key)
-  const streak = b('streak7'), ontime = b('ontime10'), mock = b('mock1'), cat = b('catalog100')
-  const tasks = (n: number) => `${n} ${plural(n, 'задача', 'задачи', 'задач')}`
-  const out: BadgeView[] = []
-  {
-    const need = streak?.need ?? 7, have = streak?.have ?? 0, got = have >= need
-    // §256: серия — дни с решением, а не заходы.
-    out.push({ key: 'streak7', title: 'Неделя без пропусков', got,
-      hint: got ? `Решали ${need} ${plural(need, 'день', 'дня', 'дней')} подряд` : `Решайте задачи ${need} ${plural(need, 'день', 'дня', 'дней')} подряд · рекорд пока ${have}` })
-  }
-  {
-    const need = ontime?.need ?? 10, have = ontime?.have ?? 0, got = have >= need
-    out.push({ key: 'ontime10', title: `${need} ДЗ вовремя`, got,
-      hint: got ? `Сдано вовремя: ${have}` : `Сдайте ${need} ДЗ до срока · пока ${have}` })
-  }
-  {
-    const got = forecastDelta != null && forecastDelta >= FORECAST_BADGE_DELTA
-    out.push({ key: 'forecast5', title: `Прогноз +${FORECAST_BADGE_DELTA}`, got,
-      hint: got
-        ? `Примерный балл вырос на ${forecastDelta} за месяц`
-        : `Поднимите примерный балл на ${FORECAST_BADGE_DELTA} за 30 дней${forecastDelta != null ? ` · сейчас ${forecastDelta > 0 ? '+' : ''}${forecastDelta}` : ''}` })
-  }
-  {
-    const need = mock?.need ?? 1, have = mock?.have ?? 0, got = have >= need
-    out.push({ key: 'mock1', title: 'Первый пробник', got,
-      hint: got ? 'Пробник написан и проверен' : 'Напишите пробник — значок появится, когда учитель внесёт баллы' })
-  }
-  {
-    const need = cat?.need ?? 100, have = cat?.have ?? 0, got = have >= need
-    out.push({ key: 'catalog100', title: `${need} задач каталога`, got,
-      hint: got ? `Решено в каталоге с проверкой: ${tasks(have)}` : `Решите ${tasks(need)} в каталоге с проверкой ответа · пока ${have}` })
-  }
-  return out
 }
 
 /** «Как получить баллы» — из правил ответа базы, без своих чисел. */
@@ -216,5 +172,6 @@ export function rulesText(r: PointsRules, c: CatalogRules | null = null): string
   out.push(`Задача к уроку или в варианте +${r.variant}`)
   out.push(`Пробник: +${r.mock_point} за первичный балл`)
   out.push(`День серии (решали хоть что-то) со второго подряд +${r.streak_day}`)
+  out.push('Награды «Достижений»: бронза, серебро, золото, легенда — баллы на странице «Достижения»')
   return out
 }

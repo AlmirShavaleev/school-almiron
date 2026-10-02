@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
@@ -19,7 +19,9 @@ import { SchoolPointsCard } from '@/components/student/home/SchoolPointsCard'
 import { ExamCountdownPill } from '@/components/student/home/ExamCountdownPill'
 import { courseCards } from '@/lib/studentHome'
 import { examCountdown } from '@/lib/examCountdown'
-import { bestMonthDelta, forecastChange } from '@/lib/egeForecast'
+import { forecastChange, forecastClaims } from '@/lib/egeForecast'
+import { useAchievements } from '@/hooks/useAchievements'
+import { latestEarned } from '@/lib/achievements'
 import { EGE_SUBJECT_ORDER } from '@/lib/egeScales'
 import { useHomeCatalog } from '@/hooks/useHomeCatalog'
 import { DailyTaskCard } from '@/components/student/home/DailyTaskCard'
@@ -43,6 +45,12 @@ import type { CheckOutcome } from '@/hooks/useCatalogPractice'
  * и балл вырастет». Предмет задачи дня — первый ЕГЭ-предмет ученика
  * (математика раньше физики). После засчитанного ответа перечитываются
  * прогноз (он же даёт «+1 к прогнозу» моделью до/после), баллы и серия.
+ *
+ * §257: в «Баллах школы» — три последние награды «Достижений» вместо пяти
+ * значков §255. Главная вызывает `student_achievements_sync()` (новые награды
+ * — тостом «Новая награда: 20 ДЗ · +25», один раз; счётчик у пункта меню) и
+ * сообщает базе прогноз по предметам (`claim_forecast_achievement`) — значки
+ * «Рост прогноза» и «Цель достигнута», без баллов школы.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
@@ -59,7 +67,22 @@ export function StudentDashboard() {
   const hasEgeForecast = courses.some(c => c.examType === 'ege' && (c.subject === 'math' || c.subject === 'physics'))
   const forecast = useExamForecast(hasEgeForecast ? profile?.id : null)
   const schoolPoints = useSchoolPoints(profile?.id)
-  const forecastDelta = useMemo(() => bestMonthDelta(forecast.data), [forecast.data])
+  const achievements = useAchievements(profile?.id, { onFresh: schoolPoints.retry })
+  const latestAwards = useMemo(() => (achievements.data ? latestEarned(achievements.data, 3) : null), [achievements.data])
+  // §257. Прогноз считает только клиент — сообщаем его базе для значков (+0
+  // баллов). Одно сообщение на одно и то же состояние прогноза.
+  const { claimForecast } = achievements
+  const achievementsReady = achievements.data != null
+  const claimed = useRef(new Set<string>())
+  useEffect(() => {
+    if (!achievementsReady) return
+    for (const c of forecastClaims(forecast.data)) {
+      const key = `${c.subject}:${c.first}:${c.current}`
+      if (claimed.current.has(key)) continue
+      claimed.current.add(key)
+      void claimForecast(c.subject, c.first, c.current)
+    }
+  }, [forecast.data, achievementsReady, claimForecast])
   // §256. Задача дня и цель недели — по первому ЕГЭ-предмету ученика.
   const daySubject = EGE_SUBJECT_ORDER.find(sub => courses.some(c => c.examType === 'ege' && c.subject === sub)) ?? null
   const homeCatalog = useHomeCatalog(profile?.id ? daySubject : null)
@@ -67,6 +90,7 @@ export function StudentDashboard() {
   const { refresh: refreshForecast, data: forecastData } = forecast
   const { retry: retryPoints } = schoolPoints
   const { retry: retryHome } = home
+  const { retry: retryAchievements } = achievements
   const dailyTaskId = homeCatalog.daily?.task?.id ?? null
   const onDailyCheck = useCallback(async (answer: string): Promise<CheckOutcome> => {
     if (!dailyTaskId) return { result: null, change: null, error: 'Задача не найдена' }
@@ -77,9 +101,9 @@ export function StudentDashboard() {
       const after = await refreshForecast()
       change = forecastChange(forecastData, after, result.subject)
     }
-    if (result.counted) { retryPoints(); retryHome(); reloadCatalog() }
+    if (result.counted) { retryPoints(); retryHome(); reloadCatalog(); retryAchievements() }
     return { result, change, error: null }
-  }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog])
+  }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog, retryAchievements])
   const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
 
   const cards = useMemo(() => courseCards(
@@ -141,7 +165,7 @@ export function StudentDashboard() {
         </div>
         <div className="flex min-w-0 flex-col gap-3.5" data-slot="right">
           <StreakCard activity={home.activity} error={home.error} onRetry={home.retry} />
-          <SchoolPointsCard points={schoolPoints.points} error={schoolPoints.error} onRetry={schoolPoints.retry} forecastDelta={forecastDelta} className="flex-1" />
+          <SchoolPointsCard points={schoolPoints.points} error={schoolPoints.error} onRetry={schoolPoints.retry} awards={latestAwards} className="flex-1" />
         </div>
       </div>
 

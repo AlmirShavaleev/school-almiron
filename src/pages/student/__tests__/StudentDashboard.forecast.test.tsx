@@ -118,7 +118,6 @@ const POINTS = {
   level: { n: 4, name: 'Упорство', from: 300, next: 450, next_name: 'Система' },
   rules: { hw_ontime: 10, hw_late: 4, grade5: 10, grade4: 6, accepted: 6, catalog: 2, mock_point: 1, streak_day: 3 },
   feed: [{ kind: 'hw_ontime', at: iso(0), points: 10, title: 'Динамика', n: null }],
-  badges: [{ key: 'streak7', have: 8, need: 7 }, { key: 'ontime10', have: 4, need: 10 }, { key: 'mock1', have: 1, need: 1 }, { key: 'catalog100', have: 1, need: 100 }],
 }
 
 function activity(today: string): HomeActivity {
@@ -275,7 +274,9 @@ describe('главная §255: примерный балл на ЕГЭ', () => 
 })
 
 describe('главная §255: баллы школы', () => {
-  it('под «Серией»: сумма, уровень, лента, значки (вкл. «Прогноз +5» из прогноза)', async () => {
+  // §257: пять значков §255 (в т. ч. «Прогноз +5» с клиента) сняты — их место заняли
+  // последние награды «Достижений» (StudentDashboard.achievements257.test.tsx).
+  it('под «Серией»: сумма, уровень, лента; значков §255 больше нет — ссылка «Все достижения»', async () => {
     await renderHome()
     const card = await screen.findByTestId('points-card')
     expect(card.parentElement?.getAttribute('data-slot')).toBe('right')
@@ -284,15 +285,9 @@ describe('главная §255: баллы школы', () => {
     expect(within(card).getByTestId('points-level')).toHaveTextContent('уровень 4 «Упорство»')
     expect(card).toHaveTextContent('до 5-го уровня — 110 баллов')
     expect(within(card).getByTestId('points-feed')).toHaveTextContent('ДЗ «Динамика» сдано вовремя')
-    const badges = within(card).getByTestId('points-badges')
-    expect(badges.querySelector('[data-badge=streak7]')).toHaveAttribute('data-got')
-    expect(badges.querySelector('[data-badge=mock1]')).toHaveAttribute('data-got')
-    expect(badges.querySelector('[data-badge=ontime10]')).not.toHaveAttribute('data-got')
-    // прогноз месяц назад не считался (всё свежее) — значка нет, подсказка «как получить»
-    const fc = badges.querySelector('[data-badge=forecast5]') as HTMLElement
-    expect(fc).not.toHaveAttribute('data-got')
-    fireEvent.focus(fc)
-    expect(screen.getByTestId('home-tip')).toHaveTextContent('Поднимите примерный балл на 5 за 30 дней')
+    expect(within(card).queryByTestId('points-badges')).toBeNull()
+    expect(card.querySelector('[data-badge]')).toBeNull()
+    expect(within(card).getByTestId('points-all-achievements')).toHaveAttribute('href', '/achievements')
   })
 
   it('рейтинга нет: ни имён, ни мест — только свои баллы', async () => {

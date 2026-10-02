@@ -1,29 +1,27 @@
-import { CalendarCheck, Clock, FileText, Star, TrendingUp, type LucideIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { buildBadges, feedText, levelProgress, rulesText, type SchoolPoints } from '@/lib/schoolPoints'
+import { feedText, levelProgress, rulesText, type SchoolPoints } from '@/lib/schoolPoints'
+import { achievementHint, achievementName, pointsText, type AchievementItem } from '@/lib/achievements'
+import { AchievementMedal } from '@/components/achievements/AchievementMedal'
 import { useFloatingTip } from './FloatingTip'
 
 /**
  * §255. «Баллы школы» — под «Серией» в правой колонке главной.
  *
  * Только свои баллы: рейтинга класса нет (решение владельца 02.10, п. 4).
- * Сумма, уровень, лента «за что» и значки приходят из базы
- * (`student_school_points`), кроме «Прогноз +5» — его считает клиент из
- * прогноза балла (`forecastDelta`).
+ * Сумма, уровень и лента «за что» приходят из базы (`student_school_points`).
+ *
+ * §257: вместо пяти значков §255 — три последние награды «Достижений»
+ * (`awards`, из `student_achievements_sync`) и ссылка «Все достижения →».
+ * Один механизм наград, без дублей.
  */
-const BADGE_ICON: Record<string, LucideIcon> = {
-  streak7: CalendarCheck,
-  ontime10: Clock,
-  forecast5: TrendingUp,
-  mock1: FileText,
-  catalog100: Star,
-}
-
-export function SchoolPointsCard({ points, error, onRetry, forecastDelta, className }: {
+export function SchoolPointsCard({ points, error, onRetry, awards, className }: {
   points: SchoolPoints | null
   error: string | null
   onRetry: () => void
-  forecastDelta: number | null
+  /** Последние полученные награды; null — ещё не загружены или не загрузились. */
+  awards: AchievementItem[] | null
   className?: string
 }) {
   const { bind, node } = useFloatingTip()
@@ -41,20 +39,19 @@ export function SchoolPointsCard({ points, error, onRetry, forecastDelta, classN
           <div className="h-24 animate-pulse rounded-xl bg-graphite-100" aria-label="Загружаем" />
         )
       ) : (
-        <PointsBody points={points} forecastDelta={forecastDelta} bind={bind} />
+        <PointsBody points={points} awards={awards} bind={bind} />
       )}
       {node}
     </section>
   )
 }
 
-function PointsBody({ points, forecastDelta, bind }: {
+function PointsBody({ points, awards, bind }: {
   points: SchoolPoints
-  forecastDelta: number | null
+  awards: AchievementItem[] | null
   bind: ReturnType<typeof useFloatingTip>['bind']
 }) {
   const progress = levelProgress(points)
-  const badges = buildBadges(points, forecastDelta)
   const rules = rulesText(points.rules, points.catalogRules)
   return (
     <>
@@ -86,28 +83,37 @@ function PointsBody({ points, forecastDelta, bind }: {
         </p>
       )}
 
-      <ul className="grid grid-cols-5 gap-1.5" aria-label="Значки" data-testid="points-badges">
-        {badges.map(b => {
-          const Icon = BADGE_ICON[b.key] ?? Star
-          const tip = `${b.title}: ${b.got ? 'получен' : 'ещё нет'} · ${b.hint}`
-          return (
-            <li
-              key={b.key}
-              tabIndex={0}
-              aria-label={tip}
-              data-badge={b.key}
-              data-got={b.got || undefined}
-              className={cn('grid justify-items-center gap-1 rounded-lg text-center text-[11px] leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500', b.got ? 'text-graphite-700' : 'text-graphite-400')}
-              {...bind(tip)}
-            >
-              <span className={cn('grid h-11 w-11 place-items-center rounded-full', b.got ? 'bg-gold-100 text-gold-600' : 'bg-graphite-100 text-graphite-400')}>
-                <Icon size={21} strokeWidth={2} aria-hidden />
-              </span>
-              <span className="break-words">{b.title}</span>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="grid gap-2 border-t border-graphite-100 pt-3" data-testid="points-awards">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h3 className="text-sm font-extrabold text-graphite-900">Последние награды</h3>
+          <Link to="/achievements" data-testid="points-all-achievements" className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-primary-700 hover:underline">
+            Все достижения<ChevronRight size={14} aria-hidden />
+          </Link>
+        </div>
+        {awards && awards.length > 0 ? (
+          <ul className="grid gap-1.5">
+            {awards.map(a => {
+              const tip = achievementHint(a)
+              return (
+                <li
+                  key={a.key}
+                  tabIndex={0}
+                  aria-label={`${achievementName(a)}: ${tip}`}
+                  data-award={a.key}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  {...bind(tip)}
+                >
+                  <AchievementMedal category={a.category} tier={a.tier} size={32} />
+                  <span className="min-w-0 break-words text-sm font-semibold text-graphite-800">{achievementName(a)}</span>
+                  <b className={cn('text-sm tabular-nums', a.points > 0 ? 'text-gold-600' : 'text-graphite-400')}>{pointsText(a.points)}</b>
+                </li>
+              )
+            })}
+          </ul>
+        ) : awards ? (
+          <p className="text-sm text-graphite-500">Первая награда — за первую верную задачу каталога или сданное ДЗ.</p>
+        ) : null}
+      </div>
 
       <details className="text-xs text-graphite-500">
         <summary className="cursor-pointer font-semibold text-graphite-600 hover:text-graphite-900">За что начисляются баллы</summary>

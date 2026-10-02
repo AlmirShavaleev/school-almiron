@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBadges, feedText, FORECAST_BADGE_DELTA, levelProgress, normalizeSchoolPoints, rulesText } from '@/lib/schoolPoints'
+import { feedText, levelProgress, normalizeSchoolPoints, rulesText } from '@/lib/schoolPoints'
 
 /**
  * §255. «Баллы школы»: разбор ответа базы, лента, уровень, значки. Правила и
@@ -57,32 +57,18 @@ describe('баллы школы', () => {
 
   it('уровень: доля пути и «до 5-го уровня — 110 баллов»; на последнем — «высший уровень»', () => {
     const p = normalizeSchoolPoints(RAW)!
-    expect(levelProgress(p)).toEqual({ ratio: 40 / 150, text: 'до 5-го уровня — 110 баллов' })
+    expect(levelProgress(p)).toEqual({ ratio: 40 / 150, text: 'до 5-го уровня — 110 баллов', long: 'до уровня 5 «Система» — 110 баллов' })
     expect(levelProgress({ total: 1700, level: { n: 10, name: 'Вершина', from: 1500, next: null, nextName: null } }))
-      .toEqual({ ratio: 1, text: 'высший уровень' })
+      .toMatchObject({ ratio: 1, text: 'высший уровень' })
     expect(levelProgress({ total: 99, level: { n: 1, name: 'Старт', from: 0, next: 100, nextName: 'Разгон' } }).text)
       .toBe('до 2-го уровня — 1 балл')
   })
 
-  it('значки: получен / ещё нет с подсказкой «как получить»; пороги — из ответа базы', () => {
-    const p = normalizeSchoolPoints(RAW)!
-    const b = buildBadges(p, 3)
-    expect(b.map(x => [x.key, x.got])).toEqual([
-      ['streak7', true], ['ontime10', false], ['forecast5', false], ['mock1', false], ['catalog100', false],
-    ])
-    expect(b[1].hint).toBe('Сдайте 10 ДЗ до срока · пока 4')
-    expect(b[2].hint).toBe('Поднимите примерный балл на 5 за 30 дней · сейчас +3')
-    expect(b[4].hint).toBe('Решите 100 задач в каталоге с проверкой ответа · пока 37')
-    // владелец поменял порог в базе — значок меняется без правки клиента
-    const changed = buildBadges({ badges: [{ key: 'ontime10', have: 4, need: 3 }] }, null)
-    expect(changed[1]).toMatchObject({ title: '3 ДЗ вовремя', got: true })
-  })
-
-  it('«Прогноз +5» считает клиент: +5 и больше за 30 дней — получен; нет прогноза — нет', () => {
-    const p = normalizeSchoolPoints(RAW)!
-    expect(buildBadges(p, FORECAST_BADGE_DELTA)[2].got).toBe(true)
-    expect(buildBadges(p, 4)[2].got).toBe(false)
-    expect(buildBadges(p, null)[2]).toMatchObject({ got: false, hint: 'Поднимите примерный балл на 5 за 30 дней' })
+  it('§257: значков §255 больше нет — ответ с badges их не тащит; баллы наград из ответа', () => {
+    const p = normalizeSchoolPoints({ ...RAW, achievement_points: 85 })!
+    expect(p).not.toHaveProperty('badges')
+    expect(p.achievementPoints).toBe(85)
+    expect(normalizeSchoolPoints(RAW)!.achievementPoints).toBe(0)
   })
 
   it('«за что начисляются» — из правил ответа', () => {
@@ -139,9 +125,29 @@ describe('§256: каталог с проверкой, вехи, задача д
     expect(p.catalogRules).toBeNull()
     expect(rulesText(p.rules, p.catalogRules).some(x => x.startsWith('Задача каталога с проверкой'))).toBe(false)
   })
+})
 
-  it('значок «Неделя без пропусков» — по дням с решением', () => {
-    const b = buildBadges({ badges: [{ key: 'streak7', have: 3, need: 7 }] }, null)
-    expect(b[0].hint).toBe('Решайте задачи 7 дней подряд · рекорд пока 3')
+describe('§257: награды в ленте и 20 уровней', () => {
+  const raw = {
+    total: 1820,
+    level: { n: 11, name: 'Выдержка', from: 1800, next: 2150, next_name: 'Сила' },
+    levels: [0, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500, 1800, 2150, 2550, 3000, 3500, 4100, 4800, 5600, 6500, 7500],
+    rules: { hw_ontime: 10, hw_late: 4, grade5: 10, grade4: 6, accepted: 6, variant: 2, mock_point: 1, streak_day: 3 },
+    achievement_points: 310,
+    feed: [
+      { kind: 'achievement', at: '2026-10-02T12:00:00Z', points: 25, title: 'hw:20', n: 20 },
+      { kind: 'achievement', at: '2026-10-02T11:00:00Z', points: 50, title: 'special:flawless', n: 10 },
+      { kind: 'achievement', at: '2026-10-02T10:00:00Z', points: 10, title: 'streak:7', n: 7 },
+      { kind: 'achievement', at: '2026-10-02T09:00:00Z', points: 10, title: 'mockscore:60', n: 60 },
+    ],
+  }
+  it('строка ленты «Награда «20 ДЗ»» по ключу награды', () => {
+    const p = normalizeSchoolPoints(raw)!
+    expect(p.feed.map(feedText)).toEqual(['Награда «20 ДЗ»', 'Награда «Без ошибок»', 'Награда «Серия 7 дней»', 'Награда «Пробник на 60+»'])
+  })
+  it('уровень 11 из 20: полоса до «Сила»; на 20-м — высший', () => {
+    const p = normalizeSchoolPoints(raw)!
+    expect(levelProgress(p)).toEqual({ ratio: 20 / 350, text: 'до 12-го уровня — 330 баллов', long: 'до уровня 12 «Сила» — 330 баллов' })
+    expect(levelProgress({ total: 8000, level: { n: 20, name: 'Вершина', from: 7500, next: null, nextName: null } }).text).toBe('высший уровень')
   })
 })
