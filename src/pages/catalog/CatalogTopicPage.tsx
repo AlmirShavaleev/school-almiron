@@ -8,8 +8,13 @@ import { useCatalogTasks, useCatalogTopics, useCatalogSections, useCatalogPhysic
 import { AddToCartButton } from '@/components/catalog/AddToCartButton'
 import { CartBadge } from '@/components/catalog/CartBadge'
 import { PhysicsTopicEditorButton } from '@/components/catalog/PhysicsTopicEditorButton'
-import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
+import { TaskDisplayCard, type TaskPracticeProps } from '@/components/catalog/TaskDisplayCard'
+import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
+import { useCatalogPractice } from '@/hooks/useCatalogPractice'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
+
+/** §256: состояние практики спрашиваем не больше чем для стольких задач. */
+const PRACTICE_IDS_MAX = 300
 
 type Filter = 'all' | 'done' | 'todo'
 type DifficultyFilter = PhysicsDifficulty
@@ -66,6 +71,27 @@ export function CatalogTopicPage() {
 
   const visibleTasks = filtered.slice(0, visibleCount)
   const hasMore = visibleCount < filtered.length
+
+  // §256. Ученик проверяет ответ прямо в карточке; персоналу — как прежде.
+  const isStudent = profile?.role === 'student'
+  const practiceIds = useMemo(() => visibleTasks.slice(0, PRACTICE_IDS_MAX).map(t => t.id), [visibleTasks])
+  const practice = useCatalogPractice(sectionId, practiceIds, isStudent && !loading)
+  const practiceFor = (taskId: string): TaskPracticeProps | undefined => (
+    practice.state
+      ? {
+          state: practice.state.tasks[taskId],
+          onCheck: async answer => {
+            const out = await practice.check(taskId, answer)
+            // База уже отметила решённую задачу «Выполнено» — показываем это сразу
+            // (повторная отметка — тот же upsert, без вреда).
+            const t = tasks.find(x => x.id === taskId)
+            if (out.result?.verdict === 'correct' && t && !t.is_completed) void toggleComplete(taskId, false)
+            return out
+          },
+          onReveal: () => practice.reveal(taskId),
+        }
+      : undefined
+  )
 
   const doneCount  = tasks.filter(t => t.is_completed).length
   const totalCount = tasks.length
@@ -134,6 +160,10 @@ export function CatalogTopicPage() {
               <h1 className="text-2xl font-bold text-gray-900 text-wrap-balance">{topic?.title ?? 'Тема'}</h1>
               <p className="mt-1 text-sm text-slate-500">Раздел: {sectionTitle}</p>
             </div>
+
+            {practice.state?.number && practice.state.rules && (
+              <CatalogNumberProgress className="mt-4" number={practice.state.number} rules={practice.state.rules} />
+            )}
 
             {totalCount > 0 && (
               <div className="mt-4 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200/80">
@@ -232,6 +262,7 @@ export function CatalogTopicPage() {
                     key={task.id}
                     task={task}
                     number={idx + 1}
+                    practice={practiceFor(task.id)}
                     onToggle={() => toggleComplete(task.id, !!task.is_completed)}
                     canEditPhysicsTopics={canEditPhysicsTopics}
                     topicId={topicId}
@@ -495,6 +526,7 @@ function TopicSidebarLink({
 function TaskCard({
   task,
   number,
+  practice,
   onToggle,
   canEditPhysicsTopics,
   topicId,
@@ -503,6 +535,7 @@ function TaskCard({
 }: {
   task: CatalogTask
   number: number
+  practice?: TaskPracticeProps
   onToggle: () => void
   canEditPhysicsTopics: boolean
   topicId?: string
@@ -513,6 +546,7 @@ function TaskCard({
     <TaskDisplayCard
       task={task}
       number={number}
+      practice={practice}
       onToggle={onToggle}
       completed={task.is_completed}
       extraActions={

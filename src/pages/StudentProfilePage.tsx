@@ -11,6 +11,7 @@ import { useGroups } from '@/hooks/useGroups'
 import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 import { StudentSubjectTargets } from '@/components/student/StudentSubjectTargets'
+import { StudentCatalogWeek } from '@/components/student/StudentCatalogWeek'
 import { StudentReportTab } from '@/components/report/StudentReportTab'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -235,6 +236,9 @@ export function StudentProfilePage() {
         настройки ученика.
       */}
       {s.student_id && <StudentSubjectTargets studentId={s.student_id} profileId={s.profile_id ?? null} />}
+
+      {/* §256: решённое учеником в каталоге с проверкой ответа за неделю. */}
+      {s.student_id && <StudentCatalogWeek studentId={s.student_id} />}
 
       {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EGE_SPECS, toTestScore } from '@/lib/egeScales'
 import { plural } from '@/lib/plural'
 import {
-  bestMonthDelta, buildForecastView, CATALOG_WEIGHT_CAP, coverageNeed, forecastAt, missingText, normalizeEvidence,
+  bestMonthDelta, buildForecastView, catalogGain, catalogTips, coverageNeed, forecastChange, gainText, forecastAt, missingText, normalizeEvidence, SOURCE_WEIGHT,
   normalizeForecastResponse, numberStats, parseGoalInput, PART2_TIP_MIN_P, PRIOR_PART1, PRIOR_PART2, tileHint, tileLevel, trendDates,
   type Evidence, type EvidenceSource,
 } from '@/lib/egeForecast'
@@ -93,14 +93,26 @@ describe('прогноз: сглаживание и затухание', () => {
     expect(stat(rows, 6).p).toBeLessThan(0.5)
   })
 
-  it('каталог (только успехи) один не даёт 100 %: потолок веса', () => {
-    const rows = Array.from({ length: 50 }, () => ev(6, 1, 1, 'catalog'))
+  // §256 (решение владельца 02.10): каталог — только ПРОВЕРЕННЫЕ ответы (и
+  // неверные тоже), поэтому вес как у ДЗ и без потолка. Было: 0,3 и потолок 2.
+  it('каталог с проверкой весит как ДЗ и без потолка: десять верных = десять верных ДЗ', () => {
+    expect(SOURCE_WEIGHT.catalog).toBe(SOURCE_WEIGHT.hw)
+    const cat = stat(Array.from({ length: 10 }, () => ev(6, 1, 1, 'catalog')), 6)
+    const hw = stat(many(6, 10), 6)
+    expect(cat.p).toBeCloseTo(hw.p, 9)
+    expect(cat.p).toBeGreaterThan(0.85)
+    // 50 верных поднимают выше прежнего потолка 0,65
+    expect(stat(Array.from({ length: 50 }, () => ev(6, 1, 1, 'catalog')), 6).p).toBeGreaterThan(0.95)
+    expect(cat.catalogCount).toBe(10)
+    expect(cat.count).toBe(10)
+  })
+
+  it('неверные ответы каталога опускают номер так же, как неверные ДЗ', () => {
+    const rows = [...Array.from({ length: 6 }, () => ev(6, 0, 1, 'catalog')), ...Array.from({ length: 2 }, () => ev(6, 1, 1, 'catalog'))]
     const s = stat(rows, 6)
-    const cap = (PRIOR_PART1 * 2 + CATALOG_WEIGHT_CAP) / (2 + CATALOG_WEIGHT_CAP)
-    expect(s.p).toBeCloseTo(cap, 9)
-    expect(s.p).toBeLessThan(0.7)
-    expect(s.catalogCount).toBe(50)
-    expect(s.count).toBe(0)
+    expect(s.p).toBeCloseTo(stat([...many(6, 6, 0), ...many(6, 2, 1)], 6).p, 9)
+    expect(s.p).toBeLessThan(PRIOR_PART1)
+    expect(s.rate).toBeCloseTo(0.25, 9)
   })
 
   it('пробник с нумерацией другого года (число заданий шаблона ≠ 19) отбрасывается', () => {
@@ -225,7 +237,7 @@ describe('прогноз: «+N за месяц» и 8 недель', () => {
 
   it('лучший «+N за месяц» по предметам — для значка «Прогноз +5»', () => {
     const rows = [...solid(4, 0.5, 40), ...solid(4, 1, 5)]
-    const data = { now: NOW, subjects: [{ subject: 'math' as const, goal: null, teacherGoal: null }], titles: {}, evidence: rows }
+    const data = { now: NOW, subjects: [{ subject: 'math' as const, goal: null, teacherGoal: null }], titles: {}, sections: {}, zones: {}, catalogRules: null, evidence: rows }
     expect(bestMonthDelta(data)).toBe(buildForecastView(MATH, rows, NOW).monthDelta)
     expect(bestMonthDelta({ ...data, evidence: [] })).toBeNull()
     expect(bestMonthDelta(null)).toBeNull()
@@ -271,7 +283,7 @@ describe('прогноз: «быстрее всего добавят баллы�
     expect(tileLevel(s6)).toBe(1)
     expect(tileLevel(stat(many(5, 20), 5))).toBe(4)
     expect(tileHint(s6, plural)).toBe('№6: верно 30 % решений (10 задач)')
-    expect(tileHint(s7, plural)).toBe('№7: в каталоге решено 1 задача')
+    expect(tileHint(s7, plural)).toBe('№7: верно 100 % решений (1 задача, из них 1 в каталоге)')
     expect(tileHint(s8, plural)).toBe('№8: пока не решали — в прогнозе считаем осторожно')
   })
 
@@ -310,5 +322,96 @@ describe('ответ базы и цель', () => {
     expect(parseGoalInput('100')).toEqual({ ok: true, goal: 100 })
     expect(parseGoalInput('')).toEqual({ ok: true, goal: null })
     for (const bad of ['0', '101', '7.5', '-3', 'abc', '1000']) expect(parseGoalInput(bad).ok).toBe(false)
+  })
+})
+
+describe('§256: «Решите в каталоге — и балл вырастет»', () => {
+  const RULES = {
+    window_days: 60, low: 0.4, high: 0.7, daily_task: 10, weekly_goal: 40,
+    zones: [
+      { key: 'growth', per_task: 5, milestones: [{ at: 10, bonus: 30 }, { at: 20, bonus: 50 }, { at: 30, bonus: 80 }] },
+      { key: 'progress', per_task: 3, milestones: [{ at: 10, bonus: 20 }, { at: 20, bonus: 30 }, { at: 30, bonus: 40 }] },
+      { key: 'confident', per_task: 1, milestones: [{ at: 10, bonus: 5 }, { at: 20, bonus: 5 }, { at: 30, bonus: 5 }] },
+    ],
+  }
+  /** Номера 1–12 решаются на 75 %, №6 — на 25 %, №2 — почти всегда. */
+  function rows(): Evidence[] {
+    const out: Evidence[] = []
+    for (let n = 1; n <= 12; n++) {
+      const rate = n === 6 ? 0.25 : n === 2 ? 1 : 0.75
+      for (let i = 0; i < 8; i++) out.push(ev(n, i < Math.round(8 * rate) ? 1 : 0, 3))
+    }
+    return out
+  }
+  function response(evidence: Evidence[]) {
+    return normalizeForecastResponse({
+      now: NOW.toISOString(),
+      subjects: [{ subject: 'math' }],
+      titles: Array.from({ length: 12 }, (_, i) => ({ subject: 'math', n: i + 1, title: `Номер ${i + 1}`, section_id: `sec-${i + 1}` })),
+      numbers: [
+        { subject: 'math', n: 6, zone: 'growth', share: 0.25, solved: 3 },
+        { subject: 'math', n: 2, zone: 'confident', share: 1, solved: 12 },
+        { subject: 'math', n: 9, zone: 'progress', share: 0.55, solved: 0 },
+      ],
+      catalog_rules: RULES,
+      evidence: [],
+    })!
+  }
+
+  it('«≈ +N за 10 верных» — та же модель: 10 верных задач каталога по номеру; слабому номеру — больше', () => {
+    const r = rows()
+    const weak = catalogGain(MATH, r, 6, NOW)
+    const strong = catalogGain(MATH, r, 2, NOW)
+    const sim = Array.from({ length: 10 }, (_, i) => ev(6, 1, 0, 'catalog', { item: `x${i}`, at: new Date(NOW.getTime() - 1000).toISOString() }))
+    expect(weak).toBeCloseTo(forecastAt(MATH, [...r, ...sim], NOW).score - forecastAt(MATH, r, NOW).score, 9)
+    expect(weak).toBeGreaterThan(strong)
+    expect(strong).toBeLessThan(1.5)
+    expect(gainText(weak)).toMatch(/^≈ \+\d+ к прогнозу$/)
+    expect(gainText(0.2)).toBe('≈ +1 к прогнозу')
+  })
+
+  it('список: «уверенно» — отдельно, остальные по приросту; «верно k из 10» — до следующей вехи', () => {
+    const data = { ...response([]), evidence: rows() }
+    const point = forecastAt(MATH, data.evidence, NOW)
+    const { tips, confident } = catalogTips(MATH, data, point)
+    expect(tips).toHaveLength(3)
+    expect(tips[0]).toMatchObject({ n: 6, zone: 'growth', solved: 3, next: 10, sectionId: 'sec-6', title: 'Номер 6' })
+    expect(tips.every(t => t.zone !== 'confident')).toBe(true)
+    expect(tips[0].gain!).toBeGreaterThan(tips[1].gain!)
+    expect(confident.map(t => t.n)).toEqual([2])
+    expect(confident[0].next).toBe(20)
+  })
+
+  it('пока балла нет — сначала номера без решений (откроют прогноз), прироста не показываем', () => {
+    const data = { ...response([]), evidence: [ev(1, 1), ev(3, 1)] }
+    const point = forecastAt(MATH, data.evidence, NOW)
+    expect(point.ready).toBe(false)
+    const { tips } = catalogTips(MATH, data, point)
+    expect(tips.map(t => t.n)).toEqual([4, 5, 6])
+    expect(tips.every(t => t.gain == null)).toBe(true)
+  })
+
+  it('номер без раздела каталога в список не попадает', () => {
+    const data = { ...response([]), evidence: rows(), sections: { 'math:6': 'sec-6' } }
+    const { tips } = catalogTips(MATH, data, forecastAt(MATH, data.evidence, NOW))
+    expect(tips.map(t => t.n)).toEqual([6])
+  })
+
+  it('изменение прогноза до/после проверки — модель на свидетельствах базы', () => {
+    const before = { ...response([]), evidence: rows() }
+    const after = { ...before, evidence: [...rows(), ev(6, 1, 0, 'catalog')] }
+    const c = forecastChange(before, after, 'math')!
+    expect(c.ready).toBe(true)
+    expect(c.delta).toBeGreaterThan(0)
+    expect(c.delta).toBeCloseTo(forecastAt(MATH, after.evidence, NOW).score - forecastAt(MATH, before.evidence, NOW).score, 9)
+    expect(forecastChange(before, after, 'oge-math')).toBeNull()
+    expect(forecastChange(null, after, 'math')).toBeNull()
+  })
+
+  it('ответ базы: разделы, зоны и правила номеров', () => {
+    const r = response([])
+    expect(r.sections['math:6']).toBe('sec-6')
+    expect(r.zones['math:6']).toEqual({ zone: 'growth', share: 0.25, solved: 3 })
+    expect(r.catalogRules?.zones[0].perTask).toBe(5)
   })
 })

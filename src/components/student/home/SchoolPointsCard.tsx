@@ -55,7 +55,7 @@ function PointsBody({ points, forecastDelta, bind }: {
 }) {
   const progress = levelProgress(points)
   const badges = buildBadges(points, forecastDelta)
-  const rules = rulesText(points.rules)
+  const rules = rulesText(points.rules, points.catalogRules)
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">

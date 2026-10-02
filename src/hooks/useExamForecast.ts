@@ -66,5 +66,19 @@ export function useExamForecast(profileId: string | null | undefined) {
     })
   }, [])
 
-  return { data, loading, error, retry, setGoal }
+  /**
+   * §256. Перечитать свидетельства СЕЙЧАС (после ответа на задачу дня) и
+   * вернуть новый ответ — главная считает «+1 к прогнозу» моделью до/после.
+   */
+  const refresh = useCallback(async (): Promise<ForecastResponse | null> => {
+    const db = supabase as unknown as RpcLike
+    if (typeof db.rpc !== 'function') return null
+    const { data: raw, error: err } = await db.rpc<unknown>('student_exam_forecast_evidence')
+    if (err) return null
+    const parsed = normalizeForecastResponse(raw)
+    if (parsed) setData(parsed)
+    return parsed
+  }, [])
+
+  return { data, loading, error, retry, setGoal, refresh }
 }

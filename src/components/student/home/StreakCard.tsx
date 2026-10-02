@@ -8,8 +8,10 @@ const DAY_LABELS = ['пн', '', 'ср', '', 'пт', '', 'вс']
 
 /**
  * §254. «Серия»: N дней подряд, рекорд и календарь активности за 12 недель.
- * День в серию засчитывает ЗАХОД (app_visits); цвет клетки — сколько задач
- * решено (ступени `activityLevel`). Серию и рекорд считает база.
+ * §256: день в серию засчитывает РЕШЕНИЕ (задача каталога с проверкой, сданное
+ * ДЗ, завершённый тест, пробник — `student_solve_days`), а не заход; сегодня
+ * ещё ничего — серия не обнуляется до конца дня. Цвет клетки — сколько задач
+ * решено (ступени `activityLevel`), как было. Серию и рекорд считает база.
  */
 export function StreakCard({ activity, error, onRetry, className }: {
   activity: HomeActivity | null
@@ -33,7 +35,9 @@ export function StreakCard({ activity, error, onRetry, className }: {
                 {plural(activity.streak, 'день', 'дня', 'дней')} подряд · рекорд — {activity.record} {plural(activity.record, 'день', 'дня', 'дней')}
               </span>
             ) : (
-              <span data-testid="streak-newbie" className="text-sm text-graphite-500">Заходите каждый день — здесь появится ваша серия</span>
+              <span data-testid="streak-newbie" className="text-sm text-graphite-500">
+                {activity.streakDays != null ? 'Решайте хотя бы одну задачу в день — здесь появится ваша серия' : 'Заходите каждый день — здесь появится ваша серия'}
+              </span>
             )}
           </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5">
@@ -70,6 +74,14 @@ export function StreakCard({ activity, error, onRetry, className }: {
             </div>
           </div>
           <Legend />
+          {activity.streakDays != null && (
+            <p data-testid="streak-rule" className="text-xs text-graphite-500">
+              {activity.solvedToday
+                ? 'Сегодня уже засчитан.'
+                : activity.streak > 0 ? 'Сегодня ещё не засчитан — решите задачу, и серия продлится.' : null}
+              {' '}День засчитывается, если решили задачу каталога с проверкой, сдали ДЗ, тест или писали пробник.
+            </p>
+          )}
           {node}
         </>
       )}

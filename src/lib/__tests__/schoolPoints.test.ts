@@ -72,7 +72,7 @@ describe('баллы школы', () => {
     ])
     expect(b[1].hint).toBe('Сдайте 10 ДЗ до срока · пока 4')
     expect(b[2].hint).toBe('Поднимите примерный балл на 5 за 30 дней · сейчас +3')
-    expect(b[4].hint).toBe('Решите 100 задач в каталоге · пока 37')
+    expect(b[4].hint).toBe('Решите 100 задач в каталоге с проверкой ответа · пока 37')
     // владелец поменял порог в базе — значок меняется без правки клиента
     const changed = buildBadges({ badges: [{ key: 'ontime10', have: 4, need: 3 }] }, null)
     expect(changed[1]).toMatchObject({ title: '3 ДЗ вовремя', got: true })
@@ -88,5 +88,60 @@ describe('баллы школы', () => {
   it('«за что начисляются» — из правил ответа', () => {
     const p = normalizeSchoolPoints({ ...RAW, rules: { ...RAW.rules, hw_ontime: 12 } })!
     expect(rulesText(p.rules)[0]).toBe('ДЗ сдано вовремя +12, после срока +4')
+  })
+})
+
+describe('§256: каталог с проверкой, вехи, задача дня, цель недели', () => {
+  const CAT_RULES = {
+    window_days: 60, low: 0.4, high: 0.7, daily_task: 10, weekly_goal: 40,
+    zones: [
+      { key: 'growth', per_task: 5, milestones: [{ at: 10, bonus: 30 }, { at: 20, bonus: 50 }, { at: 30, bonus: 80 }] },
+      { key: 'progress', per_task: 3, milestones: [{ at: 10, bonus: 20 }, { at: 20, bonus: 30 }, { at: 30, bonus: 40 }] },
+      { key: 'confident', per_task: 1, milestones: [{ at: 10, bonus: 5 }, { at: 20, bonus: 5 }, { at: 30, bonus: 5 }] },
+    ],
+  }
+  const raw = {
+    ...RAW,
+    rules: { hw_ontime: 10, hw_late: 4, grade5: 10, grade4: 6, accepted: 6, variant: 2, mock_point: 1, streak_day: 3 },
+    catalog_rules: CAT_RULES,
+    feed: [
+      { kind: 'weekly', at: '2026-10-02T12:00:00Z', points: 40, title: null, n: 10 },
+      { kind: 'daily', at: '2026-10-02T11:00:00Z', points: 10, title: null, n: 6 },
+      { kind: 'catalog_milestone', at: '2026-10-02T10:00:00Z', points: 30, title: null, n: 10 },
+      { kind: 'catalog', at: '2026-10-02T10:00:00Z', points: 13, title: null, n: 3 },
+      { kind: 'variant', at: '2026-10-01T10:00:00Z', points: 4, title: null, n: 2 },
+    ],
+  }
+
+  it('новые строки ленты', () => {
+    const p = normalizeSchoolPoints(raw)!
+    expect(p.feed.map(feedText)).toEqual([
+      'Цель недели выполнена',
+      'Задача дня решена (№6)',
+      '10 задач каталога по номеру — веха',
+      '3 задачи из каталога решены',
+      '2 задачи к уроку и в вариантах решены',
+    ])
+  })
+
+  it('«за что начисляются» — каталог по зоне, задача дня и цель недели из правил базы; самоотметок нет', () => {
+    const p = normalizeSchoolPoints(raw)!
+    const t = rulesText(p.rules, p.catalogRules)
+    expect(t).toContain('Задача каталога с проверкой ответа +5 / +3 / +1 — больше за номер, который пока не получается; бонусы за 10/20/30 верных')
+    expect(t).toContain('Задача дня +10, цель недели +40')
+    expect(t).toContain('Задача к уроку или в варианте +2')
+    expect(t.join(' ')).not.toMatch(/Задача каталога \+2/)
+  })
+
+  it('старая база (rules.catalog, без catalog_rules) — не падает: вариант из catalog, строки каталога по зоне нет', () => {
+    const p = normalizeSchoolPoints(RAW)!
+    expect(p.rules.variant).toBe(2)
+    expect(p.catalogRules).toBeNull()
+    expect(rulesText(p.rules, p.catalogRules).some(x => x.startsWith('Задача каталога с проверкой'))).toBe(false)
+  })
+
+  it('значок «Неделя без пропусков» — по дням с решением', () => {
+    const b = buildBadges({ badges: [{ key: 'streak7', have: 3, need: 7 }] }, null)
+    expect(b[0].hint).toBe('Решайте задачи 7 дней подряд · рекорд пока 3')
   })
 })

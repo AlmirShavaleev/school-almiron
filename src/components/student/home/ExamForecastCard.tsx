@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 import { plural } from '@/lib/plural'
 import { shortDay } from '@/lib/studentHome'
 import { activeSpec, type EgeSubject } from '@/lib/egeScales'
 import {
-  buildForecastView, missingText, parseGoalInput, tileHint, tileLevel,
-  type ForecastResponse, type ForecastView, type NumberStat,
+  buildForecastView, catalogTips, gainText, missingText, parseGoalInput, tileHint, tileLevel,
+  type CatalogTip, type ForecastResponse, type ForecastView, type NumberStat,
 } from '@/lib/egeForecast'
 import { useFloatingTip } from './FloatingTip'
 
@@ -14,7 +15,9 @@ import { useFloatingTip } from './FloatingTip'
  *
  * База отдаёт только свидетельства (`student_exam_forecast_evidence`), весь
  * расчёт — `buildForecastView` (egeForecast.ts): балл, диапазон, «+N за
- * месяц», 8 недель, плитки КИМ и «быстрее всего добавят баллы». Пока данных
+ * месяц», 8 недель, плитки КИМ и (§256) «Решите в каталоге — и балл вырастет»:
+ * номер, «верно k из 10», «≈ +N к прогнозу за 10 верных» (симуляция той же
+ * моделью) и кнопка в раздел каталога этого номера. Пока данных
  * мало (покрыто меньше половины номеров части 1) — вместо балла честное
  * «решите ещё N задач из разных номеров» и полоса покрытия.
  *
@@ -82,6 +85,7 @@ export function ExamForecastCard({ data, error, onRetry, onSetGoal, className }:
         <ForecastBody
           key={subject.subject}
           view={view}
+          data={data}
           goal={subject.goal}
           teacherGoal={subject.teacherGoal}
           titles={data.titles}
@@ -92,8 +96,9 @@ export function ExamForecastCard({ data, error, onRetry, onSetGoal, className }:
   )
 }
 
-function ForecastBody({ view, goal, teacherGoal, titles, onSetGoal }: {
+function ForecastBody({ view, data, goal, teacherGoal, titles, onSetGoal }: {
   view: ForecastView
+  data: ForecastResponse
   goal: number | null
   teacherGoal: number | null
   titles: Record<string, string>
@@ -167,24 +172,7 @@ function ForecastBody({ view, goal, teacherGoal, titles, onSetGoal }: {
         </div>
       </div>
 
-      {current.ready && view.tips.length > 0 && (
-        <div className="grid gap-1.5">
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-graphite-400">Быстрее всего добавят баллы</div>
-          <ul className="grid gap-1.5" data-testid="forecast-tips">
-            {view.tips.map(t => (
-              <li key={t.n} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-graphite-200 px-2.5 py-2 text-sm">
-                <span className="rounded-lg bg-primary-50 px-2 py-0.5 font-extrabold text-primary-700">№{t.n}</span>
-                <span className="min-w-0 break-words text-graphite-800">
-                  {titleOf(t.n) ?? `Задание №${t.n}`}{t.gain == null && <span className="text-graphite-500"> — ещё не решали</span>}
-                </span>
-                <span className="whitespace-nowrap font-extrabold text-verdict-ok-ink">
-                  {t.gain == null ? '?' : `+${t.gain} ${plural(t.gain, 'балл', 'балла', 'баллов')}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <CatalogTipsBlock view={view} data={data} />
 
       <Sources view={view} />
       {node}
@@ -409,6 +397,58 @@ function Sources({ view }: { view: ForecastView }) {
       {chips.map(([k, v]) => (
         <span key={k} className="rounded-full bg-graphite-50 px-2.5 py-0.5">{k} · <b className="text-graphite-900">{v}</b></span>
       ))}
+    </div>
+  )
+}
+
+/**
+ * §256. «Решите в каталоге — и балл вырастет»: до трёх номеров «зоны роста» и
+ * «в процессе» с наибольшим приростом (≈ +N за 10 верных — та же модель),
+ * «верно k из 10» — засчитанные задачи каталога до следующей вехи. Номера
+ * «уверенно» — тихой строкой «≈ +1, почти максимум» без кнопки.
+ */
+function CatalogTipsBlock({ view, data }: { view: ForecastView; data: ForecastResponse }) {
+  const { tips, confident } = useMemo(() => catalogTips(view.spec, data, view.current), [view, data])
+  if (tips.length === 0 && confident.length === 0) return null
+  const href = (t: CatalogTip) => `/catalog/${t.sectionId}?subject=${view.spec.subject}&exam=ege`
+  const solvedText = (t: CatalogTip) => (t.next != null ? `верно ${t.solved} из ${t.next}` : `верно ${t.solved}`)
+  return (
+    <div className="grid gap-1.5" data-testid="forecast-catalog">
+      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-graphite-400">
+        {view.current.ready ? 'Решите в каталоге — и балл вырастет' : 'Решите в каталоге — и мы покажем балл'}
+      </div>
+      {tips.length > 0 && (
+        <ul className="grid gap-1.5">
+          {tips.map(t => (
+            <li key={t.n} data-n={t.n} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 rounded-xl border border-graphite-200 px-3 py-2.5">
+              <span className="rounded-lg bg-primary-50 px-2 py-0.5 text-sm font-extrabold text-primary-700">№{t.n}</span>
+              <span className="grid min-w-0 gap-0.5">
+                <b className="break-words text-sm font-bold text-graphite-900">{t.title ?? `Задание №${t.n}`}</b>
+                <small className="text-xs text-graphite-500">{t.solved === 0 && t.gain == null ? 'ещё не решали' : solvedText(t)}</small>
+              </span>
+              <span className="text-right text-sm font-extrabold leading-tight text-verdict-ok-ink">
+                {t.gain != null ? (
+                  <>{gainText(t.gain)}<br /><small className="text-xs font-semibold text-graphite-500">за 10 верных</small></>
+                ) : (
+                  <small className="text-xs font-semibold text-graphite-500">откроет прогноз</small>
+                )}
+              </span>
+              <Link
+                to={href(t)}
+                data-testid={`forecast-catalog-go-${t.n}`}
+                className="col-span-3 justify-self-start rounded-[10px] bg-primary-50 px-3 py-1.5 text-[13px] font-extrabold text-primary-700 ring-1 ring-primary-200 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+              >
+                Решать №{t.n} →
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {confident.length > 0 && (
+        <p data-testid="forecast-catalog-confident" className="text-xs text-graphite-500">
+          Уже уверенно: {confident.map(t => `№${t.n}`).join(', ')} — там ≈ +1, почти максимум
+        </p>
+      )}
     </div>
   )
 }

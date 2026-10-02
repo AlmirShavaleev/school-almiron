@@ -19,6 +19,8 @@ import { useAuthStore } from '@/store/authStore'
 import { AddToCartButton } from '@/components/catalog/AddToCartButton'
 import { CartBadge } from '@/components/catalog/CartBadge'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
+import { useCatalogPractice } from '@/hooks/useCatalogPractice'
+import { useMemo } from 'react'
 
 const STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
 
@@ -27,6 +29,9 @@ export function CatalogTaskPage() {
   const [searchParams] = useSearchParams()
   const { profile } = useAuthStore()
   const { task, loading, error } = useCatalogTask(taskId)
+  // §256. Ученик проверяет ответ и здесь (сюда ведёт поиск по разделу).
+  const ids = useMemo(() => (taskId ? [taskId] : []), [taskId])
+  const practice = useCatalogPractice(task?.section_id, ids, profile?.role === 'student' && !!task)
 
   const subjectSlug = searchParams.get('subject') ?? (task?.section ? (SUBJECT_SLUGS[task.section.subject] ?? 'math') : 'math')
   const examSlug    = searchParams.get('exam')    ?? 'ege'
@@ -78,7 +83,14 @@ export function CatalogTaskPage() {
       )}
 
       {/* Task card */}
-      <TaskDisplayCard task={task} />
+      <TaskDisplayCard
+        task={task}
+        practice={practice.state ? {
+          state: practice.state.tasks[task.id],
+          onCheck: answer => practice.check(task.id, answer),
+          onReveal: () => practice.reveal(task.id),
+        } : undefined}
+      />
 
       <CartBadge />
     </div>

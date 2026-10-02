@@ -38,6 +38,14 @@ export interface HomeActivity {
   streak:       number
   record:       number
   visitedToday: boolean
+  /**
+   * §256: серия считается по дням, когда ученик что-то РЕШИЛ (задача каталога
+   * с проверкой, сдал ДЗ, тест, пробник), а не по заходам. Дни окна, которые
+   * идут в серию, и решал ли сегодня. До PENDING_256 база их не отдаёт —
+   * тогда (старое правило) точки недели — по заходам.
+   */
+  streakDays?:  string[]
+  solvedToday?: boolean
   visits:       string[]
   solved:       SolvedDay[]
   courses:      CourseTopics[]
@@ -58,6 +66,9 @@ export function normalizeHomeActivity(raw: unknown): HomeActivity | null {
     streak: num(r.streak),
     record: num(r.record),
     visitedToday: r.visited_today === true,
+    ...(Array.isArray(r.streak_days)
+      ? { streakDays: r.streak_days.map(day).filter((d): d is string => !!d), solvedToday: r.solved_today === true }
+      : {}),
     visits: Array.isArray(r.visits) ? r.visits.map(day).filter((d): d is string => !!d) : [],
     solved: Array.isArray(r.solved)
       ? r.solved.flatMap((item: unknown) => {
@@ -174,9 +185,12 @@ export function buildCalendar(activity: Pick<HomeActivity, 'today' | 'visits' | 
   return out
 }
 
-/** Точки текущей недели пн…вс в плашке серии: заходил ли в этот день. */
-export function weekDots(activity: Pick<HomeActivity, 'today' | 'visits'>): boolean[] {
-  const visits = new Set(activity.visits)
+/**
+ * Точки текущей недели пн…вс в плашке серии: день засчитан в серию (§256 —
+ * был день с решением; до PENDING_256 — заходил).
+ */
+export function weekDots(activity: Pick<HomeActivity, 'today' | 'visits' | 'streakDays'>): boolean[] {
+  const visits = new Set(activity.streakDays ?? activity.visits)
   const monday = mondayOf(activity.today)
   return Array.from({ length: 7 }, (_, i) => {
     const d = addDays(monday, i)

@@ -3,8 +3,23 @@ import { ChevronDown, ChevronUp, CheckCircle2, Circle } from 'lucide-react'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
 import { useImageReclassify } from '@/hooks/useImageReclassify'
 import { TaskContentRenderer } from './TaskContentRenderer'
+import { TaskAnswerCheck } from './TaskAnswerCheck'
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
+import type { CheckOutcome } from '@/hooks/useCatalogPractice'
+import type { TaskPracticeState } from '@/lib/catalogRewards'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
+
+/**
+ * §256. Режим ученика: поле ответа + «Проверить» у проверяемых задач, а
+ * кнопки ответа и решения сначала отмечают раскрытие в базе —
+ * после этого задача в прогноз и баллы не идёт. Без `practice` (персонал,
+ * подборки, корзина, функция базы ещё не применена) карточка как прежде.
+ */
+export interface TaskPracticeProps {
+  state: TaskPracticeState | undefined
+  onCheck: (answer: string) => Promise<CheckOutcome>
+  onReveal: () => Promise<string | null>
+}
 
 export interface TaskDisplayCardProps {
   task: CatalogTask & { assets?: CatalogTaskAsset[] }
@@ -30,6 +45,8 @@ export interface TaskDisplayCardProps {
     plan?:      boolean
     criteria?:  boolean
   }
+  /** §256: проверка ответа учеником (см. TaskPracticeProps). */
+  practice?: TaskPracticeProps
 }
 
 export function TaskDisplayCard({
@@ -40,6 +57,7 @@ export function TaskDisplayCard({
   completed = false,
   defaultOpen = {},
   forceOpen,
+  practice,
 }: TaskDisplayCardProps) {
   const [showAnswer,        setShowAnswer]        = useState(defaultOpen.answer    ?? false)
   const [showSolution,      setShowSolution]      = useState(defaultOpen.solution  ?? false)
@@ -47,6 +65,24 @@ export function TaskDisplayCard({
   const [showGradeCriteria, setShowGradeCriteria] = useState(defaultOpen.criteria  ?? false)
 
   const cardRef = useRef<HTMLDivElement>(null)
+  const [revealError, setRevealError] = useState<string | null>(null)
+
+  // §256. Проверяемая задача ученика: ответ и решение открываются через
+  // catalog_reveal_answer (пока задача не решена и ответ ещё не открыт).
+  const checkable = practice?.state?.checkable === true
+  const needsReveal = checkable && !practice?.state?.solved && !practice?.state?.revealed
+  async function openGated(open: () => void) {
+    if (!needsReveal || !practice) { open(); return }
+    setRevealError(null)
+    try {
+      await practice.onReveal()
+      open()
+    } catch {
+      setRevealError('Не удалось открыть ответ — попробуйте ещё раз')
+    }
+  }
+  const toggleAnswer = () => (showAnswer ? setShowAnswer(false) : void openGated(() => setShowAnswer(true)))
+  const toggleSolution = () => (showSolution ? setShowSolution(false) : void openGated(() => setShowSolution(true)))
 
   // Re-runs when task or any section visibility changes
   useImageReclassify(cardRef, [
@@ -77,6 +113,7 @@ export function TaskDisplayCard({
   return (
     <div
       ref={cardRef}
+      data-task-id={task.id}
       className={`relative bg-white rounded-xl border transition-all ${
         completed ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
       }`}
@@ -103,6 +140,10 @@ export function TaskDisplayCard({
         )}
       </div>
 
+      {checkable && practice && (
+        <TaskAnswerCheck taskId={task.id} state={practice.state} onCheck={practice.onCheck} />
+      )}
+
       {/* Action row. Отметка «выполнено» — первая кнопка с подписью, а не
           безымянный кружок в углу: на телефоне кружок не читался как действие. */}
       <div className="px-4 pb-4 flex gap-2 flex-wrap items-center">
@@ -110,7 +151,7 @@ export function TaskDisplayCard({
           <button
             onClick={onToggle}
             aria-pressed={completed}
-            title={completed ? 'Отменить отметку' : 'Отметить выполненной'}
+            title={completed ? 'Отменить отметку' : practice ? 'Отметить для себя — в прогноз и баллы не идёт' : 'Отметить выполненной'}
             data-testid="task-complete-toggle"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               completed
@@ -131,7 +172,8 @@ export function TaskDisplayCard({
         {forceOpen?.answer === undefined && (
           task.has_answer ? (
             <button
-              onClick={() => setShowAnswer(v => !v)}
+              onClick={toggleAnswer}
+              data-testid="task-show-answer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
             >
               {ansOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -147,7 +189,8 @@ export function TaskDisplayCard({
         {/* Solution toggle */}
         {forceOpen?.solution === undefined && task.has_solution && (
           <button
-            onClick={() => setShowSolution(v => !v)}
+            onClick={toggleSolution}
+            data-testid="task-show-solution"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
           >
             {solOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -177,6 +220,8 @@ export function TaskDisplayCard({
           </button>
         )}
       </div>
+
+      {revealError && <p role="alert" className="px-4 pb-3 text-sm font-semibold text-verdict-bad-ink">{revealError}</p>}
 
       {/* Answer */}
       {ansOpen && ans && (

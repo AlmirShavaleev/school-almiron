@@ -85,7 +85,29 @@ function forecastResponse(over: Record<string, unknown> = {}) {
       { subject: 'math', goal: 80, teacher_goal: 70 },
       { subject: 'physics', goal: null, teacher_goal: null },
     ],
-    titles: [{ subject: 'math', n: 6, title: 'Простейшие уравнения' }],
+    titles: [
+      { subject: 'math', n: 6, title: 'Простейшие уравнения', section_id: 'sec-6' },
+      { subject: 'math', n: 7, title: 'Вычисления', section_id: 'sec-7' },
+      { subject: 'math', n: 2, title: 'Векторы', section_id: 'sec-2' },
+      { subject: 'math', n: 3, title: 'Стереометрия', section_id: 'sec-3' },
+      { subject: 'math', n: 4, title: 'Вероятность', section_id: 'sec-4' },
+    ],
+    // §256: зону номера считает база; клиент своих порогов не держит
+    numbers: [
+      { subject: 'math', n: 6, zone: 'growth', share: 0.25, solved: 3 },
+      { subject: 'math', n: 7, zone: 'confident', share: 0.8, solved: 1 },
+      { subject: 'math', n: 2, zone: 'confident', share: 0.75, solved: 0 },
+      { subject: 'math', n: 3, zone: 'progress', share: 0.6, solved: 12 },
+      { subject: 'math', n: 4, zone: 'progress', share: 0.7, solved: 0 },
+    ],
+    catalog_rules: {
+      window_days: 60, low: 0.4, high: 0.7, daily_task: 10, weekly_goal: 40, weekly_target: 10, checks_per_minute: 30,
+      zones: [
+        { key: 'growth', per_task: 5, milestones: [{ at: 10, bonus: 30 }, { at: 20, bonus: 50 }, { at: 30, bonus: 80 }] },
+        { key: 'progress', per_task: 3, milestones: [{ at: 10, bonus: 20 }, { at: 20, bonus: 30 }, { at: 30, bonus: 40 }] },
+        { key: 'confident', per_task: 1, milestones: [{ at: 10, bonus: 5 }, { at: 20, bonus: 5 }, { at: 30, bonus: 5 }] },
+      ],
+    },
     evidence: evidence(),
     ...over,
   }
@@ -119,7 +141,7 @@ beforeEach(() => {
 })
 
 describe('главная §255: примерный балл на ЕГЭ', () => {
-  it('математика: балл из 100, диапазон, шкала с порогом и целью, плитки КИМ, «быстрее всего», источники', async () => {
+  it('математика: балл из 100, диапазон, шкала с порогом и целью, плитки КИМ, «Решите в каталоге», источники', async () => {
     await renderHome()
     const card = await screen.findByTestId('forecast-card')
     // карточка — первой в левой колонке
@@ -143,12 +165,24 @@ describe('главная §255: примерный балл на ЕГЭ', () => 
     expect(card.querySelector('[data-n="6"]')).toHaveAttribute('data-level', '1')
     expect(card.querySelector('[data-n="15"]')).toHaveAttribute('data-level', '0')
     expect(card.querySelector('[data-n="6"]')).toHaveAttribute('aria-label', '№6: верно 25 % решений (4 задачи) · Простейшие уравнения')
-    // «быстрее всего добавят»: первым — слабый №6, с названием раздела; №13/14
-    // (вторая часть, решены половинкой одной задачи) — не «быстро», их нет
-    const tips = within(card).getByTestId('forecast-tips')
-    expect(tips.querySelector('li')).toHaveTextContent('№6')
-    expect(tips.querySelector('li')).toHaveTextContent('Простейшие уравнения')
-    expect(tips).not.toHaveTextContent('№13')
+    // §256: вместо «быстрее всего добавят» — «Решите в каталоге — и балл вырастет»:
+    // номера НЕ «уверенно», с разделом каталога; первым — слабый №6 (больше всех прирост
+    // за 10 верных — та же модель), «верно k из 10» — засчитанное до следующей вехи;
+    // «уверенно» (№2, №7) — тихой строкой без кнопки.
+    const cat = within(card).getByTestId('forecast-catalog')
+    expect(cat).toHaveTextContent('Решите в каталоге — и балл вырастет')
+    const rows = cat.querySelectorAll('li')
+    // №3 и №4 решаются одинаково — прирост равный, порядок по номеру
+    expect([...rows].map(li => li.getAttribute('data-n'))).toEqual(['6', '3', '4'])
+    expect(rows[0]).toHaveTextContent('Простейшие уравнения')
+    expect(rows[0]).toHaveTextContent('верно 3 из 10')
+    expect(rows[0]).toHaveTextContent(/≈ \+\d+ к прогнозу/)
+    expect(rows[0]).toHaveTextContent('за 10 верных')
+    expect(rows[1]).toHaveTextContent('верно 12 из 20')
+    expect(rows[2]).toHaveTextContent('верно 0 из 10')
+    expect(within(cat).getByTestId('forecast-catalog-go-6')).toHaveAttribute('href', '/catalog/sec-6?subject=math&exam=ege')
+    expect(within(cat).getByTestId('forecast-catalog-confident')).toHaveTextContent('Уже уверенно: №2, №7 — там ≈ +1, почти максимум')
+    expect(within(cat).queryByTestId('forecast-catalog-go-7')).toBeNull()
     expect(within(card).getByTestId('forecast-sources')).toHaveTextContent('ДЗ · 49 задач')
     expect(within(card).getByTestId('forecast-sources')).toHaveTextContent('каталог · 1')
     expect(within(card).getByTestId('forecast-sources')).toHaveTextContent('пробник · 1')

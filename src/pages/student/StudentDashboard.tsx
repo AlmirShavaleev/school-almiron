@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
@@ -19,7 +19,12 @@ import { SchoolPointsCard } from '@/components/student/home/SchoolPointsCard'
 import { ExamCountdownPill } from '@/components/student/home/ExamCountdownPill'
 import { courseCards } from '@/lib/studentHome'
 import { examCountdown } from '@/lib/examCountdown'
-import { bestMonthDelta } from '@/lib/egeForecast'
+import { bestMonthDelta, forecastChange } from '@/lib/egeForecast'
+import { EGE_SUBJECT_ORDER } from '@/lib/egeScales'
+import { useHomeCatalog } from '@/hooks/useHomeCatalog'
+import { DailyTaskCard } from '@/components/student/home/DailyTaskCard'
+import { WeeklyGoalCard } from '@/components/student/home/WeeklyGoalCard'
+import type { CheckOutcome } from '@/hooks/useCatalogPractice'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -32,6 +37,12 @@ import { bestMonthDelta } from '@/lib/egeForecast'
  * курса ЕГЭ по профильной математике или физике), в правой ПОД «Серией» —
  * «Баллы школы»; в шапке слева от серии — «N дней до ЕГЭ». Растягивается
  * последняя карточка колонки (`flex-1`) — колонки ровные.
+ *
+ * §256: в левой колонке над прогнозом — «Задача дня» (золотая рамка, ответ
+ * вводится здесь) и «Цель недели»; в карточке прогноза — «Решите в каталоге —
+ * и балл вырастет». Предмет задачи дня — первый ЕГЭ-предмет ученика
+ * (математика раньше физики). После засчитанного ответа перечитываются
+ * прогноз (он же даёт «+1 к прогнозу» моделью до/после), баллы и серия.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
@@ -49,6 +60,26 @@ export function StudentDashboard() {
   const forecast = useExamForecast(hasEgeForecast ? profile?.id : null)
   const schoolPoints = useSchoolPoints(profile?.id)
   const forecastDelta = useMemo(() => bestMonthDelta(forecast.data), [forecast.data])
+  // §256. Задача дня и цель недели — по первому ЕГЭ-предмету ученика.
+  const daySubject = EGE_SUBJECT_ORDER.find(sub => courses.some(c => c.examType === 'ege' && c.subject === sub)) ?? null
+  const homeCatalog = useHomeCatalog(profile?.id ? daySubject : null)
+  const { check: checkDaily, reload: reloadCatalog } = homeCatalog
+  const { refresh: refreshForecast, data: forecastData } = forecast
+  const { retry: retryPoints } = schoolPoints
+  const { retry: retryHome } = home
+  const dailyTaskId = homeCatalog.daily?.task?.id ?? null
+  const onDailyCheck = useCallback(async (answer: string): Promise<CheckOutcome> => {
+    if (!dailyTaskId) return { result: null, change: null, error: 'Задача не найдена' }
+    const { result, error } = await checkDaily(dailyTaskId, answer)
+    if (!result) return { result: null, change: null, error }
+    let change = null
+    if (!result.alreadySolved && !result.revealedBefore && result.subject) {
+      const after = await refreshForecast()
+      change = forecastChange(forecastData, after, result.subject)
+    }
+    if (result.counted) { retryPoints(); retryHome(); reloadCatalog() }
+    return { result, change, error: null }
+  }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog])
   const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
 
   const cards = useMemo(() => courseCards(
@@ -94,6 +125,15 @@ export function StudentDashboard() {
 
       <div className="grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-3.5" data-slot="left">
+          {homeCatalog.daily?.task && (
+            <DailyTaskCard
+              daily={homeCatalog.daily}
+              streak={home.activity?.streakDays != null ? home.activity.streak : null}
+              solvedToday={home.activity?.solvedToday === true}
+              onCheck={onDailyCheck}
+            />
+          )}
+          {homeCatalog.weekly && <WeeklyGoalCard goal={homeCatalog.weekly} />}
           {hasEgeForecast && (
             <ExamForecastCard data={forecast.data} error={forecast.error} onRetry={forecast.retry} onSetGoal={forecast.setGoal} />
           )}

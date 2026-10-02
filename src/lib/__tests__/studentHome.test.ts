@@ -162,3 +162,23 @@ describe('«Мои курсы»', () => {
     expect(card.topicsTotal).toBeNull()
   })
 })
+
+describe('§256: серия по дням с решением', () => {
+  it('база отдаёт streak_days / solved_today — точки недели по ним, а не по заходам', () => {
+    const a = normalizeHomeActivity({
+      today: '2026-10-02', from: '2026-07-11', streak: 2, record: 5, visited_today: true,
+      visits: ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'],
+      streak_days: ['2026-09-30', '2026-10-01'], solved_today: false, solved: [], courses: [],
+    })!
+    expect(a.streakDays).toEqual(['2026-09-30', '2026-10-01'])
+    expect(a.solvedToday).toBe(false)
+    // заходил пн–пт, решал только ср и чт — горят ср и чт
+    expect(weekDots(a)).toEqual([false, false, true, true, false, false, false])
+  })
+
+  it('старая база (без streak_days) — прежнее правило: точки по заходам', () => {
+    const a = normalizeHomeActivity({ today: '2026-10-02', visits: ['2026-09-28'], solved: [], courses: [] })!
+    expect(a.streakDays).toBeUndefined()
+    expect(weekDots(a)[0]).toBe(true)
+  })
+})

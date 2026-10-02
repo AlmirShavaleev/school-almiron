@@ -13,8 +13,16 @@
  * «Прогноз +5»: прогноз балла живёт на клиенте (`egeForecast.ts`).
  */
 import { plural } from '@/lib/plural'
+import { normalizeCatalogRules, type CatalogRules } from '@/lib/catalogRewards'
 
-export type FeedKind = 'hw_ontime' | 'hw_late' | 'hw_grade' | 'catalog' | 'mock' | 'streak'
+/**
+ * §256: каталог — только задачи с ПРОВЕРЕННЫМ ответом, награда по зоне номера
+ * (+5/+3/+1) и вехи 10/20/30 (`catalog_milestone`), задача дня (`daily`), цель
+ * недели (`weekly`); задачи вариантов и к уроку — отдельной строкой (`variant`).
+ * Самоотметки «Выполнено» баллов не дают. Серия — дни с решением.
+ */
+export type FeedKind =
+  | 'hw_ontime' | 'hw_late' | 'hw_grade' | 'catalog' | 'catalog_milestone' | 'daily' | 'weekly' | 'variant' | 'mock' | 'streak'
 
 export interface FeedItem {
   kind:   FeedKind
@@ -30,7 +38,8 @@ export interface PointsRules {
   grade5:     number
   grade4:     number
   accepted:   number
-  catalog:    number
+  /** Задача варианта / к уроку (§256; до PENDING_256 база звала это `catalog`). */
+  variant:    number
   mock_point: number
   streak_day: number
 }
@@ -39,6 +48,8 @@ export interface SchoolPoints {
   total: number
   level: { n: number; name: string; from: number; next: number | null; nextName: string | null }
   rules: PointsRules
+  /** §256: правила каталога (зоны, вехи, задача дня, цель недели); null — база старая. */
+  catalogRules: CatalogRules | null
   feed:  FeedItem[]
   /** Значки из базы: ключ, сколько есть, сколько нужно. */
   badges: { key: string; have: number; need: number }[]
@@ -47,7 +58,7 @@ export interface SchoolPoints {
 /** Сколько должен вырасти прогноз за 30 дней ради значка «Прогноз +5». */
 export const FORECAST_BADGE_DELTA = 5
 
-const KINDS: readonly FeedKind[] = ['hw_ontime', 'hw_late', 'hw_grade', 'catalog', 'mock', 'streak']
+const KINDS: readonly FeedKind[] = ['hw_ontime', 'hw_late', 'hw_grade', 'catalog', 'catalog_milestone', 'daily', 'weekly', 'variant', 'mock', 'streak']
 const num = (v: unknown, d = 0): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
   return Number.isFinite(n) ? n : d
@@ -62,7 +73,7 @@ export function normalizeSchoolPoints(raw: unknown): SchoolPoints | null {
   const ru = (r.rules ?? {}) as Record<string, unknown>
   const rules: PointsRules = {
     hw_ontime: num(ru.hw_ontime), hw_late: num(ru.hw_late), grade5: num(ru.grade5), grade4: num(ru.grade4),
-    accepted: num(ru.accepted), catalog: num(ru.catalog), mock_point: num(ru.mock_point), streak_day: num(ru.streak_day),
+    accepted: num(ru.accepted), variant: num(ru.variant ?? ru.catalog), mock_point: num(ru.mock_point), streak_day: num(ru.streak_day),
   }
   const feed: FeedItem[] = []
   for (const item of Array.isArray(r.feed) ? r.feed : []) {
@@ -82,6 +93,7 @@ export function normalizeSchoolPoints(raw: unknown): SchoolPoints | null {
       nextName: typeof lv.next_name === 'string' ? lv.next_name : null,
     },
     rules,
+    catalogRules: normalizeCatalogRules(r.catalog_rules),
     feed,
     badges: (Array.isArray(r.badges) ? r.badges : []).flatMap((item: unknown) => {
       const x = (item ?? {}) as Record<string, unknown>
@@ -101,6 +113,16 @@ export function feedText(f: FeedItem): string {
     case 'catalog': {
       const n = f.n ?? 1
       return `${n} ${plural(n, 'задача', 'задачи', 'задач')} из каталога ${plural(n, 'решена', 'решены', 'решены')}`
+    }
+    case 'catalog_milestone': {
+      const n = f.n ?? 10
+      return `${n} задач каталога по номеру — веха`
+    }
+    case 'daily': return f.n != null ? `Задача дня решена (№${f.n})` : 'Задача дня решена'
+    case 'weekly': return 'Цель недели выполнена'
+    case 'variant': {
+      const n = f.n ?? 1
+      return `${n} ${plural(n, 'задача', 'задачи', 'задач')} к уроку и в вариантах ${plural(n, 'решена', 'решены', 'решены')}`
     }
     case 'mock': {
       const n = f.n ?? f.points
@@ -150,8 +172,9 @@ export function buildBadges(p: Pick<SchoolPoints, 'badges'>, forecastDelta: numb
   const out: BadgeView[] = []
   {
     const need = streak?.need ?? 7, have = streak?.have ?? 0, got = have >= need
+    // §256: серия — дни с решением, а не заходы.
     out.push({ key: 'streak7', title: 'Неделя без пропусков', got,
-      hint: got ? `Заходили ${need} ${plural(need, 'день', 'дня', 'дней')} подряд` : `Заходите ${need} ${plural(need, 'день', 'дня', 'дней')} подряд · рекорд пока ${have}` })
+      hint: got ? `Решали ${need} ${plural(need, 'день', 'дня', 'дней')} подряд` : `Решайте задачи ${need} ${plural(need, 'день', 'дня', 'дней')} подряд · рекорд пока ${have}` })
   }
   {
     const need = ontime?.need ?? 10, have = ontime?.have ?? 0, got = have >= need
@@ -173,18 +196,25 @@ export function buildBadges(p: Pick<SchoolPoints, 'badges'>, forecastDelta: numb
   {
     const need = cat?.need ?? 100, have = cat?.have ?? 0, got = have >= need
     out.push({ key: 'catalog100', title: `${need} задач каталога`, got,
-      hint: got ? `Решено в каталоге: ${tasks(have)}` : `Решите ${tasks(need)} в каталоге · пока ${have}` })
+      hint: got ? `Решено в каталоге с проверкой: ${tasks(have)}` : `Решите ${tasks(need)} в каталоге с проверкой ответа · пока ${have}` })
   }
   return out
 }
 
 /** «Как получить баллы» — из правил ответа базы, без своих чисел. */
-export function rulesText(r: PointsRules): string[] {
-  return [
+export function rulesText(r: PointsRules, c: CatalogRules | null = null): string[] {
+  const out = [
     `ДЗ сдано вовремя +${r.hw_ontime}, после срока +${r.hw_late}`,
     `ДЗ принято на 5 +${r.grade5}, на 4 +${r.grade4}, без оценки +${r.accepted}`,
-    `Задача каталога +${r.catalog}`,
-    `Пробник: +${r.mock_point} за первичный балл`,
-    `День серии со второго подряд +${r.streak_day}`,
   ]
+  if (c) {
+    const per = c.zones.map(z => `+${z.perTask}`).join(' / ')
+    const ats = c.zones[0]?.milestones.map(m => m.at).join('/') ?? ''
+    out.push(`Задача каталога с проверкой ответа ${per} — больше за номер, который пока не получается; бонусы за ${ats} верных`)
+    out.push(`Задача дня +${c.dailyTask}, цель недели +${c.weeklyGoal}`)
+  }
+  out.push(`Задача к уроку или в варианте +${r.variant}`)
+  out.push(`Пробник: +${r.mock_point} за первичный балл`)
+  out.push(`День серии (решали хоть что-то) со второго подряд +${r.streak_day}`)
+  return out
 }

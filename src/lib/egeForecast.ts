@@ -26,6 +26,7 @@
  * день экзамена.
  */
 import { activeSpec, EGE_SUBJECT_ORDER, isEgeSubject, maxPrimary, toTestScore, type EgeSpec, type EgeSubject } from '@/lib/egeScales'
+import { isZone, milestoneView, normalizeCatalogRules, zoneRule, type CatalogRules, type CatalogZone, type ForecastChange } from '@/lib/catalogRewards'
 
 export type EvidenceSource = 'hw' | 'test' | 'mock' | 'catalog'
 
@@ -86,19 +87,15 @@ export const HALF_LIFE_DAYS = 30
 export const WINDOW_DAYS = 180
 /**
  * Веса источников.
- *   * ДЗ и тест темы — 1: задача с проверкой, но решается дома, с конспектом.
+ *   * ДЗ, тест темы и каталог — 1: задача с проверкой, но решается дома, с
+ *     конспектом. Каталог с §256 — только ПРОВЕРЕННЫЕ ответы (и верные, и
+ *     неверные; открыл ответ до проверки — не идёт), поэтому вес как у ДЗ и
+ *     без потолка (решение владельца 02.10). Самоотметки «Выполнено» база в
+ *     свидетельства больше не отдаёт.
  *   * Пробник — 2: условия экзамена (время, без подсказок, задание «как на
  *     ЕГЭ»), поэтому ближе всего к итогу.
- *   * Каталог — 0,3: база видит только УСПЕХИ («Выполнено» / верный ответ),
- *     ошибки там не остаются — свидетельство смещено вверх, вес малый.
  */
-export const SOURCE_WEIGHT: Readonly<Record<EvidenceSource, number>> = { hw: 1, test: 1, mock: 2, catalog: 0.3 }
-/**
- * Потолок каталога: суммарный вес каталожных решений одного номера не больше
- * 2 (как две задачи ДЗ). Одним каталогом номер поднимается максимум до
- * (0,6 + 2) / 4 = 0,65 — «решаете, но ошибок мы не видели», а не 100 %.
- */
-export const CATALOG_WEIGHT_CAP = 2
+export const SOURCE_WEIGHT: Readonly<Record<EvidenceSource, number>> = { hw: 1, test: 1, mock: 2, catalog: 1 }
 /**
  * Тема с несколькими номерами: решение ДЗ/теста делится между номерами
  * поровну (доля 1/k), но только при k ≤ 3 («№22-23», «№13, 14, 15»). Темы
@@ -136,11 +133,11 @@ export interface NumberStat {
   hasEvidence:  boolean
   /** Сумма долей строк без затухания — для покрытия. */
   shareSum:     number
-  /** Сколько задач ДЗ / тестов / пробников (без каталога). */
+  /** Сколько задач (все источники; §256 — каталог тоже с проверкой). */
   count:        number
   /** Доля верного в них, без сглаживания (для подсказки «верно 35 %»). */
   rate:         number | null
-  /** Сколько задач каталога решено. */
+  /** Из них задач каталога (проверенные ответы). */
   catalogCount: number
 }
 
@@ -183,7 +180,7 @@ export function numberStats(spec: EgeSpec, rows: readonly Evidence[], asOf: Date
     const part: 1 | 2 = n <= spec.part1Last ? 1 : 2
     const prior = part === 1 ? PRIOR_PART1 : PRIOR_PART2
     const mine = valid.filter(r => r.n === n)
-    let a = 0, b = 0, catA = 0, catB = 0
+    let a = 0, b = 0
     let shareSum = 0, rateNum = 0, rateDen = 0
     const items = new Set<string>(), catItems = new Set<string>()
     for (const r of mine) {
@@ -191,19 +188,14 @@ export function numberStats(spec: EgeSpec, rows: readonly Evidence[], asOf: Date
       const age = Math.max(0, (t - Date.parse(r.at)) / DAY_MS)
       const w = SOURCE_WEIGHT[r.source] * r.share * Math.pow(0.5, age / HALF_LIFE_DAYS)
       shareSum += r.share
-      if (r.source === 'catalog') {
-        catA += w * s; catB += w * (1 - s); catItems.add(r.item)
-      } else {
-        a += w * s; b += w * (1 - s)
-        rateNum += r.share * s; rateDen += r.share
-        items.add(r.item)
-      }
+      a += w * s; b += w * (1 - s)
+      rateNum += r.share * s; rateDen += r.share
+      items.add(r.item)
+      if (r.source === 'catalog') catItems.add(r.item)
     }
-    const catW = catA + catB
-    if (catW > CATALOG_WEIGHT_CAP) { const k = CATALOG_WEIGHT_CAP / catW; catA *= k; catB *= k }
     const m = part === 1 ? PSEUDO_COUNT : PSEUDO_COUNT_PART2
-    const alpha = prior * m + a + catA
-    const beta = (1 - prior) * m + b + catB
+    const alpha = prior * m + a
+    const beta = (1 - prior) * m + b
     const p = alpha / (alpha + beta)
     return {
       n, max, part, p,
@@ -365,17 +357,12 @@ export function tileLevel(s: NumberStat): 0 | 1 | 2 | 3 | 4 {
   return 4
 }
 
-/** Подсказка плитки: «№6: верно 35 % решений (12 задач)». */
+/** Подсказка плитки: «№6: верно 35 % решений (12 задач, из них 4 в каталоге)». */
 export function tileHint(s: NumberStat, plural: (n: number, a: string, b: string, c: string) => string): string {
   if (!s.hasEvidence) return `№${s.n}: пока не решали — в прогнозе считаем осторожно`
-  const parts: string[] = []
-  if (s.count > 0 && s.rate != null) {
-    parts.push(`верно ${Math.round(s.rate * 100)} % решений (${s.count} ${plural(s.count, 'задача', 'задачи', 'задач')})`)
-  }
-  if (s.catalogCount > 0) {
-    parts.push(`${s.count > 0 ? 'в каталоге' : 'в каталоге решено'} ${s.catalogCount} ${plural(s.catalogCount, 'задача', 'задачи', 'задач')}`)
-  }
-  return `№${s.n}: ${parts.join(' · ')}`
+  if (s.count === 0 || s.rate == null) return `№${s.n}: пока не решали — в прогнозе считаем осторожно`
+  const cat = s.catalogCount > 0 ? `, из них ${s.catalogCount} в каталоге` : ''
+  return `№${s.n}: верно ${Math.round(s.rate * 100)} % решений (${s.count} ${plural(s.count, 'задача', 'задачи', 'задач')}${cat})`
 }
 
 /** «Решите ещё N задач из разных номеров» — N из покрытия. */
@@ -419,12 +406,25 @@ export interface ForecastSubjectInfo {
   teacherGoal: number | null
 }
 
+export interface NumberZone {
+  zone:   CatalogZone
+  share:  number | null
+  /** Засчитано задач каталога с проверкой по номеру (за всё время). */
+  solved: number
+}
+
 export interface ForecastResponse {
   /** «Сейчас» сервера (расчёт ведётся от него, а не от часов устройства). */
   now:      Date
   subjects: ForecastSubjectInfo[]
   /** Названия номеров из каталога: `${subject}:${n}` → «Простейшие уравнения». */
   titles:   Record<string, string>
+  /** §256. Раздел каталога номера: `${subject}:${n}` → id раздела. */
+  sections: Record<string, string>
+  /** §256. Зона номера и засчитанное — считает база: `${subject}:${n}`. */
+  zones:    Record<string, NumberZone>
+  /** §256. Правила наград каталога (вехи — для «верно k из 10»). */
+  catalogRules: CatalogRules | null
   evidence: Evidence[]
 }
 
@@ -446,16 +446,29 @@ export function normalizeForecastResponse(raw: unknown, fallbackNow: Date = new 
   }
   subjects.sort((a, b) => EGE_SUBJECT_ORDER.indexOf(a.subject) - EGE_SUBJECT_ORDER.indexOf(b.subject))
   const titles: Record<string, string> = {}
+  const sections: Record<string, string> = {}
   for (const item of Array.isArray(r.titles) ? r.titles : []) {
     const x = (item ?? {}) as Record<string, unknown>
     if (typeof x.subject === 'string' && typeof x.title === 'string' && intOrNull(x.n) != null) {
       titles[`${x.subject}:${intOrNull(x.n)}`] = x.title
+      if (typeof x.section_id === 'string') sections[`${x.subject}:${intOrNull(x.n)}`] = x.section_id
     }
+  }
+  const zones: Record<string, NumberZone> = {}
+  for (const item of Array.isArray(r.numbers) ? r.numbers : []) {
+    const x = (item ?? {}) as Record<string, unknown>
+    const n = intOrNull(x.n)
+    if (typeof x.subject !== 'string' || n == null || !isZone(x.zone)) continue
+    const share = x.share == null ? null : Number(x.share)
+    zones[`${x.subject}:${n}`] = { zone: x.zone, share: Number.isFinite(share) ? share : null, solved: intOrNull(x.solved) ?? 0 }
   }
   return {
     now: Number.isFinite(nowMs) ? new Date(nowMs) : fallbackNow,
     subjects,
     titles,
+    sections,
+    zones,
+    catalogRules: normalizeCatalogRules(r.catalog_rules),
     evidence: normalizeEvidence(r.evidence),
   }
 }
@@ -487,4 +500,98 @@ export function bestMonthDelta(data: ForecastResponse | null): number | null {
     if (best == null || d > best) best = d
   }
   return best
+}
+
+// ── §256. «Решите в каталоге — и балл вырастет» ─────────────────────────
+
+/** Сколько верных задач каталога симулируем для «≈ +N за 10 верных». */
+export const CATALOG_SIM_TASKS = 10
+/** Сколько номеров предлагать в «Решите в каталоге». */
+export const CATALOG_TIPS_COUNT = 3
+
+/**
+ * «≈ +N к прогнозу за 10 верных»: та же модель §255 — к свидетельствам
+ * добавляем `k` верных задач каталога по номеру `n` «сейчас» и смотрим, на
+ * сколько вырос тестовый балл. Не оценка «на глаз», а ровно то, что увидит
+ * ученик, когда решит их.
+ */
+export function catalogGain(spec: EgeSpec, rows: readonly Evidence[], n: number, now: Date, k = CATALOG_SIM_TASKS): number {
+  const base = forecastAt(spec, rows, now)
+  const at = new Date(now.getTime() - 1000).toISOString()
+  const sim: Evidence[] = Array.from({ length: k }, (_, i) => ({
+    subject: spec.subject, n, source: 'catalog', score: 1, at, share: 1, item: `sim:${n}:${i}`,
+  }))
+  return forecastAt(spec, [...rows, ...sim], now).score - base.score
+}
+
+export interface CatalogTip {
+  n:         number
+  title:     string | null
+  sectionId: string | null
+  zone:      CatalogZone
+  /** Засчитано задач каталога по номеру. */
+  solved:    number
+  /** Следующая веха (10/20/30) — «верно k из 10»; null — все пройдены. */
+  next:      number | null
+  /** ≈ прирост тестового балла за 10 верных; null — прогноза ещё нет. */
+  gain:      number | null
+}
+
+export interface CatalogTips {
+  /** Номера, которые стоит решать (не «уверенно»), по убыванию прироста. */
+  tips:      CatalogTip[]
+  /** Номера «уверенно» — тихой строкой: там почти максимум. */
+  confident: CatalogTip[]
+}
+
+/**
+ * Номера части 1 с разделом каталога. Зона — из базы (`zones`), прирост —
+ * `catalogGain`. «Уверенно» в основной список не идёт (решение §256: там
+ * «≈ +1, почти максимум» без кнопки — одной строкой под списком, чтобы не
+ * занимать место номеров, которые действительно поднимут балл). Пока балла
+ * нет (мало данных) — сначала номера без решений: они откроют прогноз.
+ */
+export function catalogTips(spec: EgeSpec, data: ForecastResponse, point: ForecastPoint): CatalogTips {
+  const rows: { tip: CatalogTip; hasEvidence: boolean }[] = []
+  for (const s of point.numbers) {
+    if (s.part !== 1) continue
+    const key = `${spec.subject}:${s.n}`
+    const sectionId = data.sections[key] ?? null
+    if (!sectionId) continue
+    const z = data.zones[key]
+    const zone: CatalogZone = z?.zone ?? 'growth'
+    const solved = z?.solved ?? 0
+    rows.push({
+      hasEvidence: s.hasEvidence,
+      tip: {
+        n: s.n, title: data.titles[key] ?? null, sectionId, zone, solved,
+        next: milestoneView(zoneRule(data.catalogRules, zone), solved).next,
+        gain: point.ready ? catalogGain(spec, data.evidence, s.n, data.now) : null,
+      },
+    })
+  }
+  const confident = rows.filter(r => r.tip.zone === 'confident').map(r => r.tip).sort((a, b) => a.n - b.n)
+  const rest = rows.filter(r => r.tip.zone !== 'confident')
+  rest.sort(point.ready
+    ? (a, b) => (b.tip.gain ?? 0) - (a.tip.gain ?? 0) || a.tip.n - b.tip.n
+    : (a, b) => Number(a.hasEvidence) - Number(b.hasEvidence) || a.tip.n - b.tip.n)
+  return { tips: rest.slice(0, CATALOG_TIPS_COUNT).map(r => r.tip), confident }
+}
+
+/** «≈ +5 к прогнозу»: прирост за 10 верных, не меньше 1. */
+export function gainText(gain: number): string {
+  return `≈ +${Math.max(1, Math.round(gain))} к прогнозу`
+}
+
+/**
+ * Изменение прогноза между двумя ответами базы (до и после проверки) — та же
+ * модель на тех же датах сервера. null — предмета нет в прогнозе.
+ */
+export function forecastChange(before: ForecastResponse | null, after: ForecastResponse | null, subject: string): ForecastChange | null {
+  if (!before || !after || !isEgeSubject(subject)) return null
+  const spec = activeSpec(subject)
+  if (!spec) return null
+  const a = forecastAt(spec, before.evidence, before.now)
+  const b = forecastAt(spec, after.evidence, after.now)
+  return { ready: b.ready, delta: b.ready && a.ready ? b.score - a.score : 0, score: b.score }
 }

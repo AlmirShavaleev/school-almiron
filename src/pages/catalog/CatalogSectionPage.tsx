@@ -3,6 +3,10 @@ import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCirc
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
+import { useCatalogPractice } from '@/hooks/useCatalogPractice'
+import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
+
+const NO_TASKS: string[] = []
 
 const STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
 
@@ -30,6 +34,9 @@ export function CatalogSectionPage() {
   const isSearching = query.trim().length >= 2
 
   const isStaff = profile && STAFF_ROLES.has(profile.role)
+  // §256. Ученику — зона номера раздела, вехи и «Как начисляются баллы»
+  // (сюда ведёт «Решать №6 →» с главной).
+  const practice = useCatalogPractice(sectionId, NO_TASKS, profile?.role === 'student' && view === 'exam')
 
   // Скелет только на месте списка тем. Хлебные крошки, заголовок раздела и
   // поиск не зависят от загрузки — сносить их вместе со списком значит
@@ -56,6 +63,10 @@ export function CatalogSectionPage() {
         <h1 className="text-xl font-bold text-gray-900">{section?.title ?? 'Раздел'}</h1>
         <p className="text-gray-500 text-sm mt-1">{view === 'physics-topics' ? 'Выберите физическую тему' : 'Выберите тему'}</p>
       </div>
+
+      {practice.state?.number && practice.state.rules && (
+        <CatalogNumberProgress number={practice.state.number} rules={practice.state.rules} />
+      )}
 
       {subjectSlug === 'physics' && examSlug === 'ege' && (
         <div className="inline-flex rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80">
