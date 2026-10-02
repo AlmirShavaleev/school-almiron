@@ -124,6 +124,12 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o258: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §259: ученик курса §241 — в разделе только ожидающие, модуль «Контрольные работы» снова виден (`s259`),
+  // всё прошло — раздела нет (`s259none`); учитель с курсом §250 и сроками ДЗ в «По темам» (`o259`).
+  ...Object.fromEntries(['s259', 's259none'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
+  o259: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1902,6 +1908,8 @@ export function baseFixtures(persona) {
   if (persona.startsWith('s257') || persona === 'o257') apply257(fx, persona)
   if (persona.startsWith('s258')) apply258student(fx, persona)
   if (persona === 'o258') { apply250(fx); apply258(fx) }
+  if (persona.startsWith('s259')) apply259student(fx, persona)
+  if (persona === 'o259') { apply250(fx); apply259(fx) }
   return fx
 }
 
@@ -3472,4 +3480,79 @@ function apply258student(fx, persona) {
     const base = typeof prev === 'function' ? prev(body) : prev
     return body.p_topic_id === KR.topic ? { ...base, has_criteria: true, has_condition: true } : base
   }
+}
+
+// ── §259: раздел работ — только ожидающие; срок ДЗ у учителя ────────────────
+// Всё выдумано. Ученик — курс §241 («сейчас» по серверу — пт 2 октября 10:22 МСК):
+// `s259` — «Статика» модуля «Контрольные работы» стала ожидающей (сб 3 окт 08:45–09:30), КР «Кинематика» (9 окт)
+// и пробник №5 (5 окт) ждут тоже; написанные/проверенные/пропущенные работы и итоги пробников в раздел не идут.
+// `s259none` — всё прошло: КР «Кинематика» написана и проверена, пробника №5 нет — раздела нет, модуль работ есть.
+export const D259 = {
+  // Курс §250: №2 Векторы (j=1) и №3 Стереометрия (j=2).
+  past: U('1', 25100), nodue: U('1', 25101), soon: U('1', 25200), today: U('1', 25201),
+}
+function apply259student(fx, persona) {
+  apply241(fx, 's241')
+  const none = persona === 's259none'
+  const patchWork = (w) => {
+    if (!none && w.topic_id === R241.topic(4)) return { ...w, opens_at: '2026-10-03T05:45:00.000Z', closes_at: '2026-10-03T06:30:00.000Z', status: 'none' }
+    if (none && w.topic_id === R241.topic(1)) {
+      return {
+        ...w, opens_at: '2026-09-26T06:45:00.000Z', closes_at: '2026-09-26T07:30:00.000Z', status: 'reviewed', submitted_at: '2026-09-26T07:22:00.000Z',
+        reviewed_at: '2026-09-27T10:00:00.000Z', score: 4, tasks: [['1', 'correct'], ['2', 'partial']].map(([no, verdict]) => ({ no, verdict })),
+        group: { avg: 3.9, count: 15, submitted: 15, in_group: 18, better_pct: 40, best: false },
+      }
+    }
+    return w
+  }
+  const keepMock = (m) => !(none && m.id === R241.mock(5))
+  const prevAssess = fx.rpc.my_course_assessments
+  fx.rpc.my_course_assessments = (body) => {
+    const r = prevAssess(body)
+    return r instanceof Error ? r : { ...r, works: r.works.map(patchWork), mocks: r.mocks.filter(keepMock) }
+  }
+  const prevMocks = fx.rpc.my_mock_exams
+  fx.rpc.my_mock_exams = (body) => prevMocks(body).filter(keepMock)
+}
+// Учитель (`o259`, курс §250): сроки считаются от НАСТОЯЩЕГО «сегодня» (как у §250) — клиент берёт часы браузера.
+// «Векторы: занятие 1» — срок 21 день назад, пятибалльная, все статусы колонки «Срок» (вовремя, в 23:40 дня срока,
+// пересдача после доработки, опоздание, просрочено без попытки и с черновиком); «Векторы: занятие 2» — срока нет;
+// «Стереометрия: занятие 1» — срок через 3 дня; «Стереометрия: занятие 2» — срок сегодня.
+function apply259(fx) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const dayOf = (offset) => { const d = new Date(Date.now() + offset * 864e5); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+  const plusDays = (day, n) => { const d = new Date(Date.parse(`${day}T12:00:00Z`) + n * 864e5); return d.toISOString().slice(0, 10) }
+  const msk = (day, hm) => new Date(`${day}T${hm}:00+03:00`).toISOString()
+  const hwOf = (topicId) => fx.tables.topic_homework.find(h => h.topic_id === topicId)
+  const due = { [D259.past]: dayOf(-21), [D259.nodue]: null, [D259.soon]: dayOf(3), [D259.today]: dayOf(0) }
+  for (const [topicId, d] of Object.entries(due)) {
+    const h = hwOf(topicId)
+    h.due_at = d
+    if (topicId === D259.past) h.grade_scale = 'five'
+  }
+  const ids = Object.keys(due).filter(t => t !== D259.nodue).map(t => hwOf(t).id)
+  const students = fx.tables.group_students.filter(g => g.group_id === R250.group).map(g => g.student_id)
+  const rows = []
+  const add = (hw, student, n, status, at, score = null) => rows.push({
+    id: U('3', 2590000 + rows.length), homework_id: hw, student_id: student, attempt_number: n, status, submitted_at: at,
+    created_at: at ?? ago(24), updated_at: at ?? ago(24),
+    topic_homework_reviews: status === 'accepted' || status === 'returned_for_revision'
+      ? [{ decision: status, score: status === 'accepted' ? score : null, created_at: at ?? ago(24) }] : [],
+  })
+  const dPast = due[D259.past]
+  students.forEach((st, i) => {
+    switch (i % 8) {
+      case 0: add(hwOf(D259.past).id, st, 1, 'accepted', msk(plusDays(dPast, -4), '17:15'), 5); break
+      case 1: add(hwOf(D259.past).id, st, 1, 'accepted', msk(plusDays(dPast, 17), '19:23'), 4); break
+      case 2: add(hwOf(D259.past).id, st, 1, 'submitted', msk(dPast, '23:40')); break
+      case 3: break // ничего — просрочено
+      case 4: add(hwOf(D259.past).id, st, 1, 'returned_for_revision', msk(plusDays(dPast, -5), '10:52')); break
+      case 5: add(hwOf(D259.past).id, st, 1, 'returned_for_revision', msk(plusDays(dPast, -6), '21:03')); add(hwOf(D259.past).id, st, 2, 'accepted', msk(plusDays(dPast, 10), '18:00'), 4); break
+      case 6: add(hwOf(D259.past).id, st, 1, 'draft', null); break // только черновик — просрочено
+      default: add(hwOf(D259.past).id, st, 1, 'accepted', msk(plusDays(dPast, 3), '09:10'), 3)
+    }
+    if (i % 3 === 0) add(hwOf(D259.soon).id, st, 1, 'submitted', msk(dayOf(-1), '20:05'))
+    if (i % 4 === 0) add(hwOf(D259.today).id, st, 1, 'submitted', msk(dayOf(0), '08:30'))
+  })
+  fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts.filter(a => !ids.includes(a.homework_id)), ...rows]
 }

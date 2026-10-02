@@ -1,4 +1,4 @@
-import { D227, D228, D229, D252, D258, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, D258, D259, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1439,6 +1439,51 @@ export const scenes = [
       { persona: 's258before', name: 'd258-student-before', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Условие'), { wait: 500 }, toTabs, { wait: 300 }] },
       { persona: 's258sent', name: 'd258-student-sent', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Ответы и критерии'), { wait: 500 }, toTabs, { wait: 300 }] },
       { persona: 's258done', name: 'd258-student-done', url: kr, width, height, actions: [{ wait: 2500 }, later, { wait: 300 }, tab('Ответы и критерии'), { wait: 500 }, toTabs, { wait: 300 }] },
+    ]
+  }),
+
+  // §259. Ученик (курс §241): в разделе сверху — только ожидающие (пробник №5, КР «Кинематика», проверочная «Статика»);
+  // модуль «Контрольные работы» снова карточкой (только работы и когда, без оценок), внутри — списком и карточками;
+  // всё прошло — раздела нет, модуль работ на месте. Учитель (курс §250, «По темам»): срок «до …» и «изменить»,
+  // сводка, колонка «Срок» со всеми статусами; без срока — «Срок не задан · задать»; «ещё 3 дн.» / «сегодня срок»;
+  // «изменить» открывает окно темы на блоке ДЗ. В базу сцены не пишут; вид списка/карточек каждая сцена ставит сама.
+  //   node e2e/harness/tour.mjs d259 1280 ; node e2e/harness/tour.mjs d259 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const course = `/my-course/${S.group}`
+    const hw = `/course-program?courseId=d000000-0000-4000-8000-000000002500&tab=homework`
+    const byTopics = { clickSel: '[data-testid="hw-view"] button[data-key="topics"]' }
+    const openTopic = (id) => ({ eval: `document.querySelector('[data-hw-topic="${id}"] button')?.click()` })
+    const toTopic = (id) => ({ eval: `(() => { document.querySelector('[data-hw-topic="${id}"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90) })()` })
+    const toModules = { eval: "(() => { document.querySelector('[data-testid=\"module-works-card\"]')?.scrollIntoView({ block: 'center' }) })()" }
+    return [
+      { persona: 's259', name: 'd259-student', url: course, width, height, actions: [{ wait: 2500 }] },
+      { persona: 's259', name: 'd259-student-modules', url: course, width, height, full: false, actions: [{ wait: 2500 }, toModules, { wait: 300 }] },
+      { persona: 's259', name: 'd259-student-works-list', url: course, width, height, actions: [
+        { ls: ['student-course-view', 'list'] }, { goto: course }, { wait: 2500 }, { clickSel: '[data-testid="module-works-card"]' }, { wait: 600 },
+      ] },
+      { persona: 's259', name: 'd259-student-works-cards', url: course, width, height, actions: [
+        { ls: ['student-course-view', 'cards'] }, { goto: course }, { wait: 2500 }, { clickSel: '[data-testid="module-works-card"]' }, { wait: 600 },
+      ] },
+      { persona: 's259none', name: 'd259-student-none', url: course, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o259', name: 'd259-teacher', url: hw, width, height, full: false, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, openTopic(D259.past), { wait: 300 }, toTopic(D259.past), { wait: 300 },
+      ] },
+      { persona: 'o259', name: 'd259-teacher-full', url: hw, width, height, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, openTopic(D259.past), openTopic(D259.nodue), openTopic(D259.soon), openTopic(D259.today), { wait: 300 },
+      ] },
+      { persona: 'o259', name: 'd259-teacher-nodue', url: hw, width, height, full: false, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, openTopic(D259.nodue), { wait: 300 }, toTopic(D259.nodue), { wait: 300 },
+      ] },
+      { persona: 'o259', name: 'd259-teacher-soon', url: hw, width, height, full: false, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, openTopic(D259.soon), { wait: 300 }, toTopic(D259.soon), { wait: 300 },
+      ] },
+      ...(width === 390 ? [{ persona: 'o259', name: 'd259-teacher-scrolled', url: hw, width, height, full: false, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, openTopic(D259.past), { wait: 300 }, toTopic(D259.past),
+        { eval: `document.querySelector('[data-hw-topic="${D259.past}"] [data-testid="hw-section-scroll"]').scrollLeft = 400` }, { wait: 300 },
+      ] }] : []),
+      { persona: 'o259', name: 'd259-teacher-edit', url: hw, width, height, full: false, actions: [
+        { wait: 2500 }, byTopics, { wait: 1500 }, { eval: `document.querySelector('[data-hw-topic="${D259.past}"] [data-testid="hw-due-edit"]')?.click()` }, { wait: 2000 },
+      ] },
     ]
   }),
 
