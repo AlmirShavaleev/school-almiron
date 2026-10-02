@@ -886,10 +886,27 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               поле, спрятанное внутрь рубрики, он открывал бы по два клика на
               каждую тему.
             */}
-            <div data-testid="topic-ege-numbers" className="rounded-2xl border border-gray-200 bg-white p-4">
-              <label htmlFor="topic-ege-numbers-input" className="block text-sm font-semibold text-gray-900">
-                Номера заданий ЕГЭ
-              </label>
+            {/*
+              §255. Поле стало заметнее (логика та же): по этим номерам у
+              учеников считается «Примерный балл на ЕГЭ» на главной, и пустое
+              поле теперь помечено — тема без номера в прогноз не идёт.
+            */}
+            <div
+              data-testid="topic-ege-numbers"
+              data-empty={(egeTaskNumbers ?? []).length === 0 || undefined}
+              className={cn('rounded-2xl border p-4', (egeTaskNumbers ?? []).length === 0 ? 'border-gold-300 bg-gold-50/60' : 'border-gray-200 bg-white')}
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <label htmlFor="topic-ege-numbers-input" className="block text-sm font-semibold text-gray-900">
+                  Номера заданий ЕГЭ
+                </label>
+                {(egeTaskNumbers ?? []).length === 0 && (
+                  <span data-testid="topic-ege-numbers-empty" className="rounded-full bg-gold-100 px-2 py-0.5 text-xs font-semibold text-gold-800">не проставлены</span>
+                )}
+              </div>
+              <div className="mt-0.5 text-xs text-gray-500">
+                По ним у учеников считается «Примерный балл на ЕГЭ»: ДЗ и тест темы засчитываются этим номерам.
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-0 flex-1">
                   <input

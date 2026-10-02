@@ -62,6 +62,17 @@ describe('Номера заданий ЕГЭ в редакторе темы (§2
     expect((screen.getByTestId('topic-ege-numbers-input') as HTMLInputElement).value).toBe('')
   })
 
+  it('§255: пустое поле помечено «не проставлены» и объяснено, зачем номер; проставленное — без пометки', () => {
+    renderModal({ egeTaskNumbers: [] })
+    expect(screen.getByTestId('topic-ege-numbers-empty')).toHaveTextContent('не проставлены')
+    expect(screen.getByTestId('topic-ege-numbers')).toHaveTextContent('«Примерный балл на ЕГЭ»')
+  })
+
+  it('§255: у темы с номерами пометки «не проставлены» нет', () => {
+    renderModal({ egeTaskNumbers: [6] })
+    expect(screen.queryByTestId('topic-ege-numbers-empty')).toBeNull()
+  })
+
   it('введённый список уходит в базу массивом', async () => {
     const onSaveTopicMeta = vi.fn().mockResolvedValue(undefined)
     renderModal({ egeTaskNumbers: [], onSaveTopicMeta })

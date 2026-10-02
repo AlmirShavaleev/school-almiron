@@ -234,7 +234,7 @@ export function StudentProfilePage() {
         расходились. Само поле не тронуто: его читают «Мой прогресс» и
         настройки ученика.
       */}
-      {s.student_id && <StudentSubjectTargets studentId={s.student_id} />}
+      {s.student_id && <StudentSubjectTargets studentId={s.student_id} profileId={s.profile_id ?? null} />}
 
       {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
 

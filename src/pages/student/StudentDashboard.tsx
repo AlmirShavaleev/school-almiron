@@ -12,7 +12,14 @@ import { StreakCard } from '@/components/student/home/StreakCard'
 import { WeeklySolvedCard } from '@/components/student/home/WeeklySolvedCard'
 import { MyCoursesCard } from '@/components/student/home/MyCoursesCard'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
+import { useExamForecast } from '@/hooks/useExamForecast'
+import { useSchoolPoints } from '@/hooks/useSchoolPoints'
+import { ExamForecastCard } from '@/components/student/home/ExamForecastCard'
+import { SchoolPointsCard } from '@/components/student/home/SchoolPointsCard'
+import { ExamCountdownPill } from '@/components/student/home/ExamCountdownPill'
 import { courseCards } from '@/lib/studentHome'
+import { examCountdown } from '@/lib/examCountdown'
+import { bestMonthDelta } from '@/lib/egeForecast'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -21,11 +28,10 @@ import { courseCards } from '@/lib/studentHome'
  * ДЗ нужным списком); ниже сетка в две колонки: слева «Решено задач по
  * неделям», справа «Серия»; внизу «Эта неделя» по плану (§151) и «Мои курсы».
  *
- * Сетка оставлена под §255: в левую колонку ПЕРВОЙ встаёт карточка «Примерный
- * балл на ЕГЭ», в правую ПОД «Серией» — «Баллы школы». Пока их нет, в каждой
- * колонке по одной карточке, и обе тянутся на высоту строки (`flex-1`) —
- * колонки не выглядят дырявыми. Когда §255 добавит карточки, растягивается
- * последняя в колонке — перестраивать страницу не нужно.
+ * §255: в левой колонке ПЕРВОЙ — «Примерный балл на ЕГЭ» (только у учеников
+ * курса ЕГЭ по профильной математике или физике), в правой ПОД «Серией» —
+ * «Баллы школы»; в шапке слева от серии — «N дней до ЕГЭ». Растягивается
+ * последняя карточка колонки (`flex-1`) — колонки ровные.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
@@ -37,6 +43,13 @@ export function StudentDashboard() {
   const courses = useMemo(() => dashboard.courses ?? [], [dashboard.courses])
   // §224.2. Идущий пробник — первым на первом экране после входа.
   const mocksByGroup = useMyMockExams(courses.map(c => c.groupId))
+  // §255. Прогноз — только если есть курс ЕГЭ по профильной математике или
+  // физике (у ОГЭ и прочих карточки нет вовсе, даже скелета).
+  const hasEgeForecast = courses.some(c => c.examType === 'ege' && (c.subject === 'math' || c.subject === 'physics'))
+  const forecast = useExamForecast(hasEgeForecast ? profile?.id : null)
+  const schoolPoints = useSchoolPoints(profile?.id)
+  const forecastDelta = useMemo(() => bestMonthDelta(forecast.data), [forecast.data])
+  const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
 
   const cards = useMemo(() => courseCards(
     courses.map(c => ({ courseId: c.courseId, groupId: c.groupId, title: c.courseTitle, subject: c.subject })),
@@ -63,7 +76,12 @@ export function StudentDashboard() {
             {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
-        {home.activity && <StreakPill activity={home.activity} />}
+        {(countdown || home.activity) && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {countdown && <ExamCountdownPill countdown={countdown} />}
+            {home.activity && <StreakPill activity={home.activity} />}
+          </div>
+        )}
       </header>
 
       {/* §224.2. Идущий / ближайший пробник — над кнопками: это главное
@@ -76,12 +94,14 @@ export function StudentDashboard() {
 
       <div className="grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-3.5" data-slot="left">
-          {/* §255: «Примерный балл на ЕГЭ» — сюда, первой карточкой колонки. */}
+          {hasEgeForecast && (
+            <ExamForecastCard data={forecast.data} error={forecast.error} onRetry={forecast.retry} onSetGoal={forecast.setGoal} />
+          )}
           <WeeklySolvedCard activity={home.activity} error={home.error} onRetry={home.retry} className="flex-1" />
         </div>
         <div className="flex min-w-0 flex-col gap-3.5" data-slot="right">
-          <StreakCard activity={home.activity} error={home.error} onRetry={home.retry} className="flex-1" />
-          {/* §255: «Баллы школы» — сюда, под «Серией». */}
+          <StreakCard activity={home.activity} error={home.error} onRetry={home.retry} />
+          <SchoolPointsCard points={schoolPoints.points} error={schoolPoints.error} onRetry={schoolPoints.retry} forecastDelta={forecastDelta} className="flex-1" />
         </div>
       </div>
 

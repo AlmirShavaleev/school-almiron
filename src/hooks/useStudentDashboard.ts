@@ -6,6 +6,8 @@ export interface StudentCourseCard {
   courseId: string
   courseTitle: string
   subject: string | null
+  /** §255: 'ege' | 'oge' | null — плашка «N дней до ЕГЭ» и карточка прогноза. */
+  examType?: string | null
 }
 
 interface StudentDashboardData {
@@ -44,10 +46,10 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
         // Курсы — через group_students → groups → courses.
         const { data: groupStudentsData } = await supabase
           .from('group_students')
-          .select('group_id, groups!inner(id, course_id, courses!inner(id, title, subject))')
+          .select('group_id, groups!inner(id, course_id, courses!inner(id, title, subject, exam_type))')
           .eq('student_id', student.id)
 
-        type Row = { groups: { id: string; courses: { id: string; title: string; subject: string | null } | null } | null }
+        type Row = { groups: { id: string; courses: { id: string; title: string; subject: string | null; exam_type?: string | null } | null } | null }
         const seen = new Map<string, StudentCourseCard>()
         for (const gs of (groupStudentsData ?? []) as unknown as Row[]) {
           const group = gs.groups
@@ -58,6 +60,7 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
             courseId: course.id,
             courseTitle: course.title,
             subject: course.subject || null,
+            examType: course.exam_type ?? null,
           })
         }
 

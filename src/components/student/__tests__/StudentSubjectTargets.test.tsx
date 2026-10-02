@@ -17,6 +17,11 @@ vi.mock('@/hooks/useStudentSubjectTargets', () => ({
 vi.mock('@/hooks/useStudentCourseMemberships', () => ({
   useStudentCourseMemberships: () => membershipsMock(),
 }))
+// §255: цель, которую ученик поставил себе сам (student_exam_goals).
+const ownGoalsMock = vi.fn((_profileId?: string | null) => [] as Array<{ subject: string; goal: number; updated_at: string | null }>)
+vi.mock('@/hooks/useStudentExamGoals', () => ({
+  useStudentExamGoals: (profileId?: string | null) => ownGoalsMock(profileId),
+}))
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector({ profile: { id: 'profile-teacher', role: 'teacher' } }),
 }))
@@ -33,10 +38,12 @@ const MATH = {
 function setup(targets: any[], courses: any[] = [PHYSICS, MATH]) {
   targetsMock.mockReturnValue({ targets, loading: false, error: null, reload: vi.fn(), save: saveMock })
   membershipsMock.mockReturnValue({ courses, loading: false, error: null, reload: vi.fn() })
-  return render(<StudentSubjectTargets studentId="student-1" />)
+  return render(<StudentSubjectTargets studentId="student-1" profileId="profile-student-1" />)
 }
 
 beforeEach(() => {
+  ownGoalsMock.mockReset()
+  ownGoalsMock.mockReturnValue([])
   saveMock.mockReset()
   saveMock.mockResolvedValue(undefined)
 })
@@ -103,5 +110,24 @@ describe('цели по предметам в карточке ученика', 
   it('курсов нет — блок честно говорит, что ставить цель не к чему', () => {
     setup([], [])
     expect(screen.getByText('Курсов у ученика пока нет — цель ставить не к чему.')).toBeInTheDocument()
+  })
+
+  it('§255: учитель видит цель, которую ученик поставил себе сам, рядом со своей — и не путает их', async () => {
+    ownGoalsMock.mockReturnValue([{ subject: 'math', goal: 85, updated_at: '2026-10-02T10:00:00Z' }])
+    setup([{ id: 't2', student_id: 'student-1', subject: 'math', exam_type: 'ege', target_score: 70, updated_at: null }])
+    expect(ownGoalsMock).toHaveBeenCalledWith('profile-student-1')
+    const row = screen.getByTestId('student-subject-target-math-ege')
+    expect(screen.getByTestId('student-own-goal-math')).toHaveTextContent('цель ученика — 85')
+    expect(row).toContainElement(screen.getByTestId('student-own-goal-math'))
+    // учительская цель — своя, в поле; ученическая её не подменяет
+    expect((screen.getByLabelText('Цель по предмету Математика · ЕГЭ') as HTMLInputElement).value).toBe('70')
+    expect(screen.queryByTestId('student-own-goal-physics')).toBeNull()
+  })
+
+  it('§255: цель ученика по ЕГЭ не приклеивается к строке ОГЭ того же предмета', () => {
+    ownGoalsMock.mockReturnValue([{ subject: 'math', goal: 85, updated_at: null }])
+    setup([], [{ ...MATH, courseExamType: 'oge' }])
+    expect(screen.getByTestId('student-subject-target-math-oge')).toBeInTheDocument()
+    expect(screen.queryByTestId('student-own-goal-math')).toBeNull()
   })
 })

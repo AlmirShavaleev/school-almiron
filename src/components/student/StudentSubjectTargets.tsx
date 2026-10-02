@@ -3,6 +3,7 @@ import { Loader2, Target } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useStudentSubjectTargets } from '@/hooks/useStudentSubjectTargets'
 import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
+import { useStudentExamGoals, type StudentExamGoal } from '@/hooks/useStudentExamGoals'
 import { useAuthStore } from '@/store/authStore'
 import { EXAM_LABELS, SUBJECT_LABELS } from '@/utils/format'
 import { toast } from '@/store/toastStore'
@@ -18,6 +19,11 @@ import { cn } from '@/utils/cn'
  * не про курс.
  *
  * Пусто — «не задана», и в отчёте родителю это прочерк, а не ноль.
+ *
+ * §255: рядом — цель, которую ученик поставил себе сам на главной
+ * («цель ученика — 80»). Это другая величина: учительская цель идёт в отчёт
+ * родителю, ученическая — его собственная отметка на шкале прогноза. Только
+ * показ; править её может лишь сам ученик.
  */
 
 interface Slot {
@@ -30,11 +36,12 @@ function slotKey(subject: string, examType: string) {
   return `${subject}::${examType}`
 }
 
-export function StudentSubjectTargets({ studentId }: { studentId: string }) {
+export function StudentSubjectTargets({ studentId, profileId }: { studentId: string; profileId?: string | null }) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher', 'curator'].includes(profile.role)
   const { targets, loading, error, save } = useStudentSubjectTargets(studentId)
   const { courses, loading: coursesLoading } = useStudentCourseMemberships(studentId)
+  const ownGoals = useStudentExamGoals(profileId)
 
   const slots = useMemo<Slot[]>(() => {
     const byKey = new Map<string, Slot>()
@@ -83,6 +90,7 @@ export function StudentSubjectTargets({ studentId }: { studentId: string }) {
               key={slotKey(slot.subject, slot.examType)}
               slot={slot}
               canEdit={canEdit}
+              ownGoal={slot.examType === 'ege' ? ownGoals.find(g => g.subject === slot.subject) ?? null : null}
               onSave={score => save(slot.subject, slot.examType, score, profile!.id)}
             />
           ))}
@@ -96,9 +104,10 @@ export function StudentSubjectTargets({ studentId }: { studentId: string }) {
   )
 }
 
-function TargetRow({ slot, canEdit, onSave }: {
+function TargetRow({ slot, canEdit, ownGoal, onSave }: {
   slot: Slot
   canEdit: boolean
+  ownGoal: StudentExamGoal | null
   onSave: (score: number | null) => Promise<void>
 }) {
   const [value, setValue] = useState(slot.score === null ? '' : String(slot.score))
@@ -135,7 +144,18 @@ function TargetRow({ slot, canEdit, onSave }: {
       data-testid={`student-subject-target-${slot.subject}-${slot.examType}`}
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2"
     >
-      <span className="min-w-0 flex-1 text-sm font-medium text-gray-800">{label}</span>
+      <span className="min-w-0 flex-1 text-sm font-medium text-gray-800">
+        {label}
+        {ownGoal && (
+          <span
+            data-testid={`student-own-goal-${slot.subject}`}
+            className="ml-2 inline-flex whitespace-nowrap rounded-full bg-gold-50 px-2 py-0.5 align-middle text-xs font-semibold text-gold-800"
+            title="Цель, которую ученик поставил себе сам на главной"
+          >
+            цель ученика — {ownGoal.goal}
+          </span>
+        )}
+      </span>
       {canEdit ? (
         <div className="relative shrink-0">
           <input
