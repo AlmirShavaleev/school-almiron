@@ -302,3 +302,76 @@ describe('01.10: перепроверка очереди сервером (queue
     expect(state.fetches).toHaveLength(0)
   })
 })
+
+describe('§260: баллы по критериям учителя', () => {
+  const CRITERIA = 'Задания 1–3 по 1 баллу; 4 — 2 балла (1 балл — одна ошибка). Перевод в оценку (максимум 5 баллов): 5 → «5», 4 → «4», 3 → «3», 0–2 → «2».'
+  const TABLE = [{ min: 5, max: 5, grade: 5 }, { min: 4, max: 4, grade: 4 }, { min: 3, max: 3, grade: 3 }, { min: 0, max: 2, grade: 2 }]
+
+  /** Ответ модели с баллами; корень — `grade_table` и `max_total`. */
+  function pointsAnswer(root: Record<string, unknown>): unknown {
+    const content = {
+      readable: true,
+      summary: 'Разбор',
+      tasks: [
+        { no: '1', verdict: 'correct', points: 1, max_points: 1, student_answer: '5', expected_answer: '5', note: '' },
+        { no: '2', verdict: 'wrong', points: 0, max_points: 1, student_answer: '7', expected_answer: '7', note: '' },
+        { no: '3', verdict: 'correct', points: '1', max_points: '1', student_answer: '2', expected_answer: '3', note: '' },
+        { no: '4', verdict: 'correct', points: 1, max_points: 2, student_answer: '121', expected_answer: '112', note: 'одна ошибка' },
+      ],
+      confidence: 'high',
+      findings: [],
+      ...root,
+    }
+    return { choices: [{ message: { content: JSON.stringify(content) } }], usage: {} }
+  }
+
+  function withCriteria(): void {
+    // Заглушка не различает рубрики по фильтру `section`: один текстовый
+    // материал уходит и эталоном, и условием, и критериями — для этого теста
+    // важно только, что критерии «дошли».
+    state.tables.topic_material_items = [{ id: 'm-1', title: 'Ответы и критерии', content: CRITERIA, kind: 'text' }]
+  }
+
+  const doneUpdate = () => touched('topic_homework_ai_jobs').filter(c => firstOp(c) === 'update')
+    .map(c => c.ops[0][1] as Record<string, unknown>).find(d => d.status === 'done')!
+
+  it('критерии дошли: промпт просит баллы и таблицу, сумма и оценка — кодом, столбцы §260 в записи', async () => {
+    withCriteria()
+    state.model = { status: 200, body: pointsAnswer({ grade_table: TABLE, max_total: 5 }) }
+    await handler(post({ attempt_id: ATTEMPT_ID }))
+    const prompt = JSON.stringify(state.fetches[0].body)
+    expect(prompt).toContain('grade_table')
+    expect(prompt).toContain('max_points')
+
+    const done = doneUpdate()
+    // №2: ответ совпал, 0 из 1 → поднят до 1; №3: ответ разошёлся, 1 из 1 →
+    // 0; №4: 1 из 2. Итого 1 + 1 + 0 + 1 = 3 из 5 → «3» по таблице.
+    expect(done).toMatchObject({ grading: 'criteria', points_total: 3, points_max: 5, suggested_score: 3, confidence: 'high' })
+    expect(done.grade_table).toEqual([...TABLE].reverse())
+    expect((done.tasks as { no: string; verdict: string; points: number }[]).map(t => [t.no, t.verdict, t.points]))
+      .toEqual([['1', 'correct', 1], ['2', 'correct', 1], ['3', 'wrong', 0], ['4', 'partial', 1]])
+    expect(String(done.summary)).toContain('Система поправила вердикт по заданию 3')
+  })
+
+  it('сверка не сошлась — оценки нет, пометка в разборе, уверенность не выше medium', async () => {
+    withCriteria()
+    state.model = { status: 200, body: pointsAnswer({ grade_table: TABLE, max_total: 6 }) }
+    await handler(post({ attempt_id: ATTEMPT_ID }))
+    const done = doneUpdate()
+    expect(done).toMatchObject({ grading: 'criteria_mismatch', points_total: 3, points_max: 5, suggested_score: null, confidence: 'medium' })
+    expect(String(done.summary)).toContain('Проверьте баллы: критерии прочитаны не полностью (сумма максимумов по заданиям 5, а в критериях максимум 6)')
+  })
+
+  it('без критериев баллы модели не читаются, а запись — та же, что до §260 (без новых столбцов)', async () => {
+    state.model = { status: 200, body: pointsAnswer({ grade_table: TABLE, max_total: 5 }) }
+    await handler(post({ attempt_id: ATTEMPT_ID }))
+    const prompt = JSON.stringify(state.fetches[0].body)
+    expect(prompt).not.toContain('grade_table')
+    const done = doneUpdate()
+    for (const key of ['grading', 'points_total', 'points_max', 'grade_table']) expect(done).not.toHaveProperty(key)
+    expect((done.tasks as object[]).some(t => 'points' in t)).toBe(false)
+    // Прежний подсчёт по вердиктам: верных 2 (№1, №2 после сверки), неверных 2
+    // (№3 и №4 понижены — ответ разошёлся) → 0,5 → «3». Баллы модели не участвуют.
+    expect(done.suggested_score).toBe(3)
+  })
+})

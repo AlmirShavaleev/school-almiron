@@ -60,6 +60,15 @@ import {
   type TaskRow,
 } from './findings.ts'
 import {
+  CRITERIA_JSON_EXAMPLE,
+  CRITERIA_POINTS_RULES,
+  capConfidence,
+  gradeByCriteria,
+  withCriteriaNote,
+  withRoundedNote,
+  type CriteriaGrade,
+} from './points.ts'
+import {
   BENCHMARK_MODEL_TIMEOUT_MS,
   DEFAULT_AI_MODEL,
   PARSE_DEFAULT_MODEL,
@@ -227,7 +236,7 @@ Deno.serve(async (req) => {
       requestBody: messages => chatRequestBody(model, messages),
       logTag: { model, jobId },
     })
-    const { reference, worksheet, skipped, filtered, tasks, droppedFindings, readable, suggestedScore, confidence } = check
+    const { reference, worksheet, skipped, filtered, tasks, droppedFindings, readable, suggestedScore, confidence, criteriaGrade } = check
     const parsed = check.parsed
     const payload = check.payload
 
@@ -264,6 +273,17 @@ Deno.serve(async (req) => {
       // §180. Таблица по заданиям — преподавателю и для сравнения версий.
       tasks,
       dropped_findings: droppedFindings,
+      // §260. Баллы по критериям — только у работы, где они есть. У обычного
+      // ДЗ эти ключи в запись не попадают вовсе: запись та же, что до §260,
+      // и не зависит от того, применена ли уже миграция PENDING_260.
+      ...(criteriaGrade.grading
+        ? {
+          points_total: criteriaGrade.total,
+          points_max: criteriaGrade.max,
+          grade_table: criteriaGrade.gradeTable,
+          grading: criteriaGrade.grading,
+        }
+        : {}),
       reference_state: reference.state,
       reference_chars: reference.text.length || null,
       // §149.1. След в базе, что условие дошло: без него не отличить «модель
@@ -279,7 +299,14 @@ Deno.serve(async (req) => {
             // §189. Понижения вердикта — отдельной строкой сразу после
             // несверенных: преподаватель должен видеть, что балл поправила
             // система, а не модель.
-            withLoweredNote(withUncheckedNote(String(parsed.summary ?? ''), tasks), filtered.lowered),
+            // §260. Расхождение критериев и неокруглённые ответы — следом.
+            withCriteriaNote(
+              withRoundedNote(
+                withLoweredNote(withUncheckedNote(String(parsed.summary ?? ''), tasks), filtered.lowered),
+                filtered.rounded,
+              ),
+              criteriaGrade,
+            ),
             skipped,
           ),
           reference,
@@ -348,6 +375,8 @@ interface CheckResult {
   readable: boolean
   suggestedScore: number | null
   confidence: string | null
+  /** §260. Сумма и оценка по критериям; `grading: null` — баллов по критериям нет. */
+  criteriaGrade: CriteriaGrade
 }
 
 /**
@@ -471,6 +500,11 @@ async function runCheck(
     content.push({ type: 'image_url', image_url: { url: `data:${item.mime};base64,${base64(item.bytes)}` } })
   }
 
+  // §260. Баллы по критериям просим и читаем, только когда критерии ДОШЛИ до
+  // модели. У обычного ДЗ (и при сбое разбора критериев) промпт и подсчёт —
+  // прежние, `computeScore`.
+  const withPoints = criteria.state === 'used' && criteria.text.trim().length > 0
+
   // Шаг 4. Запрос к модели.
   const prompt = buildPrompt({
     title: homework?.title ?? 'Домашнее задание',
@@ -481,6 +515,7 @@ async function runCheck(
     referenceTruncated: reference.truncated,
     criteriaText: criteria.text,
     criteriaTruncated: criteria.truncated,
+    criteriaPoints: withPoints,
     gradeScale,
     pageCount: sent.length,
   })
@@ -522,7 +557,7 @@ async function runCheck(
   // одной задаче из шести» давала 5 из 5, а две ошибки из 16 — 94. Число из
   // ответа модели в базу не идёт (кроме случая, когда таблицы нет вовсе —
   // тогда оно сохраняется с confidence low, и панель его не показывает).
-  const tasksRaw = parseTasks(parsed.tasks)
+  const tasksRaw = parseTasks(parsed.tasks, { points: withPoints })
 
   // Рамки проверяем ДО фильтра по таблице: если первую находку строки
   // отбросить после лимита «одна на задание», строка останется без находки,
@@ -574,6 +609,17 @@ async function runCheck(
     console.log(`tasks: понижено вердиктов ${filtered.lowered.length} —`, { tasks: filtered.lowered, ...opts.logTag })
   }
 
+  // §260. Сумма и оценка по критериям учителя — кодом, со сверкой таблицы.
+  // `grading: null` — баллов по критериям нет, балл прежний (`computeScore`).
+  const criteriaGrade = withPoints
+    ? gradeByCriteria({ tasks, gradeTable: parsed.grade_table, maxTotal: parsed.max_total, scale: gradeScale })
+    : gradeByCriteria({ tasks: [], gradeTable: null, maxTotal: null, scale: gradeScale })
+  if (criteriaGrade.grading) {
+    console.log(`criteria: ${criteriaGrade.grading} ${criteriaGrade.total}/${criteriaGrade.max} → ${criteriaGrade.score}`, {
+      problem: criteriaGrade.problem, ...opts.logTag,
+    })
+  }
+
   const readable = parsed.readable !== false
   const score = computeScore(tasks, gradeScale)
   // Таблицы нет — модель не выполнила формат. Её свободное число сохраняем
@@ -588,15 +634,19 @@ async function runCheck(
   const suggestedScore = partialCheck
     ? null
     : tasks.length > 0
-      ? score.score
+      // §260. С баллами по критериям — их оценка (null при расхождении).
+      ? (criteriaGrade.grading ? criteriaGrade.score : score.score)
       : (readable && modelScore !== null ? Math.max(0, Math.round(modelScore)) : null)
-  const confidence = tasks.length > 0 || !readable
-    ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state, pagesSkipped })
-    : 'low'
+  const confidence = capConfidence(
+    tasks.length > 0 || !readable
+      ? deriveConfidence(parsed.confidence, { tasks, readable, referenceState: reference.state, pagesSkipped })
+      : 'low',
+    criteriaGrade,
+  )
 
   return {
     reference, worksheet, criteria, sent, skipped, payload, parsed, filtered,
-    droppedFindings, tasks, readable, suggestedScore, confidence,
+    droppedFindings, tasks, readable, suggestedScore, confidence, criteriaGrade,
   }
 }
 
@@ -708,6 +758,10 @@ async function handleBenchmark(
         confidence: check.confidence,
         dropped_findings: check.droppedFindings,
         lowered: check.filtered.lowered,
+        // §260. Оценка по критериям — чтобы замер сравнивал и её.
+        grading: check.criteriaGrade.grading,
+        points_total: check.criteriaGrade.total,
+        points_max: check.criteriaGrade.max,
       },
     }
   } catch (err) {
@@ -1256,7 +1310,10 @@ async function parsePdf(
  *  — координаты просим долями страницы и повторяем это дважды, потому что
  *    пиксели — самый частый способ промахнуться мимо строки;
  *  — с v17 (§180) модель отдаёт ТАБЛИЦУ по заданиям, а балл считает код
- *    (`findings.ts`): свободное число модели не следовало из её же разбора.
+ *    (`findings.ts`): свободное число модели не следовало из её же разбора;
+ *  — §260: у работы с критериями учителя в строках ещё и баллы по критериям,
+ *    а в корне — таблица перевода и максимум ИЗ КРИТЕРИЕВ. Сумму и оценку
+ *    считает код со сверкой (`points.ts`); без критериев промпт прежний.
  */
 function buildPrompt(ctx: {
   title: string
@@ -1270,6 +1327,8 @@ function buildPrompt(ctx: {
   /** §240. Ответы и критерии оценивания; пусто — блока нет. */
   criteriaText?: string
   criteriaTruncated?: boolean
+  /** §260. Критерии дошли — просим баллы по заданиям и таблицу перевода. */
+  criteriaPoints?: boolean
   gradeScale: string | null
   pageCount: number
 }): string {
@@ -1320,10 +1379,19 @@ function buildPrompt(ctx: {
     '  "readable": true,',
     '  "summary": "разбор для учителя на русском: что верно, что нет, на что обратить внимание",',
     '  "tasks": [',
-    '    {"no": "3", "verdict": "wrong", "student_answer": "0,82", "expected_answer": "0,78", "note": "потерян знак при переносе"},',
-    '    {"no": "4", "verdict": "correct", "student_answer": "12", "expected_answer": "12", "note": ""}',
-    '  ],',
-    '  "suggested_score": 4,',
+    ...(ctx.criteriaPoints
+      ? [
+        '    {"no": "3", "verdict": "wrong", "points": 0, "max_points": 1, "student_answer": "0,82", "expected_answer": "0,78", "note": "потерян знак при переносе"},',
+        `    ${CRITERIA_JSON_EXAMPLE.task}`,
+        '  ],',
+        `  ${CRITERIA_JSON_EXAMPLE.root}`,
+      ]
+      : [
+        '    {"no": "3", "verdict": "wrong", "student_answer": "0,82", "expected_answer": "0,78", "note": "потерян знак при переносе"},',
+        '    {"no": "4", "verdict": "correct", "student_answer": "12", "expected_answer": "12", "note": ""}',
+        '  ],',
+        '  "suggested_score": 4,',
+      ]),
     '  "confidence": "high",',
     '  "findings": [',
     '    {"task": "3", "page_index": 1, "rect": {"x": 0.12, "y": 0.34, "w": 0.4, "h": 0.06},',
@@ -1337,7 +1405,10 @@ function buildPrompt(ctx: {
     // §180. Балл из таблицы считает код; своё число модель может написать для
     // самопроверки, но в базу оно не идёт. Правило названо в промпте, чтобы
     // модель заполняла таблицу, понимая, во что она превращается.
-    '- БАЛЛ считает система по таблице: (correct + 0,5·partial) / (все задания, кроме unchecked). По стобалльной — в процентах; по пятибалльной — 5 от 90 %, 4 от 70 %, 3 от 50 %, иначе 2. Своё suggested_score напиши для самопроверки — оно будет пересчитано по таблице.',
+    // §260. С критериями балл — сумма баллов по ним, оценка — по их таблице.
+    ...(ctx.criteriaPoints
+      ? CRITERIA_POINTS_RULES
+      : ['- БАЛЛ считает система по таблице: (correct + 0,5·partial) / (все задания, кроме unchecked). По стобалльной — в процентах; по пятибалльной — 5 от 90 %, 4 от 70 %, 3 от 50 %, иначе 2. Своё suggested_score напиши для самопроверки — оно будет пересчитано по таблице.']),
     '- Если ответ ученика совпадает с ожидаемым, вердикт НЕ может быть wrong, и находки об ошибке быть не должно. Никогда не пиши «должно быть X, а не X» или «X вместо X» с одинаковыми значениями — такая находка отбрасывается.',
     // §189. Обратное направление того же правила. В живой таблице стояло
     // «student_answer 12, expected_answer 30, note: ответ неверен: должно быть

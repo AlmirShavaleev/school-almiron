@@ -28,6 +28,11 @@
  *  — работа читалась не целиком (8 страниц из 11), а балл выглядел
  *    полноценным. Балл по двум третям работы для преподавателя хуже, чем
  *    отсутствие балла: он поставит его не глядя. Отсюда `isPartialCheck`.
+ *
+ * §260 (проверочная 10А, 03.10): у работы с критериями учителя строки несут
+ * баллы (`points`/`max_points`), вердикт выводится из них, а сумму и оценку
+ * по таблице перевода считает `points.ts`. Без критериев здесь не меняется
+ * ничего: баллы не читаются, `computeScore` прежний.
  */
 
 export const CATEGORIES = ['comment', 'calc', 'logic', 'format', 'praise'] as const
@@ -43,6 +48,14 @@ export interface TaskRow {
   student_answer: string
   expected_answer: string
   note: string
+  /**
+   * §260. Баллы по критериям учителя — только у проверочной/контрольной, где
+   * критерии прочитаны (`criteria.state === 'used'`). У обычного ДЗ полей нет
+   * вовсе (не `undefined`, а нет ключа): старые строки и старые фикстуры не
+   * меняются ни на байт. `points: null` — задание не сверено, балла нет.
+   */
+  points?: number | null
+  max_points?: number
 }
 
 /** Находка после разбора JSON, ещё без проверки рамки (рамку проверяет `index.ts`). */
@@ -193,6 +206,43 @@ export function compareAnswers(a: unknown, b: unknown): AnswerMatch {
   return x.value === y.value ? 'equal' : 'different'
 }
 
+/** Сколько знаков после запятой у единственного числа ответа; null — числа нет или их несколько. */
+function answerDecimals(raw: unknown): number | null {
+  const s = String(raw ?? '')
+    .replace(/[−–—‒]/g, '-')
+    .replace(/ /g, ' ')
+    .replace(/(\d)\s+(?=\d{3}(?:\D|$))/g, '$1')
+    .replace(/(\d),(?=\d)/g, '$1.')
+  const numbers = s.match(/-?\d+(?:\.\d+)?/g)
+  if (!numbers || numbers.length !== 1) return null
+  const dot = numbers[0].indexOf('.')
+  return dot < 0 ? 0 : numbers[0].length - dot - 1
+}
+
+/**
+ * §260. Ответ ученика точнее эталона и после округления до знаков эталона
+ * совпадает с ним: «3,14 м/с» при «3,1 м/с», «0,667» при «0,67».
+ *
+ * Проверочная 10А 03.10: один и тот же неокруглённый ответ модель у разных
+ * учеников назвала верным, частичным и неверным. Код решает это одинаково
+ * для всех — см. `reconcileTasksDetailed`. Только «точнее эталона»: «3» при
+ * «3,1» — это не неокруглённый ответ, а потерянная цифра. Единицы — по тем же
+ * правилам, что у `compareAnswers`: разные названные единицы — не сравниваем.
+ */
+export function roundsToExpected(student: unknown, expected: unknown): boolean {
+  const x = answerNumber(student)
+  const y = answerNumber(expected)
+  if (!x || !y) return false
+  if (x.unit.includes('%') !== y.unit.includes('%')) return false
+  if (x.unit && y.unit && x.unit !== y.unit) return false
+  const dx = answerDecimals(student)
+  const dy = answerDecimals(expected)
+  if (dx == null || dy == null || dx <= dy) return false
+  const f = 10 ** dy
+  const rounded = Math.round((Math.abs(x.value) + Number.EPSILON) * f) / f * Math.sign(x.value)
+  return Math.abs(rounded - y.value) < 1e-9
+}
+
 // ---------------------------------------------------------------------------
 // Таблица заданий
 // ---------------------------------------------------------------------------
@@ -202,13 +252,65 @@ function str(value: unknown, limit: number): string {
   return String(typeof value === 'object' ? JSON.stringify(value) : value).trim().slice(0, limit)
 }
 
+/** Потолок балла за одно задание: больше — это не балл, а мусор распознавания. */
+const MAX_TASK_POINTS = 100
+
+/**
+ * §260. Число баллов из ответа модели: `2`, `"2"`, `"2,5"`, `"1 балл"`.
+ *
+ * Модель пишет баллы как придётся, а ошибиться здесь дорого — из них
+ * складывается оценка. Поэтому правило узкое: ровно одно неотрицательное
+ * число, после него разве что слово «балл(а/ов)». «2 из 3», «1–2», «−1»,
+ * пустое, `NaN` — `null`: баллов нет, и задание пойдёт как несверенное, а не
+ * как ноль.
+ */
+export function parsePoints(raw: unknown): number | null {
+  let n: number
+  if (typeof raw === 'number') {
+    n = raw
+  } else if (typeof raw === 'string') {
+    const m = raw.trim().toLowerCase().replace(/ /g, ' ')
+      .match(/^\+?(\d+(?:[.,]\d+)?)\s*(?:балл[а-яё]*|б\.?|points?|pts?)?\.?$/u)
+    if (!m) return null
+    n = Number(m[1].replace(',', '.'))
+  } else {
+    return null
+  }
+  if (!Number.isFinite(n) || n < 0 || n > MAX_TASK_POINTS) return null
+  return Math.round(n * 100) / 100
+}
+
+/**
+ * §260. Вердикт строки — из баллов, а не со слов модели: полный балл —
+ * `correct`, ноль — `wrong`, между — `partial`, балла нет — `unchecked`.
+ * Иначе таблица и баллы разойдутся: «верно» при «1 из 2» — ровно то, за что
+ * балл и перестали принимать на веру.
+ */
+export function verdictFromPoints(points: number | null | undefined, max: number): TaskVerdict {
+  if (points == null || !Number.isFinite(points)) return 'unchecked'
+  if (points >= max) return 'correct'
+  if (points <= 0) return 'wrong'
+  return 'partial'
+}
+
 /**
  * Таблица заданий из сырого ответа модели. Кривые строки выбрасываются
  * поштучно; неизвестный вердикт — `unchecked` (не за и не против), а не
  * `wrong`: в сомнении — в пользу ученика. Дубли номеров схлопываются, первая
  * строка побеждает.
+ *
+ * §260. `points: true` — у работы есть критерии с баллами: строка забирает
+ * `points`/`max_points`, и вердикт выводится из них (`verdictFromPoints`).
+ * Без флага баллы модели не читаются вовсе, даже если она их написала: у
+ * обычного ДЗ критериев нет, и баллам взяться неоткуда. Строка без годного
+ * `max_points` остаётся строкой без баллов — сверку «баллы есть не у всех»
+ * делает `gradeByCriteria`.
+ *
+ * Балла нет, а максимум есть: «верно» — полный балл, «неверно» — ноль,
+ * остальное (частично без числа, «не сверено») — без балла, `unchecked`:
+ * сколько поставить за «частично», знает только критерий.
  */
-export function parseTasks(raw: unknown): TaskRow[] {
+export function parseTasks(raw: unknown, opts: { points?: boolean } = {}): TaskRow[] {
   if (!Array.isArray(raw)) return []
   const out: TaskRow[] = []
   const seen = new Set<string>()
@@ -224,13 +326,28 @@ export function parseTasks(raw: unknown): TaskRow[] {
     const verdict: TaskVerdict = (TASK_VERDICTS as readonly string[]).includes(verdictRaw)
       ? verdictRaw as TaskVerdict
       : 'unchecked'
-    out.push({
+    const row: TaskRow = {
       no,
       verdict,
       student_answer: str(r.student_answer, MAX_ANSWER_CHARS),
       expected_answer: str(r.expected_answer, MAX_ANSWER_CHARS),
       note: str(r.note, MAX_NOTE_CHARS),
-    })
+    }
+    if (opts.points) {
+      const max = parsePoints(r.max_points ?? r.max)
+      if (max != null && max > 0) {
+        // Явное «не сверено» сильнее числа рядом: сверить не смогла — значит,
+        // и балл ставить не за что. Вердикта нет вовсе — решают баллы.
+        let points = verdictRaw === 'unchecked' ? null : parsePoints(r.points)
+        if (points == null && verdict === 'correct') points = max
+        if (points == null && verdict === 'wrong') points = 0
+        if (points != null) points = Math.min(points, max)
+        row.points = points
+        row.max_points = max
+        row.verdict = verdictFromPoints(points, max)
+      }
+    }
+    out.push(row)
   }
   return out
 }
@@ -260,6 +377,12 @@ export interface ReconcileResult {
    * преподаватель должен видеть, что это правка системы, а не слово модели.
    */
   lowered: string[]
+  /**
+   * §260. Задания с баллами, где ответ не округлён до знаков эталона, но после
+   * округления совпал, — засчитаны полным баллом. Их называет summary:
+   * если критерии требуют округления, балл снимает преподаватель.
+   */
+  rounded: string[]
 }
 
 /**
@@ -284,7 +407,9 @@ export interface ReconcileResult {
  */
 export function reconcileTasksDetailed(tasks: readonly TaskRow[]): ReconcileResult {
   const lowered: string[] = []
+  const rounded: string[] = []
   const out = tasks.map(t => {
+    if (t.max_points != null) return reconcilePointsRow(t, lowered, rounded)
     const match = compareAnswers(t.student_answer, t.expected_answer)
     if (t.verdict === 'wrong' && match === 'equal') return { ...t, verdict: 'correct' as const }
     if (t.verdict === 'correct' && match === 'different') {
@@ -293,7 +418,46 @@ export function reconcileTasksDetailed(tasks: readonly TaskRow[]): ReconcileResu
     }
     return t
   })
-  return { tasks: out, lowered }
+  return { tasks: out, lowered, rounded }
+}
+
+/**
+ * §260. Сверка строки с баллами по критериям. Правят БАЛЛЫ, вердикт следует
+ * за ними (`verdictFromPoints`) — иначе таблица и сумма разойдутся.
+ *
+ * Решения (и почему):
+ *  — ответ совпал, а балл 0: у задания на 1 балл поднимаем до полного — это
+ *    та же выдумка «X, а не X», что в §180. У задания на 2+ балла НЕ трогаем:
+ *    по критериям «верный ответ без решения — 0 баллов» законен, и решать за
+ *    учителя нельзя;
+ *  — ответ разошёлся, а балл полный: на 1 балл — ноль (частичного там нет); на
+ *    2+ — «не сверено», без балла: сколько снять, знает только критерий, а
+ *    угадывать нельзя. Номер уходит в `lowered`, его называет summary;
+ *  — ответ точнее эталона и после округления совпал («3,14» при «3,1»): это
+ *    не ошибка счёта, засчитываем как совпавший (на 1 балл — полный балл) и
+ *    называем номер в `rounded`. Если критерии требуют округления — балл снимет
+ *    учитель кнопкой «−»; зато у всех учеников одинаково, а не как выпало
+ *    модели.
+ */
+function reconcilePointsRow(t: TaskRow, lowered: string[], rounded: string[]): TaskRow {
+  const max = t.max_points as number
+  const unrounded = roundsToExpected(t.student_answer, t.expected_answer)
+  const match = unrounded ? 'equal' : compareAnswers(t.student_answer, t.expected_answer)
+  if (match === 'equal') {
+    if (t.verdict === 'wrong' && max <= 1) {
+      if (unrounded) rounded.push(t.no)
+      return { ...t, points: max, verdict: 'correct' }
+    }
+    if (t.verdict === 'correct' && unrounded) rounded.push(t.no)
+    return t
+  }
+  if (match === 'different' && t.verdict === 'correct') {
+    lowered.push(t.no)
+    return max <= 1
+      ? { ...t, points: 0, verdict: 'wrong' }
+      : { ...t, points: null, verdict: 'unchecked' }
+  }
+  return t
 }
 
 /** Только строки, без списка понижений — для мест, где список не нужен. */
@@ -459,6 +623,8 @@ export interface FilterResult<T extends FindingDraft = FindingDraft> {
   droppedBy: Record<'contradiction' | 'text' | 'offTable' | 'limit', number>
   /** §189. Задания, где код понизил вердикт `correct`; их называет summary. */
   lowered: string[]
+  /** §260. Неокруглённые ответы, засчитанные полным баллом; их называет summary. */
+  rounded: string[]
 }
 
 /**
@@ -479,7 +645,7 @@ export interface FilterResult<T extends FindingDraft = FindingDraft> {
  * Без таблицы (модель её не вернула) работают только шаги 3, 5, 6.
  */
 export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[], rawTasks: readonly TaskRow[]): FilterResult<T> {
-  const { tasks, lowered } = reconcileTasksDetailed(rawTasks)
+  const { tasks, lowered, rounded } = reconcileTasksDetailed(rawTasks)
   const byNo = new Map<string, TaskRow>()
   for (const t of tasks) byNo.set(t.no.toLowerCase(), t)
   const hasTable = tasks.length > 0
@@ -515,7 +681,11 @@ export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[]
     // calc / logic / comment
     if (row) {
       const equal = compareAnswers(row.student_answer, row.expected_answer) === 'equal'
-      if (equal && f.category !== 'comment' && (row.verdict === 'correct' || row.verdict === 'wrong' || f.category === 'calc')) {
+      // §260. Ноль по критериям при верном ответе на задании в 2+ балла законен
+      // («ответ без решения — 0»): `logic` там объясняет ноль, его оставляем,
+      // как у `partial`.
+      const criteriaZero = row.max_points != null && row.max_points > 1 && row.verdict === 'wrong'
+      if (equal && f.category !== 'comment' && (row.verdict === 'correct' || (row.verdict === 'wrong' && !criteriaZero) || f.category === 'calc')) {
         droppedBy.contradiction += 1
         continue
       }
@@ -547,7 +717,7 @@ export function filterFindings<T extends FindingDraft>(rawFindings: readonly T[]
   droppedBy.limit += ordered.length - capped.length
 
   const dropped = rawFindings.length - capped.length
-  return { kept: capped, tasks, dropped, droppedBy, lowered }
+  return { kept: capped, tasks, dropped, droppedBy, lowered, rounded }
 }
 
 // ---------------------------------------------------------------------------
