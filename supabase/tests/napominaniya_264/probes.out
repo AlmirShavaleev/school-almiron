@@ -1,0 +1,331 @@
+slice 254: ok
+slice 255: ok
+slice 256: ok
+slice 257: ok
+slice 261: ok
+slice 264: ok
+migration 217: ok
+migration 254: ok
+migrations 255: ok
+migrations 256: ok
+migrations 257: ok
+data 255: ok
+data 256: ok
+data 257: ok
+data 261: ok
+§261 (4 части): ok
+data 264: ok
+PENDING_264 (1): ok
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:35: NOTICE:  relation "course_reminder_settings" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_hw_due_tomorrow" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_hw_overdue" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_check_soon" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_no_photo" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_streak" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_mock_tomorrow" of relation "notification_prefs" already exists, skipping
+PENDING_264 (2, повтор): ok
+data after 264: ok
+== 1. Права на функции: кандидаты — только service_role; сводка — authenticated, не anon
+                           fn                            | anon | auth | service | ok 
+---------------------------------------------------------+------+------+---------+----
+ public.student_reminder_candidates(timestamptz, text[]) | f    | f    | t       | t
+ public.course_summary_for_staff(uuid)                   | f    | t    | f       | t
+
+== 2. Кандидаты: authenticated (учитель T, ученик) и anon — отказ; service_role — ответ
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:28: NOTICE:  OK: учитель — permission denied for function student_reminder_candidates (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:33: NOTICE:  OK: anon — permission denied for function student_reminder_candidates (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+ service_role_candidates 
+-------------------------
+                      30
+
+ROLLBACK
+== 3. Кто попадает в кандидаты (D 19:00 МСК, все виды): нет Telegram (Ильдар), подключение выключено (Марат),
+==    общий выключатель off (Алсу) — нет совсем; закрытая тема и неопубликованное ДЗ — нет; done/course_on/student_on — флаги
+      kind       |  student  |          title           |    когда    | done  | draft | photo | streak | solved_today | course_on | student_on 
+-----------------+-----------+--------------------------+-------------+-------+-------+-------+--------+--------------+-----------+------------
+ check_soon      | Дина Ш.   | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ check_soon      | Камиль Ю. | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ check_soon      | Лейла А.  | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ check_soon      | Рустам Г. | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ check_soon      | Тимур С.  | Движение по окружности   | 06.10 12:00 | false | false | false | 0      | false        | true      | true
+ hw_due_tomorrow | Дина Ш.   | Динамика. Законы Ньютона | 2026-10-06  | true  | false | false | 0      | false        | true      | true
+ hw_due_tomorrow | Зарина К. | Логарифмы                | 2026-10-06  | false | false | false | 0      | false        | false     | true
+ hw_due_tomorrow | Камиль Ю. | Динамика. Законы Ньютона | 2026-10-06  | false | false | false | 0      | false        | true      | true
+ hw_due_tomorrow | Лейла А.  | Динамика. Законы Ньютона | 2026-10-06  | false | false | false | 0      | false        | true      | false
+ hw_due_tomorrow | Рустам Г. | Динамика. Законы Ньютона | 2026-10-06  | false | false | false | 0      | false        | true      | true
+ hw_due_tomorrow | Рустам Г. | Логарифмы                | 2026-10-06  | false | false | false | 0      | false        | false     | true
+ hw_due_tomorrow | Тимур С.  | Динамика. Законы Ньютона | 2026-10-06  | false | false | false | 0      | false        | true      | true
+ hw_overdue      | Дина Ш.   | Силы в природе           | 2026-10-04  | true  | false | false | 0      | false        | true      | true
+ hw_overdue      | Камиль Ю. | Силы в природе           | 2026-10-04  | false | false | false | 0      | false        | true      | true
+ hw_overdue      | Лейла А.  | Силы в природе           | 2026-10-04  | false | false | false | 0      | false        | true      | true
+ hw_overdue      | Рустам Г. | Силы в природе           | 2026-10-04  | false | false | false | 0      | false        | true      | true
+ hw_overdue      | Тимур С.  | Силы в природе           | 2026-10-04  | false | false | false | 0      | false        | true      | true
+ mock_tomorrow   | Дина Ш.   | Пробник №2               | 06.10 10:00 | false | false | false | 0      | false        | true      | true
+ mock_tomorrow   | Камиль Ю. | Пробник №2               | 06.10 10:00 | false | false | false | 0      | false        | true      | true
+ mock_tomorrow   | Лейла А.  | Пробник №2               | 06.10 10:00 | false | false | false | 0      | false        | true      | true
+ mock_tomorrow   | Рустам Г. | Пробник №2               | 06.10 10:00 | false | false | false | 0      | false        | true      | true
+ mock_tomorrow   | Тимур С.  | Пробник №2               | 06.10 10:00 | false | false | false | 0      | false        | true      | true
+ no_photo        | Дина Ш.   | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ no_photo        | Камиль Ю. | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ no_photo        | Лейла А.  | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ no_photo        | Рустам Г. | Движение по окружности   | 06.10 08:45 | false | false | false | 0      | false        | true      | true
+ no_photo        | Тимур С.  | Движение по окружности   | 06.10 12:00 | false | false | false | 0      | false        | true      | true
+ streak          | Дина Ш.   |                          |             | false | false | false | 2      | false        | true      | true
+ streak          | Камиль Ю. |                          |             | false | false | false | 5      | true         | true      | true
+ streak          | Рустам Г. |                          |             | false | false | false | 3      | false        | true      | true
+
+== 4. «Нет фото» (D 14:50 МСК): контрольная «Кинематика» 14:15–15:00 — черновик без фото (Рустам) / с фото (Дина) / сдал (Камиль) / ничего (остальные)
+  student  |   title    | closes | done  | draft | photo | opened 
+-----------+------------+--------+-------+-------+-------+--------
+ Дина Ш.   | Кинематика | 15:00  | false | true  | true  | false
+ Камиль Ю. | Кинематика | 15:00  | true  | false | false | false
+ Лейла А.  | Кинематика | 15:00  | false | false | false | false
+ Рустам Г. | Кинематика | 15:00  | false | true  | false | false
+ Тимур С.  | Кинематика | 15:00  | false | false | false | false
+
+== 5. Личное окно §240: проверочная «Движение по окружности» у Тимура — 12:00, у остальных — 08:45 (D+1)
+  student  |    opens    | closes |                    event_key                    
+-----------+-------------+--------+-------------------------------------------------
+ Дина Ш.   | 06.10 08:45 | 09:30  | 71000000-0000-4000-8264-000000000011:1791265500
+ Камиль Ю. | 06.10 08:45 | 09:30  | 71000000-0000-4000-8264-000000000011:1791265500
+ Лейла А.  | 06.10 08:45 | 09:30  | 71000000-0000-4000-8264-000000000011:1791265500
+ Рустам Г. | 06.10 08:45 | 09:30  | 71000000-0000-4000-8264-000000000011:1791265500
+ Тимур С.  | 06.10 12:00 | 12:45  | 71000000-0000-4000-8264-000000000011:1791277200
+
+== 6. Серия считается только когда её спрашивают (p_kinds без streak — строк серии нет)
+ with_streak | without_streak 
+-------------+----------------
+           3 |              0
+
+== 7. Настройки курса (RLS через course_is_staff): учитель T пишет и читает; чужой учитель O, ученик — нет; anon — нет прав
+BEGIN
+SET
+INSERT 0 1
+              course_id               | streak | mock_tomorrow | by_t 
+--------------------------------------+--------+---------------+------
+ 30000000-0000-4000-8264-000000000001 | f      | t             | t
+
+ROLLBACK
+BEGIN
+SET
+ other_teacher_sees 
+--------------------
+                  0
+
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:89: NOTICE:  OK: чужой учитель — new row violates row-level security policy for table "course_reminder_settings" (42501)
+DO
+ other_teacher_updated 
+-----------------------
+                     0
+
+ROLLBACK
+BEGIN
+SET
+ student_sees 
+--------------
+            0
+
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:101: NOTICE:  OK: ученик — new row violates row-level security policy for table "course_reminder_settings" (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:106: NOTICE:  OK: anon — permission denied for table course_reminder_settings (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:112: NOTICE:  OK: удаления нет — permission denied for table course_reminder_settings (42501)
+DO
+ROLLBACK
+== 8. Ученик выключает вид у себя (своя строка notification_prefs) — и кандидат становится student_on = false
+BEGIN
+SET
+ own_updated 
+-------------
+           1
+
+ other_updated 
+---------------
+             0
+
+RESET
+SET
+  kind  | student_on 
+--------+------------
+ streak | false
+
+ROLLBACK
+== 9. Задание pg_cron: одно, раз в 5 минут, секрет — из vault (значения в тексте нет); повтор PENDING не плодит
+      jobname      |  schedule   | url_ok | secret_from_vault | jobs 
+-------------------+-------------+--------+-------------------+------
+ student-reminders | */5 * * * * | t      | t                 |    1
+
+== 10. Сводка класса: anon — нет execute; без входа, чужой учитель O, ученик — 42501; нет курса — 22023
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:138: NOTICE:  OK: anon — permission denied for function course_summary_for_staff (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:144: NOTICE:  OK: без входа — course_summary_for_staff: нужен вход (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:150: NOTICE:  OK: чужой учитель — ACCESS_DENIED: только персонал курса (42501)
+DO
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:152: NOTICE:  OK: без курса — course_summary_for_staff: нужен курс (22023)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:158: NOTICE:  OK: ученик A — ACCESS_DENIED: только персонал курса (42501)
+DO
+ROLLBACK
+== 11. Учитель T: сводка физики 11А (A + 6 одноклассников); админ M — тоже; ученик A — проверочные, ДЗ, каталог, серия
+BEGIN
+SET
+     course     | forecast | students | titles 
+----------------+----------+----------+--------
+ Физика ЕГЭ 11А | true     |        7 |      1
+
+      name      | evidence | numbers |   assessments    | homeworks |                catalog                | streak | last_solved | last_seen  
+----------------+----------+---------+------------------+-----------+---------------------------------------+--------+-------------+------------
+ Одноклассник 1 |          |       1 | 3 · 5 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
+ Одноклассник 2 |          |       1 | 4 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
+ Одноклассник 3 |          |       1 | 5 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
+
+ROLLBACK
+BEGIN
+SET
+ admin_students 
+----------------
+              7
+
+ROLLBACK
+== 12. Курс без ЕГЭ-прогноза (ОГЭ) — forecast null у всех; курс без учеников (10В — один пустой)
+BEGIN
+SET
+ oge_forecast | with_forecast 
+--------------+---------------
+ false        |             0
+
+ students_10v | assessments |                catalog                
+--------------+-------------+---------------------------------------
+            1 | []          | {"days": 7, "tried": 0, "correct": 0}
+
+ROLLBACK
+== 13. Время: класс М11А (26 учеников: тяжёлый H + 24 одноклассника по 150 проверок каталога, 20 ДЗ, 8 проверочных) — 3 замера
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:207: NOTICE:  М11А: учеников 26, ответ 776 КБ, время {772,802,804} мс
+DO
+ROLLBACK
+== 14. Время кандидатов напоминаний (service_role, все виды, D 18:30)
+BEGIN
+SET
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:220: NOTICE:  кандидатов 30, журнал 0, время 10 мс
+DO
+ROLLBACK
+== 15. Тики крона: кому, когда, лимит 2 в день с приоритетом и бронью, тишина, дедупликация, выключенные виды
+
+── 1. контрольная «Кинематика» кончается в 15:00 (10-05 14:50 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, mock_tomorrow
+  + Рустам Г.: no_photo «Кинематика» → 10-05 14:50
+      «До конца контрольной 10 минут, а фото ещё нет. Без фото работа не уйдёт.» [Загрузить фото → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000012]
+  итого: поставлено 1, не подходят 14, ещё не время 17
+
+── 2. «срок ДЗ прошёл» — 17:00 (10-05 17:00 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, mock_tomorrow
+  + Лейла А.: hw_overdue «Силы в природе» → 10-05 17:00
+      «Вчера был срок ДЗ «Силы в природе», а работа не сдана. Сдать можно и сейчас.» [Открыть ДЗ → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000002]
+  · Рустам Г.: hw_overdue — reserved
+  · Тимур С.: hw_overdue — reserved
+  · Камиль Ю.: hw_overdue — reserved
+  итого: поставлено 1, не подходят 10, ещё не время 13
+
+── 3. серия — 18:30 (10-05 18:30 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, streak, mock_tomorrow
+  · Лейла А.: hw_overdue — duplicate
+  · Рустам Г.: hw_overdue — reserved; streak — reserved
+  · Тимур С.: hw_overdue — reserved
+  · Камиль Ю.: hw_overdue — reserved
+  итого: поставлено 0, не подходят 12, ещё не время 13
+
+── 4. за 5 минут до 19:00 — ставится со scheduled_for = 19:00 (10-05 18:55 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, streak, mock_tomorrow
+  + Рустам Г.: mock_tomorrow «Пробник №2» → 10-05 19:00
+      «Завтра пробник «Пробник №2», 10:00–13:55. Нужны черновик, ручка и телефон для фото второй части.» [Открыть пробник → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001?mock=94100000-0000-4000-8264-000000000001]
+  + Дина Ш.: mock_tomorrow «Пробник №2» → 10-05 19:00
+      «Завтра пробник «Пробник №2», 10:00–13:55. Нужны черновик, ручка и телефон для фото второй части.» [Открыть пробник → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001?mock=94100000-0000-4000-8264-000000000001]
+  + Лейла А.: mock_tomorrow «Пробник №2» → 10-05 19:00
+      «Завтра пробник «Пробник №2», 10:00–13:55. Нужны черновик, ручка и телефон для фото второй части.» [Открыть пробник → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001?mock=94100000-0000-4000-8264-000000000001]
+  + Тимур С.: mock_tomorrow «Пробник №2» → 10-05 19:00
+      «Завтра пробник «Пробник №2», 10:00–13:55. Нужны черновик, ручка и телефон для фото второй части.» [Открыть пробник → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001?mock=94100000-0000-4000-8264-000000000001]
+  + Тимур С.: hw_due_tomorrow «Динамика. Законы Ньютона» → 10-05 19:00
+      «Завтра срок ДЗ «Динамика. Законы Ньютона». Ещё не сдано.» [Открыть ДЗ → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000001]
+  + Камиль Ю.: mock_tomorrow «Пробник №2» → 10-05 19:00
+      «Завтра пробник «Пробник №2», 10:00–13:55. Нужны черновик, ручка и телефон для фото второй части.» [Открыть пробник → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001?mock=94100000-0000-4000-8264-000000000001]
+  + Камиль Ю.: hw_due_tomorrow «Динамика. Законы Ньютона» → 10-05 19:00
+      «Завтра срок ДЗ «Динамика. Законы Ньютона». Ещё не сдано.» [Открыть ДЗ → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000001]
+  · Лейла А.: hw_overdue — duplicate
+  · Рустам Г.: hw_due_tomorrow — daily_limit; hw_overdue — daily_limit; streak — daily_limit
+  · Тимур С.: hw_overdue — daily_limit
+  · Камиль Ю.: hw_overdue — daily_limit
+  итого: поставлено 7, не подходят 12, ещё не время 5
+
+── 5. следующий тик — повторов нет (дедупликация), лимит (10-05 19:00 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, streak, mock_tomorrow
+  · Рустам Г.: mock_tomorrow — duplicate; hw_due_tomorrow — daily_limit; hw_overdue — daily_limit; streak — daily_limit
+  · Дина Ш.: mock_tomorrow — duplicate
+  · Лейла А.: hw_overdue — duplicate; mock_tomorrow — duplicate
+  · Тимур С.: hw_due_tomorrow — duplicate; mock_tomorrow — duplicate; hw_overdue — daily_limit
+  · Камиль Ю.: hw_due_tomorrow — duplicate; mock_tomorrow — duplicate; hw_overdue — daily_limit
+  итого: поставлено 0, не подходят 12, ещё не время 5
+
+── 6. тишина (10-05 22:30 МСК) · виды: — (тишина, база не спрашивается)
+
+── 7. 07:50 — ещё тишина и через 5 минут тоже (10-06 07:50 МСК) · виды: — (тишина, база не спрашивается)
+
+── 8. 07:55 — проверочная в 08:45: момент 07:45 в тишине → 08:00 (10-06 07:55 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, mock_tomorrow
+  + Рустам Г.: check_soon «Движение по окружности» → 10-06 08:00
+      «Через 45 минут проверочная «Движение по окружности», 08:45–09:30. Возьми листы и заряженный телефон.» [Открыть работу → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000011]
+  + Дина Ш.: check_soon «Движение по окружности» → 10-06 08:00
+      «Через 45 минут проверочная «Движение по окружности», 08:45–09:30. Возьми листы и заряженный телефон.» [Открыть работу → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000011]
+  + Лейла А.: check_soon «Движение по окружности» → 10-06 08:00
+      «Через 45 минут проверочная «Движение по окружности», 08:45–09:30. Возьми листы и заряженный телефон.» [Открыть работу → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000011]
+  + Камиль Ю.: check_soon «Движение по окружности» → 10-06 08:00
+      «Через 45 минут проверочная «Движение по окружности», 08:45–09:30. Возьми листы и заряженный телефон.» [Открыть работу → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000011]
+  итого: поставлено 4, не подходят 5, ещё не время 1
+
+── 9. 08:00 — повторов нет (10-06 08:00 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, mock_tomorrow
+  · Рустам Г.: check_soon — duplicate
+  · Дина Ш.: check_soon — duplicate
+  · Лейла А.: check_soon — duplicate
+  · Камиль Ю.: check_soon — duplicate
+  итого: поставлено 0, не подходят 5, ещё не время 1
+
+── 10. 10:55 — личное окно Тимура (12:00) → 11:00 (10-06 10:55 МСК) · виды: hw_due_tomorrow, hw_overdue, check_soon, no_photo, mock_tomorrow
+  + Тимур С.: check_soon «Движение по окружности» → 10-06 11:00
+      «Через час проверочная «Движение по окружности», 12:00–12:45. Возьми листы и заряженный телефон.» [Открыть работу → https://alminion.ru/my-course/40000000-0000-4000-8264-000000000001/topic/61000000-0000-4000-8264-000000000011]
+  итого: поставлено 1, не подходят 1, ещё не время 0
+
+== 16. Журнал очереди после тиков: на каждого ученика и день — не больше 2
+Дина Ш. 05.10: 1
+Дина Ш. 06.10: 1
+Камиль Ю. 05.10: 2
+Камиль Ю. 06.10: 1
+Лейла А. 05.10: 2
+Лейла А. 06.10: 1
+Рустам Г. 05.10: 2
+Рустам Г. 06.10: 1
+Тимур С. 05.10: 2
+Тимур С. 06.10: 1
+больше 2 в день: 0

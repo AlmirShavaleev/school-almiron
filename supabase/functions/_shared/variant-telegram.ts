@@ -455,6 +455,11 @@ export function isTelegramPreferenceEnabled(
     // ДЗ» («Если ДЗ не сдано в срок»), она ровно про это.
     case 'topic_homework_reminder':
       return prefs.overdue ?? true
+    // §264. Автоматические напоминания ученику: общий выключатель Telegram
+    // выше; выключатели по видам (notification_prefs.remind_*) проверяет
+    // очередь отдельно — studentReminderAllowedByPrefs в _shared/student-reminders.ts.
+    case 'student_reminder':
+      return true
     case 'lesson_reminder':
       return prefs.lesson ?? true
     case 'homework_reviewed':

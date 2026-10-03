@@ -14,6 +14,14 @@ import {
   isTelegramPreferenceEnabled,
 } from '../_shared/variant-telegram.ts'
 import { buildHomeworkDigestTelegramMessage } from '../_shared/homework-digest.ts'
+import {
+  REMINDER_KINDS,
+  STUDENT_REMINDER_EVENT,
+  buildStudentReminderTelegramMessage,
+  isQuietMsk,
+  isReminderStale,
+  studentReminderAllowedByPrefs,
+} from '../_shared/student-reminders.ts'
 
 const TG_API    = 'https://api.telegram.org'
 const MAX_RETRY = 3
@@ -364,6 +372,14 @@ function buildMessage(item: QueueItem, appUrl: string) {
     case 'topic_homework_reminder':
       return buildHomeworkReminderTelegramMessage(p, appUrl)
 
+    // §264. Автоматические напоминания ученику (ставит edge-функция
+    // student-reminders по крону). Текст — без эмодзи, по макету §264;
+    // «через сколько» считается от момента отправки. Тексты и тест —
+    // `_shared/student-reminders.ts`. Метка — строкой, а не константой: метки
+    // case вычисляются по порядку, и константа здесь — лишняя зависимость.
+    case 'student_reminder':
+      return buildStudentReminderTelegramMessage(p, appUrl)
+
     default:
       return {
         text: `📬 Новое уведомление: ${esc(p.title ?? item.event_type)}`,
@@ -433,13 +449,26 @@ Deno.serve(async (req: Request) => {
       }
 
       // Проверяем настройки уведомлений
+      // §264: у напоминаний ученика — свои выключатели по видам (remind_*).
+      const isReminder = item.event_type === STUDENT_REMINDER_EVENT
+      const prefCols = 'telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments, overdue' +
+        (isReminder ? ', ' + REMINDER_KINDS.map(k => k.prefColumn).join(', ') : '')
       const { data: prefs } = await supabase
         .from('notification_prefs')
-        .select('telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments, overdue')
+        .select(prefCols)
         .eq('user_id', item.profile_id)
         .maybeSingle()
 
-      const prefEnabled = isTelegramPreferenceEnabled(item.event_type, prefs)
+      // Напоминание ученика гасится, если ученик выключил вид, если очередь
+      // взяла его в тишину (22:00–08:00 МСК) или слишком поздно (проверочная
+      // уже началась, окно уже закрылось).
+      const now = new Date()
+      const prefEnabled = isTelegramPreferenceEnabled(item.event_type, prefs) &&
+        (!isReminder || (
+          studentReminderAllowedByPrefs(item.payload?.kind, prefs as Record<string, unknown> | null) &&
+          !isQuietMsk(now) &&
+          !isReminderStale(item.payload ?? {}, now)
+        ))
 
       if (!prefEnabled) {
         await supabase
