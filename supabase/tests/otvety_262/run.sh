@@ -28,8 +28,8 @@ $Q -f $T/glavnaya_254/00_slice_254.sql && echo "slice 254: ok" \
  && $Q -f $T/prognoz_255/10_data_255.sql && echo "data 255: ok" \
  && $Q -f $T/katalog_prognoz_256/10_data_256.sql && echo "data 256: ok" \
  && $Q -f $S/10_data_262.sql && echo "data 262: ok" \
- && $Q -1 -f $R/PENDING_262a.sql && echo "PENDING_262a (1): ok" \
- && $Q -1 -f $R/PENDING_262a.sql && echo "PENDING_262a (2, повтор): ok" \
+ && $Q -1 -f $R/20261003155843_catalog_answers_server_part_a_functions.sql && echo "PENDING_262a (1): ok" \
+ && $Q -1 -f $R/20261003155843_catalog_answers_server_part_a_functions.sql && echo "PENDING_262a (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe262 -f $S/20_probes_a.sql 2>&1 \
  && $Q -1 -f $R/PENDING_262b.sql && echo "PENDING_262b (1): ok" \
  && $Q -1 -f $R/PENDING_262b.sql && echo "PENDING_262b (2, повтор): ok" \

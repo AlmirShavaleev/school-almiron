@@ -22763,7 +22763,7 @@ ACTION-FAIL. `npm run build`, `npx tsc -b` = 0.
 отметки раскрытия).
 
 **Что сделано.**
-* `PENDING_262a.sql` (только добавление): `catalog_answer_reasons(uid, ids)` — ПРАВИЛО одним местом (внутренняя, никому
+* `20261003155843_catalog_answers_server_part_a_functions.sql` (только добавление): `catalog_answer_reasons(uid, ids)` — ПРАВИЛО одним местом (внутренняя, никому
   не исполнима); `catalog_task_texts(ids)` — тексты пачкой до 300 (персоналу всё, ученику по правилу, `allowed`/`reason`,
   флаги `has_plan`/`has_criteria`); `catalog_task_text(id)` — то же по одной; `catalog_reveal_answers(ids)` — раскрытие
   пачкой (та же отметка, что `catalog_reveal_answer` §256) + тексты.
