@@ -150,7 +150,7 @@ beforeEach(() => {
 describe('Вкладки курса (§250)', () => {
   it('«Курс» — первая; «Программа курса» теперь «Сроки и статистика»; без ?tab= открыт «Курс»', async () => {
     renderAt('/course-program?courseId=c1')
-    expect(tabNames()).toEqual(['Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки'])
+    expect(tabNames()).toEqual(['Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Сводка', 'Ученики', 'Настройки'])
     expect(screen.getByRole('tab', { name: 'Курс' })).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByTestId('kurs-sections')).toBeInTheDocument()
   })

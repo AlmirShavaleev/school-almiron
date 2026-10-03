@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { disconnectTelegram, requestTelegramLink, sendTelegramTest, startCommandFor } from '@/lib/telegramLinkApi'
 import { TelegramLinkWaiting } from '@/components/shared/TelegramLinkWaiting'
+import { StudentReminderPrefs } from '@/components/student/StudentReminderPrefs'
 import { ROLE_LABELS } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -306,6 +307,9 @@ function NotificationsTab({ profileId, userSession }: { profileId: string; userS
           ))}
         </div>
       </Card>
+
+      {/* §264. Напоминания ученику в Telegram — выключить ненужные виды у себя. */}
+      {userSession?.role === 'student' && <StudentReminderPrefs profileId={profileId} telegramOn={prefs.telegram} />}
 
       <TelegramConnectionBlock
         profileId={profileId}

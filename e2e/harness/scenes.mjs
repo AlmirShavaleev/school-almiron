@@ -1589,6 +1589,22 @@ export const scenes = [
     ]
   }),
 
+  // §264. Сводка класса (вкладка курса «Сводка», курс §250 «Математика ЕГЭ — 11А», 17 выдуманных учеников) и
+  // напоминания в Telegram: у учителя — вкладка «Настройки» курса (раздел «Напоминания в Telegram»), у ученика —
+  // «Настройки» → «Уведомления». В базу сцены не пишут, кроме d264-summary-sorted (сортировка — только экран).
+  //   node e2e/harness/tour.mjs d264 1280 ; node e2e/harness/tour.mjs d264 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const base = '/course-program?courseId=d000000-0000-4000-8000-000000002500'
+    const toRem = { eval: "(() => { document.querySelector('[data-testid=\"course-reminder-settings\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90) })()" }
+    return [
+      { persona: 'o264', name: 'd264-summary', url: `${base}&tab=summary`, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o264', name: 'd264-summary-sorted', url: `${base}&tab=summary`, width, height, full: false, actions: [{ wait: 2500 }, { clickSel: '[data-testid="summary-sort-forecast"]' }, { wait: 400 }] },
+      { persona: 'o264', name: 'd264-summary-sagged', url: `${base}&tab=summary`, width, height, full: false, actions: [{ wait: 2500 }, { clickSel: '[data-testid="summary-chip-sagged"]' }, { wait: 400 }] },
+      { persona: 'o264', name: 'd264-teacher-reminders', url: `${base}&tab=settings`, width, height, full: false, actions: [{ wait: 2500 }, toRem, { wait: 300 }] },
+      { persona: 's264', name: 'd264-student-reminders', url: '/settings', width, height, full: false, actions: [{ wait: 1200 }, { clickSel: 'button:has-text("Уведомления")' }, { wait: 1200 }, { eval: "(() => { document.querySelector('[data-testid=\"student-reminder-prefs\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80) })()" }, { wait: 300 }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

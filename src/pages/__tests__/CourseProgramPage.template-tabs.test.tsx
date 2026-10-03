@@ -101,7 +101,7 @@ describe('Каркас курса без ученических вкладок (
   it('в обычном курсе все вкладки на месте', () => {
     renderAt('/course-program?courseId=plain')
     expect(tabNames()).toEqual([
-      'Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Ученики', 'Настройки',
+      'Курс', 'Сроки и статистика', 'Материалы', 'Домашние задания', 'Проверочные и контрольные', 'Сводка', 'Ученики', 'Настройки',
     ])
     expect(screen.queryByTestId('template-classes-row')).not.toBeInTheDocument()
   })
@@ -130,6 +130,12 @@ describe('Каркас курса без ученических вкладок (
     renderAt('/course-program?courseId=tpl&tab=students')
     expect(screen.getByRole('tab', { name: 'Сроки и статистика' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByTestId('students-section')).not.toBeInTheDocument()
+  })
+
+  it('§264: ?tab=summary на каркасе открывает «Сроки и статистику» — сводки класса у каркаса нет', () => {
+    renderAt('/course-program?courseId=tpl&tab=summary')
+    expect(screen.getByRole('tab', { name: 'Сроки и статистика' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('course-summary')).not.toBeInTheDocument()
   })
 
   it('?tab=students в обычном курсе по-прежнему открывает учеников', () => {

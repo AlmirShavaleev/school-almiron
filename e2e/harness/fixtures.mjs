@@ -143,6 +143,10 @@ export const personas = {
   ...Object.fromEntries(['s263', 's263var'].map(k => [
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
+  // §264: владелец-учитель — вкладки курса «Сводка» и «Настройки» с напоминаниями (курс §250, фикстуры
+  // `apply264`); ученик — «Настройки» → «Уведомления» с напоминаниями в Telegram (`s264`, Telegram подключён).
+  o264: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  s264: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1925,6 +1929,8 @@ export function baseFixtures(persona) {
   if (persona === 'o259') { apply250(fx); apply259(fx) }
   if (persona === 'o260') apply260(fx)
   if (persona === 'o261') apply261(fx)
+  if (persona === 'o264') { apply250(fx); apply264(fx) }
+  if (persona === 's264') apply264student(fx)
   apply262(fx, persona)
   if (persona.startsWith('o263') || persona.startsWith('s263')) apply263(fx, persona)
   return fx
@@ -3953,4 +3959,99 @@ function apply263(fx, persona) {
       group: { id: IDS.group, name: groups[0].name, type: 'group', course: { title: course.title, subject: 'physics', exam_type: 'ege' }, teacher: { profiles: { full_name: NAMES[4] } } },
       assigned_by_profile: { full_name: NAMES[4] } },
   ]
+}
+
+// ── §264: сводка класса и напоминания в Telegram ────────────────────────────
+// Всё выдумано (числа — как в макете §264, Г: 17 учеников, прогноз ср. около 54, ДЗ вовремя около 80 %,
+// трое «просели»). Ответ `course_summary_for_staff` — в той же форме, что у базы: свидетельства прогноза
+// компактными массивами [номера, источник, доля верного, когда, заданий в КИМ], зоны номеров n/zone/share.
+// Прогноз считает клиент той же моделью §255 — числа в шапке и колонке выходят из этих свидетельств.
+const NAMES264 = [
+  'Шарипов К.', 'Газизов И.', 'Мурин А.', 'Аминов А.', 'Хайрутдинов Ю.', 'Валиева Д.', 'Сафин Р.', 'Ибрагимова Л.',
+  'Каримов Т.', 'Нуриева А.', 'Латыпов Э.', 'Зарипова Г.', 'Хасанов Б.', 'Миннуллина Р.', 'Фаттахов Н.',
+  'Абдуллина-Северская Виктория', 'Гарипов С.',
+]
+function summary264() {
+  const now = Date.now()
+  const at = (d, h = 0) => new Date(now - d * 864e5 - h * 36e5).toISOString()
+  const day = (d) => new Date(now - d * 864e5 + 3 * 36e5).toISOString().slice(0, 10)
+  // сила ученика 0..1, «просел» (свежие ошибки), мало данных, дней без решений
+  const plan = [
+    [0.93, 0, 0, 0], [0.82, 0, 0, 0], [0.6, 1, 0, 0], [0.5, 0, 1, 12], [0.55, 0, 0, 1], [0.7, 0, 0, 0], [0.62, 0, 0, 2],
+    [0.45, 1, 0, 0], [0.75, 0, 0, 0], [0.58, 0, 0, 3], [0.4, 0, 0, 9], [0.66, 0, 0, 0], [0.52, 0, 0, 1], [0.8, 0, 0, 0],
+    [0.35, 0, 1, 4], [0.72, 0, 0, 0], [0.48, 0, 0, 2],
+  ]
+  const students = NAMES264.map((name, i) => {
+    const [q, dropped, few, idle] = plan[i]
+    const gone = idle >= 7
+    const ev = []
+    const nums = few ? [1, 2] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    for (const n of nums) {
+      const hard = (n * 7 + i) % 5 === 0 ? 0.25 : 0
+      for (let k = 0; k < 4; k++) {
+        const ok = ((n * 13 + k * 7 + i * 3) % 100) / 100 < q + 0.12 - hard
+        ev.push([[n], k % 2 ? 'catalog' : 'hw', ok ? 1 : 0, at(8 + ((n * 3 + k * 5 + i) % 50)), null])
+      }
+      if (dropped) for (let k = 0; k < 3; k++) ev.push([[n], 'hw', 0, at(1 + k % 3), null])
+      else if (!few && !gone) ev.push([[n], 'catalog', (n + i) % 4 ? 1 : 0, at(1 + (n % 5)), null])
+    }
+    const numbers = few ? [] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => {
+      const share = Math.max(0.05, Math.min(0.98, q - ((n * 7 + i) % 5 === 0 ? 0.3 : 0) + (((n * 11 + i) % 7) - 3) / 20))
+      return { n, zone: share < 0.4 ? 'growth' : share < 0.7 ? 'progress' : 'confident', share: Math.round(share * 100) / 100 }
+    })
+    const marks = [5, 5, 4, 3, 4, 5, 4, 3, 5, 4, 3, 4, 4, 5, 3, 4, 3]
+    const assessments = few
+      ? [{ title: 'Логарифмы', subject: 'math', exam_type: 'ege', kind: 'check', date: day(10), status: null, score: null, grade_scale: 'five' }]
+      : [
+          { title: 'Логарифмы', subject: 'math', exam_type: 'ege', kind: 'check', date: day(10), status: 'accepted', score: marks[i], grade_scale: 'five' },
+          { title: 'Тригонометрия', subject: 'math', exam_type: 'ege', kind: 'check', date: day(24), status: i % 6 === 2 ? null : 'accepted', score: i % 6 === 2 ? null : Math.max(2, marks[(i + 3) % 17] - (i % 2)), grade_scale: 'five' },
+          ...(i % 3 ? [{ title: 'Производная', subject: 'math', exam_type: 'ege', kind: 'control', date: day(38), status: 'accepted', score: marks[(i + 5) % 17], grade_scale: 'five' }] : []),
+        ]
+    const homeworks = Array.from({ length: 14 }, (_, k) => {
+      const due = day(3 + k * 3)
+      const miss = few ? k % 3 !== 0 : (k * 5 + i) % 11 === 0 || (q < 0.5 && k % 4 === 1)
+      const late = !miss && (k + i) % 7 === 0
+      return { title: `ДЗ ${k + 1}`, subject: 'math', exam_type: 'ege', due_at: due,
+        first_submitted_at: miss ? null : at(3 + k * 3 + (late ? -2 : 1)), status: miss ? null : 'accepted', score: miss ? null : 4, grade_scale: 'five' }
+    })
+    const streak = gone ? 0 : [12, 4, 0, 0, 2, 6, 0, 1, 9, 0, 0, 5, 2, 15, 0, 7, 3][i]
+    return {
+      student_id: `264${String(i).padStart(5, '0')}-0000-4000-8000-000000000000`,
+      name,
+      forecast: { now: new Date(now).toISOString(), subjects: [{ subject: 'math', goal: null, teacher_goal: null }], numbers, ev },
+      assessments, homeworks,
+      catalog: { days: 7, tried: gone ? 0 : [25, 9, 2, 0, 5, 14, 3, 1, 18, 4, 0, 11, 6, 30, 0, 12, 5][i], correct: gone ? 0 : [21, 9, 0, 0, 5, 12, 2, 0, 15, 3, 0, 9, 4, 26, 0, 10, 3][i] },
+      streak, solved_today: streak > 0 && i % 2 === 0,
+      last_solved: day(idle),
+      last_seen: day(idle ? Math.min(idle, 12) : [0, 0, 3, 12, 1, 0, 2, 0, 0, 3, 9, 0, 1, 0, 4, 0, 2][i]),
+    }
+  })
+  return {
+    course: { id: R250.course, title: 'Математика ЕГЭ — 11А', subject: 'math', exam_type: 'ege' },
+    now: new Date(now).toISOString(), today: day(0), forecast_enabled: true,
+    titles: [
+      { subject: 'math', n: 4, title: 'Начала теории вероятностей' }, { subject: 'math', n: 5, title: 'Вероятности сложных событий' },
+      { subject: 'math', n: 7, title: 'Вычисления и преобразования' }, { subject: 'math', n: 8, title: 'Производная и первообразная' },
+      { subject: 'math', n: 10, title: 'Текстовые задачи' }, { subject: 'math', n: 12, title: 'Наибольшее и наименьшее значения' },
+    ],
+    students,
+  }
+}
+function apply264(fx) {
+  const data = summary264()
+  fx.rpc.course_summary_for_staff = (body) => (body.p_course_id === R250.course ? data : new Error('ACCESS_DENIED: только персонал курса'))
+  // Строки настроек нет — значения по умолчанию (всё, кроме «Пробник завтра»), как у нового курса на проде.
+  fx.tables.course_reminder_settings = []
+}
+function apply264student(fx) {
+  fx.tables.notification_prefs = [{
+    user_id: IDS.student, lesson: true, homework: true, checked: true, overdue: true, badge: true, payment: true, email: false,
+    telegram: true, telegram_variant_assignments: true, lesson_changed: true,
+    remind_hw_due_tomorrow: true, remind_hw_overdue: true, remind_check_soon: true, remind_no_photo: true,
+    remind_streak: false, remind_mock_tomorrow: true, updated_at: ago(48),
+  }]
+  fx.tables.telegram_connections = [...fx.tables.telegram_connections, {
+    id: U('c', 1264), profile_id: IDS.student, telegram_chat_id: 264264264, telegram_username: 'uchenik_harness', is_enabled: true,
+    connected_at: ago(300), disconnected_at: null, disconnect_reason: null, created_at: ago(300), updated_at: ago(300),
+  }]
 }

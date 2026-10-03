@@ -59,6 +59,8 @@ import { CoursesOverview, CoursesViewToggle, useCoursesView } from '@/components
 import { copyDisplayTitle } from '@/lib/courseDisplayName'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { onlyEgeTrack } from '@/lib/training'
+import { CourseSummaryTab } from '@/components/course/CourseSummaryTab'
+import { CourseReminderSettings } from '@/components/course/CourseReminderSettings'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
 function InlineEdit({
@@ -1366,7 +1368,7 @@ function MaterialsMatrix({
  * — только подпись, ключ `program` прежний: старые ссылки `?tab=program`
  * открывают её же.
  */
-const COURSE_TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'students', 'settings'] as const
+const COURSE_TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'summary', 'students', 'settings'] as const
 type CourseTab = typeof COURSE_TABS[number]
 /** Вкладка по умолчанию — та, у которой в адресе нет `?tab=`. */
 const DEFAULT_TAB: CourseTab = 'course'
@@ -1375,7 +1377,7 @@ const DEFAULT_TAB: CourseTab = 'course'
  * курс глазами ученика строится по классу (группе), а у каркаса класса нет;
  * каркас открывается на «Сроках и статистике», как раньше на «Программе».
  */
-const STUDENT_TABS = ['course', 'homework', 'students'] as const satisfies readonly CourseTab[]
+const STUDENT_TABS = ['course', 'homework', 'summary', 'students'] as const satisfies readonly CourseTab[]
 /** Параметры адреса вкладки «Курс»: открытый раздел и тема (§250). */
 const KURS_PARAMS = ['module', 'topic'] as const
 /**
@@ -2190,6 +2192,8 @@ export function CourseProgramPage() {
                 // §249: вместо «Результатов тестов». На каркасе тоже есть —
                 // там список работ без статистики (раньше он стоял над программой).
                 { key: 'assessments', label: 'Проверочные и контрольные' },
+                // §264: «Сводка» класса — рядом с «Учениками».
+                ...(isTemplate ? [] : [{ key: 'summary',  label: 'Сводка' }]),
                 ...(isTemplate ? [] : [{ key: 'students',  label: 'Ученики' }]),
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
@@ -2418,6 +2422,11 @@ export function CourseProgramPage() {
               )
             )}
 
+            {/* §264. «Сводка» класса: прогноз, проверочные, ДЗ вовремя, каталог, серия, «просели за неделю». */}
+            {tab === 'summary' && (
+              <CourseSummaryTab courseId={selectedCourse.id} />
+            )}
+
             {/* Students tab */}
             {tab === 'students' && (
               <CourseStudentsSection courseId={selectedCourse.id} />
@@ -2425,12 +2434,16 @@ export function CourseProgramPage() {
 
             {/* Settings tab */}
             {tab === 'settings' && canEdit && (
-              <CourseSettings
-                course={selectedCourse}
-                onSave={v => saveCourse(selectedCourse.id, v)}
-                onCopyCourse={() => setCopyCourseOpen(true)}
-                onDeleteCourse={() => setDeleteCourseOpen(true)}
-              />
+              <div className="space-y-8">
+                <CourseSettings
+                  course={selectedCourse}
+                  onSave={v => saveCourse(selectedCourse.id, v)}
+                  onCopyCourse={() => setCopyCourseOpen(true)}
+                  onDeleteCourse={() => setDeleteCourseOpen(true)}
+                />
+                {/* §264. Напоминания ученикам в Telegram — на курс (у каркаса учеников нет). */}
+                {!isTemplate && <CourseReminderSettings courseId={selectedCourse.id} />}
+              </div>
             )}
         </div>
       )}
