@@ -32,6 +32,6 @@ $Q -f $T/glavnaya_254/00_slice_254.sql && echo "slice 254: ok" \
  && $Q -f $T/dostizheniya_257/10_data_257.sql && echo "data 257: ok" \
  && $Q -f $S/10_data_261.sql && echo "data 261: ok" \
  && $Q -f $S/15_snapshot_old.sql && echo "snapshot before PENDING_261: ok" \
- && $Q -1 -f $R/PENDING_261.sql && echo "PENDING_261 (1): ok" \
- && $Q -1 -f $R/PENDING_261.sql && echo "PENDING_261 (2, повтор): ok" \
+ && $Q -1 -f $R/20261003114402_student_overview_part1_forecast_evidence_of.sql && $Q -1 -f $R/20261003114440_student_overview_part2_school_points_of.sql && $Q -1 -f $R/20261003114528_student_overview_part3_work_rows_overview_for_staff.sql && $Q -1 -f $R/20261003114628_student_overview_part4_progress_report_new_fields.sql && echo "§261 (4 части) (1): ok" \
+ && $Q -1 -f $R/20261003114402_student_overview_part1_forecast_evidence_of.sql && $Q -1 -f $R/20261003114440_student_overview_part2_school_points_of.sql && $Q -1 -f $R/20261003114528_student_overview_part3_work_rows_overview_for_staff.sql && $Q -1 -f $R/20261003114628_student_overview_part4_progress_report_new_fields.sql && echo "§261 (4 части) (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe261 -f $S/20_probes.sql 2>&1
