@@ -1,0 +1,250 @@
+slice 254: ok
+slice 255: ok
+slice 256: ok
+slice 257: ok
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/05_slice_261.sql:44: NOTICE:  constraint "topics_kind_check" of relation "topics" does not exist, skipping
+slice 261: ok
+psql:/home/claude/agents/a261/repo/supabase/migrations/20260925184917_student_progress_report_and_next_steps.sql:70: NOTICE:  policy "student_report_next_steps_staff_select" for relation "public.student_report_next_steps" does not exist, skipping
+psql:/home/claude/agents/a261/repo/supabase/migrations/20260925184917_student_progress_report_and_next_steps.sql:79: NOTICE:  policy "student_report_next_steps_staff_insert" for relation "public.student_report_next_steps" does not exist, skipping
+psql:/home/claude/agents/a261/repo/supabase/migrations/20260925184917_student_progress_report_and_next_steps.sql:88: NOTICE:  policy "student_report_next_steps_staff_update" for relation "public.student_report_next_steps" does not exist, skipping
+psql:/home/claude/agents/a261/repo/supabase/migrations/20260925184917_student_progress_report_and_next_steps.sql:101: NOTICE:  policy "student_report_next_steps_staff_delete" for relation "public.student_report_next_steps" does not exist, skipping
+migration 217: ok
+migration 254: ok
+migrations 255: ok
+migrations 256: ok
+migrations 257: ok
+data 255: ok
+data 256: ok
+data 257: ok
+data 261: ok
+snapshot before PENDING_261: ok
+PENDING_261 (1): ok
+PENDING_261 (2, повтор): ok
+== 1. Права на функции: anon — ничего; authenticated — только клиентские; внутренние — никому
+                           fn                           | anon | auth | ok 
+--------------------------------------------------------+------+------+----
+ public.student_overview_for_staff(uuid, text)          | f    | t    | t
+ public.student_progress_report(uuid, date, date)       | f    | t    | t
+ public.student_exam_forecast_evidence()                | f    | t    | t
+ public.student_school_points()                         | f    | t    | t
+ public.student_forecast_evidence_of(uuid, timestamptz) | f    | f    | t
+ public.student_school_points_of(uuid)                  | f    | f    | t
+ public.student_work_rows(uuid)                         | f    | f    | t
+
+== 2. anon: отказ (нет execute)
+BEGIN
+SET
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:29: NOTICE:  OK: anon overview — permission denied for function student_overview_for_staff (42501)
+DO
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:31: NOTICE:  OK: anon report — permission denied for function student_progress_report (42501)
+DO
+ROLLBACK
+== 3. authenticated без sub: «нужен вход» (42501)
+BEGIN
+SET
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:39: NOTICE:  OK: без входа — student_overview_for_staff: нужен вход (42501)
+DO
+ROLLBACK
+== 4. Чужой учитель O, ученик A про себя, ученик B про A — 42501; внутренние функции — 42501
+BEGIN
+SET
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:47: NOTICE:  OK: чужой учитель, карточка — ACCESS_DENIED: только персонал курса ученика (42501)
+DO
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:49: NOTICE:  OK: чужой учитель, отчёт — Нет доступа к отчёту этого ученика (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:55: NOTICE:  OK: ученик A про себя — ACCESS_DENIED: только персонал курса ученика (42501)
+DO
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:57: NOTICE:  OK: student_work_rows — permission denied for function student_work_rows (42501)
+DO
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:59: NOTICE:  OK: student_forecast_evidence_of — permission denied for function student_forecast_evidence_of (42501)
+DO
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:61: NOTICE:  OK: student_school_points_of — permission denied for function student_school_points_of (42501)
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a261/repo/supabase/tests/uchenik_261/20_probes.sql:67: NOTICE:  OK: ученик B про A — ACCESS_DENIED: только персонал курса ученика (42501)
+DO
+ROLLBACK
+== 5. Учитель курса T → карточка A приходит; админ M → тоже
+BEGIN
+SET
+ subjects | assessments | homeworks | evidence |                                                                                            fc_subjects                                                                                            | streak | record | days14 |                 daily                  |                            catalog                             | ach_total | level | levels |                                      next_steps                                       | ok 
+----------+-------------+-----------+----------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+--------+--------+----------------------------------------+----------------------------------------------------------------+-----------+-------+--------+---------------------------------------------------------------------------------------+----
+        3 |          11 |        71 |       34 | [{"goal": null, "subject": "math", "teacher_goal": 70, "goal_updated_at": null}, {"goal": 75, "subject": "physics", "teacher_goal": null, "goal_updated_at": "2026-10-03T11:09:28.672046+00:00"}] | 3      | 3      |      8 | {"days": 14, "done": 1, "assigned": 1} | {"week": {"days": 7, "tried": 23, "correct": 14}, "total": 14} | 79        | 3     | 20     | ["№4 и №10 — по 10 задач каталога", "ДЗ «Кинематика. Теория» — сдать до воскресенья"] | t
+
+ROLLBACK
+BEGIN
+SET
+ assessments | homeworks | ok 
+-------------+-----------+----
+          11 |        71 | t
+
+ROLLBACK
+== 6. Проверочные A (физика): баллы 10 из 12 (не решено = 0), средняя по классу 29/7, будущая не попала, пропущенная — без оценки
+BEGIN
+SET
+         title          |  kind   |    date    |  status  | score | points | points_max | class_avg | class_graded | class_size 
+------------------------+---------+------------+----------+-------+--------+------------+-----------+--------------+------------
+ Статика (пропустил)    | check   | 2026-10-01 |          |       |        |            |           | 0            | 7
+ Движение по окружности | check   | 2026-09-28 | accepted | 4     | 10     | 12         | 4.14      | 7            | 7
+ Проверочная Х 1        | check   | 2026-09-26 |          |       |        |            | 3.92      | 25           | 26
+ Кинематика: броски     | control | 2026-09-21 | accepted | 4     |        |            | 4.00      | 4            | 7
+ Проверочная Х 2        | check   | 2026-09-19 |          |       |        |            | 3.68      | 25           | 26
+ Проверочная Х 3        | check   | 2026-09-12 |          |       |        |            | 4.28      | 25           | 26
+ Проверочная Х 4        | check   | 2026-09-05 |          |       |        |            | 4.12      | 25           | 26
+ Проверочная Х 5        | check   | 2026-08-29 |          |       |        |            | 3.84      | 25           | 26
+ Проверочная Х 6        | check   | 2026-08-22 |          |       |        |            | 4.12      | 25           | 26
+ Проверочная Х 7        | check   | 2026-08-15 |          |       |        |            | 4.16      | 25           | 26
+ Проверочная Х 8        | check   | 2026-08-08 |          |       |        |            | 4.32      | 25           | 26
+
+ ok 
+----
+ t
+
+ROLLBACK
+== 7. ДЗ A (физика): срок и ПЕРВАЯ сдача; закрытая тема и черновик ДЗ не попали
+BEGIN
+SET
+          title           |   due_at   | first_submitted |  status  | score 
+--------------------------+------------+-----------------+----------+-------
+ Импульс (впереди)        | 2026-10-07 |                 |          | 
+ Кинематика. Теория       | 2026-10-01 |                 |          | 
+ Силы в природе           | 2026-09-30 | 2026-10-02      | accepted | 4
+ Динамика. Законы Ньютона | 2026-09-27 | 2026-09-26      | accepted | 5
+
+ ok 
+----
+ t
+
+-- фильтр предмета: math — работ физики нет, свидетельства только math
+ not_math_assessments | not_math_hw | not_math_ev | ok 
+----------------------+-------------+-------------+----
+                    0 |           0 |           0 | t
+
+ROLLBACK
+== 8. Ученик без данных (C): пустые массивы, не ошибка
+BEGIN
+SET
+ assessments | homeworks | evidence | days | streak | points | next_steps | ok 
+-------------+-----------+----------+------+--------+--------+------------+----
+           0 |         0 |        0 |    0 | 0      | 0      | null       | t
+
+ subjects | works |                                                                                                             diligence                                                                                                              | ok 
+----------+-------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----
+        1 |     0 | {"level": {"n": 1, "from": 0, "name": "Старт", "next": 100, "next_name": "Разгон"}, "streak": 0, "solve_days": 0, "period_days": 31, "levels_count": 20, "catalog_correct": 0, "achievements_total": 79, "achievements_earned": 0} | t
+
+ROLLBACK
+== 9. Отчёт A за 30 дней: новые поля
+BEGIN
+SET
+ subject | exam | target | exam_goal | assessments | homeworks 
+---------+------+--------+-----------+-------------+-----------
+ math    | ege  | 70     |           |           4 |        13
+ math    | oge  |        |           |           0 |         1
+ physics | ege  |        | 75        |           3 |         3
+
+         title          | score | points | points_max | class_avg | class_size 
+------------------------+-------+--------+------------+-----------+------------
+ Кинематика: броски     | 4     |        |            | 4.00      | 7
+ Движение по окружности | 4     | 10     | 12         | 4.14      | 7
+ Статика (пропустил)    |       |        |            |           | 7
+
+                                                                                                               diligence                                                                                                                | evidence | ok 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------+----
+ {"level": {"n": 3, "from": 200, "name": "Ритм", "next": 300, "next_name": "Упорство"}, "streak": 3, "solve_days": 8, "period_days": 31, "levels_count": 20, "catalog_correct": 14, "achievements_total": 79, "achievements_earned": 0} |       34 | t
+
+-- период в прошлом: прогноз на конец периода (now = конец дня p_to), работ периода нет
+          fc_now           |  fc_today  | evidence | ok 
+---------------------------+------------+----------+----
+ 2026-05-06T20:59:59+00:00 | 2026-05-06 |        1 | t
+
+ROLLBACK
+== 10. Приватность: в классе меньше шести — средняя по классу в отчёте не печатается (на карточке учителя — есть)
+BEGIN
+DELETE 2
+SET
+         title          | report_class_avg | class_size | ok 
+------------------------+------------------+------------+----
+ Движение по окружности |                  | 5          | t
+
+ card_class_avg | ok 
+----------------+----
+ 4.00           | t
+
+ROLLBACK
+== 11. Прежний контракт: ответы ученика и прежние поля отчёта — как до PENDING_261
+BEGIN
+SET
+    what    | ok 
+------------+----
+ evidence A | t
+
+      what       | ok 
+-----------------+----
+ school points A | t
+
+ROLLBACK
+BEGIN
+SET
+    what    | ok 
+------------+----
+ evidence H | t
+
+      what       | ok 
+-----------------+----
+ school points H | t
+
+ROLLBACK
+BEGIN
+SET
+        what         | ok 
+---------------------+----
+ report A            | t
+ report H            | t
+ report A old period | t
+
+ROLLBACK
+== 12. Время: тяжёлый H (60 ДЗ, 8 проверочных × 25 учеников, 600 проверок каталога, 6 пробников) и A — учитель T
+BEGIN
+SET
+ assessments | homeworks | evidence | bytes  
+-------------+-----------+----------+--------
+           8 |        66 |     1344 | 277925
+
+Timing is on.
+ overview_h 
+------------
+     277925
+
+Time: 168.921 ms
+ overview_h 
+------------
+     277925
+
+Time: 170.064 ms
+ overview_h 
+------------
+     277925
+
+Time: 169.587 ms
+ overview_a 
+------------
+      41618
+
+Time: 32.454 ms
+ report_h 
+----------
+   254119
+
+Time: 179.380 ms
+ report_a 
+----------
+    16294
+
+Time: 38.982 ms
+Timing is off.
+ROLLBACK
