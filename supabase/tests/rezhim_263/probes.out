@@ -1,0 +1,400 @@
+цепочка §241: ok
+slice 263: ok
+20261002174213 (§256, таблицы каталога): ok
+20261003155843 (262a): ok
+data 241: ok
+data 263: ok
+Null display is "∅".
+=== B0. До PENDING_263: S1 (идёт K) читает каталог и теорию урока L — всё видно (дыра, которую закрывает §263).
+BEGIN
+  set_config   
+---------------
+ authenticated
+
+                              set_config                               
+-----------------------------------------------------------------------
+ {"sub":"00000000-0000-4000-8000-0000000000b1","role":"authenticated"}
+
+                 what                 | count 
+--------------------------------------+-------
+ catalog_tasks видно                  |     3
+ материалы L (теория, конспект)       |     2
+ k1 через catalog_task_texts: allowed |     1
+
+ROLLBACK
+=== B1. До PENDING_263: флажки выдач вариантов (tva1 false/false, tva2 true/false, tva3 true/true).
+                  id                  | answers | solutions 
+--------------------------------------+---------+-----------
+ 00000000-0000-4000-8000-0000000bc001 | f       | f
+ 00000000-0000-4000-8000-0000000bc002 | t       | f
+ 00000000-0000-4000-8000-0000000bc003 | t       | t
+
+PENDING_263 (1): ok
+учитель после применения снял оба флажка у tva2
+PENDING_263 (2, повтор): ok
+Null display is "∅".
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+GRANT
+=== 0. Флажки варианта: после 1-го прогона уже выданные tva1 (false/false) и tva2 (true/false) стали true/true;
+===    учитель снял оба у tva2 ПОСЛЕ применения — повторный прогон его выбор не перетёр. Default колонок — true.
+                  id                  | answers | solutions 
+--------------------------------------+---------+-----------
+ 00000000-0000-4000-8000-0000000bc001 | t       | t
+ 00000000-0000-4000-8000-0000000bc002 | f       | f
+ 00000000-0000-4000-8000-0000000bc003 | t       | t
+
+         column_name         | column_default 
+-----------------------------+----------------
+ show_answers_after_submit   | true
+ show_solutions_after_submit | true
+
+=== 1. Одно определение: my_work_mode у каждого.
+===    S1 — K идёт; S2 — K (черновик без фото); S3 — сдал K → нет; S4 — K (не открывал); S5 — личное окно K завтра → нет;
+===    S6 — K и личное C (C кончается раньше → C); S7 — пробник 11А идёт; учитель A — нет; U (ДЗ не опубликовано) не считается.
+ кто |                      mode                       
+-----+-------------------------------------------------
+ S1  | идёт: control «K: Контрольная (идёт)» до 29 мин
+
+ кто |                      mode                       
+-----+-------------------------------------------------
+ S2  | идёт: control «K: Контрольная (идёт)» до 29 мин
+
+ кто |    mode    
+-----+------------
+ S3  | нет работы
+
+ кто |                      mode                       
+-----+-------------------------------------------------
+ S4  | идёт: control «K: Контрольная (идёт)» до 29 мин
+
+ кто |    mode    
+-----+------------
+ S5  | нет работы
+
+ кто |                                mode                                
+-----+--------------------------------------------------------------------
+ S6  | идёт: control «C: Контрольная (закрылась)» до 24 мин (личное окно)
+
+ кто |                     mode                      
+-----+-----------------------------------------------
+ S7  | идёт: mock «Пробник №9 (11А, идёт)» до 44 мин
+
+    кто    |    mode    
+-----------+------------
+ учитель A | нет работы
+
+RESET
+--- внутренняя функция определения закрыта для authenticated (ожидается отказ):
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:72: ERROR:  42501: permission denied for function student_active_works
+LOCATION:  aclcheck_error, aclchk.c:2812
+RESET
+=== 2. Каталог во время работы. S1 (идёт K) — строки catalog_tasks: 0; тексты: allowed=false даже у k1, ответ которого он
+===    открыл до работы; S3 (сдал) — всё как раньше; учитель A — всё.
+ кто | строк_каталога |                  тексты                   
+-----+----------------+-------------------------------------------
+ S1  |              0 | 0a1:false/∅/∅ 0a2:false/∅/∅ 0a3:false/∅/∅
+
+ кто | строк_каталога |                       тексты                        
+-----+----------------+-----------------------------------------------------
+ S3  |              3 | 0a1:true/variant/5 0a2:false/∅/∅ 0a3:true/variant/7
+
+    кто    | строк_каталога |                    тексты                    
+-----------+----------------+----------------------------------------------
+ учитель A |              3 | 0a1:true/staff 0a2:true/staff 0a3:true/staff
+
+RESET
+--- S1 раскрывает ответы (catalog_reveal_answers, §262) — отказ WORK_MODE:
+BEGIN
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:93: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ROLLBACK
+--- S1 раскрывает ответ (catalog_reveal_answer, §256) — отказ WORK_MODE:
+BEGIN
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:98: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ROLLBACK
+--- запись попытки каталога за S1 (так пишет catalog_check_answer под definer) — отказ сторожа WORK_MODE:
+BEGIN
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:103: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ROLLBACK
+--- та же запись за S3 (работа сдана) — проходит (откат):
+BEGIN
+   итог   
+----------
+ записано
+
+INSERT 0 1
+ROLLBACK
+--- S3 раскрывает k2 (работы нет) — как раньше: тексты пришли (откат):
+BEGIN
+ задача | allowed |  reason  | answer_html | solution_html 
+--------+---------+----------+-------------+---------------
+ 0a2    | t       | revealed | 6           | Решение k2
+
+ROLLBACK
+RESET
+=== 3. Материалы тем. S1 (идёт K): строки — только «Условие» K; файлы — условие K да, теория L/K нет.
+===    S3 (сдал K): теория и конспект L, условие K (после сдачи условие видно), теория K. Учитель A — всё.
+ кто | строки_материалов 
+-----+-------------------
+ S1  | Условие K
+
+ кто | условие_k | теория_l | теория_k 
+-----+-----------+----------+----------
+ S1  | t         | f        | f
+
+ кто |             строки_материалов             
+-----+-------------------------------------------
+ S3  | Конспект L, Теория K, Теория L, Условие K
+
+ кто | условие_k | теория_l | теория_k 
+-----+-----------+----------+----------
+ S3  | t         | t        | t
+
+    кто    |             строки_материалов             
+-----------+-------------------------------------------
+ учитель A | Конспект L, Теория K, Теория L, Условие K
+
+       кто        | строк_материалов_10А 
+------------------+----------------------
+ S7 (пробник 11А) |                    0
+
+RESET
+=== 4. Сдал — режим снимается сразу: S1 сдаёт K (в откатываемом блоке) → нет работы, каталог и теория L открыты,
+===    k1 (открыт до работы) снова allowed/revealed.
+BEGIN
+UPDATE 1
+   режим    | строк_каталога | строк_материалов |      k1       
+------------+----------------+------------------+---------------
+ нет работы |              3 |                4 | true/revealed
+
+ROLLBACK
+RESET
+--- конец окна — то же: K закрылась (окно сдвинуто в прошлое, откат) → у S2 работы нет.
+BEGIN
+UPDATE 1
+  режим_s2  | строк_каталога 
+------------+----------------
+ нет работы |              3
+
+ROLLBACK
+RESET
+=== 5. Варианты и флажки (S3, работы нет): tva1 true/true → эталон, решение, номер; tva2 (снято учителем) → ничего;
+===    tva3 true/true. В каталоге k1 (tva1) и k3 (tva3) — variant; k2 (tva2 без флажков) — закрыта.
+ выдача | answer_html | solution_html | task_ext_id 
+--------+-------------+---------------+-------------
+ tva1   | 5           | Решение k1    |        1001
+ tva2   | ∅           | ∅             |           ∅
+ tva3   | 7           | Решение k3    |        1003
+
+                             флажки_tva2                              
+----------------------------------------------------------------------
+ {"work_mode": false, "show_answers": false, "show_solutions": false}
+
+                  каталог_s3                   
+-----------------------------------------------
+ 0a1:true/variant 0a2:false/∅ 0a3:true/variant
+
+RESET
+--- «только ответы» (tva3: answers=true, solutions=false, откат): эталон есть, решения нет; в каталоге k3 закрыта (там ответ и решение вместе).
+BEGIN
+UPDATE 1
+ answer_html | solution_html | task_ext_id 
+-------------+---------------+-------------
+ 7           | ∅             |        1003
+
+ allowed | reason 
+---------+--------
+ f       | ∅
+
+ROLLBACK
+RESET
+--- S1: вариант V1 сдан (tva1 true/true), но идёт K → эталон и решение закрыты; флажки говорят work_mode=true.
+ answer_html | solution_html | task_ext_id 
+-------------+---------------+-------------
+ ∅           | ∅             |           ∅
+
+                              флажки                               
+-------------------------------------------------------------------
+ {"work_mode": true, "show_answers": true, "show_solutions": true}
+
+--- чужая выдача: флажки — пусто (null), задачи — отказ ACCESS_DENIED:
+ чужие_флажки 
+--------------
+ ∅
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:181: ERROR:  P0001: ACCESS_DENIED: assignment not found or not owned by caller
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+RESET
+=== 6. Отметки ученика. S1 открыл условие K → отметка; повтор не сдвигает время. S3 (сдал), F (завтра), S5 (личное завтра) — no-op.
+BEGIN
+ первая_отметка 
+----------------
+ t
+
+ повтор_не_сдвинул 
+-------------------
+ t
+
+ f_завтра 
+----------
+ not_live
+
+ s3_сдал  
+----------
+ not_live
+
+ s5_личное_завтра 
+------------------
+ not_live
+
+RESET
+ ученик | открыл | away_count | away_seconds 
+--------+--------+------------+--------------
+ 1b1    | t      |          0 |            0
+
+--- уходы: S1 шлёт пачки (2 ухода · 70 с) и (1 · 30 с) → 3 · 100; огромные значения режутся (50 · 14400 за вызов);
+---         S7 — пробник 11А (свой) → записано; S1 — про пробник 11А (не его) → no-op; S3 (сдал) → no-op; обе работы / ни одной → отказ.
+ пачка1 | пачка2 
+--------+--------
+ true   | true
+
+ огромная 
+----------
+ true
+
+ s1_чужой_пробник 
+------------------
+ not_live
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:205: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:206: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ s7_свой_пробник 
+-----------------
+ true
+
+ s3_сдал  
+----------
+ not_live
+
+RESET
+ работа | ученик | away_count | away_seconds 
+--------+--------+------------+--------------
+ 0002   | 1b1    |         53 |        14500
+ M9     | 1b7    |          1 |           10
+
+--- ученик не читает отметки (даже свои) и не пишет в таблицу напрямую (отказ); учитель вызвать отметку не может (42501).
+ видит_строк 
+-------------
+           0
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:217: ERROR:  42501: permission denied for table work_activity
+LOCATION:  aclcheck_error, aclchk.c:2812
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:218: ERROR:  42501: permission denied for table work_activity
+LOCATION:  aclcheck_error, aclchk.c:2812
+ учитель_a_видит 
+-----------------
+               1
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:221: ERROR:  42501: Отметку ставит только ученик
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+ посторонний_x_видит 
+---------------------
+                   0
+
+RESET
+ROLLBACK
+=== 7. Монитор K (учитель A): по ученику — попытка, открыл, фото, последнее фото, уходы, окно (S5 — личное завтра).
+BEGIN
+        работа         |   тип   | класс | идёт | учеников 
+-----------------------+---------+-------+------+----------
+ K: Контрольная (идёт) | control | 10А   | t    |        6
+
+  ученик  |  попытка  | открыл | фото | посл_фото |     уходы     |       окно       
+----------+-----------+--------+------+-----------+---------------+------------------
+ Ученик 1 | draft     | да     |    2 | есть      | 5 раз · 240 с | идёт
+ Ученик 2 | draft     | да     |    0 | —         | 0 раз · 0 с   | идёт
+ Ученик 3 | submitted | да     |    0 | —         | 0 раз · 0 с   | идёт
+ Ученик 4 | —         | да     |    0 | —         | 0 раз · 0 с   | идёт
+ Ученик 5 | —         | —      |    0 | —         | 0 раз · 0 с   | впереди (личное)
+ Ученик 6 | —         | —      |    0 | —         | 0 раз · 0 с   | идёт
+
+--- владелец курса O — видит; посторонний X, преподаватель другого класса B, ученик S1 — отказ 42501; урок L — отказ 22023.
+ владелец_o 
+------------
+          6
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:243: ERROR:  42501: Нет прав на эту работу
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:245: ERROR:  42501: Нет прав на эту работу
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:247: ERROR:  42501: Нет прав на эту работу
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:249: ERROR:  22023: Монитор — только у проверочной и контрольной работы
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+RESET
+ROLLBACK
+--- итог после конца окна (C, закрылась час назад): S1–S4 сдали сами, S5 — автоматически, S6 — личное окно идёт.
+  ученик  |     попытка      | открыл | фото | посл_фото |    уходы    |     окно      
+----------+------------------+--------+------+-----------+-------------+---------------
+ Ученик 1 | accepted         | да     |    0 | —         | 0 раз · 0 с | закрыто
+ Ученик 2 | accepted         | да     |    0 | —         | 0 раз · 0 с | закрыто
+ Ученик 3 | accepted         | да     |    0 | —         | 0 раз · 0 с | закрыто
+ Ученик 4 | accepted         | да     |    0 | —         | 0 раз · 0 с | закрыто
+ Ученик 5 | submitted (авто) | да     |    0 | —         | 0 раз · 0 с | закрыто
+ Ученик 6 | —                | —      |    0 | —         | 0 раз · 0 с | идёт (личное)
+
+RESET
+=== 8. Главная учителя: идущие работы. A — K (общее окно) и C (личное окно S6 идёт); U (не опубликовано) — нет.
+===    X (посторонний) — пусто; ученик S1 — пусто.
+           работа           | личных_идёт 
+----------------------------+-------------
+ C: Контрольная (закрылась) | 1
+ K: Контрольная (идёт)      | 0
+
+ посторонний_x 
+---------------
+ []
+
+ ученик_s1 
+-----------
+ []
+
+RESET
+=== 9. Уходы на пробнике — монитору пробника: преподаватель 11А (B) видит, преподаватель 10А (A) — отказ 42501.
+BEGIN
+                                        преподаватель_b                                        
+-----------------------------------------------------------------------------------------------
+ [{"away_count": 2, "student_id": "00000000-0000-4000-8000-0000000001b7", "away_seconds": 45}]
+
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:274: ERROR:  42501: Нет прав на этот пробник
+LOCATION:  exec_stmt_raise, pl_exec.c:3897
+RESET
+ROLLBACK
+=== 10. anon: ни одна новая функция не исполнима (отказ).
+SET
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:280: ERROR:  42501: permission denied for function my_work_mode
+LOCATION:  aclcheck_error, aclchk.c:2812
+psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:281: ERROR:  42501: permission denied for function timed_work_live
+LOCATION:  aclcheck_error, aclchk.c:2812
+RESET
+=== 11. Права на функции (has_function_privilege authenticated / anon).
+                      функция                       | authenticated | anon 
+----------------------------------------------------+---------------+------
+ public.student_active_works(uuid)                  | f             | f
+ public.work_mode_active_for_profile(uuid)          | f             | f
+ public.my_work_mode()                              | t             | f
+ public.work_mark_opened(uuid)                      | t             | f
+ public.work_report_away(uuid,uuid,integer,integer) | t             | f
+ public.timed_work_live(uuid)                       | t             | f
+ public.my_live_timed_works()                       | t             | f
+ public.mock_exam_away(uuid)                        | t             | f
+ public.my_variant_answer_flags(uuid)               | t             | f
+ public.catalog_answer_reasons(uuid,uuid[])         | f             | f
+ public.catalog_work_mode_guard()                   | f             | f
+
