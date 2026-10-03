@@ -1513,6 +1513,25 @@ export const scenes = [
     ]
   }),
 
+  // §261. «Ученик целиком»: карточка ученика у учителя (полная — Иванов Пётр, otherStudent(0); без данных —
+  // otherStudent(1)), отчёт родителю за 01.09–03.10 (лист 1 и 2) и печатный вид. В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d261 1280 ; node e2e/harness/tour.mjs d261 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    // Период — через нативный сеттер + событие input: на печатном носителе #root скрыт, и fill не находит поле.
+    const period = [{ wait: 1200 }, { eval: "(() => { const i = document.querySelector('[aria-label=\"Начало периода отчёта\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '2026-09-01'); i.dispatchEvent(new Event('input', { bubbles: true })) })()" }, { wait: 1200 }]
+    const to = sel => ({ eval: `document.querySelector('.report-preview [data-testid="${sel}"]')?.scrollIntoView({ block: 'start' })` })
+    return [
+      { persona: 'o261', name: 'd261-card', url: `/students/${S.otherStudent(0)}`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'o261', name: 'd261-card-blocks', url: `/students/${S.otherStudent(0)}`, width, height, full: false, actions: [{ wait: 1500 }, { eval: "document.querySelector('[data-testid=\"overview-assessments\"]')?.scrollIntoView({ block: 'start' })" }, { wait: 300 }] },
+      { persona: 'o261', name: 'd261-card-empty', url: `/students/${S.otherStudent(1)}`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'o261', name: 'd261-report-sheet1', url: `/students/${S.otherStudent(0)}?tab=report`, width, height, full: false, actions: [...period, to('parent-report-page-1'), { wait: 300 }] },
+      { persona: 'o261', name: 'd261-report-sheet2', url: `/students/${S.otherStudent(0)}?tab=report`, width, height, full: false, actions: [...period, to('parent-report-page-2'), { wait: 300 }] },
+      { persona: 'o261', name: 'd261-report', url: `/students/${S.otherStudent(0)}?tab=report`, width, height, actions: period },
+      { persona: 'o261', name: 'd261-report-empty', url: `/students/${S.otherStudent(1)}?tab=report`, width, height, actions: period },
+      { persona: 'o261', name: 'd261-report-print', url: `/students/${S.otherStudent(0)}?tab=report`, media: 'print', width, height, actions: period },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

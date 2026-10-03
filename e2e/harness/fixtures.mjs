@@ -132,6 +132,9 @@ export const personas = {
   o259: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   // §260: учитель в очереди проверки — проверочная «Движение по окружности» с баллами по критериям.
   o260: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §261: «Ученик целиком» — карточка ученика у учителя и отчёт родителю (фикстуры `apply261`): ученик
+  // otherStudent(0) — полная сводка, otherStudent(1) — ученик без данных.
+  o261: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1913,6 +1916,7 @@ export function baseFixtures(persona) {
   if (persona.startsWith('s259')) apply259student(fx, persona)
   if (persona === 'o259') { apply250(fx); apply259(fx) }
   if (persona === 'o260') apply260(fx)
+  if (persona === 'o261') apply261(fx)
   return fx
 }
 
@@ -3630,4 +3634,165 @@ function apply260(fx) {
   }))
   fx.tables.topic_homework_review_tasks = [...fx.tables.topic_homework_review_tasks,
     ...reviewRows(D260.a, tasksA, 2600), ...reviewRows(D260.b, tasksB, 2620), ...reviewRows(D260.c, tasksC, 2640)]
+}
+
+// ── §261: «Ученик целиком» ──────────────────────────────────────────────────────────────────────────
+// Всё выдумано (числа — как в макете §261). Ответы `student_overview_for_staff` и `student_progress_report`
+// ГОТОВЫЕ, как у §217: считает база, собирать их здесь заново значило бы завести вторую реализацию. Прогноз —
+// свидетельства (клиент считает моделью §255): физика ЕГЭ, номера части 1 №1–16 покрыты (порог 10 из 20),
+// месяц назад — тоже, поэтому есть «+N за месяц». «Сейчас» сводки — пт 3 октября 2026, 12:00 МСК.
+const NOW261 = '2026-10-03T09:00:00Z'
+const ago261 = (d, h = 0) => new Date(Date.parse(NOW261) - d * 86400e3 - h * 3600e3).toISOString()
+function evidence261() {
+  const rows = []
+  let k = 0
+  // №1–16: свежие (2–20 дней) и старые (35–60 дней, слабее) решения ДЗ; №1–5 ещё пробник 40 дней назад.
+  const recent = [1, 1, 0.5, 1, 0, 1, 0.5, 1, 1, 0, 1, 0.5, 0, 1, 1, 0.5]
+  for (let n = 1; n <= 16; n++) {
+    for (let j = 0; j < 3; j++) rows.push({ subject: 'physics', ns: [n], source: 'hw', score: j === 2 ? recent[n - 1] : (n + j) % 3 === 0 ? 0.5 : 1, at: ago261(2 + ((n * 3 + j) % 18)), item: `hw:261:${++k}`, kim_total: null })
+    for (let j = 0; j < 2; j++) rows.push({ subject: 'physics', ns: [n], source: 'hw', score: (n + j) % 2 ? 1 : 0, at: ago261(35 + ((n + j) % 25)), item: `hw:261:${++k}`, kim_total: null })
+  }
+  for (let n = 1; n <= 20; n++) rows.push({ subject: 'physics', ns: [n], source: 'mock', score: n % 3 === 0 ? 0 : 1, at: ago261(40), item: 'mock:261', kim_total: 26 })
+  for (let n = 1; n <= 6; n++) rows.push({ subject: 'physics', ns: [n], source: 'catalog', score: 1, at: ago261(1, n), item: `catalog:261:${n}`, kim_total: null })
+  return rows.sort((a, b) => a.at.localeCompare(b.at))
+}
+const RULES261 = {
+  window_days: 60, low: 0.4, high: 0.7,
+  zones: [
+    { key: 'growth', per_task: 5, milestones: [{ at: 10, bonus: 30 }, { at: 20, bonus: 50 }, { at: 30, bonus: 80 }] },
+    { key: 'progress', per_task: 3, milestones: [{ at: 10, bonus: 20 }, { at: 20, bonus: 30 }, { at: 30, bonus: 40 }] },
+    { key: 'confident', per_task: 1, milestones: [{ at: 10, bonus: 5 }, { at: 20, bonus: 5 }, { at: 30, bonus: 5 }] },
+  ],
+  daily_task: 10, weekly_goal: 40, weekly_target: 10, weekly_numbers: 2, checks_per_minute: 30,
+}
+const SHARES261 = [0.86, 0.78, 0.55, 0.3, 0.62, 0.74, null, 0.48, 0.8, 0.25, 0.71, 0.66, 0.38, 0.9, 0.58, 0.45, null, null, null, null]
+function forecast261(evidence, goal) {
+  return {
+    now: NOW261, today: '2026-10-03',
+    subjects: [{ subject: 'physics', goal, goal_updated_at: ago261(9), teacher_goal: 82 }],
+    titles: [],
+    numbers: SHARES261.map((share, i) => ({
+      subject: 'physics', n: i + 1, share,
+      zone: share == null || share < 0.4 ? 'growth' : share <= 0.7 ? 'progress' : 'confident', solved: share == null ? 0 : Math.round(share * 10),
+    })),
+    catalog_rules: RULES261,
+    evidence,
+  }
+}
+const W261 = (title, kind, date, score, points, pointsMax, classAvg, extra = {}) => ({
+  homework_id: U('c', 2610 + title.length), topic_id: null, course_id: IDS.course, subject: 'physics', exam_type: 'ege',
+  kind, title, date, opens_at: `${date}T07:00:00Z`, first_submitted_at: `${date}T07:40:00Z`,
+  status: score == null ? null : 'accepted', score, grade_scale: 'five', points, points_max: pointsMax,
+  class_avg: classAvg, class_graded: 9, class_size: 11, ...extra,
+})
+const ASSESS261 = [
+  W261('Движение по окружности', 'check', '2026-10-03', 4, 10, 12, 4.0),
+  W261('Кинематика: равноускоренное движение и броски', 'control', '2026-09-26', 4, null, null, 3.9),
+  W261('Равномерное движение', 'check', '2026-09-19', 5, 11, 12, 4.2),
+]
+const H261 = (title, due, submittedAt, status, score) => ({
+  homework_id: U('c', 2630 + title.length), topic_id: null, course_id: IDS.course, subject: 'physics', exam_type: 'ege',
+  title, due_at: due, date: due, first_submitted_at: submittedAt, status, score, grade_scale: 'five',
+})
+const HW261 = [
+  H261('Импульс тела', '2026-10-06', null, null, null),
+  H261('Динамика. Законы Ньютона', '2026-10-02', '2026-10-01T16:20:00Z', 'accepted', 5),
+  H261('Силы в природе', '2026-09-29', '2026-10-01T18:05:00Z', 'accepted', 4),
+  H261('Движение по окружности', '2026-09-25', '2026-09-25T19:40:00Z', 'accepted', 4),
+  H261('Кинематика. Теория', '2026-09-22', null, null, null),
+  H261('Относительность движения', '2026-09-18', '2026-09-17T15:00:00Z', 'accepted', 5),
+  H261('Равномерное движение', '2026-09-15', '2026-09-14T15:00:00Z', 'accepted', 4),
+  H261('Перемещение и путь', '2026-09-11', '2026-09-11T20:50:00Z', 'accepted', 5),
+  H261('Векторы', '2026-09-08', '2026-09-07T12:00:00Z', 'accepted', 4),
+]
+const STEPS261 = [
+  '№4 и №10 в «зоне роста»: по 10 задач каталога на каждый номер до пятницы.',
+  'Задача 8 в проверочных — перевод км/ч в м/с: повторить на 3 задачах.',
+  'ДЗ «Кинематика. Теория» не сдано — сдать до воскресенья.',
+]
+const SOLVE_DAYS261 = ['2026-09-20', '2026-09-22', '2026-09-23', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03']
+function overview261(full) {
+  if (!full) {
+    return {
+      student_id: IDS.otherStudent(1), today: '2026-10-03', now: NOW261, subject: null,
+      subjects: [{ subject: 'physics', exam_type: 'ege', course_titles: 'Физика ЕГЭ 10В' }],
+      forecast: { ...forecast261([], null), numbers: [] },
+      activity: { streak: 0, record: 0, solved_today: false, days: [], daily: { days: 14, assigned: 0, done: 0 }, weekly: [], catalog: { total: 0, week: { days: 7, tried: 0, correct: 0 } } },
+      achievements: { total: 79, earned: 0, latest: [] },
+      points: { total: 0, level: { n: 1, name: 'Старт', from: 0, next: 100, next_name: 'Разгон' }, levels_count: 20 },
+      assessments: [], homeworks: [], next_steps: null,
+    }
+  }
+  return {
+    student_id: IDS.otherStudent(0), today: '2026-10-03', now: NOW261, subject: null,
+    subjects: [{ subject: 'physics', exam_type: 'ege', course_titles: 'Физика ЕГЭ 10А' }],
+    forecast: forecast261(evidence261(), 90),
+    activity: {
+      streak: 5, record: 12, solved_today: true, days: SOLVE_DAYS261,
+      daily: { days: 14, assigned: 14, done: 6 },
+      weekly: [{ subject: 'physics', week_start: '2026-09-28', numbers: [4, 10], target: 10, progress: 7 }],
+      catalog: { total: 47, week: { days: 7, tried: 12, correct: 9 } },
+    },
+    achievements: { total: 79, earned: 23, latest: [
+      { key: 'catalog:20', category: 'catalog', threshold: 20, tier: 1, points: 10, earned_at: ago261(1) },
+      { key: 'streak:7', category: 'streak', threshold: 7, tier: 1, points: 10, earned_at: ago261(3) },
+      { key: 'ontime:5', category: 'ontime', threshold: 5, tier: 1, points: 10, earned_at: ago261(6) },
+    ] },
+    points: { total: 1120, level: { n: 7, name: 'Опыт', from: 800, next: 1000, next_name: 'Глубина' }, levels_count: 20 },
+    assessments: [...ASSESS261, W261('Статика (не писал)', 'check', '2026-09-12', null, null, null, 3.7, { first_submitted_at: null })]
+      .sort((a, b) => b.date.localeCompare(a.date)),
+    homeworks: HW261,
+    next_steps: { period_from: '2026-09-01', period_to: '2026-10-03', steps: STEPS261, updated_at: ago261(0, 2) },
+  }
+}
+function report261(body, full) {
+  const from = body.p_from ?? '2026-09-01', to = body.p_to ?? '2026-10-03'
+  const inPeriod = (d) => d && d >= from && d <= to
+  const physics = {
+    ...progressReport.subjects[0],
+    course_titles: 'Физика ЕГЭ 10А', target: 82, exam_goal: full ? 90 : null,
+    assessments: full ? ASSESS261.filter(a => inPeriod(a.date)).map(a => ({ ...a })).sort((a, b) => a.date.localeCompare(b.date)) : [],
+    homeworks: full ? HW261.filter(h => inPeriod(h.due_at)) : [],
+    last_mock: full ? { date: '2026-09-12', title: 'Пробник №1', score: 61, part1: 38, part2: 23, group_avg: 54, group_size: 11, delta: 6 } : null,
+  }
+  return {
+    ...progressReport,
+    student: { id: body.p_student_id, full_name: full ? NAMES[1] : NAMES[2], grade: 10, groups: [full ? 'Физика ЕГЭ 10А' : 'Физика ЕГЭ 10В'] },
+    period: { from, to },
+    generated_at: NOW261,
+    subjects: [physics],
+    mocks: full ? [
+      { date: '2026-08-28', title: 'Пробник летний', subject: 'physics', exam_type: 'ege', score: 55, part1: 35, part2: 20, group_avg: 51, group_size: 11, delta: null },
+      { date: '2026-09-12', title: 'Пробник №1', subject: 'physics', exam_type: 'ege', score: 61, part1: 38, part2: 23, group_avg: 54, group_size: 11, delta: 6 },
+    ] : [],
+    topics: full ? {
+      weak: [
+        { topic_id: IDS.topic(1), title: 'Силы трения', subject: 'physics', ege_numbers: [4], tasks_counted: 10, correct_percent: 30 },
+        { topic_id: IDS.topic(2), title: 'Термодинамика', subject: 'physics', ege_numbers: [10], tasks_counted: 8, correct_percent: 25 },
+      ],
+      strong: [
+        { topic_id: IDS.topic(4), title: 'Кинематика', subject: 'physics', ege_numbers: [1], tasks_counted: 14, correct_percent: 86 },
+        { topic_id: IDS.topic(5), title: 'Импульс', subject: 'physics', ege_numbers: [9], tasks_counted: 10, correct_percent: 80 },
+      ],
+      without_number: 0,
+    } : { weak: [], strong: [], without_number: 0 },
+    activity: full
+      ? { video_seconds: 12000, video_seconds_last_week: 2880, materials: 34, catalog_tasks: 12, with_due: 14, on_time: 12, late: 2 }
+      : { video_seconds: 0, video_seconds_last_week: 0, materials: 0, catalog_tasks: 0, with_due: 0, on_time: 0, late: 0 },
+    next_steps: full ? STEPS261 : [],
+    teacher_note: full ? progressReport.teacher_note : null,
+    forecast: full ? forecast261(evidence261(), 90) : forecast261([], null),
+    diligence: full
+      ? { solve_days: 19, period_days: 33, streak: 5, catalog_correct: 47, achievements_earned: 23, achievements_total: 79, level: { n: 7, name: 'Опыт' }, levels_count: 20 }
+      : { solve_days: 0, period_days: 33, streak: 0, catalog_correct: 0, achievements_earned: 0, achievements_total: 79, level: { n: 1, name: 'Старт' }, levels_count: 20 },
+  }
+}
+function apply261(fx) {
+  fx.rpc.student_overview_for_staff = (body) =>
+    body.p_student_id === IDS.otherStudent(0) ? overview261(true)
+      : body.p_student_id === IDS.otherStudent(1) ? overview261(false)
+        : new Error('ACCESS_DENIED: только персонал курса ученика')
+  fx.rpc.student_progress_report = (body) =>
+    body.p_student_id === IDS.otherStudent(0) ? report261(body, true)
+      : body.p_student_id === IDS.otherStudent(1) ? report261(body, false) : null
 }
