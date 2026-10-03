@@ -1,12 +1,12 @@
 psql:/home/claude/agents/a260/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:84: NOTICE:  trigger "topic_homework_review_tasks_touch_trg" for relation "public.topic_homework_review_tasks" does not exist, skipping
 psql:/home/claude/agents/a260/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:110: NOTICE:  policy "topic_homework_review_tasks_staff_all" for relation "public.topic_homework_review_tasks" does not exist, skipping
 psql:/home/claude/agents/a260/repo/supabase/migrations/20260917194018_topic_homework_review_tasks.sql:117: NOTICE:  policy "topic_homework_review_tasks_student_select" for relation "public.topic_homework_review_tasks" does not exist, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:27: NOTICE:  column "points_total" of relation "topic_homework_ai_jobs" already exists, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:27: NOTICE:  column "points_max" of relation "topic_homework_ai_jobs" already exists, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:27: NOTICE:  column "grade_table" of relation "topic_homework_ai_jobs" already exists, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:27: NOTICE:  column "grading" of relation "topic_homework_ai_jobs" already exists, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:46: NOTICE:  column "points" of relation "topic_homework_review_tasks" already exists, skipping
-psql:/home/claude/agents/a260/repo/supabase/migrations/PENDING_260.sql:46: NOTICE:  column "max_points" of relation "topic_homework_review_tasks" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:27: NOTICE:  column "points_total" of relation "topic_homework_ai_jobs" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:27: NOTICE:  column "points_max" of relation "topic_homework_ai_jobs" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:27: NOTICE:  column "grade_table" of relation "topic_homework_ai_jobs" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:27: NOTICE:  column "grading" of relation "topic_homework_ai_jobs" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:46: NOTICE:  column "points" of relation "topic_homework_review_tasks" already exists, skipping
+psql:/home/claude/agents/a260/repo/supabase/migrations/20261003075220_ai_points_by_criteria.sql:46: NOTICE:  column "max_points" of relation "topic_homework_review_tasks" already exists, skipping
 PENDING_260 applied twice: ok
 BEGIN
 CREATE FUNCTION

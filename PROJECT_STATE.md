@@ -22620,7 +22620,7 @@ ACTION-FAIL. `npm run build`, `npx tsc -b` = 0.
 - `index.ts`: `suggested_score` по критериям (null при расхождении), уверенность при расхождении не выше medium, пометки в
   summary, в `topic_homework_ai_jobs` — `points_total`, `points_max`, `grade_table`, `grading`, ТОЛЬКО у работ с критериями
   (у обычного ДЗ запись та же, что до §260). Замер §247 пишет `grading`/`points_*` в meta.
-- `PENDING_260.sql`: четыре столбца в `topic_homework_ai_jobs` (с CHECK), `points`/`max_points` в `topic_homework_review_tasks`
+- `20261003075220_ai_points_by_criteria.sql`: четыре столбца в `topic_homework_ai_jobs` (с CHECK), `points`/`max_points` в `topic_homework_review_tasks`
   (CHECK ≥ 0, > 0 и «балл ≤ максимума и не бывает без максимума»), новая версия `topic_homework_review_tasks_seed` (та же
   сигнатура и гранты) — копирует баллы из слепка (только jsonb-числа; `least()` с явной проверкой NULL — пробы поймали, что
   без неё «балла нет» становилось максимумом).

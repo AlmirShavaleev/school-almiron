@@ -19,5 +19,5 @@ $Q -f $S221/00_slice.sql && $Q -f $S238/05_slice_238.sql \
  && $Q -f $R/20260917195055_review_tasks_has_verdict_revoke_public.sql \
  && $Q -f $R/20260922081120_review_tasks_verdict_unsolved.sql \
  && $Q -f $S/10_data_260.sql \
- && $Q -1 -f $R/PENDING_260.sql && $Q -1 -f $R/PENDING_260.sql && echo "PENDING_260 applied twice: ok" \
+ && $Q -1 -f $R/20261003075220_ai_points_by_criteria.sql && $Q -1 -f $R/20261003075220_ai_points_by_criteria.sql && echo "PENDING_260 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe260 -f $S/20_probes.sql
