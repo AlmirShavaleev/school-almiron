@@ -5,14 +5,16 @@ import {
   type CheckResult, type ForecastChange, type PracticeState,
 } from '@/lib/catalogRewards'
 import { forecastChange, normalizeForecastResponse, type ForecastResponse } from '@/lib/egeForecast'
+import { revealCatalogTaskTexts, type CatalogTaskTexts } from '@/lib/catalogTaskTexts'
 
 /**
  * §256. Каталог глазами ученика: проверка ответа, раскрытие, зона номера.
  *
  * Всё считает база: `catalog_practice_state` (номер раздела, зона, вехи,
  * состояние задач страницы), `catalog_check_answer` (вердикт — правило
- * вариантов §63/§66, засчитано ли, награды), `catalog_reveal_answer`
- * (раскрытие: дальше задача не засчитывается). Клиент только показывает.
+ * вариантов §63/§66, засчитано ли, награды), `catalog_reveal_answers`
+ * (раскрытие: дальше задача не засчитывается; §262 — заодно тексты ответа и
+ * разбора по правилу сервера). Клиент только показывает.
  *
  * «+1 к прогнозу» — модель §255 до/после: свидетельства берём у
  * `student_exam_forecast_evidence` до проверки и ещё раз после неё (когда
@@ -126,10 +128,12 @@ export function useCatalogPractice(sectionId: string | null | undefined, taskIds
     return { result: r, change, error: null }
   }, [])
 
-  const reveal = useCallback(async (taskId: string): Promise<string | null> => {
-    const raw = await call<{ answer_html?: string | null }>('catalog_reveal_answer', { p_task_id: taskId })
+  // §262: раскрытие и тексты одним вызовом (`catalog_reveal_answers`) — ответ,
+  // решение, план и критерии приходят только отсюда, в строке задачи их нет.
+  const reveal = useCallback(async (taskId: string): Promise<CatalogTaskTexts | null> => {
+    const texts = (await revealCatalogTaskTexts([taskId])).get(taskId) ?? null
     setState(s => (s && s.tasks[taskId] ? { ...s, tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], revealed: true } } } : s))
-    return typeof raw?.answer_html === 'string' ? raw.answer_html : null
+    return texts
   }, [])
 
   return { state, error, check, reveal }

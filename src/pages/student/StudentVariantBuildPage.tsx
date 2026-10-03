@@ -1,17 +1,44 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen } from 'lucide-react'
+import { ArrowLeft, BookOpen, Eye } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { useCatalogTasksBatch } from '@/hooks/useCatalog'
 import { VariantPrintPanel } from '@/components/pdf/VariantPrintPanel'
 import type { PrintableItem } from '@/utils/variantPrintUtils'
 import { TaskDisplayCard } from '@/components/catalog/TaskDisplayCard'
+import { Button } from '@/components/ui/Button'
+import { applyTaskTexts, revealCatalogTaskTexts, type CatalogTaskTexts } from '@/lib/catalogTaskTexts'
+import { plural } from '@/lib/plural'
 
 export function StudentVariantBuildPage() {
   const { items, removeItem, clearCart } = useCartStore()
 
   const taskIds = useMemo(() => items.map(item => item.catalog_task_id), [items])
-  const { tasks, loading } = useCatalogTasksBatch(taskIds)
+  const { tasks: loadedTasks, loading } = useCatalogTasksBatch(taskIds)
+
+  // §262. Ответы задач, которые ученику ещё не положены, в PDF не попадают —
+  // их нет и в данных. «Открыть ответы для PDF» — то же раскрытие, что кнопка
+  // «Показать ответ» в каталоге (catalog_reveal_answers), пачкой.
+  const [opened, setOpened] = useState<Map<string, CatalogTaskTexts>>(() => new Map())
+  const [opening, setOpening] = useState(false)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const tasks = useMemo(
+    () => loadedTasks.map(task => (opened.has(task.id) ? applyTaskTexts(task, opened.get(task.id)) : task)),
+    [loadedTasks, opened],
+  )
+  const lockedIds = useMemo(() => tasks.filter(task => task.answers_locked).map(task => task.id), [tasks])
+  async function openForPdf() {
+    setOpening(true)
+    setOpenError(null)
+    try {
+      const texts = await revealCatalogTaskTexts(lockedIds)
+      setOpened(prev => new Map([...prev, ...texts]))
+    } catch {
+      setOpenError('Не удалось открыть ответы — попробуйте ещё раз')
+    } finally {
+      setOpening(false)
+    }
+  }
 
   const taskMap = useMemo(
     () => new Map(tasks.map(task => [task.id, task])),
@@ -68,7 +95,7 @@ export function StudentVariantBuildPage() {
         </button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <aside className="space-y-3">
           <div className="rounded-2xl border border-gray-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
@@ -119,7 +146,24 @@ export function StudentVariantBuildPage() {
           )}
         </aside>
 
-        <section className="min-w-0">
+        <section className="min-w-0 space-y-4">
+          {!loading && lockedIds.length > 0 && (
+            <div className="rounded-2xl border border-graphite-200 bg-white p-4 flex flex-wrap items-start justify-between gap-3" data-testid="pdf-locked-answers">
+              <div className="min-w-[15rem] flex-1">
+                <p className="text-sm font-semibold text-graphite-900">
+                  {`Ответы к ${lockedIds.length} ${plural(lockedIds.length, 'задаче', 'задачам', 'задачам')} ещё не открыты`}
+                </p>
+                <p className="mt-1 text-sm text-graphite-600">
+                  В PDF они не попадут. Если открыть их для печати, эти задачи в каталоге больше не принесут баллов школы.
+                </p>
+                {openError && <p role="alert" className="mt-2 text-sm font-semibold text-verdict-bad-ink">{openError}</p>}
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => void openForPdf()} loading={opening} data-testid="pdf-open-answers">
+                <Eye size={16} />
+                Открыть ответы для PDF
+              </Button>
+            </div>
+          )}
           {loading ? (
             <div className="h-80 rounded-2xl bg-gray-100 animate-pulse" />
           ) : printableItems.length === items.length ? (

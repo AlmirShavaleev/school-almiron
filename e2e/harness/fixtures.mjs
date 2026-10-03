@@ -1917,6 +1917,7 @@ export function baseFixtures(persona) {
   if (persona === 'o259') { apply250(fx); apply259(fx) }
   if (persona === 'o260') apply260(fx)
   if (persona === 'o261') apply261(fx)
+  apply262(fx, persona)
   return fx
 }
 
@@ -3795,4 +3796,45 @@ function apply261(fx) {
   fx.rpc.student_progress_report = (body) =>
     body.p_student_id === IDS.otherStudent(0) ? report261(body, true)
       : body.p_student_id === IDS.otherStudent(1) ? report261(body, false) : null
+}
+
+// ── §262: ответ и разбор каталога — только функцией сервера ─────────────────
+// Повторяет правило catalog_answer_reasons (PENDING_262a) на фикстурах: персонал
+// (teacher/curator/admin/owner) получает всё; ученик — только опубликованные
+// задачи и тексты, когда положено: задача без проверки (часть 2 или эталон не
+// число/набор), решена верно или открыта (состояние §256 — state256, его же
+// пишет catalog_reveal_answer). Остальное — allowed = false, поля пустые;
+// catalog_reveal_answers ставит отметку и отдаёт тексты.
+function apply262(fx, persona) {
+  const uid = personas[persona]?.user?.id
+  const role = fx.tables.profiles.find(p => p.id === uid)?.role
+  const staff = ['teacher', 'curator', 'admin', 'owner'].includes(role)
+  const plain = (h) => String(h ?? '').replace(/<[^>]+>/g, '').trim()
+  const checkable = (t) => t.exam_part !== 2 && /^-?[\d.,]+(\s*[;\s]\s*-?[\d.,]+)*$/.test(plain(t.answer_html))
+  const reason = (t) => {
+    if (staff) return 'staff'
+    if (!t.is_published) return undefined
+    if (!checkable(t)) return 'not_checkable'
+    if (state256.attempts.some(a => a.task_id === t.id && a.verdict === 'correct')) return 'solved'
+    if (state256.reveals.has(t.id)) return 'revealed'
+    return null
+  }
+  const texts = (ids) => (ids ?? []).flatMap(id => {
+    const t = fx.tables.catalog_tasks.find(x => x.id === id)
+    if (!t) return []
+    const r = reason(t)
+    if (r === undefined) return []
+    const open = r !== null
+    return [{
+      task_id: t.id, allowed: open, reason: r,
+      answer_html: open ? t.answer_html ?? null : null, solution_html: open ? t.solution_html ?? null : null,
+      solution_plan_html: open ? t.solution_plan_html ?? null : null, grade_criteria_html: open ? t.grade_criteria_html ?? null : null,
+      has_plan: !!t.solution_plan_html, has_criteria: !!t.grade_criteria_html,
+    }]
+  })
+  fx.rpc.catalog_task_texts = (body) => texts(body.p_task_ids)
+  fx.rpc.catalog_reveal_answers = (body) => {
+    for (const id of body.p_task_ids ?? []) if (fx.tables.catalog_tasks.some(t => t.id === id && t.is_published)) state256.reveals.add(id)
+    return texts(body.p_task_ids)
+  }
 }

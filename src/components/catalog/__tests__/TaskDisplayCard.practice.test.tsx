@@ -12,6 +12,7 @@ import { TaskDisplayCard, type TaskPracticeProps } from '@/components/catalog/Ta
 import type { CatalogTask } from '@/hooks/useCatalog'
 import type { CheckOutcome } from '@/hooks/useCatalogPractice'
 import { normalizeCheckResult, type TaskPracticeState } from '@/lib/catalogRewards'
+import type { CatalogTaskTexts } from '@/lib/catalogTaskTexts'
 
 /**
  * §256. Задача каталога у ученика: поле ответа + «Проверить» у проверяемых
@@ -31,7 +32,13 @@ const result = (over: Record<string, unknown>) => normalizeCheckResult({
   points: 5, solved: 4, milestone_bonus: 0, daily_bonus: 0, weekly_bonus: 0, answer_html: '<p>7</p>', ...over,
 })
 
-function setup(state: TaskPracticeState | undefined, onCheck: (a: string) => Promise<CheckOutcome>, onReveal = vi.fn(async () => '<p>7</p>')) {
+// §262: раскрытие возвращает тексты ответа и разбора с сервера.
+const revealed: CatalogTaskTexts = {
+  task_id: 't1', allowed: true, reason: 'revealed', answer_html: '<p>7</p>', solution_html: '<p>x − 3 = 4</p>',
+  solution_plan_html: null, grade_criteria_html: null, has_plan: false, has_criteria: false,
+}
+
+function setup(state: TaskPracticeState | undefined, onCheck: (a: string) => Promise<CheckOutcome>, onReveal = vi.fn(async (): Promise<CatalogTaskTexts | null> => revealed)) {
   const practice: TaskPracticeProps = { state, onCheck, onReveal }
   const r = render(<TaskDisplayCard task={task} number={1} onToggle={() => {}} practice={practice} />)
   return { ...r, onReveal, rerenderWith: (s: TaskPracticeState) => r.rerender(<TaskDisplayCard task={task} number={1} onToggle={() => {}} practice={{ state: s, onCheck, onReveal }} />) }
@@ -89,7 +96,7 @@ describe('TaskDisplayCard — проверка ответа (§256)', () => {
   })
 
   it('«Показать решение» — тоже через раскрытие; ошибка раскрытия — ответа не показываем', async () => {
-    const onReveal = vi.fn(async () => { throw new Error('сеть') })
+    const onReveal = vi.fn(async (): Promise<CatalogTaskTexts | null> => { throw new Error('сеть') })
     setup(fresh, vi.fn(), onReveal)
     await act(async () => { fireEvent.click(screen.getByTestId('task-show-solution')) })
     expect(onReveal).toHaveBeenCalledTimes(1)

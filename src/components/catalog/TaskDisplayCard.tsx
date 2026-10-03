@@ -8,17 +8,27 @@ import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
 import type { CheckOutcome } from '@/hooks/useCatalogPractice'
 import type { TaskPracticeState } from '@/lib/catalogRewards'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
+import { applyTaskTexts, fetchCatalogTaskTexts, revealCatalogTaskTexts, type CatalogTaskTexts } from '@/lib/catalogTaskTexts'
 
 /**
  * §256. Режим ученика: поле ответа + «Проверить» у проверяемых задач, а
  * кнопки ответа и решения сначала отмечают раскрытие в базе —
  * после этого задача в прогноз и баллы не идёт. Без `practice` (персонал,
  * подборки, корзина, функция базы ещё не применена) карточка как прежде.
+ *
+ * §262. Тексты ответа, решения, плана и критериев приходят с сервера по
+ * правилу (`task.answers_locked` — пока не положено, поля пустые). Закрытую
+ * задачу любая из четырёх кнопок открывает так: есть `practice` и задача ещё
+ * не решена и не открыта — `practice.onReveal` (раскрытие + тексты); по
+ * состоянию страницы уже положено (решена, открыта, без проверки), а данные
+ * задачи устарели — просто тексты, без отметки; состояния нет (корзина,
+ * подборка, задача за пределами первых 300) — раскрытие `catalog_reveal_answers`.
+ * Персоналу задачи не закрываются — карточка как прежде.
  */
 export interface TaskPracticeProps {
   state: TaskPracticeState | undefined
   onCheck: (answer: string) => Promise<CheckOutcome>
-  onReveal: () => Promise<string | null>
+  onReveal: () => Promise<CatalogTaskTexts | null>
 }
 
 export interface TaskDisplayCardProps {
@@ -66,16 +76,26 @@ export function TaskDisplayCard({
 
   const cardRef = useRef<HTMLDivElement>(null)
   const [revealError, setRevealError] = useState<string | null>(null)
+  // §262: тексты, полученные раскрытием в этой карточке (данные задачи — без них).
+  const [opened, setOpened] = useState<CatalogTaskTexts | null>(null)
+  const view = opened && opened.task_id === task.id ? applyTaskTexts(task, opened) : task
+  const locked = view.answers_locked === true
 
   // §256. Проверяемая задача ученика: ответ и решение открываются через
-  // catalog_reveal_answer (пока задача не решена и ответ ещё не открыт).
-  const checkable = practice?.state?.checkable === true
-  const needsReveal = checkable && !practice?.state?.solved && !practice?.state?.revealed
+  // раскрытие (пока задача не решена и ответ ещё не открыт).
+  const pState = practice?.state
+  const checkable = pState?.checkable === true
+  const needsReveal = checkable && !pState?.solved && !pState?.revealed
+  const practiceAllows = !!pState && (!pState.checkable || pState.solved || pState.revealed)
   async function openGated(open: () => void) {
-    if (!needsReveal || !practice) { open(); return }
+    if (!(needsReveal && practice) && !locked) { open(); return }
     setRevealError(null)
     try {
-      await practice.onReveal()
+      let texts: CatalogTaskTexts | null | undefined
+      if (needsReveal && practice) texts = await practice.onReveal()
+      else if (practiceAllows) texts = (await fetchCatalogTaskTexts([task.id])).get(task.id)
+      else texts = (await revealCatalogTaskTexts([task.id])).get(task.id)
+      if (texts) setOpened(texts)
       open()
     } catch {
       setRevealError('Не удалось открыть ответ — попробуйте ещё раз')
@@ -83,6 +103,8 @@ export function TaskDisplayCard({
   }
   const toggleAnswer = () => (showAnswer ? setShowAnswer(false) : void openGated(() => setShowAnswer(true)))
   const toggleSolution = () => (showSolution ? setShowSolution(false) : void openGated(() => setShowSolution(true)))
+  const togglePlan = () => (showPlan ? setShowPlan(false) : void openGated(() => setShowPlan(true)))
+  const toggleCriteria = () => (showGradeCriteria ? setShowGradeCriteria(false) : void openGated(() => setShowGradeCriteria(true)))
 
   // Re-runs when task or any section visibility changes
   useImageReclassify(cardRef, [
@@ -99,10 +121,12 @@ export function TaskDisplayCard({
 
   // Resolve asset URLs once per task (memo-like — new object only when task changes)
   const stmt    = resolveTaskHtml(task.statement_html,      task.assets)
-  const ans     = resolveTaskHtml(task.answer_html,         task.assets)
-  const sol     = resolveTaskHtml(task.solution_html,       task.assets)
-  const plan    = resolveTaskHtml(task.solution_plan_html,  task.assets)
-  const crit    = resolveTaskHtml(task.grade_criteria_html, task.assets)
+  const ans     = resolveTaskHtml(view.answer_html,         task.assets)
+  const sol     = resolveTaskHtml(view.solution_html,       task.assets)
+  const plan    = resolveTaskHtml(view.solution_plan_html,  task.assets)
+  const crit    = resolveTaskHtml(view.grade_criteria_html, task.assets)
+  const hasPlan     = !!view.solution_plan_html  || view.has_plan === true
+  const hasCriteria = !!view.grade_criteria_html || view.has_criteria === true
 
   const ansOpen  = forceOpen?.answer    ?? showAnswer
   const solOpen  = forceOpen?.solution  ?? showSolution
@@ -199,9 +223,9 @@ export function TaskDisplayCard({
         )}
 
         {/* Plan toggle */}
-        {forceOpen?.plan === undefined && task.solution_plan_html && (
+        {forceOpen?.plan === undefined && hasPlan && (
           <button
-            onClick={() => setShowPlan(v => !v)}
+            onClick={togglePlan}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors"
           >
             {planOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -210,9 +234,9 @@ export function TaskDisplayCard({
         )}
 
         {/* Grade criteria toggle */}
-        {forceOpen?.criteria === undefined && task.grade_criteria_html && (
+        {forceOpen?.criteria === undefined && hasCriteria && (
           <button
-            onClick={() => setShowGradeCriteria(v => !v)}
+            onClick={toggleCriteria}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-sm font-medium hover:bg-teal-100 transition-colors"
           >
             {critOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

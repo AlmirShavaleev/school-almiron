@@ -9,8 +9,9 @@ import { useToastStore } from '@/store/toastStore'
  * страница темы покрыта отдельно (`TopicPage.preview.test.tsx`).
  *
  * Задачи к уроку (§179): ответ, разбор и «Разобрал» работают — в памяти
- * хука; вердикт считает чистая RPC `preview_task_verdict`, разбор читается из
- * `catalog_tasks`, а RPC записи не вызываются никогда.
+ * хука; вердикт считает чистая RPC `preview_task_verdict`, разбор отдаёт
+ * `catalog_task_texts` (§262; прямого чтения `catalog_tasks` нет), а RPC
+ * записи не вызываются никогда.
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
@@ -47,6 +48,11 @@ vi.mock('@/lib/supabase', () => ({
         if (args.p_answer_raw === 'staff-only') return Promise.resolve({ data: null, error: { message: 'STAFF_ONLY: preview verdict is available to platform staff only' } })
         return Promise.resolve({ data: args.p_answer_raw === CORRECT, error: null })
       }
+      // §262: разбор персоналу — с сервера (catalog_task_texts отдаёт всё).
+      if (name === 'catalog_task_texts') return Promise.resolve({ data: (args.p_task_ids as string[]).map(id => ({
+        task_id: id, allowed: true, reason: 'staff', answer_html: `<p>${CORRECT}</p>`, solution_html: '<p>Разбор из каталога</p>',
+        solution_plan_html: null, grade_criteria_html: null, has_plan: false, has_criteria: false,
+      })), error: null })
       return Promise.resolve({ data: null, error: null })
     },
     from: (table: string) => {
@@ -122,7 +128,7 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(lastToast()).toBeUndefined()
     })
 
-    it('неверный → попытка без закрытия; разбор — из catalog_tasks; «Разобрал» → закрыта «по разбору»', async () => {
+    it('неверный → попытка без закрытия; разбор — с сервера (catalog_task_texts, §262); «Разобрал» → закрыта «по разбору»', async () => {
       const { result } = renderHook(() => useTopicTasks(TOPIC))
       await waitFor(() => expect(result.current.loading).toBe(false))
       rpc.mockClear()
@@ -139,7 +145,8 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       let revealed: unknown = null
       await act(async () => { revealed = await result.current.reveal('i1') })
       expect(revealed).toEqual({ answer_html: `<p>${CORRECT}</p>`, solution_html: '<p>Разбор из каталога</p>', solution_plan_html: null })
-      expect(queried).toContain('catalog_tasks')
+      expect(rpc).toHaveBeenCalledWith('catalog_task_texts', { p_task_ids: ['t1'] })
+      expect(queried).not.toContain('catalog_tasks')
       expect(result.current.rows[0].solution_shown_at).not.toBeNull()
       expect(result.current.rows[0].solution_html).toBe('<p>Разбор из каталога</p>')
       expect(result.current.rows[0].answer_html).toBe(`<p>${CORRECT}</p>`)
@@ -162,7 +169,8 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(result.current.rows[1].closed_by).toBe('self')
       expect(result.current.solved).toBe(2)
 
-      expect(rpc).not.toHaveBeenCalled()
+      // Единственный вызов — чтение разбора второй задачи (§262), не запись.
+      expect(rpc.mock.calls.map(c => c[0])).toEqual(['catalog_task_texts'])
       expect(written).toEqual([])
     })
 
@@ -176,6 +184,7 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(result.current.error).toMatch(/после первой попытки/)
       expect(result.current.rows[0].solution_shown_at).toBeNull()
       expect(queried).not.toContain('catalog_tasks')
+      expect(rpc).not.toHaveBeenCalledWith('catalog_task_texts', expect.anything())
 
       await act(async () => { await result.current.closeSelf('i2') })
       expect(result.current.error).toBe('Сначала откройте решение.')
@@ -239,7 +248,8 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       for (const w of ['answer_topic_task', 'reveal_topic_task_solution', 'close_topic_task_self', 'topic_tasks_for_student', 'ensure_topic_task_rows']) {
         expect(names, w).not.toContain(w)
       }
-      expect(new Set(names)).toEqual(new Set(['topic_tasks_for_staff', 'preview_task_verdict']))
+      // Только чтения: строки, вердикт без записи и тексты разбора (§262).
+      expect(new Set(names)).toEqual(new Set(['topic_tasks_for_staff', 'preview_task_verdict', 'catalog_task_texts']))
       expect(written).toEqual([])
       expect(queried).not.toContain('test_variant_answers')
     })

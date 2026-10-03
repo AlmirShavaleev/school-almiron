@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usePreviewMode } from '@/store/staffModeStore'
 import type { CatalogTaskAsset } from '@/hooks/useCatalog'
+import { fetchCatalogTaskTexts } from '@/lib/catalogTaskTexts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -26,7 +27,7 @@ const db = supabase as any
  * («не запоминать никак»). Вердикт считает база той же формулой, что у
  * ученика, но чистой RPC `preview_task_verdict` — ни одна RPC записи
  * (`answer_topic_task`, `reveal_topic_task_solution`, `close_topic_task_self`)
- * в предпросмотре не вызывается; разбор берётся прямо из `catalog_tasks`.
+ * в предпросмотре не вызывается; разбор берётся у `catalog_task_texts` (§262).
  */
 
 export interface TopicTaskRow {
@@ -187,13 +188,9 @@ export function useTopicTasks(topicId: string | undefined) {
         if (!row) throw new Error(humanizeTaskError('ACCESS_DENIED'))
         // Разбор задачи с коротким ответом — после первой попытки (§176).
         if (row.auto_checkable && !row.is_correct && row.attempts_count < 1) throw new Error(humanizeTaskError('NOT_ATTEMPTED_YET'))
-        // Ответ и разбор — из каталога, персонал читает его целиком.
-        const { data, error: err } = await db
-          .from('catalog_tasks')
-          .select('answer_html, solution_html, solution_plan_html')
-          .eq('id', row.task_id)
-          .maybeSingle()
-        if (err) throw new Error(err.message)
+        // Ответ и разбор — с сервера (§262: catalog_task_texts, персоналу —
+        // все поля; прямое чтение колонок после 262b закрыто и персоналу).
+        const data = (await fetchCatalogTaskTexts([row.task_id])).get(row.task_id)
         if (!data) throw new Error('Разбор недоступен: задача не найдена в каталоге')
         const revealed: RevealedSolution = {
           solution_html: data.solution_html ?? null,

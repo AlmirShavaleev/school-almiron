@@ -7,6 +7,7 @@ import { useCatalogSections, ALL_SUBJECTS, type CatalogTask, type CatalogTaskAss
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
 import { hasTextAnswer } from '@/lib/topicTest'
+import { withTaskTexts } from '@/lib/catalogTaskTexts'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 
@@ -69,7 +70,7 @@ export function CatalogTaskBrowser({
       try {
         let q = db
           .from('catalog_tasks')
-          .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, has_answer, partial_type, max_points, exam_part, position')
+          .select('id, external_id, section_id, subject, exam_type, statement_html, has_answer, partial_type, max_points, exam_part, position')
           .eq('section_id', sectionId)
           .eq('is_published', true)
 
@@ -91,7 +92,8 @@ export function CatalogTaskBrowser({
 
         if (error) throw new Error(error.message ?? 'Не удалось загрузить задачи')
 
-        const newTasks = (data ?? []) as CatalogTask[]
+        // §262: эталон — с сервера (персоналу catalog_task_texts отдаёт всё).
+        const newTasks = await withTaskTexts((data ?? []) as CatalogTask[])
 
         if (page === 0) {
           setTasks(newTasks)

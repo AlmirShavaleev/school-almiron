@@ -43,6 +43,11 @@ vi.mock('@/lib/supabase', () => ({
         return Promise.resolve({ data: state.check, error: null })
       }
       if (fn === 'catalog_reveal_answer') return Promise.resolve({ data: { answer_html: '<p>7</p>', solved_before: false }, error: null })
+      // §262: раскрытие пачкой — отметка + тексты по правилу (после отметки — revealed).
+      if (fn === 'catalog_reveal_answers') return Promise.resolve({ data: [{
+        task_id: 't1', allowed: true, reason: 'revealed', answer_html: '<p>7</p>', solution_html: '<p>2^4 = 16</p>',
+        solution_plan_html: null, grade_criteria_html: null, has_plan: false, has_criteria: false,
+      }], error: null })
       return Promise.resolve({ data: null, error: { message: 'нет функции' } })
     },
   },
@@ -85,9 +90,13 @@ describe('useCatalogPractice (§256)', () => {
   it('раскрытие: отметка в базе, задача «revealed»; верная попытка после — без пересчёта прогноза', async () => {
     const { result } = renderHook(() => useCatalogPractice('s6', ['t1'], true))
     await waitFor(() => expect(result.current.state).not.toBeNull())
-    let html: string | null = null
-    await act(async () => { html = await result.current.reveal('t1') })
-    expect(html).toBe('<p>7</p>')
+    let texts: Awaited<ReturnType<typeof result.current.reveal>> = null
+    await act(async () => { texts = await result.current.reveal('t1') })
+    // §262: одним вызовом — отметка и тексты ответа и решения.
+    expect(state.calls).toContainEqual(['catalog_reveal_answers', { p_task_ids: ['t1'] }])
+    expect(state.calls.some(([f]) => f === 'catalog_reveal_answer')).toBe(false)
+    expect(texts!.answer_html).toBe('<p>7</p>')
+    expect(texts!.solution_html).toBe('<p>2^4 = 16</p>')
     expect(result.current.state!.tasks.t1.revealed).toBe(true)
     state.check = { ...(state.check as object), counted: false, revealed_before: true, points: 0 }
     const before = state.calls.filter(([f]) => f === 'student_exam_forecast_evidence').length

@@ -1532,6 +1532,30 @@ export const scenes = [
     ]
   }),
 
+  // §262: ответы каталога ученику — только с сервера (catalog_task_texts / catalog_reveal_answers).
+  // Внешне ничего не меняется: каталог ученика до и после «Показать ответ» (практика §256 и
+  // базовый ученик без практики), вариант после сдачи, конструктор и каталог учителя. Новое —
+  // плашка «Ответы к N задачам ещё не открыты» в PDF ученика из корзины. Сцены пишут
+  // (раскрытие) — каждую ширину своим процессом: node e2e/harness/tour.mjs d262 1280 ; … d262 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const topic = '/catalog/d000000-0000-4000-8000-000000002566/topic/d000000-0000-4000-8000-000000002600?subject=math&exam=ege'
+    const task = (k) => `[data-task-id="d000000-0000-4000-8000-0000000026${10 + k}"]`
+    const toTask = (k) => ({ eval: `document.querySelector('${task(k)}').scrollIntoView({ block: "center" })` })
+    const ptask = `[data-task-id="${S.task(4)}"]`
+    const physTopic = `/catalog/${S.section(1)}/topic/${S.ctopic(2)}?subject=physics&exam=ege`
+    return [
+      { persona: 's256', name: 'd262-catalog', url: topic, width, height, full: false, actions: [{ wait: 1800 }, toTask(5)] },
+      { persona: 's256', name: 'd262-catalog-answer', url: topic, width, height, full: false, actions: [{ wait: 1800 }, toTask(5), { clickSel: `${task(5)} [data-testid=task-show-answer]` }, { wait: 700 }, toTask(5)] },
+      { persona: 'student', name: 'd262-catalog-plain', url: physTopic, width, height, full: false, actions: [{ wait: 1500 }] },
+      { persona: 'student', name: 'd262-catalog-plain-answer', url: physTopic, width, height, full: false, actions: [{ wait: 1500 }, { clickSel: `${ptask} [data-testid=task-show-answer]` }, { wait: 700 }, { clickSel: `${ptask} [data-testid=task-show-solution]` }, { wait: 500 }, { eval: `document.querySelector('${ptask}').scrollIntoView({ block: "center" })` }] },
+      { persona: 'student', name: 'd262-variant-done', url: `/student/variants/${S.myAssignment(3)}`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'student', name: 'd262-pdf', url: '/catalog', width, height, full: false, actions: [{ ls: ['almiron-cart', cart] }, { goto: '/student/variants/build' }, { wait: 1800 }, { eval: 'document.querySelector("[data-testid=pdf-locked-answers]")?.scrollIntoView({ block: "center" })' }] },
+      { persona: 'student', name: 'd262-pdf-opened', url: '/catalog', width, height, full: false, actions: [{ ls: ['almiron-cart', cart] }, { goto: '/student/variants/build' }, { wait: 1800 }, { clickSel: '[data-testid=pdf-open-answers]' }, { wait: 1200 }] },
+      { persona: 'owner', name: 'd262-teacher-variant', url: `/variants/${S.variant(1)}`, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'owner', name: 'd262-teacher-catalog-answer', url: physTopic, width, height, full: false, actions: [{ wait: 1500 }, { clickSel: `${ptask} [data-testid=task-show-answer]` }, { wait: 500 }, { clickSel: `${ptask} [data-testid=task-show-solution]` }, { wait: 500 }, { eval: `document.querySelector('${ptask}').scrollIntoView({ block: "center" })` }] },
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

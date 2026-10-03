@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useNeedsOwnDataFilter } from '@/store/staffModeStore'
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
+import { applyTaskTexts, fetchCatalogTaskTexts } from '@/lib/catalogTaskTexts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -72,11 +73,24 @@ export interface GeneratedTask {
 
 type TaskFieldVisibility = 'full' | 'student_safe'
 
-const FULL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, partial_type, max_points, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, position, catalog_sections(title)'
+// §262. Ответ, решение, план и критерии в строке задачи больше не читаются ни
+// в каком режиме: «full» добирает их у `catalog_task_texts` (персоналу —
+// все поля, ученику — по правилу сервера), «student_safe» не добирает вовсе.
+const FULL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, partial_type, max_points, statement_html, source_url, has_answer, has_solution, position, catalog_sections(title)'
 const STUDENT_SAFE_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, partial_type, max_points, statement_html, source_url, has_answer, has_solution, position, exam_part, catalog_sections(title)'
+const DETAIL_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, source_url, has_answer, has_solution, max_points, position, catalog_sections(title)'
+const SINGLE_TASK_SELECT = 'id, external_id, section_id, subject, exam_type, statement_html, has_answer, has_solution, max_points, position'
 
 function getTaskSelect(visibility: TaskFieldVisibility) {
   return visibility === 'student_safe' ? STUDENT_SAFE_TASK_SELECT : FULL_TASK_SELECT
+}
+
+/** §262: подставить тексты сервера в строки задач (одним вызовом на 300 задач). */
+async function attachTexts<T extends { id: string }>(rows: T[] | null | undefined): Promise<T[]> {
+  const list = rows ?? []
+  if (list.length === 0) return list
+  const texts = await fetchCatalogTaskTexts(list.map(r => r.id))
+  return list.map(r => applyTaskTexts(r, texts.get(r.id)))
 }
 
 // ── useVariants (список) ─────────────────────────────────────────────────────
@@ -177,10 +191,18 @@ export function useVariantDetail(variantId: string | undefined) {
     const taskIds = (itemsData ?? []).map((i: TestVariantItem) => i.task_id)
     if (!taskIds.length) { setItems([]); setLoading(false); return }
 
-    const { data: tasksData } = await db
+    const { data: taskRows } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, max_points, position, catalog_sections(title)')
+      .select(DETAIL_TASK_SELECT)
       .in('id', taskIds)
+    let tasksData: CatalogTask[] = []
+    try {
+      tasksData = await attachTexts<CatalogTask>(taskRows)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить ответы')
+      setLoading(false)
+      return
+    }
 
     // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
     const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
@@ -280,10 +302,13 @@ export function useVariantBuilder() {
       const taskIds = rows.map(r => r.out_task_id)
 
       // Загружаем данные задач
-      const { data: tasksData } = await db
+      const { data: taskRows } = await db
         .from('catalog_tasks')
         .select(getTaskSelect(visibility))
         .in('id', taskIds)
+      const tasksData: CatalogTask[] = visibility === 'full'
+        ? await attachTexts<CatalogTask>(taskRows)
+        : (taskRows ?? [])
 
       // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
       const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
@@ -382,12 +407,13 @@ export function useVariantBuilder() {
     })
     if (error || !newId) return null
 
-    const { data: t } = await db
+    const { data: row } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position')
+      .select(SINGLE_TASK_SELECT)
       .eq('id', newId)
       .maybeSingle()
-    if (!t) return null
+    if (!row) return null
+    const [t] = await attachTexts<CatalogTask>([row])
 
     const { data: assets } = await db
       .from('catalog_task_assets')
@@ -490,12 +516,13 @@ async function loadSingleTask(taskId: string): Promise<(CatalogTask & { assets: 
 async function loadSingleTaskWithVisibility(taskId: string, visibility: TaskFieldVisibility): Promise<(CatalogTask & { assets: CatalogTaskAsset[] }) | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db2 = supabase as any
-  const { data: t } = await db2
+  const { data: row } = await db2
     .from('catalog_tasks')
     .select(getTaskSelect(visibility))
     .eq('id', taskId)
     .maybeSingle()
-  if (!t) return null
+  if (!row) return null
+  const t = visibility === 'full' ? (await attachTexts<CatalogTask>([row]))[0] : row
   const { data: assets } = await db2
     .from('catalog_task_assets')
     .select('id, task_id, tex_session_id, kind, storage_path, alt, position')

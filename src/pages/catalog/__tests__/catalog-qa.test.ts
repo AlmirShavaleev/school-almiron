@@ -188,14 +188,17 @@ describe('solution_plan and grade_criteria', () => {
   it('plan button conditional on solution_plan_html', () => {
     // Logic now lives in TaskDisplayCard
     const src = read('src/components/catalog/TaskDisplayCard.tsx')
-    expect(src).toContain('task.solution_plan_html &&')
+    // §262: кнопка — по тексту плана ИЛИ флагу has_plan от catalog_task_texts (у закрытой
+    // задачи текста нет). Поведение — TaskDisplayCard.locked262.test.tsx.
+    expect(src).toContain('hasPlan &&')
     expect(src).toContain('План решения')
   })
 
   it('criteria button conditional on grade_criteria_html', () => {
     // Logic now lives in TaskDisplayCard
     const src = read('src/components/catalog/TaskDisplayCard.tsx')
-    expect(src).toContain('task.grade_criteria_html &&')
+    // §262: то же для критериев (has_criteria).
+    expect(src).toContain('hasCriteria &&')
     expect(src).toContain('Критерии оценки')
   })
 
@@ -1305,7 +1308,8 @@ describe('Answer display states', () => {
     // TaskContentRenderer wraps dangerouslySetInnerHTML
     expect(read('src/components/catalog/TaskContentRenderer.tsx')).toContain('dangerouslySetInnerHTML')
     // TaskDisplayCard resolves answer HTML via resolveTaskHtml
-    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(task.answer_html')
+    // §262: ответ — из задачи или из текстов, полученных раскрытием (view).
+    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(view.answer_html')
   })
 })
 

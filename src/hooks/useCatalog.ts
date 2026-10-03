@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/authStore'
 import { physicsDifficultyByExternalId, getPhysicsDifficultyOrder, type PhysicsDifficulty } from '@/lib/physicsDifficulty'
 import { physicsTopicsCatalog } from '@/lib/physicsTopicsCatalog'
 import { CATALOG_ASSETS_BUCKET } from '@/lib/catalogAssets'
+import { applyTaskTexts, fetchCatalogTaskTexts, withTaskTexts } from '@/lib/catalogTaskTexts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,15 @@ export interface CatalogTask {
   assets?: CatalogTaskAsset[]
   is_completed?: boolean
   section?: CatalogSection
+  /**
+   * §262. Ответ, решение, план и критерии приходят не из строки catalog_tasks,
+   * а от `catalog_task_texts` (src/lib/catalogTaskTexts.ts). true — ученику
+   * их пока не положено: поля пустые, карточка открывает их раскрытием.
+   */
+  answers_locked?: boolean
+  /** §262. Есть ли план решения / критерии (флаг виден и у закрытой задачи). */
+  has_plan?: boolean
+  has_criteria?: boolean
 }
 
 export interface CatalogTaskTopicLink {
@@ -374,6 +384,13 @@ async function fetchCompletedTaskIdsForUser(userId: string): Promise<Set<string>
   return new Set(rows.map(row => row.task_id))
 }
 
+/**
+ * §262. Колонки строки задачи БЕЗ ответа, решения, плана и критериев: их
+ * отдаёт только `catalog_task_texts` (после PENDING_262b прямое чтение этих
+ * колонок база запрещает и персоналу, а `select *` — отказ целиком).
+ */
+const TASK_ROW_SELECT = 'id, external_id, section_id, subject, exam_type, difficulty, statement_html, has_answer, has_solution, max_points, position, exam_part'
+
 async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
   if (taskIds.length === 0) return []
 
@@ -381,7 +398,7 @@ async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
   for (const batch of chunk(taskIds, IN_FILTER_CHUNK)) {
     const { data, error } = await db
       .from('catalog_tasks')
-      .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position, exam_part')
+      .select(TASK_ROW_SELECT)
       .in('id', batch)
       .eq('is_published', true)
       .order('position')
@@ -390,7 +407,8 @@ async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
     rows.push(...(data ?? []))
   }
 
-  return rows
+  // §262: ответ и разбор — от сервера по правилу, не из строки задачи.
+  return withTaskTexts(rows)
 }
 
 async function fetchCompletedTaskRowsForUserByTaskIds(userId: string, taskIds: string[]): Promise<Array<{ task_id: string; is_completed?: boolean }>> {
@@ -871,10 +889,14 @@ export function useCatalogTask(taskId: string | undefined) {
       try {
         const { data: t, error: e1 } = await db
           .from('catalog_tasks')
-          .select('id, external_id, section_id, subject, exam_type, difficulty, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, has_answer, has_solution, max_points, position, is_published, exam_part')
+          .select(`${TASK_ROW_SELECT}, is_published`)
           .eq('id', taskId)
           .single()
         if (e1 || cancelled) { if (!cancelled) setError(e1?.message ?? 'Задача не найдена'); setLoading(false); return }
+        const row = t as CatalogTask
+        const texts = await fetchCatalogTaskTexts([row.id])
+        if (cancelled) return
+        const withTexts = applyTaskTexts(row, texts.get(row.id))
 
         // Section
         const { data: sec, error: sectionError } = await db.from('catalog_sections').select('*').eq('id', t.section_id).single()
@@ -904,7 +926,7 @@ export function useCatalogTask(taskId: string | undefined) {
         if (topicLinkError || cancelled) { if (!cancelled) setError(topicLinkError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
 
         if (!cancelled) {
-          setTask({ ...t, section: sec ?? undefined, assets: allAssets, hasTopicAssigned: (topicLink ?? []).length > 0 })
+          setTask({ ...withTexts, section: sec ?? undefined, assets: allAssets, hasTopicAssigned: (topicLink ?? []).length > 0 })
           setLoading(false)
         }
       } catch (e) {
@@ -947,12 +969,16 @@ export function useCatalogTasksBatch(taskIds: string[]) {
         for (let i = 0; i < taskIds.length; i += CHUNK) {
           const { data, error: e } = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id, subject, exam_type, statement_html, answer_html, solution_html, solution_plan_html, grade_criteria_html, source_url, has_answer, has_solution, max_points, position, exam_part')
+            .select('id, external_id, section_id, subject, exam_type, statement_html, source_url, has_answer, has_solution, max_points, position, exam_part')
             .in('id', taskIds.slice(i, i + CHUNK))
             .eq('is_published', true)
           if (e || cancelled) { if (!cancelled) setError(e?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
           allTasks.push(...(data ?? []))
         }
+        // §262: ответы и разборы — по правилу сервера (персоналу — все).
+        const textsById = await fetchCatalogTaskTexts(allTasks.map(t => t.id))
+        if (cancelled) return
+        for (let k = 0; k < allTasks.length; k++) allTasks[k] = applyTaskTexts(allTasks[k], textsById.get(allTasks[k].id))
 
         // Batch-load all assets
         const allAssets: (CatalogTaskAsset & { task_id: string })[] = []

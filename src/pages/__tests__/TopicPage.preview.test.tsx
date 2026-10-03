@@ -9,7 +9,7 @@ import { useToastStore } from '@/store/toastStore'
  * тест: владелец (owner) в режиме `student` видит ученическую вёрстку с
  * лентой задач из `topic_tasks_for_staff`; задачи и «Отметить как сделанное»
  * работают в памяти вкладки (§179): вердикт — чистая `preview_task_verdict`,
- * разбор — из `catalog_tasks`; ДЗ и тест из банка по-прежнему выключены. И
+ * разбор — от `catalog_task_texts` (§262); ДЗ и тест из банка по-прежнему выключены. И
  * НИ ОДНА RPC/таблица записи не вызывается — даже если действия дёргать
  * руками.
  *
@@ -52,6 +52,10 @@ vi.mock('@/lib/supabase', () => ({
       if (name === 'topic_test_assignment_items') return Promise.resolve({ data: [{ id: 'ti-1', max_points: 1, exam_part: 1, statement_html: 'Тест 1', assets: [] }], error: null })
       // Чистый вердикт (§179): как база — true/false по эталону, без записи.
       if (name === 'preview_task_verdict') return Promise.resolve({ data: args.p_answer_raw === CORRECT, error: null })
+      // §262: разбор персоналу — с сервера (catalog_task_texts), не из строки catalog_tasks.
+      if (name === 'catalog_task_texts') return Promise.resolve({ data: (args.p_task_ids as string[]).map(id => ({
+        task_id: id, allowed: true, reason: 'staff', ...CATALOG_TASK, grade_criteria_html: null, has_plan: false, has_criteria: false,
+      })), error: null })
       return Promise.resolve({ data: null, error: null })
     },
     from: (table: string) => {
@@ -218,7 +222,7 @@ describe('Страница темы в предпросмотре глазами
     expectNothingWritten()
   })
 
-  it('неверный → «Неверно · попытка 1», затем разбор из catalog_tasks, поле исчезает, «Разобрал» → «Разобрана»', async () => {
+  it('неверный → «Неверно · попытка 1», затем разбор с сервера (catalog_task_texts, §262), поле исчезает, «Разобрал» → «Разобрана»', async () => {
     await openTasks()
     fireEvent.click(square(2))
     rpc.mockClear()
@@ -238,7 +242,8 @@ describe('Страница темы в предпросмотре глазами
     fireEvent.click(reveal)
     expect(await screen.findByTestId('solution')).toHaveTextContent('Разбор из каталога')
     expect(screen.getByTestId('answer')).toHaveTextContent(CORRECT)
-    expect(queried).toContain('catalog_tasks')
+    expect(rpc).toHaveBeenCalledWith('catalog_task_texts', { p_task_ids: ['task-2'] })
+    expect(queried).not.toContain('catalog_tasks')
     expect(screen.queryByLabelText('Ответ на задачу')).not.toBeInTheDocument()
     expect(screen.getByText('самопроверка по решению')).toBeInTheDocument()
 
@@ -249,7 +254,8 @@ describe('Страница темы в предпросмотре глазами
     expect(screen.getByText(/Решено 1 из 3/)).toBeInTheDocument()
     expect(screen.getByTestId('topic-group-tasks-state')).toHaveTextContent('решено 1 из 3')
 
-    expect(new Set(calledRpcs())).toEqual(new Set(['preview_task_verdict']))
+    // Чтения: вердикт без записи и тексты разбора (§262).
+    expect(new Set(calledRpcs())).toEqual(new Set(['preview_task_verdict', 'catalog_task_texts']))
     expectNothingWritten()
   })
 
@@ -270,7 +276,8 @@ describe('Страница темы в предпросмотре глазами
     expect(screen.getByText(/Решено 3 из 3/)).toBeInTheDocument()
     expect(screen.getByTestId('topic-tasks-all-solved')).toBeInTheDocument()
     expect(screen.getByTestId('topic-group-tasks-state')).toHaveTextContent('решено 3 из 3 ✓')
-    expect(rpc).not.toHaveBeenCalled()
+    // Единственный вызов — чтение разбора (§262), не запись.
+    expect(calledRpcs()).toEqual(['catalog_task_texts'])
     expectNothingWritten()
   })
 
@@ -341,7 +348,7 @@ describe('Страница темы в предпросмотре глазами
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Кинематика' })).toBeInTheDocument())
     expectNothingWritten()
     // Из RPC вообще — только чтение состава, состояние решения и вердикт.
-    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict']))
+    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts']))
   })
 
   it('закрытая тумблером тема в предпросмотре заперта, как у ученика', async () => {
