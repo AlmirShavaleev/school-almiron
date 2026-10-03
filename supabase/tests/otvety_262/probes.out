@@ -1,0 +1,309 @@
+slice 254: ok
+slice 255: ok
+slice 256: ok
+slice 262: ok
+migration 254: ok
+migrations 255: ok
+migrations 256: ok
+psql:/home/claude/agents/a262/repo/supabase/migrations/20260812214736_variant_section_counts_split_by_exam_part.sql:9: NOTICE:  function public.variant_section_available_counts(text,text) does not exist, skipping
+invoker-функции (как есть): ok
+data 255: ok
+data 256: ok
+data 262: ok
+PENDING_262a (1): ok
+PENDING_262a (2, повтор): ok
+== A1. Права на функции §262: аноним — ничего; authenticated — выдача и раскрытие; правило — никому
+                     fn                      | anon | auth | ok 
+---------------------------------------------+------+------+----
+ public.catalog_task_texts(uuid[])           | f    | t    | t
+ public.catalog_task_text(uuid)              | f    | t    | t
+ public.catalog_reveal_answers(uuid[])       | f    | t    | t
+ public.catalog_answer_reasons(uuid, uuid[]) | f    | f    | t
+
+== A2. Аноним: выдача и раскрытие — отказ (нет execute)
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:22: NOTICE:  OK: texts — permission denied for function catalog_task_texts
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:24: NOTICE:  OK: text — permission denied for function catalog_task_text
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:26: NOTICE:  OK: reveal — permission denied for function catalog_reveal_answers
+DO
+ROLLBACK
+== A3. authenticated без sub: «нужен вход»; ученик A — правило напрямую не вызвать
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:34: NOTICE:  OK: texts без входа — catalog_task_texts: нужен вход
+DO
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:40: NOTICE:  OK: правило — permission denied for function catalog_answer_reasons
+DO
+ROLLBACK
+== A4. Ученик A: ответ только по правилу (k1 закрыта, k2 revealed, k3 solved, k4 not_checkable, k5 variant, k6 lesson, k7 test, k8 — нет строки, k9 закрыта)
+BEGIN
+SET
+ k | allowed |    reason     | answer_html |   solution_html   | solution_plan_html | grade_criteria_html | has_plan | has_criteria | ok 
+---+---------+---------------+-------------+-------------------+--------------------+---------------------+----------+--------------+----
+ 1 | f       |               |             |                   |                    |                     | t        | f            | t
+ 2 | t       | revealed      | <p>12</p>   | <p>Решение k2</p> |                    |                     | f        | f            | t
+ 3 | t       | solved        | <p>13</p>   | <p>Решение k3</p> |                    |                     | f        | f            | t
+ 4 | t       | not_checkable | <p>14</p>   | <p>Решение k4</p> |                    | <p>Критерии k4</p>  | f        | t            | t
+ 5 | t       | variant       | <p>15</p>   | <p>Решение k5</p> |                    |                     | f        | f            | t
+ 6 | t       | lesson        | <p>16</p>   | <p>Решение k6</p> |                    |                     | f        | f            | t
+ 7 | t       | test          | <p>17</p>   | <p>Решение k7</p> |                    |                     | f        | f            | t
+ 9 | f       |               |             |                   |                    |                     | f        | f            | t
+
+ ok_k8_hidden | rows 
+--------------+------
+ t            |    8
+
+ ok_single_locked | ok_single_solved | ok_single_unpublished 
+------------------+------------------+-----------------------
+ t                | t                | t
+
+ROLLBACK
+== A5. Чужой ученик B (другой курс): открыта только k4 (без проверки); k5 — вариант B не сдан, k6 — разбор не открыт, k7 — попытка не завершена
+BEGIN
+SET
+                    fact                     | ok 
+---------------------------------------------+----
+ 1:— 2:— 3:— 4:not_checkable 5:— 6:— 7:— 9:— | t
+
+ROLLBACK
+== A6. Персонал (учитель T, посторонний учитель O, админ M, куратор K): всё, включая снятую k8
+BEGIN
+SET
+ who | rows | ok 
+-----+------+----
+ T   |    9 | t
+
+ROLLBACK
+BEGIN
+SET
+ who | rows | ok 
+-----+------+----
+ O   |    9 | t
+
+ROLLBACK
+BEGIN
+SET
+ who | rows | ok | ok_criteria 
+-----+------+----+-------------
+ M   |    9 | t  | t
+
+ROLLBACK
+BEGIN
+SET
+ who | rows | ok 
+-----+------+----
+ K   |    9 | t
+
+ROLLBACK
+== A7. Больше 300 id — TOO_MANY
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/20_probes_a.sql:105: NOTICE:  OK: TOO_MANY: не больше 300 задач за раз
+DO
+ROLLBACK
+== A8. Раскрытие пачкой (A, k1 и k9; откат): тексты пришли, причина revealed, отметки записаны; дальше k1 верно — НЕ засчитано
+BEGIN
+SET
+ k |  reason  | answer_html |   solution_html   | ok 
+---+----------+-------------+-------------------+----
+ 1 | revealed | <p>11</p>   | <p>Решение k1</p> | t
+ 9 | revealed | <p>19</p>   | <p>Решение k9</p> | t
+
+ ok_marks 
+----------
+ t
+
+ verdict | counted | revealed_before | ok 
+---------+---------+-----------------+----
+ correct | f       | t               | t
+
+ROLLBACK
+== A9. Раскрытие снятой задачи (k8) учеником — отметки нет, строки нет
+BEGIN
+SET
+ ok_no_row 
+-----------
+ t
+
+ ok_no_mark 
+------------
+ t
+
+ROLLBACK
+== A10. ДО 262b (дыра, которую закрывает шаг 2): ученик A читает answer_html напрямую
+BEGIN
+SET
+ rows_with_answer | hole_open 
+------------------+-----------
+               38 | t
+
+ROLLBACK
+== A11. Invoker-функции до 262b: prosecdef = false (262b их переведёт)
+                     fn                      | prosecdef 
+---------------------------------------------+-----------
+ catalog_tasks_attach_preview(uuid[])        | f
+ preview_task_verdict(uuid,text)             | f
+ variant_section_available_counts(text,text) | f
+
+PENDING_262b (1): ok
+PENDING_262b (2, повтор): ok
+== B1. Права на колонки catalog_tasks: секретные закрыты, остальные открыты authenticated; anon — ничего
+     column_name     | auth | anon | ok 
+---------------------+------+------+----
+ id                  | t    | f    | t
+ section_id          | t    | f    | t
+ is_published        | t    | f    | t
+ statement_html      | t    | f    | t
+ answer_html         | f    | f    | t
+ solution_html       | f    | f    | t
+ partial_type        | t    | f    | t
+ exam_part           | t    | f    | t
+ subject             | t    | f    | t
+ exam_type           | t    | f    | t
+ solution_plan_html  | f    | f    | t
+ grade_criteria_html | f    | f    | t
+ external_id         | t    | f    | t
+ has_answer          | t    | f    | t
+ has_solution        | t    | f    | t
+ max_points          | t    | f    | t
+ difficulty          | t    | f    | t
+ position            | t    | f    | t
+
+ ok_no_table_select | update_kept | insert_kept 
+--------------------+-------------+-------------
+ t                  | t           | t
+
+== B2. Ученик A напрямую: answer_html / solution_html / план / критерии / select * — отказ; условие и флаги — читаются
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:24: NOTICE:  OK: answer_html — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:26: NOTICE:  OK: solution_html — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:28: NOTICE:  OK: solution_plan_html — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:30: NOTICE:  OK: grade_criteria_html — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:32: NOTICE:  OK: select * — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:34: NOTICE:  OK: where answer_html — permission denied for table catalog_tasks
+DO
+ rows | with_answer_flag | ok_statement 
+------+------------------+--------------
+    8 |                8 | t
+
+ROLLBACK
+== B3. Аноним напрямую — отказ
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:44: NOTICE:  OK: anon id — permission denied for table catalog_tasks
+DO
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:46: NOTICE:  OK: anon answer_html — permission denied for table catalog_tasks
+DO
+ROLLBACK
+== B4. Персонал (учитель T) напрямую — тоже отказ; через функцию — всё
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:54: NOTICE:  OK: учитель напрямую — permission denied for table catalog_tasks
+DO
+ rows | ok 
+------+----
+    9 | t
+
+ROLLBACK
+== B5. Ученик A через функцию — то же правило, что до 262b
+BEGIN
+SET
+                                 fact                                  | ok 
+-----------------------------------------------------------------------+----
+ 1:— 2:revealed 3:solved 4:not_checkable 5:variant 6:lesson 7:test 9:— | t
+
+ROLLBACK
+== B6. §256 после 262b: проверка ответа (верно → засчитано, ответ в ответе), раскрытие, состояние страницы, задача дня
+BEGIN
+SET
+ verdict | counted |  answer   | ok 
+---------+---------+-----------+----
+ correct | t       | <p>11</p> | t
+
+ verdict | no_answer_on_wrong | ok 
+---------+--------------------+----
+ wrong   | t                  | t
+
+ ok_reveal 
+-----------
+ t
+
+ ok_practice_state 
+-------------------
+ t
+
+ ok_daily_task 
+---------------
+ t
+
+ k | reason | ok 
+---+--------+----
+ 1 | solved | t
+
+ROLLBACK
+== B7. Раскрытие пачкой после 262b
+BEGIN
+SET
+ k |  reason  | answer_html | ok 
+---+----------+-------------+----
+ 5 | revealed | <p>15</p>   | t
+
+ROLLBACK
+== B8. Бывшие invoker-функции: теперь definer и работают под authenticated
+                     fn                      | ok 
+---------------------------------------------+----
+ catalog_tasks_attach_preview(uuid[])        | t
+ preview_task_verdict(uuid,text)             | t
+ variant_section_available_counts(text,text) | t
+
+BEGIN
+SET
+ ok_preview_verdict_teacher 
+----------------------------
+ t
+
+                               preview                               | ok 
+---------------------------------------------------------------------+----
+ {"total": 2, "part_two": 1, "self_checked": 0, "auto_checkable": 2} | t
+
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a262/repo/supabase/tests/otvety_262/30_probes_b.sql:116: NOTICE:  OK: ученик — отказ (function get_my_role() does not exist)
+DO
+ total | available | available_p1 | available_p2 | ok 
+-------+-----------+--------------+--------------+----
+     8 |         8 |            7 |            1 | t
+
+ROLLBACK
+== G1. Invoker-функция, исполнимая authenticated, читает answer_html → 262b: ERROR, ничего не применено
+BEGIN
+CREATE FUNCTION
+GRANT
+psql:/home/claude/agents/a262/repo/supabase/migrations/PENDING_262b.sql:109: ERROR:  262b: invoker-функции читают колонки ответа catalog_tasks: leak_probe_262() — перевести в security definer (или переписать) и повторить
+CONTEXT:  PL/pgSQL function inline_code_block line 45 at RAISE
+ROLLBACK
+== G2. Представление с answer_html, читаемое authenticated → 262b: ERROR
+BEGIN
+CREATE VIEW
+GRANT
+psql:/home/claude/agents/a262/repo/supabase/migrations/PENDING_262b.sql:109: ERROR:  262b: представления отдают колонки ответа catalog_tasks: public.leak_view_262
+CONTEXT:  PL/pgSQL function inline_code_block line 68 at RAISE
+ROLLBACK
+== G3. После откатов функции и представления нет, права на колонки — как после 262b
+ ok_rolled_back | ok_still_closed 
+----------------+-----------------
+ t              | t
+
