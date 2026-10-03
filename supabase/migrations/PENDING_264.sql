@@ -92,8 +92,7 @@ comment on column public.notification_prefs.remind_mock_tomorrow is '§264. На
 --     done — есть попытка не-черновик.
 --   no_photo — то же окно, конец в (now, now + 1 день], начало уже наступило; has_draft — черновик есть,
 --     has_photo — у черновика есть файл (topic_homework_attempt_files, как автосдача §240), opened — отметка
---     «открыл условие» §263 (агент a263): до неё false, «открыл» = есть черновик. СТЫК: когда §263 даст
---     отметку, заменить «false as opened» на её проверку — модуль уже учитывает поле.
+--     «открыл условие» §263 (агент a263): work_activity.opened_at (§263), стык закрыт оркестратором при слиянии веток.
 --   streak — student_solve_streak(profile, сегодня) (§256, одно определение серии); считается только когда
 --     'streak' в p_kinds (окно 18:30–22:00); course_on — вид включён хотя бы в одном курсе ученика.
 --   mock_tomorrow — пробник с началом (mock_exams.starts_at) завтра по Москве, ученики его группы; конец —
@@ -207,7 +206,9 @@ as $$
            tw.work_kind, tw.opens_at, tw.closes_at, null::date as due_date,
            '/my-course/' || tw.group_id || '/topic/' || tw.topic_id as link,
            tw.done, tw.has_draft, tw.has_photo,
-           false as opened,  -- СТЫК §263: отметка «открыл условие» (a263)
+           exists (select 1 from public.work_activity wa
+                    where wa.homework_id = tw.homework_id and wa.student_id = tw.student_id
+                      and wa.opened_at is not null) as opened,  -- §263: отметка «открыл условие»
            0 as streak, false as solved_today
       from tw
       cross join params p
