@@ -1,4 +1,4 @@
-import { D227, D228, D229, D252, D258, D259, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, D258, D259, D260, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1484,6 +1484,32 @@ export const scenes = [
       { persona: 'o259', name: 'd259-teacher-edit', url: hw, width, height, full: false, actions: [
         { wait: 2500 }, byTopics, { wait: 1500 }, { eval: `document.querySelector('[data-hw-topic="${D259.past}"] [data-testid="hw-due-edit"]')?.click()` }, { wait: 2000 },
       ] },
+    ]
+  }),
+
+  // §260. ИИ ставит баллы по критериям учителя; сумму и оценку считает сайт. Очередь учителя:
+  // проверочная «Движение по окружности» — работа на 9 из 12 (спокойный экран и полная таблица с
+  // таблицей перевода), правка ± (№1 и №7: 11 из 12 → «5»), «критерии прочитаны не полностью»,
+  // проверка до §260 («Перепроверить по критериям») и обычное ДЗ без критериев. Правки ± только
+  // на экране (харнесс PATCH не хранит), вердиктов сцены не ставят.
+  //   node e2e/harness/tour.mjs d260 1280 ; node e2e/harness/tour.mjs d260 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const open = id => [{ goto: `/homework-queue?attempt=${id}` }, { wait: 3000 }]
+    const table = [{ clickSel: '[data-testid="attempt-more-menu"]' }, { wait: 300 }, { clickSel: '[data-testid="review-open-table"]' }, { wait: 800 }]
+    const plus = no => [{ clickSel: `[data-testid="review-table-sheet"] [data-testid="review-task-row"][data-no="${no}"] [data-testid="review-task-points-plus"]` }, { wait: 300 }]
+    const pick = no => [{ clickSel: `[data-testid="review-focus-cell"][data-no="${no}"]` }, { wait: 500 }]
+    const toPanel = { eval: "document.querySelector('[data-testid=\"review-side-column\"]')?.scrollIntoView({ block: 'start' })" }
+    const toBar = { eval: "document.querySelector('[data-testid=\"review-actions\"]')?.scrollIntoView({ block: 'end' })" }
+    return [
+      { persona: 'o260', name: 'd260-queue', url: '/homework-queue', width, height, full: false, actions: [{ wait: 2500 }] },
+      { persona: 'o260', name: 'd260-points', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), ...pick('7'), toPanel, { wait: 300 }] },
+      { persona: 'o260', name: 'd260-points-bar', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), toBar, { wait: 300 }] },
+      { persona: 'o260', name: 'd260-points-table', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), ...table] },
+      { persona: 'o260', name: 'd260-points-plus', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), ...table, ...plus('1'), ...plus('7')] },
+      { persona: 'o260', name: 'd260-mismatch', url: '/homework-queue', width, height, full: false, actions: [...open(D260.b), ...table] },
+      { persona: 'o260', name: 'd260-mismatch-calm', url: '/homework-queue', width, height, full: false, actions: [...open(D260.b), toPanel, { wait: 300 }] },
+      { persona: 'o260', name: 'd260-recheck', url: '/homework-queue', width, height, full: false, actions: [...open(D260.c), toPanel, { wait: 300 }] },
+      { persona: 'o260', name: 'd260-plain', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), ...table] },
     ]
   }),
 

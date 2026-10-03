@@ -130,6 +130,8 @@ export const personas = {
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o259: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §260: учитель в очереди проверки — проверочная «Движение по окружности» с баллами по критериям.
+  o260: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1910,6 +1912,7 @@ export function baseFixtures(persona) {
   if (persona === 'o258') { apply250(fx); apply258(fx) }
   if (persona.startsWith('s259')) apply259student(fx, persona)
   if (persona === 'o259') { apply250(fx); apply259(fx) }
+  if (persona === 'o260') apply260(fx)
   return fx
 }
 
@@ -3555,4 +3558,76 @@ function apply259(fx) {
     if (i % 4 === 0) add(hwOf(D259.today).id, st, 1, 'submitted', msk(dayOf(0), '08:30'))
   })
   fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts.filter(a => !ids.includes(a.homework_id)), ...rows]
+}
+
+
+// ── §260: ИИ ставит баллы по критериям учителя ───────────────────────────────
+// Проверочная «Движение по окружности» (как 10А 03.10; ученики выдуманы):
+//   A — 9 из 12 по критериям → «4» по таблице перевода; таблица учителя с баллами;
+//   B — критерии прочитаны не полностью: строки задания 8 нет, сумма максимумов 9 ≠ 12;
+//   C — проверена ИИ ДО §260 (баллов нет) → «Перепроверить по критериям».
+// Обычное ДЗ без критериев — работа «светофора» (attempt 38) из базовых фикстур.
+export const D260 = { hw: U('2', 2600), a: U('3', 2601), b: U('3', 2602), c: U('3', 2603) }
+const T260 = [
+  // №, ответ ученика, эталон, балл, максимум
+  ['1', 'T = 0,2 с', 'T = 0,2 с; ν = 5 Гц', 0, 1, 'Частота не найдена: нужны и период, и частота'],
+  ['2', '3,1 м/с', '3,1 м/с', 1, 1, ''],
+  ['3', '5 м/с²', '5 м/с²', 1, 1, ''],
+  ['4', 'в 9 раз', 'в 9 раз', 1, 1, ''],
+  ['5', '15 оборотов', '15 оборотов', 1, 1, ''],
+  ['6', '112', '112', 2, 2, 'Все три цифры верны'],
+  ['7', 'T ≈ 0,67 с', 'T ≈ 0,67 с; v ≈ 0,38 м/с', 1, 2, 'Найдена одна величина из двух'],
+  ['8', 'ν ≈ 4,0 об/с; a = 250 м/с²', 'а) 4,0 об/с; б) 250 м/с²; в) N ≈ 398', 2, 3, 'Верно найдены две величины из трёх'],
+]
+const TABLE260 = [{ min: 0, max: 4, grade: 2 }, { min: 5, max: 7, grade: 3 }, { min: 8, max: 10, grade: 4 }, { min: 11, max: 12, grade: 5 }]
+const v260 = (p, m) => (p >= m ? 'correct' : p <= 0 ? 'wrong' : 'partial')
+function apply260(fx) {
+  const base = hwById(IDS.hw(1))
+  const topic = { ...base.topic, kind: 'check', title: 'Проверочная работа. Движение по окружности' }
+  const hw = { ...base, id: D260.hw, title: 'Проверочная работа', grade_scale: 'five', due_at: null, topic, topics: topic }
+  fx.tables.topic_homework = [...fx.tables.topic_homework, hw]
+  const attempt = (id, studentId, minutes) => ({
+    id, homework_id: hw.id, student_id: studentId, attempt_number: 1, status: 'submitted', auto_submitted: false,
+    submitted_at: ago(minutes / 60), created_at: ago(minutes / 60 + 0.7), updated_at: ago(minutes / 60),
+    homework: hw, topic_homework: hw, students: studentById(studentId), topic_homework_reviews: [],
+  })
+  const attempts = [attempt(D260.a, IDS.otherStudent(0), 50), attempt(D260.b, IDS.otherStudent(1), 45), attempt(D260.c, IDS.otherStudent(2), 40)]
+  fx.tables.topic_homework_attempts = [...fx.tables.topic_homework_attempts, ...attempts]
+  fx.tables.topic_homework_attempt_files = [...fx.tables.topic_homework_attempt_files, ...attempts.map((a, i) => ({
+    id: U('4', 2600 + i), attempt_id: a.id, storage_path: `homeworks/${a.student_id}/${a.id}/photo-1.jpg`,
+    file_name: `IMG_20261003_проверочная_${i + 1}.jpg`, mime_type: 'image/jpeg', size_bytes: 2100000, width: 1200, height: 1600,
+    page_number: 1, position: 1, rotation: 0, sha256: null, metadata: {}, created_at: ago(1),
+  }))]
+  const aiRow = ([no, a, e, p, m, note], withPoints) => ({
+    no, verdict: v260(p, m), student_answer: a, expected_answer: e, note, ...(withPoints ? { points: p, max_points: m } : {}),
+  })
+  const tasksA = T260.map(t => aiRow(t, true))
+  const tasksB = T260.slice(0, 7).map(t => aiRow(t, true))
+  const tasksC = T260.map(t => aiRow(t, false))
+  const job = (n, attemptId, extra) => ({
+    ...aiJobBase, id: U('c', 2600 + n), attempt_id: attemptId, status: 'done', confidence: 'high',
+    reference_state: 'used', reference_chars: 5400, started_at: ago(0.6), created_at: ago(0.6), completed_at: ago(0.6),
+    dropped_findings: 0, ...extra,
+  })
+  fx.tables.topic_homework_ai_jobs = [...fx.tables.topic_homework_ai_jobs,
+    job(1, D260.a, {
+      tasks: tasksA, suggested_score: 4, points_total: 9, points_max: 12, grade_table: TABLE260, grading: 'criteria',
+      summary: 'Задания 2–6 решены верно. В №1 не найдена частота, в №7 — скорость, в №8 — число оборотов.',
+    }),
+    job(2, D260.b, {
+      tasks: tasksB, suggested_score: null, confidence: 'medium', points_total: 7, points_max: 9, grade_table: TABLE260, grading: 'criteria_mismatch',
+      summary: 'Задания 2–6 решены верно, в №1 и №7 найдено не всё.\n\nПроверьте баллы: критерии прочитаны не полностью (сумма максимумов по заданиям 9, а в критериях максимум 12). Оценка не подставлена — сверьте баллы с критериями.',
+    }),
+    job(3, D260.c, {
+      tasks: tasksC, suggested_score: 4, model: 'google/gemini-3.8-flash',
+      summary: 'Задания 2–6 решены верно. В №1 не найдена частота, в №7 и №8 найдено не всё.',
+    }),
+  ]
+  const reviewRows = (attemptId, rows, n0) => rows.map((t, i) => reviewTaskRow(n0 + i, attemptId, {
+    no: t.no, verdict: t.verdict, student_answer: t.student_answer, expected_answer: t.expected_answer,
+    note: t.verdict === 'correct' ? null : (t.note || null), position: (i + 1) * 10, updated_at: ago(0.5),
+    ...(t.max_points != null ? { points: t.points, max_points: t.max_points } : {}),
+  }))
+  fx.tables.topic_homework_review_tasks = [...fx.tables.topic_homework_review_tasks,
+    ...reviewRows(D260.a, tasksA, 2600), ...reviewRows(D260.b, tasksB, 2620), ...reviewRows(D260.c, tasksC, 2640)]
 }
