@@ -10,6 +10,11 @@ import {
   type DropRow, type OverdueRow, type ReviewGroup, type UpcomingRow,
 } from '@/lib/teacherHome'
 import { cn } from '@/utils/cn'
+import { useMyLiveTimedWorks } from '@/hooks/useMyLiveTimedWorks'
+import { useServerNow } from '@/hooks/useServerNow'
+import { liveBriefNote, type LiveWorkBrief } from '@/lib/liveWork'
+import { liveWorkPath } from '@/lib/courseAssessments'
+import { TOPIC_KIND_LABEL } from '@/lib/timedWork'
 
 /**
  * §233. Главная преподавателя — дизайн v2, экран 03.
@@ -31,6 +36,9 @@ export function TeacherDashboard() {
   const [sending, setSending] = useState(false)
   const [remindError, setRemindError] = useState<string | null>(null)
   const [showAllOverdue, setShowAllOverdue] = useState(false)
+  // §263. Идущие сейчас проверочные/контрольные — «Следить».
+  const live = useMyLiveTimedWorks()
+  const liveNow = useServerNow(live.serverNow, 30_000)
 
   const groupNameOf = useMemo(() => {
     const by = new Map<string, string[]>()
@@ -123,6 +131,8 @@ export function TeacherDashboard() {
         </div>
       </section>
 
+      {live.works.length > 0 && <LiveNowBlock works={live.works} now={liveNow} />}
+
       {error && <p className="rounded-xl bg-verdict-bad-tint px-3 py-2 text-sm text-verdict-bad-ink">Не всё загрузилось: {error}</p>}
 
       {columns.length > 0 && (
@@ -131,6 +141,32 @@ export function TeacherDashboard() {
         </div>
       )}
     </div>
+  )
+}
+
+/** §263. «Идёт сейчас»: работы по времени, у которых окно идёт, — к монитору. */
+function LiveNowBlock({ works, now }: { works: LiveWorkBrief[]; now: number }) {
+  return (
+    <section data-testid="home-live" className="flex flex-col rounded-2xl bg-white px-4 pb-1 pt-3 ring-1 ring-primary-200 sm:px-5">
+      <BlockHead title="Идёт сейчас" />
+      {works.map(w => (
+        <div key={w.homeworkId} data-testid="home-live-row" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-graphite-200 py-[11px]">
+          <span className="min-w-0">
+            <span className="block truncate text-[15px] font-medium text-graphite-900">{w.title}</span>
+            <span className="block truncate text-[13px] text-graphite-500">
+              {TOPIC_KIND_LABEL[w.kind]}{w.groupName ? ` · ${w.groupName}` : ''} · {liveBriefNote(w, now)}
+            </span>
+          </span>
+          <Link
+            to={liveWorkPath(w.homeworkId)}
+            data-testid="home-live-watch"
+            className="inline-flex min-h-11 items-center rounded-lg bg-primary-50 px-4 text-[13px] font-bold text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 sm:min-h-9"
+          >
+            Следить
+          </Link>
+        </div>
+      ))}
+    </section>
   )
 }
 

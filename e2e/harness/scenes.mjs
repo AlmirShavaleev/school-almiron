@@ -1,4 +1,4 @@
-import { D227, D228, D229, D252, D258, D259, D260, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, D258, D259, D260, D263, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1553,6 +1553,39 @@ export const scenes = [
       { persona: 'student', name: 'd262-pdf-opened', url: '/catalog', width, height, full: false, actions: [{ ls: ['almiron-cart', cart] }, { goto: '/student/variants/build' }, { wait: 1800 }, { clickSel: '[data-testid=pdf-open-answers]' }, { wait: 1200 }] },
       { persona: 'owner', name: 'd262-teacher-variant', url: `/variants/${S.variant(1)}`, width, height, actions: [{ wait: 1500 }] },
       { persona: 'owner', name: 'd262-teacher-catalog-answer', url: physTopic, width, height, full: false, actions: [{ wait: 1500 }, { clickSel: `${ptask} [data-testid=task-show-answer]` }, { wait: 500 }, { clickSel: `${ptask} [data-testid=task-show-solution]` }, { wait: 500 }, { eval: `document.querySelector('${ptask}').scrollIntoView({ block: "center" })` }] },
+    ]
+  }),
+
+  // §263: «Проверочная вживую» у учителя (идёт: счётчики, фильтр «Без фото», «Открыть заново»; после конца —
+  // итог), вход «Следить» во вкладке курса и на главной; режим работы у ученика (страница работы с
+  // предупреждением, закрытые каталог и главная); вариант после сдачи со снятыми флажками и назначение с
+  // флажками у учителя. В базу сцены не пишут.
+  //   node e2e/harness/tour.mjs d263 1280 ; node e2e/harness/tour.mjs d263 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const live = `/live-work/${D263.hw}`
+    const kr = `/my-course/${S.group}/topic/${KR.topic}`
+    const toRow = (sel) => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: 'center' }) })()` })
+    return [
+      { persona: 'o263', name: 'd263-live', url: live, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'o263', name: 'd263-live-nophoto', url: live, width, height, full: false, actions: [
+        { wait: 1500 }, { clickSel: '[data-testid="live-work-filters"] button[data-key="no_photo"]' }, { wait: 300 }, toRow('[data-testid="live-work-filters"]'),
+      ] },
+      { persona: 'o263', name: 'd263-live-reopen', url: live, width, height, full: false, actions: [
+        { wait: 1500 }, { clickSel: '[data-testid="live-work-filters"] button[data-key="not_opened"]' }, { wait: 300 },
+        { clickSel: '[data-testid="live-work-reopen"] >> nth=0' }, { wait: 300 }, toRow('[data-testid="live-work-reopen-form"]'),
+      ] },
+      { persona: 'o263after', name: 'd263-after', url: live, width, height, actions: [{ wait: 1500 }] },
+      { persona: 'o263', name: 'd263-tab', url: `/course-program?courseId=${S.course}&tab=assessments`, width, height, full: false, actions: [{ wait: 2000 }] },
+      { persona: 'o263', name: 'd263-home', url: '/dashboard', width, height, full: false, actions: [{ wait: 1800 }] },
+      { persona: 's263', name: 'd263-student-work', url: kr, width, height, actions: [
+        { wait: 2500 }, { eval: "(() => { document.querySelector('[data-testid=\"timed-work\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -140) })()" }, { wait: 400 },
+      ] },
+      { persona: 's263', name: 'd263-student-catalog', url: '/catalog', width, height, actions: [{ wait: 2000 }] },
+      { persona: 's263', name: 'd263-student-home', url: '/dashboard', width, height, full: false, actions: [{ wait: 2000 }] },
+      { persona: 's263var', name: 'd263-variant-hidden', url: `/student/variants/${S.myAssignment(3)}`, width, height, actions: [{ wait: 1800 }] },
+      { persona: 'o263', name: 'd263-assign-flags', url: `/variants/${S.variant(1)}/assignments`, width, height, full: false, actions: [
+        { wait: 1500 }, { clickSel: 'button[title="Изменить сроки"]' }, { wait: 400 }, toRow('[data-testid="assignment-edit-flags"]'),
+      ] },
     ]
   }),
 

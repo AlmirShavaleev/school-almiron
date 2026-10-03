@@ -29,6 +29,7 @@ import {
   DISPLAY_STATUS_CLASS,
   type VariantResultRow,
 } from '@/utils/variantResultsUtils'
+import { afterSubmitLabel } from '@/lib/variantAnswerFlags'
 
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
 const EXAM_LABELS: Record<string, string> = { ege: 'ЕГЭ', oge: 'ОГЭ' }
@@ -63,6 +64,9 @@ export function VariantAssignmentsPage() {
   const [editDueAt, setEditDueAt] = useState('')
   const [editFrom, setEditFrom] = useState('')
   const [clearDueAt, setClearDueAt] = useState(false)
+  // §263: флажки «после сдачи» теперь работают — их можно поменять и у выданного.
+  const [editAnswers, setEditAnswers] = useState(true)
+  const [editSolutions, setEditSolutions] = useState(true)
   const [clearFrom, setClearFrom] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -175,6 +179,8 @@ export function VariantAssignmentsPage() {
     setEditFrom(toDateTimeLocalValue(a.available_from))
     setClearDueAt(false)
     setClearFrom(false)
+    setEditAnswers(a.show_answers_after_submit !== false)
+    setEditSolutions(a.show_solutions_after_submit !== false)
   }
 
   async function saveEdit(id: string) {
@@ -186,6 +192,8 @@ export function VariantAssignmentsPage() {
         due_at: dateTimeLocalToIso(editDueAt),
         clear_available_from: clearFrom,
         clear_due_at: clearDueAt,
+        show_answers_after_submit: editAnswers,
+        show_solutions_after_submit: editSolutions,
       })
       toast.success('Изменения сохранены')
       setEditingId(null)
@@ -364,6 +372,9 @@ export function VariantAssignmentsPage() {
                           <DateChip icon={<RefreshCw size={11} />}
                             label={a.allow_retry ? `${a.max_attempts} поп.` : '1 попытка'}
                           />
+                          <span className="text-xs text-gray-500" data-testid="assignment-after-submit">
+                            После сдачи: {afterSubmitLabel(a.show_answers_after_submit, a.show_solutions_after_submit)}
+                          </span>
                           <DateChip icon={<Clock size={11} />}
                             label={`Создано ${format(new Date(a.created_at), 'd MMM yyyy HH:mm', { locale: ru })}`}
                           />
@@ -436,6 +447,16 @@ export function VariantAssignmentsPage() {
                         >
                           Очистить дедлайн
                         </button>
+                        <div className="flex flex-col gap-1 pb-1" data-testid="assignment-edit-flags">
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" checked={editAnswers} onChange={e => setEditAnswers(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
+                            Показать правильные ответы
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" checked={editSolutions} onChange={e => setEditSolutions(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
+                            Показать разбор
+                          </label>
+                        </div>
                         <div className="flex gap-2">
                           <Button size="sm" onClick={() => saveEdit(a.id)} disabled={savingId === a.id}>
                             {savingId === a.id

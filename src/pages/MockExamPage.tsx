@@ -7,6 +7,8 @@ import { ExamStepper, LiveHead, WorksTable } from '@/components/mockExams/MockEx
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
 import { useMockExamWorks } from '@/hooks/useMockExamWorks'
 import { useMockExamLive } from '@/hooks/useMockExamLive'
+import { useMockExamAway } from '@/hooks/useMockExamAway'
+import { awayLabel } from '@/lib/liveWork'
 import { mskDayLong, mskTime } from '@/lib/mockExamLesson'
 import { livePhase, liveRows } from '@/lib/mockExamLive'
 import {
@@ -37,6 +39,8 @@ export function MockExamPage() {
   // вместе с ним перечитываем работы (новые бланки, сдачи, фото).
   const { live, offset } = useMockExamLive(exam?.id, win, reload)
   const now = useClock(offset)
+  // §263. Уходы учеников со страницы пробника — к метке «пишет» в мониторе.
+  const away = useMockExamAway(exam?.id, live)
   const [confirmAll, setConfirmAll] = useState(false)
 
   const rows = useMemo(() => (exam?.template ? workRows(students.map(s => ({
@@ -63,7 +67,10 @@ export function MockExamPage() {
 
   const phase = win ? livePhase(win, now) : null
   const liveLabels = phase === 'running' && live
-    ? Object.fromEntries(liveRows(live.students, phase).map(r => [r.student_id, { label: r.label, tone: r.tone }]))
+    ? Object.fromEntries(liveRows(live.students, phase).map(r => {
+      const a = away[r.student_id]
+      return [r.student_id, { label: a && a.count > 0 ? `${r.label} · уходил ${awayLabel(a.count, a.seconds)}` : r.label, tone: r.tone }]
+    }))
     : undefined
   const summary = worksSummary(stage, rows, win, exam.groupName)
   // §230. Метка варианта у строки «Работ» (и монитора — это те же строки) — только если вариантов больше одного.

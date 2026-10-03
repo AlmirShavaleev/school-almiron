@@ -135,6 +135,14 @@ export const personas = {
   // §261: «Ученик целиком» — карточка ученика у учителя и отчёт родителю (фикстуры `apply261`): ученик
   // otherStudent(0) — полная сводка, otherStudent(1) — ученик без данных.
   o261: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §263: «Проверочная вживую» у учителя (идёт / итог), режим работы у ученика (s263 = s240live + my_work_mode),
+  // вариант после сдачи с выключенными флажками «ответы/разбор» (s263var).
+  ...Object.fromEntries(['o263', 'o263after'].map(k => [
+    k, { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  ])),
+  ...Object.fromEntries(['s263', 's263var'].map(k => [
+    k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  ])),
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1918,6 +1926,7 @@ export function baseFixtures(persona) {
   if (persona === 'o260') apply260(fx)
   if (persona === 'o261') apply261(fx)
   apply262(fx, persona)
+  if (persona.startsWith('o263') || persona.startsWith('s263')) apply263(fx, persona)
   return fx
 }
 
@@ -3837,4 +3846,111 @@ function apply262(fx, persona) {
     for (const id of body.p_task_ids ?? []) if (fx.tables.catalog_tasks.some(t => t.id === id && t.is_published)) state256.reveals.add(id)
     return texts(body.p_task_ids)
   }
+}
+
+// ── §263: проверочная вживую, режим работы, флажки варианта ─────────────────
+// Всё выдумано (имена — N249). Проверочная «Движение по окружности» 10А — сб 3 октября 08:45–09:30 МСК.
+// «Сейчас» задаёт СЕРВЕР (server_now в ответе timed_work_live / my_work_mode): o263 — 09:22:18 (до конца 07:42),
+// o263after — 09:40 (итог). Ученик s263 — тот же, что s240live (КР «Кинематика» идёт, 32:14 до конца): my_work_mode
+// говорит «идёт», и всё, кроме страницы работы, закрыто. s263var — вариант №3 сдан, учитель снял оба флажка: сервер
+// не отдаёт эталон и разбор, баллы — из test_variant_answers.
+export const D263 = {
+  hw: U('2', 2630), topic: U('1', 2630),
+  opens: '2026-10-03T05:45:00.000Z', closes: '2026-10-03T06:30:00.000Z',
+  now: '2026-10-03T06:22:18.000Z', after: '2026-10-03T06:40:00.000Z',
+  student: (i) => U('b', 2630 + i),
+}
+function apply263(fx, persona) {
+  const at = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(Date.UTC(2026, 9, 3, h - 3, m)).toISOString() }
+  if (persona === 's263') {
+    apply240(fx, 's240live')
+    const now = SERVER_NOW_240.s240live
+    fx.rpc.my_work_mode = {
+      active: true, kind: 'timed', work_kind: 'control', homework_id: KR.hw, mock_exam_id: null, topic_id: KR.topic,
+      course_id: IDS.course, group_id: IDS.group, title: 'Контрольная работа. Кинематика: равноускоренное движение и броски',
+      opens_at: KR.opens, closes_at: KR.closes, personal: false, server_now: now,
+    }
+    fx.rpc.work_mark_opened = { marked: true, opened_at: KR.opens, server_now: now }
+    fx.rpc.work_report_away = { saved: true, server_now: now }
+    return
+  }
+  if (persona === 's263var') {
+    const a3 = myAssignments[2]
+    fx.rpc.my_variant_answer_flags = (body) => (body.p_student_assignment_id === a3.id
+      ? { show_answers: false, show_solutions: false, work_mode: false } : null)
+    // Сервер (PENDING_263) при снятых флажках не отдаёт ни эталон, ни разбор, ни номер задачи.
+    fx.rpc.get_variant_items_for_student = variantItems.map(it => ({
+      ...it, answer_html: null, solution_html: null, solution_plan_html: null, grade_criteria_html: null, task_ext_id: null,
+    }))
+    fx.tables.test_variant_answers = variantItems.map((it, k) => ({
+      id: U('c', 2630 + k), student_assignment_id: a3.id, variant_item_id: it.item_id,
+      answer_raw: String(k % 3 === 2 ? (k + 1) * 2 + 1 : (k + 1) * 2), points_earned: k % 3 === 2 ? 0 : 1, points_max: 1,
+      teacher_comment: null, grading_status: 'auto',
+    }))
+    return
+  }
+  // ── учитель ──
+  const now = persona === 'o263after' ? D263.after : D263.now
+  const after = persona === 'o263after'
+  const row = (i, over = {}) => ({
+    student_id: D263.student(i), full_name: N249[i], group_name: '10А', opened_at: null, attempt_status: null, submitted_at: null,
+    auto_submitted: false, photos: 0, last_photo_at: null, away_count: 0, away_seconds: 0,
+    window_opens_at: D263.opens, window_closes_at: D263.closes, personal: false, ...over,
+  })
+  const live = [
+    row(0, { opened_at: at('08:46'), attempt_status: 'submitted', submitted_at: at('09:21'), photos: 3, last_photo_at: at('09:20') }),
+    row(1, { opened_at: at('08:47'), attempt_status: 'submitted', submitted_at: at('09:14'), photos: 2, last_photo_at: at('09:13') }),
+    row(2, { opened_at: at('08:47'), attempt_status: 'draft', photos: 2, last_photo_at: at('09:19'), away_count: 2, away_seconds: 70 }),
+    row(3, { opened_at: at('08:52'), attempt_status: 'draft', photos: 1, last_photo_at: at('09:15') }),
+    row(4, { opened_at: at('08:46'), attempt_status: 'draft', photos: 4, last_photo_at: at('09:21') }),
+    row(5, { opened_at: at('08:48'), away_count: 5, away_seconds: 240 }),
+    row(6, { opened_at: at('08:47') }),
+    row(7, { opened_at: at('08:49') }),
+    row(8, { opened_at: at('08:46'), away_count: 1, away_seconds: 25 }),
+    row(9, { opened_at: at('08:50') }),
+    row(10, { opened_at: at('08:55') }),
+    row(11),
+    row(12),
+    row(13),
+    row(14, { personal: true, window_opens_at: at('10:00'), window_closes_at: at('10:45') }),
+    row(15),
+    row(16, { opened_at: at('08:51'), attempt_status: 'draft', photos: 2, last_photo_at: at('09:18') }),
+  ]
+  const students = after
+    ? live.map(s => (s.attempt_status === 'draft' && s.photos > 0
+      ? { ...s, attempt_status: 'submitted', auto_submitted: true, submitted_at: D263.closes } : s))
+    : live
+  fx.rpc.timed_work_live = (body) => (body.p_homework_id === D263.hw ? {
+    homework_id: D263.hw, topic_id: D263.topic, course_id: IDS.course, title: 'Движение по окружности', kind: 'check',
+    published: true, group_name: '10А', opens_at: D263.opens, closes_at: D263.closes, server_now: now, students,
+  } : new Error('42501: Нет прав на эту работу'))
+  fx.rpc.topic_homework_set_personal_window = null
+  fx.rpc.my_live_timed_works = after ? [] : [{
+    homework_id: D263.hw, topic_id: D263.topic, course_id: IDS.course, title: 'Движение по окружности', kind: 'check',
+    group_name: '10А', opens_at: D263.opens, closes_at: D263.closes, personal_live: 0, server_now: now,
+  }]
+  // Вкладка «Проверочные и контрольные» — курс §249 плюс идущая проверочная.
+  apply249(fx, 'o249')
+  const prevSummary = fx.rpc.course_assessments_summary
+  fx.rpc.course_assessments_summary = (body) => {
+    const base = prevSummary(body)
+    if (base instanceof Error) return base
+    return {
+      ...base, server_now: now,
+      works: [...base.works, {
+        topic_id: D263.topic, homework_id: D263.hw, kind: 'check', title: 'Движение по окружности', module_title: 'Механика',
+        published: true, opens_at: D263.opens, closes_at: D263.closes, grade_scale: 'five', status: after ? 'review' : 'live',
+        submitted: after ? 6 : 2, pending: after ? 6 : 2, reviewed: 0, avg_score: null, writing: after ? 0 : 13, personal_live: 0,
+      }],
+    }
+  }
+  // Назначения варианта: флажки «после сдачи» видны и меняются у выданного (§263).
+  fx.tables.test_variant_assignments = [
+    { id: U('c', 2640), variant_id: IDS.variant(1), assigned_by: IDS.owner, student_id: null, group_id: IDS.group, topic_id: null,
+      available_from: null, due_at: '2026-10-10T20:59:00.000Z', max_attempts: 1, allow_retry: false,
+      show_answers_after_submit: true, show_solutions_after_submit: false, status: 'assigned',
+      created_at: '2026-09-28T10:00:00.000Z', updated_at: '2026-09-28T10:00:00.000Z',
+      group: { id: IDS.group, name: groups[0].name, type: 'group', course: { title: course.title, subject: 'physics', exam_type: 'ege' }, teacher: { profiles: { full_name: NAMES[4] } } },
+      assigned_by_profile: { full_name: NAMES[4] } },
+  ]
 }

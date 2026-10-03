@@ -16,6 +16,8 @@ import { ManualAnswerInput } from '@/components/variant/ManualAnswerInput'
 import { SelfCheckItem, SelfCheckSummary, useSelfCheckScores } from '@/components/variant/SelfCheckPanel'
 import { resolveTaskHtml } from '@/components/catalog/CatalogTaskContent'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
+import { useVariantAnswerFlags } from '@/hooks/useVariantAnswerFlags'
+import { answersVisible, hiddenAfterSubmitNote } from '@/lib/variantAnswerFlags'
 
 function selfCheckCompletionStorageKey(assignmentId: string) {
   return `self-check-complete:${assignmentId}`
@@ -105,6 +107,20 @@ function getAutoAnswerVerdict(item: VariantItem, studentAnswer: string | null | 
   const maxPoints = item.max_points ?? item.points ?? 1
   if (score >= maxPoints) return 'correct'
   if (score > 0) return 'partial'
+  return 'wrong'
+}
+
+/**
+ * §263. Эталон скрыт учителем (или идёт работа по времени) — вердикт и балл
+ * берём у сервера (`test_variant_answers.points_earned`), а не считаем по
+ * эталону на клиенте: его у страницы нет.
+ */
+interface ServerPoints { points_earned: number | null; points_max: number | null }
+function serverVerdict(item: VariantItem, graded: ServerPoints | undefined): AutoAnswerVerdict | null {
+  if (!graded || graded.points_earned === null) return null
+  const maxPoints = graded.points_max ?? item.max_points ?? item.points ?? 1
+  if (graded.points_earned >= maxPoints) return 'correct'
+  if (graded.points_earned > 0) return 'partial'
   return 'wrong'
 }
 
@@ -201,12 +217,17 @@ function AutoResultsTable({
   submittedAt,
   maxScore,
   onTaskJump,
+  showCorrect = true,
+  graded = {},
 }: {
   items: VariantItem[]
   answers: Record<string, string>
   submittedAt: string | null
   maxScore: number | null
   onTaskJump: (itemId: string) => void
+  /** §263: учитель не показывает эталон после сдачи — без столбца «Правильный ответ». */
+  showCorrect?: boolean
+  graded?: Record<string, ServerPoints>
 }) {
   const autoItems = items.filter(item => item.exam_part === 1 || item.grading_type === 'auto')
   if (!autoItems.length) return null
@@ -235,14 +256,14 @@ function AutoResultsTable({
               <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">№</th>
               <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">Тип</th>
               <th className="px-3 py-2 text-center font-semibold border-b border-gray-300 bg-rose-100">Ваш ответ</th>
-              <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">Правильный ответ</th>
+              {showCorrect && <th className="px-3 py-2 text-center font-semibold border-b border-gray-300">Правильный ответ</th>}
             </tr>
           </thead>
           <tbody>
             {autoItems.map((item, idx) => {
               const studentAnswer = answers[item.item_id] ?? ''
-              const verdict = getAutoAnswerVerdict(item, studentAnswer)
-              const score = getAutoAnswerScore(item, studentAnswer)
+              const verdict = getAutoAnswerVerdict(item, studentAnswer) ?? (showCorrect ? null : serverVerdict(item, graded[item.item_id]))
+              const score = getAutoAnswerScore(item, studentAnswer) ?? (showCorrect ? null : graded[item.item_id]?.points_earned ?? null)
               const maxPoints = item.max_points ?? item.points ?? 1
               return (
                 <tr
@@ -283,9 +304,11 @@ function AutoResultsTable({
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center text-gray-900">
-                    {extractPlainText(getAutoAnswerValue(item))}
-                  </td>
+                  {showCorrect && (
+                    <td className="px-3 py-2 text-center text-gray-900">
+                      {extractPlainText(getAutoAnswerValue(item))}
+                    </td>
+                  )}
                 </tr>
               )
             })}
@@ -389,6 +412,8 @@ export function StudentVariantDetailPage() {
     || !!(attempt?.started_at ?? assignment?.started_at)
   const shouldShowSelfCheckStep = isSubmitted && isSelfBuilt && selfCheckItems.length > 0 && !selfCheckCompleted
   const wasSubmittedRef = useRef(isSubmitted)
+  // §263. Флажки выдачи «после сдачи показать ответы / разбор» и режим работы.
+  const answerFlags = useVariantAnswerFlags(assignmentId, isSubmitted)
 
   useEffect(() => {
     if (!assignmentId || !assignment || !variant || !isSelfBuilt || isStarted || isSubmitted || lockedUntil) return
@@ -645,6 +670,10 @@ export function StudentVariantDetailPage() {
   // ── Submitted → Results screen ────────────────────────────────────────────
 
   if (isSubmitted) {
+    const showCorrect     = answersVisible(answerFlags)
+    const hiddenNote      = hiddenAfterSubmitNote(answerFlags)
+    const verdictOf = (item: VariantItem) => getAutoAnswerVerdict(item, answers[item.item_id])
+      ?? (showCorrect ? null : serverVerdict(item, gradedAnswers[item.item_id]))
     const score           = attempt?.score ?? null
     const maxScore        = attempt?.max_score ?? null
     const pct             = attempt?.percentage ?? null
@@ -786,12 +815,20 @@ export function StudentVariantDetailPage() {
           )}
         </div>
 
+        {hiddenNote && (
+          <p className="mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="variant-answers-hidden">
+            {hiddenNote}
+          </p>
+        )}
+
         <AutoResultsTable
           items={items}
           answers={answers}
           submittedAt={attempt?.submitted_at ?? assignment.submitted_at ?? null}
           maxScore={maxScore}
           onTaskJump={handleResultTaskJump}
+          showCorrect={showCorrect}
+          graded={gradedAnswers}
         />
 
         {/* Read-only task list */}
@@ -813,7 +850,7 @@ export function StudentVariantDetailPage() {
                 }`}
               >
                 {(() => {
-                  const verdict = getAutoAnswerVerdict(item, answers[item.item_id])
+                  const verdict = verdictOf(item)
                   return (item.exam_part === 1 || item.grading_type === 'auto') && verdict ? (
                     <div
                       data-testid={`auto-answer-corner-badge-${item.item_id}`}
@@ -833,8 +870,8 @@ export function StudentVariantDetailPage() {
                 <TaskContentRenderer html={resolveTaskHtml(item.statement_html, item.assets ?? [])} />
                 {(() => {
                   const studentAnswer = answers[item.item_id]
-                  const verdict = getAutoAnswerVerdict(item, studentAnswer)
-                  const score = getAutoAnswerScore(item, studentAnswer)
+                  const verdict = verdictOf(item)
+                  const score = getAutoAnswerScore(item, studentAnswer) ?? (showCorrect ? null : gradedAnswers[item.item_id]?.points_earned ?? null)
                   const maxPoints = item.max_points ?? item.points ?? 1
                   const correctAnswer = extractPlainText(getAutoAnswerValue(item))
                   return studentAnswer ? (
@@ -844,9 +881,11 @@ export function StudentVariantDetailPage() {
                       </div>
                       {(item.exam_part === 1 || item.grading_type === 'auto') && (
                         <>
-                          <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
-                            Правильный ответ: <span className="font-medium">{correctAnswer}</span>
-                          </div>
+                          {showCorrect && (
+                            <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 inline-block">
+                              Правильный ответ: <span className="font-medium">{correctAnswer}</span>
+                            </div>
+                          )}
                           <span
                             data-testid={`auto-answer-badge-${item.item_id}`}
                             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${answerStatusClass(verdict)}`}

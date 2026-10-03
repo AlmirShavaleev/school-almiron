@@ -20,6 +20,9 @@ import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { useCoarsePointer } from '@/hooks/useCoarsePointer'
 import { deltaToPrevious, taskMark } from '@/lib/mockExamV3'
 import { fileNameFromStoragePath } from '@/lib/storage'
+import { useAwayTracker } from '@/hooks/useWorkActivity'
+import { refreshWorkMode, useWorkModeStore } from '@/store/workModeStore'
+import { WorkModeNotice } from '@/components/layout/WorkMode'
 
 /**
  * §221. Пробник в курсе глазами ученика — по макету `МАКЕТ-ОНЛАЙН-ПРОБНИКА.html`
@@ -44,12 +47,18 @@ export function MockExamLessonPage() {
     ? lessonStatus({ ...state, has_work: state.submitted_at != null || state.answers.some(a => a) || state.photos.length > 0 }, now)
     : null
 
+  // §263. Идёт свой пробник (режим работы из базы): считаем уходы со страницы.
+  // Сдал или окно кончилось — режим снят, счёт останавливается.
+  const workMode = useWorkModeStore(s => s.work)
+  useAwayTracker({ mockExamId: examId ?? null, active: workMode?.kind === 'mock' && workMode.mockExamId === examId })
+
   // Пересекли границу окна — спросить базу заново (условие, закрытый бланк).
   const loadedStatus = useRef<MockLessonStatus | null>(null)
   useEffect(() => {
     if (!status) return
     if (loadedStatus.current == null) { loadedStatus.current = status; return }
     if (loadedStatus.current !== status) {
+      if (loadedStatus.current === 'open' || status === 'open') refreshWorkMode()
       loadedStatus.current = status
       reload()
     }
@@ -90,6 +99,7 @@ export function MockExamLessonPage() {
 
       {status === 'upcoming' && <Upcoming state={state} now={now} />}
       {status === 'open' && <TimerPanel state={state} now={now} variantLabel={variantLabel} onSubmit={() => setAsk(true)} />}
+      {status === 'open' && <WorkModeNotice />}
       {(status === 'submitted' || status === 'time_up') && <ClosedNote state={state} status={status} />}
       {(status === 'checking' || status === 'missed') && <CheckingNote status={status} />}
       {status === 'result' && result?.status === 'ready' && <ResultPanels result={result} state={state} groupId={groupId} />}
@@ -123,6 +133,7 @@ export function MockExamLessonPage() {
             const r = await submit()
             if (r.error) { reload(); return r }
             setAsk(false)
+            refreshWorkMode()
             return r
           }}
           leftMs={new Date(state.ends_at ?? 0).getTime() - now}

@@ -769,6 +769,8 @@ export function parseSummary(raw: unknown): CourseAssessmentsSummary | null {
 
 export type TeacherAction =
   | { kind: 'queue'; label: string; topicId: string }
+  /** §263. «Следить» (идёт) / «Итог» (после конца) — монитор работы по времени. */
+  | { kind: 'live'; label: string; to: string }
   | { kind: 'works'; label: string; topicId: string }
   | { kind: 'topic'; label: string; topicId: string }
   | { kind: 'mock'; label: string; to: string }
@@ -795,6 +797,11 @@ export interface TeacherBlock {
   rows: TeacherRow[]
 }
 
+/** §263. Адрес монитора работы по времени. */
+export function liveWorkPath(homeworkId: string): string {
+  return `/live-work/${homeworkId}`
+}
+
 function whenText(from: string | null, to: string | null, nowMs: number): string {
   if (!from) return 'время не назначено'
   const d = mskDayDiff(from, nowMs)
@@ -816,15 +823,20 @@ function workRow(w: SummaryWork, inClass: number, nowMs: number, template: boole
       break
     case 'live':
       st = { text: w.writing > 0 ? `идёт · пишут ${w.writing}` : 'идёт', tone: 'live' }
-      actions.push({ kind: 'works', label: 'Кто пишет', topicId: w.topic_id })
+      // §263: монитор «Проверочная вживую»; без ДЗ (старая база) — прежний список.
+      actions.push(w.homework_id
+        ? { kind: 'live', label: 'Следить', to: liveWorkPath(w.homework_id) }
+        : { kind: 'works', label: 'Кто пишет', topicId: w.topic_id })
       break
     case 'review':
       st = { text: `проверить ${w.pending}`, tone: 'check' }
       actions.push({ kind: 'queue', label: 'Проверка', topicId: w.topic_id })
+      if (w.homework_id) actions.push({ kind: 'live', label: 'Итог', to: liveWorkPath(w.homework_id) })
       break
     default:
       st = w.submitted > 0 ? { text: 'проверена', tone: 'done' } : { text: 'никто не сдал', tone: 'soon' }
       actions.push({ kind: 'works', label: 'Работы', topicId: w.topic_id })
+      if (w.homework_id) actions.push({ kind: 'live', label: 'Итог', to: liveWorkPath(w.homework_id) })
   }
   if (!w.published && w.status !== 'review') st = { text: 'не опубликована', tone: 'soon' }
   if (template) {

@@ -19,6 +19,8 @@ import {
   TOPIC_KIND_LABEL, formatMoscowDay, formatMoscowShort, formatMoscowTime, isTimedKind, normalizeTopicKind, type TopicKind,
 } from '@/lib/timedWork'
 import { useTopicTimedWindow } from '@/hooks/useTimedWork'
+import { useAwayTracker, useWorkOpenMark } from '@/hooks/useWorkActivity'
+import { useWorkModeStore } from '@/store/workModeStore'
 import { TopicTestStudent } from '@/components/courseProgram/TopicTestStudent'
 import { TopicTasksStudent } from '@/components/courseProgram/TopicTasksStudent'
 import { useTopicTasks } from '@/hooks/useTopicTasks'
@@ -230,6 +232,15 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // Окно открылось, пока страница открыта: ученику база теперь отдаёт условие —
   // перечитываем материалы (вкладка «Работа» делает это сама, но ученик может
   // ждать и на вкладке «Условие»). Первый ответ — не «открытие».
+  // §263. Идёт СВОЯ работа (режим работы из базы — та же функция, что закрывает
+  // каталог и материалы): страница работы ставит отметку «открыл условие»
+  // (вкладки «Работа» и «Условие» обе показывают условие) и считает уходы со
+  // страницы. Сдал или окно кончилось — режим снят, счёт останавливается.
+  const workMode = useWorkModeStore(s => s.work)
+  const ownWorkLive = !preview && !!timedWindow.homeworkId
+    && workMode?.kind === 'timed' && workMode.homeworkId === timedWindow.homeworkId
+  useWorkOpenMark(timedWindow.homeworkId, ownWorkLive)
+  useAwayTracker({ homeworkId: timedWindow.homeworkId, active: ownWorkLive })
   const prevOpened = useRef<boolean | null>(null)
   useEffect(() => {
     if (!timedWindow.loaded) return

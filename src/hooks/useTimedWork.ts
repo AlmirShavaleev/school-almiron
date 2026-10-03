@@ -130,6 +130,8 @@ export function useTopicTimedWindow(topicId: string | null, enabled: boolean, pr
   return {
     /** Строка ДЗ прочитана (или читать нечего). */
     loaded: !enabled || !!mine,
+    /** §263. ДЗ темы (для отметки «открыл условие» и счёта уходов). */
+    homeworkId: row?.id ?? null,
     opensAt: win.opensAt,
     closesAt: win.closesAt,
     opened,

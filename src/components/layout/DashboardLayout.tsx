@@ -14,6 +14,9 @@ import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
+import { useWorkModeStore } from '@/store/workModeStore'
+import { workModeAllows } from '@/lib/workMode'
+import { WorkModeClosed, WorkModeStrip, useWorkModeSync } from './WorkMode'
 
 /**
  * Заголовок в шапке. Порядок важен: берётся ПЕРВОЕ совпадение, поэтому
@@ -44,6 +47,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/course-program\/[^/]+\/topic-tests/, 'Тесты по темам курса'],
   [/^\/course-program/, 'Программа курса'],
   [/^\/homework-queue$/, 'Проверка ДЗ'],
+  [/^\/live-work\//, 'Проверочная вживую'],
   [/^\/homework-review/, 'Проверка ДЗ'],
   [/^\/homework-templates/, 'Шаблоны ДЗ'],
   [/^\/homeworks/, 'Домашние задания'],
@@ -78,6 +82,13 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // §263. Режим работы ученика: пока идёт его проверочная/контрольная или
+  // пробник, всё, кроме страницы работы, закрыто (замки держит и сервер).
+  // Предпросмотр персонала «глазами ученика» режима не получает.
+  const isStudent = profile?.role === 'student' && !preview
+  useWorkModeSync(isStudent)
+  const work = useWorkModeStore(s => s.work)
+  const workOffsetMs = useWorkModeStore(s => s.offsetMs)
 
   // Close sidebar on ESC
   useEffect(() => {
@@ -118,6 +129,8 @@ export function DashboardLayout() {
     : '?'
   const isFullscreenReviewRoute = /^\/homeworks\/[^/]+\/review(?:\/|$)/.test(location.pathname)
   const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'Школа Almiron'
+  const activeWork = isStudent ? work : null
+  const workClosed = !!activeWork && !workModeAllows(location.pathname, activeWork)
 
   return (
     <div className="flex min-h-screen bg-transparent text-graphite-900">
@@ -197,8 +210,11 @@ export function DashboardLayout() {
             {/* Приглашение привязать Telegram — над содержимым страницы, но не
                 на полноэкранной проверке ДЗ: там рабочая область занимает весь
                 экран, и полоска сверху ломала бы разметку холста. */}
-            {!isFullscreenReviewRoute && <TelegramOnboarding />}
-            <Outlet />
+            {activeWork && workClosed && <WorkModeStrip work={activeWork} offsetMs={workOffsetMs} showLink={false} />}
+            {!isFullscreenReviewRoute && !workClosed && <TelegramOnboarding />}
+            {activeWork && workClosed
+              ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
+              : <Outlet />}
           </div>
         </main>
       </div>

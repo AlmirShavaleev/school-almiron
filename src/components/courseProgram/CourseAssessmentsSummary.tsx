@@ -195,6 +195,8 @@ function Action({ action, onOpenTopic, onShowWorks }: {
       return <Link to={`/homework-queue?topic=${action.topicId}`} className={ACTION_CLS} data-testid="course-assessments-action">{action.label}</Link>
     case 'mock':
       return <Link to={action.to} className={ACTION_CLS} data-testid="course-assessments-action">{action.label}</Link>
+    case 'live':
+      return <Link to={action.to} className={ACTION_CLS} data-testid="course-assessments-action">{action.label}</Link>
     case 'works':
       return <button type="button" onClick={() => onShowWorks(action.topicId)} className={ACTION_CLS} data-testid="course-assessments-action">{action.label}</button>
     case 'topic':

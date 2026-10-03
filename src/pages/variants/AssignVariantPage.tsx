@@ -29,8 +29,10 @@ const DEFAULT_SETTINGS: Settings = {
   due_at: '',
   max_attempts: 1,
   allow_retry: false,
-  show_answers_after_submit: false,
-  show_solutions_after_submit: false,
+  // §263: флажки заработали (сервер прячет ответы и решения, если сняты). По
+  // умолчанию — как было всегда на деле: ученик после сдачи видит и то и другое.
+  show_answers_after_submit: true,
+  show_solutions_after_submit: true,
 }
 
 const SUBJECT_LABELS: Record<string, string> = { math: 'Математика', physics: 'Физика' }
@@ -460,6 +462,9 @@ export function AssignVariantPage() {
                 />
                 <span className="text-sm text-gray-700">Показать разбор</span>
               </label>
+              <p className="text-xs text-gray-500">
+                Сняли галочку — ученик после сдачи не увидит правильных ответов или разбора (балл и свои ответы видит всегда).
+              </p>
             </div>
           </div>
         </div>

@@ -69,6 +69,8 @@ const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import
 const StudentVariantGeneratePage = lazyPage('StudentVariantGeneratePage', () => import('@/pages/student/StudentVariantGeneratePage').then(m => ({ default: m.StudentVariantGeneratePage })))
 const StudentNumberStatsPage = lazyPage('StudentNumberStatsPage', () => import('@/pages/student/StudentNumberStatsPage').then(m => ({ default: m.StudentNumberStatsPage })))
 const HomeworksV2RoleRouter = lazyPage('HomeworksV2RoleRouter', () => import('@/pages/HomeworksV2RoleRouter').then(m => ({ default: m.HomeworksV2RoleRouter })))
+// §263. «Проверочная вживую» — монитор работы по времени у учителя.
+const LiveWorkPage = lazyPage('LiveWorkPage', () => import('@/pages/teacher/LiveWorkPage').then(m => ({ default: m.LiveWorkPage })))
 const HomeworkReviewQueuePage = lazyPage('HomeworkReviewQueuePage', () => import('@/pages/HomeworkReviewQueuePage').then(m => ({ default: m.HomeworkReviewQueuePage })))
 const HomeworkReviewV2Page = lazyPage('HomeworkReviewV2Page', () => import('@/pages/HomeworkReviewV2Page').then(m => ({ default: m.HomeworkReviewV2Page })))
 const MyHomeworksV2Page = lazyPage('MyHomeworksV2Page', () => import('@/pages/student/MyHomeworksV2Page').then(m => ({ default: m.MyHomeworksV2Page })))
@@ -255,6 +257,7 @@ export default function AppRoutes() {
         <Route path="/student/variants/:assignmentId" element={<RoleGuard allow={['student']} preview="stub"><StudentVariantDetailPage /></RoleGuard>} />
 
         {/* Общая очередь проверки PDF-ДЗ нового контура */}
+        <Route path="/live-work/:homeworkId" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><LiveWorkPage /></RoleGuard>} />
         <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><HomeworkReviewQueuePage /></RoleGuard>} />
 
         {/* Банк тестов */}

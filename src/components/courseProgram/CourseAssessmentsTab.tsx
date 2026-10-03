@@ -198,7 +198,7 @@ function WorkRow({ row, template, onOpenTopic, onShowWorks }: {
       <div className={cn('col-span-2 md:col-span-1', !row.dist && 'hidden md:block')}>
         {row.dist && <DistBar dist={row.dist} avg={row.avg} />}
       </div>
-      <div className="col-start-2 row-start-1 flex justify-end md:col-start-auto md:row-start-auto">
+      <div className="col-start-2 row-start-1 flex flex-wrap justify-end gap-1.5 md:col-start-auto md:row-start-auto">
         {row.actions.map(a => <WorkAction key={a.label} action={a} onOpenTopic={onOpenTopic} onShowWorks={onShowWorks} />)}
       </div>
     </li>
@@ -239,6 +239,8 @@ function WorkAction({ action, onOpenTopic, onShowWorks }: {
       return <Link to={`/homework-queue?topic=${action.topicId}`} className={ACTION_SOFT} data-testid="assessments-work-action">{action.label}</Link>
     case 'mock':
       return <Link to={action.to} className={ACTION_PLAIN} data-testid="assessments-work-action">{action.label}</Link>
+    case 'live':
+      return <Link to={action.to} className={action.label === 'Следить' ? ACTION_SOFT : ACTION_PLAIN} data-testid="assessments-work-action">{action.label}</Link>
     case 'works':
       return <button type="button" onClick={() => onShowWorks(action.topicId)} className={ACTION_PLAIN} data-testid="assessments-work-action">{action.label}</button>
     case 'topic':

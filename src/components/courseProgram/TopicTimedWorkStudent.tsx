@@ -21,6 +21,8 @@ import {
   isTimerWarning, submittedLabel, timedPhase, type TimedPhase, type TopicKind,
 } from '@/lib/timedWork'
 import { cn } from '@/utils/cn'
+import { refreshWorkMode } from '@/store/workModeStore'
+import { WorkModeNotice } from '@/components/layout/WorkMode'
 
 /**
  * §240. Ученический экран проверочной / контрольной работы — пять состояний
@@ -97,8 +99,11 @@ export function TopicTimedWorkStudent({
     prevPhase.current = phase
     if (before === null || before === phase) return
     onPhaseChange?.(phase)
+    // §263. Окно открылось / закрылось / работа сдана — режим работы сайта
+    // меняется вместе с ним (полоса, закрытые разделы). Предпросмотр не трогает.
+    if (!preview && (before === 'live' || phase === 'live')) refreshWorkMode()
     if (before === 'before' && phase === 'live') { reload(); reloadWindow() }
-  }, [phase, loading, onPhaseChange, reload, reloadWindow])
+  }, [phase, loading, onPhaseChange, reload, reloadWindow, preview])
 
   useEffect(() => {
     if (phase !== 'sending') return
@@ -173,7 +178,8 @@ export function TopicTimedWorkStudent({
   const review = attempt ? latestReview(reviews, attempt.id) : null
 
   const conditionBlock = (
-    <section data-testid="timed-condition" className="space-y-2">
+    // data-away-ok: открыть файл условия в новой вкладке — «свой» уход, не в счёт (§263).
+    <section data-testid="timed-condition" data-away-ok className="space-y-2">
       <h3 className="px-0.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-graphite-500">Условие</h3>
       {files.map(f => (
         <SignedFileLink
@@ -266,6 +272,8 @@ export function TopicTimedWorkStudent({
             </div>
           </div>
 
+          {!preview && <WorkModeNotice />}
+
           {conditionBlock}
 
           <div data-testid="timed-photos" className="flex flex-col gap-2.5 rounded-[20px] bg-white p-3.5 shadow-sm ring-1 ring-graphite-200">
@@ -357,7 +365,7 @@ export function TopicTimedWorkStudent({
                     data-testid="timed-submit-yes"
                     className="flex-1"
                     loading={busy}
-                    onClick={() => run(async () => { await submitAttempt(attempt!.id); setConfirming(false) })}
+                    onClick={() => run(async () => { await submitAttempt(attempt!.id); setConfirming(false); refreshWorkMode() })}
                   >
                     Сдать
                   </Button>
