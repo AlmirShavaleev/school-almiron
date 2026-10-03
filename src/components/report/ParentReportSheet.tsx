@@ -1,26 +1,30 @@
+import { useMemo } from 'react'
 import {
   DASH,
-  averageScore,
+  assessmentsCell,
   cleanSteps,
   egeTagLabel,
   formatDelta,
   formatFullDate,
   formatPeriod,
   formatShortDate,
-  groupAverage,
-  onTime,
-  polylinePoints,
+  homeworkAverage,
+  homeworkOnTimeCell,
   sortSubjects,
-  sparkPoints,
+  subjectAssessments,
   targetLabel,
   topicBasis,
   topicsForList,
   watchTime,
-  worksBreakdown,
   type ProgressReport,
   type ReportSubject,
   type ReportTopic,
 } from '@/lib/parentReport'
+import { normalizeForecastResponse, type ForecastResponse } from '@/lib/egeForecast'
+import {
+  FEW_DATA_TEXT, formatGrade, forecastSummary, monthDeltaText, pointsLabel, toGoalText,
+} from '@/lib/studentOverview'
+import { plural } from '@/lib/plural'
 import { SUBJECT_LABELS } from '@/utils/format'
 
 /**
@@ -37,9 +41,13 @@ import { SUBJECT_LABELS } from '@/utils/format'
  * имена и результаты других учеников и само слово «ИИ» — родителю важно, что
  * оценку поставил преподаватель.
  *
- * Прогноза балла на экзамене нет ни в каком виде (решение владельца): цель и
- * текущий средний рядом — этого достаточно, а прогноз на бумаге в руках
- * родителя превращается в обещание.
+ * §261 (решение владельца 03.10): «Примерный балл на ЕГЭ» на листе есть, но ТОЛЬКО когда данных достаточно — то
+ * же правило покрытия, что у ученика на главной (§255); иначе строка «Пока мало данных для прогноза». Считает его
+ * та же модель (`forecastSummary` → `buildForecastView`), что ученику и учителю, — одно место.
+ * Новое на листе 1: плитки «Проверочные» и «ДЗ вовремя» (правило §259), таблица проверочных периода с баллами
+ * «10 из 12» (баллы учителя по критериям §260) и средней по классу (только от шести человек). На листе 2 прежняя
+ * «Активность за период» объединена со «Стараем за период» (дни с решением, каталог с проверкой, видео, награды
+ * одной строкой) — без дублей: «вовремя» теперь на листе 1.
  *
  * Печатает браузер. Своей кнопки печати нет намеренно — их две не бывает, а
  * системный диалог умеет и поля, и масштаб, и выбор принтера. Разрывы страниц
@@ -68,48 +76,111 @@ function Cell({ label, value, note, dashed }: {
 }
 
 /**
- * Маленький график «средний балл по неделям». Обычный SVG, без зависимостей —
- * решение оркестратора: ради двух ломаных библиотека в сборку не едет.
- * Числа подписаны под точками, поэтому график читается и на чёрно-белой
- * печати, где линия и сетка сливаются.
+ * «Примерный балл на ЕГЭ» предмета. Полоса — SVG, а не фон: фоны на печати сняты (`@media print`), заливка SVG
+ * печатается всегда; балл ещё и подписан числом, отметка цели — словом рядом.
  */
-function WeeksSpark({ subject }: { subject: ReportSubject }) {
-  const width = 320
-  const height = 62
-  const points = sparkPoints(subject.weeks, width, height - 14)
-  if (points.length === 0) return null
-
+function ForecastRow({ subject, data }: { subject: ReportSubject; data: ForecastResponse | null }) {
+  const fc = forecastSummary(data, subject.subject, subject.target)
+  if (fc.kind === 'none') return null
+  if (fc.kind === 'few') {
+    return (
+      <p className="report-forecast m-0 mb-3 border border-dashed border-graphite-300 px-3 py-2 text-[13px] text-graphite-600" data-testid={`report-forecast-few-${subject.subject}`}>
+        {FEW_DATA_TEXT}: примерный балл появится, когда будут решены задачи хотя бы половины номеров первой части
+        (сейчас {fc.covered} из {fc.need}).
+      </p>
+    )
+  }
+  const own = subject.exam_goal != null && subject.target != null && subject.exam_goal !== subject.target
+  const goalText = fc.goal != null ? `${own ? 'цель ученика' : 'цель'} ${fc.goal}` : null
+  const width = 300
+  const x = (v: number) => Math.round((Math.min(100, Math.max(0, v)) / 100) * width)
   return (
-    <figure className="report-spark mt-3 m-0">
-      <figcaption className="mb-1 text-[11px] text-graphite-500">Средний балл по неделям</figcaption>
+    <div className="report-forecast mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border border-graphite-200 px-3 py-2.5" data-testid={`report-forecast-${subject.subject}`}>
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-graphite-500">Примерный балл на ЕГЭ</div>
+        <span className="text-3xl font-bold tabular-nums text-graphite-900">{fc.score}</span>
+        {monthDeltaText(fc.monthDelta) && <span className="ml-2 text-[13px] text-graphite-700">{monthDeltaText(fc.monthDelta)}</span>}
+      </div>
       <svg
         width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
+        height={22}
+        viewBox={`0 0 ${width} 22`}
+        className="max-w-full flex-1"
         role="img"
-        aria-label={`Средний балл по неделям: ${subject.weeks.map(w => `${w.avg_percent} процентов`).join(', ')}`}
+        aria-label={`${fc.score} из 100${fc.goal != null ? `, цель ${fc.goal}` : ''}`}
       >
-        <line x1="0" y1={height - 14} x2={width} y2={height - 14} stroke="currentColor" strokeWidth="1" opacity="0.2" />
-        {points.length > 1 && (
-          <polyline points={polylinePoints(points)} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-        )}
-        {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={i === points.length - 1 ? 4 : 3} fill="currentColor" />
-        ))}
-        {points.map((p, i) => (
-          <text key={`t${i}`} x={p.x} y={height - 2} fontSize="10" textAnchor="middle" fill="currentColor" opacity="0.7">
-            {p.label}
-          </text>
-        ))}
+        <rect x="0.5" y="6.5" width={width - 1} height="9" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.35" />
+        <rect x="0" y="6" width={x(fc.score)} height="10" fill="currentColor" />
+        {fc.goal != null && <line x1={x(fc.goal)} y1="1" x2={x(fc.goal)} y2="21" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />}
       </svg>
-    </figure>
+      <div className="max-w-[230px] text-[12px] text-graphite-600">
+        {[goalText, toGoalText(fc.toGoal)].filter(Boolean).join(' · ')}{goalText ? '. ' : ''}
+        Считается по ДЗ, задачам каталога и пробникам.
+      </div>
+    </div>
   )
 }
 
-function SubjectBlock({ subject }: { subject: ReportSubject }) {
+function AssessmentsTable({ subject, minGroup }: { subject: ReportSubject; minGroup: number }) {
+  const rows = subjectAssessments(subject)
+  if (!Array.isArray(subject.assessments)) return null
+  const hidden = rows.some(r => r.classAvg == null && r.classSize > 0 && r.classSize < minGroup)
+  return (
+    <div className="report-block mt-3" data-testid={`report-assessments-${subject.subject}`}>
+      <h4 className="m-0 mb-1.5 text-[10px] uppercase tracking-wider text-graphite-500">Проверочные и контрольные</h4>
+      {rows.length === 0 ? (
+        <p className="m-0 text-[13px] text-graphite-500">Проверочных и контрольных за период не было.</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-graphite-500">
+                  <th className="border-b border-graphite-300 px-2 py-1 text-left font-normal">Дата</th>
+                  <th className="border-b border-graphite-300 px-2 py-1 text-left font-normal">Работа</th>
+                  <th className="border-b border-graphite-300 px-2 py-1 text-left font-normal">Баллы</th>
+                  <th className="border-b border-graphite-300 px-2 py-1 text-left font-normal">Оценка</th>
+                  <th className="border-b border-graphite-300 px-2 py-1 text-left font-normal">Средняя по классу</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} data-testid="report-assessment-row">
+                    <td className="whitespace-nowrap border-b border-graphite-100 px-2 py-1 tabular-nums">{r.date ? formatShortDate(r.date) : DASH}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1">{r.title}</td>
+                    <td className="whitespace-nowrap border-b border-graphite-100 px-2 py-1 tabular-nums">{pointsLabel(r.points, r.pointsMax) ?? DASH}</td>
+                    <td className="border-b border-graphite-100 px-2 py-1 font-bold tabular-nums">
+                      {r.status === 'accepted' && r.score != null ? String(r.score).replace('.', ',') : r.status ? 'нет оценки' : 'не писал'}
+                    </td>
+                    <td className="border-b border-graphite-100 px-2 py-1 tabular-nums">
+                      {r.classAvg != null ? formatGrade(r.classAvg, r.gradeScale ?? 'five') : DASH}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {hidden && (
+            <p className="mt-1 text-[11px] text-graphite-500">
+              Прочерк в последнем столбце — в классе меньше {minGroup} человек, среднюю по нему не печатаем.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function SubjectBlock({ subject, forecast, nowMs, minGroup }: {
+  subject: ReportSubject
+  forecast: ForecastResponse | null
+  nowMs: number
+  minGroup: number
+}) {
   const label = SUBJECT_LABELS[subject.subject] ?? subject.subject
-  const avg = averageScore(subject.avg_percent, subject.graded_works)
-  const peers = groupAverage(subject.group_avg_percent, subject.group_size)
+  const hw = homeworkAverage(subject)
+  const checks = assessmentsCell(subject)
+  const ontime = homeworkOnTimeCell(subject, nowMs)
   const mock = subject.last_mock
   const delta = formatDelta(mock?.delta ?? null)
 
@@ -120,14 +191,12 @@ function SubjectBlock({ subject }: { subject: ReportSubject }) {
         <span className="text-[13px] text-graphite-600">{targetLabel(subject.target)}</span>
       </div>
 
+      {subject.exam_type === 'ege' && <ForecastRow subject={subject} data={forecast} />}
+
       <div className="report-grid grid grid-cols-2 border border-graphite-200 md:grid-cols-4">
-        <Cell label="Средний балл" value={avg.value} note={avg.note} dashed={avg.dashed} />
-        <Cell label="Среднее по группе" value={peers.value} note={peers.note} dashed={peers.dashed} />
-        <Cell
-          label="Работы"
-          value={String(subject.works.submitted)}
-          note={worksBreakdown(subject.works)}
-        />
+        <Cell label="Средний балл ДЗ" value={hw.value} note={hw.note} dashed={hw.dashed} />
+        <Cell label="Проверочные" value={checks.value} note={checks.note} dashed={checks.dashed} />
+        <Cell label="ДЗ вовремя" value={ontime.value} note={ontime.note} dashed={ontime.dashed} />
         <Cell
           label="Последний пробник"
           value={mock ? `${mock.score}${delta ? ` (${delta})` : ''}` : DASH}
@@ -142,7 +211,7 @@ function SubjectBlock({ subject }: { subject: ReportSubject }) {
         />
       </div>
 
-      <WeeksSpark subject={subject} />
+      <AssessmentsTable subject={subject} minGroup={minGroup} />
     </section>
   )
 }
@@ -279,8 +348,15 @@ export function ParentReportSheet({ report }: { report: ProgressReport }) {
   const weak = topicsForList(report.topics?.weak)
   const strong = topicsForList(report.topics?.strong)
   const activity = report.activity
-  const time = onTime(activity.on_time, activity.with_due, activity.late)
+  const diligence = report.diligence ?? null
   const groupsLine = report.student.groups.join(' · ')
+  const forecast = useMemo(
+    () => (report.forecast ? normalizeForecastResponse(report.forecast, new Date(report.generated_at)) : null),
+    [report.forecast, report.generated_at],
+  )
+  // «Сейчас» отчёта — когда он составлен (сервер), а не часы устройства.
+  const nowMs = Number.isFinite(Date.parse(report.generated_at)) ? Date.parse(report.generated_at) : Date.now()
+  const minGroup = report.min_group_for_avg ?? 6
 
   return (
     <div className="report-document text-graphite-900" data-testid="parent-report-sheet">
@@ -309,7 +385,9 @@ export function ParentReportSheet({ report }: { report: ProgressReport }) {
           </p>
         ) : (
           <div className="space-y-5">
-            {subjects.map(s => <SubjectBlock key={`${s.subject}-${s.exam_type}`} subject={s} />)}
+            {subjects.map(s => (
+              <SubjectBlock key={`${s.subject}-${s.exam_type}`} subject={s} forecast={forecast} nowMs={nowMs} minGroup={minGroup} />
+            ))}
           </div>
         )}
 
@@ -406,20 +484,40 @@ export function ParentReportSheet({ report }: { report: ProgressReport }) {
           </p>
         </div>
 
-        <div className="report-block mt-5">
-          <h3 className="m-0 mb-2 text-[10px] uppercase tracking-wider text-graphite-500">Активность за период</h3>
+        <div className="report-block mt-5" data-testid="parent-report-diligence">
+          <h3 className="m-0 mb-2 text-[10px] uppercase tracking-wider text-graphite-500">Старание за период</h3>
           <div className="report-grid grid grid-cols-2 border border-graphite-200 md:grid-cols-4">
-            <Cell label="Сдано вовремя" value={time.value} note={time.note} dashed={time.dashed} />
+            <Cell
+              label="Дней с решением"
+              value={diligence ? String(diligence.solve_days) : DASH}
+              note={diligence ? `из ${diligence.period_days} · серия сейчас ${diligence.streak}` : 'нет данных'}
+              dashed={!diligence}
+            />
+            <Cell
+              label="Задачи каталога"
+              value={diligence ? String(diligence.catalog_correct) : DASH}
+              note="верно с проверкой ответа"
+              dashed={!diligence}
+            />
             <Cell
               label="Видео"
               value={watchTime(activity.video_seconds)}
-              note={`${watchTime(activity.video_seconds_last_week)} за последнюю неделю`}
+              note={[
+                `${watchTime(activity.video_seconds_last_week)} за последнюю неделю`,
+                activity.materials > 0 ? `материалов открыто ${activity.materials}` : null,
+              ].filter(Boolean).join(' · ')}
             />
-            <Cell label="Материалы" value={String(activity.materials)} note="конспектов и разборов открыто" />
-            <Cell label="Задачи каталога" value={String(activity.catalog_tasks)} note="решено самостоятельно" />
+            <Cell
+              label="Награды"
+              value={diligence ? String(diligence.achievements_earned) : DASH}
+              note={diligence?.level
+                ? `уровень ${diligence.level.n} из ${diligence.levels_count}`
+                : diligence ? `${plural(diligence.achievements_earned, 'награда', 'награды', 'наград')} из ${diligence.achievements_total}` : 'нет данных'}
+              dashed={!diligence}
+            />
           </div>
           <p className="mt-1.5 text-[11px] text-graphite-500">
-            Активность — про дисциплину, а не про знания: время в записях само по себе баллов не прибавляет.
+            Старание — про регулярность, а не про знания. Знания — на листе 1.
           </p>
         </div>
 

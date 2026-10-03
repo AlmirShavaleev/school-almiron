@@ -89,6 +89,15 @@ describe('StudentInsightSection — карточка ученика', () => {
     expect(screen.getByTestId('student-weak-topics')).toHaveTextContent('Кинематика')
   })
 
+  // §261: в карточке ученика плитки показывает сводка «Ученик целиком» — секция анализа без них, остальное на месте.
+  it('showNumbers=false — без плиток «Работы / Возвращали», слабые темы на месте', () => {
+    render(<StudentInsightSection studentId="s1" showNumbers={false} />)
+
+    expect(screen.queryByText('Работы')).not.toBeInTheDocument()
+    expect(screen.queryByText('Возвращали')).not.toBeInTheDocument()
+    expect(screen.getByTestId('student-weak-topics')).toHaveTextContent('Кинематика')
+  })
+
   it('без сигналов блока внимания нет вовсе', () => {
     render(<StudentInsightSection studentId="s1" />)
     expect(screen.queryByTestId('student-attention-signals')).not.toBeInTheDocument()

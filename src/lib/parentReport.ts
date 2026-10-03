@@ -6,12 +6,16 @@
  * запросов из клиента расходятся при первой же правке. Здесь только то, что
  * относится к печати числа на бумаге: подписи, прочерки и точки графика.
  *
- * Прогноза балла на экзамене в этом модуле нет и быть не должно. Цель и
- * текущий средний рядом — этого достаточно; прогноз на бумаге в руках
- * родителя превращается в обещание.
+ * §261 (решение владельца 03.10): на листе появился «Примерный балл на ЕГЭ» — но ТОЛЬКО когда данных достаточно,
+ * по тому же правилу покрытия, что у ученика на главной (§255, `egeForecast.ts`); иначе честная строка «Пока мало
+ * данных для прогноза». Считает его не этот модуль, а `lib/studentOverview.ts` той же моделью.
  */
 
 import { plural } from './plural'
+import {
+  assessmentSummary, deadlineNote, formatGrade, gradeAverage, homeworkDeadlineSummary, normalizeAssessments,
+  normalizeHomeworks, worksWord, type AssessmentRow, type HomeworkRow,
+} from './studentOverview'
 
 /**
  * Порог «печатать ли среднее по группе». Второй рубеж: база уже отдаёт null,
@@ -64,6 +68,12 @@ export interface ReportSubject {
   }
   weeks: ReportWeek[]
   last_mock: ReportMock | null
+  /** §261: цель, которую ученик поставил себе сам (student_exam_goals), только ЕГЭ; null — нет. Поля нет — база до §261. */
+  exam_goal?: number | null
+  /** §261: проверочные и контрольные периода (сырой ответ; разбор — `normalizeAssessments`). */
+  assessments?: unknown[]
+  /** §261: ДЗ уроков периода — срок и первая сдача (разбор — `normalizeHomeworks`). */
+  homeworks?: unknown[]
 }
 
 export interface ReportTopic {
@@ -101,6 +111,21 @@ export interface ProgressReport {
    * не прятать стилем, а не отрисовывать).
    */
   teacher_note: { body: string; created_at: string } | null
+  /** §261: свидетельства прогноза на конец периода — тот же ответ, что `student_exam_forecast_evidence()`. */
+  forecast?: unknown
+  /** §261: «Старание за период». Поля нет — база до §261, блок печатает прочерки. */
+  diligence?: ReportDiligence
+}
+
+export interface ReportDiligence {
+  solve_days: number
+  period_days: number
+  streak: number
+  catalog_correct: number
+  achievements_earned: number
+  achievements_total: number
+  level: { n: number; name: string } | null
+  levels_count: number
 }
 
 /** Прочерк. Один символ на весь отчёт, чтобы он не разъехался по файлам. */
@@ -282,4 +307,45 @@ export function sortSubjects(subjects: readonly ReportSubject[], label: (s: stri
 /** Три строки «что делать»: пустые не печатаются пустыми пунктами списка. */
 export function cleanSteps(steps: readonly string[] | null | undefined): string[] {
   return (steps ?? []).map(s => (s ?? '').trim()).filter(Boolean).slice(0, 3)
+}
+
+// ── §261: новые плитки листа 1 ───────────────────────────────────────────
+
+export function subjectAssessments(subject: ReportSubject): AssessmentRow[] {
+  return normalizeAssessments(subject.assessments)
+}
+
+export function subjectHomeworks(subject: ReportSubject): HomeworkRow[] {
+  return normalizeHomeworks(subject.homeworks)
+}
+
+/**
+ * «Средний балл ДЗ»: средняя оценка принятых ДЗ уроков периода (пятибалльные отдельно от стобалльных) — всегда с
+ * числом работ (правило владельца §217). ДЗ периода нет в ответе (база до §261) — прежний средний процент.
+ */
+export function homeworkAverage(subject: ReportSubject): Printable {
+  if (!Array.isArray(subject.homeworks)) return averageScore(subject.avg_percent, subject.graded_works)
+  const avg = gradeAverage(subjectHomeworks(subject).filter(r => r.status === 'accepted'))
+  if (!avg) return { value: DASH, note: 'проверенных ДЗ за период нет', dashed: true }
+  return {
+    value: formatGrade(avg.value, avg.scale),
+    note: `${avg.count} ${plural(avg.count, 'проверенная работа', 'проверенные работы', 'проверенных работ')}`,
+    dashed: false,
+  }
+}
+
+/** «Проверочные»: «4,0 · 3 работы · класс 3,9» (класс — только если база его отдала: в классе от шести). */
+export function assessmentsCell(subject: ReportSubject): Printable {
+  const s = assessmentSummary(subjectAssessments(subject))
+  if (!s.avg) return { value: DASH, note: 'проверочных с оценкой за период нет', dashed: true }
+  const parts = [worksWord(s.avg.count)]
+  if (s.classAvg != null) parts.push(`класс ${formatGrade(s.classAvg, s.avg.scale)}`)
+  return { value: formatGrade(s.avg.value, s.avg.scale), note: parts.join(' · '), dashed: false }
+}
+
+/** «ДЗ вовремя»: «12 из 14» — правилом §259 (первая сдача против срока по Москве), ДЗ со сроком в периоде. */
+export function homeworkOnTimeCell(subject: ReportSubject, nowMs: number): Printable {
+  const s = homeworkDeadlineSummary(subjectHomeworks(subject), nowMs)
+  if (s.total === 0) return { value: DASH, note: 'сроков ДЗ в этом периоде не было', dashed: true }
+  return { value: `${s.ontime} из ${s.total}`, note: deadlineNote(s, ', '), dashed: false }
 }

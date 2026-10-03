@@ -232,7 +232,12 @@ function VideoWatchLine({ profileId }: { profileId: string | null }) {
  * `profiles.id` (`auth.uid()` ученика), а всё остальное здесь — по
  * `students.id`. Один параметр на оба смысла дал бы вечный ноль без ошибки.
  */
-export function StudentInsightSection({ studentId, profileId = null }: { studentId: string; profileId?: string | null }) {
+export function StudentInsightSection({ studentId, profileId = null, showNumbers = true }: {
+  studentId: string
+  profileId?: string | null
+  /** §261: в карточке ученика плитки «Работы / Средний балл / …» показывает сводка «Ученик целиком» — здесь их нет. */
+  showNumbers?: boolean
+}) {
   const { insights, loading, error, reload } = useStudentInsights(studentId)
   const feedback = useStudentFeedback(studentId)
   const attention = useAttentionSignals(studentId)
@@ -316,7 +321,7 @@ export function StudentInsightSection({ studentId, profileId = null }: { student
         </p>
       ) : (
         <div className="space-y-3">
-          <Numbers insights={insights} />
+          {showNumbers && <Numbers insights={insights} />}
           <AttentionSignals signals={signals} comparable={attention.comparable} />
           <WeakTopics insights={insights} />
           {insights.score.recent.length > 0 && (

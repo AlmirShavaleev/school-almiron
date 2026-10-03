@@ -5,14 +5,11 @@ import {
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
-import { useStudentNumberStats } from '@/hooks/useStudentNumberStats'
 import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
 import { useGroups } from '@/hooks/useGroups'
-import { StudentNumberStatsSection } from '@/components/student/StudentNumberStatsSection'
 import { StudentInsightSection } from '@/components/student/StudentInsightSection'
 import { StudentSubjectTargets } from '@/components/student/StudentSubjectTargets'
-import { StudentCatalogWeek } from '@/components/student/StudentCatalogWeek'
-import { StudentAchievementsLine } from '@/components/student/StudentAchievementsLine'
+import { StudentOverview } from '@/components/student/overview/StudentOverview'
 import { StudentReportTab } from '@/components/report/StudentReportTab'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -64,11 +61,7 @@ export function StudentProfilePage() {
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
   const [groupsExpanded, setGroupsExpanded] = useState(false)
-  const numberStats = useStudentNumberStats(
-    s?.student_id ?? null,
-    s?.target_subject ?? null,
-    s?.target_exam ?? null,
-  )
+  const openReport = () => navigate(`/students/${id}?tab=report`, { replace: true })
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
@@ -133,6 +126,13 @@ export function StudentProfilePage() {
             */}
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight text-graphite-950">{s.full_name}</h1>
+              {/* §261. Главная кнопка экрана — «Отчёт родителю»: ведёт на вкладку отчёта (?tab=report),
+                  второй страницы отчёта нет. */}
+              {s.student_id && tab === 'card' && (
+                <Button size="sm" className="ml-auto" data-testid="student-open-report" onClick={openReport}>
+                  Отчёт родителю
+                </Button>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
@@ -203,7 +203,7 @@ export function StudentProfilePage() {
             role="tab"
             aria-selected={tab === 'report'}
             data-testid="student-tab-report"
-            onClick={() => navigate(`/students/${id}?tab=report`, { replace: true })}
+            onClick={openReport}
             className={cn(
               'px-3 py-2 text-sm font-medium transition-colors',
               tab === 'report'
@@ -230,7 +230,14 @@ export function StudentProfilePage() {
         честно делает секция ниже — на живом контуре.
       */}
       {/*
-        §216. Цель по баллу — по строке на предмет, сразу под карточкой.
+        §261. «Ученик целиком»: шесть плиток и блоки (прогноз, проверочные, ДЗ со сроками, номера ЕГЭ, активность,
+        «что делать»). Заменяет прежние разрозненные строки — «Каталог за 7 дней» (§256), «Достижения: N из 79»
+        (§257) и статистику номеров по вариантам: то же теперь в плитках и блоках, без второй копии.
+      */}
+      {s.student_id && <StudentOverview studentId={s.student_id} onOpenReport={openReport} />}
+
+      {/*
+        §216. Цель по баллу — по строке на предмет (редактор учителя; цель ученика рядом, §255).
         §217: плашка «Цель: 80» из шапки СНЯТА — она показывала старое поле
         students.target_score, и два источника одной величины на одном экране
         расходились. Само поле не тронуто: его читают «Мой прогресс» и
@@ -238,13 +245,9 @@ export function StudentProfilePage() {
       */}
       {s.student_id && <StudentSubjectTargets studentId={s.student_id} profileId={s.profile_id ?? null} />}
 
-      {/* §256: решённое учеником в каталоге с проверкой ответа за неделю. */}
-      {s.student_id && <StudentCatalogWeek studentId={s.student_id} />}
-
-      {/* §257: сколько наград у ученика и три последние. */}
-      {s.student_id && <StudentAchievementsLine studentId={s.student_id} />}
-
-      {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} />}
+      {/* §261: плитки «Работы / Средний балл / Сдано с опозданием» секции анализа дублировали плитки сводки —
+          здесь секция без них (сигналы внимания, слабые темы, обратная связь — на месте). */}
+      {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} showNumbers={false} />}
 
       {/* Enrolled courses */}
       {s.student_id && (
@@ -253,14 +256,6 @@ export function StudentProfilePage() {
           studentFullName={s.full_name}
           currentRole={currentUserRole}
           focusCourseId={focusCourseId}
-        />
-      )}
-
-      {s.student_id && s.target_subject && s.target_exam && (
-        <StudentNumberStatsSection
-          rows={numberStats.rows}
-          loading={numberStats.loading}
-          error={numberStats.error}
         />
       )}
       </>
@@ -339,8 +334,9 @@ function EnrolledCoursesSection({
             <span className="text-xs text-gray-400">({courses.length})</span>
           )}
         </div>
+        {/* §261: вторичная — главная кнопка экрана «Отчёт родителю» в шапке. */}
         {canManage && (
-          <Button size="sm" onClick={() => setWizardOpen(true)}>
+          <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
             <Plus size={13} className="mr-1" />Распределить
           </Button>
         )}

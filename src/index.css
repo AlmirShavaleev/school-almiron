@@ -734,11 +734,13 @@ body::before {
   }
   .print-portal-wrapper .report-document svg { color: #000; }
 
-  /* Блок предмета и строка темы не рвутся посреди себя: «Средний балл» на
+  /* Плитка, строка прогноза и строка темы не рвутся посреди себя: «Средний балл» на
      одной странице, а «по 7 проверенным работам» на другой — это ровно та
-     цифра без подписи, от которой правило и защищает. */
-  .print-portal-wrapper .report-subject,
+     цифра без подписи, от которой правило и защищает. §261: блок предмета целиком
+     больше не «неразрывный» — с прогнозом и таблицей проверочных он бывает выше
+     полулиста, и «не рвать» переносило бы его целиком на третью страницу. */
   .print-portal-wrapper .report-cell,
+  .print-portal-wrapper .report-forecast,
   .print-portal-wrapper .report-topic-row,
   .print-portal-wrapper .report-next,
   .print-portal-wrapper .report-spark,

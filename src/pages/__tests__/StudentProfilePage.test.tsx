@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { StudentProfilePage } from '@/pages/StudentProfilePage'
 
@@ -44,8 +44,15 @@ vi.mock('@/hooks/useGroups', () => ({
   useGroups: () => ({ groups: [], loading: false, reload: vi.fn() }),
 }))
 
-vi.mock('@/hooks/useStudentNumberStats', () => ({
-  useStudentNumberStats: () => ({ rows: [], loading: false, error: null }),
+// §261. Сводка «Ученик целиком» ходит в базу своим хуком; здесь проверяется страница. Свои проверки у сводки —
+// в src/components/student/overview/__tests__/StudentOverview.test.tsx.
+vi.mock('@/components/student/overview/StudentOverview', () => ({
+  StudentOverview: ({ studentId, onOpenReport }: { studentId: string; onOpenReport: () => void }) => (
+    <div data-testid="student-overview">
+      {studentId}
+      <button type="button" onClick={onOpenReport}>Изменить во вкладке «Отчёт»</button>
+    </div>
+  ),
 }))
 
 // §216. Блок целей по предметам ходит в базу своим хуком; здесь проверяется
@@ -61,8 +68,8 @@ vi.mock('@/hooks/useStudentSubjectTargets', () => ({
 // она. Заглушка — чтобы её запросы не оседали unhandled rejection'ами и не
 // роняли код выхода всего прогона (урок §88.5).
 vi.mock('@/components/student/StudentInsightSection', () => ({
-  StudentInsightSection: ({ studentId }: { studentId: string }) => (
-    <div data-testid="student-insight-section">{studentId}</div>
+  StudentInsightSection: ({ studentId, showNumbers }: { studentId: string; showNumbers?: boolean }) => (
+    <div data-testid="student-insight-section" data-numbers={String(showNumbers ?? true)}>{studentId}</div>
   ),
 }))
 
@@ -349,5 +356,41 @@ describe('StudentProfilePage — вкладка отчёта', () => {
     renderPage('/students/student-1?tab=report')
     expect(screen.getByTestId('student-report-tab')).toHaveTextContent('student-1')
     expect(screen.queryByTestId('student-insight-section')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * §261. «Ученик целиком»: сводка сверху карточки, главная кнопка «Отчёт родителю» ведёт во вкладку отчёта,
+ * секция анализа — без своих плиток (их показывает сводка, без дублей).
+ */
+describe('StudentProfilePage — «Ученик целиком» (§261)', () => {
+  beforeEach(() => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, error: null, reload: vi.fn() })
+  })
+
+  it('на карточке — сводка ученика, а секция анализа без своих плиток', () => {
+    renderPage()
+    expect(screen.getByTestId('student-overview')).toHaveTextContent('student-1')
+    expect(screen.getByTestId('student-insight-section')).toHaveAttribute('data-numbers', 'false')
+  })
+
+  it('кнопка «Отчёт родителю» открывает вкладку отчёта (?tab=report)', () => {
+    renderPage()
+    fireEvent.click(screen.getByTestId('student-open-report'))
+    expect(screen.getByTestId('student-report-tab')).toHaveTextContent('student-1')
+    expect(screen.queryByTestId('student-overview')).not.toBeInTheDocument()
+    expect(screen.getByTestId('student-tab-report')).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('«Изменить во вкладке «Отчёт»» из сводки — туда же', () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить во вкладке «Отчёт»' }))
+    expect(screen.getByTestId('student-report-tab')).toBeInTheDocument()
+  })
+
+  it('во вкладке отчёта кнопки «Отчёт родителю» нет — она уже открыта', () => {
+    renderPage('/students/student-1?tab=report')
+    expect(screen.queryByTestId('student-open-report')).not.toBeInTheDocument()
   })
 })
