@@ -62,6 +62,7 @@ export function ReviewActions({
   layout = 'form',
   uncheckedNos,
   allowReturn = true,
+  pointsNote = null,
 }: {
   attempt: TopicHomeworkAttemptRow
   gradeScale?: 'five' | 'hundred' | null
@@ -142,6 +143,12 @@ export function ReviewActions({
    * а не выключена: действия, которого не бывает, на экране быть не должно.
    */
   allowReturn?: boolean
+  /**
+   * §260. Откуда балл таблицы, когда у неё есть баллы по критериям учителя:
+   * «9 из 12 баллов по критериям». Стоит вместо «по заданиям»; при расхождении
+   * критериев балла нет, а подпись говорит почему.
+   */
+  pointsNote?: string | null
 }) {
   const [comment, setComment] = useState('')
   // §226. В нижней строке поле растёт до четверти окна (на телефоне — до
@@ -288,8 +295,9 @@ export function ReviewActions({
                 <span className="whitespace-nowrap">
                   из {scoreMax}
                   {tableScore != null && (fromTable
-                    ? <span data-testid="review-score-source"> · по заданиям</span>
-                    : <span data-testid="review-score-from-table"> · вручную, по заданиям <b className="font-semibold text-graphite-900">{tableScore}</b></span>)}
+                    ? <span data-testid="review-score-source"> · {pointsNote ?? 'по заданиям'}</span>
+                    : <span data-testid="review-score-from-table"> · вручную, {pointsNote ?? 'по заданиям'} <b className="font-semibold text-graphite-900">{tableScore}</b></span>)}
+                  {tableScore == null && pointsNote && <span data-testid="review-score-source"> · {pointsNote}</span>}
                 </span>
                 {pending && <span data-testid="review-score-unchecked" className="text-xs text-graphite-400 lg:block"><span className="lg:hidden"> · </span>{pending}</span>}
               </span>
@@ -465,6 +473,7 @@ export function ReviewActions({
               />
               <span className="text-sm text-graphite-500">
                 из {scoreMax}
+                {pointsNote && <span data-testid="review-score-source"> · {pointsNote}</span>}
                 {pending && <span data-testid="review-score-unchecked"> · {pending}</span>}
               </span>
               {/* §212. Рекомендация таблицы — только когда число уже другое:

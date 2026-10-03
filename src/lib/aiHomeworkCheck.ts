@@ -7,6 +7,8 @@
  * в свои таблицы (миграция 20260730225053).
  */
 
+import { CRITERIA_MISMATCH_HEAD } from '../../supabase/functions/check-homework-ai/points.ts'
+
 export type AiJobStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type AiConfidence = 'high' | 'medium' | 'low'
 export type AiFindingCategory = 'comment' | 'calc' | 'logic' | 'format' | 'praise'
@@ -20,6 +22,22 @@ export interface AiTaskRow {
   student_answer: string
   expected_answer: string
   note: string
+  /**
+   * §260. Баллы по критериям учителя (проверочная/контрольная). Нет ключа —
+   * проверка без критериев или старее §260; `points: null` — не сверено.
+   */
+  points?: number | null
+  max_points?: number | null
+}
+
+/** §260. Как получена оценка проверки — зеркало `Grading` из `check-homework-ai/points.ts`. */
+export type AiGrading = 'criteria' | 'ratio' | 'criteria_mismatch'
+
+/** §260. Строка таблицы перевода «сумма баллов → оценка» из критериев. */
+export interface AiGradeTableRow {
+  min: number
+  max: number
+  grade: number
 }
 
 export interface AiJobRow {
@@ -53,6 +71,15 @@ export interface AiJobRow {
   tasks?: AiTaskRow[] | null
   /** §180. Сколько находок модели отбросил код (выдумки, лимиты, рамки). */
   dropped_findings?: number | null
+  /**
+   * §260. Баллы по критериям учителя: сумма, максимум, таблица перевода и как
+   * получена оценка. undefined/null — проверка без критериев или старее §260
+   * (столбцов нет — PENDING_260 не применена), панель выглядит как раньше.
+   */
+  points_total?: number | null
+  points_max?: number | null
+  grade_table?: AiGradeTableRow[] | null
+  grading?: AiGrading | null
   accepted_at: string | null
   created_at: string
   completed_at: string | null
@@ -134,6 +161,23 @@ export const CONFIDENCE_LABEL: Record<AiConfidence, string> = {
  * «предлагает ИИ» слишком легко принять за оценку. Лучше показать разбор без
  * балла: тогда преподаватель поставит его сам, а не согласится с чужим.
  */
+/** §260. Пометка на экране, когда сверка критериев не сошлась (`grading = 'criteria_mismatch'`). */
+export const CRITERIA_MISMATCH_LABEL = 'Проверьте баллы — критерии прочитаны не полностью'
+
+/**
+ * §260. Что именно не сошлось — из абзаца разбора, который пишет функция
+ * (`withCriteriaNote`): «сумма максимумов по заданиям 11, а в критериях
+ * максимум 12». null — расхождения нет; '' — есть, но причина не прочиталась
+ * (разбор правили руками или он обрезан).
+ */
+export function criteriaMismatchReason(job: AiJobRow | null | undefined): string | null {
+  if (!job || job.status !== 'done' || job.grading !== 'criteria_mismatch') return null
+  const part = String(job.summary ?? '').split(/\n{2,}/).map(p => p.trim())
+    .find(p => p.startsWith(CRITERIA_MISMATCH_HEAD))
+  const m = part?.match(/\(([^)]*)\)/)
+  return m ? m[1] : ''
+}
+
 export function shouldShowScore(job: AiJobRow): boolean {
   return job.status === 'done'
     && job.readable !== false
@@ -176,6 +220,9 @@ export function isPartialCheck(job: AiJobRow | null | undefined): boolean {
     && job.status === 'done'
     && job.readable !== false
     && job.suggested_score == null
+    // §260. Балла нет потому, что не сошлись критерии, — это другая причина и
+    // своя пометка (`criteriaMismatchReason`), а не «прочитана не вся работа».
+    && job.grading !== 'criteria_mismatch'
     && aiTasksOf(job) != null
 }
 
@@ -210,7 +257,7 @@ export function aiTasksOf(job: AiJobRow | null | undefined): AiTaskRow[] | null 
     const raw = item as Partial<AiTaskRow>
     const no = String(raw.no ?? '').trim()
     if (!no) continue
-    rows.push({
+    const row: AiTaskRow = {
       no,
       // Неизвестный вердикт — «не сверено», как в findings.ts: в сомнении
       // задание не идёт ни в плюс, ни в минус.
@@ -218,7 +265,15 @@ export function aiTasksOf(job: AiJobRow | null | undefined): AiTaskRow[] | null 
       student_answer: String(raw.student_answer ?? '').trim(),
       expected_answer: String(raw.expected_answer ?? '').trim(),
       note: String(raw.note ?? '').trim(),
-    })
+    }
+    // §260. Баллы — только годные числа; у строк без критериев ключей нет.
+    const max = Number(raw.max_points)
+    if (raw.max_points != null && Number.isFinite(max) && max > 0) {
+      const points = raw.points == null ? null : Number(raw.points)
+      row.max_points = max
+      row.points = points != null && Number.isFinite(points) && points >= 0 ? Math.min(points, max) : null
+    }
+    rows.push(row)
   }
   return rows.length > 0 ? rows : null
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { ReviewActions } from '@/components/courseProgram/TopicHomeworkReview'
 import { AttemptAnnotationOverlay } from '@/components/courseProgram/AttemptAnnotationOverlay'
+import { plural } from '@/lib/plural'
 import { ReviewTaskTable } from '@/components/courseProgram/ReviewTaskTable'
 import { ReviewTaskFocus } from '@/components/courseProgram/ReviewTaskFocus'
 import { AiMarksList, AiMarksToggle } from '@/components/courseProgram/AiMarksForStudent'
@@ -20,7 +21,7 @@ import {
   type AiFindingRow,
 } from '@/lib/aiHomeworkCheck'
 import {
-  reviewTasksScore, sortReviewTasks, uncheckedTaskNos,
+  pointsText, reviewTableScore, sortReviewTasks, uncheckedTaskNos,
   type ReviewTaskRow, type ReviewTaskVerdict,
 } from '@/lib/homeworkReviewTasks'
 import { verdictsByTask } from '@/lib/reviewFrameLook'
@@ -220,7 +221,9 @@ function QueueRowItem({
             <>
               <span>
                 ИИ: {ai.findings === 0 ? 'без замечаний' : `${ai.findings} ${findingsDeclension(ai.findings)}`}
-                {ai.suggestedScore != null && ` · ${ai.suggestedScore} б.`}
+                {/* §260. По критериям — сумма баллов рядом с оценкой; не сошлись — сказать. */}
+                {ai.grading && ai.pointsTotal != null && ai.pointsMax != null && ` · ${pointsText(ai.pointsTotal, ai.pointsMax)}`}
+                {ai.grading === 'criteria_mismatch' ? ' · проверьте баллы' : ai.suggestedScore != null && ` · ${ai.suggestedScore} б.`}
               </span>
             </>
           ) : ai?.status === 'failed' ? (
@@ -624,7 +627,21 @@ export function HomeworkReviewQueuePage() {
    * работы, что и черновик ИИ, — у проверенной вердикт уже стоит.
    */
   const reviewTasks = useHomeworkReviewTasks(openAttemptId)
-  const tableScore = reviewTasksScore(reviewTasks.rows, reviewing?.row.gradeScale ?? null).score
+  /**
+   * §260. Балл таблицы: по критериям учителя (сумма баллов → таблица перевода
+   * из проверки ИИ), если у строк есть баллы; иначе прежний — по долям (§199).
+   * Правка ± в таблице пересчитывает его тут же, и «Принять · 4» едет за ним.
+   */
+  const tableGrade = reviewTableScore(reviewTasks.rows, reviewing?.row.gradeScale ?? null, ai.job)
+  const tableScore = tableGrade.score
+  const criteriaSum = tableGrade.criteria && tableGrade.criteria.max != null
+    ? `${pointsText(tableGrade.criteria.total, tableGrade.criteria.max)} ${plural(tableGrade.criteria.max, 'балла', 'баллов', 'баллов')}`
+    : null
+  const pointsNote = criteriaSum
+    ? tableGrade.criteria?.grading === 'criteria_mismatch'
+      ? `${criteriaSum} — проверьте баллы`
+      : `${criteriaSum} по критериям`
+    : null
   // Перенос рамок делает сам аннотатор: он владеет страницами и умеет их
   // сохранять. Отсюда ref вместо проброса данных вниз.
   const importRegionsRef = useRef<((regions: ImportedRegion[]) => Promise<number>) | null>(null)
@@ -1246,6 +1263,10 @@ export function HomeworkReviewQueuePage() {
                 // Клавиши молчат, пока открыта полная таблица (у неё своя
                 // раскладка §209) и пока выбрана рамка (стрелки — её, §184).
                 keyboard={!tableOpen && activeNoteId == null}
+                // §260. Баллы по критериям: оценка по шкале курса, а у
+                // проверочной/контрольной — «Перепроверить по критериям».
+                gradeScale={reviewing.row.gradeScale}
+                criteriaRecheck={isTimedKind(reviewing.row.topicKind)}
               />
               <AiMarksList
                 plan={aiMarksPlan}
@@ -1279,6 +1300,7 @@ export function HomeworkReviewQueuePage() {
               canRewriteComment={reviewTasks.rows.length > 0}
               uncheckedNos={uncheckedTaskNos(reviewTasks.rows)}
               tableScore={tableScore}
+              pointsNote={pointsNote}
               fillRequest={fillRequest}
               above={(
                 <AiMarksToggle
@@ -1358,6 +1380,7 @@ export function HomeworkReviewQueuePage() {
             onBulkVerdict={bulkVerdict}
             // §238. Светофор: жёлтые сверху, зелёные свёрнуты.
             triage
+            criteriaRecheck={isTimedKind(reviewing.row.topicKind)}
           />
         </FullTaskTableSheet>
       )}

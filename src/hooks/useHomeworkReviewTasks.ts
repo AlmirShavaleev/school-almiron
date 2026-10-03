@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
+  couplePointsPatch,
   nextPosition,
   nextTaskNo,
   reviewTasksFromAi,
@@ -120,8 +121,12 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
    * тот вывод, что сделан в `SubmissionReviewer` (там склейка однажды съела
    * комментарий, сохранённый нажатием перед уходом со страницы).
    */
-  const patchRow = useCallback(async (id: string, patch: ReviewTaskPatch) => {
+  const patchRow = useCallback(async (id: string, rawPatch: ReviewTaskPatch) => {
     const before = rows
+    // §260. У строки с баллами по критериям балл и вердикт едут вместе: «±»
+    // меняет и вердикт, кнопка вердикта — и балл. Без баллов — правка как есть.
+    const target = rows.find(row => row.id === id)
+    const patch = target ? couplePointsPatch(target, rawPatch) : rawPatch
     // Оптимистично: выпадающий список обязан переключаться под пальцем, а не
     // после ответа сети — иначе сводка и балл дёргаются с задержкой.
     setRows(current => current.map(row => (row.id === id ? { ...row, ...patch } : row)))
@@ -229,6 +234,8 @@ export function useHomeworkReviewTasks(attemptId: string | null, options?: { see
         expected_answer: row.expected_answer,
         note: row.note,
         position: row.position,
+        // §260. Баллы — только если они у строки были (столбцы PENDING_260).
+        ...(row.max_points != null ? { points: row.points ?? null, max_points: row.max_points } : {}),
       })))
       setRows(before)
       setSaveState('error')

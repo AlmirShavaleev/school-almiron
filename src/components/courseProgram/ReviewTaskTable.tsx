@@ -13,6 +13,7 @@ import {
 import {
   FINDING_UNION_LABEL,
   aiTasksOf,
+  criteriaMismatchReason,
   isPartialCheck,
   partialCheckReason,
   referenceNotice,
@@ -29,6 +30,8 @@ import {
   REVIEW_TASK_VERDICTS,
   REVIEW_TASK_VERDICT_LABEL,
   aiCheckIsNewerThanTable,
+  pointsText,
+  reviewCriteriaGrade,
   taskPointsText,
   filterReviewTasks,
   reviewTasksScore,
@@ -60,6 +63,7 @@ import { acceptSuggestionPatch, classifyRow, triageRank, type RowTriage, type Tr
 import { HintNote } from '@/components/shared/HintNote'
 import { cn } from '@/utils/cn'
 import { MARK_OF_REVIEW_VERDICT, VerdictMark, type VerdictMarkState } from '@/components/ui/VerdictMark'
+import { CriteriaPointsHeader, PointsStepper } from './CriteriaPoints'
 
 /**
  * Значок и цвет вердикта строки. Цвет тут несёт смысл, а не украшает: по
@@ -175,6 +179,7 @@ export function ReviewTaskTable({
   onBulkVerdict,
   onShowReference,
   triage = false,
+  criteriaRecheck = false,
 }: {
   job: AiJobRow | null
   findings?: AiFindingRow[]
@@ -228,6 +233,12 @@ export function ReviewTaskTable({
    * (старые проверки, ручная таблица) список остаётся прежним.
    */
   triage?: boolean
+  /**
+   * §260. У работы есть «Ответы и критерии» (проверочная, контрольная): если
+   * последняя проверка ИИ была без баллов по критериям (старее §260), кнопка
+   * повторного прогона называется «Перепроверить по критериям».
+   */
+  criteriaRecheck?: boolean
 }) {
   const [deduping, setDeduping] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
@@ -237,6 +248,16 @@ export function ReviewTaskTable({
   const rows = tasks ?? NO_ROWS
   const editable = rows.length > 0 && onPatchTask != null
   const tableScore = useMemo(() => reviewTasksScore(rows, gradeScale ?? null), [rows, gradeScale])
+  /**
+   * §260. Баллы по критериям: своя таблица — с правками ±, слепок ИИ — как
+   * есть. null — баллов нет (обычное ДЗ, проверка старее §260): вид прежний.
+   */
+  const criteria = useMemo(
+    () => (rows.length > 0
+      ? reviewCriteriaGrade(rows, job, gradeScale ?? null)
+      : aiTasks ? reviewCriteriaGrade(aiTasks, job, gradeScale ?? null) : null),
+    [aiTasks, gradeScale, job, rows],
+  )
   /**
    * Сводка и балл считаются по ТОМУ, что блок показывает. Своя таблица —
    * пересчёт по той же формуле, что у ИИ (§180). Слепок ИИ — его собственный
@@ -248,9 +269,11 @@ export function ReviewTaskTable({
   const summary: ReviewTasksSummary | null = rows.length > 0
     ? summarizeReviewTasks(rows)
     : (aiSummary ? { ...aiSummary, unsolved: 0 } : null)
-  const sectionScore = rows.length > 0
-    ? tableScore.score
-    : (job && shouldShowScore(job) ? job.suggested_score : null)
+  const sectionScore = criteria
+    ? criteria.score
+    : rows.length > 0
+      ? tableScore.score
+      : (job && shouldShowScore(job) ? job.suggested_score : null)
   const partial = isPartialCheck(job)
   const partialReason = partial ? partialCheckReason(job?.summary) : null
 
@@ -345,6 +368,12 @@ export function ReviewTaskTable({
         <StaleTableNotice onRefill={onRefillFromAi} />
       )}
 
+      {criteria && (rows.length > 0 || done) && (
+        <div className="mt-2">
+          <CriteriaPointsHeader grade={criteria} scale={gradeScale ?? null} mismatchReason={criteriaMismatchReason(job)} />
+        </div>
+      )}
+
       {(rows.length > 0 || done) && (
         <TaskSection
           rows={rows}
@@ -395,7 +424,11 @@ export function ReviewTaskTable({
             className="inline-flex items-center gap-1.5 rounded-full border border-graphite-300 bg-white px-2.5 py-1 text-xs font-medium text-graphite-800 transition-colors hover:border-primary-400 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {running ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-            {running ? 'Проверяю…' : done || failed ? 'Проверить заново' : 'Проверить с ИИ'}
+            {running
+              ? 'Проверяю…'
+              : criteriaRecheck && done && job && !job.grading
+                ? 'Перепроверить по критериям'
+                : done || failed ? 'Проверить заново' : 'Проверить с ИИ'}
           </button>
           {done && job && (
             shouldShowScore(job) ? (
@@ -404,6 +437,17 @@ export function ReviewTaskTable({
                 className="rounded-md bg-graphite-100 px-2 py-0.5 font-medium text-graphite-800"
               >
                 Предлагает балл: {job.suggested_score}
+                {/* §260. Откуда балл: сумма по критериям учителя. */}
+                {job.grading && job.points_total != null && job.points_max != null
+                  && ` · ${pointsText(job.points_total, job.points_max)} по критериям`}
+              </span>
+            ) : job.grading === 'criteria_mismatch' ? (
+              // §260. Критерии не сошлись — подробности в шапке баллов.
+              <span
+                data-testid="ai-check-criteria-mismatch"
+                className="rounded-md bg-verdict-part-tint px-2 py-0.5 font-medium text-verdict-part-ink"
+              >
+                Оценка не подставлена — критерии прочитаны не полностью
               </span>
             ) : partial ? (
               // §189. Вместо балла — причина его отсутствия.
@@ -1215,6 +1259,11 @@ export function ReadOnlyTaskLine({ task, testId }: { task: AiTaskRow; testId: st
         </span>
         <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-gray-500">{task.no}</span>
         <Answers student={task.student_answer} expected={task.expected_answer} className="flex-1" />
+        {task.max_points != null && (
+          <span data-testid="ai-task-points" className="shrink-0 text-xs font-bold tabular-nums text-graphite-700">
+            {pointsText(task.points, task.max_points)}
+          </span>
+        )}
       </div>
       {task.note && (
         <p className="px-3 pb-1.5 pl-12 text-[11px] leading-5 text-gray-500 sm:px-4 sm:pl-[52px]">{task.note}</p>
@@ -1506,9 +1555,14 @@ function TaskLine({
             <span title="Предложение ИИ" className="shrink-0 rounded bg-gold-100 px-1 text-[11px] font-semibold text-gold-800">ИИ</span>
           )}
         </span>
-        <span data-testid="review-task-points" className="text-sm font-medium tabular-nums text-graphite-900">
-          {taskPointsText(row.verdict)} / 1
-        </span>
+        {/* §260. Баллы по критериям — «2 из 3» с ±; без критериев — вклад в долю, как было. */}
+        {row.max_points != null ? (
+          <PointsStepper no={row.no} points={row.points} max={row.max_points} onChange={points => { void onPatch({ points }) }} />
+        ) : (
+          <span data-testid="review-task-points" className="text-sm font-medium tabular-nums text-graphite-900">
+            {taskPointsText(row.verdict)} / 1
+          </span>
+        )}
       </div>
 
       {triage && triage.triage.light === 'yellow' && (

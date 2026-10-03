@@ -3,12 +3,14 @@ import { AlertTriangle, Loader2, MoreHorizontal, Plus, Sparkles } from 'lucide-r
 import {
   aiErrorMessage,
   aiTasksOf,
+  criteriaMismatchReason,
   type AiFindingRow,
   type AiJobRow,
 } from '@/lib/aiHomeworkCheck'
 import {
   REVIEW_TASK_VERDICT_LABEL,
   aiCheckIsNewerThanTable,
+  reviewCriteriaGrade,
   type ReviewTaskPatch,
   type ReviewTaskRow,
   type ReviewTaskVerdict,
@@ -31,6 +33,8 @@ import {
 import { taskNoOfFinding } from '@/lib/aiHomeworkCheck'
 import type { ReviewTasksSaveState } from '@/hooks/useHomeworkReviewTasks'
 import { FindingSuggestion, NoteLine } from './ReviewTaskTable'
+import { CriteriaPointsHeader, PointsStepper } from './CriteriaPoints'
+import type { GradeScale } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 
 const NO_IDS: readonly string[] = []
@@ -106,6 +110,8 @@ export function ReviewTaskFocus({
   onShowReference,
   onOpenTable,
   keyboard = true,
+  gradeScale = null,
+  criteriaRecheck = false,
 }: {
   tasks: readonly ReviewTaskRow[]
   job: AiJobRow | null
@@ -143,6 +149,10 @@ export function ReviewTaskFocus({
    * тогда двигают рамку, §184).
    */
   keyboard?: boolean
+  /** §260. Шкала курса — для оценки по сумме баллов. */
+  gradeScale?: GradeScale | null
+  /** §260. У работы есть «Ответы и критерии» — см. `ReviewTaskTable.criteriaRecheck`. */
+  criteriaRecheck?: boolean
 }) {
   const rows = tasks
   const editable = rows.length > 0 && onPatchTask != null
@@ -153,6 +163,8 @@ export function ReviewTaskFocus({
   )
   const hints = useMemo(() => aiHintsByRow(rows, aiTasks, suggestions), [aiTasks, rows, suggestions])
   const counts = focusCounts(rows)
+  /** §260. Сумма и оценка по критериям — пересчёт на каждую правку ±. */
+  const criteria = useMemo(() => reviewCriteriaGrade(rows, job, gradeScale), [gradeScale, job, rows])
   const anyHint = rows.some(row => hasAiHint(hints.get(row.id)))
 
   const currentIndex = Math.max(0, rows.findIndex(row => noteTaskKey(row.no) === noteTaskKey(currentNo)))
@@ -297,6 +309,11 @@ export function ReviewTaskFocus({
           </span>
           {anyHint && <span>точка — есть подсказка ИИ</span>}
         </div>
+        {criteria && (
+          <div className="mt-2">
+            <CriteriaPointsHeader grade={criteria} scale={gradeScale} mismatchReason={criteriaMismatchReason(job)} compact />
+          </div>
+        )}
       </div>
 
       {current && (
@@ -339,6 +356,20 @@ export function ReviewTaskFocus({
               </span>
             </div>
           </div>
+
+          {/* §260. Балл задания по критериям — те же ±, что в таблице. */}
+          {current.max_points != null && (
+            <div data-testid="review-focus-points" className="flex items-center justify-between gap-2 rounded-[10px] border border-graphite-200 px-2.5 py-1.5">
+              <small className="text-[11px] font-bold uppercase tracking-[0.04em] text-graphite-500">Баллы по критериям</small>
+              <PointsStepper
+                no={current.no}
+                points={current.points}
+                max={current.max_points}
+                size="md"
+                onChange={editable ? points => { void onPatchTask?.(current.id, { points }) } : undefined}
+              />
+            </div>
+          )}
 
           {aiLine && (
             <p data-testid="review-focus-ai" className="flex items-start gap-1.5 text-[13px] leading-snug text-graphite-600">
@@ -445,6 +476,8 @@ export function ReviewTaskFocus({
         stale={stale}
         onRun={onRun}
         onOpenTable={onOpenTable}
+        // §260. Проверочная проверена ИИ до §260 — баллов по критериям нет.
+        recheckCriteria={criteriaRecheck && job?.status === 'done' && !job.grading && !criteria}
       />
     </section>
   )
@@ -634,15 +667,18 @@ function SaveDot({ state }: { state: ReviewTasksSaveState }) {
 
 /** Состояние ИИ-проверки одной тихой строкой под заданием — только когда есть что сказать. */
 function AiStatus({
-  running, error, stale, onRun, onOpenTable,
+  running, error, stale, onRun, onOpenTable, recheckCriteria = false,
 }: {
   running: boolean
   error: string | null
   stale: boolean
   onRun?: () => void
   onOpenTable?: () => void
+  /** §260. Последняя проверка ИИ — без баллов по критериям учителя. */
+  recheckCriteria?: boolean
 }) {
-  if (!running && !error && !stale) return null
+  const recheck = recheckCriteria && !running && !error && !stale && onRun != null
+  if (!running && !error && !stale && !recheck) return null
   return (
     <div data-testid="review-focus-ai-status" className="space-y-1 border-t border-graphite-200 pt-2.5 text-xs text-graphite-500">
       {running && (
@@ -658,6 +694,14 @@ function AiStatus({
           {onRun && !running && (
             <button type="button" onClick={onRun} className="font-bold text-primary-700 hover:underline">Проверить заново</button>
           )}
+        </p>
+      )}
+      {recheck && (
+        <p data-testid="review-focus-criteria-recheck">
+          ИИ проверял без баллов по критериям.{' '}
+          <button type="button" data-testid="ai-check-rerun-criteria" onClick={onRun} className="font-bold text-primary-700 hover:underline">
+            Перепроверить по критериям
+          </button>
         </p>
       )}
       {stale && (

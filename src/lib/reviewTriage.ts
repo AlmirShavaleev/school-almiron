@@ -143,7 +143,7 @@ export function triageRank(triage: RowTriage): number {
  * жёлтой строки. Балл не снижается, пока человек сам не выберет иначе.
  * Остальные строки — как есть.
  */
-export function seededVerdict(task: Pick<AiTaskRow, 'verdict' | 'student_answer' | 'expected_answer' | 'note'>): {
+export function seededVerdict(task: Pick<AiTaskRow, 'verdict' | 'student_answer' | 'expected_answer' | 'note' | 'max_points'>): {
   verdict: AiTaskVerdict
   note: string | null
 } {
@@ -152,7 +152,11 @@ export function seededVerdict(task: Pick<AiTaskRow, 'verdict' | 'student_answer'
   return { verdict: task.verdict, note: note || null }
 }
 
-function isPartialEqual(task: { verdict: string; student_answer?: string | null; expected_answer?: string | null }): boolean {
+function isPartialEqual(task: { verdict: string; student_answer?: string | null; expected_answer?: string | null; max_points?: number | null }): boolean {
+  // §260. Строка с баллами по критериям: «частично» при совпавшем ответе там
+  // законно («1 балл — одна ошибка», «ответ без решения»), и решает критерий,
+  // а не сравнение ответов. Иначе «1 из 2» легло бы «верно».
+  if (task.max_points != null) return false
   return task.verdict === 'partial'
     && compareAnswers(task.student_answer ?? '', task.expected_answer ?? '') === 'equal'
 }
@@ -358,6 +362,7 @@ export function seedDoubtPatches(rows: readonly {
   student_answer: string | null
   expected_answer: string | null
   note: string | null
+  max_points?: number | null
 }[]): Array<{ id: string; note: string | null; patch: { verdict: 'correct'; note: null } }> {
   const out: Array<{ id: string; note: string | null; patch: { verdict: 'correct'; note: null } }> = []
   for (const row of rows) {

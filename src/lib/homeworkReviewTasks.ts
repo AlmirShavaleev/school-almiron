@@ -13,8 +13,9 @@
  * месте на клиент, и менять её нужно вместе с функцией.
  */
 
-import { TASK_VERDICT_LABEL, type AiTaskRow, type AiTaskVerdict, type AiTasksSummary } from './aiHomeworkCheck'
+import { TASK_VERDICT_LABEL, type AiJobRow, type AiTaskRow, type AiTaskVerdict, type AiTasksSummary } from './aiHomeworkCheck'
 import type { GradeScale } from './topicHomework'
+import { gradeByCriteria, type CriteriaGrade } from '../../supabase/functions/check-homework-ai/points.ts'
 import { plural } from './plural'
 import { seededVerdict } from './reviewTriage'
 
@@ -47,14 +48,22 @@ export interface ReviewTaskRow {
   position: number
   updated_by: string | null
   updated_at: string
+  /**
+   * §260. Баллы по критериям учителя (PENDING_260). undefined — столбцов ещё
+   * нет или строка старее §260; `max_points: null` — у задания баллов нет (обычное
+   * ДЗ, строка добавлена руками); `points: null` при максимуме — не сверено.
+   */
+  points?: number | null
+  max_points?: number | null
 }
 
 /**
  * Что можно править в строке. Номер здесь тоже: добавленную строку надо
- * назвать, а модель нумерует не всегда так, как в работе.
+ * назвать, а модель нумерует не всегда так, как в работе. §260: и баллы —
+ * кнопками ± (максимум не правится: он из критериев).
  */
 export type ReviewTaskPatch = Partial<
-  Pick<ReviewTaskRow, 'no' | 'verdict' | 'student_answer' | 'expected_answer' | 'note'>
+  Pick<ReviewTaskRow, 'no' | 'verdict' | 'student_answer' | 'expected_answer' | 'note' | 'points'>
 >
 
 export const REVIEW_TASK_VERDICTS: readonly ReviewTaskVerdict[] = [
@@ -269,7 +278,8 @@ export function toggleReviewTaskFilter(
 export function reviewTasksFromAi(tasks: readonly AiTaskRow[]): Array<Omit<ReviewTaskRow, 'id' | 'attempt_id' | 'updated_by' | 'updated_at'>> {
   return tasks.map((task, index) => {
     // §238. «Частично» при совпавшем ответе ложится «верно» без заметки ИИ —
-    // то же правило, что у первого заполнения в хуке.
+    // то же правило, что у первого заполнения в хуке (§260: кроме строк с
+    // баллами по критериям — там «частично» решает критерий).
     const seeded = seededVerdict(task)
     return {
       no: task.no,
@@ -278,8 +288,123 @@ export function reviewTasksFromAi(tasks: readonly AiTaskRow[]): Array<Omit<Revie
       expected_answer: task.expected_answer || null,
       note: seeded.note,
       position: (index + 1) * 10,
+      // §260. Баллы едут вместе со строкой; у строк без критериев ключей нет —
+      // вставка та же, что до §260 (и не упирается в неприменённую миграцию).
+      ...(task.max_points != null ? { points: task.points ?? null, max_points: task.max_points } : {}),
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// §260. Баллы по критериям в таблице преподавателя
+// ---------------------------------------------------------------------------
+
+/** Есть ли у таблицы баллы по критериям — тогда экран показывает «9 из 12», а не долю. */
+export function hasCriteriaPoints(rows: readonly object[]): boolean {
+  // `object`, а не `{ max_points? }`: строка без столбцов §260 (тип до миграции)
+  // тоже законный вход, а слабый тип TS такую не пропустил бы.
+  return rows.some(row => (row as { max_points?: number | null }).max_points != null)
+}
+
+/**
+ * Правка строки с баллами: балл и вердикт меняются ВМЕСТЕ, иначе таблица и
+ * сумма разойдутся («верно» при «1 из 2»).
+ *
+ *  — правят балл (±): вердикт из балла — максимум «верно», 0 «неверно» («не
+ *    решено» остаётся «не решено»), между — «частично», балла нет — «не сверено»;
+ *  — правят вердикт: «верно» — максимум, «неверно»/«не решено» — 0, «не
+ *    сверено» — без балла, «частично» — прежний балл, если он и так частичный,
+ *    иначе половина максимума вниз до целого (на задании в 1 балл — 0,5).
+ *    Точный балл учитель ставит дальше кнопками ±.
+ *
+ * Строка без максимума (обычное ДЗ) — правка как есть.
+ */
+export function couplePointsPatch(
+  row: Pick<ReviewTaskRow, 'verdict' | 'points' | 'max_points'>,
+  patch: ReviewTaskPatch,
+): ReviewTaskPatch {
+  const max = row.max_points
+  if (max == null || !(max > 0)) return patch
+  if ('points' in patch && !('verdict' in patch)) {
+    const p = patch.points
+    const verdict: ReviewTaskVerdict = p == null
+      ? 'unchecked'
+      : p >= max ? 'correct'
+        : p <= 0 ? (row.verdict === 'unsolved' ? 'unsolved' : 'wrong')
+          : 'partial'
+    return { ...patch, verdict }
+  }
+  if ('verdict' in patch && !('points' in patch)) {
+    const v = patch.verdict
+    const current = row.points
+    const points = v === 'correct' ? max
+      : v === 'wrong' || v === 'unsolved' ? 0
+        : v === 'unchecked' ? null
+          : current != null && current > 0 && current < max ? current
+            : max >= 2 ? Math.floor(max / 2) : max / 2
+    return { ...patch, points }
+  }
+  return patch
+}
+
+/** Шаг кнопок ±: на балл, в пределах 0..max; «не сверено» с «+» начинает с 1. */
+export function stepPoints(points: number | null | undefined, max: number, delta: 1 | -1): number {
+  const base = points ?? (delta > 0 ? 0 : 1)
+  const next = delta > 0 ? Math.floor(base) + 1 : Math.ceil(base) - 1
+  return Math.max(0, Math.min(max, next))
+}
+
+/** «2 из 3», «½ из 1», «? из 2» — балл задания. */
+export function pointsText(points: number | null | undefined, max: number): string {
+  const p = points == null ? '?' : points === 0.5 ? '½' : String(points).replace('.', ',')
+  return `${p} из ${String(max).replace('.', ',')}`
+}
+
+/**
+ * Сумма и оценка таблицы преподавателя по критериям — тем же `gradeByCriteria`,
+ * что считает функция (`check-homework-ai/points.ts`): копии формулы нет, и
+ * правка учителя ± пересчитывает ровно то, что посчитал бы сервер.
+ *
+ * Таблица перевода — из проверки (`grade_table`). Если проверка сказала
+ * «критерии прочитаны не полностью», расхождение остаётся и здесь: ± меняют
+ * баллы, но не максимумы и не таблицу, так что сверка сама по себе не сойдётся.
+ * «Не решено» — ноль, как в балле §214. null — у таблицы баллов нет.
+ */
+export function reviewCriteriaGrade(
+  rows: readonly Pick<ReviewTaskRow, 'no' | 'verdict' | 'student_answer' | 'expected_answer' | 'note' | 'points' | 'max_points'>[],
+  job: Pick<AiJobRow, 'grading' | 'grade_table'> | null | undefined,
+  scale: GradeScale | null,
+): CriteriaGrade | null {
+  if (!hasCriteriaPoints(rows)) return null
+  const tasks = rows.map(row => ({
+    no: row.no,
+    verdict: row.verdict === 'unsolved' ? 'wrong' as const : row.verdict,
+    student_answer: row.student_answer ?? '',
+    expected_answer: row.expected_answer ?? '',
+    note: row.note ?? '',
+    ...(row.max_points != null
+      ? { max_points: row.max_points, points: row.verdict === 'unsolved' ? 0 : (row.points ?? null) }
+      : {}),
+  }))
+  const grade = gradeByCriteria({ tasks, gradeTable: job?.grade_table ?? null, maxTotal: null, scale })
+  if (job?.grading === 'criteria_mismatch' && grade.grading !== null) {
+    return { ...grade, grading: 'criteria_mismatch', score: null, problem: grade.problem ?? 'критерии прочитаны не полностью' }
+  }
+  return grade
+}
+
+/**
+ * Балл таблицы для формы вердикта: по критериям, если у таблицы есть баллы,
+ * иначе прежний `reviewTasksScore` (§199/§214). Шкалы нет — балла нет.
+ */
+export function reviewTableScore(
+  rows: readonly ReviewTaskRow[],
+  scale: GradeScale | null,
+  job: Pick<AiJobRow, 'grading' | 'grade_table'> | null | undefined,
+): { score: number | null; criteria: CriteriaGrade | null } {
+  const criteria = reviewCriteriaGrade(rows, job, scale)
+  if (criteria) return { score: scale == null ? null : criteria.score, criteria }
+  return { score: reviewTasksScore(rows, scale).score, criteria: null }
 }
 
 /**

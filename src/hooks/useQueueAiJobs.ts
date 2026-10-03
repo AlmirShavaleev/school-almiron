@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { AiConfidence, AiJobStatus } from '@/lib/aiHomeworkCheck'
+import type { AiConfidence, AiGrading, AiJobStatus } from '@/lib/aiHomeworkCheck'
 
 /**
  * Состояние ИИ-проверки для СПИСКА работ.
@@ -18,7 +18,15 @@ export interface QueueAiJob {
   confidence: AiConfidence | null
   /** Черновик уже перенесён в разметку — значит, работу открывали. */
   applied: boolean
+  /** §260. Баллы по критериям учителя; null — их нет (обычное ДЗ, старая проверка). */
+  pointsTotal?: number | null
+  pointsMax?: number | null
+  grading?: AiGrading | null
 }
+
+const JOB_COLUMNS = 'id, attempt_id, status, suggested_score, confidence, accepted_at, created_at'
+/** §260. Столбцы PENDING_260 — отдельно: пока миграция не применена, список живёт без них. */
+const POINTS_COLUMNS = 'points_total, points_max, grading'
 
 /** Сколько работ отправляем в модель одновременно. */
 const CONCURRENCY = 3
@@ -34,16 +42,21 @@ export function useQueueAiJobs(attemptIds: string[]) {
       return
     }
     // Свежая задача на попытку: сортируем по создан­ию и берём первую.
-    const { data } = await supabase
+    const fetchJobs = (columns: string) => supabase
       .from('topic_homework_ai_jobs')
-      .select('id, attempt_id, status, suggested_score, confidence, accepted_at, created_at')
+      .select(columns)
       .in('attempt_id', ids)
       .order('created_at', { ascending: false })
+    // §260. Сначала со столбцами баллов; неизвестный столбец (миграция ещё не
+    // применена) — тот же запрос, что до §260: значки ИИ в списке важнее баллов.
+    let { data, error } = await fetchJobs(`${JOB_COLUMNS}, ${POINTS_COLUMNS}`)
+    if (error) ({ data, error } = await fetchJobs(JOB_COLUMNS))
 
-    const rows = (data ?? []) as {
+    const rows = (data ?? []) as unknown as {
       id: string; attempt_id: string; status: AiJobStatus
       suggested_score: number | null; confidence: AiConfidence | null
       accepted_at: string | null
+      points_total?: number | null; points_max?: number | null; grading?: AiGrading | null
     }[]
 
     const firstByAttempt = new Map<string, typeof rows[number]>()
@@ -70,6 +83,9 @@ export function useQueueAiJobs(attemptIds: string[]) {
         suggestedScore: r.suggested_score,
         confidence: r.confidence,
         applied: !!r.accepted_at,
+        pointsTotal: r.points_total ?? null,
+        pointsMax: r.points_max ?? null,
+        grading: r.grading ?? null,
       }
     }
     // Сливаем, а не заменяем. `load` часто зовут для ПОДМНОЖЕСТВА строк — при
