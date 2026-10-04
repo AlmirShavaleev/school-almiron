@@ -92,10 +92,22 @@ describe('Проверка ДЗ — решения', () => {
     // Кнопка принять должна быть заблокирована пока балл не введён
     expect(screen.getByText('Принять').closest('button')).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Балл (0–5)'), { target: { value: '4' } })
+    // §265: 5-балльная — оценка кнопкой 2–5; кнопок 0 и 1 нет вовсе.
+    expect(screen.queryByLabelText('Оценка 1')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Оценка 4'))
     fireEvent.click(screen.getByText('Принять'))
 
     await waitFor(() => expect(onReview).toHaveBeenCalledWith('a1', 'accepted', '', 4))
+  })
+
+  it('§265: 100-балльная — поле 0–100, 101 не принимается', async () => {
+    renderReview([attempt('a1', 's1', 1, 'submitted')], { gradeScale: 'hundred' })
+    fireEvent.change(screen.getByLabelText('Балл (0–100)'), { target: { value: '101' } })
+    expect(screen.getByText('Принять').closest('button')).toBeDisabled()
+    expect(screen.getByTestId('review-score-error')).toHaveTextContent('Введите число от 0 до 100')
+    fireEvent.change(screen.getByLabelText('Балл (0–100)'), { target: { value: '86' } })
+    fireEvent.click(screen.getByText('Принять'))
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith('a1', 'accepted', '', 86))
   })
 
   it('возвращает на доработку с комментарием', async () => {

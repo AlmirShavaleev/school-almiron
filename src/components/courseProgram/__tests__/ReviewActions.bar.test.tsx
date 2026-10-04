@@ -12,6 +12,9 @@ vi.mock('@/lib/rewriteComment', () => ({
  * §226. Форма вердикта нижней строкой экрана проверки: та же логика, другая
  * раскладка. «Балл [4] из 5 · №6 ещё не сверено», комментарий, «Вернуть на
  * доработку», «Принять · 4 б.» — главная кнопка одна.
+ *
+ * §265. У 5-балльной работы вместо поля — кнопки 2 · 3 · 4 · 5 и «Принять · 4»
+ * без «б.» (это оценка, а не баллы); поле с числом — у 100-балльной.
  */
 
 const attempt = {
@@ -36,21 +39,31 @@ function bar(over: Partial<React.ComponentProps<typeof ReviewActions>> = {}) {
 }
 
 describe('ReviewActions — нижняя строка', () => {
-  it('балл из таблицы, «из 5», несверенные и балл на главной кнопке', () => {
+  it('§265: оценка из таблицы кнопкой «4», несверенные и оценка на главной кнопке (без «б.»)', () => {
     bar()
     expect(screen.getByTestId('review-actions').dataset.layout).toBe('bar')
-    expect(screen.getByTestId('review-score-input')).toHaveValue(4)
+    expect(screen.getByTestId('review-grade-4')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('review-score-unchecked')).toHaveTextContent('№6 ещё не сверено')
-    expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 4 б.')
+    expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 4')
+    expect(screen.getByTestId('review-accept-button')).not.toHaveTextContent('б.')
     // Пока балл совпадает с таблицей, «рекомендуемый» не повторяется.
     expect(screen.queryByTestId('review-score-from-table')).not.toBeInTheDocument()
   })
 
-  it('балл поменяли руками — рядом рекомендация таблицы, кнопка с новым баллом', () => {
+  it('оценку поменяли руками — рядом рекомендация таблицы, кнопка с новой оценкой', () => {
     bar()
-    fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '5' } })
-    expect(screen.getByTestId('review-score-from-table')).toHaveTextContent('рекомендуемый балл 4')
-    expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 5 б.')
+    fireEvent.click(screen.getByTestId('review-grade-5'))
+    expect(screen.getByTestId('review-score-from-table')).toHaveTextContent('рекомендуемая оценка 4')
+    expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 5')
+  })
+
+  it('100-балльная — поле с числом и «б.» на кнопке, как раньше', () => {
+    bar({ gradeScale: 'hundred', tableScore: 86 })
+    expect(screen.getByTestId('review-score-input')).toHaveValue(86)
+    expect(screen.queryByTestId('review-grade-buttons')).not.toBeInTheDocument()
+    expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 86 б.')
+    fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '90' } })
+    expect(screen.getByTestId('review-score-from-table')).toHaveTextContent('рекомендуемый балл 86')
   })
 
   it('поле компактное — две строки, а не шесть', () => {

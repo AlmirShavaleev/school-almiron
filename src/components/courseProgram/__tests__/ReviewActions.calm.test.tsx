@@ -35,10 +35,11 @@ function calm(over: Partial<React.ComponentProps<typeof ReviewActions>> = {}) {
 }
 
 describe('ReviewActions — спокойная нижняя полоса', () => {
-  it('балл крупно из таблицы, «из 5 · по заданиям», на главной кнопке «Принять · 4»', () => {
+  it('§265: оценка из таблицы — нажата кнопка «4» из 2–5, «по заданиям», на главной кнопке «Принять · 4»', () => {
     calm()
     expect(screen.getByTestId('review-actions').dataset.layout).toBe('calm')
-    expect(screen.getByTestId('review-score-input')).toHaveValue(4)
+    expect(screen.queryByTestId('review-score-input')).not.toBeInTheDocument()
+    expect(screen.getByTestId('review-grade-4')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('review-score-source')).toHaveTextContent('по заданиям')
     expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 4')
     expect(screen.getByTestId('review-accept-button')).not.toHaveTextContent('б.')
@@ -47,17 +48,18 @@ describe('ReviewActions — спокойная нижняя полоса', () =>
   it('вердикт задания поменялся — балл и «Принять · N» пересчитываются', () => {
     const { rerender } = calm()
     rerender({ tableScore: 3 })
-    expect(screen.getByTestId('review-score-input')).toHaveValue(3)
+    expect(screen.getByTestId('review-grade-3')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('review-grade-4')).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 3')
   })
 
   it('балл исправили руками — подпись честно «вручную», таблица больше не подменяет', () => {
     const { rerender } = calm()
-    fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '5' } })
+    fireEvent.click(screen.getByTestId('review-grade-5'))
     expect(screen.getByTestId('review-score-from-table')).toHaveTextContent('вручную, по заданиям 4')
     expect(screen.getByTestId('review-accept-button')).toHaveTextContent('Принять · 5')
     rerender({ tableScore: 2 })
-    expect(screen.getByTestId('review-score-input')).toHaveValue(5)
+    expect(screen.getByTestId('review-grade-5')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('несверенные задания названы под баллом — в балл они не вошли', () => {

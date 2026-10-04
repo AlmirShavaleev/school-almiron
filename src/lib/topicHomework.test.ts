@@ -14,6 +14,11 @@ import {
   formatBytes,
   formatDue,
   gradeScaleMax,
+  defaultGradeScale,
+  gradeScaleMin,
+  isScoreValid,
+  scoreRangeText,
+  FIVE_GRADES,
   isOverdue,
   latestReview,
   dueUrgency,
@@ -238,6 +243,36 @@ describe('gradeScaleMax', () => {
 
   it('отсутствие шкалы → null', () => {
     expect(gradeScaleMax(null)).toBeNull()
+  })
+})
+
+describe('§265. шкала по умолчанию и допустимые оценки', () => {
+  it('урок (и неизвестный тип) — 100-балльная; проверочная и контрольная — 5-балльная', () => {
+    expect(defaultGradeScale('lesson')).toBe('hundred')
+    expect(defaultGradeScale(null)).toBe('hundred')
+    expect(defaultGradeScale('check')).toBe('five')
+    expect(defaultGradeScale('control')).toBe('five')
+  })
+
+  it('5-балльная: только 2–5, кнопок четыре', () => {
+    expect(FIVE_GRADES).toEqual([2, 3, 4, 5])
+    expect(gradeScaleMin('five')).toBe(2)
+    expect([0, 1, 2, 3, 4, 5, 6].map(n => isScoreValid('five', n))).toEqual([false, false, true, true, true, true, false])
+    expect(scoreRangeText('five')).toBe('2–5')
+  })
+
+  it('100-балльная: целое 0–100', () => {
+    expect([0, 47, 100].every(n => isScoreValid('hundred', n))).toBe(true)
+    expect(isScoreValid('hundred', 101)).toBe(false)
+    expect(isScoreValid('hundred', -1)).toBe(false)
+    expect(isScoreValid('hundred', 4.5)).toBe(false)
+    expect(scoreRangeText('hundred')).toBe('0–100')
+  })
+
+  it('без шкалы (старое ДЗ) или без балла — оценки нет', () => {
+    expect(isScoreValid(null, 4)).toBe(false)
+    expect(isScoreValid('five', null)).toBe(false)
+    expect(scoreRangeText(null)).toBeNull()
   })
 })
 

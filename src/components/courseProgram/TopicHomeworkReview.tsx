@@ -7,13 +7,17 @@ import { useAutoGrowTextarea } from '@/hooks/useAutoGrowTextarea'
 import { BAR_COMMENT_ROWS, COMMENT_ROWS } from '@/lib/reviewCommentBox'
 import { uncheckedNote } from '@/lib/homeworkReviewTasks'
 import { rewriteCommentByTable } from '@/lib/rewriteComment'
+import { GradeButtons } from '@/components/courseProgram/GradeButtons'
 import {
   ATTEMPT_STATUS_TONE,
   TEACHER_ATTEMPT_STATUS_LABEL,
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
+  gradeScaleMax,
   groupAttemptsByStudent,
   isReviewable,
+  isScoreValid,
   latestReview,
+  scoreRangeText,
   type StudentSubmission,
   type TopicHomeworkAttemptFileRow,
   type TopicHomeworkAttemptRow,
@@ -203,10 +207,14 @@ export function ReviewActions({
   // а не вместо базы.
   const canReturn = comment.trim().length > 0 && !blocked
 
-  const scoreMax = gradeScale === 'five' ? 5 : gradeScale === 'hundred' ? 100 : null
+  const scoreMax = gradeScaleMax(gradeScale ?? null)
+  // §265. 5-балльная — оценка кнопками 2–5, 100-балльная — поле 0–100.
+  const five = gradeScale === 'five'
   const scoreNum = score === '' ? null : parseInt(score, 10)
-  const scoreValid = scoreMax == null || (scoreNum != null && scoreNum >= 0 && scoreNum <= scoreMax)
+  const scoreValid = scoreMax == null || isScoreValid(gradeScale ?? null, scoreNum)
   const canAccept = !blocked && (scoreMax == null || (scoreNum != null && scoreValid))
+  const scoreError = five ? 'Выберите оценку: 2, 3, 4 или 5' : `Введите число от ${scoreRangeText(gradeScale ?? null)?.replace('–', ' до ')}`
+  const pickGrade = (grade: number) => { setScoreByHand(true); setScore(String(grade)) }
 
   async function run(decision: 'accepted' | 'returned_for_revision') {
     setBusy(true)
@@ -270,7 +278,19 @@ export function ReviewActions({
             пока его не тронули руками (§199/§212). Поле осталось полем: число
             можно исправить, и тогда подпись честно говорит «вручную».
           */}
-          {scoreMax != null && (
+          {scoreMax != null && five && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <GradeButtons value={scoreValid ? scoreNum : null} onChange={pickGrade} disabled={blocked} />
+              <span className="min-w-0 text-[13px] text-graphite-500">
+                {tableScore != null && (fromTable
+                  ? <span data-testid="review-score-source">{pointsNote ?? 'по заданиям'}</span>
+                  : <span data-testid="review-score-from-table">вручную, {pointsNote ?? 'по заданиям'} <b className="font-semibold text-graphite-900">{tableScore}</b></span>)}
+                {tableScore == null && pointsNote && <span data-testid="review-score-source">{pointsNote}</span>}
+                {pending && <span data-testid="review-score-unchecked" className="block text-xs text-graphite-400">{pending}</span>}
+              </span>
+            </div>
+          )}
+          {scoreMax != null && !five && (
             <div className="flex min-w-0 items-baseline gap-1.5">
               <input
                 id={`review-score-${attempt.id}`}
@@ -388,7 +408,7 @@ export function ReviewActions({
           </div>
         </div>
         {scoreMax != null && !scoreValid && score !== '' && (
-          <p className="text-xs text-red-600">Введите число от 0 до {scoreMax}</p>
+          <p data-testid="review-score-error" className="text-xs text-red-600">{scoreError}</p>
         )}
       </div>
     )
@@ -453,7 +473,24 @@ export function ReviewActions({
         )}
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4">
-          {scoreMax != null && (
+          {scoreMax != null && five && (
+            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 lg:min-h-10 lg:flex-nowrap">
+              <span className="text-[13px] font-medium text-graphite-900">Оценка</span>
+              <GradeButtons value={scoreValid ? scoreNum : null} onChange={pickGrade} disabled={blocked} />
+              {(pointsNote || pending) && (
+                <span className="text-sm text-graphite-500">
+                  {pointsNote && <span data-testid="review-score-source">{pointsNote}</span>}
+                  {pending && <span data-testid="review-score-unchecked">{pointsNote ? ' · ' : ''}{pending}</span>}
+                </span>
+              )}
+              {scoreDiffers && (
+                <span data-testid="review-score-from-table" className="text-xs text-graphite-500">
+                  рекомендуемая оценка <b className="font-semibold text-graphite-900">{tableScore}</b>
+                </span>
+              )}
+            </div>
+          )}
+          {scoreMax != null && !five && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 lg:h-10 lg:flex-nowrap">
               <label htmlFor={`review-score-${attempt.id}`} className="text-[13px] font-medium text-graphite-900">Балл</label>
               <input
@@ -546,12 +583,12 @@ export function ReviewActions({
               disabled={busy || !canAccept}
               className="flex-1 whitespace-nowrap px-3 text-sm lg:flex-none lg:px-5"
             >
-              {scoreMax != null && scoreNum != null && scoreValid ? `Принять · ${scoreNum} б.` : 'Принять'}
+              {scoreMax != null && scoreNum != null && scoreValid ? `Принять · ${scoreNum}${five ? '' : ' б.'}` : 'Принять'}
             </Button>
           </div>
         </div>
         {scoreMax != null && !scoreValid && score !== '' && (
-          <p className="text-xs text-red-600">Введите число от 0 до {scoreMax}</p>
+          <p data-testid="review-score-error" className="text-xs text-red-600">{scoreError}</p>
         )}
       </div>
     )
@@ -677,7 +714,17 @@ export function ReviewActions({
         справка «рекомендуемый балл N»: она отвечает на единственный вопрос,
         ради которого сюда смотрели.
       */}
-      {scoreMax != null && (
+      {scoreMax != null && five && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <GradeButtons value={scoreValid ? scoreNum : null} onChange={pickGrade} disabled={blocked} size="md" />
+          {tableScore != null && (
+            <span data-testid="review-score-from-table" className="text-xs text-gray-500">
+              рекомендуемая оценка <b className="font-semibold text-gray-700">{tableScore}</b>
+            </span>
+          )}
+        </div>
+      )}
+      {scoreMax != null && !five && (
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <input
             data-testid="review-score-input"
@@ -732,7 +779,7 @@ export function ReviewActions({
             <span className="text-xs text-gray-400">Для возврата нужен комментарий</span>
           )}
           {scoreMax != null && !scoreValid && score !== '' && (
-            <span className="text-xs text-red-600">Введите число от 0 до {scoreMax}</span>
+            <span data-testid="review-score-error" className="text-xs text-red-600">{scoreError}</span>
           )}
         </div>
       )}

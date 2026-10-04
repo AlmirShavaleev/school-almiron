@@ -122,6 +122,7 @@ describe('HomeworkReviewQueuePage — список только для выбо�
 
     expect(screen.queryByTestId('review-comment-input')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-score-input')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('review-grade-buttons')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-accept-button')).not.toBeInTheDocument()
     expect(screen.queryByTestId('review-return-button')).not.toBeInTheDocument()
   })
@@ -399,7 +400,9 @@ describe('HomeworkReviewQueuePage — принять работу с дораб�
     // §248: комментарий в полосе одной строкой, поле раскрывается «Написать».
     fireEvent.click(screen.getByTestId('review-comment-edit'))
     expect(screen.getByTestId('review-comment-input')).toBeEnabled()
-    fireEvent.change(screen.getByTestId('review-score-input'), { target: { value: '5' } })
+    // §265: 5-балльная — оценка кнопкой.
+    expect(screen.getByTestId('review-accept-button')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('review-grade-5'))
     expect(screen.getByTestId('review-accept-button')).toBeEnabled()
     expect(screen.queryByTestId('queue-verdict-summary')).not.toBeInTheDocument()
   })

@@ -376,6 +376,41 @@ export function gradeScaleMax(scale: GradeScale | null): number | null {
   return null
 }
 
+/**
+ * §265. Решение владельца (04.10): ДЗ к уроку по умолчанию 100-балльное (учитель
+ * может выбрать 5-балльную), проверочная и контрольная — всегда 5-балльные.
+ * То же правило держит сервер (`topic_homework_grade_scale_trg`, PENDING_265):
+ * здесь — чтобы редактор сразу показал то, что сохранит база.
+ */
+export function defaultGradeScale(kind: unknown): GradeScale {
+  return kind === 'check' || kind === 'control' ? 'five' : 'hundred'
+}
+
+/** §265. Оценки 5-балльной работы — кнопками; ноль и единицу не ставят (сервер их не примет). */
+export const FIVE_GRADES = [2, 3, 4, 5] as const
+
+/** §265. Нижняя граница балла: у 5-балльной — 2, у 100-балльной — 0. */
+export function gradeScaleMin(scale: GradeScale | null): number | null {
+  if (scale === 'five') return 2
+  if (scale === 'hundred') return 0
+  return null
+}
+
+/** §265. Подходит ли балл шкале: целое в 2..5 или 0..100. Без шкалы балла нет вовсе. */
+export function isScoreValid(scale: GradeScale | null, score: number | null): boolean {
+  const min = gradeScaleMin(scale)
+  const max = gradeScaleMax(scale)
+  if (min == null || max == null || score == null) return false
+  return Number.isInteger(score) && score >= min && score <= max
+}
+
+/** §265. Подпись диапазона для подсказок: «2–5», «0–100». */
+export function scoreRangeText(scale: GradeScale | null): string | null {
+  const min = gradeScaleMin(scale)
+  const max = gradeScaleMax(scale)
+  return min == null || max == null ? null : `${min}–${max}`
+}
+
 export function isOverdue(dueAt: string | null, today?: string): boolean {
   if (!dueAt) return false
   const dueDate = dueAt.slice(0, 10)

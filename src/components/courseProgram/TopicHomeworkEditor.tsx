@@ -6,7 +6,7 @@ import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
-import { TOPIC_HOMEWORK_BUCKET, formatBytes } from '@/lib/topicHomework'
+import { TOPIC_HOMEWORK_BUCKET, defaultGradeScale, formatBytes, type GradeScale } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import { useTimedSummary } from '@/hooks/useTimedWork'
@@ -78,7 +78,12 @@ export function TopicHomeworkEditor({
   } = useTopicHomework(topicId)
 
   const [dueAt, setDueAt] = useState('')
-  const [gradeScale, setGradeScale] = useState<'five' | 'hundred' | null>(null)
+  // §265. Шкала есть всегда: у урока по умолчанию 100-балльная, у проверочной и
+  // контрольной — только 5-балльная (выбора нет). Пустой шкалы («без баллов»)
+  // больше не бывает — старое ДЗ без шкалы показываем шкалой по типу темы, её
+  // же поставит пересчёт PENDING_265_backfill.
+  const scaleDefault = defaultGradeScale(kind)
+  const [gradeScale, setGradeScale] = useState<GradeScale>(scaleDefault)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -109,8 +114,8 @@ export function TopicHomeworkEditor({
 
   useEffect(() => {
     setDueAt(homework?.due_at ? homework.due_at.slice(0, 10) : '')
-    setGradeScale(homework?.grade_scale ?? null)
-  }, [homework?.id, homework?.due_at, homework?.grade_scale])
+    setGradeScale(timed ? 'five' : homework?.grade_scale ?? scaleDefault)
+  }, [homework?.id, homework?.due_at, homework?.grade_scale, timed, scaleDefault])
 
   // §240. Окно работы по времени: дата + «открывается» + «закрывается» по
   // Москве. Поля держим строкой (как их печатает человек), в базу — только
@@ -523,26 +528,46 @@ export function TopicHomeworkEditor({
             <p className="mt-1 text-xs text-gray-400">Не блокирует сдачу — просто напоминание</p>
           </div>
           )}
+          {timed ? (
+            // §265. Проверочная и контрольная — всегда школьная оценка 2–5: выбирать нечего.
+            <div data-testid="hw-grade-scale-fixed">
+              <span className="mb-1 block text-xs font-medium text-gray-600">Оценка</span>
+              <span className="inline-flex h-10 items-center rounded-xl bg-verdict-ok-tint px-3 text-sm font-bold text-verdict-ok-ink">
+                5-балльная · 2–5
+              </span>
+              <p className="mt-1 text-xs text-gray-500">У проверочной и контрольной шкала всегда школьная: оценка 2, 3, 4 или 5.</p>
+            </div>
+          ) : (
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Баллы</label>
+            <label htmlFor={`hw-grade-scale-${topicId}`} className="mb-1 block text-xs font-medium text-gray-600">Шкала баллов</label>
             <select
-              value={gradeScale ?? ''}
+              id={`hw-grade-scale-${topicId}`}
+              data-testid="hw-grade-scale"
+              value={gradeScale}
               onChange={e => {
-                const next = (e.target.value as 'five' | 'hundred' | '') || null
+                const next: GradeScale = e.target.value === 'five' ? 'five' : 'hundred'
+                const prev = gradeScale
                 setGradeScale(next)
                 run(async () => {
                   await ensureHomework()
-                  await updateHomework({ grade_scale: next })
+                  try {
+                    await updateHomework({ grade_scale: next })
+                  } catch (err) {
+                    // Сервер не меняет шкалу у ДЗ с выставленными оценками (§265) — вернуть выбор.
+                    setGradeScale(prev)
+                    throw err
+                  }
                 })
               }}
               aria-label="Шкала баллов"
               className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             >
-              <option value="">Без баллов</option>
-              <option value="five">5-балльная</option>
               <option value="hundred">100-балльная</option>
+              <option value="five">5-балльная (2–5)</option>
             </select>
+            <p className="mt-1 text-xs text-gray-500">Каждое принятое ДЗ получает балл.</p>
           </div>
+          )}
         </div>
 
         {/* §243. Кнопки «Опубликовать» / «Снять с публикации» нет: выдачу

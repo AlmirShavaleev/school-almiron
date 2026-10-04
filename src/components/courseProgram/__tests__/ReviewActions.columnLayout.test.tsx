@@ -76,7 +76,8 @@ describe('форма вердикта в колонке', () => {
   it('содержимое формы от раскладки не зависит', () => {
     renderForm(true)
     expect(screen.getByTestId('review-comment-input')).toBeInTheDocument()
-    expect(screen.getByTestId('review-score-input')).toBeInTheDocument()
+    // §265: у 5-балльной работы оценка — кнопками 2–5, а не полем.
+    expect(screen.getByTestId('review-grade-buttons')).toBeInTheDocument()
     expect(screen.getByTestId('review-accept-button')).toBeInTheDocument()
     expect(screen.getByTestId('review-return-button')).toBeInTheDocument()
   })

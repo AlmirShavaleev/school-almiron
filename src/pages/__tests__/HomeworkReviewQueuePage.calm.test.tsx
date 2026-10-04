@@ -125,7 +125,8 @@ describe('§248 — экран проверки в сборе', () => {
     expect(within(panel).getByTestId('review-focus-task')).toHaveAttribute('data-no', '1')
     expect(within(panel).queryByTestId('ai-check-panel')).not.toBeInTheDocument()
     expect(screen.getByTestId('overlay-current-task')).toHaveTextContent('1')
-    expect(screen.getByTestId('review-score-input')).toHaveValue(5)
+    // §265: проверочная 5-балльная — оценка кнопкой 2–5.
+    expect(screen.getByTestId('review-grade-5')).toHaveAttribute('aria-pressed', 'true')
     expect(accept()).toHaveTextContent('Принять · 5')
   })
 
@@ -134,7 +135,7 @@ describe('§248 — экран проверки в сборе', () => {
     fireEvent.keyDown(window, { key: '3' })
     expect(patchRow).toHaveBeenCalledWith('r1', { verdict: 'wrong' })
     // 3 верных из 4 сверенных = 75 % → 4.
-    expect(screen.getByTestId('review-score-input')).toHaveValue(4)
+    expect(screen.getByTestId('review-grade-4')).toHaveAttribute('aria-pressed', 'true')
     expect(accept()).toHaveTextContent('Принять · 4')
     // Курсор ушёл дальше — и фото узнало об этом.
     expect(screen.getByTestId('overlay-current-task')).toHaveTextContent('2')
