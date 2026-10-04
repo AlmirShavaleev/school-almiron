@@ -61,6 +61,7 @@ import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { onlyEgeTrack } from '@/lib/training'
 import { CourseSummaryTab } from '@/components/course/CourseSummaryTab'
 import { CourseReminderSettings } from '@/components/course/CourseReminderSettings'
+import { edgeMask, useScrollEdges } from '@/hooks/useScrollEdges'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
 function InlineEdit({
@@ -1700,6 +1701,11 @@ export function CourseProgramPage() {
     const r = on.getBoundingClientRect()
     if (r.left < l.left || r.right > l.right) list.scrollLeft += r.left - l.left - 16
   }, [tab, selectedCourseId])
+  // §265. После «Сводки» (§264) «Настройки» на 390 px уходили за край, и полоса
+  // ничем не выдавала, что она прокручивается. Край, за которым есть вкладки,
+  // тает — видно, что можно листать, а ближняя вкладка видна наполовину.
+  const tabEdges = useScrollEdges(tabListRef, [selectedCourseId, tab])
+  const tabMask = edgeMask(tabEdges)
 
   /**
    * §241. Переходы из раздела «Контрольные, самостоятельные и пробники»:
@@ -2181,7 +2187,16 @@ export function CourseProgramPage() {
             {/* Вкладки курса. role=tablist/tab — не украшение: с ними
                 скринридер объявляет «вкладка 3 из 6», а стрелки влево-вправо
                 воспринимаются как переключение, а не как обход кнопок. */}
-            <div ref={tabListRef} role="tablist" aria-label="Разделы курса" className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+            <div
+              ref={tabListRef}
+              role="tablist"
+              aria-label="Разделы курса"
+              data-testid="course-tabs"
+              data-edge-left={tabEdges.left || undefined}
+              data-edge-right={tabEdges.right || undefined}
+              style={tabMask ? { maskImage: tabMask, WebkitMaskImage: tabMask } : undefined}
+              className="flex gap-0.5 overflow-x-auto overscroll-x-contain border-b border-gray-200 max-sm:[scrollbar-width:none] sm:gap-1 max-sm:[&::-webkit-scrollbar]:hidden"
+            >
               {[
                 // §250: «Курс» — первой (курс глазами ученика), кроме каркаса.
                 ...(isTemplate ? [] : [{ key: 'course', label: 'Курс' }]),
@@ -2203,7 +2218,7 @@ export function CourseProgramPage() {
                   aria-selected={tab === t.key}
                   onClick={() => setTab(t.key as CourseTab)}
                   className={cn(
-                    'min-h-11 shrink-0 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                    'min-h-11 shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors sm:px-4',
                     tab === t.key
                       ? 'border-primary-600 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
