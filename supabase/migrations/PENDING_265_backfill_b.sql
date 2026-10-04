@@ -1,3 +1,5 @@
+-- §265, пересчёт, часть B. НЕ ПРИМЕНЕНО: ждёт решения владельца по баллам школы (§255/§257) — после ×20 за «5» будет 6
+-- баллов вместо 10, за «3»/«2» — 6 вместо 0. Шаги 2–4 уже применены (20261004112036).
 -- §265 — пересчёт старых ДЗ под шкалы и NOT NULL на topic_homework.grade_scale.
 --
 -- НЕ ПРИМЕНЕНО. Применяет оркестратор через MCP apply_migration одной транзакцией СЛЕДОМ за PENDING_265.sql и
@@ -49,26 +51,10 @@ update public.topic_homework h
    and t.kind = 'lesson'
    and h.grade_scale = 'five';
 
--- ══ 2. Урок без шкалы → 100-балльная ═══════════════════════════════════════════════════════════════
-update public.topic_homework h
-   set grade_scale = 'hundred'
-  from public.topics t
- where t.id = h.topic_id
-   and t.kind = 'lesson'
-   and h.grade_scale is null;
-
--- ══ 3. Проверочная и контрольная без шкалы → 5-балльная ════════════════════════════════════════════
-update public.topic_homework h
-   set grade_scale = 'five'
-  from public.topics t
- where t.id = h.topic_id
-   and t.kind in ('check', 'control')
-   and h.grade_scale is null;
-
 alter table public.topic_homework          enable trigger topic_homework_grade_scale_trg;
 alter table public.topic_homework          enable trigger template_sync_homework_write;
 alter table public.topic_homework_reviews  enable trigger topic_homework_reviews_immutable_trg;
 alter table public.topic_homework_reviews  enable trigger topic_homework_reviews_scale_trg;
 
 -- ══ 4. Шкала обязательна ═══════════════════════════════════════════════════════════════════════════
-alter table public.topic_homework alter column grade_scale set not null;
+-- NOT NULL уже стоит (20261004112036).

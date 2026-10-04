@@ -41,14 +41,14 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S/05_slice_265.sql \
  && echo "цепочка §243 (+ 20260913195322) + slice 265: ok" \
  && $Q -f $S/10_data_265.sql && echo "data 265 (до §265): ok" \
- && $Q -1 -f $R/PENDING_265.sql && echo "PENDING_265 (1): ok" \
- && $Q -1 -f $R/PENDING_265.sql && echo "PENDING_265 (2, повтор): ok" \
+ && $Q -1 -f $R/20261004111336_grade_scales_part1_triggers_by_topic_kind.sql -f $R/PENDING_265_template_sync.sql && echo "PENDING_265 (1): ok" \
+ && $Q -1 -f $R/20261004111336_grade_scales_part1_triggers_by_topic_kind.sql -f $R/PENDING_265_template_sync.sql && echo "PENDING_265 (2, повтор): ok" \
  && echo "=== проба «что изменится» (prod_before.sql) ===" \
  && psql -h $H -p $PT -U postgres probe265 -f $S/prod_before.sql 2>&1 \
- && $Q -1 -f $R/PENDING_265_backfill.sql && echo "PENDING_265_backfill (1): ok" \
+ && $Q -1 -f $R/20261004112036_grade_scales_backfill_a_null_scales_not_null.sql -f $R/PENDING_265_backfill_b.sql && echo "PENDING_265_backfill (1): ok" \
  && echo "=== проба «что изменится» после пересчёта — всё ноль ===" \
  && psql -h $H -p $PT -U postgres probe265 -f $S/prod_before.sql 2>&1 \
- && $Q -1 -f $R/PENDING_265_backfill.sql && echo "PENDING_265_backfill (2, повтор): ok" \
+ && $Q -1 -f $R/20261004112036_grade_scales_backfill_a_null_scales_not_null.sql -f $R/PENDING_265_backfill_b.sql && echo "PENDING_265_backfill (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe265 -f $S/20_probes.sql 2>&1 \
  && echo "=== проверка «после применения» (prod_after.sql) ===" \
  && psql -h $H -p $PT -U postgres probe265 -f $S/prod_after.sql 2>&1
