@@ -4,12 +4,13 @@ import { useAuthStore } from '@/store/authStore'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { GraduationCap, Mail, Lock } from 'lucide-react'
+import { Mail, Lock } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
+import { SchoolMark } from '@/components/brand/SchoolMark'
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -76,8 +77,8 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <GraduationCap size={28} className="text-white" />
+          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg ring-1 ring-primary-100">
+            <SchoolMark size={44} />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Школа Almiron</h1>
           <p className="text-gray-500 mt-1">Подготовка к ЕГЭ и ОГЭ</p>

@@ -13,6 +13,7 @@ import {
   Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer,
 } from 'lucide-react'
+import { SchoolMark } from '@/components/brand/SchoolMark'
 
 interface NavItem {
   label:   string
@@ -217,8 +218,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Logo + mobile close */}
         <div className="p-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {/* §265. Знак школы «Орбита» — цветной на белой плитке (иконки разделов не трогаем). */}
             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-black/10">
-              <GraduationCap size={21} className="text-primary-950" />
+              <SchoolMark size={32} />
             </div>
             <div>
               <div className="text-white font-bold text-sm leading-tight tracking-tight">Школа Almiron</div>

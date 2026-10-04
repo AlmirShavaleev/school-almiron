@@ -3,12 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { GraduationCap, User, Mail, Lock } from 'lucide-react'
+import { User, Mail, Lock } from 'lucide-react'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath, hasPendingTeacherJoinLink } from '@/lib/teacherJoinLinkSession'
+import { SchoolMark } from '@/components/brand/SchoolMark'
 
 // ФИО обязательно ВСЕГДА, в том числе при переходе по ссылке приглашения.
 // Раньше в режиме приглашения поле пряталось: расчёт был на то, что имя
@@ -77,8 +78,8 @@ export function RegisterPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-blue-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <GraduationCap size={28} className="text-white" />
+          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg ring-1 ring-primary-100">
+            <SchoolMark size={44} />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Школа Almiron</h1>
           <p className="text-gray-500 mt-1">Регистрация</p>

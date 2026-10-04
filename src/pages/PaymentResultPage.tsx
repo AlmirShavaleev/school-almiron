@@ -8,7 +8,8 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, Clock, XCircle, ArrowRight, GraduationCap } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, ArrowRight } from 'lucide-react'
+import { SchoolMark } from '@/components/brand/SchoolMark'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/utils/cn'
 
@@ -119,7 +120,7 @@ export function PaymentResultPage() {
 
       {/* Logo */}
       <button onClick={() => navigate('/')} className="flex items-center gap-2 font-bold text-gray-900 text-lg mb-12">
-        <GraduationCap size={24} className="text-primary-600" />
+        <SchoolMark size={30} />
         Школа Almiron
       </button>
 
