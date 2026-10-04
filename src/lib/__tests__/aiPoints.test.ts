@@ -358,3 +358,33 @@ describe('§260. сверка ответов при баллах', () => {
     expect(r.rounded).toEqual([])
   })
 })
+
+describe('§265. 5-балльная работа: оценка ИИ не ниже 2', () => {
+  // Таблица перевода из критериев с «1» за 0–2 балла: так бывает в чужих критериях, но
+  // 5-балльной работе сервер ставит только 2–5 (topic_homework_reviews_scale_trg).
+  const TABLE_WITH_ONE = [
+    { min: 0, max: 2, grade: 1 },
+    { min: 3, max: 4, grade: 2 },
+    { min: 5, max: 7, grade: 3 },
+    { min: 8, max: 10, grade: 4 },
+    { min: 11, max: 12, grade: 5 },
+  ]
+  const rowsOf = (total: number): TaskRow[] => Array.from({ length: 12 }, (_, i) => ({
+    no: String(i + 1), verdict: i < total ? 'correct' : 'wrong', student_answer: '', expected_answer: '', note: '',
+    points: i < total ? 1 : 0, max_points: 1,
+  }))
+
+  it.each([[0, 2], [2, 2], [3, 2], [6, 3], [12, 5]])('%i баллов по таблице с «1» → «%i»', (total, mark) => {
+    expect(gradeByCriteria({ tasks: rowsOf(total), gradeTable: TABLE_WITH_ONE, maxTotal: 12, scale: 'five' }).score).toBe(mark)
+  })
+
+  it('стобалльной работе таблица не мешает: 2 из 12 → 17', () => {
+    expect(gradeByCriteria({ tasks: rowsOf(2), gradeTable: TABLE_WITH_ONE, maxTotal: 12, scale: 'hundred' }).score).toBe(17)
+  })
+
+  it('без таблицы и по доле заданий 5-балльная тоже не ниже 2', () => {
+    expect(gradeByCriteria({ tasks: rowsOf(0), gradeTable: null, maxTotal: 12, scale: 'five' }).score).toBe(2)
+    expect(computeScore(rowsOf(0), 'five').score).toBe(2)
+    expect(computeScore(rowsOf(0), 'hundred').score).toBe(0)
+  })
+})

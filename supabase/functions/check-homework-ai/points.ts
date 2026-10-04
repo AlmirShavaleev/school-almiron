@@ -145,6 +145,11 @@ export function gradeFromTable(rows: readonly GradeTableRow[], total: number): n
 // Сумма и оценка
 // ---------------------------------------------------------------------------
 
+/** §265. Пятибалльная оценка не ниже 2: ноль и единицу 5-балльной работе не ставят. */
+export function fiveFloor(grade: number | null): number | null {
+  return grade == null ? null : Math.max(2, grade)
+}
+
 /**
  * Сумма и оценка работы по критериям (§260).
  *
@@ -199,7 +204,9 @@ export function gradeByCriteria(input: {
 
   if (table) {
     if (unchecked > 0) return { grading, total, max, score: null, gradeTable: tableRows, problem: null }
-    const score = input.scale === 'five' ? gradeFromTable(table.rows, total) : Math.round((total / max) * 100)
+    // §265. У 5-балльной работы оценка только 2–5: «1» из таблицы перевода (бывает в критериях)
+    // сервер не примет (topic_homework_reviews_scale_trg), так что и предлагать её нельзя.
+    const score = input.scale === 'five' ? fiveFloor(gradeFromTable(table.rows, total)) : Math.round((total / max) * 100)
     return { grading, total, max, score, gradeTable: tableRows, problem: null }
   }
 
