@@ -560,7 +560,7 @@ export function TopicHomeworkEditor({
                 })
               }}
               aria-label="Шкала баллов"
-              className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+              className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             >
               <option value="hundred">100-балльная</option>
               <option value="five">5-балльная (2–5)</option>

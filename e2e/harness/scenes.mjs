@@ -1605,6 +1605,41 @@ export const scenes = [
     ]
   }),
 
+  // §265. Шкалы оценок, знак школы, вкладки курса на телефоне. Редактор ДЗ урока (100-балльная по умолчанию,
+  // выбор 5-балльной) и контрольной (плашка «5-балльная · 2–5») — окно темы курса §240 (o240); проверка
+  // 100-балльного ДЗ (поле 0–100, работа «светофора») и проверочной (кнопки 2–5) — очередь §260 (o260);
+  // меню со знаком «Орбита», вход; ряд вкладок курса §250/§264 у учителя (o264) и администратора (o265admin) —
+  // каждая вкладка открыта, полоса докручена до неё, край тает. В базу сцены не пишут (кнопка оценки — экран).
+  //   node e2e/harness/tour.mjs d265 1280 ; node e2e/harness/tour.mjs d265 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const open = id => [{ goto: `/homework-queue?attempt=${id}` }, { wait: 3000 }]
+    const toBar = { eval: "document.querySelector('[data-testid=\"review-actions\"]')?.scrollIntoView({ block: 'end' })" }
+    // С §250 курс открывается на «Курсе»; окно темы — из «Сроков и статистики».
+    const topic = (title) => [{ goto: `/course-program?courseId=${S.course}&tab=program` }, { wait: 2000 }, { click: title }, { wait: 2000 }]
+    const hwTile = { clickSel: 'button:has(span:text-is("ДЗ"))' }
+    const toSel = (sel) => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: 'center' }) })()` })
+    const base = '/course-program?courseId=d000000-0000-4000-8000-000000002500'
+    const TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'summary', 'students', 'settings']
+    const toTabs = { eval: "(() => { document.querySelector('[data-testid=\"course-tabs\"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80) })()" }
+    return [
+      { persona: 'o240', name: 'd265-editor-lesson', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [...topic('Движение по окружности'), hwTile, { wait: 800 }, toSel('[data-testid="hw-grade-scale"]'), { wait: 400 }] },
+      { persona: 'o240', name: 'd265-editor-lesson-open', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [...topic('Движение по окружности'), hwTile, { wait: 800 }, toSel('[data-testid="hw-grade-scale"]'), { eval: "(() => { const s = document.querySelector('[data-testid=\"hw-grade-scale\"]'); s.size = 2; s.style.height = 'auto' })()" }, { wait: 300 }] },
+      { persona: 'o240', name: 'd265-editor-check', url: `/course-program?course=${S.course}`, width, height, full: false, actions: [...topic('Контрольная работа. Кинематика'), toSel('[data-testid="hw-grade-scale-fixed"]'), { wait: 400 }] },
+      { persona: 'o260', name: 'd265-review-hundred', url: '/homework-queue', width, height, full: false, actions: [...open(S.attempt(38)), toBar, { wait: 300 }] },
+      { persona: 'o260', name: 'd265-review-check', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), toBar, { wait: 300 }] },
+      { persona: 'o260', name: 'd265-review-check-5', url: '/homework-queue', width, height, full: false, actions: [...open(D260.a), toBar, { clickSel: '[data-testid="review-grade-5"]' }, { wait: 300 }, toBar] },
+      { persona: 'owner', name: 'd265-menu', url: '/dashboard', width, height, full: false, actions: [{ wait: 1500 }, ...(width === 390 ? [{ clickSel: 'header button[aria-label="Открыть меню"]' }, { wait: 500 }] : [])] },
+      { persona: 'guest', name: 'd265-login', url: '/login', width, height, full: false, actions: [{ wait: 1000 }] },
+      ...(width === 390
+        ? ['o264', 'o265admin'].flatMap(persona => TABS.map(t => ({
+            persona, name: `d265-tabs-${persona === 'o264' ? 'teacher' : 'admin'}-${t}`, url: `${base}&tab=${t}`, width, height, full: false,
+            actions: [{ wait: 2500 }, toTabs, { wait: 400 }],
+          })))
+        : [{ persona: 'o264', name: 'd265-tabs-teacher-summary', url: `${base}&tab=summary`, width, height, full: false, actions: [{ wait: 2500 }] },
+           { persona: 'o265admin', name: 'd265-tabs-admin-settings', url: `${base}&tab=settings`, width, height, full: false, actions: [{ wait: 2500 }] }]),
+    ]
+  }),
+
   // ── 360 narrow check on the densest screens ──
   { persona: 'student', name: 's01-dashboard', url: '/student', width: 360, height: 740 },
   { persona: 'student', name: 's04-topic', url: `/my-course/${S.group}/topic/${S.topic(1)}`, width: 360, height: 740 },

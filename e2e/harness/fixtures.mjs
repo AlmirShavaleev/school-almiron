@@ -147,6 +147,8 @@ export const personas = {
   // `apply264`); ученик — «Настройки» → «Уведомления» с напоминаниями в Telegram (`s264`, Telegram подключён).
   o264: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   s264: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  // §265: тот же курс §250/§264, но владелец в режиме администратора — ряд вкладок курса у админа на 390.
+  o265admin: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'admin' },
 }
 
 // ── course structure ─────────────────────────────────────────────────────────
@@ -1930,6 +1932,7 @@ export function baseFixtures(persona) {
   if (persona === 'o260') apply260(fx)
   if (persona === 'o261') apply261(fx)
   if (persona === 'o264') { apply250(fx); apply264(fx) }
+  if (persona === 'o265admin') { apply250(fx); apply264(fx) }
   if (persona === 's264') apply264student(fx)
   apply262(fx, persona)
   if (persona.startsWith('o263') || persona.startsWith('s263')) apply263(fx, persona)
