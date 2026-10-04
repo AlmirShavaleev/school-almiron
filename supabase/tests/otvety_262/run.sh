@@ -31,7 +31,7 @@ $Q -f $T/glavnaya_254/00_slice_254.sql && echo "slice 254: ok" \
  && $Q -1 -f $R/20261003155843_catalog_answers_server_part_a_functions.sql && echo "PENDING_262a (1): ok" \
  && $Q -1 -f $R/20261003155843_catalog_answers_server_part_a_functions.sql && echo "PENDING_262a (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe262 -f $S/20_probes_a.sql 2>&1 \
- && $Q -1 -f $R/PENDING_262b.sql && echo "PENDING_262b (1): ok" \
- && $Q -1 -f $R/PENDING_262b.sql && echo "PENDING_262b (2, повтор): ok" \
+ && $Q -1 -f $R/20261004102949_catalog_answers_server_part_b_column_privileges.sql && echo "PENDING_262b (1): ok" \
+ && $Q -1 -f $R/20261004102949_catalog_answers_server_part_b_column_privileges.sql && echo "PENDING_262b (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe262 -f $S/30_probes_b.sql 2>&1 \
  && psql -h $H -p $PT -U postgres probe262 -f $S/40_guard.sql 2>&1
