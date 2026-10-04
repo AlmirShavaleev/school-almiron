@@ -34,8 +34,8 @@ $Q -f $T/glavnaya_254/00_slice_254.sql && echo "slice 254: ok" \
  && $Q -f $T/uchenik_261/10_data_261.sql && echo "data 261: ok" \
  && $Q -1 -f $R/20261003114402_student_overview_part1_forecast_evidence_of.sql && $Q -1 -f $R/20261003114440_student_overview_part2_school_points_of.sql && $Q -1 -f $R/20261003114528_student_overview_part3_work_rows_overview_for_staff.sql && $Q -1 -f $R/20261003114628_student_overview_part4_progress_report_new_fields.sql && echo "§261 (4 части): ok" \
  && $Q -f $S/10_data_264.sql && echo "data 264: ok" \
- && $Q -1 -f $R/PENDING_264.sql && echo "PENDING_264 (1): ok" \
- && $Q -1 -f $R/PENDING_264.sql && echo "PENDING_264 (2, повтор): ok" \
+ && $Q -1 -f $R/20261003175501_student_reminders_part1_settings_candidates_summary.sql -f $R/20261004090450_student_reminders_part2_cron_job.sql && echo "PENDING_264 (1): ok" \
+ && $Q -1 -f $R/20261003175501_student_reminders_part1_settings_candidates_summary.sql -f $R/20261004090450_student_reminders_part2_cron_job.sql && echo "PENDING_264 (2, повтор): ok" \
  && $Q -f $S/15_data_after_264.sql && echo "data after 264: ok" \
  && psql -h $H -p $PT -U postgres probe264 -f $S/20_probes.sql 2>&1 \
  && PGHOST=$H PGPORT=$PT node $S/30_ticks.mjs 2>&1

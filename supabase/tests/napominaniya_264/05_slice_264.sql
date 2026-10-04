@@ -141,3 +141,20 @@ language sql as $$
   on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
   returning jobid;
 $$;
+
+-- Стык §263 (добавлено оркестратором при сведении §263+§264): кандидаты «нет фото» читают
+-- work_activity.opened_at. Таблица — ДОСЛОВНО колонки из 20261003175143_work_mode_part1_activity_active_works_policies.sql
+-- (без внешних ключей: цель слепка — только чтение кандидатов; права/политики §263 проверяет ../rezhim_263).
+create table if not exists public.work_activity (
+  id             uuid primary key default gen_random_uuid(),
+  student_id     uuid not null,
+  homework_id    uuid,
+  mock_exam_id   uuid,
+  opened_at      timestamptz,
+  away_count     integer not null default 0 check (away_count >= 0),
+  away_seconds   integer not null default 0 check (away_seconds >= 0),
+  last_away_at   timestamptz,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  constraint work_activity_one_target check (num_nonnulls(homework_id, mock_exam_id) = 1)
+);

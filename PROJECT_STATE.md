@@ -23028,3 +23028,17 @@ hooks 51/361, components 148/1190, pages 85/866, utils 15/327, store 5/43, types
 * Ответ сводки большой у активного класса (свидетельства всех учеников) — на проде проверить время и размер на 10А/11А.
 * «Был на сайте» — по дням (`app_visits.visited_on`), без времени.
 * Сгенерированные типы базы не перегенерированы (новые RPC/таблица вызываются нетипизированно).
+
+### §263 + §264 — выкладка (оркестратор, 03–04.10.2026)
+* Ветки сведены в одну (стык: кандидаты «нет фото» в §264 берут «открыл условие» из `work_activity.opened_at` §263;
+  в слепок `napominaniya_264/05_slice_264.sql` добавлена таблица `work_activity`).
+* Миграции применены MCP по частям, файлы — по версиям из `schema_migrations`:
+  `20261003175143_work_mode_part1_activity_active_works_policies`, `20261003175305_work_mode_part2_reasons_variants_marks_monitor`,
+  `20261003175501_student_reminders_part1_settings_candidates_summary`, `20261004090450_student_reminders_part2_cron_job`
+  (задание pg_cron `student-reminders` — после деплоя функций). `PENDING_263.sql`/`PENDING_264.sql` удалены, `run.sh` проб
+  указывают на файлы по версиям, `probes.out` перегенерированы (отличия — только даты от now() и миллисекунды).
+* Edge-функции: `student-reminders` v1 (новая, verify_jwt=false — сама проверяет X-Cron-Secret, как остальные кроны) и
+  `process-notification-queue` v31; задеплоенный текст сверен с репозиторием побайтно (без комментариев).
+* Пробы на проде (откат): режим работы ученика в окне — каталог 0 строк, своё условие открыто, отметки mark/away пишутся,
+  монитор учителя 29 мс, ученик → 42501; `student_reminder_candidates` 50–400 мс (только service_role);
+  `course_summary_for_staff` 0,66–0,74 с на классах 17/24, посторонний учитель и ученик → 42501.

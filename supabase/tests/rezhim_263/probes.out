@@ -87,7 +87,7 @@ GRANT
 
 RESET
 --- внутренняя функция определения закрыта для authenticated (ожидается отказ):
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:72: ERROR:  42501: permission denied for function student_active_works
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:72: ERROR:  42501: permission denied for function student_active_works
 LOCATION:  aclcheck_error, aclchk.c:2812
 RESET
 === 2. Каталог во время работы. S1 (идёт K) — строки catalog_tasks: 0; тексты: allowed=false даже у k1, ответ которого он
@@ -107,17 +107,17 @@ RESET
 RESET
 --- S1 раскрывает ответы (catalog_reveal_answers, §262) — отказ WORK_MODE:
 BEGIN
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:93: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:93: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 ROLLBACK
 --- S1 раскрывает ответ (catalog_reveal_answer, §256) — отказ WORK_MODE:
 BEGIN
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:98: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:98: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 ROLLBACK
 --- запись попытки каталога за S1 (так пишет catalog_check_answer под definer) — отказ сторожа WORK_MODE:
 BEGIN
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:103: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:103: ERROR:  42501: WORK_MODE: идёт работа по времени — каталог закрыт до её конца
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 ROLLBACK
 --- та же запись за S3 (работа сдана) — проходит (откат):
@@ -226,7 +226,7 @@ RESET
 --------------
  ∅
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:181: ERROR:  P0001: ACCESS_DENIED: assignment not found or not owned by caller
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:181: ERROR:  P0001: ACCESS_DENIED: assignment not found or not owned by caller
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 RESET
 === 6. Отметки ученика. S1 открыл условие K → отметка; повтор не сдвигает время. S3 (сдал), F (завтра), S5 (личное завтра) — no-op.
@@ -270,9 +270,9 @@ RESET
 ------------------
  not_live
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:205: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:205: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:206: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:206: ERROR:  22023: Нужна ровно одна работа: проверочная или пробник
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
  s7_свой_пробник 
 -----------------
@@ -293,15 +293,15 @@ RESET
 -------------
            0
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:217: ERROR:  42501: permission denied for table work_activity
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:217: ERROR:  42501: permission denied for table work_activity
 LOCATION:  aclcheck_error, aclchk.c:2812
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:218: ERROR:  42501: permission denied for table work_activity
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:218: ERROR:  42501: permission denied for table work_activity
 LOCATION:  aclcheck_error, aclchk.c:2812
  учитель_a_видит 
 -----------------
                1
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:221: ERROR:  42501: Отметку ставит только ученик
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:221: ERROR:  42501: Отметку ставит только ученик
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
  посторонний_x_видит 
 ---------------------
@@ -329,13 +329,13 @@ BEGIN
 ------------
           6
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:243: ERROR:  42501: Нет прав на эту работу
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:243: ERROR:  42501: Нет прав на эту работу
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:245: ERROR:  42501: Нет прав на эту работу
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:245: ERROR:  42501: Нет прав на эту работу
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:247: ERROR:  42501: Нет прав на эту работу
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:247: ERROR:  42501: Нет прав на эту работу
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:249: ERROR:  22023: Монитор — только у проверочной и контрольной работы
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:249: ERROR:  22023: Монитор — только у проверочной и контрольной работы
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 RESET
 ROLLBACK
@@ -372,15 +372,15 @@ BEGIN
 -----------------------------------------------------------------------------------------------
  [{"away_count": 2, "student_id": "00000000-0000-4000-8000-0000000001b7", "away_seconds": 45}]
 
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:274: ERROR:  42501: Нет прав на этот пробник
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:274: ERROR:  42501: Нет прав на этот пробник
 LOCATION:  exec_stmt_raise, pl_exec.c:3897
 RESET
 ROLLBACK
 === 10. anon: ни одна новая функция не исполнима (отказ).
 SET
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:280: ERROR:  42501: permission denied for function my_work_mode
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:280: ERROR:  42501: permission denied for function my_work_mode
 LOCATION:  aclcheck_error, aclchk.c:2812
-psql:/home/claude/agents/a263/repo/supabase/tests/rezhim_263/20_probes.sql:281: ERROR:  42501: permission denied for function timed_work_live
+psql:/home/claude/agents/a264/repo/supabase/tests/rezhim_263/20_probes.sql:281: ERROR:  42501: permission denied for function timed_work_live
 LOCATION:  aclcheck_error, aclchk.c:2812
 RESET
 === 11. Права на функции (has_function_privilege authenticated / anon).

@@ -44,8 +44,8 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -f $S241/10_data_241.sql > /dev/null && echo "data 241: ok" \
  && $Q -f $S/10_data_263.sql && echo "data 263: ok" \
  && psql -h $H -p $PT -U postgres probe263 -f $S/15_probe_before.sql 2>&1 \
- && $Q -1 -f $R/PENDING_263.sql && echo "PENDING_263 (1): ok" \
+ && $Q -1 -f $R/20261003175143_work_mode_part1_activity_active_works_policies.sql -f $R/20261003175305_work_mode_part2_reasons_variants_marks_monitor.sql && echo "PENDING_263 (1): ok" \
  && $Q -c "update test_variant_assignments set show_answers_after_submit = false, show_solutions_after_submit = false where id = '00000000-0000-4000-8000-0000000bc002'" \
  && echo "учитель после применения снял оба флажка у tva2" \
- && $Q -1 -f $R/PENDING_263.sql && echo "PENDING_263 (2, повтор): ok" \
+ && $Q -1 -f $R/20261003175143_work_mode_part1_activity_active_works_policies.sql -f $R/20261003175305_work_mode_part2_reasons_variants_marks_monitor.sql && echo "PENDING_263 (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe263 -f $S/20_probes.sql 2>&1

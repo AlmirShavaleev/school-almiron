@@ -16,13 +16,13 @@ data 261: ok
 §261 (4 части): ok
 data 264: ok
 PENDING_264 (1): ok
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:35: NOTICE:  relation "course_reminder_settings" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_hw_due_tomorrow" of relation "notification_prefs" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_hw_overdue" of relation "notification_prefs" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_check_soon" of relation "notification_prefs" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_no_photo" of relation "notification_prefs" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_streak" of relation "notification_prefs" already exists, skipping
-psql:/home/claude/agents/a264/repo/supabase/migrations/PENDING_264.sql:71: NOTICE:  column "remind_mock_tomorrow" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:36: NOTICE:  relation "course_reminder_settings" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_hw_due_tomorrow" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_hw_overdue" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_check_soon" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_no_photo" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_streak" of relation "notification_prefs" already exists, skipping
+psql:/home/claude/agents/a264/repo/supabase/migrations/20261003175501_student_reminders_part1_settings_candidates_summary.sql:72: NOTICE:  column "remind_mock_tomorrow" of relation "notification_prefs" already exists, skipping
 PENDING_264 (2, повтор): ok
 data after 264: ok
 == 1. Права на функции: кандидаты — только service_role; сводка — authenticated, не anon
@@ -203,9 +203,9 @@ SET
 
       name      | evidence | numbers |   assessments    | homeworks |                catalog                | streak | last_solved | last_seen  
 ----------------+----------+---------+------------------+-----------+---------------------------------------+--------+-------------+------------
- Одноклассник 1 |          |       1 | 3 · 5 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
- Одноклассник 2 |          |       1 | 4 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
- Одноклассник 3 |          |       1 | 5 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-28  | 2026-09-28
+ Одноклассник 1 |          |       1 | 3 · 5 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-29  | 2026-09-29
+ Одноклассник 2 |          |       1 | 4 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-29  | 2026-09-29
+ Одноклассник 3 |          |       1 | 5 · 4 · не писал |         4 | {"days": 7, "tried": 0, "correct": 0} | 0      | 2026-09-29  | 2026-09-29
 
 ROLLBACK
 BEGIN
@@ -230,13 +230,13 @@ ROLLBACK
 == 13. Время: класс М11А (26 учеников: тяжёлый H + 24 одноклассника по 150 проверок каталога, 20 ДЗ, 8 проверочных) — 3 замера
 BEGIN
 SET
-psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:207: NOTICE:  М11А: учеников 26, ответ 776 КБ, время {772,802,804} мс
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:207: NOTICE:  М11А: учеников 26, ответ 776 КБ, время {605,704,590} мс
 DO
 ROLLBACK
 == 14. Время кандидатов напоминаний (service_role, все виды, D 18:30)
 BEGIN
 SET
-psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:220: NOTICE:  кандидатов 30, журнал 0, время 10 мс
+psql:/home/claude/agents/a264/repo/supabase/tests/napominaniya_264/20_probes.sql:220: NOTICE:  кандидатов 30, журнал 0, время 9 мс
 DO
 ROLLBACK
 == 15. Тики крона: кому, когда, лимит 2 в день с приоритетом и бронью, тишина, дедупликация, выключенные виды
