@@ -4,10 +4,11 @@ import {
   BookOpen, Check, Clock, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
   Upload, ArrowLeft, ChevronRight, Play, MessageSquare, BarChart3,
-  LayoutList, LayoutGrid, FileEdit,
+  LayoutList, LayoutGrid, FileEdit, ListChecks,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
+import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
@@ -238,6 +239,7 @@ function WorkItem({ topic, work, view, onOpen }: { topic: TopicProgress; work: A
         <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : 'text-gray-800')}>
           {isLocked && <Lock size={10} className="mb-0.5 mr-1 inline text-gray-300" aria-hidden />}
           <TopicKindMark kind={topic.kind} className="mr-1.5" />
+          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </p>
         {when && <p className="mt-1 text-xs tabular-nums text-gray-600" data-testid="works-module-when">{when}</p>}
@@ -384,6 +386,7 @@ function TopicCard({
         )}>
           {isLocked && <Lock size={11} className="inline mr-1 mb-0.5 text-gray-300" />}
           <TopicKindMark kind={topic.kind} className="mr-1.5" />
+          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </div>
 
@@ -422,7 +425,7 @@ function TopicCard({
             className="min-h-11 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
           >
             <Upload size={11} />
-            {topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
+            {topic.lesson_format === 'training' ? 'Решить задачи' : topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
           </button>
         )}
 
@@ -525,6 +528,13 @@ export interface Signal { label: string; cls: string; icon: React.ReactNode }
  */
 function homeworkSignal(topic: TopicProgress): Signal | null {
   if (!topic.hw_id) return null
+  // §266. У тренировочного урока ДЗ — задачи с автопроверкой: «сдать» там нечего,
+  // их решают в уроке, оценку ставит сайт.
+  if (topic.lesson_format === 'training') {
+    return topic.hw_status === 'accepted'
+      ? { label: topic.hw_score != null ? `Задачи: ${topic.hw_score}/100` : 'Задачи решены', cls: LIST_STATE.accepted.statusCls, icon: <CheckCircle size={10} /> }
+      : { label: 'Задачи с автопроверкой', cls: LIST_STATE.not_started.statusCls, icon: <ListChecks size={10} /> }
+  }
   switch (topic.hw_status) {
     case 'submitted':
       return { label: 'ДЗ на проверке', cls: LIST_STATE.submitted.statusCls, icon: <Clock size={10} /> }
@@ -681,6 +691,7 @@ function TopicListRow({
         <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : st.titleCls)}>
           {isLocked && <Lock size={10} className="inline mr-1 mb-0.5 text-gray-300" aria-hidden />}
           <TopicKindMark kind={topic.kind} className="mr-1.5" />
+          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </p>
 
@@ -731,11 +742,11 @@ function TopicListRow({
                 ? 'text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100'
                 : 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
             )}
-            aria-label={topic.hw_status === 'returned' ? 'Переделать домашнее задание' : 'Сдать домашнее задание'}
+            aria-label={topic.lesson_format === 'training' ? 'Решить задачи с автопроверкой' : topic.hw_status === 'returned' ? 'Переделать домашнее задание' : 'Сдать домашнее задание'}
           >
             <Upload size={11} />
             <span className="hidden sm:inline">
-              {topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
+              {topic.lesson_format === 'training' ? 'Решить задачи' : topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
             </span>
           </button>
         )}

@@ -23,6 +23,11 @@ export interface Topic {
    * причине, что номера заданий: до миграции §240 столбца нет.
    */
   kind?: string | null
+  /**
+   * §266. Пометка урока: training («Тренировочный») | ege («Формат ЕГЭ») | null.
+   * Необязательное: до PENDING_266 столбца нет.
+   */
+  lesson_format?: string | null
 }
 
 export interface Module {

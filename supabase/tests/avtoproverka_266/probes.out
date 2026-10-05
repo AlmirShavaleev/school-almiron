@@ -1,0 +1,464 @@
+цепочка §265 (как на проде) + журнал ДЗ §250 + normalize_variant_answer: ok
+data 266: ok
+PENDING_266 (1): ok
+PENDING_266 (2, повтор): ok
+Null display is "∅".
+=== 0. Сравнение ответа (чистые функции): число — запятая/точка, пробелы, «−», допуск; цифры — порядок
+    raw    | number_of 
+-----------+-----------
+ 100       |       100
+ 100,0     |     100.0
+  1 200,5  |    1200.5
+ − 12,5    |     -12.5
+ -12.5     |     -12.5
+ +3        |         3
+ .5        |       0.5
+ 5.        |         5
+ 1e3       |         ∅
+ 12 м      |         ∅
+           |         ∅
+ abc       |         ∅
+(12 rows)
+
+  raw  | digits_of 
+-------+-----------
+ 13    | 13
+ 1 3   | 13
+ 1,3;4 | 134
+ 1.3   | 13
+ 13а   | ∅
+       | ∅
+(6 rows)
+
+  typ   |  val  | tol  | txt | any_order |   raw    | correct 
+--------+-------+------+-----+-----------+----------+---------
+ number |   100 |    0 | ∅   | f         | 100,0    | t
+ number |   100 |    0 | ∅   | f         | 100,01   | f
+ number |   2.5 | 0.05 | ∅   | f         | 2,54     | t
+ number |   2.5 | 0.05 | ∅   | f         | 2,56     | f
+ number |   2.5 | 0.05 | ∅   | f         | 2,45     | t
+ number | -12.5 |    0 | ∅   | f         | −12,5    | t
+ number |   100 |    0 | ∅   | f         | сто      | ∅
+ digits |     ∅ |    0 | 31  | t         | 13       | t
+ digits |     ∅ |    0 | 31  | f         | 13       | f
+ digits |     ∅ |    0 | 31  | f         | 3 1      | t
+ digits |     ∅ |    0 | 122 | t         | 212      | t
+ digits |     ∅ |    0 | 122 | t         | 12       | f
+ digits |     ∅ |    0 | 31  | t         | тридцать | ∅
+(13 rows)
+
+=== 1. Загрузка в урок КАРКАСА под сервисным ключом (без auth.uid): задачи уезжают в урок-копию класса
+                            import_template                             
+------------------------------------------------------------------------
+ {"total": 4, "copies": 1, "updated": 0, "inserted": 4, "unchanged": 0}
+(1 row)
+
+              course              |            title             | lesson_format | tasks | with_lineage 
+----------------------------------+------------------------------+---------------+-------+--------------
+ Физика ЕГЭ — новый курс (каркас) | 1.4.1 Скорость, путь и время | training      |     4 |            0
+ Физика ЕГЭ 10А                   | 1.4.1 Скорость, путь и время | training      |     4 |            4
+(2 rows)
+
+--- ДЗ-носитель: в каркасе не выдан (каркас не выдаётся), в классе выдан сразу (тема открыта) — §243
+ is_template |         title          | autocheck | grade_scale | is_published | published_via | has_source 
+-------------+------------------------+-----------+-------------+--------------+---------------+------------
+ t           | Задачи с автопроверкой | t         | hundred     | f            | ∅             | f
+ f           | Задачи с автопроверкой | t         | hundred     | t            | content       | t
+(2 rows)
+
+ digest_queued_for_class 
+-------------------------
+                       3
+(1 row)
+
+--- повтор той же загрузки: ничего не меняется
+                              import_again                              
+------------------------------------------------------------------------
+ {"total": 4, "copies": 1, "updated": 0, "inserted": 0, "unchanged": 1}
+(1 row)
+
+=== 2. Загрузка: отказы (anon, ученик, посторонний; урок с настоящим ДЗ; проверочная; кривые ответы)
+BEGIN
+SET
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:73: ERROR:  permission denied for function topic_autocheck_import
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:78: ERROR:  Нет прав на этот урок
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 19 at RAISE
+ROLLBACK
+BEGIN
+SET
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:83: ERROR:  Нет прав на этот урок
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 19 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:86: ERROR:  В уроке уже есть ДЗ с файлами или работами учеников — задачи с автопроверкой его не заменят. Уберите это ДЗ или загрузите задачи в другой урок.
+CONTEXT:  PL/pgSQL function _topic_autocheck_ensure_homework(uuid) line 14 at RAISE
+SQL statement "SELECT public._topic_autocheck_ensure_homework(p_topic_id)"
+PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 86 at PERFORM
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:89: ERROR:  Задачи с автопроверкой — только в уроке, не в проверочной или контрольной
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 26 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:92: ERROR:  Задача x: ответ из цифр должен быть строкой цифр
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 42 at RAISE
+ROLLBACK
+BEGIN
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:95: ERROR:  Задача x: у числового ответа нет значения
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 39 at RAISE
+ROLLBACK
+--- персонал курса (преподаватель класса) может загрузить в свой урок
+BEGIN
+SET
+                             teacher_import                             
+------------------------------------------------------------------------
+ {"total": 1, "copies": 0, "updated": 0, "inserted": 1, "unchanged": 0}
+(1 row)
+
+ROLLBACK
+=== 3. Ученик 1 ДО ответов: видит условия своего урока, эталона и решения — нет
+SET
+    code    | position | answer_type | unit |           statement_path           
+------------+----------+-------------+------+------------------------------------
+ 1.4.1-Д-01 |        1 | number      | м    | physics-new/1.4.1/01-statement.svg
+ 1.4.1-Д-02 |        2 | number      | мин  | physics-new/1.4.1/02-statement.svg
+ 1.4.1-Д-03 |        3 | number      | м/с  | physics-new/1.4.1/03-statement.svg
+ 1.4.1-Д-04 |        4 | digits      | ∅    | physics-new/1.4.1/04-statement.svg
+(4 rows)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:108: ERROR:  permission denied for table topic_autocheck_tasks
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:109: ERROR:  permission denied for table topic_autocheck_tasks
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:110: ERROR:  permission denied for table topic_autocheck_tasks
+    code    | answer_value | answer_text | solution_path | left | closed 
+------------+--------------+-------------+---------------+------+--------
+ 1.4.1-Д-01 | ∅            | ∅           | ∅             | 3    | false
+ 1.4.1-Д-02 | ∅            | ∅           | ∅             | 3    | false
+ 1.4.1-Д-03 | ∅            | ∅           | ∅             | 3    | false
+ 1.4.1-Д-04 | ∅            | ∅           | ∅             | 3    | false
+(4 rows)
+
+ statement_visible | solution_visible 
+-------------------+------------------
+ t                 | f
+(1 row)
+
+--- каркас и чужой урок — отказ
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:117: ERROR:  Нет доступа к этому уроку
+CONTEXT:  PL/pgSQL function topic_autocheck_state(uuid) line 15 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:118: ERROR:  Нет доступа к этому уроку
+CONTEXT:  PL/pgSQL function topic_autocheck_state(uuid) line 15 at RAISE
+--- писать в таблицы напрямую нельзя
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:121: ERROR:  permission denied for table topic_autocheck_answers
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:122: ERROR:  permission denied for table topic_autocheck_tasks
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:123: ERROR:  permission denied for function _topic_autocheck_finish
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:124: ERROR:  permission denied for function topic_autocheck_task_closed
+=== 4. Ученик 1 решает: № 1 — ошибка, «не число» (попытка не тратится), верно (запятая); решение открылось
+ correct | left | closed 
+---------+------+--------
+ false   | 2    | false
+(1 row)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:133: ERROR:  AUTOCHECK_FORMAT: введите число
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 40 at RAISE
+ correct | left | closed | grade 
+---------+------+--------+-------
+ true    | 1    | true   | ∅
+(1 row)
+
+    code    | answer_value |           solution_path           | used | closed |                                                   answers                                                    
+------------+--------------+-----------------------------------+------+--------+--------------------------------------------------------------------------------------------------------------
+ 1.4.1-Д-01 | 100          | physics-new/1.4.1/01-solution.svg | 2    | true   | [{"answer": "99", "correct": false, "attempt_no": 1}, {"answer": "100,0", "correct": true, "attempt_no": 2}]
+(1 row)
+
+ sol1_visible_now | sol2_visible 
+------------------+--------------
+ t                | f
+(1 row)
+
+--- закрытая задача: ещё ответ — отказ
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:142: ERROR:  AUTOCHECK_CLOSED: задача уже закрыта — попыток больше нет
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 30 at RAISE
+--- № 2: три ошибки → закрыта, ЧЕТВЁРТОЙ попытки нет
+ correct | left | closed 
+---------+------+--------
+ false   | 2    | false
+(1 row)
+
+ correct | left | closed 
+---------+------+--------
+ false   | 1    | false
+(1 row)
+
+ correct | left | closed 
+---------+------+--------
+ false   | 0    | true
+(1 row)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:150: ERROR:  AUTOCHECK_CLOSED: задача уже закрыта — попыток больше нет
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 30 at RAISE
+ answer_after_fail |        solution_after_fail        
+-------------------+-----------------------------------
+ 8                 | physics-new/1.4.1/02-solution.svg
+(1 row)
+
+--- итога ещё нет (закрыты 2 из 4): попытки ДЗ-носителя нет
+ carrier_attempts 
+------------------
+                0
+(1 row)
+
+--- № 3: «−12,54» при допуске 0,05 — верно;  № 4: «13» при эталоне «31», порядок не важен — верно → итог
+ correct 
+---------
+ true
+(1 row)
+
+ correct | closed | grade | finished | solved | total 
+---------+--------+-------+----------+--------+-------
+ true    | true   | 75    | true     | 3      | 4
+(1 row)
+
+=== 5. Итог в журнале: принятая попытка ДЗ-носителя, 100-балльная, балл 75 = round(100 × 3/4)
+RESET
+ attempt_number |  status  | submitted | decision | score |           comment           | reviewer_is_student 
+----------------+----------+-----------+----------+-------+-----------------------------+---------------------
+              1 | accepted | t         | accepted |    75 | Автопроверка: решено 3 из 4 | t
+(1 row)
+
+--- журнал ДЗ §250 (course_homework_grades) у преподавателя класса — без единой правки функции
+SET
+            topic             |           hw           |  scale  | open 
+------------------------------+------------------------+---------+------
+ 1.4.1 Скорость, путь и время | Задачи с автопроверкой | hundred | true
+ LH: урок с обычным ДЗ        | ДЗ LH                  | hundred | true
+(2 rows)
+
+  status  | score 
+----------+-------
+ reviewed | 75
+(1 row)
+
+--- §243: сводка «новые ДЗ» сдавшему больше не нужна (digest_enqueue пропускает сдавших)
+RESET
+ is_s1 | submitted 
+-------+-----------
+ t     | t
+(1 row)
+
+=== 6. Подделать оценку нельзя (ученик 1)
+SET
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:188: ERROR:  Оценку за задачи с автопроверкой ставит сайт: доля решённых задач урока
+CONTEXT:  PL/pgSQL function topic_homework_reviews_autocheck_guard() line 10 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:189: ERROR:  permission denied for table topic_homework_reviews
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:190: ERROR:  Задачи с автопроверкой сдаются ответами в уроке, а не файлами
+CONTEXT:  PL/pgSQL function topic_homework_attempts_autocheck_guard() line 5 at RAISE
+SQL statement "insert into topic_homework_attempts (homework_id, student_id, attempt_number)
+  values (p_homework_id, v_student, 1)   -- номер перезапишет триггер
+  returning id"
+PL/pgSQL function topic_homework_start_attempt(uuid) line 20 at SQL statement
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:191: ERROR:  Задачи с автопроверкой сдаются ответами в уроке, а не файлами
+CONTEXT:  PL/pgSQL function topic_homework_attempts_autocheck_guard() line 5 at RAISE
+UPDATE 0
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:193: ERROR:  AUTOCHECK_CLOSED: задача уже закрыта — попыток больше нет
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 30 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:194: ERROR:  permission denied for function _topic_autocheck_regrade
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:196: ERROR:  new row violates row-level security policy for table "topic_homework_reviews"
+RESET
+ reviews_on_s1_attempt | max_score 
+-----------------------+-----------
+                     1 |        75
+(1 row)
+
+=== 7. Преподаватель класса: видит всё (эталон, решения), таблицу результатов; балл формулы не переписать
+SET
+--- ученик 2 ответил на № 1 неверно (одна попытка) — для таблицы
+ s2_correct 
+------------
+ false
+(1 row)
+
+    code    | answer_value | tol  | text |           solution_path           
+------------+--------------+------+------+-----------------------------------
+ 1.4.1-Д-01 | 100          | 0    | ∅    | physics-new/1.4.1/01-solution.svg
+ 1.4.1-Д-02 | 8            | 0    | ∅    | physics-new/1.4.1/02-solution.svg
+ 1.4.1-Д-03 | -12.5        | 0.05 | ∅    | physics-new/1.4.1/03-solution.svg
+ 1.4.1-Д-04 | ∅            | 0    | 31   | physics-new/1.4.1/04-solution.svg
+(4 rows)
+
+   name   | attempts | solved | closed | finished | grade 
+----------+----------+--------+--------+----------+-------
+ Ученик 1 | 7        | 3      | 4      | true     | 75
+ Ученик 2 | 1        | 0      | 0      | false    | ∅
+ Ученик 3 | 0        | 0      | 0      | false    | ∅
+(3 rows)
+
+ answers_visible_to_teacher 
+----------------------------
+                          8
+(1 row)
+
+ teacher_sees_solution 
+-----------------------
+ t
+(1 row)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:216: ERROR:  Оценку за задачи с автопроверкой ставит сайт: доля решённых задач урока
+CONTEXT:  PL/pgSQL function topic_homework_reviews_autocheck_guard() line 10 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:217: ERROR:  Работа уже принята — вердикт не меняется
+CONTEXT:  PL/pgSQL function topic_homework_review_attempt(uuid,topic_homework_review_decision,text,integer) line 36 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:218: ERROR:  new row violates row-level security policy for table "topic_homework"
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:219: ERROR:  Нет доступа к этой задаче
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 18 at RAISE
+--- владелец курса (персонал, его строка ДЗ): флаг носителя правкой не снять — сторож молча оставляет true
+BEGIN
+ autocheck_after_owner_update 
+------------------------------
+ t
+(1 row)
+
+UPDATE 1
+ROLLBACK
+=== 8. Посторонний преподаватель и ученик чужого курса: ничего не видят
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:228: ERROR:  Нет прав на этот курс
+CONTEXT:  PL/pgSQL function topic_autocheck_results(uuid) line 6 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:229: ERROR:  Нет доступа к этому уроку
+CONTEXT:  PL/pgSQL function topic_autocheck_state(uuid) line 15 at RAISE
+ tasks_seen 
+------------
+          0
+(1 row)
+
+ answers_seen 
+--------------
+            0
+(1 row)
+
+ statement_visible 
+-------------------
+ f
+(1 row)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:233: ERROR:  Нет прав на этот урок
+CONTEXT:  PL/pgSQL function topic_autocheck_reorder(uuid,uuid[]) line 6 at RAISE
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:234: ERROR:  Нет прав на эту задачу
+CONTEXT:  PL/pgSQL function topic_autocheck_delete(uuid) line 9 at RAISE
+ s4_tasks_seen 
+---------------
+             0
+(1 row)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:237: ERROR:  Нет доступа к этой задаче
+CONTEXT:  PL/pgSQL function topic_autocheck_check(uuid,text) line 18 at RAISE
+ s4_statement_visible 
+----------------------
+ f
+(1 row)
+
+RESET
+SET
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:241: ERROR:  permission denied for function topic_autocheck_state
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:242: ERROR:  permission denied for table topic_autocheck_tasks
+RESET
+=== 9. Задачу добавили после итога: ученик 1 снова «в работе»; закрыл новую верно — итог 80 (4/5) второй строкой вердикта
+ copies 
+--------
+ 1
+(1 row)
+
+SET
+ finished_before | grade_before 
+-----------------+--------------
+ false           | ∅
+(1 row)
+
+ grade 
+-------
+ 80
+(1 row)
+
+RESET
+ score |           comment           
+-------+-----------------------------
+    75 | Автопроверка: решено 3 из 4
+    80 | Автопроверка: решено 4 из 5
+(2 rows)
+
+SET
+  status  | journal_score 
+----------+---------------
+ reviewed | 80
+(1 row)
+
+=== 10. Порядок и удаление (преподаватель класса)
+ reordered 
+-----------
+         5
+(1 row)
+
+    code    | position 
+------------+----------
+ 1.4.1-Д-05 |        1
+ 1.4.1-Д-01 |        2
+ 1.4.1-Д-02 |        3
+ 1.4.1-Д-03 |        4
+ 1.4.1-Д-04 |        5
+(5 rows)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:266: ERROR:  По задаче уже есть ответы учеников (3) — удалить её нельзя: изменились бы их оценки
+CONTEXT:  PL/pgSQL function topic_autocheck_delete(uuid) line 13 at RAISE
+BEGIN
+RESET
+ total_with_extra 
+------------------
+ 6
+(1 row)
+
+SET
+           deleted_unanswered           
+----------------------------------------
+ {"deleted": true, "kept_in_copies": 0}
+(1 row)
+
+ tasks_left 
+------------
+          5
+(1 row)
+
+ROLLBACK
+RESET
+=== 11. Копирование урока (topic_copy_stage → course_copy_topic_content): пометка, задачи, носитель; ответов нет
+BEGIN
+SET
+RESET
+ lesson_format | tasks | with_lineage | answers | autocheck | grade_scale | is_published 
+---------------+-------+--------------+---------+-----------+-------------+--------------
+ training      |     5 |            5 |       0 | t         | hundred     | t
+(1 row)
+
+ROLLBACK
+=== 12. Пометка урока каркаса уезжает в копию; клиент меняет её обычной правкой темы
+BEGIN
+UPDATE 1
+ is_template | lesson_format 
+-------------+---------------
+ t           | ege
+ f           | ege
+(2 rows)
+
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:295: ERROR:  new row for relation "topics" violates check constraint "topics_lesson_format_check"
+DETAIL:  Failing row contains (00000000-0000-4000-8000-000000070001, 00000000-0000-4000-8000-0000000e0000, 1.4.1 Скорость, путь и время, 1, null, null, null, null, 2026-10-05 21:19:57.648482+00, lesson, bad).
+ROLLBACK
+=== 13. Повторный прогон PENDING не задел данные: задачи и ответы на месте
+ tasks_total | answers_total | carriers 
+-------------+---------------+----------
+          10 |             9 |        2
+(1 row)
+
+=== 14. Прямая вставка 4-й попытки даже владельцем таблицы — CHECK attempt_no 1..3
+BEGIN
+psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:303: ERROR:  new row for relation "topic_autocheck_answers" violates check constraint "topic_autocheck_answers_attempt_no_check"
+DETAIL:  Failing row contains (e4459ffd-37a1-43b4-8bce-32c4d8d7d618, 5c6e1a49-b146-48a3-b44e-aeea48bb7378, 00000000-0000-4000-8000-0000000000b1, 4, 8, t, 2026-10-05 21:19:57.990342+00).
+ROLLBACK

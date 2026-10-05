@@ -95,6 +95,8 @@ export interface TopicProgress {
   is_open:        boolean | null
   /** §240. Урок / проверочная / контрольная — метка в программе. */
   kind?:          string | null
+  /** §266. Пометка урока: training | ege | null (до PENDING_266 — undefined). */
+  lesson_format?: string | null
   /** Заполненные рубрики темы — те же плитки, что у преподавателя. */
   sections:       Set<TopicSection>
   // ── ДЗ темы (topic_homework) ──
@@ -410,6 +412,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               available_from: t.available_from,
               is_open:        t.is_open ?? null,
               kind:           t.kind ?? null,
+              lesson_format:  t.lesson_format ?? null,
               sections,
               hw_id:           hw?.id ?? null,
               hw_title:        hw?.title ?? null,

@@ -21,6 +21,8 @@ import { TopicTrainingEditor } from '@/components/courseProgram/TopicTrainingEdi
 import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEditor'
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import { TopicTemplateBanner } from '@/components/courseProgram/TopicTemplateBanner'
+import { TopicAutocheckEditor } from '@/components/courseProgram/TopicAutocheckEditor'
+import { LESSON_FORMAT_HINT, LESSON_FORMAT_LABEL, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TOPIC_KINDS, TOPIC_KIND_HINT, TOPIC_KIND_LABEL, isTimedKind, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
 import {
   MATERIAL_FILE_ACCEPT, isMaterialSection,
@@ -534,9 +536,13 @@ interface Props {
     is_open?: boolean | null
     ege_task_numbers?: number[]
     kind?: TopicKind
+    /** §266. Пометка урока: «Тренировочный» / «Формат ЕГЭ» / без пометки. */
+    lesson_format?: LessonFormat | null
   }) => Promise<void>
   /** §240. Тип темы: урок / проверочная / контрольная. */
   kind?: string | null
+  /** §266. Пометка урока (topics.lesson_format). */
+  lessonFormat?: string | null
   /** §240. Тема в курсе-шаблоне: время работы там не ставится. */
   isTemplate?: boolean
   /** Открыть все темы курса до этой включительно. Возвращает, сколько открылось. */
@@ -550,7 +556,7 @@ interface Props {
   initialTile?: string | null
 }
 
-export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, egeTaskNumbers = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null, kind = null, isTemplate = false }: Props) {
+export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, moduleTitle, availableFrom = null, isOpen = null, egeTaskNumbers = null, onSaveTopicMeta, onOpenUntilHere, lessonDate, hwDeadline, hwStatus, hwScore, hwMax, initialTile = null, kind = null, lessonFormat = null, isTemplate = false }: Props) {
   const profile = useAuthStore(s => s.profile)
   const canEdit = !!profile?.role && ['admin', 'owner', 'teacher'].includes(profile.role)
   const [activeTab, setActiveTab] = useState<MaterialType>('notes')
@@ -566,6 +572,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   // §240. Тип темы держим у себя: кнопки переключаются сразу, запись — фоном.
   const [kindVal, setKindVal] = useState<TopicKind>(normalizeTopicKind(kind))
   const [savingKind, setSavingKind] = useState(false)
+  // §266. Пометка урока — так же: переключается сразу, запись фоном, откат при отказе.
+  const [formatVal, setFormatVal] = useState<LessonFormat | null>(normalizeLessonFormat(lessonFormat))
+  const [savingFormat, setSavingFormat] = useState(false)
   const [activeTile, setActiveTile] = useState<TopicSection | null>(null)
   // §258. Название темы. Держим строкой у себя: сохраняем по Enter и уходу из
   // поля, как дату и номера ЕГЭ рядом — кнопки «Сохранить» в окне нет.
@@ -586,6 +595,10 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   useEffect(() => {
     setKindVal(normalizeTopicKind(kind))
   }, [kind, open, topicId])
+
+  useEffect(() => {
+    setFormatVal(normalizeLessonFormat(lessonFormat))
+  }, [lessonFormat, open, topicId])
 
   useEffect(() => {
     setTitleVal(topicTitle)
@@ -732,6 +745,23 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
     }
   }
 
+  /** §266. Пометка урока. В каркасе уезжает во все классы (триггер базы). */
+  async function handleLessonFormat(next: LessonFormat | null) {
+    if (!canEdit || !onSaveTopicMeta || next === formatVal) return
+    const prev = formatVal
+    setFormatVal(next)
+    setSavingFormat(true)
+    try {
+      await onSaveTopicMeta({ lesson_format: next })
+      toast.saved()
+    } catch (e) {
+      setFormatVal(prev)
+      saveFailed(e)
+    } finally {
+      setSavingFormat(false)
+    }
+  }
+
   /**
    * §258. Название темы. Владелец не нашёл, где переименовать тему: правка
    * жила только в «Редактировать программу». Правило то же, что у строки
@@ -810,7 +840,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   // ответы и критерии (решение владельца 28.09): остальное на работе по времени
   // лишнее. Время, публикация и оценка — блоком «Время и сдача» под плитками,
   // а не отдельной плиткой.
-  const TILES = (timed ? TIMED_TILE_ORDER : TOPIC_SECTION_ORDER).filter(isTopicSectionVisible).map(key => ({
+  // §266. Тренировочный урок: вместо ДЗ на проверку — задачи с автопроверкой,
+  // блоком под плитками; плитки «Домашнее задание» у него нет.
+  const training = !timed && formatVal === 'training'
+  const TILES = (timed ? TIMED_TILE_ORDER : TOPIC_SECTION_ORDER).filter(isTopicSectionVisible)
+    .filter(key => !(training && key === 'homework')).map(key => ({
     key,
     label: sectionLabel(key, timed),
     icon: TILE_ICON[key],
@@ -1063,6 +1097,39 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               )}
             </div>
 
+            {/* §266. Пометка урока — только у урока: у работы по времени своя метка. */}
+            {!timed && (
+              <div data-testid="lesson-format" className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900">Пометка урока</span>
+                  {savingFormat && <Loader2 size={14} className="animate-spin text-primary-500" />}
+                </div>
+                <div role="group" aria-label="Пометка урока" className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {([null, 'training', 'ege'] as const).map(f => (
+                    <button
+                      key={f ?? 'none'}
+                      type="button"
+                      data-testid={`lesson-format-${f ?? 'none'}`}
+                      aria-pressed={formatVal === f}
+                      disabled={savingFormat || !onSaveTopicMeta || !canEdit}
+                      onClick={() => { void handleLessonFormat(f) }}
+                      className={cn(
+                        'rounded-xl border-[1.5px] px-3 py-2 text-left text-sm font-semibold transition-colors disabled:opacity-70',
+                        formatVal === f
+                          ? 'border-primary-600 bg-primary-50 text-primary-900'
+                          : 'border-gray-200 bg-white text-gray-800 hover:border-primary-300',
+                      )}
+                    >
+                      {f ? LESSON_FORMAT_LABEL[f] : 'Без пометки'}
+                      <small className="block text-[11.5px] font-normal text-gray-500">
+                        {f ? LESSON_FORMAT_HINT[f] : 'Как сейчас: обычный урок с ДЗ на проверку'}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Каркас и его отражения (§172): куда уедет правка — или откуда
                 приехало то, что здесь показано. */}
             <TopicTemplateBanner topicId={topicId} />
@@ -1148,6 +1215,9 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
                 <TopicHomeworkEditor topicId={topicId} kind={kindVal} isTemplate={isTemplate} isOpen={isOpen} availableFrom={availableFrom} />
               </div>
             )}
+
+            {/* §266. Тренировочный урок: задачи с автопроверкой и результаты класса. */}
+            {training && topicId && <TopicAutocheckEditor topicId={topicId} canEdit={canEdit} />}
 
             {/* §234. Тренировка — подтемы задачника и переключатель «видят /
                 скрыта» для этого класса. Файлы кладёт загрузчик в шаблон,

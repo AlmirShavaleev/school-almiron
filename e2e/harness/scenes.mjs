@@ -1,4 +1,4 @@
-import { D227, D228, D229, D252, D258, D259, D260, D263, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
+import { D227, D228, D229, D252, D258, D259, D260, D263, D266, IDS, KR, LESSON, LIVE, SANDBOX } from './fixtures.mjs'
 const S = IDS
 const cart = JSON.stringify({ state: { items: Array.from({ length: 7 }, (_, k) => ({ catalog_task_id: S.task(k + 1), added_at: '2026-09-12T08:00:00.000Z' })) }, version: 0 })
 // §195: папка, в которую сцены каталожных картинок льют файлы. Ровно тот
@@ -1637,6 +1637,39 @@ export const scenes = [
           })))
         : [{ persona: 'o264', name: 'd265-tabs-teacher-summary', url: `${base}&tab=summary`, width, height, full: false, actions: [{ wait: 2500 }] },
            { persona: 'o265admin', name: 'd265-tabs-admin-settings', url: `${base}&tab=settings`, width, height, full: false, actions: [{ wait: 2500 }] }]),
+    ]
+  }),
+
+  // §266. Тренировочный урок с задачами на автопроверку. Ученик (s266): список уроков с пометками, урок 1.4.1 —
+  // открытая, решённая и проваленная задачи; неверный ответ; верный ответ (открылось решение); последняя задача —
+  // итог «75 из 100». Сцены ученика ПИШУТ в общее состояние процесса (state266) и идут по порядку.
+  // Учитель (o266): программа с пометками, окно урока — пометка, задачи (раскрытая с условием и решением),
+  // таблица результатов класса.
+  //   node e2e/harness/tour.mjs d266 1280 ; node e2e/harness/tour.mjs d266 390
+  ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
+    const topicUrl = `/my-course/${D266.group}/topic/${D266.topic(4)}`
+    const toTab = [{ wait: 1500 }, { clickSel: '[role="tab"]:has-text("Автопроверка")' }, { wait: 1200 }]
+    const task = (n) => `[data-testid="autocheck-task"]:nth-of-type(${n})`
+    const answer = (n, value) => [
+      { fill: [`${task(n)} [data-testid="autocheck-input"]`, value] },
+      { clickSel: `${task(n)} [data-testid="autocheck-submit"]` }, { wait: 900 },
+    ]
+    const toEl = (sel, block = 'start') => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: '${block}' }); window.scrollBy(0, -12) })()` })
+    const program = `/course-program?courseId=${D266.course}&tab=program`
+    const openLesson = [{ wait: 2000 }, { click: '1.4.1 Скорость, путь и время' }, { wait: 2000 }]
+    const inModal = (sel, block = 'start') => ({ eval: `(() => { document.querySelector('${sel}')?.scrollIntoView({ block: '${block}' }) })()` })
+    return [
+      { persona: 's266', name: 'd266-student-course', url: `/my-course/${D266.group}`, width, height, actions: [{ wait: 2500 }, { click: 'Кинематика' }, { wait: 1200 }] },
+      { persona: 's266', name: 'd266-student-topic', url: topicUrl, width, height, actions: [...toTab, toEl('[data-testid="topic-tab-group-homework"]')] },
+      ...(width === 390 ? [{ persona: 's266', name: 'd266-student-zoom', url: topicUrl, width, height, full: false, actions: [...toTab, { clickSel: `${task(1)} [data-testid="autocheck-image"] button` }, { wait: 600 }, toEl(task(1))] }] : []),
+      { persona: 's266', name: 'd266-student-wrong', url: topicUrl, width, height, full: false, actions: [...toTab, ...answer(4, '14'), toEl(task(4), 'center')] },
+      { persona: 's266', name: 'd266-student-solved', url: topicUrl, width, height, full: false, actions: [...toTab, ...answer(1, '100'), toEl(task(1))] },
+      { persona: 's266', name: 'd266-student-finished', url: topicUrl, width, height, actions: [...toTab, ...answer(4, '3 1'), toEl('[data-testid="autocheck-block"]')] },
+      { persona: 'o266', name: 'd266-teacher-program', url: program, width, height, actions: [{ wait: 2500 }] },
+      { persona: 'o266', name: 'd266-teacher-lesson', url: program, width, height, full: false, actions: [...openLesson, inModal('[data-testid="lesson-format"]')] },
+      { persona: 'o266', name: 'd266-teacher-tasks', url: program, width, height, full: false, actions: [...openLesson, { clickSel: '[data-testid="autocheck-editor-task"]:nth-of-type(1) button[aria-expanded]' }, { wait: 800 }, inModal('[data-testid="autocheck-editor"]')] },
+      { persona: 'o266', name: 'd266-teacher-results', url: program, width, height, full: false, actions: [...openLesson, { wait: 500 }, inModal('[data-testid="autocheck-results"]')] },
+      { persona: 'o266', name: 'd266-teacher-results-weak', url: program, width, height, full: false, actions: [...openLesson, { clickSel: '[data-testid="autocheck-results"] button:has-text("Сначала слабые")' }, { wait: 300 }, inModal('[data-testid="autocheck-results"]')] },
     ]
   }),
 

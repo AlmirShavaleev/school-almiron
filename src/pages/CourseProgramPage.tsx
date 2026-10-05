@@ -46,6 +46,7 @@ import { cn } from '@/utils/cn'
 import { TopicOpenToggle } from '@/components/courseProgram/TopicOpenToggle'
 import { TopicHomeworkBadge } from '@/components/courseProgram/TopicHomeworkBadge'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
+import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { groupHomeworkByTopic, type TopicHomeworkRow } from '@/lib/topicHomeworkState'
 import {
   TOPIC_MATERIAL_SECTIONS, TOPIC_SECTION_ORDER, TOPIC_SECTION_SHORT_LABELS,
@@ -401,6 +402,7 @@ function HwTable({
                           </span>
                         </button>
                         <TopicKindMark kind={topic.kind} />
+                        <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
                         <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
                         <TopicHomeworkBadge rows={homeworkStateByTopic[topic.id] ?? []} />
                         {hw && (
@@ -499,6 +501,7 @@ function TopicRowEdit({
                 />
               </div>
               <TopicKindMark kind={topic.kind} />
+              <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
               <TopicOpenToggle topic={topic} onToggle={v => onSave(topic.id, { is_open: v })} />
               <TopicHomeworkBadge rows={homeworkRows} />
             </div>
@@ -2475,6 +2478,7 @@ export function CourseProgramPage() {
       isOpen={matTopic?.topic.is_open ?? null}
       egeTaskNumbers={matTopic?.topic.ege_task_numbers ?? null}
       kind={matTopic?.topic.kind ?? null}
+      lessonFormat={matTopic?.topic.lesson_format ?? null}
       isTemplate={isTemplate}
       onSaveTopicMeta={async values => {
         if (!matTopic?.topic.id) return

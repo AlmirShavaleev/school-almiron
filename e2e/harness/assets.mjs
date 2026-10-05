@@ -141,6 +141,44 @@ function sysSvg(w, h, rows, step, fontSize, firstBaseline) {
 }
 for (const [name, body] of Object.entries(svgFormulas)) fs.writeFileSync(path.join(out, name), body)
 
+// §266. Задачи с автопроверкой тренировочного урока 1.4.1: условие и решение —
+// картинками SVG, как их свёрстывает шаблон PDF курса (серифный текст, ширина
+// колонки листа). Тексты — из макета владельца, всё выдумано.
+const AC266 = [
+  ['Гепард бежит по прямой с постоянной скоростью 90 км/ч. Сколько метров он пробегает за 4 с?',
+   ['v = 90 км/ч = 90 : 3,6 = 25 м/с.', 'S = v·t = 25 · 4 = 100 м.', 'Ответ: 100 м.']],
+  ['Лодка плывёт по прямой через озеро шириной 1,2 км с постоянной скоростью 2,5 м/с. За сколько минут она переплывёт озеро?',
+   ['S = 1,2 км = 1200 м.', 't = S / v = 1200 / 2,5 = 480 с = 8 мин.', 'Ответ: 8 мин.']],
+  ['Поезд длиной 240 м, двигаясь равномерно, полностью проехал мост длиной 360 м за 40 с. Найдите скорость поезда.',
+   ['Пока поезд целиком проезжает мост, его голова проходит', 'путь S = 360 + 240 = 600 м.', 'v = S / t = 600 / 40 = 15 м/с.', 'Ответ: 15 м/с.']],
+  ['Выберите все верные утверждения о равномерном прямолинейном движении. 1) Скорость тела не меняется со временем. 2) Путь пропорционален квадрату времени. 3) График x(t) — прямая линия. 4) Ускорение тела постоянно и не равно нулю.',
+   ['1 — верно: при равномерном движении v = const.', '2 — неверно: S = v·t, путь пропорционален времени.', '3 — верно: x = x₀ + v·t — линейная функция.', '4 — неверно: ускорение равно нулю.', 'Ответ: 13.']],
+]
+function wrap(text, width) {
+  const words = text.split(' ')
+  const lines = []
+  let cur = ''
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > width) { lines.push(cur.trim()); cur = w } else cur += ' ' + w
+  }
+  if (cur.trim()) lines.push(cur.trim())
+  return lines
+}
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+function acSvg(lines, { title, color = '#1b1f2a', bg = null }) {
+  const W = 720, top = 34, step = 30
+  const H = top + lines.length * step + 18
+  const body = lines.map((l, i) => `<text x="16" y="${top + i * step}" font-family="PT Serif, Georgia, 'Times New Roman', serif" font-size="20" fill="${color}">${esc(l)}</text>`).join('\n')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">\n${bg ? `<rect width="${W}" height="${H}" fill="${bg}"/>\n` : ''}${body}\n</svg>`
+}
+AC266.forEach(([cond, sol], i) => {
+  const n = String(i + 1).padStart(2, '0')
+  // Пункты «1) … 2) …» — каждый с новой строки, как в листе курса.
+  const condLines = cond.split(/ (?=\d\) )/).flatMap(part => wrap(part, 62))
+  fs.writeFileSync(path.join(out, `ac266-${n}-statement.svg`), acSvg(condLines, { title: `Условие ${i + 1}` }))
+  fs.writeFileSync(path.join(out, `ac266-${n}-solution.svg`), acSvg(sol, { title: `Решение ${i + 1}`, color: '#163d2b' }))
+})
+
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 const page = await browser.newPage()
 for (const [name, { w, h, html }] of Object.entries(pages)) {

@@ -9,6 +9,7 @@ import { useCourseHomeworkGrades } from '@/hooks/useCourseHomeworkGrades'
 import { TopicSignals, type Signal } from '@/pages/StudentCoursePage'
 import { lazyPage } from '@/lib/lazyPage'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
+import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { isTopicOpen, topicClosedLabel, willOpenByDate } from '@/lib/topicAvailability'
 import { formatAvg } from '@/lib/courseGrades'
 import { isTimedKind } from '@/lib/timedWork'
@@ -374,6 +375,7 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
         <div className={cn('font-bold leading-snug [text-wrap:balance]', open ? 'text-graphite-900' : 'text-graphite-400')}>
           {!open && <Lock size={11} className="mb-0.5 mr-1 inline text-graphite-300" aria-hidden />}
           <TopicKindMark kind={topic.kind} className="mr-1.5" />
+          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </div>
         {open ? (

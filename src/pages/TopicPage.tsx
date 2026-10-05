@@ -38,6 +38,10 @@ import { useMyTopicHomeworkState, TOPIC_HOMEWORK_STATE_LABEL } from '@/hooks/use
 import { isSelfMarkable, type TopicGroupKey } from '@/lib/topicProgress'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
+import { TopicAutocheckStudent } from '@/components/courseProgram/TopicAutocheckStudent'
+import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
+import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,6 +58,8 @@ interface TopicInfo {
   group_name:     string
   /** §240. Урок / проверочная / контрольная. */
   kind:           TopicKind
+  /** §266. Пометка урока: «Тренировочный» / «Формат ЕГЭ» / нет. */
+  lesson_format:  LessonFormat | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -214,6 +220,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           group_id:       groupId!,
           group_name:     gd?.name || '',
           kind:           normalizeTopicKind(td.kind),
+          lesson_format:  normalizeLessonFormat(td.lesson_format),
         })
         setHasHomework((hwRes.count ?? 0) > 0)
         setHasTest((testRes.count ?? 0) > 0)
@@ -248,6 +255,13 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     prevOpened.current = timedWindow.opened
     if (before === false && timedWindow.opened) reloadMaterials?.()
   }, [timedWindow.loaded, timedWindow.opened, reloadMaterials])
+
+  // §266. Тренировочный урок: вместо ДЗ на проверку — задачи с автопроверкой.
+  // Хук ждёт тему (пометка приходит с ней); в предпросмотре эталоны персонала
+  // сбрасываются «как у нового ученика», проверка не зовётся.
+  const isTraining = !!topic && !isTimedKind(topic.kind) && topic.lesson_format === 'training'
+  const autocheck = useTopicAutocheck(topicId ?? null, { preview, enabled: isTraining })
+  const autocheckTotal = autocheck.state?.total ?? 0
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -363,7 +377,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   }
   if (solutionState.hasSolution || sectionCounts.solution > 0) availableTabs.push('solution')
 
-  if (hasHomework) availableTabs.push('homework')
+  // §266. У тренировочного урока вкладка ДЗ — это задачи с автопроверкой (их
+  // носитель — ДЗ урока, но и без него вкладка нужна, раз задачи есть).
+  if (hasHomework || (isTraining && autocheckTotal > 0)) availableTabs.push('homework')
   // Вкладка нужна и когда теста банка нет, а тестирование выдано.
   // Скрытие рубрики решает один переключатель в перечне (`TOPIC_SECTIONS_HIDDEN`),
   // а не условие по месту: рубрика уже однажды разъезжалась по копиям (§100).
@@ -406,6 +422,20 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
    *    не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно.
    */
   function renderGroupMark(groupKey: TopicGroupKey) {
+    if (groupKey === 'homework' && isTraining && autocheck.state) {
+      const st = autocheck.state
+      return (
+        <span
+          data-testid="topic-group-autocheck-state"
+          className={cn(
+            'shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium sm:ml-auto',
+            st.finished ? 'bg-emerald-50 text-emerald-800' : 'bg-gray-100 text-gray-500',
+          )}
+        >
+          {st.finished && st.grade !== null ? `оценка ${st.grade} из 100 ✓` : `решено ${st.solved} из ${st.total}`}
+        </span>
+      )
+    }
     if (groupKey === 'homework') {
       return (
         <span
@@ -493,7 +523,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       if (s === 'criteria') isLocked = criteriaLocked
       if (s === 'worksheet_homework') isLocked = conditionLocked
     } else if (tabKey === 'homework') {
-      label = timed ? 'Работа' : 'Домашнее задание'
+      label = timed ? 'Работа' : isTraining ? 'Автопроверка' : 'Домашнее задание'
     } else if (tabKey === 'test') {
       label = 'Задачи'
     }
@@ -598,6 +628,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
             <Clock size={12} className="shrink-0" />
             {TOPIC_KIND_LABEL[topic.kind]}
           </span>
+        )}
+        {/* §266. Пометка урока над названием — как в макете. */}
+        {!timed && topic.lesson_format && (
+          <div className="mb-2"><LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="text-[11px]" /></div>
         )}
         <h1 className="text-2xl font-bold text-gray-900">{topic.title}</h1>
         {/* shrink-0: без него иконка в 12px сжималась в чёрточку, а подпись
@@ -770,6 +804,14 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           // материалы (условие, решение, критерии): перечитываем вкладки.
           onPhaseChange={() => { reloadMaterials?.() }}
         />
+      ) : active === 'homework' && isTraining ? (
+        autocheck.state ? (
+          <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
+            {autocheck.loading ? <><Loader2 size={16} className="animate-spin" />Загрузка задач…</> : 'Задачи сейчас недоступны'}
+          </div>
+        )
       ) : active === 'homework' ? (
         <TopicHomeworkStudent
           topicId={topic.id}

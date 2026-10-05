@@ -146,6 +146,10 @@ export const personas = {
   // §264: владелец-учитель — вкладки курса «Сводка» и «Настройки» с напоминаниями (курс §250, фикстуры
   // `apply264`); ученик — «Настройки» → «Уведомления» с напоминаниями в Telegram (`s264`, Telegram подключён).
   o264: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
+  // §266: тренировочный урок с задачами на автопроверку — ученик (s266, курс «Физика ЕГЭ — новый курс», состояние
+  // задач общее на процесс: ответы из сцен пишутся в него) и владелец-учитель (o266, окно урока: пометка, задачи, результаты).
+  s266: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
+  o266: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
   s264: { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   // §265: тот же курс §250/§264, но владелец в режиме администратора — ряд вкладок курса у админа на 390.
   o265admin: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'admin' },
@@ -1934,6 +1938,7 @@ export function baseFixtures(persona) {
   if (persona === 'o264') { apply250(fx); apply264(fx) }
   if (persona === 'o265admin') { apply250(fx); apply264(fx) }
   if (persona === 's264') apply264student(fx)
+  if (persona === 's266' || persona === 'o266') apply266(fx, persona)
   apply262(fx, persona)
   if (persona.startsWith('o263') || persona.startsWith('s263')) apply263(fx, persona)
   return fx
@@ -4057,4 +4062,160 @@ function apply264student(fx) {
     id: U('c', 1264), profile_id: IDS.student, telegram_chat_id: 264264264, telegram_username: 'uchenik_harness', is_enabled: true,
     connected_at: ago(300), disconnected_at: null, disconnect_reason: null, created_at: ago(300), updated_at: ago(300),
   }]
+}
+
+
+// ── §266. Тренировочные уроки: задачи с автопроверкой ─────────────────────────
+// Всё выдумано. Новый курс физики: раздел «Кинематика» — уроки-подтемы
+// («Тренировочный») и уроки по номеру ЕГЭ («Формат ЕГЭ»), как в макете
+// владельца. Текущий урок — 1.4.1, четыре задачи (условия и решения —
+// `ac266-*.svg` из assets.mjs). Состояние ученика — одно на процесс (`state266`):
+// RPC проверки пишет в него, и следующая сцена того же процесса видит ответ.
+// Сцены пишут — каждую ширину своим процессом:
+//   node e2e/harness/tour.mjs d266 1280 ; node e2e/harness/tour.mjs d266 390
+export const D266 = {
+  course: U('d', 2660), group: U('f', 2660), module: U('e', 2660),
+  topic: (i) => U('1', 2660 + i), hw: U('2', 2660), task: (i) => U('8', 2660 + i),
+}
+const T266 = [
+  ['1.1 Механическое движение', 'training'],
+  ['1.2 Путь. Перемещение', 'training'],
+  ['1.3 Проекции вектора', 'training'],
+  ['1.4.1 Скорость, путь и время', 'training'],
+  ['1.4.2 Уравнение координаты', 'training'],
+  ['Кинематика. Задание № 1–2', 'ege'],
+  ['1.5 Сложение скоростей', 'training'],
+  ['Кинематика. Задание № 26', 'ege'],
+]
+const AC266_TASKS = [
+  { n: 1, type: 'number', value: 100, unit: 'м' },
+  { n: 2, type: 'number', value: 8, unit: 'мин' },
+  { n: 3, type: 'number', value: 15, unit: 'м/с' },
+  { n: 4, type: 'digits', text: '13', anyOrder: true, unit: null },
+]
+// Ответы ученика: № 1 — не начата, № 2 — решена со второй попытки, № 3 —
+// попытки закончились, № 4 — одна ошибка.
+let state266 = null
+function initState266() {
+  state266 = {
+    answers: {
+      1: [],
+      2: [{ answer: '480', correct: false }, { answer: '8', correct: true }],
+      3: [{ answer: '9', correct: false }, { answer: '25', correct: false }, { answer: '12', correct: false }],
+      4: [{ answer: '12', correct: false }],
+    },
+  }
+}
+function acPath(n, kind) { return `${D266.topic(4)}/ac266-${String(n).padStart(2, '0')}-${kind}.svg` }
+function acVerdict(t, raw) {
+  if (t.type === 'number') {
+    const v = String(raw).replace(/[−–—]/g, '-').replace(/[\s ]/g, '').replace(/,/g, '.')
+    if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(v)) return null
+    return Math.abs(Number(v) - t.value) <= 0
+  }
+  const d = String(raw).replace(/[\s,;.]/g, '')
+  if (!/^\d+$/.test(d)) return null
+  return t.anyOrder ? [...d].sort().join('') === [...t.text].sort().join('') : d === t.text
+}
+function acState266(staff) {
+  const tasks = AC266_TASKS.map(t => {
+    const ans = staff ? [] : state266.answers[t.n]
+    const solved = ans.some(a => a.correct)
+    const closed = solved || ans.length >= 3
+    const open = staff || closed
+    return {
+      id: D266.task(t.n), code: `1.4.1-Д-0${t.n}`, position: t.n, statement_path: acPath(t.n, 'statement'),
+      answer_type: t.type, digits_any_order: !!t.anyOrder, unit: t.unit,
+      attempts_used: ans.length, attempts_left: Math.max(3 - ans.length, 0), solved, closed,
+      answers: ans.map((a, k) => ({ attempt_no: k + 1, answer: a.answer, correct: a.correct })),
+      answer_value: open && t.type === 'number' ? t.value : null, answer_tol: open ? 0 : null,
+      answer_text: open && t.type === 'digits' ? t.text : null, solution_path: open ? acPath(t.n, 'solution') : null,
+    }
+  })
+  const solved = staff ? 0 : tasks.filter(t => t.solved).length
+  const closed = staff ? 0 : tasks.filter(t => t.closed).length
+  const finished = !staff && closed === tasks.length
+  return {
+    topic_id: D266.topic(4), is_staff: staff, tasks, total: tasks.length, solved, closed, finished,
+    grade: finished ? Math.round((100 * solved) / tasks.length) : null,
+  }
+}
+// Результаты класса — выдуманные ученики (имена не совпадают с настоящими людьми).
+const N266 = ['Ветрова Мира', 'Ершов Лев', 'Кудрявцева Ольга', 'Нестеров Глеб', 'Орлова Таисия', 'Савин Матвей', 'Тихонова Ева']
+const R266 = [
+  // [попытки по задачам, решена ли] — 4 задачи
+  [[1, true], [2, true], [1, true], [1, true]],
+  [[3, false], [1, true], [3, false], [2, true]],
+  [[1, true], [1, true], [2, true], [0, false]],
+  [[0, false], [0, false], [0, false], [0, false]],
+  [[2, true], [3, false], [1, true], [3, false]],
+  [[1, true], [1, true], [1, true], [3, true]],
+  [[1, false], [0, false], [0, false], [0, false]],
+]
+function results266() {
+  return {
+    topic_id: D266.topic(4),
+    tasks: AC266_TASKS.map(t => ({ id: D266.task(t.n), code: `1.4.1-Д-0${t.n}`, position: t.n })),
+    students: N266.map((name, i) => {
+      const cells = R266[i].map(([attempts, solved], k) => ({ task_id: D266.task(k + 1), attempts, solved, closed: solved || attempts >= 3 }))
+      const solvedN = cells.filter(c => c.solved).length
+      const closedN = cells.filter(c => c.closed).length
+      const finished = closedN === cells.length
+      return {
+        student_id: U('b', 2660 + i), name, attempts: cells.reduce((n, c) => n + c.attempts, 0), solved: solvedN, closed: closedN,
+        finished, grade: finished ? Math.round((100 * solvedN) / cells.length) : null, cells,
+      }
+    }),
+  }
+}
+function apply266(fx, persona) {
+  if (!state266) initState266()
+  const C = { ...course, id: D266.course, title: 'Физика ЕГЭ — новый курс · 10А', description: null, owner_id: IDS.owner, is_template: false, copied_from_course_id: null, is_active: true, is_draft: false }
+  const G = { id: D266.group, name: '10А · новый курс физики', course_id: D266.course, teacher_id: IDS.teacherRow, curator_id: null, is_active: true, max_students: 30, schedule_days: [], schedule_time: null, type: 'group', created_at: ago(24 * 30), teachers: teachers[0], curators: null, courses: C }
+  const m = { id: D266.module, course_id: D266.course, title: 'Кинематика', order_index: 1, created_at: ago(24 * 30), courses: C, topics: [] }
+  const tps = T266.map(([title, format], k) => {
+    const t = {
+      id: D266.topic(k + 1), module_id: m.id, title, order_index: k + 1, max_score: 100, is_open: k === 4 ? null : true,
+      available_from: k === 4 ? '2026-10-20' : ago(24 * (20 - k)).slice(0, 10), kind: 'lesson', lesson_format: format,
+      ege_task_numbers: format === 'ege' ? (k === 5 ? [1, 2] : [26]) : [], source_template_id: null, created_at: ago(24 * 30),
+    }
+    m.topics.push(t)
+    return { ...t, modules: { ...m, topics: undefined } }
+  })
+  const cur = tps[3]
+  const items = [
+    { id: U('6', 266000), topic_id: cur.id, kind: 'video', title: 'Видео-разбор', content: null, position: 1, is_visible: true, section: 'theory', url: 'https://iframe.mediadelivery.net/embed/763334/00000000-0000-4000-8000-00000000266a', storage_path: null, file_name: null, mime_type: null, size_bytes: null, track: 'ege', subtopic_code: null, subtopic_title: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200) },
+    ...[['theory', 'Теория'], ['tasks', 'Задачи урока'], ['worksheet_tasks', 'Рабочий лист'], ['task_solution', 'Решения задач урока']].map(([section, title], q) => ({
+      id: U('6', 266001 + q), topic_id: cur.id, kind: 'file', title, content: null, position: q + 2, is_visible: true, section, url: null,
+      storage_path: `physics-new/1.4.1/${section}.pdf`, file_name: `${section}.pdf`, mime_type: 'application/pdf', size_bytes: 380000, track: 'ege', subtopic_code: null, subtopic_title: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200),
+    })),
+  ]
+  // ДЗ-носитель: обычное 100-балльное ДЗ урока с флагом autocheck, выдано (тема открыта).
+  const hw = { id: D266.hw, topic_id: cur.id, title: 'Задачи с автопроверкой', instructions: null, grade_scale: 'hundred', due_at: null, is_published: true, autocheck: true, opens_at: null, closes_at: null, created_by: IDS.owner, created_at: ago(200), updated_at: ago(200), topics: cur, topic: cur }
+
+  fx.tables.courses = [...fx.tables.courses, C]
+  fx.tables.groups = [...fx.tables.groups, G]
+  fx.tables.modules = [...fx.tables.modules, m]
+  fx.tables.topics = [...fx.tables.topics, ...tps]
+  fx.tables.topic_material_items = [...fx.tables.topic_material_items, ...items]
+  fx.tables.topic_homework = [...fx.tables.topic_homework, hw]
+  fx.tables.group_students = [...fx.tables.group_students,
+    { id: U('f', 2661), group_id: D266.group, student_id: IDS.studentRow, joined_at: ago(24 * 20), groups: G, students: students[0] }]
+
+  const staff = persona === 'o266'
+  fx.rpc.topic_autocheck_state = (body) => (body.p_topic_id === cur.id ? acState266(staff) : { topic_id: body.p_topic_id, is_staff: staff, tasks: [], total: 0, solved: 0, closed: 0, finished: false, grade: null })
+  fx.rpc.topic_autocheck_results = (body) => (staff && body.p_topic_id === cur.id ? results266() : new Error('42501: Нет прав на этот курс'))
+  fx.rpc.topic_autocheck_check = (body) => {
+    if (staff) return new Error('42501: Отвечать может только ученик курса')
+    const t = AC266_TASKS.find(x => D266.task(x.n) === body.p_task_id)
+    if (!t) return new Error('42501: Нет доступа к этой задаче')
+    const ans = state266.answers[t.n]
+    if (ans.some(a => a.correct) || ans.length >= 3) return new Error('AUTOCHECK_CLOSED: задача уже закрыта — попыток больше нет')
+    const ok = acVerdict(t, body.p_answer ?? '')
+    if (ok === null) return new Error(`AUTOCHECK_FORMAT: ${t.type === 'number' ? 'введите число' : 'введите цифры ответа'}`)
+    ans.push({ answer: String(body.p_answer).trim(), correct: ok })
+    const st = acState266(false)
+    return { task_id: body.p_task_id, correct: ok, attempts_used: ans.length, attempts_left: Math.max(3 - ans.length, 0), closed: ok || ans.length >= 3, grade: st.grade, state: st }
+  }
+  fx.rpc.topic_autocheck_reorder = 0
 }
