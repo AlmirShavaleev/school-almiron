@@ -1,7 +1,6 @@
 цепочка §265 (как на проде) + журнал ДЗ §250 + normalize_variant_answer: ok
 data 266: ok
-PENDING_266 (1): ok
-PENDING_266 (2, повтор): ok
+§266 (9 применённых частей + PENDING_266_delete): ok
 Null display is "∅".
 === 0. Сравнение ответа (чистые функции): число — запятая/точка, пробелы, «−», допуск; цифры — порядок
     raw    | number_of 
@@ -96,19 +95,19 @@ BEGIN
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:86: ERROR:  В уроке уже есть ДЗ с файлами или работами учеников — задачи с автопроверкой его не заменят. Уберите это ДЗ или загрузите задачи в другой урок.
 CONTEXT:  PL/pgSQL function _topic_autocheck_ensure_homework(uuid) line 14 at RAISE
 SQL statement "SELECT public._topic_autocheck_ensure_homework(p_topic_id)"
-PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 86 at PERFORM
+PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 85 at PERFORM
 ROLLBACK
 BEGIN
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:89: ERROR:  Задачи с автопроверкой — только в уроке, не в проверочной или контрольной
-CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 26 at RAISE
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 25 at RAISE
 ROLLBACK
 BEGIN
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:92: ERROR:  Задача x: ответ из цифр должен быть строкой цифр
-CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 42 at RAISE
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 41 at RAISE
 ROLLBACK
 BEGIN
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:95: ERROR:  Задача x: у числового ответа нет значения
-CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 39 at RAISE
+CONTEXT:  PL/pgSQL function topic_autocheck_import(uuid,jsonb) line 38 at RAISE
 ROLLBACK
 --- персонал курса (преподаватель класса) может загрузить в свой урок
 BEGIN
@@ -449,7 +448,7 @@ UPDATE 1
 (2 rows)
 
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:295: ERROR:  new row for relation "topics" violates check constraint "topics_lesson_format_check"
-DETAIL:  Failing row contains (00000000-0000-4000-8000-000000070001, 00000000-0000-4000-8000-0000000e0000, 1.4.1 Скорость, путь и время, 1, null, null, null, null, 2026-10-05 21:19:57.648482+00, lesson, bad).
+DETAIL:  Failing row contains (00000000-0000-4000-8000-000000070001, 00000000-0000-4000-8000-0000000e0000, 1.4.1 Скорость, путь и время, 1, null, null, null, null, 2026-10-05 21:41:25.346291+00, lesson, bad).
 ROLLBACK
 === 13. Повторный прогон PENDING не задел данные: задачи и ответы на месте
  tasks_total | answers_total | carriers 
@@ -460,5 +459,5 @@ ROLLBACK
 === 14. Прямая вставка 4-й попытки даже владельцем таблицы — CHECK attempt_no 1..3
 BEGIN
 psql:/home/claude/agents/a266/repo/supabase/tests/avtoproverka_266/20_probes.sql:303: ERROR:  new row for relation "topic_autocheck_answers" violates check constraint "topic_autocheck_answers_attempt_no_check"
-DETAIL:  Failing row contains (e4459ffd-37a1-43b4-8bce-32c4d8d7d618, 5c6e1a49-b146-48a3-b44e-aeea48bb7378, 00000000-0000-4000-8000-0000000000b1, 4, 8, t, 2026-10-05 21:19:57.990342+00).
+DETAIL:  Failing row contains (97d23d0f-e4cc-47e4-884e-d669a61baef5, f754cb56-1e2c-4688-bc18-027e7f41df0a, 00000000-0000-4000-8000-0000000000b1, 4, 8, t, 2026-10-05 21:41:25.873379+00).
 ROLLBACK

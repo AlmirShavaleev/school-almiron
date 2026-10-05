@@ -45,6 +45,15 @@ $Q -f $S221/00_slice.sql && $Q -f $S240/05_slice_240.sql \
  && $Q -1 -f $R/20260803163437_normalize_variant_answer_trim_after_collapsing_spaces.sql \
  && echo "цепочка §265 (как на проде) + журнал ДЗ §250 + normalize_variant_answer: ok" \
  && $Q -f $S/10_data_266.sql && echo "data 266: ok" \
- && $Q -1 -f $R/PENDING_266.sql && echo "PENDING_266 (1): ok" \
- && $Q -1 -f $R/PENDING_266.sql && echo "PENDING_266 (2, повтор): ok" \
+ && $Q -1 -f $R/20261005213005_trenirovochnye_uroki_tablicy.sql \
+ && $Q -1 -f $R/20261005213414_trenirovochnye_uroki_sravnenie_otveta.sql \
+ && $Q -1 -f $R/20261005213729_trenirovochnye_uroki_prava.sql \
+ && $Q -1 -f $R/20261005213740_trenirovochnye_uroki_fajly.sql \
+ && $Q -1 -f $R/20261005213805_trenirovochnye_uroki_ocenka.sql \
+ && $Q -1 -f $R/20261005213836_trenirovochnye_uroki_uchenik.sql \
+ && $Q -1 -f $R/20261005213906_trenirovochnye_uroki_zagruzka.sql \
+ && $Q -1 -f $R/20261005213946_trenirovochnye_uroki_kopirovanie.sql \
+ && $Q -1 -f $R/20261005214041_trenirovochnye_uroki_dostup_funkcij.sql \
+ && $Q -1 -f $R/PENDING_266_delete.sql \
+ && echo "§266 (9 применённых частей + PENDING_266_delete): ok" \
  && psql -h $H -p $PT -U postgres probe266 -f $S/20_probes.sql 2>&1
