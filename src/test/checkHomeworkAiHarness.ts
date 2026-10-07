@@ -77,7 +77,8 @@ function resultOf(call: DbCall): Result {
   return { data: data ?? [], error: null }
 }
 
-const CHAIN_OPS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'limit', 'order', 'single', 'maybeSingle'] as const
+// `not` — §222b (check-mock-exam-ai убирает устаревшие предложения).
+const CHAIN_OPS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'not', 'limit', 'order', 'single', 'maybeSingle'] as const
 
 function queryBuilder(call: DbCall): Record<string, unknown> {
   const builder: Record<string, unknown> = {}
