@@ -34,6 +34,6 @@ $Q -f $S221/00_slice.sql && $Q -f $S221/05_slice_219.sql && $Q -f $S221/06b_slic
  && $Q -f $S229/10_data_229.sql \
  && $Q -f $S231/10_data_231.sql \
  && $Q -f $R/20260926220159_mock_exam_rights.sql \
- && $Q -1 -f $R/PENDING_222b.sql && $Q -1 -f $R/PENDING_222b.sql && echo "PENDING_222b applied twice: ok" \
+ && $Q -1 -f $R/20261007171207_mock_exam_ai_222b.sql && $Q -1 -f $R/20261007171207_mock_exam_ai_222b.sql && echo "PENDING_222b applied twice: ok" \
  && $Q -f $S/10_data_222b.sql \
  && psql -h $H -p $PT -U postgres probe222b -f $S/20_probes.sql

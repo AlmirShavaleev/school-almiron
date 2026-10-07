@@ -7,7 +7,7 @@
 // ЧЕРНОВИК в mock_exam_ai_suggestions: в mock_exam_task_scores ИИ не пишет
 // никогда, балл ставит человек кнопкой «Принять» и обычным сохранением.
 // Ошибки — в mock_exam_ai_runs.last_error: только оттуда преподаватель узнает,
-// что чинить. Ученик не видит ничего (RLS, PENDING_222b.sql).
+// что чинить. Ученик не видит ничего (RLS, 20261007171207_mock_exam_ai_222b.sql).
 //
 // Вход: POST { mock_exam_id, student_ids?: uuid[] } с Authorization: Bearer <JWT>.
 // student_ids нет — «у всех»: база выберет учеников с фото и без предложений.
