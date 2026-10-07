@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { MinusToggle } from '@/components/ui/MinusToggle'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
@@ -86,6 +87,7 @@ function AutocheckTaskCard({
   preview: boolean
 }) {
   const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
   const inputId = `autocheck-${task.id}`
@@ -132,6 +134,7 @@ function AutocheckTaskCard({
         <form onSubmit={submit} className="flex flex-wrap items-center gap-2" noValidate>
           <label htmlFor={inputId} className="sr-only">Ответ к задаче {n}</label>
           <input
+            ref={inputRef}
             id={inputId}
             data-testid="autocheck-input"
             inputMode={task.answerType === 'number' ? 'decimal' : 'numeric'}
@@ -145,6 +148,16 @@ function AutocheckTaskCard({
             aria-invalid={message?.tone === 'bad' ? true : undefined}
             className="min-h-11 w-32 rounded-lg border-[1.5px] border-graphite-300 bg-white px-3 py-1.5 text-base tabular-nums text-graphite-900 placeholder-graphite-400 focus:border-primary-600 focus:outline-none focus:ring-4 focus:ring-primary-100 disabled:bg-graphite-50 sm:min-h-9 sm:text-[15px]"
           />
+          {task.answerType === 'number' && !preview && (
+            <MinusToggle
+              value={value}
+              getInput={() => inputRef.current}
+              onChange={v => { setValue(v); if (message) setMessage(null) }}
+              disabled={busy}
+              testid="autocheck-minus"
+              className="min-h-11 sm:h-9 sm:min-h-9"
+            />
+          )}
           {task.unit && <span className="text-sm text-graphite-500">{task.unit}</span>}
           <Button
             type="submit"
