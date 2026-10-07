@@ -206,7 +206,9 @@ Deno.serve(async (req) => {
         const criteriaPath = variant ? variant.criteria_path : null
         const [solution, criteria] = await Promise.all([
           textOf(solutionPath, 'решение', SOLUTION_LIMIT),
-          textOf(criteriaPath, 'критерии', CRITERIA_LIMIT),
+          criteriaPath
+            ? textOf(criteriaPath, 'критерии', CRITERIA_LIMIT)
+            : criteriaTextOf(admin, variant?.id ?? null, CRITERIA_LIMIT),
         ])
         const outcome = await checkStudent(admin, ai, {
           examId, studentId, title: String(e.title ?? 'Пробник'), tasks,
@@ -449,7 +451,23 @@ async function loadFileText(
   return failed(describeParseFailure(reasons, label))
 }
 
-function guessMime(file: { storage_path: string; file_name: string | null }): string {
+/**
+ * Критерии варианта ТЕКСТОМ, без PDF (§222b.1): строка кэша с ключом
+ * `criteria-text:<id варианта>` в mock_exam_file_text_cache (таблица только
+ * для сервисного ключа — ученик критерии не увидит). Так критерии кладёт
+ * оркестратор, когда файла нет. PDF в criteria_path главнее.
+ */
+async function criteriaTextOf(admin: Admin, variantId: string | null, limit: number): Promise<FileText> {
+  const none: FileText = { text: '', truncated: false, state: 'missing', error: null }
+  if (!variantId) return none
+  const { data } = await admin.from('mock_exam_file_text_cache')
+    .select('text').eq('storage_path', `criteria-text:${variantId}`).maybeSingle()
+  const text = String((data as { text?: unknown } | null)?.text ?? '').trim()
+  if (!text) return none
+  return { ...truncateReference(text, limit), state: 'used', error: null }
+}
+
+function guessMime(file:{ storage_path: string; file_name: string | null }): string {
   const name = (file.file_name ?? file.storage_path).toLowerCase()
   if (name.endsWith('.pdf')) return 'application/pdf'
   if (name.endsWith('.png')) return 'image/png'

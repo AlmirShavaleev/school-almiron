@@ -186,4 +186,12 @@ describe('check-mock-exam-ai', () => {
     // Критерии варианта 1 — тоже в промпте.
     expect(prompt).toContain('КРИТЕРИИ ОЦЕНИВАНИЯ')
   })
+
+  it('§222b.1: у варианта без PDF критериев — критерии текстом из кэша по ключу criteria-text:<вариант>', async () => {
+    await handler(post({ mock_exam_id: EX, student_ids: [S1] }))
+    const cacheReads = touched('mock_exam_file_text_cache').filter(c => firstOp(c) === 'select')
+    expect(cacheReads.some(c => c.ops.some(op => op[0] === 'eq' && op[1] === 'storage_path' && op[2] === 'criteria-text:v2'))).toBe(true)
+    const prompt = (state.fetches[0].body as { messages: { content: { text?: string }[] }[] }).messages[0].content[0].text!
+    expect(prompt).toContain('КРИТЕРИИ ОЦЕНИВАНИЯ')
+  })
 })
