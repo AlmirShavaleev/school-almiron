@@ -1,0 +1,80 @@
+PENDING_222b applied twice: ok
+CREATE TABLE
+INSERT 0 8
+GRANT
+CREATE TABLE
+GRANT
+CREATE TABLE
+INSERT 0 7
+INSERT 0 41
+DO
+DO
+=================== §222b: кто × действие → ожидаемо / факт ===================
+ n  | who  |                                     action                                     |                                                                                                                      actual                                                                                                                      | verdict 
+----+------+--------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------
+  1 | ADM  | предложения: все 2                                                             | rows=2                                                                                                                                                                                                                                           | ok
+  2 | T11A | предложения: 1 своей группы (№6)                                               | rows=1                                                                                                                                                                                                                                           | ok
+  3 | OWN  | предложения: 1 (владелец курса)                                                | rows=1                                                                                                                                                                                                                                           | ok
+  4 | CUR  | предложения: 1 (куратор курса читает)                                          | rows=1                                                                                                                                                                                                                                           | ok
+  5 | T11B | предложения: только своей 11Б, чужих №6 — нет                                  | rows=1 ; rows=0                                                                                                                                                                                                                                  | ok
+  6 | S1   | ученик: своих предложений не видит                                             | rows=0                                                                                                                                                                                                                                           | ok
+  7 | S53  | ученик 11Б: своих предложений не видит                                         | rows=0                                                                                                                                                                                                                                           | ok
+  8 | ANON | anon: нет права                                                                | ERR 42501: permission denied for table mock_exam_ai_suggestions                                                                                                                                                                                  | ok
+  9 | ADM  | состояние: все 2                                                               | rows=2                                                                                                                                                                                                                                           | ok
+ 10 | T11A | состояние: 1 своей группы                                                      | rows=1                                                                                                                                                                                                                                           | ok
+ 11 | CUR  | состояние: 1 (куратор читает)                                                  | rows=1                                                                                                                                                                                                                                           | ok
+ 12 | T11B | состояние: только своей 11Б                                                    | rows=0                                                                                                                                                                                                                                           | ok
+ 13 | S1   | ученик: состояния не видит                                                     | rows=0                                                                                                                                                                                                                                           | ok
+ 14 | T11A | кэш текста PDF: нет права                                                      | ERR 42501: permission denied for table mock_exam_file_text_cache                                                                                                                                                                                 | ok
+ 15 | ADM  | кэш текста PDF: нет права и админу из клиента                                  | ERR 42501: permission denied for table mock_exam_file_text_cache                                                                                                                                                                                 | ok
+ 16 | T11A | вставить предложение своей группе                                              | rows=1                                                                                                                                                                                                                                           | ok
+ 17 | T11A | поправить своё предложение                                                     | rows=1                                                                                                                                                                                                                                           | ok
+ 18 | T11A | удалить своё предложение                                                       | rows=1                                                                                                                                                                                                                                           | ok
+ 19 | T11A | балл больше максимума — отказ                                                  | ERR 23514: new row for relation "mock_exam_ai_suggestions" violates check constraint "mock_exam_ai_su                                                                                                                                            | ok
+ 20 | CUR  | куратор: вставить — отказ                                                      | ERR 42501: new row violates row-level security policy for table "mock_exam_ai_suggestions"                                                                                                                                                       | ok
+ 21 | CUR  | куратор: поправить/удалить — 0 строк                                           | rows=0 ; rows=0                                                                                                                                                                                                                                  | ok
+ 22 | T11B | посторонний: вставить в №6 — отказ                                             | ERR 42501: new row violates row-level security policy for table "mock_exam_ai_suggestions"                                                                                                                                                       | ok
+ 23 | T11B | посторонний: поправить/удалить №6 — 0 строк                                    | rows=0 ; rows=0                                                                                                                                                                                                                                  | ok
+ 24 | S1   | ученик: вставить себе — отказ                                                  | ERR 42501: new row violates row-level security policy for table "mock_exam_ai_suggestions"                                                                                                                                                       | ok
+ 25 | S1   | ученик: поправить/удалить — 0 строк                                            | rows=0 ; rows=0                                                                                                                                                                                                                                  | ok
+ 26 | T11A | состояние: вставить напрямую — нет права                                       | ERR 42501: permission denied for table mock_exam_ai_runs                                                                                                                                                                                         | ok
+ 27 | T11A | состояние: поправить напрямую — нет права                                      | ERR 42501: permission denied for table mock_exam_ai_runs                                                                                                                                                                                         | ok
+ 28 | ADM  | состояние: удалить напрямую — нет права                                        | ERR 42501: permission denied for table mock_exam_ai_runs                                                                                                                                                                                         | ok
+ 29 | T11A | список: S1 в очередь (зависший прогон закрыт сторожем), S2 без фото, S53 чужой | [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000051"}, {"outcome": "no_photos", "student_id": "20000000-0000-0000-0000-000000000052"}, {"outcome": "not_in_group", "student_id": "20000000-0000-0000-0000-000000000053"}] | ok
+ 30 | T11A | после заявки S1 — queued, прежняя ошибка стёрта                                | rows=1 ; rows=1                                                                                                                                                                                                                                  | ok
+ 31 | T11A | «у всех»: только S4 (у S1 предложения уже есть, у S2 фото нет)                 | [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000054"}]                                                                                                                                                                    | ok
+ 32 | T11A | повторная заявка поставленного — снова queued (функция его подхватит)          | [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000054"}] ; [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000054"}]                                                                                    | ok
+ 33 | OWN  | владелец курса (teacher) ставит в очередь                                      | [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000054"}]                                                                                                                                                                    | ok
+ 34 | T11B | идущая проверка своей 11Б — второй раз не ставится                             | [{"outcome": "running", "student_id": "20000000-0000-0000-0000-000000000053"}]                                                                                                                                                                   | ok
+ 35 | ADM  | админ ставит в очередь чужую группу                                            | [{"outcome": "queued", "student_id": "20000000-0000-0000-0000-000000000054"}]                                                                                                                                                                    | ok
+ 36 | ADM  | пробник без группы — отказ словами                                             | ERR 22023: У пробника нет группы — проверять некого                                                                                                                                                                                              | ok
+ 37 | CUR  | куратор: заявка — отказ                                                        | ERR 42501: Нет доступа к этому пробнику                                                                                                                                                                                                          | ok
+ 38 | T11B | посторонний: заявка на №6 — отказ                                              | ERR 42501: Нет доступа к этому пробнику                                                                                                                                                                                                          | ok
+ 39 | S1   | ученик: заявка на свою работу — отказ                                          | ERR 42501: Нет доступа к этому пробнику                                                                                                                                                                                                          | ok
+ 40 | ANON | anon: функция не зовётся                                                       | ERR 42501: permission denied for function mock_exam_ai_request_check                                                                                                                                                                             | ok
+ 41 | T11A | больше 200 учеников за раз — отказ                                             | ERR 22023: Слишком много учеников за один раз                                                                                                                                                                                                    | ok
+
+--- Итог
+ probes | ok | fail 
+--------+----+------
+     41 | 41 |    0
+
+--- После прогона данные не тронуты (все пробы откатились)
+ suggestions |      runs       | task_scores 
+-------------+-----------------+-------------
+           2 | running,running |          57
+
+--- Политики §222b
+        tablename         |               policyname               |  cmd   |      roles      
+--------------------------+----------------------------------------+--------+-----------------
+ mock_exam_ai_runs        | mock_exam_ai_runs_staff_select         | SELECT | {authenticated}
+ mock_exam_ai_suggestions | mock_exam_ai_suggestions_manage_delete | DELETE | {authenticated}
+ mock_exam_ai_suggestions | mock_exam_ai_suggestions_manage_insert | INSERT | {authenticated}
+ mock_exam_ai_suggestions | mock_exam_ai_suggestions_manage_update | UPDATE | {authenticated}
+ mock_exam_ai_suggestions | mock_exam_ai_suggestions_staff_select  | SELECT | {authenticated}
+
+--- Функция заявки: anon не зовёт, authenticated — да
+          proname           | anon | authenticated | definer 
+----------------------------+------+---------------+---------
+ mock_exam_ai_request_check | f    | t             | t
+
