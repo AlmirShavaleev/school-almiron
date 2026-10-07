@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { MinusToggle } from '@/components/ui/MinusToggle'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Camera, Clock, FileText, Images, Loader2, Lock, Send, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -336,6 +337,7 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
   const [saved, setSaved] = useState<{ kind: 'idle' | 'saving' | 'ok' | 'error'; text: string }>(
     state.updated_at && state.answers.some(a => a) ? { kind: 'ok', text: `Сохранено в ${mskTime(state.updated_at)}` } : { kind: 'idle', text: '' })
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+  const inputs = useRef<Record<number, HTMLInputElement | null>>({})
 
   useEffect(() => () => { Object.values(timers.current).forEach(clearTimeout) }, [])
 
@@ -383,6 +385,7 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
           <label key={i} className={cn('flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100', !editable && 'bg-slate-50')}>
             <span className="min-w-[26px] font-mono text-[13px] text-graphite-500">№{i + 1}</span>
             <input
+              ref={el => { inputs.current[i] = el }}
               value={v}
               onChange={e => change(i, e.target.value)}
               onBlur={() => { void flush(i) }}
@@ -394,6 +397,15 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
               data-testid="mock-lesson-answer"
               className="min-w-0 flex-1 border-0 bg-transparent py-1 font-mono text-base text-graphite-900 focus:outline-none disabled:text-graphite-700"
             />
+            {editable && (
+              <MinusToggle
+                value={v}
+                onChange={next => change(i, next)}
+                getInput={() => inputs.current[i] ?? null}
+                testid="mock-lesson-minus"
+                className="h-8 min-w-[2rem] rounded-md px-1 text-base"
+              />
+            )}
           </label>
         ))}
       </div>

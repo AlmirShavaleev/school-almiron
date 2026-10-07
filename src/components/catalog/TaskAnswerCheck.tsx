@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { MinusToggle } from '@/components/ui/MinusToggle'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { toast } from '@/store/toastStore'
 import { cn } from '@/utils/cn'
@@ -28,6 +29,7 @@ export function TaskAnswerCheck({ taskId, state, onCheck, inputLabel = 'Ваш �
   showHint?: boolean
 }) {
   const [answer, setAnswer] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [last, setLast] = useState<{ result: CheckResult; change: ForecastChange | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +63,9 @@ export function TaskAnswerCheck({ taskId, state, onCheck, inputLabel = 'Ваш �
           onSubmit={e => { e.preventDefault(); void submit() }}
         >
           <label htmlFor={inputId} className="sr-only">{inputLabel}</label>
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
           <input
+            ref={inputRef}
             id={inputId}
             data-testid="task-answer-input"
             type="text"
@@ -71,8 +75,10 @@ export function TaskAnswerCheck({ taskId, state, onCheck, inputLabel = 'Ваш �
             value={answer}
             placeholder={inputLabel}
             onChange={e => { setAnswer(e.target.value); setError(null) }}
-            className="h-10 w-full min-w-0 rounded-xl border border-graphite-300 bg-white px-3 text-[15px] font-semibold text-graphite-950 placeholder:font-normal placeholder:text-graphite-400 focus:outline-none focus:ring-2 focus:ring-primary-400 sm:w-48"
+            className="h-10 w-full min-w-0 flex-1 rounded-xl border border-graphite-300 bg-white px-3 text-[15px] font-semibold text-graphite-950 placeholder:font-normal placeholder:text-graphite-400 focus:outline-none focus:ring-2 focus:ring-primary-400 sm:w-48 sm:flex-none"
           />
+          <MinusToggle value={answer} getInput={() => inputRef.current} onChange={v => { setAnswer(v); setError(null) }} testid="task-answer-minus" />
+          </div>
           <button
             type="submit"
             disabled={busy}
