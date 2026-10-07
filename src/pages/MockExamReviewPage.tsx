@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Check, FileText, Loader2, RotateCw, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, FileText, Loader2, RotateCw, Sparkles, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { useMockExamWorks, type WorksExam, type WorksStudent } from '@/hooks/useMockExamWorks'
+import { useMockExamAi, type MockExamAi } from '@/hooks/useMockExamAi'
 import { useSignedPdf, type SignedPdfState } from '@/hooks/useSignedPdf'
 import { PdfPageView } from '@/components/pdf/PdfPageView'
 import { isPdfFile } from '@/lib/mockExamVariants'
@@ -14,6 +15,10 @@ import { canNotify, notifyState, formatSentAt } from '@/lib/mockExamNotify'
 import {
   keyToPoints, markCounts, missingNote, nextToReview, reviewPosition, reviewTotals, sentLine, taskMark, workRows, type WorkRow,
 } from '@/lib/mockExamV3'
+import {
+  AI_CONFIDENCE_LABEL, acceptAllAi, aiPointsLine, aiRunState, aiStatusLine, aiUsable, firstRegion, isAiActive, regionsOnSheet,
+  suggestionsByTask, type AiRun, type AiRunState, type AiSuggestion,
+} from '@/lib/mockExamAi'
 import { plural } from '@/lib/plural'
 import { cn } from '@/utils/cn'
 
@@ -24,9 +29,16 @@ import { cn } from '@/utils/cn'
  * в центре — фото второй части (вкладки, масштаб, повернуть); справа — номера:
  * первая часть — ответ ученика рядом с ключом и балл ключа (исправить можно:
  * клетка перестаёт быть «авто», §221), вторая — кнопки 0…максимум шаблона.
- * Выбранный номер раскрыт: максимум, ответ ключа или решение PDF, место под
- * подсказку ИИ (этап Б, §222 — вызова ИИ нет). Клавиши: цифра ставит балл
- * выбранному, ↑↓ — номера, Delete — очистить.
+ * Выбранный номер раскрыт: максимум, ответ ключа или решение PDF, предложение
+ * ИИ (§222b). Клавиши: цифра ставит балл выбранному, ↑↓ — номера, Delete —
+ * очистить.
+ *
+ * §222b, этап Б. У номеров второй части — предложение ИИ «ИИ: 2 из 3» с
+ * уверенностью и комментарием; «Принять» кладёт балл в клетку как ручной ввод
+ * (в базу — обычным «Сохранить»), «Принять все предложения ИИ» — только в
+ * пустые клетки, поставленные баллы не трогает. Рамки предложения выбранного
+ * номера — поверх фото. «Проверить ИИ» и статус — над номерами. Ученик ничего
+ * из этого не видит (RLS), уведомление — по-прежнему только «Уведомить».
  *
  * Сохранение — существующей `save_mock_exam_grid` строкой ученика целиком;
  * «Уведомить» — `notify_mock_exam_results(exam, [ученик])`, только когда все
@@ -35,6 +47,7 @@ import { cn } from '@/utils/cn'
 export function MockExamReviewPage() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>()
   const works = useMockExamWorks(id)
+  const ai = useMockExamAi(id)
   const { exam, students, key, variants, loading, error } = works
   const student = students.find(s => s.id === studentId) ?? null
 
@@ -51,18 +64,19 @@ export function MockExamReviewPage() {
   }
   // §229. Ключ — варианта ученика; у пробника без вариантов — прежний ключ пробника.
   const answerKey = student.variant ? student.variant.key : key
-  return <Review key={student.id} exam={exam} students={students} student={student} answerKey={answerKey} variantCount={variants.length} works={works} />
+  return <Review key={student.id} exam={exam} students={students} student={student} answerKey={answerKey} variantCount={variants.length} works={works} ai={ai} />
 }
 
 type Works = ReturnType<typeof useMockExamWorks>
 
-function Review({ exam, students, student, answerKey, variantCount, works }: {
+function Review({ exam, students, student, answerKey, variantCount, works, ai }: {
   exam: WorksExam
   students: WorksStudent[]
   student: WorksStudent
   answerKey: (string | null)[] | null
   variantCount: number
   works: Works
+  ai: MockExamAi
 }) {
   const navigate = useNavigate()
   const tpl = exam.template!
@@ -77,6 +91,7 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
   const [busy, setBusy] = useState<'save' | 'next' | 'notify' | null>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [leaveTo, setLeaveTo] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   // Окно на экране проверки уже закрыто — «сейчас» достаточно взять один раз.
   const [openedAt] = useState(() => Date.now())
@@ -90,6 +105,17 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
   const ns = notifyState(student.result)
   const worksUrl = `/mock-exams/${exam.id}?tab=works`
   const nextUrl = next ? `/mock-exams/${exam.id}/review/${next.id}` : null
+
+  // §222b. Предложения ИИ этого ученика и состояние его проверки.
+  const aiByTask = useMemo(() => suggestionsByTask(ai.suggestions, student.id), [ai.suggestions, student.id])
+  const aiRun = ai.runs.find(r => r.student_id === student.id) ?? null
+  const dbState = aiRunState(aiRun, ai.now)
+  // Вызов ещё идёт, а строка не перечитана — «в очереди», а не прошлый итог.
+  const aiState: AiRunState = ai.inFlight.has(student.id) && !isAiActive(dbState) ? 'queued' : dbState
+  const aiActive = isAiActive(aiState)
+  const aiPart2 = p1End < n && ai.available
+  const aiAcceptable = acceptAllAi(points, aiByTask, p1End, maxPts).accepted.length
+  const selSuggestion = sel >= p1End ? aiByTask.get(sel + 1) ?? null : null
 
   const setAt = useCallback((i: number, v: number | null) => {
     setPoints(prev => { const nx = prev.slice(); nx[i] = v; return nx })
@@ -133,6 +159,29 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
     works.reload()
     setStatus({ kind: 'ok', text: totals.complete ? 'Сохранено. Ученик ничего не получил — отправьте кнопкой «Уведомить».' : `Сохранено. ${missingNote(points, n)[0].toUpperCase()}${missingNote(points, n).slice(1)}.` })
     return true
+  }
+
+  function acceptAi(i: number, s: AiSuggestion) {
+    setSel(i)
+    setAt(i, s.points)
+  }
+
+  function acceptAllSuggestions() {
+    const r = acceptAllAi(points, aiByTask, p1End, maxPts)
+    if (r.accepted.length === 0) return
+    setPoints(r.points)
+    setStatus({ kind: 'ok', text: `Принято предложений ИИ: ${r.accepted.length} (${r.accepted.map(t => `№${t}`).join(', ')}). Проверьте и нажмите «Сохранить».` })
+  }
+
+  async function runAi() {
+    setAiError(null)
+    setStatus(null)
+    const r = await ai.request([student.id])
+    if (r.error) { setAiError(r.error); return }
+    if (r.queued.length === 0) {
+      const o = r.skipped[0]?.outcome
+      setAiError(o === 'no_photos' ? 'Фото второй части нет — ИИ проверять нечего.' : o === 'running' ? 'ИИ уже проверяет эту работу.' : 'Проверка не запустилась.')
+    }
   }
 
   async function notifyOne() {
@@ -202,9 +251,14 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
       )}
 
       <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_400px]">
-        <PhotoPane photos={student.photoList} />
+        <PhotoPane photos={student.photoList} suggestion={aiPart2 ? selSuggestion : null} />
         <section className="flex max-h-none flex-col gap-1 border-t border-graphite-200 px-3 py-3.5 sm:px-[18px] lg:max-h-[calc(100vh-260px)] lg:overflow-auto lg:border-l lg:border-t-0" data-testid="mock-review-tasks" aria-label="Номера">
           <VariantFiles label={variantLabel} files={files} />
+          {aiPart2 && (
+            <AiPanel state={aiState} run={aiRun} count={aiByTask.size} acceptable={aiAcceptable} active={aiActive}
+              error={aiError && aiError !== aiRun?.last_error ? aiError : null} hasPhotos={student.photos > 0}
+              onRun={runAi} onAcceptAll={acceptAllSuggestions} />
+          )}
           <Eyebrow>Часть 1 · по ключу</Eyebrow>
           {Array.from({ length: p1End }, (_, i) => {
             const auto = !!student.auto?.[i] && points[i] === (saved[i] ?? null)
@@ -228,8 +282,12 @@ function Review({ exam, students, student, answerKey, variantCount, works }: {
             const i = p1End + k
             return (
               <div key={i}>
-                <TaskRow i={i} max={maxPts[i]} value={points[i]} selected={sel === i} onSelect={() => setSel(i)} onSet={v => { setSel(i); setAt(i, v) }} />
-                {sel === i && <Part2Expand max={maxPts[i]} solutionPath={files.solution} criteriaPath={files.criteria} onClear={() => setAt(i, null)} hasValue={points[i] != null} />}
+                <TaskRow i={i} max={maxPts[i]} value={points[i]} selected={sel === i} onSelect={() => setSel(i)} onSet={v => { setSel(i); setAt(i, v) }}
+                  aiHint={aiPart2 && aiUsable(aiByTask.get(i + 1), maxPts[i]) ? aiByTask.get(i + 1)!.points : null} />
+                {sel === i && (
+                  <Part2Expand max={maxPts[i]} solutionPath={files.solution} criteriaPath={files.criteria} onClear={() => setAt(i, null)} hasValue={points[i] != null}
+                    ai={aiPart2 ? { suggestion: aiByTask.get(i + 1) ?? null, state: aiState, value: points[i], onAccept: s => acceptAi(i, s) } : null} />
+                )}
               </div>
             )
           })}
@@ -272,7 +330,7 @@ function Eyebrow({ children, className }: { children: React.ReactNode; className
   return <div className={cn('px-2 pb-1 pt-1 font-mono text-xs font-medium uppercase tracking-[.05em] text-graphite-500', className)}>{children}</div>
 }
 
-function TaskRow({ i, max, value, selected, onSelect, onSet, answer, keyAnswer, auto, part1 }: {
+function TaskRow({ i, max, value, selected, onSelect, onSet, answer, keyAnswer, auto, part1, aiHint }: {
   i: number
   max: number
   value: number | null
@@ -283,6 +341,8 @@ function TaskRow({ i, max, value, selected, onSelect, onSet, answer, keyAnswer, 
   keyAnswer?: string | null
   auto?: boolean
   part1?: boolean
+  /** §222b. Балл, предложенный ИИ (вторая часть); null — предложения нет. */
+  aiHint?: number | null
 }) {
   const mark = taskMark(value, max)
   return (
@@ -306,7 +366,7 @@ function TaskRow({ i, max, value, selected, onSelect, onSet, answer, keyAnswer, 
             <code className="font-mono text-[13px] text-graphite-700" data-testid="mock-review-key">{keyAnswer ?? '—'}</code>
             {auto && <span className="ml-1.5 rounded bg-graphite-100 px-1 text-[11px] text-graphite-500" title="Поставлено по ключу. Исправьте, если в ключе опечатка — балл станет ручным">авто</span>}
           </>
-        ) : <>из {max}</>}
+        ) : <>из {max}{aiHint != null && <span className="text-graphite-500" data-testid="mock-review-ai-hint"> · ИИ {aiHint}</span>}</>}
       </span>
       <div className="flex gap-1" role="group" aria-label={`Балл за №${i + 1}`}>
         {Array.from({ length: max + 1 }, (_, v) => (
@@ -343,7 +403,14 @@ function VariantFiles({ label, files }: { label: string | null; files: { conditi
   )
 }
 
-function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue }: { max: number; solutionPath: string | null; criteriaPath: string | null; onClear: () => void; hasValue: boolean }) {
+interface Part2Ai {
+  suggestion: AiSuggestion | null
+  state: AiRunState
+  value: number | null
+  onAccept: (s: AiSuggestion) => void
+}
+
+function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue, ai }: { max: number; solutionPath: string | null; criteriaPath: string | null; onClear: () => void; hasValue: boolean; ai: Part2Ai | null }) {
   return (
     <div className="mb-2 ml-0 mt-1 flex flex-col gap-2 rounded-xl bg-graphite-50 px-3.5 py-3 sm:ml-[34px]" data-testid="mock-review-expand">
       <span className="text-[13px] font-semibold text-graphite-500">Максимум · {max} {plural(max, 'балл', 'балла', 'баллов')}</span>
@@ -359,20 +426,93 @@ function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue }: { m
           </SignedFileLink>
         ) : <span className="text-sm text-graphite-500">Решение не загружено — его добавляют во вкладке «Настройка».</span>}
       </div>
-      <div className="rounded-[10px] bg-verdict-part-tint px-3 py-2.5 text-sm text-verdict-part-ink" data-testid="mock-review-ai">
-        <b>Подсказка ИИ — позже (этап Б).</b> Здесь появится предложение балла с рамкой на фото; балл ставите вы.
-      </div>
+      {ai && <AiSuggestionBox max={max} ai={ai} />}
       {hasValue && <button type="button" onClick={onClear} className="self-start text-[13px] text-graphite-500 underline hover:text-graphite-900">очистить балл</button>}
     </div>
   )
 }
 
 /**
- * Фото второй части: вкладки, масштаб, поворот текущего. Рамок-пометок в этом шаге нет.
+ * §222b. Над номерами: состояние ИИ-проверки этой работы, «Проверить ИИ» и
+ * «Принять все предложения ИИ» (только в пустые клетки второй части).
+ */
+function AiPanel({ state, run, count, acceptable, active, error, hasPhotos, onRun, onAcceptAll }: {
+  state: AiRunState
+  run: AiRun | null
+  count: number
+  acceptable: number
+  active: boolean
+  error: string | null
+  hasPhotos: boolean
+  onRun: () => void
+  onAcceptAll: () => void
+}) {
+  const line = aiStatusLine(state, run, count)
+  return (
+    <div className="mb-1.5 flex flex-col gap-2 border-b border-graphite-200 px-2 pb-2.5" data-testid="mock-review-ai-panel" data-state={state}>
+      <span className={cn('inline-flex items-start gap-1.5 text-[13px]',
+        line.tone === 'error' ? 'text-verdict-bad-ink' : line.tone === 'ok' ? 'text-verdict-ok-ink' : 'text-graphite-600')} data-testid="mock-review-ai-status" role="status">
+        {line.tone === 'busy' ? <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin" aria-hidden /> : <Sparkles size={14} className="mt-0.5 shrink-0" aria-hidden />}
+        {line.text}
+      </span>
+      {state === 'done' && run?.note && <span className="text-xs text-graphite-500" data-testid="mock-review-ai-note">{run.note}</span>}
+      {error && <span className="text-[13px] text-verdict-bad-ink" data-testid="mock-review-ai-error">{error}</span>}
+      <div className="flex flex-wrap gap-2">
+        {acceptable > 0 && (
+          <Button size="sm" onClick={onAcceptAll} data-testid="mock-review-ai-accept-all"
+            title="Только в номера без балла — поставленные баллы не меняются">
+            Принять все предложения ИИ · {acceptable}
+          </Button>
+        )}
+        <Button size="sm" variant="secondary" onClick={onRun} loading={active} disabled={active || !hasPhotos} data-testid="mock-review-ai-run"
+          title={!hasPhotos ? 'Фото второй части нет' : 'Баллы ИИ — только предложение; ставите вы'}>
+          {count > 0 || state === 'done' ? 'Проверить ИИ заново' : 'Проверить ИИ'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** §222b. Предложение ИИ в раскрытом номере второй части: балл, уверенность, комментарий, «Принять». */
+function AiSuggestionBox({ max, ai }: { max: number; ai: Part2Ai }) {
+  const s = ai.suggestion
+  if (!s) {
+    const text = isAiActive(ai.state) ? 'ИИ проверяет работу…'
+      : ai.state === 'done' ? 'ИИ не предложил балла за этот номер — поставьте сами.'
+        : ai.state === 'error' || ai.state === 'stale' ? 'ИИ не проверил работу — причина над номерами.'
+          : 'ИИ ещё не проверял эту работу — кнопка «Проверить ИИ» над номерами.'
+    return <div className="rounded-[10px] bg-white px-3 py-2.5 text-sm text-graphite-600" data-testid="mock-review-ai">{text}</div>
+  }
+  const usable = aiUsable(s, max)
+  const accepted = ai.value === s.points
+  return (
+    <div className="flex flex-col gap-1.5 rounded-[10px] bg-verdict-part-tint px-3 py-2.5 text-sm text-verdict-part-ink" data-testid="mock-review-ai" data-confidence={s.confidence}>
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <b data-testid="mock-review-ai-line">{aiPointsLine(s, max)}</b>
+        <span className="text-[13px]" data-testid="mock-review-ai-confidence">· {AI_CONFIDENCE_LABEL[s.confidence]}</span>
+        {s.regions.length > 0 && <span className="text-[13px]">· рамка на фото</span>}
+      </span>
+      {s.comment && <span className="text-graphite-800" data-testid="mock-review-ai-comment">{s.comment}</span>}
+      {usable ? (
+        <Button size="sm" variant={accepted ? 'secondary' : 'primary'} className="self-start" disabled={accepted} onClick={() => ai.onAccept(s)} data-testid="mock-review-ai-accept">
+          {accepted ? <><Check size={14} aria-hidden />Принято</> : ai.value != null ? `Принять ${s.points} вместо ${ai.value}` : `Принять ${s.points}`}
+        </Button>
+      ) : (
+        <span className="text-[13px]" data-testid="mock-review-ai-unusable">Максимум номера теперь {max} — предложение устарело, поставьте сами.</span>
+      )}
+      <span className="text-xs text-graphite-500">Балл ИИ — только предложение: в работу он попадёт, когда вы его примете и сохраните.</span>
+    </div>
+  )
+}
+
+/**
+ * Фото второй части: вкладки, масштаб, поворот текущего. §222b: рамки
+ * предложения ИИ выбранного номера — поверх листа; при выборе номера фото
+ * переключается на лист его первой рамки.
  * §229: PDF вместо фото — страницы листами, вкладки «Фото N · стр. K» (до §229 на
  * месте PDF стояло «Не удалось показать изображение»: `<img>` его не рисует).
  */
-function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
+function PhotoPane({ photos, suggestion }: { photos: WorksStudent['photoList']; suggestion?: AiSuggestion | null }) {
   const [at, setAt] = useState(0)
   const [zoom, setZoom] = useState(100)
   const [turn, setTurn] = useState<Record<string, number>>({})
@@ -388,6 +528,18 @@ function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
   const sheet = sheets[Math.min(at, sheets.length - 1)] ?? null
   const deg = sheet ? (turn[sheet.key] ?? 0) : 0
   const pdfState = sheet && isPdfFile(sheet.photo) ? pdfs[sheet.photo.id] : undefined
+  // У PDF, ещё не разложенного на страницы, рамок не рисуем — не к чему привязать.
+  const boxes = sheet ? regionsOnSheet(suggestion, sheet.photo.id, isPdfFile(sheet.photo) ? (sheet.page ?? -1) : null) : []
+  const focus = firstRegion(suggestion)
+  // Состояние подправляем во время отрисовки (а не эффектом) — когда сменился
+  // номер с рамкой или PDF разложился на страницы.
+  const focusSig = focus ? `${focus.photo_id}:${focus.page}:${sheets.length}` : ''
+  const [seenFocus, setSeenFocus] = useState('')
+  if (focusSig !== seenFocus) {
+    setSeenFocus(focusSig)
+    const idx = focus ? sheets.findIndex(sh => sh.photo.id === focus.photo_id && (sh.page == null || sh.page === focus.page)) : -1
+    if (idx >= 0 && idx !== at) setAt(idx)
+  }
   return (
     <section className="flex min-w-0 flex-col gap-3 px-3 py-3.5 sm:px-[22px]" data-testid="mock-review-photos" aria-label="Фото второй части">
       {photos.filter(p => isPdfFile(p)).map(p => (
@@ -417,7 +569,7 @@ function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
           <div className="h-[62vh] overflow-auto rounded-[14px] bg-graphite-50 lg:h-[calc(100vh-330px)] lg:min-h-[420px]" data-testid="mock-review-photo">
             {sheet && (
               <div className="flex min-h-full items-start justify-center p-2" style={{ width: `${zoom}%` }}>
-                <div className={cn('transition-transform', sheet.page != null && 'w-full')} style={deg ? { transform: `rotate(${deg}deg)` } : undefined} data-rotate={deg || undefined}>
+                <div className={cn('relative transition-transform', sheet.page != null && 'w-full')} style={deg ? { transform: `rotate(${deg}deg)` } : undefined} data-rotate={deg || undefined}>
                   {!isPdfFile(sheet.photo) ? (
                     <SignedImage bucket={MOCK_EXAMS_BUCKET} path={sheet.photo.storage_path} alt={`Фото ${sheet.n} — работа ученика`} sensitive
                       className="block h-auto max-w-full rounded shadow-sm" />
@@ -431,6 +583,11 @@ function PhotoPane({ photos }: { photos: WorksStudent['photoList'] }) {
                   ) : (
                     <span className="inline-flex items-center gap-2 px-4 py-10 text-sm text-graphite-400"><Loader2 size={16} className="animate-spin" />Готовлю страницы PDF…</span>
                   )}
+                  {boxes.map((r, k) => (
+                    <div key={k} aria-hidden data-testid="mock-review-ai-region"
+                      className="pointer-events-none absolute rounded-md border-[2.5px] border-gold-500 bg-gold-300/20 shadow-[0_0_0_2px_rgba(255,255,255,.7)]"
+                      style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }} />
+                  ))}
                 </div>
               </div>
             )}

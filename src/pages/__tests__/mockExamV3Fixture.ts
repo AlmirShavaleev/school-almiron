@@ -53,6 +53,9 @@ export interface Db {
   exam: Record<string, unknown>
   tables: Record<string, unknown[]>
   rpcCalls: { fn: string; args: Record<string, unknown> }[]
+  /** §222b. Вызовы edge-функций (check-mock-exam-ai) и что они «сделали» с таблицами. */
+  invokes?: { name: string; body: Record<string, unknown> }[]
+  onInvoke?: (name: string, body: Record<string, unknown>) => void
 }
 
 /** Узкий поддельный клиент: select/eq/maybeSingle/then по таблице, rpc — в журнал. */
@@ -72,8 +75,18 @@ export function fakeSupabase(db: () => Db) {
     from,
     rpc: (fn: string, args: Record<string, unknown>) => {
       db().rpcCalls.push({ fn, args })
+      // §222b. Заявка на ИИ-проверку: все переданные — в очередь.
+      if (fn === 'mock_exam_ai_request_check') return Promise.resolve({ data: ((args.p_student_ids as string[] | null) ?? []).map(id => ({ student_id: id, outcome: 'queued' })), error: null })
       if (fn === 'notify_mock_exam_results') return Promise.resolve({ data: { sent: (args.p_student_ids as string[]).length, telegram: 0, already: 0, no_result: 0, no_profile: 0, rows: [] }, error: null })
       return Promise.resolve({ data: { changed_cells: 0 }, error: null })
+    },
+    functions: {
+      invoke: (name: string, opts: { body: Record<string, unknown> }) => {
+        const d = db()
+        ;(d.invokes ??= []).push({ name, body: opts.body })
+        d.onInvoke?.(name, opts.body)
+        return Promise.resolve({ data: { checked: 1, failed: 0, results: [], skipped: [] }, error: null })
+      },
     },
     storage: { from: () => ({ createSignedUrl: () => Promise.resolve({ data: { signedUrl: 'https://x/y' }, error: null }) }) },
   }

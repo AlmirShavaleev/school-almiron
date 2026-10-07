@@ -51,9 +51,9 @@ describe('экран проверки', () => {
     expect(task(2)).toHaveAttribute('data-mark', 'bad')
     expect(task(2)).toHaveTextContent('авто')
     expect(task(4)).toHaveAttribute('data-mark', 'unk')
-    // Первым выбран первый неоценённый номер второй части — раскрыт с местом под ИИ.
+    // Первым выбран первый неоценённый номер второй части — раскрыт с местом под ИИ (§222b: ИИ ещё не проверял).
     expect(task(4)).toHaveAttribute('data-selected', 'true')
-    expect(screen.getByTestId('mock-review-ai')).toHaveTextContent('Подсказка ИИ — позже (этап Б)')
+    expect(await screen.findByTestId('mock-review-ai')).toHaveTextContent('ИИ ещё не проверял эту работу')
     expect(screen.getByTestId('mock-review-missing')).toHaveTextContent('№4, №5 ещё не оценены')
     // Уведомить нельзя — оценено не всё.
     expect(screen.queryByTestId('mock-review-notify')).toBeNull()

@@ -4,8 +4,10 @@ import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MockExamForm } from '@/components/mockExams/MockExamForm'
 import { ExamStepper, LiveHead, WorksTable } from '@/components/mockExams/MockExamWorks'
+import { MockExamAiBar } from '@/components/mockExams/MockExamAiBar'
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
 import { useMockExamWorks } from '@/hooks/useMockExamWorks'
+import { useMockExamAi } from '@/hooks/useMockExamAi'
 import { useMockExamLive } from '@/hooks/useMockExamLive'
 import { useMockExamAway } from '@/hooks/useMockExamAway'
 import { awayLabel } from '@/lib/liveWork'
@@ -34,6 +36,8 @@ export function MockExamPage() {
   const [params, setParams] = useSearchParams()
   const works = useMockExamWorks(id)
   const { exam, students, loading, error, reload } = works
+  // §222b. Предложения ИИ по второй части — прогресс и «у всех» над «Работами».
+  const ai = useMockExamAi(id)
   const win = exam?.window ?? null
   // Монитор §224: пока окно не закрылось + догрузка фото — опрос раз в 20 с;
   // вместе с ним перечитываем работы (новые бланки, сдачи, фото).
@@ -133,6 +137,9 @@ export function MockExamPage() {
                     student_id: s.id, name: s.name, has_sheet: !!s.sheet, opened_at: null, last_seen_at: null, online: false,
                     answered: null, submitted_at: s.sheet?.submitted_at ?? null, photos: s.photos,
                   }))} />
+                )}
+                {(stage === 'checking' || stage === 'sent') && exam.template.part1_last < exam.template.max_points.length && (
+                  <MockExamAiBar ai={ai} students={students} />
                 )}
                 <WorksTable examId={exam.id} rows={rows} liveById={liveLabels} variantById={variantById} onNotify={async ids => { const r = await works.notify(ids); if (!r.error) reload(); return r }}
                   confirmOpen={confirmAll} setConfirmOpen={setConfirmAll} />
