@@ -23389,7 +23389,7 @@ regions[]}]}`; проверка кодом (`logic.ts`): номер не из в
 
 ## §269 — Переписанный каталог физики ЕГЭ на сайте: Markdown + LaTeX, ответ с допуском, рисунки в Storage (08.10.2026)
 
-**Ветка** `work/s269` от `7f0927e` (`work/s272`). Миграция — `supabase/migrations/PENDING_269_catalog_md.sql`, **НЕ применена**
+**Ветка** `work/s269` от `7f0927e` (`work/s272`). Миграция — `supabase/migrations/20261008191657_catalog_md_269.sql`, **НЕ применена**
 (только добавляющая; применять MCP `apply_migration`, после — переименовать файл по версии из `schema_migrations`).
 Загрузчик — `scripts/import-physics-catalog-v2.mjs` (+ чистые функции `scripts/physics-catalog-v2-plan.mjs`). Родня: §262
 (ответы только с сервера, права колонок), §256 (проверка ответа каталога, баллы), §266 (`autocheck_*` — сравнение числа/цифр),

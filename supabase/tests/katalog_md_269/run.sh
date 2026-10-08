@@ -32,7 +32,7 @@ $Q -f $T/glavnaya_254/00_slice_254.sql && $Q -f $T/prognoz_255/05_slice_255.sql 
  && $Q -1 -f $R/20261003155843_catalog_answers_server_part_a_functions.sql \
  && $Q -1 -f $R/20261004102949_catalog_answers_server_part_b_column_privileges.sql 2>/dev/null && echo "262a + 262b: ok" \
  && $Q -f $S/10_data_269.sql && echo "данные 269 (старые задачи): ok" \
- && $Q -1 -f $R/PENDING_269_catalog_md.sql && echo "PENDING_269 (1): ok" \
+ && $Q -1 -f $R/20261008191657_catalog_md_269.sql && echo "PENDING_269 (1): ok" \
  && $Q -f $S/12_data_md_269.sql && echo "данные 269 (Markdown): ok" \
- && $Q -1 -f $R/PENDING_269_catalog_md.sql && echo "PENDING_269 (2, повтор): ok" \
+ && $Q -1 -f $R/20261008191657_catalog_md_269.sql && echo "PENDING_269 (2, повтор): ok" \
  && psql -h $H -p $PT -U postgres probe269 -f $S/20_probes.sql 2>&1

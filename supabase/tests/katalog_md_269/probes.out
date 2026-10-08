@@ -7,11 +7,11 @@ psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/05_slice_269.sql:66: NOTI
 функции прода: ok
 262a + 262b: ok
 данные 269 (старые задачи): ok
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:181: NOTICE:  policy "catalog_tasks_select_archived" for relation "public.catalog_tasks" does not exist, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:186: NOTICE:  policy "catalog_task_assets_select_archived" for relation "public.catalog_task_assets" does not exist, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:273: NOTICE:  policy "catalog_figures_admin_write" for relation "storage.objects" does not exist, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:277: NOTICE:  policy "catalog_figures_admin_update" for relation "storage.objects" does not exist, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:281: NOTICE:  policy "catalog_figures_admin_delete" for relation "storage.objects" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:181: NOTICE:  policy "catalog_tasks_select_archived" for relation "public.catalog_tasks" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:186: NOTICE:  policy "catalog_task_assets_select_archived" for relation "public.catalog_task_assets" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:273: NOTICE:  policy "catalog_figures_admin_write" for relation "storage.objects" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:277: NOTICE:  policy "catalog_figures_admin_update" for relation "storage.objects" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:281: NOTICE:  policy "catalog_figures_admin_delete" for relation "storage.objects" does not exist, skipping
  s269_patch 
 ------------
  
@@ -54,54 +54,54 @@ psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:281: NOT
 
 PENDING_269 (1): ok
 данные 269 (Markdown): ok
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:21: NOTICE:  column "content_format" of relation "catalog_tasks" already exists, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:22: NOTICE:  column "answer_spec" of relation "catalog_tasks" already exists, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:23: NOTICE:  column "origin_external_id" of relation "catalog_tasks" already exists, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:24: NOTICE:  column "replaced_by_task_id" of relation "catalog_tasks" already exists, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:76: NOTICE:  relation "catalog_tasks_replaced_by_idx" already exists, skipping
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:328: NOTICE:  §269: catalog_check_answer(uuid,text) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:21: NOTICE:  column "content_format" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:22: NOTICE:  column "answer_spec" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:23: NOTICE:  column "origin_external_id" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:24: NOTICE:  column "replaced_by_task_id" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:76: NOTICE:  relation "catalog_tasks_replaced_by_idx" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:328: NOTICE:  §269: catalog_check_answer(uuid,text) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:343: NOTICE:  §269: submit_variant(uuid) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:343: NOTICE:  §269: submit_variant(uuid) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:360: NOTICE:  §269: answer_topic_task(uuid,uuid,text) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:360: NOTICE:  §269: answer_topic_task(uuid,uuid,text) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:379: NOTICE:  §269: preview_task_verdict(uuid,text) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:379: NOTICE:  §269: preview_task_verdict(uuid,text) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:392: NOTICE:  §269: catalog_counted_solutions(uuid) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:392: NOTICE:  §269: catalog_counted_solutions(uuid) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:405: NOTICE:  §269: student_school_points_of(uuid) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:405: NOTICE:  §269: student_school_points_of(uuid) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:416: NOTICE:  §269: student_exam_evidence_rows(uuid,timestamp with time zone) уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:416: NOTICE:  §269: student_exam_evidence_rows(uuid,timestamp with time zone) уже исправлена — пропуск
  s269_patch 
 ------------
  
 (1 row)
 
-psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:431: NOTICE:  §269: catalog_my_overview() уже исправлена — пропуск
+psql:/tmp/claude-0/amchk/supabase/migrations/20261008191657_catalog_md_269.sql:431: NOTICE:  §269: catalog_my_overview() уже исправлена — пропуск
  s269_patch 
 ------------
  
