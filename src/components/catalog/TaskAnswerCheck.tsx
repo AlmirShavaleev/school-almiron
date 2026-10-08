@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { collapseLeadingMinus } from '@/lib/answerSign'
 import { MinusToggle } from '@/components/ui/MinusToggle'
 import { VerdictMark } from '@/components/ui/VerdictMark'
 import { toast } from '@/store/toastStore'
@@ -38,7 +39,8 @@ export function TaskAnswerCheck({ taskId, state, onCheck, inputLabel = 'Ваш �
   const revealed = state?.revealed === true
 
   async function submit() {
-    const a = answer.trim()
+    // §273: «--2,3» и подобное — один минус, иначе база не узнаёт число.
+    const a = collapseLeadingMinus(answer.trim())
     if (!a) { setError('Введите ответ'); return }
     setBusy(true)
     setError(null)

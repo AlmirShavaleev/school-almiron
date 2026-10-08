@@ -18,3 +18,19 @@ describe('§267 toggleMinus', () => {
     expect(hasLeadingMinus('1-2')).toBe(false)
   })
 })
+
+import { collapseLeadingMinus } from '@/lib/answerSign'
+
+describe('§273 collapseLeadingMinus', () => {
+  it('несколько минусов в начале — один «-»', () => {
+    expect(collapseLeadingMinus('--2,3')).toBe('-2,3')
+    expect(collapseLeadingMinus('−-2,3')).toBe('-2,3')
+    expect(collapseLeadingMinus('- −2,3')).toBe('-2,3')
+    expect(collapseLeadingMinus('−2,3')).toBe('-2,3')
+  })
+  it('без минуса и с минусом не в начале — без изменений', () => {
+    expect(collapseLeadingMinus('2,3')).toBe('2,3')
+    expect(collapseLeadingMinus('1-2')).toBe('1-2')
+    expect(collapseLeadingMinus('  12')).toBe('  12')
+  })
+})
