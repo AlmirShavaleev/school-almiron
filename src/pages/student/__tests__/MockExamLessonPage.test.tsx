@@ -217,6 +217,26 @@ describe('результат', () => {
     // §270. Комментариев нет — части двумя колонками, строк комментариев нет.
     expect(screen.queryByTestId('mock-lesson-part2-comment')).toBeNull()
     expect(screen.getByTestId('mock-lesson-parts').className).toContain('md:grid-cols-2')
+    // Фото не сдавал — панели «Мои фото» нет.
+    expect(screen.queryByTestId('mock-lesson-my-photos')).toBeNull()
+  })
+
+  it('§270: после результата ученик видит свои фото отдельной панелью', async () => {
+    examState = state({
+      starts_at: iso(now - 30 * 3600_000), ends_at: iso(now - 26 * 3600_000), photos_until: iso(now - 25 * 3600_000), submitted_at: iso(now - 27 * 3600_000), notified: true,
+      photos: [
+        { id: 'ph1', storage_path: `${EXAM}/photos/s1/1.jpg`, file_name: '1.jpg', mime_type: 'image/jpeg', size_bytes: 10, position: 1, created_at: iso(now - 27 * 3600_000) },
+        { id: 'ph2', storage_path: `${EXAM}/photos/s1/2.jpg`, file_name: '2.jpg', mime_type: 'image/jpeg', size_bytes: 10, position: 2, created_at: iso(now - 27 * 3600_000) },
+      ],
+    })
+    resultState = {
+      status: 'ready', title: 'Пробник №3', notified_at: iso(now - 3600_000), score: 18, max_score: 32,
+      primary_score: 18, part1_score: 10, part2_score: 8, part1_last: 12, solution_path: null,
+      tasks: Array.from({ length: 13 }, (_, i) => ({ n: i + 1, max: 1, points: 1, answer: null, correct: null })),
+    }
+    mount()
+    await waitFor(() => expect(screen.getByTestId('mock-lesson-result')).toBeInTheDocument())
+    expect(screen.getByTestId('mock-lesson-my-photos')).toHaveTextContent('Мои фото · 2')
   })
 
   it('§270: комментарий преподавателя — строкой под номером второй части', async () => {

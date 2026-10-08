@@ -628,6 +628,20 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
           </div>
         </Panel>
       </div>
+      {/* §270. Свои фото второй части — отдельной панелью, крупно, рядом с комментариями; нажатие открывает фото целиком. */}
+      {state.photos.length > 0 && (
+        <Panel>
+          <h3 className="mb-2 inline-flex items-center gap-1.5 text-[15px] font-bold text-graphite-900" data-testid="mock-lesson-my-photos"><Images size={15} />Мои фото · {state.photos.length}</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {state.photos.map((p, i) => (
+              <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} className="block" title={`Открыть фото ${i + 1}`}>
+                <WorkFileThumb file={p} index={i} className="aspect-[3/4] h-auto w-full" />
+              </SignedFileLink>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-graphite-500">Нажми на фото, чтобы открыть целиком.</p>
+        </Panel>
+      )}
       <Panel>
         <h3 className="mb-2 text-[15px] font-bold text-graphite-900">Файлы</h3>
         <div className="flex flex-col gap-2">
@@ -636,18 +650,6 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
               <span data-testid="mock-lesson-solution" className="inline-flex items-center gap-1.5"><FileText size={15} />Решение · {fileNameFromStoragePath(result.solution_path).replace(/^\d+_/, '')}</span>
             </SignedFileLink>
           ) : <span className="text-sm text-graphite-500">Решение преподаватель ещё не загрузил.</span>}
-          {state.photos.length > 0 && (
-            <div>
-              <p className="mb-1.5 inline-flex items-center gap-1 text-sm font-semibold text-graphite-900"><Images size={14} />Мои фото · {state.photos.length}</p>
-              <div className="flex flex-wrap gap-2">
-                {state.photos.map((p, i) => (
-                  <SignedFileLink key={p.id} bucket={MOCK_EXAMS_BUCKET} url={p.storage_path} className="block">
-                    <WorkFileThumb file={p} index={i} className="h-[80px] w-[62px]" />
-                  </SignedFileLink>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </Panel>
     </div>
