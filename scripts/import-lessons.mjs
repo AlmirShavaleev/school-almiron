@@ -37,6 +37,8 @@ const SECTION_BY_LABEL = {
   'Конспект':             'notes',
   'Задачи урока':         'tasks',
   'Решение задач урока':  'task_solution',
+  // §275: у наших уроков «Формат ЕГЭ» седьмой файл называется так
+  'Решения урока':        'task_solution',
   'Рабочий лист урока':   'worksheet_tasks',
   'ДЗ - рабочий лист':    'worksheet_homework',
   'Решение ДЗ':           'solution',
@@ -126,6 +128,8 @@ const FLAGS = {
   section:      getArg('--section') ?? 'theory',
   subject:      getArg('--subject') ?? 'physics',
   moduleOrder:  getArg('--module-order') ? Number(getArg('--module-order')) : undefined,
+  // §275: своё название модуля вместо имени папки («Задачи формата ЕГЭ. Механика»)
+  moduleTitle:  getArg('--module-title'),
 }
 
 const APPLY = FLAGS.apply
@@ -241,6 +245,11 @@ function buildStoragePath(topicId, fileName) {
  * заголовка значило бы превратить «№13» в пустую строку.
  */
 function parseSectionName(name) {
+  const parsed = parseSectionNameRaw(name)
+  return FLAGS.moduleTitle ? { ...parsed, title: FLAGS.moduleTitle.trim() } : parsed
+}
+
+function parseSectionNameRaw(name) {
   const cleaned = name.trim().replace(/\s{2,}/g, ' ')
 
   const task = cleaned.match(/^№\s*(\d+)/)
@@ -256,7 +265,20 @@ function parseSectionName(name) {
 function parseLessonName(name) {
   const m = name.match(/^Урок\s+(\d+)\s+-\s+(.+)$/)
   if (!m) return null
-  return { order: Number(m[1]), title: m[2].trim() }
+  return { order: Number(m[1]), title: repairLessonTitle(m[2].trim()) }
+}
+
+/**
+ * §275. Windows не пускает «?» и кавычки в имя папки, поэтому на диске
+ * `Как решать задачи на динамику_` и `… _Простые конструкции_,`.
+ * Возвращаем заголовку человеческий вид: `_X_` → «X», хвостовой `_` → «?»,
+ * висячая запятая — прочь.
+ */
+function repairLessonTitle(title) {
+  return title
+    .replace(/_([^_]+)_/g, '«$1»')
+    .replace(/[,\s]+$/, '')
+    .replace(/_$/, '?')
 }
 
 /**
