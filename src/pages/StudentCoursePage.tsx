@@ -9,6 +9,7 @@ import {
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type StaffInfo } from '@/hooks/useStudentCourseProgram'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
+import { LessonCard } from '@/components/courseProgram/LessonCard'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
@@ -37,8 +38,10 @@ import { mockAlert } from '@/lib/mockExamLesson'
 const VIEW_PREF_KEY = 'student-course-view'
 type CourseView = 'list' | 'cards'
 
+// §274. По умолчанию — карточки уроков (превью, «что внутри», срок ДЗ); кто
+// выбрал «Список», остаётся на нём — выбор хранится как раньше.
 function getViewPref(): CourseView {
-  try { return (localStorage.getItem(VIEW_PREF_KEY) as CourseView) || 'list' } catch { return 'list' }
+  try { return (localStorage.getItem(VIEW_PREF_KEY) as CourseView) || 'cards' } catch { return 'cards' }
 }
 function saveViewPref(v: CourseView) {
   try { localStorage.setItem(VIEW_PREF_KEY, v) } catch {}
@@ -257,190 +260,9 @@ function WorkItem({ topic, work, view, onOpen }: { topic: TopicProgress; work: A
 
 // ─── TOPIC CARD (Level 2) ─────────────────────────────────────────────────────
 
-// Visual states per hw_status
-const TOPIC_STATE = {
-  accepted: {
-    card:   'border-green-300 bg-green-50 hover:border-green-400 hover:shadow-md',
-    header: 'bg-green-50',
-    num:    'bg-green-500 text-white',
-    label:  'Пройдено',
-    labelCls: 'bg-green-100 text-green-700 border border-green-200',
-    titleCls: 'text-gray-800',
-  },
-  submitted: {
-    card:   'border-blue-200 bg-blue-50/40 hover:border-blue-300 hover:shadow-md',
-    header: 'bg-blue-50/60',
-    num:    'bg-blue-500 text-white',
-    label:  'На проверке',
-    labelCls: 'bg-blue-100 text-blue-700 border border-blue-200',
-    titleCls: 'text-gray-800',
-  },
-  returned: {
-    card:   'border-orange-200 bg-orange-50/40 hover:border-orange-300 hover:shadow-md',
-    header: 'bg-orange-50/60',
-    num:    'bg-orange-400 text-white',
-    label:  'Доработать',
-    labelCls: 'bg-orange-100 text-orange-700 border border-orange-200',
-    titleCls: 'text-gray-800',
-  },
-  draft: {
-    card:   'border-sky-200 bg-sky-50/40 hover:border-sky-300 hover:shadow-md',
-    header: 'bg-sky-50/60',
-    num:    'bg-sky-400 text-white',
-    label:  'Черновик',
-    labelCls: 'bg-sky-100 text-sky-700 border border-sky-200',
-    titleCls: 'text-gray-800',
-  },
-  not_started: {
-    card:   'border-gray-200 hover:border-primary-300 hover:shadow-md',
-    header: 'bg-white',
-    num:    'bg-primary-100 text-primary-600',
-    label:  null,
-    labelCls: '',
-    titleCls: 'text-gray-800',
-  },
-  none: {
-    card:   'border-gray-200 hover:border-primary-300 hover:shadow-md',
-    header: 'bg-white',
-    num:    'bg-gray-100 text-gray-500',
-    label:  null,
-    labelCls: '',
-    titleCls: 'text-gray-700',
-  },
-}
-
-function TopicCard({
-  topic,
-  index,
-  moduleTitle,
-  groupId,
-  onOpenTopic,
-  onOpenHomework,
-}: {
-  topic: TopicProgress
-  index: number
-  moduleTitle: string
-  groupId: string
-  onOpenTopic: (t: TopicProgress) => void
-  onOpenHomework: (t: TopicProgress) => void
-}) {
-  // Правило открытости общее с базой и со второй карточкой ниже —
-  // src/lib/topicAvailability.ts. Своей копии условия здесь быть не должно.
-  const isLocked    = !isTopicOpen(topic)
-  const closedLabel = topicClosedLabel(topic)
-  const hasMaterials = topic.sections.size > 0
-  const isDone     = topic.hw_status === 'accepted'
-
-  // Pick visual state
-  const stateKey = isLocked ? 'none'
-    : (topic.hw_status as keyof typeof TOPIC_STATE | null) && (topic.hw_status as string) in TOPIC_STATE
-      ? (topic.hw_status as keyof typeof TOPIC_STATE)
-      : 'none'
-  const st = TOPIC_STATE[stateKey]
-
-  return (
-    <div
-      className={cn(
-        'rounded-2xl border bg-white flex flex-col transition-all duration-150 relative',
-        isLocked ? 'border-gray-100 opacity-60 cursor-default' : cn(st.card, 'cursor-pointer')
-      )}
-      onClick={() => !isLocked && onOpenTopic(topic)}
-    >
-      {/* Completed ribbon */}
-      {isDone && (
-        <div className="absolute top-0 right-0 overflow-hidden w-14 h-14 pointer-events-none rounded-tr-2xl">
-          <div className="absolute top-3 right-[-14px] rotate-45 bg-green-500 text-white text-[8px] font-bold px-5 py-0.5 shadow-sm">
-            ✓
-          </div>
-        </div>
-      )}
-
-      {/* Card header */}
-      <div className={cn('px-4 pt-4 pb-3 rounded-t-2xl', isLocked ? 'bg-gray-50' : st.header)}>
-        <div className="flex items-start justify-between gap-2 mb-2">
-          {/* Number badge */}
-          <div className={cn(
-            'w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold shrink-0',
-            isLocked ? 'bg-gray-200 text-gray-400' : st.num
-          )}>
-            {isDone ? <Check size={13} /> : index + 1}
-          </div>
-
-          {/* Status label */}
-          {!isLocked && st.label && (
-            <span className={cn(
-              'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full',
-              st.labelCls
-            )}>
-              {isDone && <CheckCircle size={9} />}
-              {topic.hw_status === 'submitted' && <Clock size={9} />}
-              {topic.hw_status === 'returned' && <RotateCcw size={9} />}
-              {st.label}
-            </span>
-          )}
-        </div>
-
-        <div className={cn(
-          'text-sm font-semibold leading-snug',
-          isLocked ? 'text-gray-400' : st.titleCls
-        )}>
-          {isLocked && <Lock size={11} className="inline mr-1 mb-0.5 text-gray-300" />}
-          <TopicKindMark kind={topic.kind} className="mr-1.5" />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
-          {topic.title}
-        </div>
-
-        {/* Балл за ДЗ теперь несёт сигнал «ДЗ: 18/20 б» ниже (§182) —
-            отдельной строкой то же число писалось дважды. */}
-
-        {/* Результат теста */}
-        {!isLocked && topic.test_status === 'completed' && (
-          <div className="mt-1 text-xs font-semibold text-indigo-700">
-            Тест: {topic.test_points ?? 0} / {topic.test_max_points ?? 0} б.
-            {testPercent(topic.test_points, topic.test_max_points) != null &&
-              ` · ${testPercent(topic.test_points, topic.test_max_points)}%`}
-          </div>
-        )}
-
-        {isLocked && (
-          <div className="text-[10px] text-gray-400 mt-1">
-            {closedLabel}
-          </div>
-        )}
-      </div>
-
-      {/* Те же три сигнала, тем же компонентом: второго набора у карточки нет */}
-      {!isLocked && (
-        <div className="px-4 pb-3">
-          <TopicSignals topic={topic} />
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="mt-auto px-4 pb-4 flex items-center justify-between gap-2">
-        {/* Сдать ДЗ — сдача живёт на странице темы (TopicHomeworkStudent) */}
-        {!isLocked && topic.hw_id && (topic.hw_status === 'not_started' || topic.hw_status === 'draft' || topic.hw_status === 'returned') && (
-          <button
-            onClick={e => { e.stopPropagation(); onOpenHomework(topic) }}
-            className="min-h-11 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-          >
-            <Upload size={11} />
-            {topic.lesson_format === 'training' ? 'Решить задачи' : topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
-          </button>
-        )}
-
-        {/* Open materials hint */}
-        {!isLocked && hasMaterials && (
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-primary-500 font-medium">
-            {topic.sections.has('video') && <Play size={11} />}
-            Открыть
-            <ChevronRight size={12} />
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
+// §274. Карточка урока вида «Карточки» — `components/courseProgram/LessonCard`:
+// превью видео, плашки «что внутри», строка срока/состояния. Прежняя
+// `TopicCard` с полосой-заголовком и кнопкой «Сдать ДЗ» ушла целиком.
 
 // ─── List-view state config ───────────────────────────────────────────────────
 
@@ -1288,19 +1110,13 @@ export function StudentCoursePage() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="topics-cards-view">
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="topics-cards-view">
               {activeMod.topics.map((topic, i) => (
-                <TopicCard
-                  key={topic.id}
-                  topic={topic}
-                  index={i}
-                  moduleTitle={activeMod.title}
-                  groupId={groupId ?? ''}
-                  onOpenTopic={openTopic}
-                  onOpenHomework={openTopic}
-                />
+                <li key={topic.id} className="min-w-0">
+                  <LessonCard topic={topic} index={i} href={`/my-course/${groupId}/topic/${topic.id}`} />
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}

@@ -89,6 +89,8 @@ beforeEach(() => {
   preview = false
   hookArgs.length = 0
   localStorage.clear()
+  // §274: по умолчанию теперь карточки; эти проверки — про вид «Список».
+  localStorage.setItem('student-course-view', 'list')
 })
 
 const worksCard = () => screen.getByTestId('module-works-card')

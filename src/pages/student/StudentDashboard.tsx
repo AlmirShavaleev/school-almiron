@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
@@ -27,6 +27,10 @@ import { useHomeCatalog } from '@/hooks/useHomeCatalog'
 import { DailyTaskCard } from '@/components/student/home/DailyTaskCard'
 import { WeeklyGoalCard } from '@/components/student/home/WeeklyGoalCard'
 import type { CheckOutcome } from '@/hooks/useCatalogPractice'
+import { useStudentCalendarTopics } from '@/hooks/useStudentCalendarTopics'
+import { StudentCalendarCard } from '@/components/student/home/StudentCalendarCard'
+import { buildCalendarEvents } from '@/lib/studentCalendar'
+import { mskDateKey } from '@/lib/homeworkDeadline'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -51,6 +55,11 @@ import type { CheckOutcome } from '@/hooks/useCatalogPractice'
  * — тостом «Новая награда: 20 ДЗ · +25», один раз; счётчик у пункта меню) и
  * сообщает базе прогноз по предметам (`claim_forecast_achievement`) — значки
  * «Рост прогноза» и «Цель достигнута», без баллов школы.
+ *
+ * §274: под сеткой карточек — «Календарь» месяца: сроки ДЗ (журнал ученика,
+ * уже загружен для «Моих курсов»), пробники (тот же `useMyMockExams`, что у
+ * баннера), открытие уроков и проверочные/контрольные (`topics.available_from`
+ * одним запросом по всем курсам). Новых RPC нет; лишний запрос — один.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
@@ -104,6 +113,17 @@ export function StudentDashboard() {
     if (result.counted) { retryPoints(); retryHome(); reloadCatalog(); retryAchievements() }
     return { result, change, error: null }
   }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog, retryAchievements])
+  // §274. Календарь: всё, кроме дат уроков, уже загружено выше.
+  const calendarTopics = useStudentCalendarTopics(courses.map(c => c.courseId))
+  // День по Москве — один на заход на главную (полночь в открытой вкладке не ловим).
+  const [todayMsk] = useState(() => mskDateKey(Date.now()))
+  const calendarEvents = useMemo(() => buildCalendarEvents({
+    courses: courses.map(c => ({ courseId: c.courseId, groupId: c.groupId, title: c.courseTitle })),
+    homework: journal?.homework ?? [],
+    topics: calendarTopics,
+    mocksByGroup,
+    today: todayMsk,
+  }), [courses, journal, calendarTopics, mocksByGroup, todayMsk])
   const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
 
   const cards = useMemo(() => courseCards(
@@ -168,6 +188,10 @@ export function StudentDashboard() {
           <SchoolPointsCard points={schoolPoints.points} error={schoolPoints.error} onRetry={schoolPoints.retry} awards={latestAwards} className="flex-1" />
         </div>
       </div>
+
+      {/* §274. Календарь месяца — после карточек дня, перед планом недели:
+          «что сдать сегодня» отвечают кнопки сверху, календарь — «что когда». */}
+      {courses.length > 0 && <StudentCalendarCard events={calendarEvents} today={todayMsk} />}
 
       {/* Эта неделя по учебному плану (§151); без плана не рисуется. Стоит у
           курсов: кнопки сверху уже отвечают «что сдать», план — взгляд на

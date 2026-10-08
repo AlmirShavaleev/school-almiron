@@ -69,6 +69,8 @@ function renderPage(entry = '/my-course/g1') {
 beforeEach(() => {
   modules = [moduleOf('m1', 'Механика', [topic('t1'), topic('t2')])]
   mockExams = [openExam()]
+  // §274: по умолчанию теперь карточки; проверки списка — в виде «Список».
+  localStorage.setItem('student-course-view', 'list')
 })
 
 describe('StudentCoursePage — раздел «Пробники»', () => {

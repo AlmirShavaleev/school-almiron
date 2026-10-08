@@ -73,7 +73,7 @@ async function openModule(view: 'list' | 'cards' = 'list') {
     </MemoryRouter>,
   )
   fireEvent.click(await screen.findByText('Механика'))
-  return screen.findAllByTestId(view === 'list' ? 'topic-list-row' : 'topic-signals')
+  return screen.findAllByTestId(view === 'list' ? 'topic-list-row' : 'lesson-card')
 }
 
 const rows = () => screen.getAllByTestId('topic-list-row')
@@ -207,26 +207,45 @@ describe('§182 — три сигнала под названием темы', (
   })
 })
 
-describe('§182 — вид «Карточки»: тот же набор', () => {
-  it('карточка показывает те же три сигнала и «ещё N материалов»', async () => {
+describe('§274 — вид «Карточки»: карточка урока', () => {
+  it('плашки «что внутри» и строка состояния; решения ДЗ не обещаем', async () => {
     topics = [topic('t1', {
-      sections: sections('video', 'theory', 'notes', 'homework'),
+      sections: sections('video', 'theory', 'notes', 'solution', 'homework'),
       hw_id: 'hw1', hw_status: 'submitted',
       tasks_total: 5, tasks_closed: 5,
     })]
-    await openModule('cards')
+    const [card] = await openModule('cards')
 
-    const signals = screen.getByTestId('topic-signals')
-    expect(signals).toHaveTextContent('Видео')
-    expect(signals).toHaveTextContent('Задачи 5 из 5')
-    expect(signals).toHaveTextContent('ДЗ на проверке')
-    expect(signals).toHaveTextContent('ещё 2 материала')
-    expect(signals).not.toHaveTextContent('Конспект')
+    const chips = within(card).getByTestId('lesson-chips')
+    expect([...chips.querySelectorAll('[data-chip]')].map(c => c.textContent)).toEqual([
+      'Видео', 'Теория и конспект', 'Задачи · 5', 'ДЗ',
+    ])
+    expect(card).not.toHaveTextContent('Решение ДЗ')
+    expect(within(card).getByTestId('lesson-status')).toHaveTextContent('Сдано · на проверке')
+    expect(card.tagName).toBe('A')
+    expect(card.getAttribute('href')).toBe('/my-course/g1/topic/t1')
   })
 
-  it('карточка непройденной темы не носит плашку «В работе»', async () => {
-    topics = [topic('t1', { hw_id: 'hw1', hw_status: 'not_started' })]
-    await openModule('cards')
-    expect(screen.getByTestId('topics-cards-view')).not.toHaveTextContent('В работе')
+  it('без сохранённого выбора открывается вид «Карточки»', async () => {
+    topics = [topic('t1')]
+    render(
+      <MemoryRouter initialEntries={['/my-course/g1']}>
+        <Routes>
+          <Route path="/my-course/:groupId" element={<StudentCoursePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByText('Механика'))
+    expect(await screen.findByTestId('topics-cards-view')).toBeInTheDocument()
+    expect(screen.getByTestId('view-toggle-cards')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('закрытая тема — не ссылка: замок и «Откроется позже», плашек нет', async () => {
+    topics = [topic('t1', { is_open: false, sections: sections('video', 'theory'), hw_id: 'hw1', hw_status: 'not_started' })]
+    const [card] = await openModule('cards')
+    expect(card.tagName).toBe('DIV')
+    expect(card).toHaveAttribute('data-locked')
+    expect(within(card).queryByTestId('lesson-chips')).toBeNull()
+    expect(within(card).getByTestId('lesson-status')).toHaveTextContent('Откроется позже')
   })
 })

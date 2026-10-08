@@ -38,11 +38,11 @@ describe('Topic numerical sort', () => {
   })
 })
 
-// ─── 2. Default view is list ──────────────────────────────────────────────────
+// ─── 2. Default view: cards (§274; до §274 — list) ────────────────────────────
 
-describe('Default view = list', () => {
-  it('getViewPref falls back to "list" when localStorage is empty', () => {
-    expect(PAGE_SRC).toContain("|| 'list'")
+describe('Default view = cards (§274)', () => {
+  it('getViewPref falls back to "cards" when localStorage is empty', () => {
+    expect(PAGE_SRC).toContain("|| 'cards'")
   })
 
   it('view state is initialised with getViewPref', () => {
@@ -212,12 +212,12 @@ describe('Card view', () => {
     expect(PAGE_SRC).toContain('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4')
   })
 
-  it('TopicCard component is still rendered in cards view', () => {
+  it('LessonCard (§274) is rendered in cards view', () => {
     const cardsViewBlock = PAGE_SRC.slice(
       PAGE_SRC.indexOf('topics-cards-view'),
       PAGE_SRC.indexOf('topics-cards-view') + 400
     )
-    expect(cardsViewBlock).toContain('TopicCard')
+    expect(cardsViewBlock).toContain('LessonCard')
   })
 
   it('view switch is conditional on view === "list" / "cards"', () => {
