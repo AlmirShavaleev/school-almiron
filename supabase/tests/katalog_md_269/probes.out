@@ -1,0 +1,396 @@
+слепки 254–262: ok
+миграции 254–256: ok
+данные 255–262: ok
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/05_slice_269.sql:66: NOTICE:  column "subject" of relation "courses" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/05_slice_269.sql:66: NOTICE:  column "exam_type" of relation "courses" already exists, skipping
+слепок 269: ok
+функции прода: ok
+262a + 262b: ok
+данные 269 (старые задачи): ok
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:181: NOTICE:  policy "catalog_tasks_select_archived" for relation "public.catalog_tasks" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:186: NOTICE:  policy "catalog_task_assets_select_archived" for relation "public.catalog_task_assets" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:273: NOTICE:  policy "catalog_figures_admin_write" for relation "storage.objects" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:277: NOTICE:  policy "catalog_figures_admin_update" for relation "storage.objects" does not exist, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:281: NOTICE:  policy "catalog_figures_admin_delete" for relation "storage.objects" does not exist, skipping
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+ s269_patch 
+------------
+ 
+(1 row)
+
+PENDING_269 (1): ok
+данные 269 (Markdown): ok
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:21: NOTICE:  column "content_format" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:22: NOTICE:  column "answer_spec" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:23: NOTICE:  column "origin_external_id" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:24: NOTICE:  column "replaced_by_task_id" of relation "catalog_tasks" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:76: NOTICE:  relation "catalog_tasks_replaced_by_idx" already exists, skipping
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:328: NOTICE:  §269: catalog_check_answer(uuid,text) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:343: NOTICE:  §269: submit_variant(uuid) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:360: NOTICE:  §269: answer_topic_task(uuid,uuid,text) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:379: NOTICE:  §269: preview_task_verdict(uuid,text) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:392: NOTICE:  §269: catalog_counted_solutions(uuid) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:405: NOTICE:  §269: student_school_points_of(uuid) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:416: NOTICE:  §269: student_exam_evidence_rows(uuid,timestamp with time zone) уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+psql:/tmp/claude-0/amchk/supabase/migrations/PENDING_269_catalog_md.sql:431: NOTICE:  §269: catalog_my_overview() уже исправлена — пропуск
+ s269_patch 
+------------
+ 
+(1 row)
+
+PENDING_269 (2, повтор): ok
+== 1. catalog_answer_spec_verdict: число (запятая, «−», допуск), цифры (порядок / любой), слова, значение+погрешность
+                        spec                         |      raw       | got | want | ok 
+-----------------------------------------------------+----------------+-----+------+----
+ {"type":"number","value":"-8","tol":0}              | -8             | t   | t    | t
+ {"type":"number","value":"-8","tol":0}              | −8             | t   | t    | t
+ {"type":"number","value":"-8","tol":0}              | –8             | t   | t    | t
+ {"type":"number","value":"-8","tol":0}              |  -8,0          | t   | t    | t
+ {"type":"number","value":"-8","tol":0}              | 8              | f   | f    | t
+ {"type":"number","value":"-8","tol":0}              | -7,99          | f   | f    | t
+ {"type":"number","value":"-8","tol":0}              | -8 м/с         | f   | f    | t
+ {"type":"number","value":"2.5","tol":0.1}           | 2,45           | t   | t    | t
+ {"type":"number","value":"2.5","tol":0.1}           | 2.6            | t   | t    | t
+ {"type":"number","value":"2.5","tol":0.1}           | 2,4            | t   | t    | t
+ {"type":"number","value":"2.5","tol":0.1}           | 2,61           | f   | f    | t
+ {"type":"number","value":"2.5","tol":0.1}           | abc            | f   | f    | t
+ {"type":"number","value":"0.06","tol":0}            | 0,06           | t   | t    | t
+ {"type":"number","value":"0.06","tol":0}            | ,06            | t   | t    | t
+ {"type":"digits","text":"145","any_order":true}     | 541            | t   | t    | t
+ {"type":"digits","text":"145","any_order":true}     | 1 4 5          | t   | t    | t
+ {"type":"digits","text":"145","any_order":true}     | 14             | f   | f    | t
+ {"type":"digits","text":"145","any_order":true}     | 1455           | f   | f    | t
+ {"type":"digits","text":"235","any_order":false}    | 235            | t   | t    | t
+ {"type":"digits","text":"235","any_order":false}    | 253            | f   | f    | t
+ {"type":"digits","text":"4,40,2","any_order":false} | 4,40,2         | t   | t    | t
+ {"type":"digits","text":"4,40,2","any_order":false} | 4,4 0,2        | t   | t    | t
+ {"type":"digits","text":"4,40,2","any_order":false} | 4.4;0.2        | t   | t    | t
+ {"type":"digits","text":"4,40,2","any_order":false} | 4,4            | f   | f    | t
+ {"type":"text","text":"к наблюдателю"}              | к наблюдателю  | t   | t    | t
+ {"type":"text","text":"к наблюдателю"}              | Кнаблюдателю   | t   | t    | t
+ {"type":"text","text":"к наблюдателю"}              | К НАБЛЮДАТЕЛЮ. | t   | t    | t
+ {"type":"text","text":"к наблюдателю"}              | от наблюдателя | f   | f    | t
+ {"type":"text","text":"отражённый"}                 | Отраженный     | t   | t    | t
+ {"type":"text","text":"к наблюдателю"}              |                | f   | f    | t
+ {"type":"text","text":"к наблюдателю"}              | !!!            | f   | f    | t
+
+== 2. Ограничения: битый answer_spec и неизвестный формат не записываются
+BEGIN
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:48: NOTICE:  OK: answer_spec с запятой — new row for relation "catalog_tasks" violates check constraint "catalog_tasks_answer_spec_check"
+DO
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:52: NOTICE:  OK: content_format — new row for relation "catalog_tasks" violates check constraint "catalog_tasks_content_format_check"
+DO
+ROLLBACK
+== 3. Права колонок: ученик НЕ читает answer_spec; новые служебные колонки читает; anon — ничего
+ ok_spec_closed | ok_format_open | ok_replaced_open | ok_origin_open | ok_anon_closed | ok_service_role 
+----------------+----------------+------------------+----------------+----------------+-----------------
+ t              | t              | t                | t              | t              | t
+
+BEGIN
+SET
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:66: NOTICE:  OK: ученик answer_spec — permission denied for table catalog_tasks
+DO
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:68: NOTICE:  OK: where answer_spec — permission denied for table catalog_tasks
+DO
+ ok_md_rows_visible | ok_format 
+--------------------+-----------
+ t                  | t
+
+ROLLBACK
+== 4. Допуск персоналу: ученик — 42501, учитель — эталон, anon — нет права
+BEGIN
+SET
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:78: NOTICE:  OK: ученик — STAFF_ONLY: эталон ответа с допуском видит только персонал
+DO
+ROLLBACK
+BEGIN
+SET
+                  answer_spec                   | ok 
+------------------------------------------------+----
+ {"tol": 0.1, "type": "number", "value": "2.5"} | t
+
+ROLLBACK
+BEGIN
+SET
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:89: NOTICE:  OK: anon — permission denied for function catalog_task_answer_specs
+DO
+ROLLBACK
+ ok_verdict_not_callable | ok_replace_not_callable | ok_replace_service_role 
+-------------------------+-------------------------+-------------------------
+ t                       | t                       | t
+
+== 5. catalog_check_answer (каталог) по answer_spec: допуск, «−», цифры без порядка; эталон до верного ответа не отдаётся
+BEGIN
+SET
+ verdict | counted | answer_html | ok 
+---------+---------+-------------+----
+ wrong   | false   |             | t
+
+ verdict | counted | answer_html | ok 
+---------+---------+-------------+----
+ correct | true    | 2,5         | t
+
+ ok_minus 
+----------
+ t
+
+ ok_any_order 
+--------------
+ t
+
+ ok_order 
+----------
+ t
+
+ ok_pair 
+---------
+ t
+
+ ok_legacy 
+-----------
+ t
+
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:113: NOTICE:  OK: часть 2 — NOT_CHECKABLE: у этой задачи нет короткого ответа для проверки
+DO
+ROLLBACK
+== 6. Ответ-раскрытие ученику — как раньше (answer_html — строка показа с «−»), допуска в ответе нет
+BEGIN
+SET
+               task_id                | allowed | answer_html | ok_closed_before_reveal 
+--------------------------------------+---------+-------------+-------------------------
+ 69200000-0000-4000-8000-000000000001 | f       |             | t
+
+ ok 
+----
+ t
+
+ROLLBACK
+== 7. submit_variant: m2 «2,45» (допуск), m1 «−8», m6 «4,4 0,2» — все верно по answer_spec
+BEGIN
+SET
+ correct | score | ok 
+---------+-------+----
+ 3       | 3.00  | t
+
+RESET
+           variant_item_id            | is_correct | points_earned 
+--------------------------------------+------------+---------------
+ 69510000-0000-4000-8000-000000000002 | t          |          1.00
+ 69510000-0000-4000-8000-000000000003 | t          |          1.00
+ 69510000-0000-4000-8000-000000000004 | t          |          1.00
+
+ROLLBACK
+== 8. answer_topic_task (задача урока) и preview_task_verdict (учитель) — по answer_spec
+BEGIN
+SET
+ ok_lesson_tol 
+---------------
+ t
+
+ROLLBACK
+BEGIN
+SET
+ ok_preview_tol | ok_preview_wrong | ok_preview_legacy 
+----------------+------------------+-------------------
+ t              | t                | t
+
+ROLLBACK
+== 9. Замена задачи из варианта (h1) новой строкой; повтор — без изменений; ученик — нет права
+BEGIN
+SET
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:157: NOTICE:  OK: ученик — permission denied for function catalog_replace_task_v2
+DO
+ROLLBACK
+SET
+ created | archived_ext | ok 
+---------+--------------+----
+ true    | 1000096090   | t
+
+ ok_repeat_noop | ok_same_new 
+----------------+-------------
+ t              | t
+
+psql:/tmp/claude-0/amchk/supabase/tests/katalog_md_269/20_probes.sql:172: NOTICE:  OK: плохое содержимое — BAD_CONTENT: нужны content_format = md, условие и верный answer_spec
+DO
+RESET
+  old_ext   | origin_external_id | old_published | new_ext | new_published | same_place | content_format |                 answer_spec                 | no_plan | ok 
+------------+--------------------+---------------+---------+---------------+------------+----------------+---------------------------------------------+---------+----
+ 1000096090 |              96090 | f             |   96090 | t             | t          | md             | {"tol": 0, "type": "number", "value": "-8"} | t       | t
+
+ ok_topics_copied | ok_collection_moved | ok_variant_untouched 
+------------------+---------------------+----------------------
+ t                | t                   | t
+
+== 10. Видимость: ученик видит скрытую старую строку по id (вариант) и её рисунки, но не в списке раздела; скрытая НЕ заменённая — не видна
+BEGIN
+SET
+ ok_archived_by_id 
+-------------------
+ t
+
+ ok_archived_assets 
+--------------------
+ t
+
+ listed | ok_list_has_no_archived | ok_new_listed 
+--------+-------------------------+---------------
+      8 | t                       | t
+
+ ok_unpublished_hidden 
+-----------------------
+ t
+
+ROLLBACK
+BEGIN
+SET
+ ok_teacher_archived_by_id 
+---------------------------
+ t
+
+ ok_teacher_old_answer 
+-----------------------
+ t
+
+ROLLBACK
+== 11. История ученика A по скрытой строке засчитывается за новую: решённые каталога, прогноз, обзор
+ ok_counted_mapped | subject | n 
+-------------------+---------+---
+ t                 | physics | 1
+
+ source  |                     item                     | ns  | score 
+---------+----------------------------------------------+-----+-------
+ catalog | catalog:69100000-0000-4000-8000-0000000000a1 | {1} |   1.0
+ catalog | variant:30ebe446-98b3-4fbe-93a4-f45d6fef1c44 | {1} |   1.0
+
+ ok_evidence_both 
+------------------
+ t
+
+BEGIN
+SET
+ n | total | solved | ok 
+---+-------+--------+----
+ 1 | 8     | 1      | t
+
+ROLLBACK
+== 12. Правки текста функций на месте (метка §269) — student_school_points_of, submit_variant, answer_topic_task
+          proname           | has_marker | ok 
+----------------------------+------------+----
+ answer_topic_task          | t          | t
+ catalog_check_answer       | t          | t
+ catalog_counted_solutions  | t          | t
+ catalog_my_overview        | t          | t
+ preview_task_verdict       | t          | t
+ student_exam_evidence_rows | t          | t
+ student_school_points_of   | t          | t
+ submit_variant             | t          | t
+
+== 13. Подсчёт каталога учеником: план с новыми политиками и без них (откат) — index-only scan сохраняется (§268)
+BEGIN
+SET
+                                                                                                          QUERY PLAN                                                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   InitPlan 1 (returns $0)
+     ->  Result
+   ->  Index Only Scan using catalog_tasks_counts_covering_idx on catalog_tasks
+         Index Cond: ((is_published = true) AND (subject = 'Математика'::text) AND (exam_type = 'ЕГЭ'::text))
+         Filter: ((((NULLIF(((current_setting('request.jwt.claims'::text, true))::json ->> 'sub'::text), ''::text))::uuid IS NOT NULL) AND is_published) OR (($0 IS NOT NULL) AND (NOT is_published) AND (hashed SubPlan 2)))
+         SubPlan 2
+           ->  ProjectSet
+                 ->  Result
+
+ math_published 
+----------------
+          12040
+
+RESET
+DROP POLICY
+SET
+-- без политики §269:
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using catalog_tasks_counts_covering_idx on catalog_tasks
+         Index Cond: ((is_published = true) AND (is_published = true) AND (subject = 'Математика'::text) AND (exam_type = 'ЕГЭ'::text))
+         Filter: ((NULLIF(((current_setting('request.jwt.claims'::text, true))::json ->> 'sub'::text), ''::text))::uuid IS NOT NULL)
+
+ROLLBACK
+== 14. Бакет рисунков
+       id        | public | file_size_limit |               allowed_mime_types                | ok 
+-----------------+--------+-----------------+-------------------------------------------------+----
+ catalog-figures | t      |         2097152 | {image/svg+xml,image/png,image/webp,image/jpeg} | t
+
+ ok_admin_policies 
+-------------------
+ t
+

@@ -1,6 +1,7 @@
 import { getAssetUrl, safeDecodeStoragePath } from '@/hooks/useCatalog'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import type { CatalogTaskAsset } from '@/hooks/useCatalog'
+import { isCatalogMarkdown, renderCatalogContent } from '@/lib/catalogContent'
 
 /**
  * Resolves relative image src values in task HTML to Supabase Storage URLs,
@@ -15,6 +16,8 @@ export function resolveTaskHtml(
   assets: CatalogTaskAsset[] | undefined,
 ): string {
   if (!html) return ''
+  // §269: задача в Markdown + LaTeX — свой безопасный рендер (сырой HTML экранируется).
+  if (isCatalogMarkdown(html)) return renderCatalogContent(html)
 
   let resolved = html.replace(
     /<img\b([^>]*)\bsrc="([^"]*)"([^>]*)>/gi,

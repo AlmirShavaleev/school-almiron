@@ -268,6 +268,7 @@ export function CatalogTopicPage() {
                     topicId={topicId}
                     sectionId={sectionId}
                     retryKey={retryKey}
+                    examNumber={examSection?.exam_number ?? null}
                   />
                 ))}
                 {hasMore && (
@@ -532,6 +533,7 @@ function TaskCard({
   topicId,
   sectionId,
   retryKey,
+  examNumber,
 }: {
   task: CatalogTask
   number: number
@@ -541,11 +543,14 @@ function TaskCard({
   topicId?: string
   sectionId?: string
   retryKey?: number
+  /** §269: номер задания в экзамене — «Задание N ЕГЭ» у задач переписанного каталога. */
+  examNumber?: number | null
 }) {
   return (
     <TaskDisplayCard
       task={task}
       number={number}
+      examNumber={examNumber}
       practice={practice}
       onToggle={onToggle}
       completed={task.is_completed}

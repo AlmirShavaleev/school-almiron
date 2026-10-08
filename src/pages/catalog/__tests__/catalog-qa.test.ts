@@ -1309,7 +1309,8 @@ describe('Answer display states', () => {
     expect(read('src/components/catalog/TaskContentRenderer.tsx')).toContain('dangerouslySetInnerHTML')
     // TaskDisplayCard resolves answer HTML via resolveTaskHtml
     // §262: ответ — из задачи или из текстов, полученных раскрытием (view).
-    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(view.answer_html')
+    // §269: ответ-число показывается с настоящим минусом (withRealMinus).
+    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(withRealMinus(view.answer_html)')
   })
 })
 

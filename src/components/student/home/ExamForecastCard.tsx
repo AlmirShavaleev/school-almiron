@@ -155,7 +155,8 @@ function ForecastBody({ view, data, goal, teacherGoal, titles, onSetGoal }: {
       {current.ready && <Spark view={view} bind={bind} />}
 
       <div className="grid gap-1.5">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-graphite-400">Задания КИМ · как решаете</div>
+        {/* §269: ученику «Задания ЕГЭ», не «КИМ» — решение владельца. */}
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-graphite-400">Задания ЕГЭ · как решаете</div>
         <KimTiles label="часть 1" stats={part1} cols={cols} bind={bind} titleOf={titleOf} />
         <KimTiles label="часть 2" stats={part2} cols={cols} bind={bind} titleOf={titleOf} />
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-graphite-500">

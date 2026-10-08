@@ -9,6 +9,10 @@ import type { CheckOutcome } from '@/hooks/useCatalogPractice'
 import type { TaskPracticeState } from '@/lib/catalogRewards'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
 import { applyTaskTexts, fetchCatalogTaskTexts, revealCatalogTaskTexts, type CatalogTaskTexts } from '@/lib/catalogTaskTexts'
+import { isCatalogMarkdown } from '@/lib/catalogMarkdown'
+import { digitsOrderNote, examTaskLabel, taskCodeLabel, toleranceLine, withRealMinus } from '@/lib/catalogAnswerSpec'
+import { useStaffAnswerSpec } from '@/hooks/useStaffAnswerSpec'
+import { useAuthStore } from '@/store/authStore'
 
 /**
  * §256. Режим ученика: поле ответа + «Проверить» у проверяемых задач, а
@@ -24,7 +28,14 @@ import { applyTaskTexts, fetchCatalogTaskTexts, revealCatalogTaskTexts, type Cat
  * задачи устарели — просто тексты, без отметки; состояния нет (корзина,
  * подборка, задача за пределами первых 300) — раскрытие `catalog_reveal_answers`.
  * Персоналу задачи не закрываются — карточка как прежде.
+ *
+ * §269. Задача переписанного каталога (Markdown + LaTeX, метка `<!--md-->`):
+ * в шапке «№ N» (место в списке), «Задание K ЕГЭ» (номер в экзамене, если
+ * страница его знает) и код задачи «#96090»; под ответом персоналу — допуск
+ * «засчитываем от X до Y» (ученику допуск не показывается). Ответ-число — с «−».
  */
+const STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
+
 export interface TaskPracticeProps {
   state: TaskPracticeState | undefined
   onCheck: (answer: string) => Promise<CheckOutcome>
@@ -57,6 +68,8 @@ export interface TaskDisplayCardProps {
   }
   /** §256: проверка ответа учеником (см. TaskPracticeProps). */
   practice?: TaskPracticeProps
+  /** §269: номер задания в экзамене (раздел каталога) — для «Задание N ЕГЭ». */
+  examNumber?: number | null
 }
 
 export function TaskDisplayCard({
@@ -68,6 +81,7 @@ export function TaskDisplayCard({
   defaultOpen = {},
   forceOpen,
   practice,
+  examNumber,
 }: TaskDisplayCardProps) {
   const [showAnswer,        setShowAnswer]        = useState(defaultOpen.answer    ?? false)
   const [showSolution,      setShowSolution]      = useState(defaultOpen.solution  ?? false)
@@ -121,7 +135,7 @@ export function TaskDisplayCard({
 
   // Resolve asset URLs once per task (memo-like — new object only when task changes)
   const stmt    = resolveTaskHtml(task.statement_html,      task.assets)
-  const ans     = resolveTaskHtml(view.answer_html,         task.assets)
+  const ans     = resolveTaskHtml(withRealMinus(view.answer_html), task.assets)
   const sol     = resolveTaskHtml(view.solution_html,       task.assets)
   const plan    = resolveTaskHtml(view.solution_plan_html,  task.assets)
   const crit    = resolveTaskHtml(view.grade_criteria_html, task.assets)
@@ -134,6 +148,15 @@ export function TaskDisplayCard({
   const critOpen = forceOpen?.criteria  ?? showGradeCriteria
   const difficultyBadge = getDifficultyBadge(task.difficulty)
 
+  // §269: шапка задачи переписанного каталога и допуск ответа для персонала.
+  const isMd = isCatalogMarkdown(task.statement_html)
+  const role = useAuthStore(st => st.profile?.role ?? null)
+  const isStaff = !!role && STAFF_ROLES.has(role)
+  const staffSpec = useStaffAnswerSpec(task.id, isMd && isStaff && ansOpen && !!ans)
+  const staffNotes = [toleranceLine(staffSpec), digitsOrderNote(staffSpec)].filter((x): x is string => !!x)
+  const codeLabel = isMd ? taskCodeLabel(task.external_id) : null
+  const examLabel = isMd ? examTaskLabel(examNumber, task.exam_type) : null
+
   return (
     <div
       ref={cardRef}
@@ -145,8 +168,25 @@ export function TaskDisplayCard({
       {/* Statement. Бейдж сложности — обычный элемент строки, а не absolute в
           углу: раньше он ложился ровно на кружок «выполнено» и закрывал его
           (§154, вопрос владельца «где отмечать»). */}
-      <div className="flex items-start gap-3 p-4">
-        {number !== undefined && (
+      {isMd && (number !== undefined || examLabel || codeLabel) && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 text-xs" data-testid="task-md-header">
+          {number !== undefined && (
+            <span className="font-bold text-gray-700" data-testid="task-md-number">№ {number}</span>
+          )}
+          {examLabel && <span className="text-gray-500" data-testid="task-exam-label">{examLabel}</span>}
+          {codeLabel && (
+            <span
+              className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 font-mono text-gray-500"
+              title="Код задачи в каталоге"
+              data-testid="task-code"
+            >
+              {codeLabel}
+            </span>
+          )}
+        </div>
+      )}
+      <div className={`flex items-start gap-3 p-4${isMd ? ' pt-2' : ''}`}>
+        {number !== undefined && !isMd && (
           <span className="text-xs font-mono text-gray-400 mt-0.5 w-6 flex-shrink-0">
             #{number}
           </span>
@@ -251,6 +291,11 @@ export function TaskDisplayCard({
       {ansOpen && ans && (
         <Section color="blue" label="Ответ">
           <TaskContentRenderer html={ans} />
+          {staffNotes.length > 0 && (
+            <p className="mt-1 text-xs text-gray-500" data-testid="task-answer-tolerance">
+              {staffNotes.join(' · ')}
+            </p>
+          )}
         </Section>
       )}
 

@@ -85,6 +85,7 @@ export function CatalogTaskPage() {
       {/* Task card */}
       <TaskDisplayCard
         task={task}
+        examNumber={task.section?.exam_number ?? null}
         practice={practice.state ? {
           state: practice.state.tasks[task.id],
           onCheck: answer => practice.check(task.id, answer),

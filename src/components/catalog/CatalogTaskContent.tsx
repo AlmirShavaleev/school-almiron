@@ -4,6 +4,8 @@ import { getAssetUrl, safeDecodeStoragePath, type CatalogTask } from '@/hooks/us
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { isAnswerTemplateSvg } from '@/pages/catalog/classifyAnswerTemplate'
 import { extendedAnswerNote, hasExtendedAnswer } from '@/utils/extendedAnswer'
+import { isCatalogMarkdown, renderCatalogContent } from '@/lib/catalogContent'
+import { upgradeMathIn } from '@/lib/katexLoader'
 
 // ── resolveHtml ───────────────────────────────────────────────────────────────
 
@@ -22,6 +24,8 @@ function decodeHtmlEntitiesInSrc(s: string): string {
 
 export function resolveTaskHtml(html: string | null | undefined, assets: CatalogTask['assets']): string {
   if (!html) return ''
+  // §269: задача в Markdown + LaTeX — свой безопасный рендер (сырой HTML экранируется).
+  if (isCatalogMarkdown(html)) return renderCatalogContent(html)
   let resolved = html.replace(
     /<img\b([^>]*)\bsrc="([^"]*)"([^>]*)>/gi,
     (wholeTag, before, src, after) => {
@@ -118,6 +122,8 @@ export function CatalogTaskContent({
       if (img.complete && img.naturalWidth > 0) reclassify(img)
       else img.addEventListener('load', () => reclassify(img), { once: true })
     })
+    // §269: формулы задач в Markdown — дорисовать KaTeX-ом, когда он загрузится.
+    void upgradeMathIn(root)
   }, [task.id, showAnswer, showSolution, showPlan, showGradeCriteria])
 
   const resolve = (html: string | null | undefined) => resolveTaskHtml(html, task.assets)

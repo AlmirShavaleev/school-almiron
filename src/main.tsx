@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.tsx'
+import { installCatalogMathObserver } from './lib/katexLoader'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +19,9 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// §269: формулы каталога (KaTeX грузится лениво) — дорисовка везде, где бы HTML задачи ни оказался.
+installCatalogMathObserver()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
