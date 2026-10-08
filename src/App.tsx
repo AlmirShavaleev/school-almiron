@@ -190,7 +190,19 @@ export function AppAuth() {
       return promise
     }
 
+    // §272. Сбой сети при чтении профиля не должен оставлять вечный спиннер: ошибка — в консоль,
+    // `loading` снимается всё равно (дальше RoleGuard/DashboardLayout покажут вход или ошибку).
     async function loadProfile(user: { id: string; email?: string; user_metadata?: any }) {
+      try {
+        await loadProfileInner(user)
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[вход] профиль не загрузился', e)
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    async function loadProfileInner(user: { id: string; email?: string; user_metadata?: any }) {
       let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       // Самозарегистрированный пользователь без профиля (email-подтверждение) →
       // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО своей
@@ -258,12 +270,19 @@ export function AppAuth() {
     })
 
     // Listen for subsequent auth events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // §272. Колбэк НЕ async и профиль грузится через setTimeout(0), а не `await` прямо здесь.
+    // supabase-js зовёт подписчиков, держа свой замок авторизации (обновление токена при первом
+    // входе после перерыва, SIGNED_IN, INITIAL_SESSION). Запрос к `profiles` внутри колбэка
+    // просит тот же замок для токена — и ждёт сам себя: профиль не приходит никогда, экран
+    // висит на «Загрузка идёт дольше обычного…», пока не нажать F5 (токен уже свежий — замок
+    // не нужен). Так документация supabase-js и велит: другие вызовы Supabase — после колбэка.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        await loadProfileOnce(session.user)
+        const user = session.user
+        setTimeout(() => { if (!cancelled) void loadProfileOnce(user) }, 0)
       } else if (event === 'SIGNED_OUT') {
         reset()
         setLoading(false)

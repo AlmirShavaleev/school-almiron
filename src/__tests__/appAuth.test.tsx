@@ -81,7 +81,9 @@ const sessionUser = { user: { id: 'u1', email: 'a@a.com' } }
 async function fireAuthEvent() {
   await act(async () => {
     await authCallback!('TOKEN_REFRESHED', sessionUser)
-    await Promise.resolve()
+    // §272: профиль грузится после колбэка (setTimeout 0) — даём таймеру и цепочке промисов пройти.
+    await new Promise(r => setTimeout(r, 0))
+    for (let i = 0; i < 10; i++) await Promise.resolve()
   })
 }
 
@@ -222,5 +224,31 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     await fireAuthEvent()
 
     expect(rpcSpy).not.toHaveBeenCalledWith('record_app_visit')
+  })
+})
+
+describe('§272: колбэк onAuthStateChange не ждёт запросов Supabase (иначе замок авторизации — вечный спиннер)', () => {
+  beforeEach(() => {
+    fromSpy.mockClear()
+    profileRow = { id: 'u1', email: 'a@a.com', full_name: 'Ann', role: 'teacher' }
+    profileMissing = false
+    useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    authCallback = null
+  })
+
+  it('колбэк синхронный: профиль читается уже после него, loading снимается', async () => {
+    render(<AppAuth />)
+    let ret: unknown
+    act(() => { ret = authCallback!('SIGNED_IN', sessionUser) })
+    // Внутри колбэка к базе не ходим — supabase-js держит в этот момент свой замок.
+    expect(ret).toBeUndefined()
+    expect(fromSpy).not.toHaveBeenCalled()
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 0))
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    })
+    expect(fromSpy).toHaveBeenCalledWith('profiles')
+    expect(useAuthStore.getState().loading).toBe(false)
+    expect(useAuthStore.getState().profile?.full_name).toBe('Ann')
   })
 })
