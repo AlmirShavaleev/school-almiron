@@ -85,7 +85,7 @@ export function LessonCard({
         </span>
         <span
           className={cn(
-            'line-clamp-3 break-words text-[15px] font-extrabold leading-snug',
+            'line-clamp-3 break-words text-[15px] font-extrabold leading-snug sm:text-[17px]',
             locked ? 'text-graphite-500' : 'text-graphite-950 group-hover:text-primary-700',
           )}
           data-testid="lesson-card-title"
@@ -98,7 +98,7 @@ export function LessonCard({
               <span
                 key={c.key}
                 data-chip={c.key}
-                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-graphite-100 px-2 py-0.5 text-[11px] font-bold text-graphite-700"
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-graphite-100 px-2 py-0.5 text-[11px] font-bold text-graphite-700 sm:px-2.5 sm:py-1 sm:text-xs"
               >
                 {CHIP_ICON[c.key]}{c.label}
               </span>
@@ -107,7 +107,7 @@ export function LessonCard({
         )}
         {status && (
           <span
-            className={cn('mt-auto inline-flex items-center gap-1 text-[13px] font-bold', TONE[status.tone].cls)}
+            className={cn('mt-auto inline-flex items-center gap-1 text-[13px] font-bold sm:text-sm', TONE[status.tone].cls)}
             data-testid="lesson-status"
             data-tone={status.tone}
           >
@@ -134,7 +134,8 @@ export function LessonCard({
   )
 
   const cls = cn(
-    'group flex min-h-[112px] gap-3 rounded-card border p-2.5 transition-all duration-150 sm:p-3',
+    // §274.1: крупнее и одной высоты в ряду (h-full) — владелец: «ячейка маленькая».
+    'group flex h-full w-full min-h-[132px] gap-3 rounded-card border p-3 transition-all duration-150 sm:min-h-[176px] sm:gap-4 sm:p-4',
     locked
       ? 'cursor-default border-graphite-200 bg-graphite-50'
       : 'border-graphite-200 bg-white shadow-card hover:-translate-y-px hover:border-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
@@ -172,7 +173,7 @@ function LessonThumb({ number, src, hasVideo, locked, done }: {
   return (
     <span
       className={cn(
-        'relative aspect-[4/3] w-[104px] shrink-0 self-start overflow-hidden rounded-2xl sm:aspect-video sm:w-[168px]',
+        'relative aspect-[4/3] w-[112px] shrink-0 self-start overflow-hidden rounded-2xl sm:aspect-[4/3] sm:w-[184px]',
         locked ? 'bg-graphite-100' : 'bg-gradient-to-br from-primary-50 via-primary-100 to-gold-50',
       )}
       data-testid="lesson-thumb"

@@ -956,7 +956,7 @@ export function StudentCoursePage() {
   const activeWorksOnly = !!activeMod && isWorksOnlyModule(activeMod)
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-5xl">
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на
@@ -1110,9 +1110,9 @@ export function StudentCoursePage() {
               ))}
             </div>
           ) : (
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="topics-cards-view">
+            <ul className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="topics-cards-view">
               {activeMod.topics.map((topic, i) => (
-                <li key={topic.id} className="min-w-0">
+                <li key={topic.id} className="flex min-w-0">
                   <LessonCard topic={topic} index={i} href={`/my-course/${groupId}/topic/${topic.id}`} />
                 </li>
               ))}
