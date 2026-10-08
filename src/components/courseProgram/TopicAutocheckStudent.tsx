@@ -237,9 +237,11 @@ function ZoomableImage({ path, alt, sensitive = false, hint = true, className }:
           onClick={() => setZoom(z => !z)}
           aria-pressed={zoom}
           aria-label={zoom ? `${alt}: уменьшить` : `${alt}: увеличить`}
-          className={cn('block text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500', zoom ? 'w-[640px]' : 'w-full')}
+          className={cn('block max-w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500', zoom && 'max-w-none')}
         >
-          <SignedImage bucket="topic-autocheck" path={path} alt={alt} sensitive={sensitive} className={cn('block h-auto w-full', className)} />
+          {/* §274.2: картинка в своём размере (SVG знает ширину), не растягивается на всю карточку — иначе текст огромный.
+              Узкий экран — ужимается до ширины; нажатие — исходный размер с прокруткой вбок. */}
+          <SignedImage bucket="topic-autocheck" path={path} alt={alt} sensitive={sensitive} className={cn('block h-auto', zoom ? 'max-w-none' : 'max-w-full', className)} />
         </button>
       </div>
       {hint && <span className="mt-1 block text-[13px] text-graphite-500 sm:hidden">
