@@ -24,6 +24,11 @@ import { windowOf, type ExamWindow, type WorkInput } from '@/lib/mockExamV3'
  * `notify_mock_exam_results(exam, [ученик])` (§219). Как и таблица §221, при
  * открытии зовём `grade_mock_exam_part1`: первая часть законченных бланков
  * проверяется ключом до чтения баллов.
+ *
+ * §270. Вместе с баллами читается комментарий преподавателя к номеру
+ * (`mock_exam_task_scores.comment`); пишет его `save_mock_exam_task_comments`
+ * — после баллов, только в номера с баллом. До миграции §270 колонки нет:
+ * баллы читаются без неё, `commentsReady` = false — экран поле не показывает.
  */
 
 type Res<T> = { data: T | null; error: { message?: string; code?: string } | null }
@@ -78,6 +83,11 @@ export interface WorksStudent extends WorkInput {
    * наименее занятый, не обязательно первый, — метку «Работы» не ставят.
    */
   variantAssigned?: boolean
+  /**
+   * §270. Сохранённые комментарии ученику по номерам (как points: индекс —
+   * номер − 1); null — нет. Бывают только у номеров второй части с баллом.
+   */
+  comments: (string | null)[]
 }
 
 const RESULT_COLUMNS = 'student_id, score, part1_score, part2_score, notified_at, notified_score, notified_part1_score, notified_part2_score'
@@ -90,6 +100,8 @@ export function useMockExamWorks(examId: string | undefined) {
   const [variants, setVariants] = useState<WorksVariant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** §270. В базе есть колонка комментариев (миграция §270 применена). */
+  const [commentsReady, setCommentsReady] = useState(false)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
@@ -122,7 +134,7 @@ export function useMockExamWorks(examId: string | undefined) {
       }
       const [gs, sc, sh, ph, rs, k, vv, vk, va] = await Promise.all([
         db.from<any[]>('group_students').select('student_id, students(id, profile_id, profiles(full_name))').eq('group_id', ex.group_id),
-        db.from<any[]>('mock_exam_task_scores').select('student_id, task_number, points, auto_points').eq('mock_exam_id', ex.id),
+        db.from<any[]>('mock_exam_task_scores').select('student_id, task_number, points, auto_points, comment').eq('mock_exam_id', ex.id),
         db.from<any[]>('mock_exam_sheets').select('student_id, answers, submitted_at').eq('mock_exam_id', ex.id),
         db.from<any[]>('mock_exam_photos').select('id, student_id, storage_path, file_name, position, mime_type').eq('mock_exam_id', ex.id),
         db.from<MockExamResultNotifyRow[]>('mock_exam_results').select(RESULT_COLUMNS).eq('mock_exam_id', ex.id),
@@ -134,20 +146,29 @@ export function useMockExamWorks(examId: string | undefined) {
         db.from<any[]>('mock_exam_variant_students').select('student_id, variant_id').eq('mock_exam_id', ex.id),
       ])
       if (cancelled) return
-      if (sc.error) { setError(sc.error.message || 'Не удалось загрузить баллы'); setLoading(false); return }
+      // §270. До миграции колонки comment нет — баллы читаем без неё.
+      let scores = sc
+      let withComments = !sc.error
+      if (sc.error) {
+        scores = await db.from<any[]>('mock_exam_task_scores').select('student_id, task_number, points, auto_points').eq('mock_exam_id', ex.id)
+        if (cancelled) return
+        withComments = false
+      }
+      if (scores.error) { setError(scores.error.message || 'Не удалось загрузить баллы'); setLoading(false); return }
       const n = template.max_points.length
       const byId = new Map<string, WorksStudent>()
       for (const g of gs.data ?? []) {
         byId.set(g.student_id, {
           id: g.student_id, name: g.students?.profiles?.full_name || '—', profileId: g.students?.profile_id ?? null,
-          points: Array(n).fill(null), auto: Array(n).fill(false), sheet: null, photos: 0, photoList: [], result: null,
+          points: Array(n).fill(null), auto: Array(n).fill(false), comments: Array(n).fill(null), sheet: null, photos: 0, photoList: [], result: null,
         })
       }
-      for (const r of sc.data ?? []) {
+      for (const r of scores.data ?? []) {
         const s = byId.get(r.student_id)
         if (!s || r.task_number < 1 || r.task_number > n) continue
         s.points[r.task_number - 1] = Number(r.points)
         s.auto![r.task_number - 1] = r.auto_points != null && Number(r.auto_points) === Number(r.points)
+        s.comments[r.task_number - 1] = typeof r.comment === 'string' && r.comment.trim() ? r.comment : null
       }
       for (const r of sh.data ?? []) {
         const s = byId.get(r.student_id)
@@ -186,6 +207,7 @@ export function useMockExamWorks(examId: string | undefined) {
       setStudents(list)
       setVariants(vList)
       setKey(k.data?.answers ?? null)
+      setCommentsReady(withComments)
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -202,6 +224,23 @@ export function useMockExamWorks(examId: string | undefined) {
     return { error: null }
   }, [exam])
 
+  /**
+   * §270. Комментарии ученику по номерам второй части — `save_mock_exam_task_comments`:
+   * `{ "14": "текст", "15": null }` (null или пустой — убрать). Только номера,
+   * у которых балл уже сохранён: без строки балла база отвечает «сначала поставьте балл».
+   */
+  const saveComments = useCallback(async (studentId: string, comments: Record<string, string | null>): Promise<{ error: string | null }> => {
+    if (!exam) return { error: 'Пробник не загружен' }
+    if (Object.keys(comments).length === 0) return { error: null }
+    const { error: err } = await db.rpc('save_mock_exam_task_comments', {
+      p_mock_exam_id: exam.id,
+      p_student_id: studentId,
+      p_comments: comments,
+    })
+    if (err) return { error: err.message || 'Не удалось сохранить комментарии' }
+    return { error: null }
+  }, [exam])
+
   /** «Уведомить» одному / выбранным (§219). Кому этот итог уже отправлен, база второй раз не шлёт. */
   const notify = useCallback(async (studentIds: string[]): Promise<{ error: string | null; summary: NotifySummary | null }> => {
     if (!exam) return { error: 'Пробник не загружен', summary: null }
@@ -213,5 +252,5 @@ export function useMockExamWorks(examId: string | undefined) {
     return { error: null, summary: data }
   }, [exam])
 
-  return { exam, students, key, variants, loading, error, reload, saveRow, notify }
+  return { exam, students, key, variants, loading, error, reload, saveRow, saveComments, commentsReady, notify }
 }

@@ -43,6 +43,13 @@ import { cn } from '@/utils/cn'
  * Сохранение — существующей `save_mock_exam_grid` строкой ученика целиком;
  * «Уведомить» — `notify_mock_exam_results(exam, [ученик])`, только когда все
  * номера оценены и сохранены. Ученик ничего не получает при сохранении (§219).
+ *
+ * §270. В раскрытом номере второй части — «Комментарий ученику»: ученик видит
+ * его в результатах пробника после «Уведомить». «Принять» / «Принять все»
+ * переносят в пустое поле комментарий ИИ (написанное преподавателем не
+ * трогают). «Сохранить» пишет сначала баллы, затем изменённые комментарии
+ * (`save_mock_exam_task_comments`); комментарий к номеру без балла — ошибка до
+ * сохранения, текст в поле остаётся.
  */
 export function MockExamReviewPage() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>()
@@ -84,6 +91,8 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
   const n = maxPts.length
   const p1End = tpl.part1_last
   const [points, setPoints] = useState<(number | null)[]>(() => Array.from({ length: n }, (_, i) => student.points[i] ?? null))
+  // §270. Комментарии ученику — строками ('' — нет); сравниваются с сохранёнными после обрезки пробелов.
+  const [comments, setComments] = useState<string[]>(() => Array.from({ length: n }, (_, i) => student.comments?.[i] ?? ''))
   const [sel, setSel] = useState(() => {
     const firstMissing = Array.from({ length: n }, (_, i) => i).find(i => student.points[i] == null && i >= p1End)
     return firstMissing ?? Array.from({ length: n }, (_, i) => i).find(i => student.points[i] == null) ?? 0
@@ -99,7 +108,10 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
   const next = nextToReview(rows, student.id)
   const pos = reviewPosition(rows, student.id)
   const saved = student.points
-  const dirty = points.some((v, i) => v !== (saved[i] ?? null))
+  const pointsDirty = points.some((v, i) => v !== (saved[i] ?? null))
+  const commentsReady = works.commentsReady
+  const changedComments = commentsReady ? commentChanges(comments, student.comments, p1End) : []
+  const dirty = pointsDirty || changedComments.length > 0
   const totals = reviewTotals(points, tpl)
   const counts = markCounts(points, maxPts)
   const ns = notifyState(student.result)
@@ -145,12 +157,39 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
     document.querySelector(`[data-task-row="${sel + 1}"]`)?.scrollIntoView?.({ block: 'nearest' })
   }, [sel])
 
+  const setCommentAt = useCallback((i: number, v: string) => {
+    setComments(prev => { const nx = prev.slice(); nx[i] = v; return nx })
+    setStatus(null)
+  }, [])
+
+  /**
+   * §270. Баллы строкой ученика (как до §270) → изменённые комментарии.
+   * Комментарий к номеру без балла — ошибка до записи: ничего не пишем, текст
+   * в поле остаётся.
+   */
+  async function persist(): Promise<{ error: string | null; pointsSaved: boolean }> {
+    const orphan = commentsReady ? commentWithoutPoints(comments, points, p1End) : null
+    if (orphan != null) {
+      setSel(orphan)
+      return { error: `задание №${orphan + 1}: сначала поставьте балл — комментарий без балла не сохранить.`, pointsSaved: false }
+    }
+    const r = await works.saveRow(student.id, points)
+    if (r.error) return { error: r.error, pointsSaved: false }
+    // Номер без балла после сохранения строки не имеет — его комментарий ушёл вместе с баллом.
+    const toSave = changedComments.filter(i => points[i] != null)
+    if (toSave.length > 0) {
+      const c = await works.saveComments(student.id, Object.fromEntries(toSave.map(i => [String(i + 1), comments[i].trim() || null])))
+      if (c.error) return { error: pointsDirty ? `баллы сохранены, комментарии — нет: ${c.error}` : c.error, pointsSaved: true }
+    }
+    return { error: null, pointsSaved: true }
+  }
+
   async function save(then: 'stay' | 'next'): Promise<boolean> {
     setBusy(then === 'next' ? 'next' : 'save')
     setStatus(null)
-    const r = await works.saveRow(student.id, points)
+    const r = await persist()
     setBusy(null)
-    if (r.error) { setStatus({ kind: 'error', text: `Не сохранено: ${r.error}` }); return false }
+    if (r.error) { setStatus({ kind: 'error', text: `Не сохранено: ${r.error}` }); if (r.pointsSaved) works.reload(); return false }
     if (then === 'next') {
       navigate(nextUrl ?? worksUrl)
       works.reload()
@@ -161,15 +200,30 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
     return true
   }
 
+  // §270. Комментарий ИИ — в пустое поле комментария; текст преподавателя не трогаем.
+  function fillAiComments(tasks: number[]) {
+    if (!commentsReady) return
+    setComments(prev => {
+      const nx = prev.slice()
+      for (const t of tasks) {
+        const c = aiByTask.get(t)?.comment?.trim()
+        if (c && !(nx[t - 1] ?? '').trim()) nx[t - 1] = c.slice(0, COMMENT_MAX)
+      }
+      return nx
+    })
+  }
+
   function acceptAi(i: number, s: AiSuggestion) {
     setSel(i)
     setAt(i, s.points)
+    fillAiComments([i + 1])
   }
 
   function acceptAllSuggestions() {
     const r = acceptAllAi(points, aiByTask, p1End, maxPts)
     if (r.accepted.length === 0) return
     setPoints(r.points)
+    fillAiComments(r.accepted)
     setStatus({ kind: 'ok', text: `Принято предложений ИИ: ${r.accepted.length} (${r.accepted.map(t => `№${t}`).join(', ')}). Проверьте и нажмите «Сохранить».` })
   }
 
@@ -243,8 +297,8 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
 
       {leaveTo && (
         <div className="flex flex-wrap items-center gap-2 border-b border-graphite-200 bg-verdict-part-tint px-4 py-2.5 text-sm text-verdict-part-ink sm:px-6" role="alertdialog" data-testid="mock-review-leave">
-          <span className="mr-auto">Есть несохранённые баллы.</span>
-          <Button size="sm" onClick={async () => { const to = leaveTo; setLeaveTo(null); const r = await works.saveRow(student.id, points); if (r.error) { setStatus({ kind: 'error', text: `Не сохранено: ${r.error}` }); return } works.reload(); navigate(to) }}>Сохранить и перейти</Button>
+          <span className="mr-auto">{pointsDirty ? 'Есть несохранённые баллы.' : 'Есть несохранённые комментарии.'}</span>
+          <Button size="sm" onClick={async () => { const to = leaveTo; setLeaveTo(null); const r = await persist(); if (r.error) { setStatus({ kind: 'error', text: `Не сохранено: ${r.error}` }); if (r.pointsSaved) works.reload(); return } works.reload(); navigate(to) }}>Сохранить и перейти</Button>
           <Button size="sm" variant="secondary" onClick={() => { const to = leaveTo; setLeaveTo(null); navigate(to) }}>Перейти без сохранения</Button>
           <Button size="sm" variant="ghost" onClick={() => setLeaveTo(null)}>Остаться</Button>
         </div>
@@ -286,7 +340,8 @@ function Review({ exam, students, student, answerKey, variantCount, works, ai }:
                   aiHint={aiPart2 && aiUsable(aiByTask.get(i + 1), maxPts[i]) ? aiByTask.get(i + 1)!.points : null} />
                 {sel === i && (
                   <Part2Expand max={maxPts[i]} solutionPath={files.solution} criteriaPath={files.criteria} onClear={() => setAt(i, null)} hasValue={points[i] != null}
-                    ai={aiPart2 ? { suggestion: aiByTask.get(i + 1) ?? null, state: aiState, value: points[i], onAccept: s => acceptAi(i, s) } : null} />
+                    ai={aiPart2 ? { suggestion: aiByTask.get(i + 1) ?? null, state: aiState, value: points[i], onAccept: s => acceptAi(i, s) } : null}
+                    comment={commentsReady ? { task: i + 1, value: comments[i], onChange: v => setCommentAt(i, v) } : null} />
                 )}
               </div>
             )
@@ -410,7 +465,33 @@ interface Part2Ai {
   onAccept: (s: AiSuggestion) => void
 }
 
-function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue, ai }: { max: number; solutionPath: string | null; criteriaPath: string | null; onClear: () => void; hasValue: boolean; ai: Part2Ai | null }) {
+/** §270. Предел длины комментария ученику — как check в базе (mock_exam_task_scores_comment_len). */
+const COMMENT_MAX = 2000
+
+/** §270. Номера второй части (индексы с 0), где комментарий отличается от сохранённого (после обрезки пробелов). */
+function commentChanges(comments: readonly string[], saved: readonly (string | null)[] | undefined, p1End: number): number[] {
+  const out: number[] = []
+  for (let i = p1End; i < comments.length; i += 1) {
+    if ((comments[i] ?? '').trim() !== (saved?.[i] ?? '').trim()) out.push(i)
+  }
+  return out
+}
+
+/** §270. Первый номер второй части с текстом комментария, но без балла; null — таких нет. */
+function commentWithoutPoints(comments: readonly string[], points: readonly (number | null)[], p1End: number): number | null {
+  for (let i = p1End; i < comments.length; i += 1) {
+    if (points[i] == null && (comments[i] ?? '').trim()) return i
+  }
+  return null
+}
+
+interface Part2Comment {
+  task: number
+  value: string
+  onChange: (v: string) => void
+}
+
+function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue, ai, comment }: { max: number; solutionPath: string | null; criteriaPath: string | null; onClear: () => void; hasValue: boolean; ai: Part2Ai | null; comment: Part2Comment | null }) {
   return (
     <div className="mb-2 ml-0 mt-1 flex flex-col gap-2 rounded-xl bg-graphite-50 px-3.5 py-3 sm:ml-[34px]" data-testid="mock-review-expand">
       <span className="text-[13px] font-semibold text-graphite-500">Максимум · {max} {plural(max, 'балл', 'балла', 'баллов')}</span>
@@ -427,6 +508,19 @@ function Part2Expand({ max, solutionPath, criteriaPath, onClear, hasValue, ai }:
         ) : <span className="text-sm text-graphite-500">Решение не загружено — его добавляют во вкладке «Настройка».</span>}
       </div>
       {ai && <AiSuggestionBox max={max} ai={ai} />}
+      {comment && (
+        <label className="flex flex-col gap-1">
+          <span className="text-[13px] font-semibold text-graphite-500">Комментарий ученику</span>
+          <textarea value={comment.value} onChange={e => comment.onChange(e.target.value)} maxLength={COMMENT_MAX} rows={3}
+            data-testid="mock-review-comment" aria-describedby={`mock-review-comment-hint-${comment.task}`}
+            placeholder="Что не так в решении и как исправить"
+            className="w-full resize-y rounded-lg border-[1.5px] border-graphite-300 bg-white px-3 py-2 text-sm text-graphite-900 placeholder:text-graphite-400 focus:border-primary-500 focus:outline-none" />
+          <span id={`mock-review-comment-hint-${comment.task}`} className="text-xs text-graphite-500" data-testid="mock-review-comment-hint">
+            {hasValue ? 'Ученик увидит комментарий в результатах пробника — после «Уведомить».' : 'Сначала поставьте балл: комментарий сохраняется только вместе с баллом.'}
+            {comment.value.length > COMMENT_MAX - 200 && ` ${comment.value.length} / ${COMMENT_MAX}`}
+          </span>
+        </label>
+      )}
       {hasValue && <button type="button" onClick={onClear} className="self-start text-[13px] text-graphite-500 underline hover:text-graphite-900">очистить балл</button>}
     </div>
   )

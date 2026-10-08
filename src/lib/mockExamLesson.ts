@@ -75,6 +75,8 @@ export interface MockLessonResultTask {
   points: number | null
   answer: string | null
   correct: string | null
+  /** §270. Комментарий преподавателя — только у номеров второй части; нет поля — база до §270. */
+  comment?: string | null
 }
 
 /** Ответ `my_mock_exam_result(exam)`: до «Уведомить» — только `pending`. */

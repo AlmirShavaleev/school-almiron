@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { MinusToggle } from '@/components/ui/MinusToggle'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Camera, Clock, FileText, Images, Loader2, Lock, Send, Trash2, Upload } from 'lucide-react'
@@ -516,6 +516,9 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
   const part2 = result.tasks.filter(t => t.n > result.part1_last)
   const p1max = part1.reduce((a, t) => a + t.max, 0)
   const p2max = part2.reduce((a, t) => a + t.max, 0)
+  // §270. Комментарии преподавателя ко второй части — с ними части идут одна под другой (каждая на всю
+  // ширину), а не двумя колонками: комментарий в половине экрана читался бы узкой полосой.
+  const p2comments = part2.some(t => !!t.comment?.trim())
   const primaryMax = p1max + p2max
   const hasScale = result.max_score != null && result.max_score !== primaryMax
   const mine = useMyMockExams(groupId ? [groupId] : [])
@@ -560,7 +563,7 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
           <span className="inline-flex items-center gap-1.5"><VerdictMark state="bad" size={16} label={null} />0</span>
         </div>
       </Panel>
-      <div className="grid gap-3.5 md:grid-cols-2">
+      <div className={cn('grid gap-3.5', !p2comments && 'md:grid-cols-2')} data-testid="mock-lesson-parts">
         <Panel>
           <h3 className="mb-2 text-[15px] font-bold text-graphite-900">Часть 1 — ответы</h3>
           <div className="overflow-x-auto">
@@ -596,13 +599,30 @@ function ResultPanels({ result, state, groupId }: { result: Extract<MockLessonRe
                 <th className="border-b border-graphite-200 px-2 py-1.5 text-right">Максимум</th>
               </tr></thead>
               <tbody>
-                {part2.map(t => (
-                  <tr key={t.n}>
-                    <td className="border-b border-graphite-100 px-2 py-1.5">{t.n}</td>
-                    <td className="border-b border-graphite-100 px-2 py-1.5 text-right font-mono">{t.points ?? '—'}</td>
-                    <td className="border-b border-graphite-100 px-2 py-1.5 text-right font-mono">{t.max}</td>
-                  </tr>
-                ))}
+                {part2.map(t => {
+                  const comment = t.comment?.trim()
+                  const cell = comment ? 'px-2 pb-0.5 pt-1.5' : 'border-b border-graphite-100 px-2 py-1.5'
+                  return (
+                    <Fragment key={t.n}>
+                      <tr>
+                        <td className={cell}>{t.n}</td>
+                        <td className={cn(cell, 'text-right font-mono')}>{t.points ?? '—'}</td>
+                        <td className={cn(cell, 'text-right font-mono')}>{t.max}</td>
+                      </tr>
+                      {/* §270. Комментарий преподавателя к номеру — строкой под ним, на всю ширину таблицы. */}
+                      {comment && (
+                        <tr data-testid="mock-lesson-part2-comment" data-task={t.n}>
+                          <td colSpan={3} className="border-b border-graphite-100 px-2 pb-2 pt-0.5">
+                            <div className="rounded-lg bg-graphite-50 px-3 py-2">
+                              <span className="block text-xs font-semibold text-graphite-500">Комментарий преподавателя</span>
+                              <p className="whitespace-pre-line break-words text-sm text-graphite-700 [overflow-wrap:anywhere]">{comment}</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -214,5 +214,38 @@ describe('результат', () => {
     expect(screen.getByTestId('mock-lesson-part2').querySelectorAll('tbody tr')).toHaveLength(7)
     expect(screen.getByTestId('mock-lesson-solution')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-lesson-sheet')).toBeNull()
+    // §270. Комментариев нет — части двумя колонками, строк комментариев нет.
+    expect(screen.queryByTestId('mock-lesson-part2-comment')).toBeNull()
+    expect(screen.getByTestId('mock-lesson-parts').className).toContain('md:grid-cols-2')
+  })
+
+  it('§270: комментарий преподавателя — строкой под номером второй части', async () => {
+    examState = state({ starts_at: iso(now - 30 * 3600_000), ends_at: iso(now - 26 * 3600_000), photos_until: iso(now - 25 * 3600_000), submitted_at: iso(now - 27 * 3600_000), notified: true })
+    resultState = {
+      status: 'ready', title: 'Пробник №3', notified_at: iso(now - 3600_000), score: 18, max_score: 32,
+      primary_score: 18, part1_score: 10, part2_score: 8, part1_last: 12, solution_path: null,
+      tasks: [
+        ...Array.from({ length: 12 }, (_, i) => ({ n: i + 1, max: 1, points: 1, answer: String(i), correct: String(i), comment: null })),
+        ...[2, 3, 2, 2, 3, 4, 4].map((m, k) => ({
+          n: 13 + k, max: m, points: [2, 1, 2, 2, 1, 0, 0][k], answer: null, correct: null,
+          comment: k === 1 ? 'Потерян корень.\nПроверь ОДЗ.' : k === 2 ? '   ' : null,
+        })),
+      ],
+    }
+    mount()
+    await waitFor(() => expect(screen.getByTestId('mock-lesson-result')).toBeInTheDocument())
+    const rows = screen.getByTestId('mock-lesson-part2').querySelectorAll('tbody tr')
+    // 7 номеров + одна строка комментария (пустой из пробелов не показываем).
+    expect(rows).toHaveLength(8)
+    const c = screen.getByTestId('mock-lesson-part2-comment')
+    expect(c).toHaveAttribute('data-task', '14')
+    // Сразу под строкой №14.
+    expect(rows[1].textContent).toContain('14')
+    expect(rows[2]).toBe(c)
+    expect(c.querySelector('td')).toHaveAttribute('colspan', '3')
+    expect(c).toHaveTextContent('Комментарий преподавателя')
+    expect(c.querySelector('p')!.textContent).toBe('Потерян корень.\nПроверь ОДЗ.')
+    // С комментариями части идут одна под другой — комментарий на всю ширину.
+    expect(screen.getByTestId('mock-lesson-parts').className).not.toContain('md:grid-cols-2')
   })
 })
