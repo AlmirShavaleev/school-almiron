@@ -121,7 +121,9 @@ describe('Тренировочный урок (§266)', () => {
     expect(screen.getByTestId('lesson-format-mark')).toHaveTextContent('Тренировочный')
     await waitFor(() => expect(screen.getByRole('tab', { name: /Автопроверка/ })).toBeInTheDocument())
     expect(screen.queryByRole('tab', { name: /Домашнее задание/ })).toBeNull()
-    expect(screen.getByTestId('topic-group-autocheck-state')).toHaveTextContent('решено 0 из 2')
+    // Вкладка видна сразу по формату урока, состояние задач приходит отдельным
+    // запросом — ждём его, а не полагаемся на порядок ответов (§271 добавил ещё один).
+    expect(await screen.findByTestId('topic-group-autocheck-state')).toHaveTextContent('решено 0 из 2')
   })
 
   it('открытая задача: «Введите число» без запроса; верный ответ — вердикт, решение, оценка', async () => {
@@ -168,6 +170,16 @@ describe('Тренировочный урок (§266)', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Домашнее задание/ }))
     expect(await screen.findByTestId('hw-upload')).toBeInTheDocument()
     expect(rpcCalls.some(c => c.fn.startsWith('topic_autocheck'))).toBe(false)
+  })
+
+  it.each(['training', 'ege', null])('§271: «Оцените урок» — последним блоком темы при формате %s; своя оценка читается', async format => {
+    lesson.format = format
+    const { container } = renderPage()
+    const block = await screen.findByTestId('topic-rating')
+    // Блок — последний на странице темы, под содержимым вкладки.
+    expect(container.firstElementChild?.lastElementChild).toBe(block)
+    expect(within(block).getAllByRole('button', { name: /^Оценка \d+ из 10$/ })).toHaveLength(10)
+    await waitFor(() => expect(rpcCalls.some(c => c.fn === 'my_topic_rating' && c.args.p_topic_id === TOPIC)).toBe(true))
   })
 
   it('урок без пометки — как до §266: ни метки, ни автопроверки', async () => {

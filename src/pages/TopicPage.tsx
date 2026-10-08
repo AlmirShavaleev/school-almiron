@@ -42,6 +42,7 @@ import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { TopicAutocheckStudent } from '@/components/courseProgram/TopicAutocheckStudent'
 import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
 import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
+import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
 import { cn } from '@/utils/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -845,6 +846,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           )}
         </div>
       ) : null}
+
+      {/* §271. «Оцените урок» — внизу темы при любом формате урока и любой
+          вкладке. В предпросмотре виден, но выключен. */}
+      <TopicRatingBlock topicId={topic.id} preview={preview} />
     </div>
   )
 }

@@ -118,6 +118,8 @@ const WRITE_RPCS = [
   'topic_homework_start_attempt', 'topic_homework_submit_attempt',
   'topic_test_start_attempt', 'topic_test_save_answer', 'topic_test_submit_attempt',
   'record_material_view', 'topic_tasks_for_student', 'topic_student_variants',
+  // §271: оценка урока — ни записи, ни даже чтения своей оценки.
+  'rate_topic', 'my_topic_rating',
 ]
 const WRITE_TABLES = ['topic_section_marks', 'topic_homework_attempts', 'topic_homework_attempt_files', 'topic_test_attempts', 'topic_test_answers', 'test_variant_answers', 'test_variant_student_assignments']
 function calledRpcs() {
@@ -349,6 +351,19 @@ describe('Страница темы в предпросмотре глазами
     expectNothingWritten()
     // Из RPC вообще — только чтение состава, состояние решения и вердикт.
     expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts']))
+  })
+
+  it('§271: «Оцените урок» внизу виден, звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {
+    renderPage()
+    const block = await screen.findByTestId('topic-rating')
+    expect(block).toHaveTextContent('Оцените урок')
+    expect(screen.getByTestId('topic-rating-preview')).toHaveTextContent('В предпросмотре оценку не ставят')
+    const stars = within(block).getAllByRole('button', { name: /^Оценка \d+ из 10$/ })
+    expect(stars).toHaveLength(10)
+    for (const star of stars) expect(star).toBeDisabled()
+    fireEvent.click(stars[4])
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Кинематика' })).toBeInTheDocument())
+    expectNothingWritten()
   })
 
   it('закрытая тумблером тема в предпросмотре заперта, как у ученика', async () => {

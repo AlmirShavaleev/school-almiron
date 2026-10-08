@@ -11,7 +11,7 @@ import {
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, Trophy, ListChecks,
   Send,
-  LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer,
+  LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 
@@ -67,6 +67,8 @@ const navItems: NavItem[] = [
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
+  // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
+  { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // Рядом с каталогом намеренно: подборка рождается в его корзине, там же её и
@@ -107,6 +109,7 @@ const navItems: NavItem[] = [
 const CURATOR_ITEMS: NavItem[] = [
   { label: 'Проверка ДЗ',     path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Программа курса', path: '/course-program', icon: <BookOpen size={18} />,       roles: [], section: 'Курирую' },
+  { label: 'Оценки уроков',   path: '/topic-ratings',  icon: <Star size={18} />,           roles: [], section: 'Курирую' },
   { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
 ]
 
@@ -135,7 +138,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
-  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/lesson-library'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
