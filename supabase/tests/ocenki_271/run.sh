@@ -16,5 +16,5 @@ T=$(cd "$(dirname "$0")/.." && pwd)
 S=$(cd "$(dirname "$0")" && pwd)
 $Q -f $T/mock_exam_lesson_221/00_slice.sql && $Q -f $T/kontrolnaya_240/05_slice_240.sql >/dev/null && echo "slice: ok" \
  && $Q -f $S/10_data_271.sql && echo "data: ok" \
- && $Q -1 -f $R/PENDING_271_topic_ratings.sql && $Q -1 -f $R/PENDING_271_topic_ratings.sql && echo "PENDING_271 applied twice: ok" \
+ && $Q -1 -f $R/20261008094353_topic_ratings_271.sql && $Q -1 -f $R/20261008094353_topic_ratings_271.sql && echo "PENDING_271 applied twice: ok" \
  && psql -h $H -p $PT -U postgres probe271 -f $S/20_probes.sql
