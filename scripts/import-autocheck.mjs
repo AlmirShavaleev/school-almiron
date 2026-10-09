@@ -167,23 +167,37 @@ async function main() {
 async function importTexts(db, topicDir, tasks, plan) {
   if (!plan.md) return
   const figPath = new Map()
+  const failedFigs = new Set()
   for (const rel of plan.figures) {
     const bytes = readFileSync(join(topicDir, rel))
     const path = `autocheck/${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}.svg`
-    const { error } = await db.storage.from('catalog-figures').upload(path, bytes, {
-      contentType: 'image/svg+xml', upsert: false, cacheControl: '31536000',
-    })
-    if (error && !/exists|duplicate|409/i.test(String(error.message ?? '') + String(error.statusCode ?? ''))) {
-      die(`рисунок «${rel}»: ${error.message}`)
+    // Сеть у владельца иногда рвёт отдельные запросы («fetch failed») — пробуем несколько раз с паузой;
+    // не вышло — задачи с этим рисунком остаются картинками (без текста), остальные получают текст.
+    let ok = false
+    let lastErr = ''
+    for (let i = 1; i <= 6 && !ok; i++) {
+      try {
+        const { error } = await db.storage.from('catalog-figures').upload(path, bytes, {
+          contentType: 'image/svg+xml', upsert: false, cacheControl: '31536000',
+        })
+        if (!error || /exists|duplicate|409/i.test(String(error.message ?? '') + String(error.statusCode ?? ''))) ok = true
+        else lastErr = error.message
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e)
+      }
+      if (!ok) await new Promise(r => setTimeout(r, 1500 * i))
     }
-    figPath.set(rel, path)
+    if (ok) figPath.set(rel, path)
+    else { failedFigs.add(rel); console.log(`  ! рисунок «${rel}» не загрузился (${lastErr}) — его задачи останутся картинками`) }
   }
   const chunks = splitTasks(plan.md)
   const items = []
   for (const t of tasks) {
     const chunk = chunks.get(t.code)
     const txt = chunk ? taskText(chunk, rel => figPath.get(rel) ?? null) : null
-    if (txt) items.push({ code: t.code, statement_md: txt.statement_md, solution_md: txt.solution_md })
+    if (txt && !txt.figures.some(rel => failedFigs.has(rel))) {
+      items.push({ code: t.code, statement_md: txt.statement_md, solution_md: txt.solution_md })
+    }
   }
   if (!items.length) { console.log('  тексты: нечего загружать'); return }
   const { data, error } = await db.rpc('topic_autocheck_set_text', { p_topic_id: FLAGS.topic, p_items: items })
