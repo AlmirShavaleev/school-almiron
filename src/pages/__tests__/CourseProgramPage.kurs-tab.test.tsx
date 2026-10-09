@@ -87,11 +87,11 @@ function topic(id: string, title: string, over: Partial<TopicProgress> = {}): To
   }
 }
 const STUDENT_MODULES: ModuleProgress[] = [
-  { id: 'm1', title: '№13', order_index: 1, done: 0, total: 0, counters: { openTopics: 1, totalTopics: 2, homeworkAvailable: 1, homeworkSubmitted: 0 }, topics: [
+  { id: 'm1', title: '№13', order_index: 1, done: 0, total: 0, counters: { openTopics: 1, totalTopics: 2, homeworkAvailable: 1, homeworkSubmitted: 0, doneTopics: 0, countedTopics: 2 }, topics: [
     topic('t1', 'Методы решения', { hw_id: 'h1', hw_due_at: PAST, hw_status: 'not_started' }),
     topic('t2', 'Задачи ЕГЭ', { is_open: null, available_from: FUTURE }),
   ] },
-  { id: 'm2', title: '№9 Задачи прикладного характера', order_index: 2, done: 0, total: 0, counters: { openTopics: 0, totalTopics: 1, homeworkAvailable: 0, homeworkSubmitted: 0 }, topics: [
+  { id: 'm2', title: '№9 Задачи прикладного характера', order_index: 2, done: 0, total: 0, counters: { openTopics: 0, totalTopics: 1, homeworkAvailable: 0, homeworkSubmitted: 0, doneTopics: 0, countedTopics: 1 }, topics: [
     topic('t3', 'Прикладные', { is_open: false }),
   ] },
 ]

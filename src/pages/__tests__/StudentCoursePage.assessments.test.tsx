@@ -28,7 +28,8 @@ const topic = (id: string, title: string, kind = 'lesson') => ({
 
 const moduleOf = (id: string, title: string, ts: any[]): ModuleProgress => ({
   id, title, order_index: 1, topics: ts, done: 0, total: 0,
-  counters: countTopics(ts.map(t => ({ is_open: t.is_open, available_from: t.available_from, hasHomework: false, hwStatus: null }))),
+  // §280: у каждой темы есть «Теория» — её можно пройти, она в знаменателе.
+  counters: countTopics(ts.map(t => ({ is_open: t.is_open, available_from: t.available_from, hasHomework: false, hwStatus: null, markableGroups: ['theory' as const] }))),
 })
 
 const modules: ModuleProgress[] = [
@@ -180,7 +181,7 @@ describe('StudentCoursePage — модуль «Контрольные работ
 
   it('прогресс не трогаем: счётчик курса считает все темы, как раньше', () => {
     renderPage()
-    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('5')
+    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('Пройдено 0 из 5 тем')
   })
 })
 

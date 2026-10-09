@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   countTopics,
+  doneLabel,
+  donePercent,
+  isCompleted,
+  topicCompleted,
   homeworkLabel,
   isHomeworkSubmitted,
   openPercent,
@@ -43,6 +47,10 @@ describe('счёт тем — главный счётчик', () => {
       totalTopics: 5,
       homeworkAvailable: 0,
       homeworkSubmitted: 0,
+      // §280: в фикстуре у тем нет ни работы, ни рубрик — проходить нечего;
+      // в знаменатель идут только закрытые (их содержимое ещё предстоит).
+      doneTopics: 0,
+      countedTopics: 2,
     })
     // Раньше здесь было «0 из 0»: заданий нет, а тем — три.
     expect(topicsLabel(counters)).toBe('3 из 5 тем открыто')
@@ -102,12 +110,14 @@ describe('курс = сумма разделов', () => {
       totalTopics: 3,
       homeworkAvailable: 1,
       homeworkSubmitted: 1,
+      doneTopics: 1,
+      countedTopics: 2,
     })
   })
 
   it('без разделов — нули, а не NaN', () => {
     expect(sumCounters([])).toEqual({
-      openTopics: 0, totalTopics: 0, homeworkAvailable: 0, homeworkSubmitted: 0,
+      openTopics: 0, totalTopics: 0, homeworkAvailable: 0, homeworkSubmitted: 0, doneTopics: 0, countedTopics: 0,
     })
   })
 })
@@ -118,7 +128,7 @@ describe('topicsLabel — склонение', () => {
   const label = (open: number, total: number) =>
     topicsLabel({
       openTopics: open, totalTopics: total,
-      homeworkAvailable: 0, homeworkSubmitted: 0,
+      homeworkAvailable: 0, homeworkSubmitted: 0, doneTopics: 0, countedTopics: total,
     })
 
   it('набор из приёмки', () => {
@@ -139,5 +149,45 @@ describe('topicsLabel — склонение', () => {
   it('тот самый случай из жалобы', () => {
     expect(label(2, 2)).toBe('2 из 2 темы открыто')
     expect(label(2, 2)).not.toContain('2 тем открыто')
+  })
+})
+
+describe('§280: «пройдено», а не «открыто»', () => {
+  it('весь курс открыт, ничего не сделано — 0%, не «Завершён» (жалоба владельца 09.10)', () => {
+    const c = countTopics([
+      topic({ is_open: true, hasHomework: true, hwStatus: 'not_started' }),
+      topic({ is_open: true, tasksTotal: 10, tasksClosed: 0 }),
+      topic({ is_open: true, markableGroups: ['theory', 'lesson'] }),
+    ], TODAY)
+    expect(c.openTopics).toBe(3)
+    expect(donePercent(c)).toBe(0)
+    expect(isCompleted(c)).toBe(false)
+    expect(doneLabel(c)).toBe('Пройдено 0 из 3 темы')
+  })
+
+  it('пройдена: ДЗ отправлено/принято, все задачи к уроку закрыты, отмечены все группы', () => {
+    expect(topicCompleted(topic({ hasHomework: true, hwStatus: 'submitted' }))).toBe(true)
+    expect(topicCompleted(topic({ hasHomework: true, hwStatus: 'accepted' }))).toBe(true)
+    expect(topicCompleted(topic({ hasHomework: true, hwStatus: 'returned' }))).toBe(false)
+    expect(topicCompleted(topic({ tasksTotal: 3, tasksClosed: 3 }))).toBe(true)
+    expect(topicCompleted(topic({ tasksTotal: 3, tasksClosed: 2 }))).toBe(false)
+    // ДЗ и задачи вместе — нужно и то, и другое.
+    expect(topicCompleted(topic({ hasHomework: true, hwStatus: 'accepted', tasksTotal: 3, tasksClosed: 1 }))).toBe(false)
+    // Работы нет — решают отметки.
+    expect(topicCompleted(topic({ markableGroups: ['theory', 'lesson'], marks: new Set(['theory']) }))).toBe(false)
+    expect(topicCompleted(topic({ markableGroups: ['theory', 'lesson'], marks: new Set(['theory', 'lesson']) }))).toBe(true)
+    // Проходить нечего.
+    expect(topicCompleted(topic())).toBeNull()
+  })
+
+  it('закрытые темы в знаменателе, «открыто N» в подписи; 100% только когда всё пройдено', () => {
+    const c = countTopics([
+      topic({ is_open: true, hasHomework: true, hwStatus: 'accepted' }),
+      topic({ is_open: true, hasHomework: true, hwStatus: 'accepted' }),
+      topic({ is_open: false }),
+    ], TODAY)
+    expect(doneLabel(c)).toBe('Пройдено 2 из 3 темы · открыто 2')
+    expect(donePercent(c)).toBe(66)
+    expect(isCompleted(c)).toBe(false)
   })
 })

@@ -74,9 +74,9 @@ function renderPage() {
 }
 
 describe('StudentCoursePage — счётчики', () => {
-  it('главный счётчик считает открытые темы, а не задания', async () => {
+  it('§280: главный счётчик — пройденные темы; закрытые в знаменателе, открытые пустые нет', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('2 из 4 темы открыто')
+    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
   })
 
   it('при нуле опубликованных ДЗ строка говорит словами, а не пустует', async () => {
@@ -87,7 +87,7 @@ describe('StudentCoursePage — счётчики', () => {
 
   it('раздел в списке считает тем же правилом, что и курс', async () => {
     renderPage()
-    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('2 из 4 темы открыто')
+    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
     expect(screen.getByTestId('module-homework-counter')).toHaveTextContent('Домашних заданий пока нет')
   })
 
@@ -122,7 +122,7 @@ describe('StudentCoursePage — склонение', () => {
     // ВТОРЫМ числом, с ним и согласуется.
     renderPage()
     const counter = await screen.findByTestId('course-topics-counter')
-    expect(counter).toHaveTextContent('темы открыто')
-    expect(counter.textContent).not.toMatch(/4 тем открыто/)
+    expect(counter).toHaveTextContent('из 2 темы')
+    expect(counter.textContent).not.toMatch(/из 2 тем(?!ы)/)
   })
 })

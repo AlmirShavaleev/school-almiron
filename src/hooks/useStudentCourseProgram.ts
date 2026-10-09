@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
+import { isSelfMarkable, topicGroups, type TopicGroupKey } from '@/lib/topicProgress'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
 import type {
@@ -326,8 +327,8 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       const assignmentIds = assignmentRows.map(a => a.id)
       type TestAttemptRow = { assignment_id: string; status: string; total_points: number | null; max_points: number | null }
 
-      const [attempts, testAttempts] = studentId === null
-        ? [[] as TopicHomeworkAttemptRow[], [] as TestAttemptRow[]]
+      const [attempts, testAttempts, markRows] = studentId === null
+        ? [[] as TopicHomeworkAttemptRow[], [] as TestAttemptRow[], [] as { topic_id: string; group_key: string }[]]
         : await Promise.all([
           (async () => {
             if (!homeworkIds.length) return [] as TopicHomeworkAttemptRow[]
@@ -349,6 +350,18 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
             if (error) throw new Error(error.message ?? 'Не удалось загрузить результаты тестов')
             return (data || []) as unknown as TestAttemptRow[]
           })(),
+          // §280: самоотметки «Отметить как сделанное» — для «пройдено» у тем без работы.
+          // Ошибку глотаем: без отметок экран рисуется, просто такие темы не пройдены.
+          (async () => {
+            if (!topicIds.length) return [] as { topic_id: string; group_key: string }[]
+            const { data, error } = await supabase
+              .from('topic_section_marks')
+              .select('topic_id, group_key')
+              .eq('student_id', studentId)
+              .in('topic_id', topicIds)
+            if (error) { console.warn('Не удалось загрузить отметки тем', error); return [] }
+            return (data || []) as { topic_id: string; group_key: string }[]
+          })(),
         ])
 
       // 6. Вердикты по попыткам ученика (балл + комментарий)
@@ -364,6 +377,12 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       }
 
       // 7. Индексы
+      const marksByTopic = new Map<string, Set<TopicGroupKey>>()
+      for (const r of markRows) {
+        const set = marksByTopic.get(r.topic_id) ?? new Set<TopicGroupKey>()
+        set.add(r.group_key as TopicGroupKey)
+        marksByTopic.set(r.topic_id, set)
+      }
       const sectionMap = sectionsFromMaterials(materialRows)
       const videoGuids = firstVideoGuidByTopic(materialRows)
 
@@ -451,6 +470,10 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           available_from: topic.available_from,
           hasHomework: !!topic.hw_id,
           hwStatus: topic.hw_status,
+          tasksTotal: topic.tasks_total,
+          tasksClosed: topic.tasks_closed,
+          markableGroups: topicGroups([...topic.sections] as TopicSection[]).filter(isSelfMarkable),
+          marks: marksByTopic.get(topic.id),
         })))
 
         return {
