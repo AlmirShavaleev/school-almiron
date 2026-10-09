@@ -86,7 +86,7 @@ describe('превью видео', () => {
 
 describe('§283: своя обложка ролика Bunny', () => {
   const G = '0eaac6de-fdc5-40b5-9b0b-b57329524d83'
-  it('имя из content, а не thumbnail.jpg; постороннее не пропускаем', async () => {
+  it('имя из file_name, а не thumbnail.jpg; постороннее не пропускаем', async () => {
     const { bunnyThumbnailUrl, videoThumbFile, firstVideoThumbByTopic } = await import('../lessonCard')
     expect(bunnyThumbnailUrl(G, 'vz.b-cdn.net', 'thumbnail_066cab73.jpg')).toBe(`https://vz.b-cdn.net/${G}/thumbnail_066cab73.jpg`)
     expect(bunnyThumbnailUrl(G, 'vz.b-cdn.net', '../x.jpg')).toBe(`https://vz.b-cdn.net/${G}/thumbnail.jpg`)
@@ -94,9 +94,9 @@ describe('§283: своя обложка ролика Bunny', () => {
     expect(videoThumbFile('evil?.jpg')).toBeNull()
     const url = `https://iframe.mediadelivery.net/embed/763334/${G}`
     const m = firstVideoThumbByTopic([
-      { topic_id: 't1', kind: 'video', url, position: 2, content: 'thumbnail_aaaa1111.jpg' },
-      { topic_id: 't1', kind: 'video', url, position: 1, content: 'thumbnail_066cab73.jpg' },
-      { topic_id: 't2', kind: 'video', url, position: 1, content: null },
+      { topic_id: 't1', kind: 'video', url, position: 2, file_name: 'thumbnail_aaaa1111.jpg' },
+      { topic_id: 't1', kind: 'video', url, position: 1, file_name: 'thumbnail_066cab73.jpg' },
+      { topic_id: 't2', kind: 'video', url, position: 1, file_name: null },
     ])
     expect(m.get('t1')).toBe('thumbnail_066cab73.jpg')
     expect(m.has('t2')).toBe(false)

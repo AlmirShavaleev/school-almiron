@@ -287,7 +287,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           // §274: url и position — превью первого видео на карточке урока.
           onlyEgeTrack(supabase
             .from('topic_material_items')
-            .select('topic_id, kind, section, url, position, content')
+            .select('topic_id, kind, section, url, position, file_name')
             .in('topic_id', topicIds))
             .range(from, to)),
         (async () => {

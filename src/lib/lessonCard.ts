@@ -58,8 +58,9 @@ export function bunnyThumbnailUrl(
 /**
  * §283. Своя обложка ролика в Bunny (кадр заставки) лежит не в `thumbnail.jpg`,
  * а в файле с хвостом: Bunny при загрузке обложки даёт новое имя
- * (`thumbnail_066cab73.jpg`), чтобы сбросить кэш CDN. Имя хранится в `content`
- * строки видео в `topic_material_items` (у видео поле больше ничем не занято).
+ * (`thumbnail_066cab73.jpg`), чтобы сбросить кэш CDN. Имя хранится в `file_name`
+ * строки видео в `topic_material_items` (у видео поле ничем не занято; `content`
+ * у видео запрещён проверкой `course_lesson_materials_payload_chk`).
  * Пропускаем только такое имя — в адрес картинки не попадёт ничего постороннего.
  */
 export function videoThumbFile(value: string | null | undefined): string | null {
@@ -69,14 +70,14 @@ export function videoThumbFile(value: string | null | undefined): string | null 
 
 /** §283. Имя обложки у первого ролика темы (того же, что берёт `firstVideoGuidByTopic`). */
 export function firstVideoThumbByTopic(
-  rows: readonly { topic_id: string; kind: string; url?: string | null; position?: number | null; content?: string | null }[],
+  rows: readonly { topic_id: string; kind: string; url?: string | null; position?: number | null; file_name?: string | null }[],
 ): Map<string, string> {
   const best = new Map<string, { file: string | null; pos: number }>()
   for (const r of rows) {
     if (r.kind !== 'video' || !parseBunnyVideoUrl(r.url)) continue
     const pos = r.position ?? Number.MAX_SAFE_INTEGER
     const cur = best.get(r.topic_id)
-    if (!cur || pos < cur.pos) best.set(r.topic_id, { file: videoThumbFile(r.content), pos })
+    if (!cur || pos < cur.pos) best.set(r.topic_id, { file: videoThumbFile(r.file_name), pos })
   }
   const out = new Map<string, string>()
   for (const [k, v] of best) if (v.file) out.set(k, v.file)
