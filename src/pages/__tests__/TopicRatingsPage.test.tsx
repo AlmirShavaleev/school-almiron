@@ -62,11 +62,12 @@ function titles() {
 }
 
 describe('TopicRatingsPage (§271)', () => {
-  it('по умолчанию — курс не-каркас, сверху самые низкие, неоценённые внизу', async () => {
+  it('по умолчанию — каркас (§276: все группы вместе), сверху самые низкие, неоценённые внизу', async () => {
     render(<MemoryRouter><TopicRatingsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getAllByTestId('topic-ratings-row')).toHaveLength(5))
-    expect(loadModules).toHaveBeenCalledWith('C1')
-    expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'C1' })
+    expect(loadModules).toHaveBeenCalledWith('TPL')
+    expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'TPL' })
+    expect(screen.getByTestId('topic-ratings-scope')).toHaveTextContent('оценки всех групп')
     expect(titles()).toEqual(['T2', 'T4', 'T1', 'T3', 'T5'])
     expect(screen.getByTestId('topic-ratings-stats')).toHaveTextContent('Оценено 3 из 5 уроков')
   })
@@ -105,8 +106,9 @@ describe('TopicRatingsPage (§271)', () => {
   it('выбор курса в списке перезагружает сводку', async () => {
     render(<MemoryRouter><TopicRatingsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getAllByTestId('topic-ratings-row')).toHaveLength(5))
-    fireEvent.change(screen.getByTestId('topic-ratings-course'), { target: { value: 'TPL' } })
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'TPL' }))
-    expect(loadModules).toHaveBeenCalledWith('TPL')
+    fireEvent.change(screen.getByTestId('topic-ratings-course'), { target: { value: 'C1' } })
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'C1' }))
+    expect(loadModules).toHaveBeenCalledWith('C1')
+    await waitFor(() => expect(screen.getByTestId('topic-ratings-scope')).toHaveTextContent('только оценки этой группы'))
   })
 })

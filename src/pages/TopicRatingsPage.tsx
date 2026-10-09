@@ -36,13 +36,15 @@ export function TopicRatingsPage() {
   const [sort, setSort] = useState<TopicRatingSort>('worst')
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  // Каркасы (шаблоны) — в конце: учеников в них не зачисляют (§113), оценок там нет.
+  // §276. Каркасы (шаблоны) — первыми: в каркасе оценки всех групп собраны вместе («общая копилка»),
+  // это главный вид. Курс класса — только его группы.
   const orderedCourses = useMemo(
-    () => [...courses].sort((a, b) => Number(a.is_template) - Number(b.is_template)),
+    () => [...courses].sort((a, b) => Number(b.is_template) - Number(a.is_template)),
     [courses],
   )
   const requested = params.get('course')
   const courseId = orderedCourses.some(c => c.id === requested) ? requested : orderedCourses[0]?.id ?? null
+  const selectedIsTemplate = orderedCourses.find(c => c.id === courseId)?.is_template ?? false
 
   // loadModules — новая функция на каждый рендер хука; держим последнюю в ref,
   // чтобы загрузка зависела только от выбранного курса. Эффект объявлен раньше
@@ -88,6 +90,11 @@ export function TopicRatingsPage() {
           Ученики ставят уроку от 1 до {TOPIC_RATING_MAX} звёзд внизу страницы темы. Сверху — самые непонятные:
           со средним ниже {TOPIC_RATING_REWORK_BELOW} урок стоит переработать. Имён учеников здесь нет.
         </p>
+        <p data-testid="topic-ratings-scope" className="mt-1 text-sm text-gray-500">
+          {selectedIsTemplate
+            ? 'Каркас: оценки всех групп, которые учатся по этому каркасу, собраны вместе.'
+            : 'Курс класса: только оценки этой группы. Общая картина по всем группам — в каркасе.'}
+        </p>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -104,7 +111,7 @@ export function TopicRatingsPage() {
             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
           >
             {orderedCourses.map(c => (
-              <option key={c.id} value={c.id}>{c.title}{c.is_template ? ' (каркас)' : ''}</option>
+              <option key={c.id} value={c.id}>{c.title}{c.is_template ? ' (каркас — все группы)' : ''}</option>
             ))}
           </select>
         </label>
