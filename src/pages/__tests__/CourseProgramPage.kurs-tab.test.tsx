@@ -212,6 +212,15 @@ describe('«Курс»: разделы → раздел → тема (§250)', (
     expect(screen.getByTestId('kurs-sections')).toBeInTheDocument()
   })
 
+  it('§277.1: открытая тема открывается щелчком по любому месту карточки; закрытая — нет', async () => {
+    renderAt('/course-program?courseId=c1&module=m1')
+    const rows = await screen.findAllByTestId('kurs-topic-row')
+    fireEvent.click(rows[1])
+    expect(where()).not.toContain('topic=')
+    fireEvent.click(within(rows[0]).getByText('Методы решения'))
+    await waitFor(() => expect(where()).toContain('topic=t1'))
+  })
+
   it('строка класса у открытой темы с ДЗ: сдали X из Y · ждут проверки · средний · просрочили; ДЗ — со сроком', async () => {
     renderAt('/course-program?courseId=c1&module=m1')
     const rows = await screen.findAllByTestId('kurs-topic-row')

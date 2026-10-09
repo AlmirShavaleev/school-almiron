@@ -370,9 +370,14 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
     <li
       data-testid="kurs-topic-row"
       data-open={open ? 'true' : 'false'}
+      // §277.1: открытая тема — вся карточка нажимается (владелец: «чтобы целиком можно было нажать»).
+      // Кнопка «Открыть» внутри остаётся для клавиатуры и экранного диктора; щелчок по ней — то же действие.
+      onClick={open ? onOpen : undefined}
       className={cn(
-        'flex h-full min-h-[132px] min-w-0 gap-3 rounded-card border p-3 sm:min-h-[176px] sm:gap-4 sm:p-4',
-        open ? 'border-graphite-200 bg-white shadow-card' : 'border-graphite-200 bg-graphite-50',
+        'flex h-full min-h-[132px] min-w-0 gap-3 rounded-card border p-3 transition-all duration-150 sm:min-h-[176px] sm:gap-4 sm:p-4',
+        open
+          ? 'group cursor-pointer border-graphite-200 bg-white shadow-card hover:-translate-y-px hover:border-primary-300'
+          : 'border-graphite-200 bg-graphite-50',
       )}
     >
       <LessonThumb
@@ -388,7 +393,7 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
           <TopicKindMark kind={topic.kind} />
           <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
         </span>
-        <div className={cn('line-clamp-3 break-words text-[15px] font-extrabold leading-snug sm:text-[17px]', open ? 'text-graphite-950' : 'text-graphite-500')}>
+        <div className={cn('line-clamp-3 break-words text-[15px] font-extrabold leading-snug sm:text-[17px]', open ? 'text-graphite-950 group-hover:text-primary-700' : 'text-graphite-500')}>
           {!open && <Lock size={12} className="mb-0.5 mr-1 inline text-graphite-400" aria-hidden />}
           {topic.title}
         </div>
@@ -406,7 +411,7 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
           {open ? (
             <button
               type="button"
-              onClick={onOpen}
+              onClick={e => { e.stopPropagation(); onOpen() }}
               data-testid="kurs-topic-open"
               aria-label={`Открыть тему ${topic.title}`}
               className="inline-flex min-h-11 items-center rounded-lg bg-primary-50 px-3 text-[13px] font-bold text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 md:min-h-9"
