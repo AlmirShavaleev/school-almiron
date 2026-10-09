@@ -36,6 +36,7 @@ vi.mock('@/hooks/useCourseProgram', () => ({
     courses: [
       { id: 'TPL', title: 'Каркас физики', is_template: true },
       { id: 'C1', title: 'Физика 11А', is_template: false },
+      { id: 'TPL2', title: 'Каркас математики', is_template: true },
     ],
     loading: false,
     loadModules,
@@ -67,7 +68,7 @@ describe('TopicRatingsPage (§271)', () => {
     await waitFor(() => expect(screen.getAllByTestId('topic-ratings-row')).toHaveLength(5))
     expect(loadModules).toHaveBeenCalledWith('TPL')
     expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'TPL' })
-    expect(screen.getByTestId('topic-ratings-scope')).toHaveTextContent('оценки всех групп')
+    expect(screen.getByTestId('topic-ratings-scope')).toHaveTextContent('Оценки всех групп')
     expect(titles()).toEqual(['T2', 'T4', 'T1', 'T3', 'T5'])
     expect(screen.getByTestId('topic-ratings-stats')).toHaveTextContent('Оценено 3 из 5 уроков')
   })
@@ -103,12 +104,13 @@ describe('TopicRatingsPage (§271)', () => {
     expect(dist).toHaveTextContent('10 звёзд0')
   })
 
-  it('выбор курса в списке перезагружает сводку', async () => {
+  it('в списке только каркасы (курсы классов скрыты); выбор каркаса перезагружает сводку', async () => {
     render(<MemoryRouter><TopicRatingsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getAllByTestId('topic-ratings-row')).toHaveLength(5))
-    fireEvent.change(screen.getByTestId('topic-ratings-course'), { target: { value: 'C1' } })
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'C1' }))
-    expect(loadModules).toHaveBeenCalledWith('C1')
-    await waitFor(() => expect(screen.getByTestId('topic-ratings-scope')).toHaveTextContent('только оценки этой группы'))
+    const select = screen.getByTestId('topic-ratings-course')
+    expect(within(select).getAllByRole('option').map(o => o.getAttribute('value'))).toEqual(['TPL', 'TPL2'])
+    fireEvent.change(select, { target: { value: 'TPL2' } })
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('topic_ratings_summary', { p_course_id: 'TPL2' }))
+    expect(loadModules).toHaveBeenCalledWith('TPL2')
   })
 })

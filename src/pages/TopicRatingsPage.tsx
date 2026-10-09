@@ -36,12 +36,13 @@ export function TopicRatingsPage() {
   const [sort, setSort] = useState<TopicRatingSort>('worst')
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  // §276. Каркасы (шаблоны) — первыми: в каркасе оценки всех групп собраны вместе («общая копилка»),
-  // это главный вид. Курс класса — только его группы.
-  const orderedCourses = useMemo(
-    () => [...courses].sort((a, b) => Number(b.is_template) - Number(a.is_template)),
-    [courses],
-  )
+  // §276. Решение владельца 09.10: оценки смотрим только по каркасам — в каркасе оценки всех групп собраны
+  // вместе («общая копилка»). Курсы классов в списке не показываем. Если каркасов не видно (у преподавателя
+  // их может не быть) — показываем его курсы, как раньше.
+  const orderedCourses = useMemo(() => {
+    const templates = courses.filter(c => c.is_template)
+    return templates.length > 0 ? templates : courses
+  }, [courses])
   const requested = params.get('course')
   const courseId = orderedCourses.some(c => c.id === requested) ? requested : orderedCourses[0]?.id ?? null
   const selectedIsTemplate = orderedCourses.find(c => c.id === courseId)?.is_template ?? false
@@ -92,7 +93,7 @@ export function TopicRatingsPage() {
         </p>
         <p data-testid="topic-ratings-scope" className="mt-1 text-sm text-gray-500">
           {selectedIsTemplate
-            ? 'Каркас: оценки всех групп, которые учатся по этому каркасу, собраны вместе.'
+            ? 'Оценки всех групп, которые учатся по этому каркасу, собраны вместе.'
             : 'Курс класса: только оценки этой группы. Общая картина по всем группам — в каркасе.'}
         </p>
       </div>
@@ -111,7 +112,7 @@ export function TopicRatingsPage() {
             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
           >
             {orderedCourses.map(c => (
-              <option key={c.id} value={c.id}>{c.title}{c.is_template ? ' (каркас — все группы)' : ''}</option>
+              <option key={c.id} value={c.id}>{c.title}</option>
             ))}
           </select>
         </label>
