@@ -970,7 +970,7 @@ export function StudentCoursePage() {
 
       {/* §282. Курс платный и подписка не действует — сказать прямо, а не
           показывать пустую программу (RLS отдаёт пусто). */}
-      <SubscriptionLockBanner courseId={course.id} />
+      {!preview && <SubscriptionLockBanner courseId={course.id} />}
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на

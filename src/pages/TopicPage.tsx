@@ -44,6 +44,7 @@ import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
 import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
 import { cn } from '@/utils/cn'
+import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,8 @@ interface TopicInfo {
   is_open:        boolean | null
   module_title:   string
   course_title:   string
+  /** §282: для плашки «курс закрыт подпиской». */
+  course_id:      string | null
   group_id:       string
   group_name:     string
   /** §240. Урок / проверочная / контрольная. */
@@ -218,6 +221,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           is_open:        td.is_open ?? null,
           module_title:   td.modules?.title || '',
           course_title:   td.modules?.courses?.title || '',
+          course_id:      td.modules?.courses?.id ?? null,
           group_id:       groupId!,
           group_name:     gd?.name || '',
           kind:           normalizeTopicKind(td.kind),
@@ -605,6 +609,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     <div className={cn('max-w-3xl space-y-6 pb-10', active === 'homework' && 'lg:max-w-5xl')}>
 
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
+
+      {/* §282. Прямая ссылка на тему закрытого подпиской курса: объяснить, а не показать пустоту. */}
+      {!preview && <SubscriptionLockBanner courseId={topic.course_id} />}
 
       {/* ── Header ── */}
       <div>
