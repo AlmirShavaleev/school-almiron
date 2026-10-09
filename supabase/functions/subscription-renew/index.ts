@@ -22,7 +22,7 @@
  *      SUBSCRIPTION_RESEND_API_KEY, SUBSCRIPTION_MAIL_FROM, SUBSCRIPTION_APP_URL
  */
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
   YOOKASSA_API,
   applyPaymentArgs,
@@ -113,9 +113,7 @@ Deno.serve(async (req: Request) => {
   return json(report)
 })
 
-type Admin = ReturnType<typeof createClient>
-
-async function renewOne(admin: Admin, shopId: string, secretKey: string, subscriptionId: string): Promise<string> {
+async function renewOne(admin: SupabaseClient, shopId: string, secretKey: string, subscriptionId: string): Promise<string> {
   const { data: begin, error } = await admin.rpc('subscription_renewal_begin', { p_subscription_id: subscriptionId })
   if (error) {
     // частичный unique: открытое автосписание уже есть — ждём вебхук
