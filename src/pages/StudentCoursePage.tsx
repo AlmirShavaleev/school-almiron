@@ -32,6 +32,7 @@ import {
   isWorksOnlyModule, studentProgramModules, workWhenLabel, workWhenShort, worksCountLabel, type AssessmentWork,
 } from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
 
@@ -966,6 +967,10 @@ export function StudentCoursePage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+
+      {/* §282. Курс платный и подписка не действует — сказать прямо, а не
+          показывать пустую программу (RLS отдаёт пусто). */}
+      <SubscriptionLockBanner courseId={course.id} />
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на

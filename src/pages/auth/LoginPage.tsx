@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
+import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 
 const schema = z.object({
@@ -48,7 +49,7 @@ export function LoginPage() {
         setError('Неверный email или пароль')
       }
     } else {
-      navigate(getPendingInvitePath() || getPendingTeacherJoinLinkPath() || '/dashboard')
+      navigate(getPendingInvitePath() || getPendingTeacherJoinLinkPath() || getPendingSubscribePath() || '/dashboard')
     }
   }
 
@@ -68,7 +69,7 @@ export function LoginPage() {
   // в ту же ловушку, что и главная: персонал с чужим сохранённым приглашением
   // уезжал бы на `/join` вместо своего кабинета.
   if (profile) {
-    const pendingPath = getPendingInvitePath(profile.role) || getPendingTeacherJoinLinkPath(profile.role)
+    const pendingPath = getPendingInvitePath(profile.role) || getPendingTeacherJoinLinkPath(profile.role) || getPendingSubscribePath(profile.role)
     return <Navigate to={pendingPath || '/dashboard'} replace />
   }
 

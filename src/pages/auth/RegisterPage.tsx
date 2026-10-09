@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath, hasPendingInvite } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath, hasPendingTeacherJoinLink } from '@/lib/teacherJoinLinkSession'
+import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 
 // ФИО обязательно ВСЕГДА, в том числе при переходе по ссылке приглашения.
@@ -66,6 +67,13 @@ export function RegisterPage() {
     }
     if (hasPendingTeacherJoinLink() && authData.session) {
       navigate(getPendingTeacherJoinLinkPath() || '/dashboard')
+      return
+    }
+    // §282. Пришёл с витрины подписки: сессия есть — сразу к оформлению;
+    // нет (нужно подтвердить почту) — тариф дождётся входа (pendingSubscribe).
+    const subscribePath = getPendingSubscribePath()
+    if (subscribePath && authData.session) {
+      navigate(subscribePath)
       return
     }
     setSuccess(true)

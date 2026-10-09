@@ -5,6 +5,7 @@ import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffMode
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
@@ -27,6 +28,8 @@ interface NavItem {
    * чтобы вернуть пункт в меню, удалите флаг.
    */
   hidden?: boolean
+  /** §282. Пункт показывается, только когда включён флаг (`app_feature_flags`). */
+  flag?: string
 }
 
 const navItems: NavItem[] = [
@@ -58,6 +61,7 @@ const navItems: NavItem[] = [
   // §257. «Достижения» вместо «Прогресс»; счётчик — новые награды (useSidebarBadges).
   { label: 'Достижения',        path: '/achievements',   icon: <Trophy size={18} />,        roles: ['student'],  section: 'Успехи' },
 
+  { label: 'Моя подписка',      path: '/my-subscription', icon: <CreditCard size={18} />,   roles: ['student'],  section: 'Аккаунт', flag: 'subscriptions' },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
@@ -155,6 +159,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const badges = useSidebarBadges()
   const curatorships = useMyCuratorships()
+  const { enabled: subscriptionsOn } = useSubscriptionsEnabled()
   const { pathname } = useLocation()
 
   if (!profile) return null
@@ -166,7 +171,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // настоящего ученика; личные страницы из них отвечают заглушкой.
   const menuRole     = effectiveRole ?? profile.role
   const isStudent    = menuRole === 'student'
-  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
+  const visibleItems = navItems.filter(item =>
+    !item.hidden && item.roles.includes(menuRole) && (!item.flag || (item.flag === 'subscriptions' && subscriptionsOn)))
   const activePath   = activeNavPath(
     [...visibleItems, ...(isStudent && curatorships.isCurator ? CURATOR_ITEMS : [])].map(i => i.path),
     pathname,

@@ -63,6 +63,7 @@ import { Toaster } from '@/components/ui/Toaster'
 import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
+import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
 
 // Auth pages — тоже ленивые. Они тянут react-hook-form + zod + resolvers, а
 // вошедший пользователь не видит ни одной из них: держать их во входном чанке
@@ -84,6 +85,7 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // стили и секции не тронуты, поменялся только адрес.
 const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
+const SubscribePage     = lazyPage('SubscribePage', () => import('@/pages/subscription/SubscribePage').then(m => ({ default: m.SubscribePage })))
 
 // Protected app subtree (DashboardLayout + all its child routes) — lazy so its page code stays out of the entry chunk
 const AppRoutes = lazyPage('AppRoutes', () => import('@/AppRoutes'))
@@ -128,7 +130,7 @@ function RootRedirect() {
     // роль читается как «ещё не знаем» и приглашение не трогает (у только что
     // зарегистрировавшегося профиль едет позже, а вести его надо как раз туда).
     const role = profile?.role ?? null
-    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role)
+    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role) || getPendingSubscribePath(role)
     if (pendingPath && (profile || user)) {
       navigate(pendingPath, { replace: true })
       return
@@ -372,6 +374,8 @@ export default function App() {
         <Route path="/"               element={<RootRedirect />} />
         <Route path="/about"          element={<LandingPage />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
+        {/* §282. Витрина подписки: гость выбирает тариф до регистрации. */}
+        <Route path="/subscribe"      element={<SubscribePage />} />
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

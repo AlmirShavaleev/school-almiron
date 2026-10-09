@@ -43,6 +43,10 @@ const LessonLibraryPage = lazyPage('LessonLibraryPage', () => import('@/pages/Le
 const MyCoursesPage = lazyPage('MyCoursesPage', () => import('@/pages/MyCoursesPage').then(m => ({ default: m.MyCoursesPage })))
 const StudentCoursePage = lazyPage('StudentCoursePage', () => import('@/pages/StudentCoursePage').then(m => ({ default: m.StudentCoursePage })))
 const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
+// §282. Подписка: оформление, возврат из ЮKassa, «Моя подписка».
+const SubscriptionCheckoutPage = lazyPage('SubscriptionCheckoutPage', () => import('@/pages/subscription/SubscriptionCheckoutPage').then(m => ({ default: m.SubscriptionCheckoutPage })))
+const SubscriptionResultPage = lazyPage('SubscriptionResultPage', () => import('@/pages/subscription/SubscriptionResultPage').then(m => ({ default: m.SubscriptionResultPage })))
+const MySubscriptionPage = lazyPage('MySubscriptionPage', () => import('@/pages/subscription/MySubscriptionPage').then(m => ({ default: m.MySubscriptionPage })))
 const StudentProfilePage = lazyPage('StudentProfilePage', () => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
 const StudentsPage = lazyPage('StudentsPage', () => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
 const AchievementsPage = lazyPage('AchievementsPage', () => import('@/pages/student/AchievementsPage').then(m => ({ default: m.AchievementsPage })))
@@ -278,6 +282,10 @@ export default function AppRoutes() {
             (§178): три страницы курса читают программу и материалы, которые
             персоналу и так отдаёт RLS, личное показывают пустым и не пишут. */}
         <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
+        {/* §282. Подписка — preview="stub": персоналу в режиме ученика платить нечего. */}
+        <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionCheckoutPage /></RoleGuard>} />
+        <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionResultPage /></RoleGuard>} />
+        <Route path="/my-subscription" element={<RoleGuard allow={['student']} preview="stub"><MySubscriptionPage /></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
         {/* §228. «Пробники» ученика — все пробники по всем его группам. */}
