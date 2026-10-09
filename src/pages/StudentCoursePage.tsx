@@ -78,13 +78,21 @@ function Ring({ pct, size = 44, stroke = 5 }: { pct: number; size?: number; stro
 
 // Gradient palette per module index
 /**
- * §281. Карточка раздела — по дизайн-системе v2: фирменный синий градиент
- * вместо радуги по порядку (цвет должен нести смысл, а порядковый цвет его не
- * несёт). Разделы курса — синие (как действие), практика ЕГЭ и пилот —
- * тёмно-синие (как меню и модуль работ). Различие — пометкой и рисунком, а не
- * цветом. Прогресс — жёлтым акцентом, крупным числом, без кольца: белое кольцо
- * на цветном фоне при 0% было не видно.
+ * §281. Карточка раздела — в цветах наших PDF-листов (выбор владельца 09.10,
+ * вариант «мягкий тон»): светло-голубая подложка, как под схемами в листах,
+ * синий рисунок раздела в углу, синяя полоска. Практика ЕГЭ и пилот — та же
+ * карточка в светло-оранжевом (оранжевый в листах — ускорение и силы).
+ * Радуга по порядку разделов ушла: цвет должен нести смысл (дизайн-система
+ * v2), а синий/оранжевый здесь значит «раздел курса / практика».
+ * Прогресс — крупным числом и полоской, без кольца (белое кольцо при 0% было
+ * не видно). Цвета листа: синий #2F5BEA, подложка #EAF0FD, оранжевый
+ * #F28C28, подложка #FDE7D2; числа — тёмные оттенки (≥ 4.5:1).
  */
+const CARD_TONE = {
+  course:   { bg: 'bg-[#EAF0FD]', art: 'text-[#2F5BEA]', bar: 'bg-[#2F5BEA]', pct: 'text-[#1F45C8]', tag: 'text-[#1F45C8]' },
+  practice: { bg: 'bg-[#FDE7D2]', art: 'text-[#F28C28]', bar: 'bg-[#F28C28]', pct: 'text-[#8A4A08]', tag: 'text-[#8A4A08]' },
+} as const
+
 function ModuleBigCard({
   mod,
   onClick,
@@ -98,6 +106,7 @@ function ModuleBigCard({
   const pct          = donePercent(counters)
   const isDone       = isCompleted(counters)
   const practice     = moduleIsPractice(mod.title, mod.order_index)
+  const tone         = CARD_TONE[practice ? 'practice' : 'course']
 
   return (
     <button
@@ -105,20 +114,19 @@ function ModuleBigCard({
       data-testid="module-card"
       data-practice={practice || undefined}
       className={cn(
-        'group relative w-full overflow-hidden rounded-card p-5 text-left text-white shadow-card transition-all duration-200',
-        'hover:-translate-y-px hover:shadow-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2',
-        'bg-gradient-to-br',
-        practice ? 'from-primary-800 to-primary-950' : 'from-primary-500 to-primary-700',
+        'group relative w-full overflow-hidden rounded-card p-5 text-left text-graphite-900 shadow-card transition-all duration-200',
+        'hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
+        tone.bg,
       )}
     >
       <ModuleArt
         kind={moduleArtKey(mod.title)}
-        className="pointer-events-none absolute -right-4 top-8 h-32 w-40 text-white/[0.13] transition-transform duration-300 group-hover:scale-105"
+        className={cn('pointer-events-none absolute -right-4 top-8 h-32 w-40 opacity-25 transition-transform duration-300 group-hover:scale-105', tone.art)}
       />
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-bold" data-testid="module-tag">
+          <span className={cn('rounded-full bg-white px-2.5 py-0.5 text-xs font-extrabold', tone.tag)} data-testid="module-tag">
             {moduleTag(mod.title, mod.order_index)}
           </span>
           {isDone && (
@@ -127,35 +135,35 @@ function ModuleBigCard({
             </span>
           )}
           {submittedCnt > 0 && !isDone && (
-            <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-semibold">
+            <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-graphite-700">
               {submittedCnt} на проверке
             </span>
           )}
         </div>
-        <span className="text-[28px] font-extrabold leading-none tabular-nums" data-testid="module-percent">{pct}%</span>
+        <span className={cn('text-[28px] font-extrabold leading-none tabular-nums', tone.pct)} data-testid="module-percent">{pct}%</span>
       </div>
 
       <h3 className="relative mt-3 max-w-[78%] text-lg font-extrabold leading-snug">{moduleCardTitle(mod.title)}</h3>
 
       <div className="relative mt-5">
         <div
-          className="h-2 overflow-hidden rounded-full bg-white/20"
+          className="h-2 overflow-hidden rounded-full bg-white"
           role="progressbar"
           aria-label="Пройдено тем"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
         >
-          <div className="h-full rounded-full bg-gold-300 transition-all duration-500" style={{ width: `${pct}%` }} />
+          <div className={cn('h-full rounded-full transition-all duration-500', tone.bar)} style={{ width: `${pct}%` }} />
         </div>
-        <div className="mt-2 flex justify-between gap-2 text-[13px] text-white/85">
+        <div className="mt-2 flex justify-between gap-2 text-[13px] text-graphite-500">
           <span data-testid="module-topics-counter">{doneLabel(counters)}</span>
-          <span className="flex shrink-0 items-center gap-1 font-semibold">
+          <span className="flex shrink-0 items-center gap-1 font-bold text-graphite-900">
             Открыть <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
           </span>
         </div>
         {/* Домашние задания — отдельной строкой (§141). */}
-        <div className="mt-0.5 text-[13px] text-white/75">
+        <div className="mt-0.5 text-[13px] text-graphite-500">
           <span data-testid="module-homework-counter">{homeworkLabel(counters)}</span>
         </div>
       </div>
