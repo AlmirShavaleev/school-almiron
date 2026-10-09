@@ -10,6 +10,8 @@ import { TopicSignals, type Signal } from '@/pages/StudentCoursePage'
 import { lazyPage } from '@/lib/lazyPage'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
+import { LessonThumb } from '@/components/courseProgram/LessonCard'
+import { bunnyThumbnailUrl } from '@/lib/lessonCard'
 import { isTopicOpen, topicClosedLabel, willOpenByDate } from '@/lib/topicAvailability'
 import { formatAvg } from '@/lib/courseGrades'
 import { isTimedKind } from '@/lib/timedWork'
@@ -168,7 +170,7 @@ function KursInner({ courseId, groupId, canEdit, refreshKey = 0, moduleId, topic
         {activeModule.topics.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-graphite-500">В разделе пока нет тем.</p>
         ) : (
-          <ol className="grid gap-2.5" data-testid="kurs-topics">
+          <ol className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="kurs-topics">
             {activeModule.topics.map((t, i) => (
               <TeacherTopicRow
                 key={t.id}
@@ -362,55 +364,67 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
   onOpenEarly: () => void
 }) {
   const open = isTopicOpen(topic)
+  // §277: карточка как у ученика (§274.1) — обложка видео слева, справа номер, метки, название, сигналы,
+  // строка класса и кнопка. Две колонки на широком экране.
   return (
     <li
       data-testid="kurs-topic-row"
       data-open={open ? 'true' : 'false'}
-      className="grid grid-cols-[36px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-2xl border border-gray-200 bg-white px-3.5 py-3 md:grid-cols-[44px_minmax(0,1fr)_auto]"
+      className={cn(
+        'flex h-full min-h-[132px] min-w-0 gap-3 rounded-card border p-3 sm:min-h-[176px] sm:gap-4 sm:p-4',
+        open ? 'border-graphite-200 bg-white shadow-card' : 'border-graphite-200 bg-graphite-50',
+      )}
     >
-      <span className={cn('grid h-9 w-9 place-items-center rounded-[10px] text-sm font-extrabold', open ? 'bg-primary-50 text-primary-700' : 'bg-slate-100 text-graphite-400')}>
-        {index + 1}
-      </span>
-      <div className="min-w-0">
-        <div className={cn('font-bold leading-snug [text-wrap:balance]', open ? 'text-graphite-900' : 'text-graphite-400')}>
-          {!open && <Lock size={11} className="mb-0.5 mr-1 inline text-graphite-300" aria-hidden />}
-          <TopicKindMark kind={topic.kind} className="mr-1.5" />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
+      <LessonThumb
+        number={index + 1}
+        src={open ? bunnyThumbnailUrl(topic.video_guid) : null}
+        hasVideo={topic.sections.has('video')}
+        locked={!open}
+        done={false}
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
+        <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-graphite-500">
+          Урок {index + 1}
+          <TopicKindMark kind={topic.kind} />
+          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
+        </span>
+        <div className={cn('line-clamp-3 break-words text-[15px] font-extrabold leading-snug sm:text-[17px]', open ? 'text-graphite-950' : 'text-graphite-500')}>
+          {!open && <Lock size={12} className="mb-0.5 mr-1 inline text-graphite-400" aria-hidden />}
           {topic.title}
         </div>
         {open ? (
           // Сигналы — ученические (Видео, Задачи, «ещё N материалов»); ДЗ — срок.
           <TopicSignals topic={topic} homework={homeworkChip(topic, stats)} />
         ) : (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <span className={cn(CHIP, CHIP_NEUTRAL, 'font-semibold')} data-testid="kurs-topic-opens">{lowerFirst(topicClosedLabel(topic))}</span>
             {homeworkChip(topic, stats) && <span className={cn(CHIP, CHIP_ACC, 'font-semibold')}>{homeworkChip(topic, stats)?.label}</span>}
           </div>
         )}
         {open && stats?.issued && <ClassLine stats={stats} />}
-      </div>
-      <div className="col-span-2 justify-self-start md:col-span-1 md:justify-self-end">
-        {open ? (
-          <button
-            type="button"
-            onClick={onOpen}
-            data-testid="kurs-topic-open"
-            aria-label={`Открыть тему ${topic.title}`}
-            className="inline-flex min-h-11 items-center rounded-lg bg-primary-50 px-3 text-[13px] font-bold text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 md:min-h-9"
-          >
-            Открыть
-          </button>
-        ) : canEdit ? (
-          <button
-            type="button"
-            onClick={onOpenEarly}
-            disabled={opening}
-            data-testid="kurs-topic-open-early"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-[13px] font-bold text-graphite-800 hover:border-primary-200 disabled:opacity-60 md:min-h-9"
-          >
-            {opening && <Loader2 size={13} className="animate-spin" aria-hidden />}Открыть раньше
-          </button>
-        ) : null}
+        <div className="mt-auto pt-1">
+          {open ? (
+            <button
+              type="button"
+              onClick={onOpen}
+              data-testid="kurs-topic-open"
+              aria-label={`Открыть тему ${topic.title}`}
+              className="inline-flex min-h-11 items-center rounded-lg bg-primary-50 px-3 text-[13px] font-bold text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 md:min-h-9"
+            >
+              Открыть
+            </button>
+          ) : canEdit ? (
+            <button
+              type="button"
+              onClick={onOpenEarly}
+              disabled={opening}
+              data-testid="kurs-topic-open-early"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-[13px] font-bold text-graphite-800 hover:border-primary-200 disabled:opacity-60 md:min-h-9"
+            >
+              {opening && <Loader2 size={13} className="animate-spin" aria-hidden />}Открыть раньше
+            </button>
+          ) : null}
+        </div>
       </div>
     </li>
   )

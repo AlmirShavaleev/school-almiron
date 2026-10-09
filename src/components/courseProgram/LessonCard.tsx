@@ -164,8 +164,9 @@ export function LessonCard({
 /**
  * Превью: обложка видео либо заглушка (мягкий градиент, крупный номер, тонкая
  * «доска» с линиями). Обложка не загрузилась — тоже заглушка.
+ * §277: та же обложка — у карточки темы учителя (вкладка «Курс»).
  */
-function LessonThumb({ number, src, hasVideo, locked, done }: {
+export function LessonThumb({ number, src, hasVideo, locked, done }: {
   number: number; src: string | null; hasVideo: boolean; locked: boolean; done: boolean
 }) {
   const [failed, setFailed] = useState(false)
