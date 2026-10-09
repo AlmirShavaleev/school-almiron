@@ -42,8 +42,9 @@ Deno.serve(async (req: Request) => {
   const shopId = Deno.env.get('SUBSCRIPTION_YK_SHOP_ID')
   const secretKey = Deno.env.get('SUBSCRIPTION_YK_SECRET_KEY')
   if (!shopId || !secretKey) {
+    // магазин ещё не настроен — 503 (не «сломалось», а «не готово»); ЮKassa повторит
     console.error('subscription-webhook: secrets not configured')
-    return text('not configured', 500)
+    return text('not configured', 503)
   }
 
   const raw = await req.text()
