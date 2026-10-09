@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MinusToggle } from '@/components/ui/MinusToggle'
@@ -15,6 +15,8 @@ import {
 } from '@/lib/autocheck'
 import type { CheckResult } from '@/hooks/useTopicAutocheck'
 import { cn } from '@/utils/cn'
+import { renderCatalogContent } from '@/lib/catalogContent'
+import { upgradeMathIn } from '@/lib/katexLoader'
 
 /**
  * §266. Блок «Задачи с автопроверкой» тренировочного урока — по макету
@@ -128,7 +130,9 @@ function AutocheckTaskCard({
         {task.closed && <VerdictMark state={task.solved ? 'ok' : 'bad'} size={16} />}
       </div>
 
-      <ZoomableImage path={task.statementPath} alt={`Условие задачи ${n}`} />
+      {task.statementMd
+        ? <TaskText md={task.statementMd} testid="autocheck-statement-text" />
+        : <ZoomableImage path={task.statementPath} alt={`Условие задачи ${n}`} />}
 
       {!task.closed ? (
         <form onSubmit={submit} className="flex flex-wrap items-center gap-2" noValidate>
@@ -209,15 +213,37 @@ function AutocheckTaskCard({
               Ваши ответы: {task.answers.map(a => `${a.answer}${a.correct ? ' ✓' : ''}`).join(' · ')}
             </p>
           )}
-          {task.solutionPath ? (
+          {task.solutionMd || task.solutionPath ? (
             <div data-testid="autocheck-solution" className="rounded-lg bg-verdict-ok-tint p-2 sm:p-3">
               <div className="mb-1.5 text-[12px] font-extrabold uppercase tracking-[0.05em] text-verdict-ok-ink">Решение</div>
-              <ZoomableImage path={task.solutionPath} alt={`Решение задачи ${n}`} sensitive hint={false} className="rounded bg-white" />
+              {task.solutionMd
+                ? <div className="rounded bg-white p-2 sm:p-3"><TaskText md={task.solutionMd} testid="autocheck-solution-text" /></div>
+                : <ZoomableImage path={task.solutionPath!} alt={`Решение задачи ${n}`} sensitive hint={false} className="rounded bg-white" />}
             </div>
           ) : null}
         </div>
       )}
     </li>
+  )
+}
+
+/**
+ * §278. Условие или решение текстом — тот же безопасный рендер, что у каталога
+ * (§269): Markdown экранируется, формулы — KaTeX (догружается лениво и
+ * дорисовывается на месте), рисунки — только из бакета рисунков каталога.
+ * Текст подстраивается под ширину экрана — увеличивать нечего.
+ */
+function TaskText({ md, testid }: { md: string; testid: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const html = useMemo(() => renderCatalogContent(md), [md])
+  useEffect(() => { void upgradeMathIn(ref.current) }, [html])
+  return (
+    <div
+      ref={ref}
+      data-testid={testid}
+      className="prose prose-sm max-w-none break-words text-graphite-900 catalog-html [&_img]:max-w-full [&_img]:h-auto"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }
 

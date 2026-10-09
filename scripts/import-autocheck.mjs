@@ -16,6 +16,12 @@
  *
  *   node scripts/import-autocheck.mjs --dir "D:\Физика\1.4.1\автопроверка" --topic <uuid урока>
  *   node scripts/import-autocheck.mjs --dir "…\автопроверка" --topic <uuid урока> --apply
+ *   node scripts/import-autocheck.mjs --dir "…\автопроверка" --topic <uuid урока> --apply --text-only
+ *
+ * §278: кроме SVG, загрузчик кладёт условия и решения ТЕКСТОМ из `дз.md` темы
+ * (папка над «автопроверкой»): рисунки — в публичный бакет `catalog-figures`
+ * (`autocheck/<sha>.svg`), тексты — RPC `topic_autocheck_set_text`. `--text-only`
+ * — только тексты, задачи и SVG не трогаются (для уже загруженных уроков).
  *
  * Ключи — из `.env.import.local` / `.env` / окружения (те же имена, что у
  * import-lessons и import-trenirovka: VITE_SUPABASE_URL или SUPABASE_URL,
@@ -24,7 +30,9 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
+import { createHash } from 'crypto'
+import { dirname, join } from 'path'
+import { figuresOf, splitTasks, taskText } from './autocheck-text.mjs'
 import {
   AUTOCHECK_BUCKET, TASKS_FILE, contentTypeOf, importRows, missingFiles, parseTasksJson,
   storagePathFor, topicMatchesTitle,
@@ -37,6 +45,8 @@ function getArg(name) {
 }
 const FLAGS = {
   apply: argv.includes('--apply'),
+  // §278: только тексты условий/решений из дз.md (задачи уже загружены) — без SVG и без перезаписи задач.
+  textOnly: argv.includes('--text-only'),
   dir: getArg('--dir'),
   topic: getArg('--topic'),
 }
@@ -110,6 +120,30 @@ async function main() {
     }
   }
 
+  // §278. Тексты из дз.md темы (папка выше «автопроверки»).
+  const topicDir = dirname(FLAGS.dir)
+  const mdPath = join(topicDir, 'дз.md')
+  const textPlan = { items: [], figures: [], missing: [] }
+  if (existsSync(mdPath)) {
+    const md = readFileSync(mdPath, 'utf8')
+    const chunks = splitTasks(md)
+    const codes = tasks.map(t => t.code)
+    textPlan.figures = figuresOf(md, codes)
+    for (const code of codes) {
+      const chunk = chunks.get(code)
+      const probe = chunk ? taskText(chunk, () => 'x.svg') : null
+      if (!probe) textPlan.missing.push(code)
+    }
+    const absentFig = textPlan.figures.filter(rel => !existsSync(join(topicDir, rel)))
+    for (const f of absentFig) warnings.push(`нет рисунка для текста: ${f} — задача покажется без него`)
+    textPlan.figures = textPlan.figures.filter(rel => existsSync(join(topicDir, rel)))
+    textPlan.md = md
+    console.log(`  тексты (дз.md): ${codes.length - textPlan.missing.length} из ${codes.length}, рисунков ${textPlan.figures.length}`
+      + (textPlan.missing.length ? ` — без текста (останется картинка): ${textPlan.missing.join(', ')}` : ''))
+  } else {
+    warnings.push(`нет ${mdPath} — тексты не загрузятся, останутся картинки`)
+  }
+
   const all = [...problems, ...absent.map(f => `нет файла: ${f}`), ...dbProblems]
   for (const w of warnings) console.log(`  ! ${w}`)
   if (all.length) {
@@ -124,6 +158,40 @@ async function main() {
   }
   if (all.length) die('есть проблемы — загрузка не начата')
 
+  if (!FLAGS.textOnly) await importTasks(db, tasks)
+  await importTexts(db, topicDir, tasks, textPlan)
+  console.log('  Готово.\n')
+}
+
+/** §278: рисунки текстов — в публичный бакет каталога (путь по содержимому), тексты — topic_autocheck_set_text. */
+async function importTexts(db, topicDir, tasks, plan) {
+  if (!plan.md) return
+  const figPath = new Map()
+  for (const rel of plan.figures) {
+    const bytes = readFileSync(join(topicDir, rel))
+    const path = `autocheck/${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}.svg`
+    const { error } = await db.storage.from('catalog-figures').upload(path, bytes, {
+      contentType: 'image/svg+xml', upsert: false, cacheControl: '31536000',
+    })
+    if (error && !/exists|duplicate|409/i.test(String(error.message ?? '') + String(error.statusCode ?? ''))) {
+      die(`рисунок «${rel}»: ${error.message}`)
+    }
+    figPath.set(rel, path)
+  }
+  const chunks = splitTasks(plan.md)
+  const items = []
+  for (const t of tasks) {
+    const chunk = chunks.get(t.code)
+    const txt = chunk ? taskText(chunk, rel => figPath.get(rel) ?? null) : null
+    if (txt) items.push({ code: t.code, statement_md: txt.statement_md, solution_md: txt.solution_md })
+  }
+  if (!items.length) { console.log('  тексты: нечего загружать'); return }
+  const { data, error } = await db.rpc('topic_autocheck_set_text', { p_topic_id: FLAGS.topic, p_items: items })
+  if (error) die(`тексты задач: ${error.message}`)
+  console.log(`  тексты: с текстом ${data?.with_text ?? '?'} из ${data?.total ?? '?'}, обновлено строк ${data?.updated_rows ?? 0} (вместе с копиями ${data?.copies ?? 0}); рисунков ${figPath.size}`)
+}
+
+async function importTasks(db, tasks) {
   // 1. Файлы: путь по содержимому, уже лежащий файл не перезаливается.
   const pathByName = new Map()
   let uploaded = 0
@@ -148,7 +216,6 @@ async function main() {
   const { data, error } = await db.rpc('topic_autocheck_import', { p_topic_id: FLAGS.topic, p_tasks: rows })
   if (error) die(`запись задач: ${error.message}`)
   console.log(`  задачи: новых ${data?.inserted ?? 0}, обновлено ${data?.updated ?? 0}, без изменений ${data?.unchanged ?? 0}; всего в уроке ${data?.total ?? '?'}; уроков-копий ${data?.copies ?? 0}`)
-  console.log('  Готово.\n')
 }
 
 main().catch(e => die(e instanceof Error ? e.message : String(e)))

@@ -84,6 +84,8 @@ export interface AutocheckTask {
   code: string
   position: number
   statementPath: string
+  /** §278. Условие текстом (Markdown + LaTeX); null — показываем картинку statementPath. */
+  statementMd: string | null
   answerType: AutocheckAnswerType
   digitsAnyOrder: boolean
   unit: string | null
@@ -97,6 +99,8 @@ export interface AutocheckTask {
   answerTol: number | null
   answerText: string | null
   solutionPath: string | null
+  /** §278. Решение текстом; приходит только когда задача закрыта (или персоналу). */
+  solutionMd: string | null
 }
 
 export interface AutocheckState {
@@ -126,6 +130,7 @@ export function parseAutocheckState(raw: unknown): AutocheckState | null {
     code: String(t.code ?? ''),
     position: num(t.position) ?? 0,
     statementPath: String(t.statement_path ?? ''),
+    statementMd: typeof t.statement_md === 'string' && t.statement_md.trim() ? t.statement_md : null,
     answerType: t.answer_type === 'digits' ? 'digits' : 'number',
     digitsAnyOrder: t.digits_any_order === true,
     unit: typeof t.unit === 'string' && t.unit ? t.unit : null,
@@ -144,6 +149,7 @@ export function parseAutocheckState(raw: unknown): AutocheckState | null {
     answerTol: num(t.answer_tol),
     answerText: typeof t.answer_text === 'string' ? t.answer_text : null,
     solutionPath: typeof t.solution_path === 'string' && t.solution_path ? t.solution_path : null,
+    solutionMd: typeof t.solution_md === 'string' && t.solution_md.trim() ? t.solution_md : null,
   }))
   parsed.sort((a, b) => a.position - b.position || a.code.localeCompare(b.code))
   return {
@@ -181,6 +187,7 @@ export function asFreshStudent(state: AutocheckState): AutocheckState {
       answerTol: null,
       answerText: null,
       solutionPath: null,
+      solutionMd: null,
     })),
   }
 }

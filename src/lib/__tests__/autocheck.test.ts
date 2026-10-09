@@ -101,6 +101,7 @@ const RAW_STATE = {
       unit: 'м', attempts_used: 2, attempts_left: 1, solved: true, closed: true,
       answers: [{ attempt_no: 1, answer: '99', correct: false }, { attempt_no: 2, answer: '100', correct: true }],
       answer_value: 100, answer_tol: 0, answer_text: null, solution_path: 'p/1s.svg',
+      statement_md: 'Тело $v = 2$ м/с', solution_md: '**Решение.** $s = vt$',
     },
   ],
 }
@@ -112,6 +113,9 @@ describe('parseAutocheckState', () => {
     expect(s.tasks[0]).toMatchObject({ closed: true, solved: true, answerValue: 100, solutionPath: 'p/1s.svg', attemptsLeft: 1 })
     expect(s.tasks[1]).toMatchObject({ closed: false, answerValue: null, solutionPath: null, attemptsLeft: 2 })
     expect(s.tasks[1].answers).toEqual([{ attemptNo: 1, answer: '7', correct: false }])
+    // §278: тексты — где пришли; нет — null (тогда показывается картинка).
+    expect(s.tasks[0]).toMatchObject({ statementMd: 'Тело $v = 2$ м/с', solutionMd: '**Решение.** $s = vt$' })
+    expect(s.tasks[1]).toMatchObject({ statementMd: null, solutionMd: null })
   })
   it('не объект — null', () => {
     expect(parseAutocheckState(null)).toBeNull()
@@ -121,7 +125,7 @@ describe('parseAutocheckState', () => {
     const staff = parseAutocheckState({ ...RAW_STATE, is_staff: true })!
     const fresh = asFreshStudent(staff)
     expect(fresh.isStaff).toBe(false)
-    expect(fresh.tasks.every(t => t.answerValue === null && t.solutionPath === null && !t.closed && t.attemptsLeft === 3 && t.answers.length === 0)).toBe(true)
+    expect(fresh.tasks.every(t => t.answerValue === null && t.solutionPath === null && t.solutionMd === null && !t.closed && t.attemptsLeft === 3 && t.answers.length === 0)).toBe(true)
     expect(fresh.solved).toBe(0)
   })
 })
