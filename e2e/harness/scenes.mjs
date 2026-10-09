@@ -1649,8 +1649,11 @@ export const scenes = [
   ...[[1280, 800], [390, 844]].flatMap(([width, height]) => {
     const topicUrl = `/my-course/${D266.group}/topic/${D266.topic(4)}`
     const toTab = [{ wait: 1500 }, { clickSel: '[role="tab"]:has-text("Автопроверка")' }, { wait: 1200 }]
-    const task = (n) => `[data-testid="autocheck-task"]:nth-of-type(${n})`
+    // §279: задачи по одной — сначала шаг с номером, потом единственная карточка.
+    const task = () => '[data-testid="autocheck-task"]'
+    const step = (n) => ({ clickSel: `[data-testid="autocheck-step"]:text-is("${n}")` })
     const answer = (n, value) => [
+      step(n), { wait: 300 },
       { fill: [`${task(n)} [data-testid="autocheck-input"]`, value] },
       { clickSel: `${task(n)} [data-testid="autocheck-submit"]` }, { wait: 900 },
     ]
@@ -1661,7 +1664,7 @@ export const scenes = [
     return [
       { persona: 's266', name: 'd266-student-course', url: `/my-course/${D266.group}`, width, height, actions: [{ wait: 2500 }, { click: 'Кинематика' }, { wait: 1200 }] },
       { persona: 's266', name: 'd266-student-topic', url: topicUrl, width, height, actions: [...toTab, toEl('[data-testid="topic-tab-group-homework"]')] },
-      ...(width === 390 ? [{ persona: 's266', name: 'd266-student-zoom', url: topicUrl, width, height, full: false, actions: [...toTab, { clickSel: `${task(1)} [data-testid="autocheck-image"] button` }, { wait: 600 }, toEl(task(1))] }] : []),
+      ...(width === 390 ? [{ persona: 's266', name: 'd266-student-zoom', url: topicUrl, width, height, full: false, actions: [...toTab, step(1), { wait: 300 }, { clickSel: `${task(1)} [data-testid="autocheck-image"] button` }, { wait: 600 }, toEl(task(1))] }] : []),
       { persona: 's266', name: 'd266-student-wrong', url: topicUrl, width, height, full: false, actions: [...toTab, ...answer(4, '14'), toEl(task(4), 'center')] },
       { persona: 's266', name: 'd266-student-solved', url: topicUrl, width, height, full: false, actions: [...toTab, ...answer(1, '100'), toEl(task(1))] },
       { persona: 's266', name: 'd266-student-finished', url: topicUrl, width, height, actions: [...toTab, ...answer(4, '3 1'), toEl('[data-testid="autocheck-block"]')] },

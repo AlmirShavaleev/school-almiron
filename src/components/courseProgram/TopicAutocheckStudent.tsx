@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MinusToggle } from '@/components/ui/MinusToggle'
 import { SignedImage } from '@/components/ui/SignedImage'
@@ -26,6 +26,10 @@ import { upgradeMathIn } from '@/lib/katexLoader'
  *
  * Эталона и решения у клиента до закрытия нет вовсе (их не отдаёт сервер),
  * поэтому «показать раньше времени» тут нечего — экран рисует то, что пришло.
+ *
+ * §279: задачи не лентой, а по одной — как шаги на Stepik: сверху ряд
+ * квадратиков с номерами (цвет = состояние), под ним одна задача и «Назад /
+ * Далее». Открывается первая незакрытая задача.
  */
 export function TopicAutocheckStudent({
   state,
@@ -62,11 +66,7 @@ export function TopicAutocheckStudent({
       {state.tasks.length === 0 ? (
         <p className="text-sm text-graphite-500">Задачи ещё не добавлены.</p>
       ) : (
-        <ol className="space-y-3">
-          {state.tasks.map((t, i) => (
-            <AutocheckTaskCard key={t.id} task={t} n={i + 1} onCheck={onCheck} preview={preview} />
-          ))}
-        </ol>
+        <TaskStepper tasks={state.tasks} onCheck={onCheck} preview={preview} />
       )}
 
       <p className="text-[13px] leading-snug text-graphite-500">
@@ -74,6 +74,123 @@ export function TopicAutocheckStudent({
         Оценка — доля решённых задач по 100-балльной шкале; она попадёт в журнал, когда закрыты все задачи.
       </p>
     </section>
+  )
+}
+
+type StepTone = 'solved' | 'failed' | 'tried' | 'new'
+
+function stepTone(t: AutocheckTask): StepTone {
+  if (t.closed) return t.solved ? 'solved' : 'failed'
+  return t.answers.length > 0 ? 'tried' : 'new'
+}
+
+const STEP_LABEL: Record<StepTone, string> = {
+  solved: 'решена',
+  failed: 'попытки закончились',
+  tried: 'есть неверный ответ',
+  new: 'не начата',
+}
+
+const STEP_CLS: Record<StepTone, string> = {
+  solved: 'border-verdict-ok bg-verdict-ok text-white',
+  failed: 'border-verdict-bad bg-verdict-bad text-white',
+  tried: 'border-verdict-part bg-verdict-part-tint text-verdict-part-ink',
+  new: 'border-graphite-200 bg-graphite-50 text-graphite-700 hover:border-primary-300 hover:bg-primary-50',
+}
+
+/** Индекс первой незакрытой задачи (все закрыты — первая). */
+function firstOpenIndex(tasks: AutocheckTask[]): number {
+  const i = tasks.findIndex(t => !t.closed)
+  return i < 0 ? 0 : i
+}
+
+function TaskStepper({
+  tasks,
+  onCheck,
+  preview,
+}: {
+  tasks: AutocheckTask[]
+  onCheck: (taskId: string, answer: string) => Promise<CheckResult>
+  preview: boolean
+}) {
+  const [current, setCurrent] = useState(() => firstOpenIndex(tasks))
+  const idx = Math.min(current, tasks.length - 1)
+  const task = tasks[idx]
+
+  // «Далее» после закрытой задачи ведёт к следующей незакрытой, если она есть.
+  const nextOpen = useMemo(() => {
+    for (let k = 1; k <= tasks.length; k++) {
+      const j = (idx + k) % tasks.length
+      if (!tasks[j].closed) return j
+    }
+    return -1
+  }, [tasks, idx])
+
+  return (
+    <div className="space-y-3">
+      <nav aria-label="Задачи" data-testid="autocheck-steps">
+        <ol className="flex flex-wrap gap-1.5">
+          {tasks.map((t, i) => {
+            const tone = stepTone(t)
+            const active = i === idx
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  data-testid="autocheck-step"
+                  data-tone={tone}
+                  aria-current={active ? 'step' : undefined}
+                  aria-label={`Задача ${i + 1}: ${STEP_LABEL[tone]}`}
+                  onClick={() => setCurrent(i)}
+                  className={cn(
+                    'grid h-9 min-w-9 place-items-center rounded-lg border-[1.5px] px-1.5 text-[13px] font-extrabold tabular-nums transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1',
+                    STEP_CLS[tone],
+                    active && 'ring-2 ring-primary-600 ring-offset-2',
+                  )}
+                >
+                  {i + 1}
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
+
+      <ol>
+        <AutocheckTaskCard key={task.id} task={task} n={idx + 1} onCheck={onCheck} preview={preview} />
+      </ol>
+
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          data-testid="autocheck-prev"
+          disabled={idx === 0}
+          onClick={() => setCurrent(idx - 1)}
+        >
+          <ChevronLeft size={15} aria-hidden />Назад
+        </Button>
+        <span className="text-[13px] text-graphite-500 tabular-nums">{idx + 1} из {tasks.length}</span>
+        {task.closed && nextOpen >= 0 ? (
+          <Button type="button" size="sm" data-testid="autocheck-next" onClick={() => setCurrent(nextOpen)}>
+            Следующая задача<ChevronRight size={15} aria-hidden />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            data-testid="autocheck-next"
+            disabled={idx === tasks.length - 1}
+            onClick={() => setCurrent(idx + 1)}
+          >
+            Далее<ChevronRight size={15} aria-hidden />
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 

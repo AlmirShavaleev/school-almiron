@@ -132,17 +132,28 @@ describe('Тренировочный урок (§266)', () => {
     const block = await screen.findByTestId('autocheck-block')
     expect(within(block).getByTestId('autocheck-summary')).toHaveTextContent('Решено 0 из 2 · оценка после всех задач')
 
-    const [open, failed] = within(block).getAllByTestId('autocheck-task')
-    expect(open).toHaveAttribute('data-state', 'open')
-    expect(within(open).getByTestId('autocheck-tries')).toHaveTextContent('Осталось попыток: 3')
-    // До закрытия решения нет — ни картинки, ни пути.
-    expect(within(open).queryByTestId('autocheck-solution')).toBeNull()
+    // §279: задачи по одной, как шаги на Stepik — ряд номеров и одна задача.
+    const steps = within(block).getAllByTestId('autocheck-step')
+    expect(steps.map(s => s.getAttribute('data-tone'))).toEqual(['new', 'failed'])
+    expect(steps[0]).toHaveAttribute('aria-current', 'step')
+    expect(within(block).getAllByTestId('autocheck-task')).toHaveLength(1)
 
     // Проваленная: ответ и решение пришли от сервера, поля нет.
+    fireEvent.click(steps[1])
+    const failed = within(block).getByTestId('autocheck-task')
+    expect(steps[1]).toHaveAttribute('aria-current', 'step')
     expect(failed).toHaveAttribute('data-state', 'failed')
     expect(within(failed).getByTestId('autocheck-verdict')).toHaveTextContent('Попытки закончились. Верный ответ: 8 мин')
     expect(within(failed).queryByTestId('autocheck-input')).toBeNull()
     expect(within(failed).getByTestId('autocheck-solution').querySelector('img')).toHaveAttribute('data-path', `${TOPIC}/r2.svg`)
+
+    // «Следующая задача» с закрытой ведёт к незакрытой.
+    fireEvent.click(within(block).getByTestId('autocheck-next'))
+    const open = within(block).getByTestId('autocheck-task')
+    expect(open).toHaveAttribute('data-state', 'open')
+    expect(within(open).getByTestId('autocheck-tries')).toHaveTextContent('Осталось попыток: 3')
+    // До закрытия решения нет — ни картинки, ни пути.
+    expect(within(open).queryByTestId('autocheck-solution')).toBeNull()
 
     const input = within(open).getByTestId('autocheck-input')
     fireEvent.change(input, { target: { value: 'сто' } })
@@ -155,7 +166,8 @@ describe('Тренировочный урок (§266)', () => {
     await waitFor(() => expect(screen.getByTestId('autocheck-summary')).toHaveTextContent('Решено 1 из 2 · оценка 50 из 100'))
     expect(rpcCalls.find(c => c.fn === 'topic_autocheck_check')?.args).toEqual({ p_task_id: 't1', p_answer: ' 100,0 ' })
 
-    const solved = screen.getAllByTestId('autocheck-task')[0]
+    const solved = screen.getByTestId('autocheck-task')
+    expect(screen.getAllByTestId('autocheck-step')[0]).toHaveAttribute('data-tone', 'solved')
     expect(solved).toHaveAttribute('data-state', 'solved')
     expect(within(solved).getByTestId('autocheck-verdict')).toHaveTextContent('Верно')
     expect(within(solved).getByTestId('autocheck-solution').querySelector('img')).toHaveAttribute('data-path', `${TOPIC}/r1.svg`)
