@@ -151,8 +151,9 @@ describe('paymentFacts — разбор ответа API', () => {
 
 describe('refundFacts', () => {
   it('возврат и платёж, к которому он относится', () => {
-    expect(refundFacts({ id: YK, payment_id: '2d6e3a45-000f-5000-9000-aaaaaaaaaaaa', status: 'succeeded' }))
-      .toEqual({ refundId: YK, paymentId: '2d6e3a45-000f-5000-9000-aaaaaaaaaaaa', succeeded: true })
+    expect(refundFacts({ id: YK, payment_id: '2d6e3a45-000f-5000-9000-aaaaaaaaaaaa', status: 'succeeded', amount: { value: '290.00', currency: 'RUB' } }))
+      .toEqual({ refundId: YK, paymentId: '2d6e3a45-000f-5000-9000-aaaaaaaaaaaa', succeeded: true, amountRub: 290 })
+    expect(refundFacts({ id: YK, payment_id: '2d6e3a45-000f-5000-9000-aaaaaaaaaaaa', status: 'succeeded' })!.amountRub).toBeNaN()
     expect(refundFacts({ id: YK, status: 'succeeded' })).toBeNull()
   })
 })

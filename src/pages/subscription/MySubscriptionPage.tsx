@@ -14,6 +14,7 @@ import {
   formatRub,
   formatShortDateMsk,
   paymentHistory,
+  periodLabel,
   type MySubscription,
   type Tone,
 } from '@/lib/subscription/view'
@@ -33,7 +34,7 @@ function SubscriptionCard({ s }: { s: MySubscription }) {
         <h2 className="text-[20px] font-semibold text-graphite-900">{s.course_title}</h2>
         <Badge variant={BADGE[v.tone]}>{STATUS_LABEL[s.status]}</Badge>
       </div>
-      <p className="mt-1 text-[13px] text-graphite-500">{s.tariff_title} · {formatRub(s.price_rub)} в месяц</p>
+      <p className="mt-1 text-[13px] text-graphite-500">{s.tariff_title} · {formatRub(s.price_rub)} {periodLabel(s.period_months ?? 1)}</p>
 
       <p className="mt-4 text-[17px] text-graphite-900" data-testid="my-subscription-headline">{v.headline}</p>
       {v.details.map((d) => <p key={d} className="mt-1 text-[15px] text-graphite-700">{d}</p>)}

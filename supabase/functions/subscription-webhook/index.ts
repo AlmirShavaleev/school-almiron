@@ -84,6 +84,8 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await admin.rpc('subscription_apply_refund', {
       p_yookassa_payment_id: f.paymentId,
       p_refund_id: f.refundId,
+      // частичный возврат доступ не закрывает; не разобрали сумму — как полный
+      p_refund_rub: Number.isFinite(f.amountRub) ? f.amountRub : null,
     })
     if (error) {
       console.error('subscription-webhook: apply_refund', error.message)

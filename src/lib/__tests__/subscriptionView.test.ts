@@ -22,6 +22,7 @@ import {
   readPendingSubscribe,
   savePendingSubscribe,
 } from '../subscription/pendingSubscribe'
+import { escapeLike } from '../subscription/api'
 
 const NOW = new Date('2026-10-10T09:00:00Z')
 const sub = (over: Partial<MySubscription> = {}): MySubscription => ({
@@ -156,5 +157,13 @@ describe('pendingSubscribe', () => {
     expect(readPendingSubscribe()).toBeNull()
     localStorage.setItem('subscription-pending-tariff', '{oops')
     expect(readPendingSubscribe()).toBeNull()
+  })
+})
+
+describe('escapeLike', () => {
+  it('«_», «%» и обратная косая — буквы', () => {
+    expect(escapeLike('ivan_p@x.ru')).toBe('ivan\\_p@x.ru')
+    expect(escapeLike('a%b\\c')).toBe('a\\%b\\\\c')
+    expect(escapeLike('plain@x.ru')).toBe('plain@x.ru')
   })
 })

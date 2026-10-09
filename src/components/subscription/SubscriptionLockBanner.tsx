@@ -17,22 +17,24 @@ export function SubscriptionLockBanner({ courseId }: { courseId: string | null |
   if (!data || !data.paid || data.has_access) return null
 
   const ended = formatDateMsk(data.access_until)
+  // «pending» — начал оформление и не оплатил: подписки ещё не было
+  const hadSubscription = !!data.status && data.status !== 'pending'
   return (
     <div className="platform-surface mb-4 flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-center" data-testid="subscription-lock" role="status">
       <Lock className="shrink-0 text-graphite-500" size={28} aria-hidden />
       <div className="flex-1">
         <p className="text-[17px] font-semibold text-graphite-900">
-          {data.status ? 'Подписка закончилась — курс закрыт' : 'Курс доступен по подписке'}
+          {hadSubscription ? 'Подписка закончилась — курс закрыт' : 'Курс доступен по подписке'}
         </p>
         <p className="text-[15px] text-graphite-700">
-          {data.status
+          {hadSubscription
             ? `${ended ? `Доступ закрылся ${ended}. ` : ''}Прогресс и работы сохранены — продлите подписку, и всё вернётся.`
             : 'Оформите подписку, чтобы открыть материалы и задания.'}
         </p>
       </div>
       {enabled && (
         <Link to={data.tariff_id ? `/subscribe/checkout/${data.tariff_id}` : '/subscribe'}>
-          <Button data-testid="subscription-lock-renew">{data.status ? 'Продлить подписку' : 'Оформить'}</Button>
+          <Button data-testid="subscription-lock-renew">{hadSubscription ? 'Продлить подписку' : 'Оформить'}</Button>
         </Link>
       )}
     </div>

@@ -267,11 +267,17 @@ export async function findStudentByEmail(email: string): Promise<{ student_id: s
   const { data, error } = await supabase
     .from('profiles')
     .select('id, full_name, role, students(id)')
-    .ilike('email', email.trim())
+    // ilike без подстановок: «_» и «%» в адресе — буквы, а не шаблон
+    .ilike('email', escapeLike(email.trim()))
     .maybeSingle()
   if (error) fail(error as RpcError)
   const row = data as { full_name: string | null; role: string; students: { id: string }[] | { id: string } | null } | null
   if (!row || row.role !== 'student') return null
   const st = Array.isArray(row.students) ? row.students[0] : row.students
   return st ? { student_id: st.id, full_name: row.full_name } : null
+}
+
+/** Экранирование для LIKE/ILIKE: `\`, `%`, `_` — буквы, а не шаблон. */
+export function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => '\\' + c)
 }

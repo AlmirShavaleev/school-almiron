@@ -222,13 +222,21 @@ export interface RefundFacts {
   refundId: string
   paymentId: string
   succeeded: boolean
+  /** Сумма возврата; частичный возврат доступ не закрывает. NaN — не разобрали. */
+  amountRub: number
 }
 
 export function refundFacts(obj: unknown): RefundFacts | null {
   if (!obj || typeof obj !== 'object') return null
   const o = obj as Record<string, unknown>
   if (!isYookassaId(o.id) || !isYookassaId(o.payment_id)) return null
-  return { refundId: o.id, paymentId: o.payment_id, succeeded: o.status === 'succeeded' }
+  const amount = o.amount as Record<string, unknown> | undefined
+  return {
+    refundId: o.id,
+    paymentId: o.payment_id,
+    succeeded: o.status === 'succeeded',
+    amountRub: amount?.currency === 'RUB' ? parseAmount(amount.value) : Number.NaN,
+  }
 }
 
 /** Понятная ученику причина отказа ЮKassa (cancellation_details.reason). */

@@ -29,6 +29,8 @@ export interface MySubscription {
   tariff_id: string
   tariff_title: string
   price_rub: number
+  /** Период тарифа в месяцах (с PENDING_282_renew; до неё — нет). */
+  period_months?: number
   status: SubscriptionStatus
   has_access: boolean
   current_period_end: string | null

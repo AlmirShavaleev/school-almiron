@@ -26,7 +26,7 @@ function migrationFiles(): string[] {
 }
 
 const U = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
-const ADMIN = U(1), SA = U(2), SB = U(3), OLD = U(4), OTHER = U(5)
+const ADMIN = U(1), SA = U(2), SB = U(3), OLD = U(4), OTHER = U(5), SC = U(6)
 
 let db: PGlite
 const ids: Record<string, string> = {}
@@ -57,7 +57,7 @@ beforeAll(async () => {
   await db.exec(readFileSync(STUBS, 'utf8'))
   for (const f of migrationFiles()) await db.exec(readFileSync(f, 'utf8'))
 
-  for (const [id, role] of [[ADMIN, 'admin'], [SA, 'student'], [SB, 'student'], [OLD, 'student'], [OTHER, 'teacher']] as const) {
+  for (const [id, role] of [[ADMIN, 'admin'], [SA, 'student'], [SB, 'student'], [OLD, 'student'], [OTHER, 'teacher'], [SC, 'student']] as const) {
     await db.query(`insert into profiles (id, email, full_name, role) values ($1, $2, $3, $4)`,
       [id, `u${id.slice(-2)}@t.ru`, `Имя${id.slice(-2)} Фамилия`, role])
   }
@@ -129,7 +129,6 @@ describe('§282 SQL: подписка', () => {
     await db.query(`select subscription_payment_attach($1, 'yk-1', 'pending', 'https://pay')`, [ck.payment_id])
     const apply = (yk: string, amount: number, our: string | null = null) =>
       val(`select subscription_apply_payment($1, $2, 'succeeded', $3, 'pm-1', true, 'Visa •4242', null, now())`, [yk, our, amount])
-    expect(await apply('yk-1', 1)).toBe('amount_mismatch')
     expect(await apply('yk-1', 2900)).toBe('succeeded')
     expect(await apply('yk-1', 2900)).toBe('duplicate')
     const sub = await one<Record<string, unknown>>(`select * from student_subscriptions where id = $1`, [ids.subB])
@@ -149,6 +148,12 @@ describe('§282 SQL: подписка', () => {
     const after = await one<Record<string, Date>>(`select current_period_end from student_subscriptions where id = $1`, [ids.subB])
     expect(+after.current_period_end).toBeGreaterThan(+(sub.current_period_end as Date))
     expect(await apply('yk-unknown', 1)).toBe('unknown')
+    // несовпадение суммы: платёж закрыт окончательно, период не продлён
+    const ckm = await val<Record<string, string>>(`select subscription_checkout_begin($1, $2, false, false, false, true, null)`, [SB, ids.tariff])
+    const before = await val<Date>(`select current_period_end from student_subscriptions where id = $1`, [ids.subB])
+    expect(await apply('yk-m', 1, ckm.payment_id)).toBe('amount_mismatch')
+    expect(await val(`select status from subscription_payments where id = $1`, [ckm.payment_id])).toBe('failed')
+    expect(+(await val<Date>(`select current_period_end from student_subscriptions where id = $1`, [ids.subB]))).toBe(+before)
   })
 
   it('автосписание: запас 2 часа, тот же ключ при повторе, отказы → past_due с доступом → expired', async () => {
@@ -192,9 +197,13 @@ describe('§282 SQL: подписка', () => {
     expect(await access(ids.paid)).toBe(true)
 
     await as(null)
+    // повтор раньше срока не создаётся; настал срок повтора — создаётся
+    expect(await val(`select subscription_renewal_begin($1)`, [ids.subB])).toBeNull()
+    await db.query(`update student_subscriptions set next_charge_at = now() where id = $1`, [ids.subB])
     const r2 = await val<Record<string, string>>(`select subscription_renewal_begin($1)`, [ids.subB])
     expect(r2.payment_id).not.toBe(r1.payment_id)
     expect(await val(`select subscription_payment_failed($1, 'http_400')`, [r2.payment_id])).toBe('retry')
+    await db.query(`update student_subscriptions set next_charge_at = now() where id = $1`, [ids.subB])
     const r3 = await val<Record<string, string>>(`select subscription_renewal_begin($1)`, [ids.subB])
     await db.query(`select subscription_payment_attach($1, 'yk-r3', 'pending', null)`, [r3.payment_id])
     expect(await val(`select subscription_apply_payment('yk-r3', null, 'canceled', 2900, null, false, null, 'card_expired', null)`)).toBe('expired')
@@ -292,5 +301,78 @@ describe('§282 SQL: подписка', () => {
     await as(SB) // действующая
     expect(await val(`select mock_exam_my_student_id($1)`, [me])).not.toBeNull()
     expect(await val(`select auth_is_student_of_topic($1)`, [t])).toBe(true)
+  })
+
+  it('ревью: отказ банка не переоткрывает отменённую; брошенное оформление не меняет тариф; сумма; частичный возврат', async () => {
+    await as(ADMIN)
+    const year = await val<string>(
+      `insert into subscription_tariffs (course_id, title, price_rub, period_months, is_active)
+       values ($1, 'Год', 25000, 12, true) returning id`, [ids.paid])
+    await as(null)
+    // первая оплата месячного тарифа с картой
+    const ck = await val<Record<string, string>>(`select subscription_checkout_begin($1, $2, true, false, false, true, null)`, [SC, ids.tariff])
+    await db.query(`select subscription_apply_payment('yk-c1', $1, 'succeeded', 2900, 'pm-c', true, null, null, now())`, [ck.payment_id])
+    const subC = ck.subscription_id
+    // брошенное оформление годового: тариф подписки не меняется
+    await val(`select subscription_checkout_begin($1, $2, false, false, false, true, 'other@t.ru')`, [SC, year])
+    expect(await one(`select tariff_id, receipt_email from student_subscriptions where id = $1`, [subC]))
+      .toMatchObject({ tariff_id: ids.tariff, receipt_email: 'u06@t.ru' })
+
+    // автосписание висит, админ отменяет, банк отказывает — доступ НЕ возвращается
+    await db.query(`update student_subscriptions set next_charge_at = now() + interval '1 hour' where id = $1`, [subC])
+    const r = await val<Record<string, string>>(`select subscription_renewal_begin($1)`, [subC])
+    await db.query(`select subscription_payment_attach($1, 'yk-c2', 'pending', null)`, [r.payment_id])
+    await as(ADMIN)
+    await db.query(`select admin_subscription_cancel($1, 'тест')`, [subC])
+    await as(null)
+    expect(await val(`select subscription_apply_payment('yk-c2', null, 'canceled', 2900, null, false, null, 'insufficient_funds', null)`)).toBe('skip')
+    expect(await one(`select status from student_subscriptions where id = $1`, [subC])).toMatchObject({ status: 'cancelled' })
+    await as(SC)
+    expect(await access(ids.paid)).toBe(false)
+
+    // вернули доступ; параллельный запуск после успешного списания второй платёж не создаёт
+    await as(ADMIN)
+    await db.query(`select admin_subscription_extend($1, 30, 'вернуть')`, [subC])
+    await db.query(`update student_subscriptions set auto_renew = true, next_charge_at = now() + interval '1 hour' where id = $1`, [subC])
+    await as(null)
+    const r2 = await val<Record<string, string>>(`select subscription_renewal_begin($1)`, [subC])
+    await db.query(`select subscription_payment_attach($1, 'yk-c3', 'succeeded', null)`, [r2.payment_id])
+    await db.query(`select subscription_apply_payment('yk-c3', null, 'succeeded', 2900, null, false, null, null, now())`)
+    expect(await val(`select subscription_renewal_begin($1)`, [subC])).toBeNull()
+
+    // несовпадение суммы на автосписании — платёж закрыт, подписка уходит в повтор
+    await db.query(`update student_subscriptions set next_charge_at = now() + interval '1 hour' where id = $1`, [subC])
+    const r3 = await val<Record<string, string>>(`select subscription_renewal_begin($1)`, [subC])
+    await db.query(`select subscription_payment_attach($1, 'yk-c4', 'pending', null)`, [r3.payment_id])
+    expect(await val(`select subscription_apply_payment('yk-c4', null, 'succeeded', 1, null, false, null, null, now())`)).toBe('amount_mismatch')
+    expect(await val(`select status from subscription_payments where id = $1`, [r3.payment_id])).toBe('failed')
+    expect(await val(`select status from student_subscriptions where id = $1`, [subC])).toBe('past_due')
+
+    // частичный возврат доступ не закрывает; полный — закрывает
+    expect(await val(`select subscription_apply_refund('yk-c3', 'rf-c1', 100)`)).toBe('partial')
+    await as(SC)
+    expect(await access(ids.paid)).toBe(true)
+    await as(null)
+    expect(await val(`select subscription_apply_refund('yk-c3', 'rf-c2', 2900)`)).toBe('refunded')
+    await as(SC)
+    expect(await access(ids.paid)).toBe(false)
+
+    // успешная оплата годового — тариф и email меняются только теперь
+    await as(null)
+    const ck2 = await val<Record<string, string>>(`select subscription_checkout_begin($1, $2, false, false, false, true, 'year@t.ru')`, [SC, year])
+    await db.query(`select subscription_apply_payment('yk-c5', $1, 'succeeded', 25000, null, false, null, null, now())`, [ck2.payment_id])
+    expect(await one(`select tariff_id, receipt_email from student_subscriptions where id = $1`, [subC]))
+      .toMatchObject({ tariff_id: year, receipt_email: 'year@t.ru' })
+    const mine = await (async () => { await as(SC); return val<Array<Record<string, unknown>>>(`select my_subscriptions()`) })()
+    expect(mine[0]).toMatchObject({ period_months: 12 })
+  })
+
+  it('ревью: брошенная строка created старше суток не держит статус вечно', async () => {
+    await as(null)
+    await db.query(`update student_subscriptions set status = 'active', auto_renew = false, next_charge_at = null, access_until = now() - interval '1 minute' where id = $1`, [ids.subA])
+    await db.query(`insert into subscription_payments (subscription_id, student_id, kind, amount_rub, period_months, created_at)
+                    select id, student_id, 'initial', 2900, 1, now() - interval '2 days' from student_subscriptions where id = $1`, [ids.subA])
+    expect(await val(`select subscription_expire_tick()`)).toBeGreaterThanOrEqual(1)
+    expect(await val(`select status from student_subscriptions where id = $1`, [ids.subA])).toBe('expired')
   })
 })

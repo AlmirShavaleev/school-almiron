@@ -178,6 +178,12 @@ describe('«Моя подписка»', () => {
     await waitFor(() => expect(api.setAutoRenew).toHaveBeenCalledWith('s1', false))
   })
 
+  it('тариф на несколько месяцев — цена «за 3 месяца», а не «в месяц»', async () => {
+    api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, period_months: 3 }])
+    renderAt('/my-subscription', route)
+    expect(await screen.findByText(/за 3 месяца/)).toBeInTheDocument()
+  })
+
   it('подписки нет — «Выбрать тариф»', async () => {
     renderAt('/my-subscription', route)
     expect(await screen.findByText('Подписки пока нет.')).toBeInTheDocument()
@@ -223,6 +229,13 @@ describe('плашка «курс закрыт»', () => {
     await renderBanner()
     expect(screen.getByTestId('subscription-lock')).toHaveTextContent('Прогресс и работы сохранены')
     expect(screen.getByTestId('subscription-lock-renew').closest('a')).toHaveAttribute('href', `/subscribe/checkout/${TARIFF.id}`)
+  })
+
+  it('оформление начато, но не оплачено (pending) — «доступен по подписке», а не «закончилась»', async () => {
+    api.fetchCourseAccess.mockResolvedValue({ paid: true, has_access: false, status: 'pending', access_until: null, tariff_id: TARIFF.id })
+    await renderBanner()
+    expect(screen.getByTestId('subscription-lock')).toHaveTextContent('Курс доступен по подписке')
+    expect(screen.getByTestId('subscription-lock-renew')).toHaveTextContent('Оформить')
   })
 
   it('флаг выключен — объяснение есть, кнопки оформления нет', async () => {
