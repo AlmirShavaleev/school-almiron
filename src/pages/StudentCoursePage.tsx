@@ -10,6 +10,8 @@ import { useStudentCourseProgram, type TopicProgress, type ModuleProgress, type 
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { LessonCard } from '@/components/courseProgram/LessonCard'
+import { ModuleArt } from '@/components/courseProgram/ModuleArt'
+import { moduleArtKey, moduleCardTitle, moduleIsPractice, moduleTag } from '@/lib/moduleArt'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
@@ -75,90 +77,88 @@ function Ring({ pct, size = 44, stroke = 5 }: { pct: number; size?: number; stro
 // ─── MODULE CARD (Level 1) ────────────────────────────────────────────────────
 
 // Gradient palette per module index
-const MODULE_GRADIENTS = [
-  'from-indigo-500 to-violet-600',
-  'from-blue-500 to-cyan-600',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-rose-500 to-pink-600',
-  'from-purple-500 to-fuchsia-600',
-  'from-sky-500 to-blue-600',
-  'from-green-500 to-emerald-600',
-]
-
+/**
+ * §281. Карточка раздела — по дизайн-системе v2: фирменный синий градиент
+ * вместо радуги по порядку (цвет должен нести смысл, а порядковый цвет его не
+ * несёт). Разделы курса — синие (как действие), практика ЕГЭ и пилот —
+ * тёмно-синие (как меню и модуль работ). Различие — пометкой и рисунком, а не
+ * цветом. Прогресс — жёлтым акцентом, крупным числом, без кольца: белое кольцо
+ * на цветном фоне при 0% было не видно.
+ */
 function ModuleBigCard({
   mod,
-  idx,
   onClick,
 }: {
   mod: ModuleProgress
-  idx: number
   onClick: () => void
 }) {
-  // §141. Считаем ТЕМЫ, а не задания: заданий на проде почти нет
-  // (опубликовано 4 из 164 в физике, ноль в математике), и карточка показывала
-  // «0 из 0» при двух десятках открытых тем. Правило одно на курс и раздел.
+  // §141. Считаем ТЕМЫ, а не задания. §280: доля ПРОЙДЕННЫХ тем, а не открытых.
   const counters     = mod.counters
   const submittedCnt = mod.topics.filter(t => t.hw_status === 'submitted').length
-  // §280: кольцо — доля ПРОЙДЕННЫХ тем, а не открытых.
   const pct          = donePercent(counters)
-  const gradient     = MODULE_GRADIENTS[idx % MODULE_GRADIENTS.length]
   const isDone       = isCompleted(counters)
+  const practice     = moduleIsPractice(mod.title, mod.order_index)
 
   return (
     <button
       onClick={onClick}
-      className="group text-left rounded-2xl overflow-hidden border border-gray-200 hover:border-primary-300 hover:shadow-lg transition-all duration-200 bg-white w-full"
+      data-testid="module-card"
+      data-practice={practice || undefined}
+      className={cn(
+        'group relative w-full overflow-hidden rounded-card p-5 text-left text-white shadow-card transition-all duration-200',
+        'hover:-translate-y-px hover:shadow-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2',
+        'bg-gradient-to-br',
+        practice ? 'from-primary-800 to-primary-950' : 'from-primary-500 to-primary-700',
+      )}
     >
-      {/* Gradient top */}
-      <div className={cn('bg-gradient-to-br p-5 text-white', gradient)}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <span className={cn(
-                'w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0',
-                isDone ? 'bg-white/30' : 'bg-white/20'
-              )}>
-                {isDone ? <Check size={16} /> : mod.order_index}
-              </span>
-              {isDone && (
-                <span className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                  ✓ Завершён
-                </span>
-              )}
-              {submittedCnt > 0 && !isDone && (
-                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                  {submittedCnt} на проверке
-                </span>
-              )}
-            </div>
-            <h3 className="text-base font-bold leading-snug">{mod.title}</h3>
-          </div>
-          <Ring pct={pct} size={48} stroke={5} />
-        </div>
+      <ModuleArt
+        kind={moduleArtKey(mod.title)}
+        className="pointer-events-none absolute -right-4 top-8 h-32 w-40 text-white/[0.13] transition-transform duration-300 group-hover:scale-105"
+      />
 
-        {/* Progress bar */}
-        <div className="mt-4">
-          <div className="h-1.5 bg-white/25 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1.5 text-xs text-white/75">
-            <span data-testid="module-topics-counter">{doneLabel(counters)}</span>
-            <span className="flex items-center gap-1">
-              Открыть <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-bold" data-testid="module-tag">
+            {moduleTag(mod.title, mod.order_index)}
+          </span>
+          {isDone && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gold-300 px-2.5 py-0.5 text-xs font-extrabold text-graphite-900">
+              <Check size={12} strokeWidth={3} /> Завершён
             </span>
-          </div>
-          {/* Домашние задания — отдельной строкой: смешивать их с темами в
-              одном числе и значило показывать «0 из 0» (§141). */}
-          <div className="mt-1 text-xs text-white/70">
-            <span data-testid="module-homework-counter">{homeworkLabel(counters)}</span>
-          </div>
+          )}
+          {submittedCnt > 0 && !isDone && (
+            <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-semibold">
+              {submittedCnt} на проверке
+            </span>
+          )}
         </div>
+        <span className="text-[28px] font-extrabold leading-none tabular-nums" data-testid="module-percent">{pct}%</span>
       </div>
 
+      <h3 className="relative mt-3 max-w-[78%] text-lg font-extrabold leading-snug">{moduleCardTitle(mod.title)}</h3>
+
+      <div className="relative mt-5">
+        <div
+          className="h-2 overflow-hidden rounded-full bg-white/20"
+          role="progressbar"
+          aria-label="Пройдено тем"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+        >
+          <div className="h-full rounded-full bg-gold-300 transition-all duration-500" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-2 flex justify-between gap-2 text-[13px] text-white/85">
+          <span data-testid="module-topics-counter">{doneLabel(counters)}</span>
+          <span className="flex shrink-0 items-center gap-1 font-semibold">
+            Открыть <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </div>
+        {/* Домашние задания — отдельной строкой (§141). */}
+        <div className="mt-0.5 text-[13px] text-white/75">
+          <span data-testid="module-homework-counter">{homeworkLabel(counters)}</span>
+        </div>
+      </div>
     </button>
   )
 }
@@ -1059,14 +1059,13 @@ export function StudentCoursePage() {
       {/* ══ LEVEL 1: MODULE CARDS ══ */}
       {!activeMod && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {modules.map((mod, i) => (
+          {modules.map(mod => (
             isWorksOnlyModule(mod) ? (
               <ModuleWorksCard key={mod.id} mod={mod} works={worksByTopic} onClick={() => setSelectedModule(mod)} />
             ) : (
               <ModuleBigCard
                 key={mod.id}
                 mod={mod}
-                idx={i}
                 onClick={() => setSelectedModule(mod)}
               />
             )
