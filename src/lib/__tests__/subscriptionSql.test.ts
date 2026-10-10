@@ -5,8 +5,8 @@
  *
  * Проверяется поведение функций, а не текст: правило доступа, пробный период,
  * оплата и её идемпотентность, автосписание с повторами, возврат, админка,
- * очередь писем. RLS здесь не проверяется (прогон под владельцем базы) — права
- * проверяются на проде под `authenticated` (см. PROJECT_STATE §282).
+ * очередь писем — под владельцем базы. Последний блок (§282.2) — под ролью
+ * `authenticated`, с RLS: что ученик видит в таблицах курса с подпиской и без.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
@@ -16,13 +16,25 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 const MIGRATIONS = path.resolve(__dirname, '../../../supabase/migrations')
 const STUBS = path.resolve(__dirname, '../../test/sql/subscriptionStubs.sql')
 
-/** Миграции §282 в порядке применения: основная, затем автосписание. */
+/**
+ * Миграции в порядке применения: §282 (основная, автосписание), §284 (ворота
+ * без подписки, наборы тем ученика и персонала), §282.2 (подписка в наборах).
+ */
 function migrationFiles(): string[] {
   const all = readdirSync(MIGRATIONS)
-  const main = all.find((f) => /^\d+_subscriptions_282\.sql$/.test(f))
-  const renew = all.find((f) => f.includes('282') && f.includes('renew') && f.endsWith('.sql'))
-  if (!main || !renew) throw new Error(`Не найдены миграции §282: ${main} / ${renew}`)
-  return [main, renew].map((f) => path.join(MIGRATIONS, f))
+  const find = (re: RegExp) => {
+    const f = all.find((x) => re.test(x))
+    if (!f) throw new Error(`Не найдена миграция ${re}`)
+    return path.join(MIGRATIONS, f)
+  }
+  return [
+    find(/^\d+_subscriptions_282\.sql$/),
+    find(/^\d+_subscription_renew_282\.sql$/),
+    find(/^\d+_hotfix_284_gates_without_subscription\.sql$/),
+    find(/^\d+_perf_284a_student_topic_sets\.sql$/),
+    find(/^\d+_perf_284c_staff_topic_set\.sql$/),
+    find(/^(PENDING_282_2|\d+)_subscription_sets(_282_2)?\.sql$/),
+  ]
 }
 
 const U = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -374,5 +386,93 @@ describe('§282 SQL: подписка', () => {
                     select id, student_id, 'initial', 2900, 1, now() - interval '2 days' from student_subscriptions where id = $1`, [ids.subA])
     expect(await val(`select subscription_expire_tick()`)).toBeGreaterThanOrEqual(1)
     expect(await val(`select status from student_subscriptions where id = $1`, [ids.subA])).toBe('expired')
+  })
+})
+
+describe('§282.2 RLS: подписка в наборах тем ученика', () => {
+  const SX = U(7)
+  const TABLES = [
+    'topic_material_items', 'course_lessons', 'topic_homework', 'topic_homework_files', 'topic_tests',
+    'topic_test_assignments', 'topic_autocheck_tasks', 'topic_catalog_topics', 'course_study_plans', 'course_study_plan_items',
+  ] as const
+  const c: Record<string, string> = {}
+
+  /** Сколько строк каждой таблицы видит пользователь под `authenticated` (RLS включён). */
+  async function visible(uid: string): Promise<Record<string, number>> {
+    await as(uid)
+    await db.exec('set role authenticated')
+    try {
+      const out: Record<string, number> = {}
+      for (const t of TABLES) out[t] = await val<number>(`select count(*)::int from ${t}`)
+      return out
+    } finally {
+      await db.exec('reset role')
+    }
+  }
+  const none = Object.fromEntries(TABLES.map((t) => [t, 0]))
+
+  beforeAll(async () => {
+    await as(null)
+    await db.query(`insert into profiles (id, email, full_name, role) values ($1, 'x@t.ru', 'Икс Иксов', 'student')`, [SX])
+    c.course = await val(`insert into courses (title) values ('Платный поток') returning id`)
+    c.group = await val(`insert into groups (course_id, name) values ($1, 'p') returning id`, [c.course])
+    c.student = await val(`insert into students (profile_id) values ($1) returning id`, [SX])
+    await db.query(`insert into group_students (group_id, student_id) values ($1, $2)`, [c.group, c.student])
+    const m = await val<string>(`insert into modules (course_id) values ($1) returning id`, [c.course])
+    c.open = await val(`insert into topics (module_id) values ($1) returning id`, [m])
+    c.closed = await val(`insert into topics (module_id, is_open) values ($1, false) returning id`, [m])
+    for (const t of [c.open, c.closed]) {
+      await db.query(`insert into topic_material_items (topic_id) values ($1)`, [t])
+      await db.query(`insert into course_lessons (topic_id) values ($1)`, [t])
+      await db.query(`insert into topic_autocheck_tasks (topic_id) values ($1)`, [t])
+      await db.query(`insert into topic_catalog_topics (topic_id) values ($1)`, [t])
+      const hw = await val<string>(`insert into topic_homework (topic_id) values ($1) returning id`, [t])
+      await db.query(`insert into topic_homework_files (homework_id) values ($1)`, [hw])
+      const test = await val<string>(`insert into topic_tests default values returning id`)
+      await db.query(`insert into topic_test_assignments (topic_id, test_id) values ($1, $2)`, [t, test])
+      await db.query(`insert into course_study_plan_items (course_id, topic_id) values ($1, $2)`, [c.course, t])
+    }
+    await db.query(`insert into course_study_plans (course_id) values ($1)`, [c.course])
+    // бесплатный курс старого ученика — для проверки, что подписка его не трогает
+    await db.query(`insert into topic_material_items (topic_id) values ($1)`, [ids.tFree])
+  })
+
+  it('без тарифа: ученик видит открытую тему курса, закрытую — нет; персонал — всё', async () => {
+    const seen = await visible(SX)
+    // по одной строке открытой темы; план и его пункты — по курсу (2 пункта)
+    expect(seen).toEqual({ ...Object.fromEntries(TABLES.map((t) => [t, 1])), course_study_plan_items: 2 })
+    await as(SX)
+    expect(await val(`select course_student_has_access($1)`, [c.course])).toBe(true)
+    expect(await val(`select student_access_courses()`)).toContain(c.course)
+    const admin = await visible(ADMIN)
+    expect(admin.topic_material_items).toBe(3)
+    expect(admin.topic_homework).toBe(2)
+  })
+
+  it('с тарифом и без подписки — материалы курса пусты; бесплатный курс не задет', async () => {
+    await as(null)
+    c.tariff = await val(`insert into subscription_tariffs (course_id, title, price_rub) values ($1, 'Поток', 1000) returning id`, [c.course])
+    expect(await visible(SX)).toEqual(none)
+    await as(SX)
+    expect(await val(`select course_student_has_access($1)`, [c.course])).toBe(false)
+    expect(await val(`select course_student_can_see_topic($1)`, [c.open])).toBe(false)
+    expect(await val(`select student_access_courses()`)).not.toContain(c.course)
+    expect(await val(`select count(*)::int from student_candidate_topics()`)).toBe(0)
+    // ученик остаётся в группе — прогресс не теряется
+    expect(await val(`select count(*)::int from group_students where student_id = $1`, [c.student])).toBe(1)
+    // старый ученик бесплатного курса видит свой материал, как раньше
+    expect((await visible(OLD)).topic_material_items).toBe(1)
+    // персонал видит курс независимо от подписки
+    expect((await visible(ADMIN)).topic_material_items).toBe(3)
+  })
+
+  it('подписка активна — всё вернулось; истекла — снова пусто', async () => {
+    await as(null)
+    const sub = await val<string>(
+      `insert into student_subscriptions (student_id, course_id, tariff_id, status, source, access_until)
+       values ($1, $2, $3, 'active', 'manual', now() + interval '30 days') returning id`, [c.student, c.course, c.tariff])
+    expect(await visible(SX)).toEqual({ ...Object.fromEntries(TABLES.map((t) => [t, 1])), course_study_plan_items: 2 })
+    await db.query(`update student_subscriptions set access_until = now() - interval '1 minute' where id = $1`, [sub])
+    expect(await visible(SX)).toEqual(none)
   })
 })

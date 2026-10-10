@@ -49,3 +49,54 @@ create function public.course_student_has_access(p_course_id uuid) returns boole
 create function public.mock_exam_my_student_id(p_mock_exam_id uuid) returns uuid language sql stable as $$ select null::uuid $$;
 create function public._topic_autocheck_student_of(p_topic_id uuid, p_profile_id uuid) returns uuid language sql stable as $$ select null::uuid $$;
 create function public.auth_is_student_of_topic(p_topic_id uuid) returns boolean language sql stable as $$ select false $$;
+
+-- §282.2: объекты, на которые опираются §284 и наборы тем ученика. Тела функций — как на проде 10.10
+-- (кроме course_is_staff, topic_is_timed, topic_homework_condition_open — упрощены: тут проверяется
+-- доступ ученика, а не правила персонала и окна ДЗ).
+alter table public.topics add column is_open boolean, add column available_from date;
+create function public.topic_open_now(p_is_open boolean, p_available_from date) returns boolean language sql stable as $$
+  select coalesce(p_is_open, p_available_from is null or p_available_from <= current_date) $$;
+create function public.course_is_staff(p_course_id uuid) returns boolean language sql stable security definer as $$
+  select p_course_id is not null and (public.is_admin_or_owner()
+    or exists (select 1 from public.courses c where c.id = p_course_id and c.owner_id = auth.uid())) $$;
+create function public.topic_material_can_manage(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select public.course_is_staff(public.course_of_topic(p_topic_id)) $$;
+create function public.course_student_can_see_topic(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select exists (select 1 from public.topics t join public.modules m on m.id = t.module_id
+                  where t.id = p_topic_id and public.topic_open_now(t.is_open, t.available_from)
+                    and public.course_student_has_access(m.course_id)) $$;
+
+create table public.topic_homework (id uuid primary key default gen_random_uuid(), topic_id uuid not null references public.topics(id), is_published boolean not null default true);
+create table public.topic_homework_attempts (id uuid primary key default gen_random_uuid(), homework_id uuid references public.topic_homework(id), student_id uuid, status text);
+create table public.topic_homework_files (id uuid primary key default gen_random_uuid(), homework_id uuid references public.topic_homework(id));
+create function public.topic_is_timed(p_topic_id uuid) returns boolean language sql stable as $$ select false $$;
+create function public.topic_homework_condition_open(p_homework_id uuid, p_student_id uuid) returns boolean language sql stable as $$ select true $$;
+create function public.topic_solution_unlocked(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select not exists (select 1 from public.topic_homework h where h.topic_id = p_topic_id)
+      or exists (select 1 from public.topic_homework_attempts a join public.topic_homework h on h.id = a.homework_id
+                  where h.topic_id = p_topic_id and a.student_id = public.auth_student_id() and a.status = 'accepted') $$;
+create function public.topic_condition_visible(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select not public.topic_is_timed(p_topic_id)
+      or exists (select 1 from public.topic_homework h where h.topic_id = p_topic_id
+                  and public.topic_homework_condition_open(h.id, public.auth_student_id())) $$;
+create table public.topic_subtopic_hidden (topic_id uuid not null, subtopic_code text not null, primary key (topic_id, subtopic_code));
+create function public.topic_subtopic_is_hidden(p_topic_id uuid, p_code text) returns boolean language sql stable security definer as $$
+  select exists (select 1 from public.topic_subtopic_hidden h where h.topic_id = p_topic_id and h.subtopic_code = p_code) $$;
+
+create table public.topic_material_items (id uuid primary key default gen_random_uuid(), topic_id uuid not null, is_visible boolean not null default true,
+  section text, track text not null default 'lesson', subtopic_code text);
+create table public.course_lessons (id uuid primary key default gen_random_uuid(), topic_id uuid not null, is_published boolean not null default true);
+create table public.topic_tests (id uuid primary key default gen_random_uuid());
+create table public.topic_test_assignments (id uuid primary key default gen_random_uuid(), topic_id uuid not null, test_id uuid references public.topic_tests(id));
+create table public.topic_autocheck_tasks (id uuid primary key default gen_random_uuid(), topic_id uuid not null);
+create table public.topic_catalog_topics (id uuid primary key default gen_random_uuid(), topic_id uuid not null);
+create table public.course_study_plans (course_id uuid primary key);
+create table public.course_study_plan_items (course_id uuid not null, topic_id uuid not null);
+do $$ declare t text; begin
+  foreach t in array array['topic_material_items','course_lessons','topic_homework','topic_homework_files','topic_tests','topic_test_assignments',
+                           'topic_autocheck_tasks','topic_catalog_topics','topic_subtopic_hidden','course_study_plans','course_study_plan_items'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('grant select on public.%I to authenticated', t);
+  end loop;
+end $$;
+grant usage on schema public, auth to authenticated;
