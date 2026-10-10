@@ -288,6 +288,9 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           onlyEgeTrack(supabase
             .from('topic_material_items')
             .select('topic_id, kind, section, url, position, file_name')
+            // §285. Ученику скрытое и так не приходит (RLS); персоналу в
+            // предпросмотре — приходит, а видеть его как ученик он не должен.
+            .eq('is_visible', true)
             .in('topic_id', topicIds))
             .range(from, to)),
         (async () => {

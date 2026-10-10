@@ -30,6 +30,7 @@ import { subtopicsForStudent } from '@/lib/training'
 import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
   STUDENT_SECTION_ORDER, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
+  visibleMaterialsForStudent,
   isTopicSectionVisible, sectionLabel,
   type TopicMaterialSection, type TopicSection,
 } from '@/lib/topicMaterialItems'
@@ -266,7 +267,13 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const videoMaterial = materials.find(m => m.kind === 'video') ?? null
+  // §285. В предпросмотре персоналу RLS отдаёт и скрытые материалы
+  // (`is_visible = false`), а ученик их не видит. Вкладки и их счётчики
+  // считаем по тому, что увидит ученик, иначе в предпросмотре висят пустые
+  // «Рабочий лист ДЗ» / «Решение ДЗ» у задач с автопроверкой.
+  const studentMaterials = preview ? visibleMaterialsForStudent(materials) : materials
+
+  const videoMaterial = studentMaterials.find(m => m.kind === 'video') ?? null
   const videoUrl   = videoMaterial?.url || ''
   const ytEmbed    = getYouTubeEmbed(videoUrl)
   const vimeoEmbed = isVimeo(videoUrl) ? getVimeoEmbed(videoUrl) : null
@@ -350,7 +357,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // Счёт и порядок вкладок берём из общего списка рубрик, а не перечисляем
   // руками: с §95 их семь, и перечень здесь стал бы пятой копией.
   const sectionCounts = Object.fromEntries(
-    STUDENT_SECTION_ORDER.map(s => [s, materials.filter(m => m.section === s).length]),
+    STUDENT_SECTION_ORDER.map(s => [s, studentMaterials.filter(m => m.section === s).length]),
   ) as Record<TopicMaterialSection, number>
 
   // §258. «Ответы и критерии» — за тем же гейтом, что решение (RLS:
