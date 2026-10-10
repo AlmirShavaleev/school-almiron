@@ -382,7 +382,7 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
     >
       <LessonThumb
         number={index + 1}
-        src={open ? bunnyThumbnailUrl(topic.video_guid) : null}
+        src={open ? bunnyThumbnailUrl(topic.video_guid, undefined, topic.video_thumb) : null}
         hasVideo={topic.sections.has('video')}
         locked={!open}
         done={false}

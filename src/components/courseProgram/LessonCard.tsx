@@ -30,6 +30,7 @@ export interface LessonCardData extends LessonCardTopic {
   title: string
   kind?: string | null
   video_guid?: string | null
+  video_thumb?: string | null
 }
 
 const TONE: Record<LessonTone, { cls: string; icon: React.ReactNode }> = {
@@ -72,7 +73,7 @@ export function LessonCard({
   const pct = locked ? null : tasksPercent(topic)
   const done = !locked && topic.hw_status === 'accepted'
   const number = index + 1
-  const thumb = thumbnailUrl !== undefined ? thumbnailUrl : bunnyThumbnailUrl(topic.video_guid)
+  const thumb = thumbnailUrl !== undefined ? thumbnailUrl : bunnyThumbnailUrl(topic.video_guid, undefined, topic.video_thumb)
 
   const body = (
     <>

@@ -15,7 +15,7 @@ import {
 import type { MockLessonListRow } from '@/lib/mockExamLesson'
 import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
 import { onlyEgeTrack } from '@/lib/training'
-import { firstVideoGuidByTopic } from '@/lib/lessonCard'
+import { firstVideoGuidByTopic, firstVideoThumbByTopic } from '@/lib/lessonCard'
 
 /**
  * Программа курса глазами ученика.
@@ -101,6 +101,8 @@ export interface TopicProgress {
   lesson_format?: string | null
   /** §274. guid первого видео Bunny темы — превью на карточке урока; null — видео нет или не Bunny. */
   video_guid?:    string | null
+  /** §283. Имя своей обложки ролика в Bunny (`thumbnail_xxxx.jpg`), если ставили кадр заставки. */
+  video_thumb?:   string | null
   /** Заполненные рубрики темы — те же плитки, что у преподавателя. */
   sections:       Set<TopicSection>
   // ── ДЗ темы (topic_homework) ──
@@ -285,7 +287,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           // §274: url и position — превью первого видео на карточке урока.
           onlyEgeTrack(supabase
             .from('topic_material_items')
-            .select('topic_id, kind, section, url, position')
+            .select('topic_id, kind, section, url, position, file_name')
             .in('topic_id', topicIds))
             .range(from, to)),
         (async () => {
@@ -385,6 +387,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       }
       const sectionMap = sectionsFromMaterials(materialRows)
       const videoGuids = firstVideoGuidByTopic(materialRows)
+      const videoThumbs = firstVideoThumbByTopic(materialRows)
 
       const hwByTopic = new Map<string, (typeof homeworkRows)[number]>()
       for (const hw of homeworkRows) if (!hwByTopic.has(hw.topic_id)) hwByTopic.set(hw.topic_id, hw)
@@ -438,6 +441,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               kind:           t.kind ?? null,
               lesson_format:  t.lesson_format ?? null,
               video_guid:     videoGuids.get(t.id) ?? null,
+              video_thumb:    videoThumbs.get(t.id) ?? null,
               sections,
               hw_id:           hw?.id ?? null,
               hw_title:        hw?.title ?? null,
