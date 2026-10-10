@@ -14,6 +14,8 @@ import {
   periodLabel,
   resultState,
   type MySubscription,
+  promoLine,
+  promoSummary,
 } from '../subscription/view'
 import {
   PENDING_SUBSCRIBE_MAX_AGE_MS,
@@ -165,5 +167,30 @@ describe('escapeLike', () => {
     expect(escapeLike('ivan_p@x.ru')).toBe('ivan\\_p@x.ru')
     expect(escapeLike('a%b\\c')).toBe('a\\%b\\\\c')
     expect(escapeLike('plain@x.ru')).toBe('plain@x.ru')
+  })
+})
+
+describe('§287 тексты промокода', () => {
+  const base = { ok: true as const, code: 'X', percent: null, discount_payments: null, free_days: null, free_months: null, price_rub: 2900, amount_rub: 0, free: true }
+  it('promoSummary: виды и склонения', () => {
+    expect(promoSummary({ ...base, kind: 'percent', percent: 30, discount_payments: 1, amount_rub: 2030, free: false }))
+      .toMatch(/^Скидка 30 % на первый платёж: 2\s030\s₽ вместо 2\s900\s₽$/)
+    expect(promoSummary({ ...base, kind: 'percent', percent: 50, discount_payments: 5, amount_rub: 1450, free: false }))
+      .toContain('на 5 платежей подряд, включая автопродление')
+    expect(promoSummary({ ...base, kind: 'percent', percent: 100, discount_payments: 2 }))
+      .toBe('Скидка 100 % на 2 платежа подряд, включая автопродление: этот период бесплатно')
+    expect(promoSummary({ ...base, kind: 'free_days', free_days: 21 })).toBe('21 день бесплатно — без оплаты и без карты')
+    expect(promoSummary({ ...base, kind: 'free_months', free_months: 5 })).toBe('5 месяцев бесплатно — без оплаты и без карты')
+  })
+  it('promoLine: остаток платежей со скидкой; без скидки — ничего', () => {
+    expect(promoLine({ percent: 40, payments_left: 1, next_amount_rub: 600 })).toMatch(/^Скидка 40 % по промокоду: следующий платёж — 600\s₽$/)
+    expect(promoLine({ percent: 40, payments_left: 3, next_amount_rub: 600 })).toContain('следующие 3 платежа')
+    expect(promoLine({ percent: 40, payments_left: 0, next_amount_rub: 600 })).toBeNull()
+    expect(promoLine(null)).toBeNull()
+  })
+  it('коды отказа — понятные тексты без причины', () => {
+    expect(checkoutErrorText('PROMO_INVALID')).toBe('Промокод не подходит.')
+    expect(checkoutErrorText('RATE_LIMIT')).toContain('Слишком много попыток')
+    expect(checkoutErrorText('PROMO_ACTIVE')).toContain('уже действует скидка')
   })
 })

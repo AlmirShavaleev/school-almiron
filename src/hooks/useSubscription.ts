@@ -1,6 +1,7 @@
 /**
- * §282 «Подписка» — хуки экранов. Флаг `subscriptions` читается из
- * `app_feature_flags`; выключен или не прочитался — экраны подписки молчат.
+ * §282 «Подписка» — хуки экранов. Включена ли подписка для пользователя —
+ * решает база (`subscription_enabled`: флаг × режим «только тестировщики»,
+ * §287); выключена или не прочиталась — экраны подписки молчат.
  *
  * Флаг и доступ к курсу — без react-query: их зовут меню и страница курса,
  * которые живут (и тестируются) и без QueryClientProvider. Ошибка чтения =
@@ -8,10 +9,12 @@
  */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@/store/authStore'
 import {
   fetchCourseAccess,
   fetchFeatureFlag,
   fetchMySubscriptions,
+  fetchSubscriptionsEnabled,
   fetchPublicTariffs,
   fetchSubscriptionSettings,
   setAutoRenew,
@@ -28,11 +31,11 @@ export function resetFeatureFlagCache() {
   flagCache.clear()
 }
 
-function loadFlag(key: string): Promise<boolean> {
+function loadFlag(key: string, fetcher: () => Promise<boolean> = () => fetchFeatureFlag(key)): Promise<boolean> {
   const hit = flagCache.get(key)
   if (hit?.pending) return hit.pending
   if (hit && Date.now() - hit.at < FLAG_TTL_MS) return Promise.resolve(hit.value)
-  const pending = fetchFeatureFlag(key)
+  const pending = fetcher()
     .catch(() => false)
     .then((value) => {
       flagCache.set(key, { value, at: Date.now() })
@@ -42,26 +45,39 @@ function loadFlag(key: string): Promise<boolean> {
   return pending
 }
 
-export function useFeatureFlag(key: string) {
+function useCachedFlag(key: string, fetcher?: () => Promise<boolean>) {
   const cached = flagCache.get(key)
-  const [state, setState] = useState<{ enabled: boolean; loading: boolean }>({
+  const [state, setState] = useState<{ key: string; enabled: boolean; loading: boolean }>({
+    key,
     enabled: cached?.value ?? false,
     loading: !cached || !!cached.pending,
   })
   useEffect(() => {
     let alive = true
-    loadFlag(key).then((enabled) => {
-      if (alive) setState({ enabled, loading: false })
+    loadFlag(key, fetcher).then((enabled) => {
+      if (alive) setState({ key, enabled, loading: false })
     })
     return () => {
       alive = false
     }
+    // fetcher определяется ключом; ключ меняется вместе с пользователем
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
-  return state
+  // ответ привязан к ключу: после смены пользователя старый не показывается
+  return state.key === key ? { enabled: state.enabled, loading: state.loading } : { enabled: false, loading: true }
 }
 
+export function useFeatureFlag(key: string) {
+  return useCachedFlag(key)
+}
+
+/**
+ * Подписка включена для ЭТОГО пользователя (флаг × тестировщики, §287).
+ * Кэш — по пользователю: вход другого ученика не наследует чужой ответ.
+ */
 export function useSubscriptionsEnabled() {
-  return useFeatureFlag(SUBSCRIPTION_FLAG)
+  const uid = useAuthStore((s) => s.profile?.id ?? 'anon')
+  return useCachedFlag(`${SUBSCRIPTION_FLAG}:${uid}`, fetchSubscriptionsEnabled)
 }
 
 export function usePublicTariffs() {

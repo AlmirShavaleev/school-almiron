@@ -3,8 +3,10 @@
  *
  * Вкладки: подписчики (статусы, ручное продление/отмена, бесплатная выдача),
  * платежи, тарифы (создать/править; тариф на курс делает курс платным),
- * настройки (флаг «подписка», ссылки на оферту/политику/согласие родителя,
- * дни повторов списания), журнал (уведомления ЮKassa, ручные действия, письма).
+ * настройки (режим: выключена / только тестировщики / для всех, список
+ * тестировщиков, ссылки на оферту/политику/согласие родителя, дни повторов
+ * списания), промокоды (§287), журнал (уведомления ЮKassa, ручные действия,
+ * письма, погашения и отказы промокодов).
  *
  * Права — в базе: admin_* функции отбивают не-админа ошибкой ONLY_ADMIN,
  * таблицы закрыты RLS. Страница не открыта без флага: владельцу нужно
@@ -20,6 +22,7 @@ import {
   adminCancel,
   adminExtend,
   adminGrant,
+  addTesterByEmail,
   fetchAdminPayments,
   fetchAdminSubscriptions,
   fetchFeatureFlag,
@@ -27,7 +30,9 @@ import {
   fetchSubscriptionLog,
   fetchSubscriptionSettings,
   fetchTariffs,
+  fetchTesters,
   findStudentByEmail,
+  removeTester,
   saveSubscriptionSettings,
   saveTariff,
   setFeatureFlag,
@@ -45,12 +50,14 @@ import {
   type SubscriptionStatus,
 } from '@/lib/subscription/view'
 import { cancelReasonText } from '../../../supabase/functions/_shared/subscription.ts'
+import { PromoCodesTab } from './subscription/PromoCodesTab'
 
-type Tab = 'subs' | 'payments' | 'tariffs' | 'settings' | 'log'
+type Tab = 'subs' | 'payments' | 'tariffs' | 'promo' | 'settings' | 'log'
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'subs', label: 'Подписчики' },
   { key: 'payments', label: 'Платежи' },
   { key: 'tariffs', label: 'Тарифы' },
+  { key: 'promo', label: 'Промокоды' },
   { key: 'settings', label: 'Настройки' },
   { key: 'log', label: 'Журнал' },
 ]
@@ -348,6 +355,59 @@ function TariffsTab() {
 
 // ── Настройки ──────────────────────────────────────────────────────────────
 
+type Mode = 'off' | 'testers' | 'everyone'
+const MODE_LABEL: Record<Mode, string> = { off: 'выключена', testers: 'только тестировщики', everyone: 'для всех' }
+const MODE_HINT: Record<Mode, string> = {
+  off: 'Витрина пуста, оформить нельзя, пункта «Моя подписка» нет.',
+  testers: 'Витрину, оформление и промокоды видят только тестировщики из списка ниже; остальные — как при выключенной.',
+  everyone: 'Витрина и оформление открыты всем.',
+}
+
+/** §287. Кто видит подписку в режиме «только тестировщики». */
+function TestersBlock() {
+  const qc = useQueryClient()
+  const testers = useQuery({ queryKey: ['admin-testers'], queryFn: fetchTesters })
+  const [email, setEmail] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['admin-testers'] })
+    resetFeatureFlagCache()
+  }
+  const add = useMutation({
+    mutationFn: () => addTesterByEmail(email, null),
+    onSuccess: (ok) => {
+      setMsg(ok ? null : 'Пользователь с таким email не найден')
+      if (ok) { setEmail(''); done() }
+    },
+    onError: (e) => setMsg(errText(e)),
+  })
+  const remove = useMutation({ mutationFn: (id: string) => removeTester(id), onSuccess: done, onError: (e) => setMsg(errText(e)) })
+
+  return (
+    <div className="rounded-card border border-graphite-200 p-4" data-testid="testers">
+      <p className="text-[15px] font-semibold text-graphite-900">Тестировщики</p>
+      {testers.isLoading && <p className="text-[13px] text-graphite-500">Загружаем…</p>}
+      {testers.data && testers.data.length === 0 && <p className="text-[13px] text-graphite-500">Список пуст.</p>}
+      <ul className="mt-2 divide-y divide-graphite-200 text-[15px]">
+        {(testers.data ?? []).map((t) => (
+          <li key={t.profile_id} className="flex items-center justify-between gap-3 py-2" data-testid="tester-row">
+            <span>{t.profile?.full_name ?? '—'} <span className="text-graphite-500">{t.profile?.email}</span></span>
+            <Button variant="ghost" loading={remove.isPending && remove.variables === t.profile_id}
+              onClick={() => remove.mutate(t.profile_id)}>Убрать</Button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="min-w-[16rem] flex-1">
+          <Input label="Email тестировщика" type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="tester-email" />
+        </div>
+        <Button onClick={() => add.mutate()} loading={add.isPending} disabled={!email.trim()} data-testid="tester-add">Добавить</Button>
+      </div>
+      {msg && <p className="mt-2 text-[13px] text-verdict-bad-ink">✕ {msg}</p>}
+    </div>
+  )
+}
+
 function SettingsTab() {
   const qc = useQueryClient()
   const flag = useQuery({ queryKey: ['admin-flag'], queryFn: () => fetchFeatureFlag(SUBSCRIPTION_FLAG) })
@@ -360,15 +420,26 @@ function SettingsTab() {
     retry: (s?.retry_days ?? [1, 3]).join(', '),
   }
 
+  const mode: Mode = !flag.data ? 'off' : (s?.audience ?? 'testers') === 'everyone' ? 'everyone' : 'testers'
   const toggle = useMutation({
-    mutationFn: (on: boolean) => setFeatureFlag(SUBSCRIPTION_FLAG, on),
+    mutationFn: async (next: Mode) => {
+      // сначала — кому, потом — включить: иначе на миг откроется не тем
+      if (next !== 'off') await saveSubscriptionSettings({ audience: next })
+      await setFeatureFlag(SUBSCRIPTION_FLAG, next !== 'off')
+    },
     onSuccess: () => {
+      setMsg(null)
       resetFeatureFlagCache()
       void qc.invalidateQueries({ queryKey: ['admin-flag'] })
       void qc.invalidateQueries({ queryKey: ['subscription'] })
     },
     onError: (e) => setMsg(errText(e)),
   })
+  const chooseMode = (next: Mode) => {
+    if (next === mode) return
+    if (next === 'everyone' && !window.confirm('Открыть подписку для всех? Проверьте тарифы и ссылки на документы.')) return
+    toggle.mutate(next)
+  }
   const save = useMutation({
     mutationFn: () => {
       const retry = d.retry.split(/[,\s]+/).filter(Boolean).map(Number)
@@ -388,20 +459,21 @@ function SettingsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex-1">
-          <p className="text-[17px] font-semibold text-graphite-900">Подписка на сайте: {flag.data ? 'включена' : 'выключена'}</p>
-          <p className="text-[13px] text-graphite-500">Выключена — витрина пуста, оформить нельзя, пункта «Моя подписка» нет. Уже оплаченные подписки продолжают работать.</p>
+      <div>
+        <p className="text-[17px] font-semibold text-graphite-900">Подписка на сайте: {MODE_LABEL[mode]}</p>
+        <p className="text-[13px] text-graphite-500">{MODE_HINT[mode]} Уже оплаченные подписки продолжают работать в любом режиме.</p>
+        <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Режим подписки">
+          {(['off', 'testers', 'everyone'] as const).map((m) => (
+            <Button key={m} variant={m === mode ? 'primary' : 'secondary'} role="radio" aria-checked={m === mode}
+              loading={toggle.isPending && toggle.variables === m} disabled={toggle.isPending || flag.isLoading || settings.isLoading}
+              onClick={() => chooseMode(m)} data-testid={`mode-${m}`}>
+              {MODE_LABEL[m]}
+            </Button>
+          ))}
         </div>
-        <Button variant={flag.data ? 'secondary' : 'primary'} loading={toggle.isPending} data-testid="flag-toggle"
-          onClick={() => {
-            const on = !flag.data
-            if (on && !window.confirm('Включить подписку для всех? Проверьте тарифы и ссылки на документы.')) return
-            toggle.mutate(on)
-          }}>
-          {flag.data ? 'Выключить' : 'Включить'}
-        </Button>
       </div>
+
+      <TestersBlock />
 
       <div className="grid gap-3">
         <Input label="Ссылка на оферту" value={d.offer} onChange={(e) => setDraft({ ...d, offer: e.target.value })} />
@@ -455,6 +527,7 @@ export function SubscriptionsAdminPage() {
         {tab === 'subs' && <SubscribersTab />}
         {tab === 'payments' && <PaymentsTab />}
         {tab === 'tariffs' && <TariffsTab />}
+        {tab === 'promo' && <PromoCodesTab />}
         {tab === 'settings' && <SettingsTab />}
         {tab === 'log' && <LogTab />}
       </section>

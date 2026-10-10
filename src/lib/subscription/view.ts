@@ -7,6 +7,8 @@
  * (`has_access`), без второй копии правила.
  */
 
+import { plural } from '@/lib/plural'
+
 export type SubscriptionStatus = 'pending' | 'trial' | 'active' | 'past_due' | 'cancelled' | 'expired'
 export type PaymentStatus = 'created' | 'pending' | 'waiting_for_capture' | 'succeeded' | 'canceled' | 'refunded' | 'failed'
 
@@ -18,6 +20,15 @@ export interface SubscriptionPayment {
   paid_at: string | null
   created_at: string
   refunded_at: string | null
+  /** §287: скидка по промокоду в этом платеже, ₽. */
+  discount_rub?: number
+}
+
+/** Действующая скидка по промокоду (§287): ещё столько платежей пойдут со скидкой. */
+export interface SubscriptionPromo {
+  percent: number
+  payments_left: number
+  next_amount_rub: number
 }
 
 /** Строка из RPC `my_subscriptions()`. */
@@ -41,7 +52,24 @@ export interface MySubscription {
   last_charge_error: string | null
   card_title: string | null
   payments: SubscriptionPayment[]
+  promo?: SubscriptionPromo | null
 }
+
+/** Ответ RPC `subscription_promo_check` (§287). Цены считает сервер. */
+export type PromoPreview =
+  | {
+      ok: true
+      code: string
+      kind: 'percent' | 'free_days' | 'free_months'
+      percent: number | null
+      discount_payments: number | null
+      free_days: number | null
+      free_months: number | null
+      price_rub: number
+      amount_rub: number
+      free: boolean
+    }
+  | { ok: false; error_code: 'PROMO_INVALID' | 'RATE_LIMIT' | 'PROMO_ACTIVE'; error: string }
 
 /** Строка из RPC `subscription_tariffs_public()`. */
 export interface PublicTariff {
@@ -227,6 +255,10 @@ export function checkoutErrorText(code: string | null | undefined, fallback?: st
     case 'YOOKASSA_UNAVAILABLE': return 'Платёжный сервис не ответил. Попробуйте ещё раз.'
     case 'YOOKASSA_REJECTED': return 'Платёжный сервис отклонил запрос. Попробуйте позже.'
     case 'UNAUTHORIZED': return 'Войдите в аккаунт ещё раз.'
+    case 'PROMO_INVALID': return 'Промокод не подходит.'
+    case 'RATE_LIMIT': return 'Слишком много попыток ввода промокода. Попробуйте позже.'
+    case 'PROMO_ACTIVE': return 'По этой подписке уже действует скидка по промокоду.'
+    case 'PROMO_BUSY': return 'Оплата с этим промокодом уже начата. Завершите её или попробуйте через час.'
     default: return fallback || 'Не удалось начать оплату. Попробуйте ещё раз.'
   }
 }
@@ -245,4 +277,31 @@ export function resultState(status: PaymentStatus | null | undefined): ResultSta
     case 'waiting_for_capture': return 'waiting'
     default: return 'unknown'
   }
+}
+
+/** «2 месяца» — для бесплатных месяцев по промокоду. */
+export function monthsLabel(n: number): string {
+  return `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
+}
+
+/** «3 платежа» */
+function paymentsLabel(n: number): string {
+  return `${n} ${plural(n, 'платёж', 'платежа', 'платежей')}`
+}
+
+/** Что даёт проверенный сервером промокод — одной строкой для ученика (§287). */
+export function promoSummary(p: Extract<PromoPreview, { ok: true }>): string {
+  if (p.kind === 'free_days') return `${daysLabel(p.free_days ?? 0)} бесплатно — без оплаты и без карты`
+  if (p.kind === 'free_months') return `${monthsLabel(p.free_months ?? 0)} бесплатно — без оплаты и без карты`
+  const n = p.discount_payments ?? 1
+  const span = n === 1 ? 'на первый платёж' : `на ${paymentsLabel(n)} подряд, включая автопродление`
+  if (p.free) return `Скидка ${p.percent} % ${span}: этот период бесплатно`
+  return `Скидка ${p.percent} % ${span}: ${formatRub(p.amount_rub)} вместо ${formatRub(p.price_rub)}`
+}
+
+/** Строка о действующей скидке в «Моей подписке» (§287). */
+export function promoLine(p: SubscriptionPromo | null | undefined): string | null {
+  if (!p || p.payments_left <= 0) return null
+  const left = p.payments_left === 1 ? 'следующий платёж' : `следующие ${paymentsLabel(p.payments_left)}`
+  return `Скидка ${p.percent} % по промокоду: ${left} — ${formatRub(p.next_amount_rub)}`
 }

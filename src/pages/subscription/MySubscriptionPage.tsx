@@ -14,6 +14,7 @@ import {
   formatRub,
   formatShortDateMsk,
   paymentHistory,
+  promoLine,
   periodLabel,
   type MySubscription,
   type Tone,
@@ -27,6 +28,7 @@ function SubscriptionCard({ s }: { s: MySubscription }) {
   const v = describeSubscription(s)
   const toggle = useSetAutoRenew()
   const history = paymentHistory(s)
+  const promo = promoLine(s.promo)
 
   return (
     <section className="platform-surface rounded-card p-5 sm:p-6" data-testid="my-subscription-card" data-status={s.status}>
@@ -38,6 +40,7 @@ function SubscriptionCard({ s }: { s: MySubscription }) {
 
       <p className="mt-4 text-[17px] text-graphite-900" data-testid="my-subscription-headline">{v.headline}</p>
       {v.details.map((d) => <p key={d} className="mt-1 text-[15px] text-graphite-700">{d}</p>)}
+      {promo && <p className="mt-1 text-[15px] text-verdict-ok-ink" data-testid="my-subscription-promo">{promo}</p>}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         {s.has_access && s.group_id && (
@@ -79,7 +82,12 @@ function SubscriptionCard({ s }: { s: MySubscription }) {
                 <tr key={p.id} className="border-b border-graphite-200 last:border-0">
                   <td className="py-2 pr-3 text-graphite-700">{formatShortDateMsk(p.paid_at ?? p.created_at)}</td>
                   <td className="py-2 pr-3">{p.kind === 'renewal' ? 'Автопродление' : 'Оплата'}</td>
-                  <td className="py-2 pr-3 text-right">{formatRub(p.amount_rub)}</td>
+                  <td className="py-2 pr-3 text-right">
+                    {formatRub(p.amount_rub)}
+                    {(p.discount_rub ?? 0) > 0 && (
+                      <span className="block text-[13px] text-graphite-500">скидка {formatRub(p.discount_rub ?? 0)}</span>
+                    )}
+                  </td>
                   <td className="py-2 text-right text-graphite-500">{PAYMENT_LABEL[p.status]}</td>
                 </tr>
               ))}
@@ -100,6 +108,11 @@ export function MySubscriptionPage() {
       <h1 className="text-[28px] font-semibold text-graphite-900">Моя подписка</h1>
       {params.get('started') === 'trial' && (
         <p className="mt-3 rounded-lg bg-verdict-ok-tint px-4 py-3 text-[15px] text-verdict-ok-ink">Пробный период начался — курс открыт.</p>
+      )}
+      {params.get('started') === 'promo' && (
+        <p className="mt-3 rounded-lg bg-verdict-ok-tint px-4 py-3 text-[15px] text-verdict-ok-ink" data-testid="my-subscription-promo-started">
+          Промокод применён — курс открыт.
+        </p>
       )}
       {isLoading && <p className="mt-4 text-graphite-500">Загружаем…</p>}
       {error && <p className="mt-4 text-verdict-bad-ink">Не удалось загрузить подписку. Обновите страницу.</p>}

@@ -20,9 +20,9 @@ create table public.mock_exams (id uuid primary key default gen_random_uuid(), g
 create table public.notifications (id uuid primary key default gen_random_uuid(), user_id uuid not null, title text not null, message text not null, type text not null default 'info', read boolean not null default false, created_at timestamptz not null default now(), link text, dedup_key text unique);
 
 create function public.update_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
-create function public.get_my_role() returns public.user_role language sql stable as $$ select role from public.profiles where id = auth.uid() $$;
-create function public.is_admin_or_owner() returns boolean language sql stable as $$ select coalesce(public.get_my_role() in ('admin','owner'), false) $$;
-create function public.auth_student_id() returns uuid language sql stable as $$ select id from public.students where profile_id = auth.uid() $$;
+create function public.get_my_role() returns public.user_role language sql stable security definer as $$ select role from public.profiles where id = auth.uid() $$;
+create function public.is_admin_or_owner() returns boolean language sql stable security definer as $$ select coalesce(public.get_my_role() in ('admin','owner'), false) $$;
+create function public.auth_student_id() returns uuid language sql stable security definer as $$ select id from public.students where profile_id = auth.uid() $$;
 create function public.course_of_topic(p uuid) returns uuid language sql stable as $$ select m.course_id from public.topics t join public.modules m on m.id = t.module_id where t.id = p $$;
 
 -- копии прод-триггеров group_students

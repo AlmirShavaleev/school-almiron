@@ -260,3 +260,45 @@ export function cancelReasonText(reason: string | null | undefined): string {
     default: return 'банк отклонил платёж'
   }
 }
+
+/** Происхождение адреса (`https://host[:port]`) или null, если это не чистый https-адрес без пути. */
+function originOf(v: string): string | null {
+  let u: URL
+  try {
+    u = new URL(v.trim())
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'https:' || u.username || u.password) return null
+  if ((u.pathname !== '/' && u.pathname !== '') || u.search || u.hash) return null
+  return u.origin
+}
+
+/**
+ * §287. Куда ЮKassa вернёт ученика после оплаты: адрес сайта или один из
+ * ТОЧНО перечисленных адресов (превью Vercel ветки — SUBSCRIPTION_RETURN_ORIGINS,
+ * через запятую). Шаблон «*.vercel.app» не принимается: такой поддомен может
+ * занять чужой проект, а возврат с платёжной страницы на чужой сайт — фишинг.
+ * Чужой или кривой адрес — возврат на основной сайт, не ошибка.
+ */
+export function returnBase(requested: unknown, appUrl: string, allowedList: string | null | undefined): string {
+  const main = appUrl.replace(/\/+$/, '')
+  if (typeof requested !== 'string' || requested.length > 200) return main
+  const want = originOf(requested)
+  if (!want) return main
+  const allowed = new Set<string>()
+  const mainOrigin = originOf(main)
+  if (mainOrigin) allowed.add(mainOrigin)
+  for (const item of (allowedList ?? '').split(',')) {
+    const o = item.trim() ? originOf(item) : null
+    if (o) allowed.add(o)
+  }
+  return allowed.has(want) ? want : main
+}
+
+/** Промокод из тела запроса: строка до 64 знаков, иначе null. Проверяет и считает — SQL. */
+export function promoInput(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  return s && s.length <= 64 ? s : null
+}

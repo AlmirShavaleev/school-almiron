@@ -4,7 +4,7 @@
  * `as never`, как в остальных хуках на новых RPC.
  */
 import { supabase } from '@/lib/supabase'
-import type { CheckoutForm, MySubscription, PaymentStatus, PublicTariff } from './view'
+import type { CheckoutForm, MySubscription, PaymentStatus, PromoPreview, PublicTariff } from './view'
 
 export class SubscriptionError extends Error {
   readonly code: string | null
@@ -32,6 +32,16 @@ export async function fetchFeatureFlag(key: string): Promise<boolean> {
   return (data as { enabled?: boolean } | null)?.enabled === true
 }
 
+/**
+ * §287. Включена ли подписка для текущего пользователя: флаг × режим
+ * «только тестировщики». Решает база (`subscription_enabled`).
+ */
+export async function fetchSubscriptionsEnabled(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('subscription_enabled' as never)
+  if (error) return false
+  return data === true
+}
+
 export function fetchPublicTariffs(): Promise<PublicTariff[]> {
   return rpc<PublicTariff[]>('subscription_tariffs_public').then((d) => d ?? [])
 }
@@ -41,6 +51,8 @@ export interface SubscriptionSettings {
   privacy_url: string | null
   parent_consent_url: string | null
   retry_days: number[]
+  /** §287: кому видна подписка при включённом флаге. */
+  audience?: 'testers' | 'everyone'
 }
 
 export async function fetchSubscriptionSettings(): Promise<SubscriptionSettings | null> {
@@ -78,8 +90,20 @@ export function startTrial(tariffId: string, f: CheckoutForm): Promise<{ subscri
   })
 }
 
-/** Создать платёж; вернуть ссылку на страницу ЮKassa. */
-export async function beginCheckout(tariffId: string, f: CheckoutForm): Promise<{ confirmation_url: string; payment_id: string }> {
+/** §287. Проверить промокод для тарифа: цену считает сервер, код не погашается. */
+export function checkPromo(tariffId: string, code: string): Promise<PromoPreview> {
+  return rpc<PromoPreview>('subscription_promo_check', { p_tariff_id: tariffId, p_code: code })
+}
+
+export type CheckoutResult =
+  | { free?: false; confirmation_url: string; payment_id: string }
+  | { free: true; access_until: string; subscription_id: string }
+
+/**
+ * Начать оформление: ссылка на страницу ЮKassa или — если промокод даёт
+ * бесплатный период — сразу { free: true } без оплаты.
+ */
+export async function beginCheckout(tariffId: string, f: CheckoutForm, promoCode?: string | null): Promise<CheckoutResult> {
   const { data, error } = await supabase.functions.invoke('subscription-checkout', {
     body: {
       tariff_id: tariffId,
@@ -88,6 +112,9 @@ export async function beginCheckout(tariffId: string, f: CheckoutForm): Promise<
       parent_consent: f.parentConsent,
       accepted_offer: f.acceptedOffer,
       receipt_email: f.email.trim(),
+      promo_code: promoCode?.trim() || null,
+      // вернуться на тот же адрес (превью ветки); сервер примет только свои адреса
+      return_origin: typeof window !== 'undefined' ? window.location.origin : null,
     },
   })
   if (error) {
@@ -103,8 +130,9 @@ export async function beginCheckout(tariffId: string, f: CheckoutForm): Promise<
     }
     throw new SubscriptionError(message, code)
   }
+  if (data?.free === true) return data as CheckoutResult
   if (!data?.confirmation_url) throw new SubscriptionError('Не получена ссылка на оплату', 'NO_CONFIRMATION')
-  return data
+  return data as CheckoutResult
 }
 
 export interface PaymentRow {
@@ -280,4 +308,117 @@ export async function findStudentByEmail(email: string): Promise<{ student_id: s
 /** Экранирование для LIKE/ILIKE: `\`, `%`, `_` — буквы, а не шаблон. */
 export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => '\\' + c)
+}
+
+// ── §287: режим тестировщиков ─────────────────────────────────────────────
+
+export interface TesterRow {
+  profile_id: string
+  note: string | null
+  added_at: string
+  profile: { full_name: string | null; email: string | null; role: string } | null
+}
+
+export async function fetchTesters(): Promise<TesterRow[]> {
+  const { data, error } = await supabase
+    .from('subscription_testers' as never)
+    .select('profile_id, note, added_at, profile:profiles!subscription_testers_profile_id_fkey(full_name, email, role)')
+    .order('added_at')
+  if (error) fail(error as RpcError)
+  return (data ?? []) as TesterRow[]
+}
+
+/** Добавить тестировщика по email (любая роль). false — такого пользователя нет. */
+export async function addTesterByEmail(email: string, note: string | null): Promise<boolean> {
+  const { data, error } = await supabase.from('profiles').select('id').ilike('email', escapeLike(email.trim())).maybeSingle()
+  if (error) fail(error as RpcError)
+  const id = (data as { id: string } | null)?.id
+  if (!id) return false
+  const { error: insErr } = await supabase
+    .from('subscription_testers' as never)
+    .upsert({ profile_id: id, note } as never, { onConflict: 'profile_id' })
+  if (insErr) fail(insErr as RpcError)
+  return true
+}
+
+export async function removeTester(profileId: string): Promise<void> {
+  const { error } = await supabase.from('subscription_testers' as never).delete().eq('profile_id', profileId)
+  if (error) fail(error as RpcError)
+}
+
+// ── §287: промокоды ───────────────────────────────────────────────────────
+
+export type PromoKind = 'percent' | 'free_days' | 'free_months'
+
+export interface PromoCodeRow {
+  id: string
+  code: string
+  kind: PromoKind
+  percent: number | null
+  discount_payments: number
+  free_days: number | null
+  free_months: number | null
+  course_id: string | null
+  course_title: string | null
+  tariff_id: string | null
+  tariff_title: string | null
+  max_uses: number | null
+  used_count: number
+  valid_from: string | null
+  valid_until: string | null
+  is_active: boolean
+  batch: string | null
+  note: string | null
+  created_at: string
+  saved_total_rub: number
+}
+
+export interface PromoDraft {
+  kind: PromoKind
+  percent?: number | null
+  discount_payments?: number | null
+  free_days?: number | null
+  free_months?: number | null
+  course_id?: string | null
+  tariff_id?: string | null
+  max_uses?: number | null
+  valid_from?: string | null
+  valid_until?: string | null
+  note?: string | null
+  /** Код вручную — или пачка случайных: count + prefix. */
+  code?: string | null
+  count?: number | null
+  prefix?: string | null
+}
+
+export interface PromoRedemptionRow {
+  id: string
+  code: string
+  code_id: string
+  kind: PromoKind
+  full_name: string | null
+  email: string | null
+  course_title: string | null
+  status: 'reserved' | 'applied'
+  payments_total: number
+  payments_left: number
+  saved_rub: number
+  created_at: string
+  applied_at: string | null
+}
+
+export function fetchPromoCodes(): Promise<PromoCodeRow[]> {
+  return rpc<PromoCodeRow[]>('admin_promo_codes').then((d) => d ?? [])
+}
+
+export function createPromo(draft: PromoDraft): Promise<{ codes: string[]; batch: string | null }> {
+  return rpc('admin_promo_create', { p: draft })
+}
+
+export function setPromoActive(id: string, on: boolean): Promise<void> {
+  return rpc('admin_promo_set_active', { p_id: id, p_on: on })
+}
+
+export function fetchPromoRedemptions(codeId: string | null = null): Promise<PromoRedemptionRow[]> {
+  return rpc<PromoRedemptionRow[]>('admin_promo_redemptions', { p_code_id: codeId }).then((d) => d ?? [])
 }

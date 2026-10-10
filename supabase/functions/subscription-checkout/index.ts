@@ -11,11 +11,19 @@
  * Id строки платежа — Idempotence-Key: повтор запроса в ЮKassa не создаст
  * второй платёж.
  *
- * Тело: { tariff_id, save_card, is_minor, parent_consent, accepted_offer, receipt_email? }
- * Ответ: { confirmation_url, payment_id }
+ * §287: промокод (`promo_code`) проверяет и считает SQL; цена в ЮKassa и в
+ * чеке — уже со скидкой. Бесплатный исход (бесплатные дни/месяцы, скидка
+ * 100 %) — без платежа: ответ { free: true }, ключи ЮKassa для него не нужны.
+ * Отказ по промокоду — { error, code: PROMO_INVALID | RATE_LIMIT | PROMO_ACTIVE }.
+ * Возврат после оплаты — на `return_origin`, если это адрес сайта или один
+ * из SUBSCRIPTION_RETURN_ORIGINS (превью ветки); иначе на адрес сайта.
+ *
+ * Тело: { tariff_id, save_card, is_minor, parent_consent, accepted_offer, receipt_email?, promo_code?, return_origin? }
+ * Ответ: { confirmation_url, payment_id } | { free: true, access_until, subscription_id }
  *
  * ENV: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY,
- *      SUBSCRIPTION_YK_SHOP_ID, SUBSCRIPTION_YK_SECRET_KEY, SUBSCRIPTION_APP_URL
+ *      SUBSCRIPTION_YK_SHOP_ID, SUBSCRIPTION_YK_SECRET_KEY, SUBSCRIPTION_APP_URL,
+ *      SUBSCRIPTION_RETURN_ORIGINS (необязательно; через запятую)
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -25,6 +33,8 @@ import {
   buildFirstPayment,
   classifyResponse,
   isUuid,
+  promoInput,
+  returnBase,
 } from '../_shared/subscription.ts'
 
 const CORS = {
@@ -44,10 +54,6 @@ Deno.serve(async (req: Request) => {
   const shopId = Deno.env.get('SUBSCRIPTION_YK_SHOP_ID')
   const secretKey = Deno.env.get('SUBSCRIPTION_YK_SECRET_KEY')
   const appUrl = (Deno.env.get('SUBSCRIPTION_APP_URL') ?? '').replace(/\/+$/, '')
-  if (!shopId || !secretKey || !appUrl) {
-    console.error('subscription-checkout: secrets not configured')
-    return json({ error: 'Оплата пока не настроена', code: 'NOT_CONFIGURED' }, 503)
-  }
 
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
   const authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
@@ -72,13 +78,26 @@ Deno.serve(async (req: Request) => {
     p_parent_consent: body.parent_consent === true,
     p_accepted_offer: body.accepted_offer === true,
     p_receipt_email: typeof body.receipt_email === 'string' ? body.receipt_email : null,
+    p_promo_code: promoInput(body.promo_code),
   })
   if (beginErr || !begin) {
     // Тексты ошибок SQL написаны для ученика; код — в hint.
     return json({ error: beginErr?.message ?? 'Не удалось начать оформление', code: beginErr?.hint ?? 'BEGIN_FAILED' }, 400)
   }
+  if (begin.error_code) {
+    // отказ по промокоду — ответ SQL, а не исключение (попытка записана)
+    return json({ error: begin.error, code: begin.error_code }, 400)
+  }
+  if (begin.free === true) {
+    return json({ free: true, access_until: begin.access_until, subscription_id: begin.subscription_id })
+  }
 
   const paymentId: string = begin.payment_id
+  if (!shopId || !secretKey || !appUrl) {
+    console.error('subscription-checkout: secrets not configured')
+    await admin.rpc('subscription_payment_failed', { p_payment_id: paymentId, p_reason: 'not_configured' })
+    return json({ error: 'Оплата пока не настроена', code: 'NOT_CONFIGURED' }, 503)
+  }
   const request = buildFirstPayment({
     paymentId,
     subscriptionId: begin.subscription_id,
@@ -87,7 +106,7 @@ Deno.serve(async (req: Request) => {
     receiptEmail: begin.receipt_email,
     receiptVatCode: begin.receipt_vat_code,
     saveCard: begin.save_card === true,
-    returnUrl: `${appUrl}/subscribe/result?payment=${paymentId}`,
+    returnUrl: `${returnBase(body.return_origin, appUrl, Deno.env.get('SUBSCRIPTION_RETURN_ORIGINS'))}/subscribe/result?payment=${paymentId}`,
   })
 
   let status: number | null = null

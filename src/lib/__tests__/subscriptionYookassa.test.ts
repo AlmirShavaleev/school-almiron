@@ -17,6 +17,8 @@ import {
   parseNotification,
   paymentFacts,
   refundFacts,
+  promoInput,
+  returnBase,
 } from '../../../supabase/functions/_shared/subscription.ts'
 
 const PID = '11111111-2222-4333-8444-555555555555'
@@ -163,5 +165,50 @@ describe('cancelReasonText', () => {
     expect(cancelReasonText('insufficient_funds')).toBe('недостаточно средств на карте')
     expect(cancelReasonText('something_new')).toBe('банк отклонил платёж')
     expect(cancelReasonText(null)).toBe('платёж не прошёл')
+  })
+})
+
+describe('§287 returnBase — возврат из ЮKassa только на свои адреса', () => {
+  const APP = 'https://alminion.ru'
+  const PREVIEW = 'https://almiron-git-podpiska-team.vercel.app'
+  it('адрес сайта и перечисленное превью — принимаются', () => {
+    expect(returnBase('https://alminion.ru', APP, PREVIEW)).toBe(APP)
+    expect(returnBase(PREVIEW, APP, `${PREVIEW}, https://other.example`)).toBe(PREVIEW)
+    expect(returnBase(PREVIEW + '/', APP, PREVIEW)).toBe(PREVIEW)
+  })
+  it('всё остальное — на адрес сайта: чужое превью, http, путь, логин в адресе, мусор', () => {
+    for (const bad of [
+      'https://almiron-git-evil-team.vercel.app',
+      'https://evil.vercel.app',
+      'http://alminion.ru',
+      'https://alminion.ru.evil.com',
+      'https://alminion.ru/subscribe',
+      'https://alminion.ru?x=1',
+      'https://user@alminion.ru',
+      'javascript:alert(1)',
+      '//evil.com',
+      '',
+      null,
+      42,
+      'https://' + 'a'.repeat(300) + '.ru',
+    ]) {
+      expect(returnBase(bad, APP, PREVIEW)).toBe(APP)
+    }
+  })
+  it('без списка превью — только адрес сайта; кривые элементы списка игнорируются', () => {
+    expect(returnBase(PREVIEW, APP, null)).toBe(APP)
+    expect(returnBase(PREVIEW, APP, 'http://x.ru, *.vercel.app, ,')).toBe(APP)
+    expect(returnBase(APP, APP + '/', '')).toBe(APP)
+  })
+})
+
+describe('§287 promoInput', () => {
+  it('строка до 64 знаков, обрезка пробелов; остальное — null', () => {
+    expect(promoInput('  BLOG-2026 ')).toBe('BLOG-2026')
+    expect(promoInput('')).toBeNull()
+    expect(promoInput('   ')).toBeNull()
+    expect(promoInput('x'.repeat(65))).toBeNull()
+    expect(promoInput(123)).toBeNull()
+    expect(promoInput(null)).toBeNull()
   })
 })

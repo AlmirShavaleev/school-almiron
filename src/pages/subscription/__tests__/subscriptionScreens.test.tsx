@@ -12,6 +12,8 @@ import type { MySubscription, PublicTariff } from '@/lib/subscription/view'
 
 const api = vi.hoisted(() => ({
   fetchFeatureFlag: vi.fn(),
+  fetchSubscriptionsEnabled: vi.fn(),
+  checkPromo: vi.fn(),
   fetchPublicTariffs: vi.fn(),
   fetchSubscriptionSettings: vi.fn(),
   fetchMySubscriptions: vi.fn(),
@@ -77,6 +79,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   resetFeatureFlagCache()
   api.fetchFeatureFlag.mockResolvedValue(true)
+  api.fetchSubscriptionsEnabled.mockResolvedValue(true)
   api.fetchPublicTariffs.mockResolvedValue([TARIFF])
   api.fetchSubscriptionSettings.mockResolvedValue({ offer_url: 'https://docs.test/offer', privacy_url: null, parent_consent_url: null, retry_days: [1, 3] })
   api.fetchMySubscriptions.mockResolvedValue([])
@@ -142,7 +145,65 @@ describe('оформление', () => {
     fireEvent.click(screen.getByTestId('checkout-save-card'))
     fireEvent.click(screen.getByTestId('checkout-pay'))
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://yoomoney.test/pay'))
-    expect(api.beginCheckout).toHaveBeenCalledWith(TARIFF.id, expect.objectContaining({ saveCard: true, acceptedOffer: true, email: 'kid@example.ru' }))
+    expect(api.beginCheckout).toHaveBeenCalledWith(TARIFF.id, expect.objectContaining({ saveCard: true, acceptedOffer: true, email: 'kid@example.ru' }), null)
+    vi.unstubAllGlobals()
+  })
+
+  it('промокод: цену показывает сервер, в оформление уходит применённый код, кнопка — новая сумма', async () => {
+    api.checkPromo.mockResolvedValue({
+      ok: true, code: 'HALF3', kind: 'percent', percent: 50, discount_payments: 3,
+      free_days: null, free_months: null, price_rub: 2900, amount_rub: 1450, free: false,
+    })
+    api.beginCheckout.mockResolvedValue({ confirmation_url: 'https://yoomoney.test/pay', payment_id: 'p' })
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
+    fireEvent.change(await screen.findByTestId('checkout-promo'), { target: { value: ' half3 ' } })
+    fireEvent.click(screen.getByTestId('checkout-promo-apply'))
+    expect(await screen.findByTestId('checkout-promo-ok')).toHaveTextContent('Скидка 50 % на 3 платежа подряд, включая автопродление')
+    expect(api.checkPromo).toHaveBeenCalledWith(TARIFF.id, 'half3')
+    // с промокодом пробный не предлагается — одна кнопка оплаты с новой суммой
+    expect(screen.queryByTestId('checkout-trial')).toBeNull()
+    expect(screen.getByTestId('checkout-pay')).toHaveTextContent(/1\s450/)
+    fireEvent.click(screen.getByTestId('checkout-offer'))
+    fireEvent.click(screen.getByTestId('checkout-pay'))
+    await waitFor(() => expect(assign).toHaveBeenCalled())
+    expect(api.beginCheckout).toHaveBeenCalledWith(TARIFF.id, expect.anything(), 'HALF3')
+    vi.unstubAllGlobals()
+  })
+
+  it('промокод не подошёл — одно и то же «не подходит», без подсказки; изменили поле — скидка снята', async () => {
+    api.checkPromo.mockResolvedValue({ ok: false, error_code: 'PROMO_INVALID', error: 'Промокод не подходит' })
+    renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
+    fireEvent.change(await screen.findByTestId('checkout-promo'), { target: { value: 'NOPE1' } })
+    fireEvent.click(screen.getByTestId('checkout-promo-apply'))
+    expect(await screen.findByTestId('checkout-promo-error')).toHaveTextContent('Промокод не подходит.')
+    api.checkPromo.mockResolvedValue({ ok: false, error_code: 'RATE_LIMIT', error: 'x' })
+    fireEvent.click(screen.getByTestId('checkout-promo-apply'))
+    expect(await screen.findByText(/Слишком много попыток/)).toBeInTheDocument()
+  })
+
+  it('бесплатный промокод — «Активировать», без страницы ЮKassa, сразу в «Мою подписку»', async () => {
+    api.checkPromo.mockResolvedValue({
+      ok: true, code: 'BLOG2M', kind: 'free_months', percent: null, discount_payments: null,
+      free_days: null, free_months: 2, price_rub: 2900, amount_rub: 0, free: true,
+    })
+    api.beginCheckout.mockResolvedValue({ free: true, access_until: '2099-01-01T00:00:00Z', subscription_id: 's' })
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    renderAt(`/subscribe/checkout/${TARIFF.id}`, <>
+      {route}
+      <Route path="/my-subscription" element={<div data-testid="my-sub" />} />
+    </>)
+    fireEvent.change(await screen.findByTestId('checkout-promo'), { target: { value: 'blog2m' } })
+    fireEvent.click(screen.getByTestId('checkout-promo-apply'))
+    expect(await screen.findByTestId('checkout-promo-ok')).toHaveTextContent('2 месяца бесплатно — без оплаты и без карты')
+    expect(screen.getByTestId('checkout-pay')).toHaveTextContent('Активировать по промокоду')
+    expect(screen.queryByText(/страница ЮKassa|странице ЮKassa/)).toBeNull()
+    fireEvent.click(screen.getByTestId('checkout-offer'))
+    fireEvent.click(screen.getByTestId('checkout-pay'))
+    expect(await screen.findByTestId('my-sub')).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 
@@ -239,7 +300,7 @@ describe('плашка «курс закрыт»', () => {
   })
 
   it('флаг выключен — объяснение есть, кнопки оформления нет', async () => {
-    api.fetchFeatureFlag.mockResolvedValue(false)
+    api.fetchSubscriptionsEnabled.mockResolvedValue(false)
     api.fetchCourseAccess.mockResolvedValue({ paid: true, has_access: false, status: null, access_until: null, tariff_id: null })
     await renderBanner()
     expect(screen.getByTestId('subscription-lock')).toHaveTextContent('Курс доступен по подписке')
@@ -263,7 +324,7 @@ describe('меню ученика', () => {
     expect(screen.getByRole('link', { name: /Моя подписка/ })).toHaveAttribute('href', '/my-subscription')
   })
   it('флаг выключен — пункта нет', async () => {
-    api.fetchFeatureFlag.mockResolvedValue(false)
+    api.fetchSubscriptionsEnabled.mockResolvedValue(false)
     await renderMenu()
     expect(screen.queryByRole('link', { name: /Моя подписка/ })).toBeNull()
   })
