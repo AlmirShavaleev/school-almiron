@@ -2,12 +2,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 /**
- * Маршрутизация корня после того, как лендинг сняли с главной (12.08).
+ * Маршрутизация корня. История: 12.08 лендинг сняли с главной (гость уходил
+ * на вход), 11.10 вернули — гость без отложенных намерений видит лендинг
+ * прямо на `/` (ЛЕНДИНГ_ТЗ.md).
  *
  * Что здесь сторожится и почему именно это:
  *
- * 1. Гость на `/` попадает на форму входа, а не на витрину. Владелец хочет,
- *    чтобы `alminion.ru` вёл сразу в платформу.
+ * 1. Гость на `/` видит лендинг, адрес остаётся `/`. Гость с отложенным
+ *    намерением — висящее приглашение ученика, ссылка преподавателя, возврат
+ *    из письма Supabase — уходит на вход, как раньше: там намерение
+ *    подхватывается после входа.
  * 2. Вошедший на `/` попадает в кабинет, а не на «войдите». Это не косметика:
  *    `/login` обратно на `/` не отправляет, поэтому ошибочный редирект стал бы
  *    для человека с живой сессией тупиком.
@@ -73,7 +77,7 @@ function pathname() {
   return window.location.pathname
 }
 
-describe('корень: лендинг снят с главной', () => {
+describe('корень: гость видит лендинг, остальные ветки RootRedirect', () => {
   beforeEach(() => {
     sessionValue = null
     profileRow = null
@@ -83,7 +87,39 @@ describe('корень: лендинг снят с главной', () => {
     goTo('/')
   })
 
-  it('гость на `/` видит форму входа, а не лендинг', async () => {
+  it('гость без отложенных намерений видит лендинг на `/`, адрес не меняется', async () => {
+    render(<App />)
+
+    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(pathname()).toBe('/')
+    expect(screen.queryByText('Вход в систему')).toBeNull()
+  })
+
+  it('гость с висящим приглашением ученика уходит на вход, приглашение не вычищается', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123', savedAt: Date.now() }))
+    render(<App />)
+
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(screen.queryByText('landing-stub')).toBeNull()
+    expect(localStorage.getItem('student-invite-pending')).not.toBeNull()
+  })
+
+  it('гость с висящей ссылкой преподавателя уходит на вход', async () => {
+    localStorage.setItem('teacher-join-link-pending', JSON.stringify({ token: 'tok-1', savedAt: Date.now() }))
+    render(<App />)
+
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+  })
+
+  it.each([
+    '/#access_token=x&type=signup',
+    '/#error=access_denied&error_code=otp_expired',
+    '/?code=pkce-code',
+  ])('возврат из письма (%s) у гостя ведёт на вход, а не на лендинг', async (url) => {
+    goTo(url)
     render(<App />)
 
     expect(await screen.findByText('Вход в систему')).toBeTruthy()
@@ -92,6 +128,7 @@ describe('корень: лендинг снят с главной', () => {
   })
 
   it('редирект `/` → `/login` не зацикливается: адрес стабилен', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123', savedAt: Date.now() }))
     render(<App />)
     await screen.findByText('Вход в систему')
 
@@ -176,7 +213,7 @@ describe('корень: лендинг снят с главной', () => {
     expect(localStorage.getItem('student-invite-pending')).toBeNull()
   })
 
-  it('пока сессия не разобрана, гостя на вход не отправляют', async () => {
+  it('пока сессия не разобрана, гостю не показывают ни вход, ни лендинг', async () => {
     // `loading` держится true: getSession ещё не ответил. Ранний редирект здесь
     // и есть тот самый тупик — человек с живой сессией уехал бы на «войдите».
     let release: (value: { data: { session: null } }) => void = () => {}
@@ -188,14 +225,16 @@ describe('корень: лендинг снят с главной', () => {
     render(<App />)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(pathname()).toBe('/')
+    expect(screen.queryByText('landing-stub')).toBeNull()
 
     release({ data: { session: null } })
-    await waitFor(() => expect(pathname()).toBe('/login'))
+    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(pathname()).toBe('/')
     supabase.auth.getSession = original
   })
 })
 
-describe('лендинг переехал на `/about`, а не удалён', () => {
+describe('лендинг доступен и на `/about`', () => {
   beforeEach(() => {
     sessionValue = null
     profileRow = null

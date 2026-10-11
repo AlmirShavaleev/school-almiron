@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 /**
  * Счётчик просмотров Vercel Web Analytics подключён на всё приложение
@@ -13,7 +13,7 @@ import { render, waitFor } from '@testing-library/react'
  *    истинен, значит режим development и адрес обязан быть отладочным.
  * 2. **Экземпляр один.** Приложение рендерится много раз подряд — скрипт в
  *    документе должен остаться ровно один, иначе просмотры считались бы дважды.
- * 3. **Счётчик не мешает маршрутизации.** Редирект гостя с `/` на `/login`
+ * 3. **Счётчик не мешает маршрутизации.** Показ лендинга гостю на `/`
  *    происходит как раньше — счётчик стоит выше `Suspense` и на показ страницы
  *    не влияет.
  *
@@ -101,9 +101,10 @@ describe('Vercel Web Analytics', () => {
     expect(typeof script.onerror).toBe('function')
   })
 
-  it('редирект гостя с `/` на `/login` работает при включённом счётчике', async () => {
+  it('гость на `/` видит лендинг при включённом счётчике', async () => {
     render(<App />)
 
-    await waitFor(() => expect(window.location.pathname).toBe('/login'))
+    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(window.location.pathname).toBe('/')
   })
 })
