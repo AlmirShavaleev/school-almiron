@@ -4,7 +4,7 @@ import path from 'path'
 /**
  * Лендинг глазами гостя (ЛЕНДИНГ_ТЗ.md §5, правка 3): страница открывается и
  * на `/`, и на `/about`, CTA ведут на `/register`, на телефонах нет
- * горизонтального скролла.
+ * горизонтального скролла, CLS < 0.1 с включёнными анимациями.
  * Запуск: `npx playwright test -c playwright.landing.config.ts`.
  */
 
@@ -57,6 +57,30 @@ for (const width of [360, 390, 430]) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
     await expect(page.getByRole('link', { name: '3 дня бесплатно', exact: true })).toBeVisible()
+  })
+}
+
+for (const [width, height] of [[1280, 900], [390, 844]] as const) {
+  test(`CLS < 0.1 на ${width}px, с анимациями и прокруткой`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.addInitScript(() => {
+      const w = window as unknown as { __cls: number }
+      w.__cls = 0
+      new PerformanceObserver(list => {
+        for (const e of list.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean }>) {
+          if (!e.hadRecentInput) w.__cls += e.value
+        }
+      }).observe({ type: 'layout-shift', buffered: true })
+    })
+    await openLanding(page)
+    await page.waitForTimeout(5000) // диалог первого экрана допечатан
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 300) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 120)) }
+    })
+    await page.waitForTimeout(1500)
+    const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls)
+    console.log(`CLS ${width}px: ${cls.toFixed(4)}`)
+    expect(cls).toBeLessThan(0.1)
   })
 }
 

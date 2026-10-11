@@ -13,6 +13,16 @@
  * Анимации — framer-motion в компонентах; здесь только CSS-петли на
  * transform/opacity («печатает…», парение иконок финала, пульс прогноза).
  */
+/*
+ * Запасной шрифт под метрики Manrope (CLS). Пока Manrope едет, текст рисуется
+ * Arial с поправками — ширина строк почти та же (Manrope шире Arial на ~1 %
+ * в обычном и на 0,2 % в жирном, мерили по кириллице заголовка), поэтому
+ * подмена шрифта не переносит строки заголовка. Без поправки запасным был
+ * system-ui (Segoe UI), и h1 перекладывался: CLS ~0.06–0.07.
+ * ascent/descent — из hhea Manrope (2132/600 при UPM 2000), делённые на size-adjust.
+ */
+@font-face { font-family: 'Manrope Fallback'; src: local('Arial'); font-weight: 400 600; size-adjust: 101.1%; ascent-override: 105.4%; descent-override: 29.7%; line-gap-override: 0% }
+@font-face { font-family: 'Manrope Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'); font-weight: 700 800; size-adjust: 100.2%; ascent-override: 106.4%; descent-override: 29.9%; line-gap-override: 0% }
 @font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-regular.woff2') format('woff2') }
 @font-face { font-family: 'PT Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-italic.woff2') format('woff2') }
 @font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/pt-serif-bold.woff2') format('woff2') }
@@ -23,7 +33,7 @@
   --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
   --red: #e5484d; --redS: #fdecee; --redInk: #c22f35; --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
   --shadow: 0 12px 32px rgba(27, 31, 42, .07); --r: 22px;
-  font-family: Manrope, system-ui, sans-serif;
+  font-family: Manrope, 'Manrope Fallback', system-ui, sans-serif;
   background: var(--bg);
   color: var(--ink);
   line-height: 1.55;
@@ -248,12 +258,12 @@
 .lnd .chart-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px }
 .lnd .chart svg { width: 100%; height: auto; overflow: visible; display: block }
 .lnd .c-grid line { stroke: var(--line); stroke-width: 1 }
-.lnd .c-ax text { fill: var(--ink2); font-size: 12px; font-weight: 700; font-family: Manrope, sans-serif }
+.lnd .c-ax text { fill: var(--ink2); font-size: 12px; font-weight: 700; font-family: Manrope, 'Manrope Fallback', sans-serif }
 .lnd .c-goal { stroke: var(--orange); stroke-width: 2; stroke-dasharray: 6 6 }
-.lnd .c-goal-t { fill: var(--orInk); font-size: 12.5px; font-weight: 800; font-family: Manrope, sans-serif }
+.lnd .c-goal-t { fill: var(--orInk); font-size: 12.5px; font-weight: 800; font-family: Manrope, 'Manrope Fallback', sans-serif }
 .lnd .c-line { fill: none; stroke: var(--blue); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round }
 .lnd .c-pt { fill: var(--card); stroke: var(--blue); stroke-width: 3 }
-.lnd .c-lbl { fill: var(--ink); font-size: 13px; font-weight: 800; font-family: Manrope, sans-serif }
+.lnd .c-lbl { fill: var(--ink); font-size: 13px; font-weight: 800; font-family: Manrope, 'Manrope Fallback', sans-serif }
 .lnd .c-last { fill: var(--orange); stroke: var(--card); stroke-width: 3 }
 @media (max-width: 900px) { .lnd .fc { grid-template-columns: 1fr } .lnd .chart { padding: 20px 14px } }
 
