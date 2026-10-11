@@ -100,3 +100,13 @@ do $$ declare t text; begin
   end loop;
 end $$;
 grant usage on schema public, auth to authenticated;
+
+-- §288: порядок уроков и разделов, ответы автопроверки, проверки ДЗ (столбцы — как на проде).
+alter table public.topics add column title text, add column order_index integer not null default 0;
+alter table public.modules add column title text, add column order_index integer not null default 0;
+alter table public.topic_homework add column autocheck boolean not null default false, add column grade_scale text not null default 'hundred';
+alter table public.topic_homework_attempts add column attempt_number integer not null default 1, add column created_at timestamptz not null default now();
+create table public.topic_autocheck_answers (id uuid primary key default gen_random_uuid(), task_id uuid not null references public.topic_autocheck_tasks(id),
+  profile_id uuid not null, attempt_no integer not null default 1, answer_raw text, is_correct boolean not null, created_at timestamptz not null default now());
+create table public.topic_homework_reviews (id uuid primary key default gen_random_uuid(), attempt_id uuid not null references public.topic_homework_attempts(id),
+  reviewer_id uuid, decision text not null, comment text, score integer, created_at timestamptz not null default now());

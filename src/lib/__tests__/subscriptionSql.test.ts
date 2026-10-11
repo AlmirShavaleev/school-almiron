@@ -8,36 +8,10 @@
  * очередь писем — под владельцем базы. Последний блок (§282.2) — под ролью
  * `authenticated`, с RLS: что ученик видит в таблицах курса с подпиской и без.
  */
-import { readFileSync, readdirSync } from 'node:fs'
-import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-
-const MIGRATIONS = path.resolve(__dirname, '../../../supabase/migrations')
-const STUBS = path.resolve(__dirname, '../../test/sql/subscriptionStubs.sql')
-
-/**
- * Миграции в порядке применения: §282 (основная, автосписание), §284 (ворота
- * без подписки, наборы тем ученика и персонала), §282.2 (подписка в наборах),
- * §287 (промокоды, режим тестировщиков).
- */
-function migrationFiles(): string[] {
-  const all = readdirSync(MIGRATIONS)
-  const find = (re: RegExp) => {
-    const f = all.find((x) => re.test(x))
-    if (!f) throw new Error(`Не найдена миграция ${re}`)
-    return path.join(MIGRATIONS, f)
-  }
-  return [
-    find(/^\d+_subscriptions_282\.sql$/),
-    find(/^\d+_subscription_renew_282\.sql$/),
-    find(/^\d+_hotfix_284_gates_without_subscription\.sql$/),
-    find(/^\d+_perf_284a_student_topic_sets\.sql$/),
-    find(/^\d+_perf_284c_staff_topic_set\.sql$/),
-    find(/^(PENDING_282_2|\d+)_subscription_sets(_282_2)?\.sql$/),
-    find(/^(PENDING_287|\d+)_promo_testers(_287)?\.sql$/),
-  ]
-}
+import { STUBS, migrationFiles } from '../../test/sql/migrationChain'
 
 const U = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
 const ADMIN = U(1), SA = U(2), SB = U(3), OLD = U(4), OTHER = U(5), SC = U(6)
