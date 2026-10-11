@@ -110,3 +110,16 @@ create table public.topic_autocheck_answers (id uuid primary key default gen_ran
   profile_id uuid not null, attempt_no integer not null default 1, answer_raw text, is_correct boolean not null, created_at timestamptz not null default now());
 create table public.topic_homework_reviews (id uuid primary key default gen_random_uuid(), attempt_id uuid not null references public.topic_homework_attempts(id),
   reviewer_id uuid, decision text not null, comment text, score integer, created_at timestamptz not null default now());
+
+-- §288 (часть B): старая таблица материалов и её проверки (тела — как на проде 12.10).
+create function public.auth_can_see_topic(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select exists (select 1 from public.group_students gs join public.groups g on g.id = gs.group_id
+                   join public.modules m on m.course_id = g.course_id join public.topics t on t.module_id = m.id
+                   join public.students st on st.id = gs.student_id
+                  where t.id = p_topic_id and st.profile_id = auth.uid()) $$;
+create function public.auth_is_staff_of_topic(p_topic_id uuid) returns boolean language sql stable security definer as $$
+  select public.course_is_staff(public.course_of_topic(p_topic_id)) $$;
+create table public.topic_materials (id uuid primary key default gen_random_uuid(), topic_id uuid not null);
+alter table public.topic_materials enable row level security;
+grant select on public.topic_materials to authenticated;
+grant select on public.topics, public.modules to authenticated; -- как на проде: программу курса ученик читает

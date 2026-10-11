@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
+import { fetchCourseTopicLocks, progressNote } from '@/lib/progressUnlock'
 import { isSelfMarkable, topicGroups, type TopicGroupKey } from '@/lib/topicProgress'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -95,6 +96,8 @@ export interface TopicProgress {
   available_from: string | null
   /** Тумблер открытости: null — решает дата. См. src/lib/topicAvailability.ts */
   is_open:        boolean | null
+  /** §288. Курс «по прохождению»: открытость и подпись — из базы (src/lib/progressUnlock.ts). */
+  progress?:      { open: boolean; note: string | null } | null
   /** §240. Урок / проверочная / контрольная — метка в программе. */
   kind?:          string | null
   /** §266. Пометка урока: training | ege | null (до PENDING_266 — undefined). */
@@ -281,7 +284,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
       }
 
       // 4. Рубрики материалов + ДЗ темы + привязанные тесты + задачи к уроку
-      const [materialRows, homeworkRows, assignmentRows, taskProgress, mockExams] = await Promise.all([
+      const [materialRows, homeworkRows, assignmentRows, taskProgress, mockExams, topicLocks] = await Promise.all([
         fetchAllPagedRows<{ topic_id: string; kind: string; section: string | null; url?: string | null; position?: number | null }>((from, to) =>
           // §234: тренировка — не рубрика темы и не шаг «тема пройдена».
           // §274: url и position — превью первого видео на карточке урока.
@@ -321,7 +324,13 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         // Пробник у ученика свой (бланк, сдача, результат); в предпросмотре —
         // только расписание, без чужих бланков (§178, §224.2).
         loadMockExams(group.id, preview),
+        // §288. Курс «по прохождению»: открытость уроков решает база (персоналу —
+        // расчёт «ученик без прогресса» для превью). Курс по датам — 'schedule'.
+        fetchCourseTopicLocks(course.id),
       ])
+      const lockById = topicLocks?.mode === 'progress'
+        ? new Map(topicLocks.topics.map(l => [l.topic_id, l]))
+        : null
 
       // 5. Попытки ученика: ДЗ и тесты. В предпросмотре — не читаем: у
       // персонала своих попыток нет, а под его RLS пришли бы чужие.
@@ -438,6 +447,9 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               max_score:      t.max_score,
               available_from: t.available_from,
               is_open:        t.is_open ?? null,
+              progress:       lockById?.has(t.id)
+                ? { open: lockById.get(t.id)!.open, note: progressNote(lockById.get(t.id)!) }
+                : null,
               kind:           t.kind ?? null,
               lesson_format:  t.lesson_format ?? null,
               video_guid:     videoGuids.get(t.id) ?? null,
@@ -472,6 +484,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         const counters = countTopics(topics.map(topic => ({
           is_open: topic.is_open,
           available_from: topic.available_from,
+          progress: topic.progress,
           hasHomework: !!topic.hw_id,
           hwStatus: topic.hw_status,
           tasksTotal: topic.tasks_total,

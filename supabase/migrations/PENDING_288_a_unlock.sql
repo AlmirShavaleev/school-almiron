@@ -326,6 +326,7 @@ begin
     )
     select jsonb_agg(jsonb_build_object(
              'topic_id', s.topic_id,
+             'title', tp.title,
              'open', s.open,
              'reason', s.open_reason,
              'closed', s.closed,
@@ -381,8 +382,8 @@ begin
       'students', coalesce((
         select jsonb_agg(jsonb_build_object(
                  'id', s.id, 'full_name', pr.full_name, 'email', pr.email,
-                 'last_closed_at', (select max(x.closed_at) from ps x where x.student_id = s.id),
-                 'closed', (select count(*) from ps x where x.student_id = s.id and x.closed),
+                 'last_closed_at', (select max(x.closed_at) from ps x where x.student_id = s.id and x.open),
+                 'closed', (select count(*) from ps x where x.student_id = s.id and x.closed and x.open),
                  'cells', (select jsonb_agg(jsonb_build_array(
                               -- закрыть можно только открытый урок: «пустой» урок за
                               -- будущей датой формально закрыт, но для ученика заперт

@@ -45,6 +45,8 @@ import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
 import { cn } from '@/utils/cn'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
+import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
+import { openedMessage, progressNote } from '@/lib/progressUnlock'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -266,6 +268,23 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // сбрасываются «как у нового ученика», проверка не зовётся.
   const isTraining = !!topic && !isTimedKind(topic.kind) && topic.lesson_format === 'training'
   const autocheck = useTopicAutocheck(topicId ?? null, { preview, enabled: isTraining })
+
+  // §288. Курс «по прохождению»: замок урока — решение базы; после того как все
+  // задачи автопроверки завершены, замки перечитываются — мог открыться следующий.
+  const progressLocks = useCourseTopicLocks(topic?.course_id ?? null, preview ? null : profile?.id ?? null)
+  const progressLock = progressLocks.data?.mode === 'progress'
+    ? progressLocks.data.topics.find(l => l.topic_id === topicId) ?? null
+    : null
+  const autocheckFinished = !!autocheck.state?.finished
+  const refreshLocks = progressLocks.refresh
+  useEffect(() => {
+    if (autocheckFinished) refreshLocks()
+  }, [autocheckFinished, refreshLocks])
+  // «Открыт урок «…»» — посчитан хуком по приходу замков; «Понятно» скрывает его
+  const [dismissedNotice, setDismissedNotice] = useState<object | null>(null)
+  const openedNotice = progressLocks.data && progressLocks.data !== dismissedNotice
+    ? openedMessage(progressLocks.opened.map(l => l.title ?? 'новый урок'))
+    : null
   const autocheckTotal = autocheck.state?.total ?? 0
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -294,11 +313,15 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // В предпросмотре — полное правило открытости (`isTopicOpen`, тумблер и
   // дата): ученику закрытую тумблером тему база не отдаёт, а персоналу отдаёт,
   // и без этой проверки владелец увидел бы то, чего ученик не видит.
-  const isLocked   = preview && topic
-    ? !isTopicOpen(topic)
-    : topic?.available_from
-      ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
-      : false
+  // §288: в курсе «по прохождению» решает только замок из базы (is_open и дата
+  // там не действуют); персоналу замок — только в превью.
+  const isLocked   = progressLocks.data?.mode === 'progress'
+    ? !!progressLock && !progressLock.open && (preview || !canBypassAvailability)
+    : preview && topic
+      ? !isTopicOpen(topic)
+      : topic?.available_from
+        ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
+        : false
 
   // ── States ───────────────────────────────────────────────────────────────────
 
@@ -326,7 +349,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       </div>
       <h2 className="text-xl font-bold text-gray-800">Тема ещё не открыта</h2>
       <p className="text-gray-500 text-sm">
-        {topic.available_from && topic.is_open === null
+        {progressLock && !progressLock.open
+          ? progressNote(progressLock)
+          : topic.available_from && topic.is_open === null
           ? `Откроется ${new Date(topic.available_from.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
           : 'Откроется позже'}
       </p>
@@ -609,6 +634,14 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     <div className={cn('max-w-3xl space-y-6 pb-10', active === 'homework' && 'lg:max-w-5xl')}>
 
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
+
+      {openedNotice && (
+        <div className="flex items-start justify-between gap-3 rounded-card bg-verdict-ok-tint px-4 py-3 text-[15px] font-semibold text-verdict-ok-ink"
+          role="status" data-testid="progress-opened">
+          <span>🔓 {openedNotice}</span>
+          <button type="button" className="text-[13px] font-normal underline" onClick={() => setDismissedNotice(progressLocks.data)}>Понятно</button>
+        </div>
+      )}
 
       {/* §282. Прямая ссылка на тему закрытого подпиской курса: объяснить, а не показать пустоту. */}
       {!preview && <SubscriptionLockBanner courseId={topic.course_id} />}

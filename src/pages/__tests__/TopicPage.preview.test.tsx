@@ -349,8 +349,9 @@ describe('Страница темы в предпросмотре глазами
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Кинематика' })).toBeInTheDocument())
     expectNothingWritten()
-    // Из RPC вообще — только чтение состава, состояние решения и вердикт.
-    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts']))
+    // Из RPC вообще — только чтение состава, состояние решения и вердикт;
+    // §288: и замки уроков курса (тоже только чтение — превью показывает замки).
+    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts', 'my_course_topic_locks']))
   })
 
   it('§271: «Оцените урок» внизу виден, звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {

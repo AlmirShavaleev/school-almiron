@@ -65,8 +65,51 @@ as $$
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────
+-- 2б. Две дороги к материалам мимо набора (нашло ревью §288)
+-- ─────────────────────────────────────────────────────────────────────────
+
+-- Файлы бакета course-materials (политика course_mat_select): «ученик курса»
+-- проверял членство и подписку, но не открыт ли урок. Для курсов 'progress'
+-- добавлено «урок открыт по прохождению»; для 'schedule' тело прежнее
+-- (как в 20261010091021_subscription_sets_282_2.sql).
+create or replace function public.auth_is_student_of_topic(p_topic_id uuid)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from topics tp
+    join modules m on m.id = tp.module_id
+    join groups g  on g.course_id = m.course_id
+    join group_students gs on gs.group_id = g.id
+    join students s on s.id = gs.student_id
+    where tp.id = p_topic_id and s.profile_id = auth.uid()
+      and (not exists (select 1 from subscription_tariffs t where t.course_id = g.course_id)
+           or public.subscription_access_ok(s.id, g.course_id))
+      and (not public.course_is_progress(g.course_id)
+           or p_topic_id = any (public.student_progress_open_topics()))
+  );
+$$;
+
+-- Старая таблица topic_materials (на проде 0 строк, клиент её ещё читает):
+-- ветка ученика проверяла topic_open_now напрямую. Для 'progress' — по набору.
+drop policy if exists topic_materials_select on public.topic_materials;
+create policy topic_materials_select on public.topic_materials
+  for select
+  using (
+    is_admin_or_owner()
+    or auth_is_staff_of_topic(topic_id)
+    or (auth_can_see_topic(topic_id)
+        and exists (select 1 from topics tp join modules m on m.id = tp.module_id
+                     where tp.id = topic_materials.topic_id
+                       and case when public.course_is_progress(m.course_id)
+                                then tp.id = any (public.student_progress_open_topics())
+                                else topic_open_now(tp.is_open, tp.available_from) end))
+  );
+
+-- ─────────────────────────────────────────────────────────────────────────
 -- 3. Событие «открыт урок по прохождению» — для будущего Telegram
---    После верного/третьего ответа автопроверки и после проверки ДЗ:
+--    После ответа автопроверки и после принятия ДЗ (смена статуса попытки):
 --    уроки, открытые причиной prev_closed, пишутся в topic_unlock_events
 --    (один раз на пару ученик-урок). Сбой здесь не ломает ответ ученика.
 -- ─────────────────────────────────────────────────────────────────────────
@@ -77,18 +120,28 @@ language plpgsql security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_course uuid := public.course_of_topic(p_topic_id);
+  v_course uuid;
 begin
-  if v_course is null or p_student_id is null or not public.course_is_progress(v_course) then
+  -- Дешёвый выход простыми запросами (без подтранзакции): курс не 'progress' —
+  -- ничего не делаем. Так ответы учеников курсов по датам ничего не платят.
+  select m.course_id into v_course
+    from public.topics t join public.modules m on m.id = t.module_id
+   where t.id = p_topic_id;
+  if v_course is null or p_student_id is null
+     or not exists (select 1 from public.course_unlock_modes u
+                     where u.course_id = v_course and u.mode = 'progress') then
     return;
   end if;
-  insert into public.topic_unlock_events (student_id, topic_id, reason)
-  select ps.student_id, ps.topic_id, ps.open_reason
-    from public._progress_state(v_course, array[p_student_id]) ps
-   where ps.open and ps.open_reason = 'prev_closed'
-  on conflict (student_id, topic_id) do nothing;
-exception when others then
-  raise warning '§288 topic_unlock_events: % (%)', sqlerrm, sqlstate;
+  begin
+    insert into public.topic_unlock_events (student_id, topic_id, reason)
+    select ps.student_id, ps.topic_id, ps.open_reason
+      from public._progress_state(v_course, array[p_student_id]) ps
+     where ps.open and ps.open_reason = 'prev_closed'
+    on conflict (student_id, topic_id) do nothing;
+  exception when others then
+    -- событие для Telegram не должно ломать ответ ученика или проверку
+    raise warning '§288 topic_unlock_events: % (%)', sqlerrm, sqlstate;
+  end;
 end $$;
 
 create or replace function public._topic_unlock_after_answer()
@@ -96,23 +149,28 @@ returns trigger
 language plpgsql security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_student uuid;
+  v_topic   uuid;
 begin
-  perform public._topic_unlock_events_for(
-    (select s.id from public.students s where s.profile_id = new.profile_id),
-    (select k.topic_id from public.topic_autocheck_tasks k where k.id = new.task_id));
+  select s.id into v_student from public.students s where s.profile_id = new.profile_id;
+  select k.topic_id into v_topic from public.topic_autocheck_tasks k where k.id = new.task_id;
+  perform public._topic_unlock_events_for(v_student, v_topic);
   return null;
 end $$;
 
-create or replace function public._topic_unlock_after_review()
+-- ДЗ: проверка вставляется раньше, чем попытка становится 'accepted', поэтому
+-- событие — по смене статуса попытки (ревью §288, находка 4).
+create or replace function public._topic_unlock_after_accept()
 returns trigger
 language plpgsql security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_topic uuid;
 begin
-  perform public._topic_unlock_events_for(a.student_id, h.topic_id)
-     from public.topic_homework_attempts a
-     join public.topic_homework h on h.id = a.homework_id
-    where a.id = new.attempt_id;
+  select h.topic_id into v_topic from public.topic_homework h where h.id = new.homework_id;
+  perform public._topic_unlock_events_for(new.student_id, v_topic);
   return null;
 end $$;
 
@@ -121,10 +179,11 @@ create trigger topic_autocheck_answers_unlock
   after insert on public.topic_autocheck_answers
   for each row execute function public._topic_unlock_after_answer();
 
-drop trigger if exists topic_homework_reviews_unlock on public.topic_homework_reviews;
-create trigger topic_homework_reviews_unlock
-  after insert on public.topic_homework_reviews
-  for each row execute function public._topic_unlock_after_review();
+drop trigger if exists topic_homework_attempts_unlock on public.topic_homework_attempts;
+create trigger topic_homework_attempts_unlock
+  after update of status on public.topic_homework_attempts
+  for each row when (new.status = 'accepted' and old.status is distinct from new.status)
+  execute function public._topic_unlock_after_accept();
 
 do $$
 declare
@@ -133,7 +192,7 @@ begin
   foreach f in array array[
     'public._topic_unlock_events_for(uuid, uuid)',
     'public._topic_unlock_after_answer()',
-    'public._topic_unlock_after_review()'
+    'public._topic_unlock_after_accept()'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;

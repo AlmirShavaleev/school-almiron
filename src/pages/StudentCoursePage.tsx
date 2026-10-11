@@ -33,6 +33,9 @@ import {
 } from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
+import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
+import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
+import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
 
@@ -876,6 +879,15 @@ export function StudentCoursePage() {
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
   const { course, modules: programModules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
+  // §288. Курс «по прохождению»: замки уроков и счётчики — уже в программе
+  // (useStudentCourseProgram). Здесь — только «Открыт урок «…»» с прошлого визита.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
+  const locks = useCourseTopicLocks(course?.id, preview ? null : profileId)
+  // «Открыт урок «…»» — посчитан хуком по приходу замков; «Понятно» скрывает его
+  const [dismissedNotice, setDismissedNotice] = useState<CourseTopicLocks | null>(null)
+  const openedNotice = locks.data && locks.data !== dismissedNotice
+    ? openedMessage(locks.opened.map(l => l.title ?? 'новый урок'))
+    : null
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
   // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
   // блок «Пробники» по расписанию, как в §224.2.
@@ -971,6 +983,15 @@ export function StudentCoursePage() {
       {/* §282. Курс платный и подписка не действует — сказать прямо, а не
           показывать пустую программу (RLS отдаёт пусто). */}
       {!preview && <SubscriptionLockBanner courseId={course.id} />}
+
+      {/* §288. Урок открылся прохождением (или датой) с прошлого визита */}
+      {openedNotice && (
+        <div className="flex items-start justify-between gap-3 rounded-card border border-verdict-ok-ink/20 bg-verdict-ok-tint px-4 py-3 text-[15px] font-semibold text-verdict-ok-ink"
+          role="status" data-testid="progress-opened">
+          <span>🔓 {openedNotice}</span>
+          <button type="button" className="text-[13px] font-normal underline" onClick={() => setDismissedNotice(locks.data)}>Понятно</button>
+        </div>
+      )}
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на

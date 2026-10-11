@@ -115,10 +115,14 @@ describe('§288 открытие уроков по прохождению', () =
   })
 
   it('урок закрывается принятым ДЗ второй части → открыт следующий; возврат на доработку снова его закрывает', async () => {
+    // как в RPC проверки: сдана → проверка → статус «принято»
     const att1 = await val<string>(
-      `insert into topic_homework_attempts (homework_id, student_id, status, attempt_number) values ($1, $2, 'accepted', 1) returning id`,
+      `insert into topic_homework_attempts (homework_id, student_id, status, attempt_number) values ($1, $2, 'submitted', 1) returning id`,
       [id.hw2, id.kid])
     await db.query(`insert into topic_homework_reviews (attempt_id, decision, score) values ($1, 'accepted', 80)`, [att1])
+    expect(await visible(KID)).not.toContain(id.t3)
+    expect(await val(`select count(*)::int from topic_unlock_events where student_id = $1`, [id.kid])).toBe(0)
+    await db.query(`update topic_homework_attempts set status = 'accepted' where id = $1`, [att1])
     expect(await visible(KID)).toContain(id.t3)
     // событие для будущего Telegram — один раз
     expect(await val(`select count(*)::int from topic_unlock_events where student_id = $1 and topic_id = $2 and reason = 'prev_closed'`,
@@ -206,6 +210,20 @@ describe('§288 открытие уроков по прохождению', () =
     expect(await val(`select staff_module_open_for_student($1, $2)`, [id.kid2, id.m1])).toBe(5)
     expect(await visible(KID2)).toEqual(expect.arrayContaining([id.t3, id.t4]))
     expect(await visible(KID)).not.toContain(id.u3) // другого ученика не задело
+  })
+
+  it('файлы course-materials и старая topic_materials: закрытый урок — нет, открытый — да', async () => {
+    await db.query(`insert into topic_materials (topic_id) values ($1), ($2)`, [id.t1, id.u3])
+    await as(KID)
+    expect(await val(`select auth_is_student_of_topic($1)`, [id.t1])).toBe(true)
+    expect(await val(`select auth_is_student_of_topic($1)`, [id.u3])).toBe(false)
+    await db.exec('set role authenticated')
+    try {
+      const got = (await db.query<{ topic_id: string }>(`select topic_id from topic_materials`)).rows.map((r) => r.topic_id)
+      expect(got).toEqual([id.t1])
+    } finally {
+      await db.exec('reset role')
+    }
   })
 
   it('RLS: материалы закрытого урока ученику не отдаются прямым запросом', async () => {
