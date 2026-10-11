@@ -2,6 +2,7 @@ import { motion, useAnimate, useInView } from 'framer-motion'
 import { useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { EASE, useAnim } from './anim'
+import { Icon3D } from './Icon3D'
 import { initialUnlock, SECTIONS, submitHomework, type LessonState } from './unlockLogic'
 
 type Seg = { t: string; w: number; bg: string }
@@ -56,6 +57,9 @@ function UnlockDemo() {
     setSt(next)
     if (anim) {
       requestAnimationFrame(() => {
+        // Урок открылся — замок в углу качается.
+        const lock = scope.current?.querySelector('.lock-swing')
+        if (lock && changed.length) animate(lock, { rotate: [0, -15, 10, 0] }, { duration: 0.7, ease: 'easeInOut' })
         changed.forEach(li => {
           const el = scope.current?.querySelector(`[data-k="${si}-${li}"]`)
           if (el) animate(el, { scale: [0.85, 1.06, 1], opacity: [0.3, 1] }, { duration: 0.55, ease: [0.2, 1.4, 0.4, 1] })
@@ -66,6 +70,7 @@ function UnlockDemo() {
 
   return (
     <div className="u-grid" ref={scope}>
+      <span className="corner-ic lock-swing"><Icon3D name="unlock" size={84} /></span>
       {SECTIONS.map((s, si) => (
         <div className="u-col" key={s.n}>
           <h4>{s.n}</h4>
@@ -122,7 +127,7 @@ export function Unlock() {
             <motion.span className="tag tag-ok warn" {...warn}>Время остаётся на всё</motion.span>
           </Reveal>
         </div>
-        <Reveal className="card unlock-wrap">
+        <Reveal className="card unlock-wrap has-corner">
           <div className="u-legend">
             <span><b style={{ background: 'var(--good)' }} />Тема закрыта</span>
             <span><b style={{ background: 'var(--p500)' }} />Открыта</span>

@@ -69,6 +69,16 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.setViewportSize({ width, height })
       await openLanding(page)
       await page.evaluate(() => document.fonts.ready)
+      // Иконки ниже первого экрана — loading="lazy": без прокрутки полный
+      // снимок вышел бы с пустыми местами. Проходим страницу и ждём картинки.
+      await page.evaluate(async () => {
+        for (let y = 0; y < document.body.scrollHeight; y += 400) {
+          window.scrollTo(0, y)
+          await new Promise(r => setTimeout(r, 40))
+        }
+        await Promise.all([...document.images].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r })))
+        window.scrollTo(0, 0)
+      })
       await page.screenshot({ path: path.join(SHOTS!, `лендинг-${label}-${scheme}.png`), fullPage: true })
       await page.screenshot({ path: path.join(SHOTS!, `лендинг-${label}-${scheme}-первый-экран.png`) })
     })

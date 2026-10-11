@@ -2,16 +2,18 @@ import { motion, type Variants } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
+import { Icon3D } from './Icon3D'
+import type { IconName } from './icons'
 import { BankScreen, HomeworkScreen, PartTwoScreen, VideoScreen, type ScreenProps } from './ScreenMocks'
 
 /** Через сколько вкладка переключается сама. */
 export const SCREEN_INTERVAL_MS = 5000
 
-const TABS: Array<{ b: string; s: string; C: ComponentType<ScreenProps> }> = [
-  { b: 'Видеоконспект', s: 'Теория урока в коротком видео', C: VideoScreen },
-  { b: 'ДЗ с автопроверкой', s: 'Ответ проверяется сразу', C: HomeworkScreen },
-  { b: 'Вторая часть', s: 'Фото решения и разбор по критериям', C: PartTwoScreen },
-  { b: 'Банк задач', s: 'Задачи по каждому номеру ЕГЭ', C: BankScreen },
+const TABS: Array<{ b: string; s: string; ic: IconName; C: ComponentType<ScreenProps> }> = [
+  { b: 'Видеоконспект', ic: 'video', s: 'Теория урока в коротком видео', C: VideoScreen },
+  { b: 'ДЗ с автопроверкой', ic: 'autocheck', s: 'Ответ проверяется сразу', C: HomeworkScreen },
+  { b: 'Вторая часть', ic: 'part2', s: 'Фото решения и разбор по критериям', C: PartTwoScreen },
+  { b: 'Банк задач', ic: 'bank', s: 'Задачи по каждому номеру ЕГЭ', C: BankScreen },
 ]
 
 const pane: Variants = {
@@ -70,7 +72,8 @@ export function Screens({ images = [] }: { images?: Array<string | undefined> })
                 className={i === idx ? 'on' : undefined}
                 onClick={() => choose(i)}
               >
-                <b>{t.b}</b><small>{t.s}</small>
+                <Icon3D name={t.ic} size={44} className="tab-ic" still />
+                <span className="tab-t"><b>{t.b}</b><small>{t.s}</small></span>
                 {anim && i === idx && (
                   <motion.span
                     key={cycle}

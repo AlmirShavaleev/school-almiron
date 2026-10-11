@@ -125,10 +125,7 @@
 /* INSIDE */
 .lnd .inside { grid-template-columns: repeat(3, 1fr) }
 .lnd .f-card { padding: 26px }
-.lnd .f-ic { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 16px; background: var(--blueSoft) }
-.lnd .f-ic svg { width: 26px; height: 26px; stroke: var(--p500); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round }
-.lnd .f-card:nth-child(even) .f-ic { background: var(--orSoft) }
-.lnd .f-card:nth-child(even) .f-ic svg { stroke: var(--or) }
+.lnd .f-ic { margin: -6px 0 12px -6px }
 .lnd .f-card p { color: var(--ink2); margin-top: 8px; font-size: 15px }
 @media (max-width: 860px) { .lnd .inside { grid-template-columns: 1fr 1fr } }
 @media (max-width: 560px) { .lnd .inside { grid-template-columns: 1fr } }
@@ -378,6 +375,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lnd *, .lnd *::before, .lnd *::after { animation: none !important; transition: none !important }
+  .lnd .card:hover .i3d-h, .lnd .scr-tabs button:hover .i3d-h { transform: none }
 }
 
 /* ── Правка 1: фирменные элементы PDF ───────────────────────────────── */
@@ -433,3 +431,64 @@
 /* Вектор: стрелка над буквой (комбинирующей U+20D7 в PT Serif нет). */
 .lnd .vec { position: relative; display: inline-block; padding: 0 .08em }
 .lnd .vec::after { content: '→'; position: absolute; left: 0; right: 0; top: -.62em; font-size: .62em; font-style: normal; text-align: center; line-height: 1 }
+
+/* ── Правка 2: 3D-иконки (ЛЕНДИНГ_ПРАВКИ_2_иконки.md) ─────────────────
+ * Три слоя на иконку (см. Icon3D.tsx): появление — framer-motion на
+ * корне, наклон при наведении — `.i3d-h`, парение — `.i3d-f`. Только
+ * transform; «уменьшить движение» гасит петлю и переход общим правилом
+ * выше. Без подложек-квадратов: у иконок свой объём и прозрачный фон. */
+.lnd .i3d { display: inline-block; flex: none; position: relative; line-height: 0 }
+.lnd .i3d-h, .lnd .i3d-f { display: block; width: 100%; height: 100% }
+.lnd .i3d img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none }
+.lnd .i3d-h { transition: transform .35s cubic-bezier(.2, .8, .2, 1) }
+.lnd .card:hover .i3d-h, .lnd .scr-tabs button:hover .i3d-h, .lnd .rs:hover .i3d-h, .lnd .step:hover .i3d-h { transform: rotate(9deg) scale(1.1) }
+.lnd .i3d-f { animation: lnd-bob 5s ease-in-out infinite }
+.lnd .i3d-f.still { animation: none }
+@keyframes lnd-bob { 0%, 100% { transform: translateY(-6px) } 50% { transform: translateY(6px) } }
+
+/* Ракета первого экрана — в правом верхнем углу карточки автора, рядом со знаком. */
+.lnd .hero-rocket { position: absolute; top: -34px; right: -18px; width: 170px; height: 170px; z-index: 2; pointer-events: none }
+@media (max-width: 1020px) { .lnd .hero-rocket { width: 140px; height: 140px; top: -26px; right: -8px } .lnd .hero-rocket .i3d { width: 140px !important; height: 140px !important } }
+@media (max-width: 430px) { .lnd .hero-rocket { width: 118px; height: 118px; top: -18px; right: -4px } .lnd .hero-rocket .i3d { width: 118px !important; height: 118px !important } }
+
+/* Плавающие формулы на телефоне заходили на текст первого экрана — там их нет. */
+@media (max-width: 600px) { .lnd .floaters { display: none } }
+
+/* Вкладки «Как это выглядит»: иконка слева от подписи. */
+.lnd .scr-tabs button { display: flex; align-items: center; gap: 12px }
+.lnd .scr-tabs .tab-t { min-width: 0 }
+@media (max-width: 900px) { .lnd .scr-tabs button { padding: 12px; gap: 8px } .lnd .scr-tabs .tab-ic { width: 34px !important; height: 34px !important } }
+
+/* Заголовок блока с иконкой (вторая часть). */
+.lnd .sec-head.with-ic { position: relative; padding-right: 104px }
+.lnd .sec-head .head-ic { position: absolute; right: 0; top: -8px }
+@media (max-width: 560px) { .lnd .sec-head.with-ic { padding-right: 0 } .lnd .sec-head .head-ic { position: static; width: 64px !important; height: 64px !important; margin-bottom: 6px } }
+.lnd .h-ic { display: flex; align-items: center; gap: 8px; padding-right: 36px }
+
+/* Пробник: иконка рядом с крупной «8». */
+.lnd .mock-count { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 10px; text-align: right }
+.lnd .mock-count .i3d { grid-row: span 2 }
+
+/* Иконка в углу карточки (прогноз, бот, замок демо). */
+.lnd .has-corner { position: relative }
+.lnd .corner-ic { position: absolute; top: -22px; right: -10px; z-index: 2; pointer-events: none }
+.lnd .corner-ic.bell, .lnd .corner-ic.lock-swing { display: block; width: 84px; height: 84px; transform-origin: 50% 12% }
+.lnd .has-corner > .tag, .lnd .has-corner .u-legend { margin-right: 70px }
+.lnd .prog .has-corner > h3 { padding-right: 56px }
+@media (max-width: 560px) {
+  .lnd .corner-ic { top: -18px; right: -6px }
+  .lnd .corner-ic, .lnd .corner-ic .i3d { width: 64px !important; height: 64px !important }
+}
+
+/* Путь ученика и шаги регистрации: иконка справа от текста шага. */
+.lnd .step-t { flex: 1; min-width: 0 }
+.lnd .step-ic { align-self: center }
+@media (max-width: 560px) { .lnd .step-ic { width: 48px !important; height: 48px !important } }
+.lnd .rs-t { flex: 1; min-width: 0 }
+.lnd .rs > .i3d { width: 48px; height: 48px; background: none; border-radius: 0 }
+/* Узкий телефон: «Видеоконспект» не влезал рядом с иконкой — иконка над подписью. */
+@media (max-width: 520px) {
+  .lnd .scr-tabs button { flex-direction: column; align-items: flex-start; gap: 4px }
+  .lnd .scr-tabs .tab-ic { width: 30px !important; height: 30px !important }
+  .lnd .scr-tabs .tab-t { max-width: 100%; overflow-wrap: anywhere }
+}

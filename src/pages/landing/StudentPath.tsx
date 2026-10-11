@@ -2,14 +2,16 @@ import { motion, useMotionValueEvent, useScroll } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
+import { Icon3D } from './Icon3D'
+import type { IconName } from './icons'
 
-const STEPS: Array<[string, string]> = [
-  ['Диагностика', '15 минут — и видно, что ты уже знаешь, а что нет.'],
-  ['Личный план', 'План до экзамена: сколько тем в неделю, с чего начать.'],
+const STEPS: Array<[string, string, IconName?]> = [
+  ['Диагностика', '15 минут — и видно, что ты уже знаешь, а что нет.', 'diagnostic'],
+  ['Личный план', 'План до экзамена: сколько тем в неделю, с чего начать.', 'calendar'],
   ['Уроки', 'Видеоконспект и задачи из банка по номерам ЕГЭ.'],
   ['Домашнее задание', 'ДЗ принято — тема закрыта и открывается следующая. Не ждёшь даты.'],
   ['Пробник раз в месяц', 'Полный вариант ЕГЭ, баллы и разбор ошибок.'],
-  ['Прогноз балла', 'Видишь свой результат до экзамена, а не после.'],
+  ['Прогноз балла', 'Видишь свой результат до экзамена, а не после.', 'trophy'],
 ]
 
 /** Линия «заполняется», когда верх блока проходит 60 % высоты окна. */
@@ -52,10 +54,11 @@ export function StudentPath() {
           <div className="path-line">
             <motion.div className="path-fill" style={{ scaleY: anim ? scrollYProgress : 1 }} />
           </div>
-          {STEPS.map(([h, p], i) => (
+          {STEPS.map(([h, p, ic], i) => (
             <div key={h} className={!anim || lit[i] ? 'step on' : 'step'} ref={el => { stepRefs.current[i] = el }}>
               <div className="step-dot">{i + 1}</div>
-              <div><h3>{h}</h3><p>{p}</p></div>
+              <div className="step-t"><h3>{h}</h3><p>{p}</p></div>
+              {ic && <Icon3D name={ic} size={64} className="step-ic" />}
             </div>
           ))}
         </div>

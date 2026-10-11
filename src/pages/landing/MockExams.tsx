@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Reveal } from './motion'
 import { EASE, useAnim } from './anim'
+import { Icon3D } from './Icon3D'
 
 /** Условный рост балла от пробника к пробнику (подпись «Цифры условные» не убирать). */
 const MONTHS: Array<[string, number]> = [
@@ -19,7 +20,8 @@ export function MockExams() {
               <h2>1 пробник ЕГЭ каждый месяц</h2>
               <p className="lead" style={{ marginTop: 10 }}>Полный вариант в формате экзамена: первая часть с автопроверкой, вторая — по критериям ФИПИ. После каждого — баллы, разбор ошибок и новый прогноз. К маю ты пишешь экзамен уже в восьмой раз.</p>
             </div>
-            <div style={{ textAlign: 'right' }}>
+            <div className="mock-count">
+              <Icon3D name="mock" size={96} />
               <div className="mock-big">8</div>
               <small style={{ color: 'var(--ink2)', fontWeight: 700 }}>пробников до экзамена</small>
             </div>

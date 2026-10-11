@@ -4,10 +4,12 @@ import { Reveal } from './motion'
 import { useAnim } from './anim'
 import { LINKS } from './links'
 import { Mark } from './Brand'
+import { Icon3D } from './Icon3D'
+import type { IconName } from './icons'
 
-const STEPS: Array<[string, string]> = [
-  ['Регистрация', 'Почта или телефон — и ты внутри'],
-  ['Диагностика', '15 минут, чтобы понять свой уровень'],
+const STEPS: Array<[string, string, IconName?]> = [
+  ['Регистрация', 'Почта или телефон — и ты внутри', 'mail'],
+  ['Диагностика', '15 минут, чтобы понять свой уровень', 'diagnostic'],
   ['Первый урок', 'Видеоконспект и задачи уже в тот же день'],
   ['Подписка — когда понравится', '500 ₽ в месяц или 4 800 ₽ за год'],
 ]
@@ -28,7 +30,7 @@ export function FinalCta() {
             </div>
           </div>
           <div className="reg-steps">
-            {STEPS.map(([b, s], i) => (
+            {STEPS.map(([b, s, ic], i) => (
               <motion.div
                 key={b}
                 className="rs"
@@ -37,7 +39,8 @@ export function FinalCta() {
                 viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.5, delay: i * 0.15 }}
               >
-                <span>{i + 1}</span><div><b>{b}</b><small>{s}</small></div>
+                <span>{i + 1}</span><div className="rs-t"><b>{b}</b><small>{s}</small></div>
+                {ic && <Icon3D name={ic} size={48} className="rs-ic" />}
               </motion.div>
             ))}
           </div>

@@ -3,6 +3,9 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { LandingPage } from '@/pages/LandingPage'
 import { initialUnlock, submitHomework } from '../unlockLogic'
+import { ICONS } from '../icons'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 /**
  * Smoke-тест лендинга (ЛЕНДИНГ_ТЗ.md §5): страница рендерится целиком,
@@ -128,5 +131,47 @@ describe('логика демо открытия уроков', () => {
     expect(st[1]).toEqual(['done', 'done', 'done', 'done'])
     expect(st[0]).toEqual(initialUnlock()[0])
     expect(submitHomework(st, 1).changed).toEqual([])
+  })
+})
+
+describe('3D-иконки (правка 2)', () => {
+  it('у каждой иконки из списка есть файл в public/brand/icons', () => {
+    const missing = ICONS.filter(n => !existsSync(resolve(process.cwd(), 'public/brand/icons', `${n}.webp`)))
+    expect(missing).toEqual([])
+  })
+
+  it('все 14 иконок стоят на странице, у каждой явные размеры', () => {
+    const { container } = renderLanding()
+    const imgs = [...container.querySelectorAll<HTMLImageElement>('img[src^="/brand/icons/"]')]
+    const used = new Set(imgs.map(i => i.getAttribute('src')!.replace(/^.*\/|\.webp$/g, '')))
+    expect([...used].sort()).toEqual([...ICONS].sort())
+    for (const img of imgs) {
+      expect(img.getAttribute('width')).toMatch(/^\d+$/)
+      expect(img.getAttribute('height')).toBe(img.getAttribute('width'))
+      expect(img.getAttribute('alt')).toBe('')
+    }
+  })
+
+  it('ракета грузится сразу и с высоким приоритетом, остальные — лениво', () => {
+    const { container } = renderLanding()
+    const imgs = [...container.querySelectorAll<HTMLImageElement>('img[src^="/brand/icons/"]')]
+    const rocket = imgs.filter(i => i.getAttribute('src') === '/brand/icons/hero-rocket.webp')
+    expect(rocket).toHaveLength(1)
+    expect(rocket[0].getAttribute('fetchpriority')).toBe('high')
+    expect(rocket[0].getAttribute('loading')).not.toBe('lazy')
+    for (const img of imgs.filter(i => !rocket.includes(i))) {
+      expect(img.getAttribute('loading')).toBe('lazy')
+      expect(img.getAttribute('decoding')).toBe('async')
+    }
+  })
+
+  it('в «Что внутри» иконки вместо плоских SVG', () => {
+    const { container } = renderLanding()
+    const cards = container.querySelectorAll('#inside .f-card')
+    expect(cards).toHaveLength(6)
+    cards.forEach(c => {
+      expect(c.querySelector('img[src^="/brand/icons/"]')).not.toBeNull()
+      expect(c.querySelector('svg')).toBeNull()
+    })
   })
 })

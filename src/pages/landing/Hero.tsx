@@ -1,8 +1,9 @@
-import { motion } from 'framer-motion'
+import { motion, useScroll, useTransform } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { EASE, useAnim } from './anim'
 import { LINKS } from './links'
 import { Mark } from './Brand'
+import { Icon3D } from './Icon3D'
 
 /** Плавающие формулы фона: [текст, left, top, задержка петли, размер]. */
 const FLOATERS: Array<[string, string, string, number, number?]> = [
@@ -42,6 +43,10 @@ const up = (delay: number) => ({
 export function Hero({ photo }: { photo?: string }) {
   const anim = useAnim()
   const a = (delay: number) => (anim ? up(delay) : {})
+  // Ракета при прокрутке вниз чуть уходит вверх: первые 600 px прокрутки —
+  // до −60 px. Только transform; без анимаций стоит на месте.
+  const { scrollY } = useScroll()
+  const rocketY = useTransform(scrollY, [0, 600], [0, -60], { clamp: true })
 
   return (
     <section className="hero" id="top">
@@ -92,6 +97,15 @@ export function Hero({ photo }: { photo?: string }) {
           </motion.div>
         </div>
         <motion.div className="card author" {...a(0.2)}>
+          <motion.div className="hero-rocket" style={anim ? { y: rocketY } : undefined}>
+            <motion.div
+              initial={anim ? { opacity: 0, x: -40, y: 40 } : false}
+              animate={{ opacity: 1, x: 0, y: 0 }}
+              transition={{ duration: 0.9, ease: EASE, delay: 0.35 }}
+            >
+              <Icon3D name="hero-rocket" size={170} eager inherit />
+            </motion.div>
+          </motion.div>
           <div className="ava-mark">
             <motion.div
               className="orbit"

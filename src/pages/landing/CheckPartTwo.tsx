@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { Plate } from './Brand'
 import { useAnim } from './anim'
+import { Icon3D } from './Icon3D'
 
 const HAND = [
   'M10 20 C40 10,60 30,90 18 S140 12,170 22',
@@ -45,7 +46,8 @@ export function CheckPartTwo() {
   return (
     <section id="check" className="alt">
       <div className="wrap">
-        <Reveal className="sec-head">
+        <Reveal className="sec-head with-ic">
+          <Icon3D name="part2" size={88} className="head-ic" />
           <span className="eyebrow">Проверка второй части <span className="tag tag-soon">запускаем</span></span>
           <h2>Развёрнутые решения проверяют по критериям ФИПИ в течение 48 часов</h2>
           <p className="lead">ИИ разбирает решение по критериям экзамена и находит ошибки, итоговый балл подтверждает преподаватель.</p>
@@ -87,7 +89,7 @@ export function CheckPartTwo() {
             <p className="txt">Черновая оценка и список ошибок — быстро.</p>
           </Reveal>
           <Reveal className="card">
-            <div className="num">3</div><h3>Балл и разбор</h3>
+            <div className="num">3</div><h3 className="h-ic"><Icon3D name="check48" size={56} />Балл и разбор</h3>
             <div className="score"><b>{shownScore}</b> <span>из 3</span></div>
             <motion.div
               initial={anim ? { opacity: 0, y: 16 } : false}

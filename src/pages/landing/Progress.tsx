@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { EASE, useAnim } from './anim'
 import { Mark } from './Brand'
+import { Icon3D } from './Icon3D'
 
 /** Условный прогноз на макете (подпись «Цифры условные» не убирать). */
 const FORECAST = 71
@@ -40,7 +41,8 @@ export function Progress() {
           <p className="lead">Прогноз считается по твоим пробникам и домашкам. Это оценка, а не гарантия, но она честно показывает, где ты сейчас.</p>
         </Reveal>
         <div className="grid prog">
-          <Reveal className="card">
+          <Reveal className="card has-corner">
+            <Icon3D name="forecast" size={84} className="corner-ic" />
             <div ref={ref}>
               <div className="gauge">
                 <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -80,7 +82,15 @@ export function Progress() {
               <p className="foot">Пример экрана. Цифры условные.</p>
             </div>
           </Reveal>
-          <Reveal className="card">
+          <Reveal className="card has-corner">
+            {/* Колокольчик «звенит» раз в ~7 с: rotate ±12° за 0,6 с. */}
+            <motion.span
+              className="corner-ic bell"
+              animate={anim ? { rotate: [0, 12, -12, 9, -6, 0] } : undefined}
+              transition={{ duration: 0.6, ease: 'easeInOut', repeat: Infinity, repeatDelay: 6.6, delay: 2 }}
+            >
+              <Icon3D name="bot" size={84} />
+            </motion.span>
             <span className="tag tag-blue">Telegram-бот</span>
             <h3 style={{ margin: '14px 0 6px' }}>Бот пишет, когда что-то происходит</h3>
             <p style={{ color: 'var(--ink2)', fontSize: 15 }}>Новое ДЗ, проверка второй части, открытый урок, пробник и итоги недели — всё приходит в Telegram. Не нужно постоянно заходить и проверять.</p>
