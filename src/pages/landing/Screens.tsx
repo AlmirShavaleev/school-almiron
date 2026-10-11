@@ -1,34 +1,27 @@
-import { motion, type Variants } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
+import { motion } from 'framer-motion'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
-import { Icon3D } from './Icon3D'
-import type { IconName } from './icons'
-import { BankScreen, HomeworkScreen, PartTwoScreen, VideoScreen, type ScreenProps } from './ScreenMocks'
+import { iconSrc, SCREENS, type IconName } from './icons'
 
 /** Через сколько вкладка переключается сама. */
 export const SCREEN_INTERVAL_MS = 5000
 
-const TABS: Array<{ b: string; s: string; ic: IconName; C: ComponentType<ScreenProps> }> = [
-  { b: 'Видеоконспект', ic: 'video', s: 'Теория урока в коротком видео', C: VideoScreen },
-  { b: 'ДЗ с автопроверкой', ic: 'autocheck', s: 'Ответ проверяется сразу', C: HomeworkScreen },
-  { b: 'Вторая часть', ic: 'part2', s: 'Фото решения и разбор по критериям', C: PartTwoScreen },
-  { b: 'Банк задач', ic: 'bank', s: 'Задачи по каждому номеру ЕГЭ', C: BankScreen },
+const TABS: Array<{ t: string; ic: IconName; alt: string }> = [
+  { t: 'Видеоконспект', ic: 'video', alt: 'Видеоконспект урока на платформе' },
+  { t: 'ДЗ с автопроверкой', ic: 'autocheck', alt: 'Домашнее задание с автопроверкой ответов' },
+  { t: 'Вторая часть и ИИ', ic: 'part2', alt: 'Проверка второй части: фото решения и разбор ИИ' },
+  { t: 'Банк задач', ic: 'bank', alt: 'Банк задач по номерам ЕГЭ' },
+  { t: 'Прогноз балла', ic: 'forecast', alt: 'Прогноз балла и слабые темы' },
 ]
 
-const pane: Variants = {
-  off: { opacity: 0, y: -12, transition: { duration: 0.25 } },
-  on: { opacity: 1, y: 0, transition: { duration: 0.4, delay: 0.1, delayChildren: 0.2, staggerChildren: 0.04 } },
-}
-
 /**
- * «Как это выглядит»: четыре вкладки с макетами, автопереключение раз в 5 с,
- * клик по вкладке перезапускает отсчёт. Все панели лежат в одной ячейке сетки
- * друг на друге — высота рамки равна самой высокой и не прыгает (CLS).
- *
- * `images` — реальные скриншоты по порядку вкладок, когда появятся.
+ * «Так выглядит платформа»: пять вкладок, реальные скриншоты, автосмена
+ * раз в 5 с; клик по вкладке перезапускает отсчёт. Все картинки лежат в
+ * одной рамке друг на друге (рамка 16:10, `object-fit: contain`) — высота
+ * не прыгает при смене (CLS), видимая выбирается opacity.
  */
-export function Screens({ images = [] }: { images?: Array<string | undefined> }) {
+export function Screens() {
   const anim = useAnim()
   const [idx, setIdx] = useState(0)
   const [cycle, setCycle] = useState(0)
@@ -54,26 +47,28 @@ export function Screens({ images = [] }: { images?: Array<string | undefined> })
   }
 
   return (
-    <section id="screens" className="alt">
+    <section id="inside">
       <div className="wrap">
         <Reveal className="sec-head">
-          <span className="eyebrow">Как это выглядит</span>
-          <h2>Загляни внутрь платформы</h2>
-          <p className="lead">Видеоконспекты, ДЗ с автопроверкой, вторая часть и банк задач — всё в одном кабинете.</p>
+          <span className="tag t-blue">Загляни внутрь</span>
+          <h2>Так выглядит платформа</h2>
+          <p className="lead">Реальные экраны кабинета ученика и проверки работ.</p>
         </Reveal>
         <Reveal className="scr">
           <div className="scr-tabs" role="tablist" aria-label="Экраны платформы">
             {TABS.map((t, i) => (
               <button
-                key={t.b}
+                key={t.t}
                 type="button"
                 role="tab"
+                id={`lnd-tab-${i}`}
                 aria-selected={i === idx}
+                aria-controls="lnd-shot"
                 className={i === idx ? 'on' : undefined}
                 onClick={() => choose(i)}
               >
-                <Icon3D name={t.ic} size={44} className="tab-ic" still />
-                <span className="tab-t"><b>{t.b}</b><small>{t.s}</small></span>
+                <img src={iconSrc(t.ic)} alt="" width={40} height={40} loading="lazy" decoding="async" />
+                {t.t}
                 {anim && i === idx && (
                   <motion.span
                     key={cycle}
@@ -87,26 +82,26 @@ export function Screens({ images = [] }: { images?: Array<string | undefined> })
             ))}
           </div>
           <div className="frame">
-            <div className="fr-bar"><i /><i /><i /><span>almiron · кабинет ученика</span></div>
-            <div className="fr-body">
-              {TABS.map(({ C, b }, i) => (
-                <motion.div
-                  key={b}
-                  className="pane"
-                  role="tabpanel"
+            <div className="fr-bar"><i /><i /><i /><span>Almiron · кабинет ученика</span></div>
+            <div className="shot" id="lnd-shot" role="tabpanel" aria-labelledby={`lnd-tab-${idx}`}>
+              {SCREENS.map((s, i) => (
+                <motion.img
+                  key={s.src}
+                  src={s.src}
+                  alt={i === idx ? TABS[i].alt : ''}
                   aria-hidden={i !== idx}
-                  style={{ pointerEvents: i === idx ? 'auto' : 'none' }}
-                  variants={pane}
-                  initial={anim ? 'off' : false}
-                  animate={i === idx ? 'on' : 'off'}
-                >
-                  <C image={images[i]} />
-                </motion.div>
+                  width={s.w}
+                  height={s.h}
+                  loading="lazy"
+                  decoding="async"
+                  initial={false}
+                  animate={i === idx ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.985 }}
+                  transition={{ duration: anim ? 0.35 : 0 }}
+                />
               ))}
             </div>
           </div>
         </Reveal>
-        <p className="foot center">Макеты экранов. Перед запуском заменим реальными скриншотами платформы.</p>
       </div>
     </section>
   )

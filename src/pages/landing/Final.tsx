@@ -1,46 +1,53 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { Chat, type Msg } from './Chat'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
 import { LINKS } from './links'
 import { Mark } from './Brand'
-import { Icon3D } from './Icon3D'
-import type { IconName } from './icons'
+import { iconSrc, type IconName } from './icons'
 
-const STEPS: Array<[string, string, IconName?]> = [
-  ['Регистрация', 'Почта или телефон — и ты внутри', 'mail'],
-  ['Диагностика', '15 минут, чтобы понять свой уровень', 'diagnostic'],
-  ['Первый урок', 'Видеоконспект и задачи уже в тот же день'],
-  ['Подписка — когда понравится', '500 ₽ в месяц или 4 800 ₽ за год'],
+const CHAT: Msg[] = [
+  { text: 'Это были 5 аргументов. Ну что, убедил?' },
+  { me: true, text: 'Хочу попробовать!' },
+  { text: 'Регистрируйся — первые 3 дня бесплатно, без карты. Начнём с диагностики.' },
 ]
 
+/** Парящие иконки справа: [иконка, размер, позиция, задержка петли]. */
+const FLOAT: Array<[IconName, number, React.CSSProperties, number]> = [
+  ['rocket', 150, { left: '20%', top: '10%' }, 0],
+  ['bot', 90, { right: '6%', top: '50%' }, -2],
+  ['part2', 84, { left: 0, bottom: 0 }, -3],
+]
+
+/** Финальный диалог «Ну что, убедил?» + регистрация. */
 export function FinalCta() {
   const anim = useAnim()
   return (
-    <section id="form">
+    <section id="final">
       <div className="wrap">
-        <Reveal className="cta">
+        <Reveal className="final">
           <div>
-            <span className="eyebrow cta-mark"><Mark white size={28} />Старт за минуту</span>
-            <h2>Зарегистрируйся и начни прямо сейчас</h2>
-            <p className="lead">Первые 3 дня — полный доступ бесплатно. Без карты, без заявок и без звонков менеджеров.</p>
-            <div className="hero-ctas">
-              <Link className="btn btn-p" to={LINKS.register}>Создать аккаунт →</Link>
-              <Link className="btn btn-o" to={LINKS.login}>У меня уже есть аккаунт</Link>
+            <Chat msgs={CHAT} />
+            <div className="chat-actions">
+              <Link className="btn btn-o" to={LINKS.register}>Создать аккаунт →</Link>
+              <Link className="btn btn-navy" to={LINKS.diagnostics}>Пройти диагностику</Link>
             </div>
           </div>
-          <div className="reg-steps">
-            {STEPS.map(([b, s, ic], i) => (
+          <div className="final-ic" aria-hidden="true">
+            {FLOAT.map(([ic, size, pos, d], i) => (
               <motion.div
-                key={b}
-                className="rs"
-                initial={anim ? { opacity: 0, x: 30 } : false}
-                whileInView={{ opacity: 1, x: 0 }}
+                key={ic}
+                className="fl"
+                style={{ width: size, height: size, ...pos }}
+                initial={anim ? { opacity: 0, scale: 0.4, rotate: -20 } : false}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
                 viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.5, delay: i * 0.15 }}
+                transition={{ duration: 0.7, delay: i * 0.2 }}
               >
-                <span>{i + 1}</span><div className="rs-t"><b>{b}</b><small>{s}</small></div>
-                {ic && <Icon3D name={ic} size={48} className="rs-ic" />}
+                <div className="bob" style={{ width: '100%', height: '100%', animationDelay: `${d}s` }}>
+                  <img src={iconSrc(ic)} alt="" width={size} height={size} loading="lazy" decoding="async" />
+                </div>
               </motion.div>
             ))}
           </div>
@@ -63,7 +70,7 @@ export function Footer() {
           </nav>
         </div>
       </footer>
-      <Link className="btn btn-p m-cta" to={LINKS.register}>Начать бесплатно</Link>
+      <Link className="btn btn-p m-cta" to={LINKS.register}>3 дня бесплатно</Link>
     </>
   )
 }

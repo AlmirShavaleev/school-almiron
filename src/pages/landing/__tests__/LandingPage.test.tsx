@@ -1,16 +1,16 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { LandingPage } from '@/pages/LandingPage'
-import { initialUnlock, submitHomework } from '../unlockLogic'
-import { ICONS } from '../icons'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { LandingPage } from '@/pages/LandingPage'
+import { initialUnlock, LESSONS, submitHomework } from '../unlockLogic'
+import { ICONS, PHOTO, SCREENS } from '../icons'
 
 /**
- * Smoke-тест лендинга (ЛЕНДИНГ_ТЗ.md §5): страница рендерится целиком,
- * блоки стоят в порядке прототипа, кнопки ведут туда, куда сказано в ТЗ,
- * интерактив (цена, FAQ, демо открытия уроков, лист ожидания) работает.
+ * Smoke-тест лендинга, правка 3 (ЛЕНДИНГ_ПРАВКИ_3_диалог.md, эталон —
+ * лендинг_прототип_v2.html): блоки в порядке прототипа, CTA ведут туда, куда
+ * сказано в ТЗ, интерактив работает, ассеты на месте и с явными размерами.
  */
 // В jsdom нет IntersectionObserver, а whileInView/useInView на нём стоят.
 // Заглушка сразу сообщает «элемент виден» — блоки доезжают до конечного вида.
@@ -35,40 +35,50 @@ function renderLanding() {
 const hrefOf = (name: string | RegExp) =>
   screen.getAllByRole('link', { name }).map(a => a.getAttribute('href'))
 
-describe('лендинг: рендер и ссылки', () => {
-  it('рендерит все блоки в порядке прототипа', () => {
+describe('лендинг: структура и ссылки', () => {
+  it('блоки в порядке прототипа v2', () => {
     renderLanding()
-    const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
-    expect(headings).toEqual([
+    expect(screen.getByRole('heading', { level: 1 }).textContent)
+      .toBe('Дай мне 5 аргументов — и ты поймёшь, почему эта платформа тебе подходит')
+    expect(screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)).toEqual([
+      'Не репетитор и не урок-шоу',
       'Вся подготовка — в одной системе',
-      'Загляни внутрь платформы',
-      '1 пробник ЕГЭ каждый месяц',
-      'Понятно с первого дня, что делать дальше',
-      'Уроки открываются по мере прохождения, а не по календарю',
-      'Развёрнутые решения проверяют по критериям ФИПИ в течение 48 часов',
-      'Знаешь свой балл до экзамена',
-      'Начинаем с физики. Дальше — математика и ОГЭ',
-      'Один тариф — всё включено',
+      'Темы открываются, когда ты готов',
+      'Вторая часть — проверка с помощью ИИ',
+      'Ты знаешь свой балл ещё до экзамена',
+      'Так выглядит платформа',
+      'Сколько стоит месяц подготовки',
       'Частые вопросы',
-      'Зарегистрируйся и начни прямо сейчас',
     ])
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Готовься к экзамену по авторскому курсу в своём темпе')
   })
 
-  it('CTA регистрации ведут на /register, вход — на /login', () => {
-    renderLanding()
-    for (const name of ['Регистрация', 'Начать бесплатно →', 'Создать аккаунт →', 'Начать бесплатно', 'Зарегистрироваться', 'Начать с 3 бесплатных дней', 'Хочу пройти диагностику']) {
-      expect(hrefOf(name)).toEqual(expect.arrayContaining(['/register']))
-      expect(hrefOf(name).every(h => h === '/register')).toBe(true)
+  it('CTA регистрации ведут на /register, вход — на /login, якоря — на свои блоки', () => {
+    const { container } = renderLanding()
+    for (const name of ['Регистрация', 'Попробовать', 'Начать с 3 бесплатных дней', 'Создать аккаунт →', '3 дня бесплатно', 'Пройти диагностику']) {
+      const hrefs = hrefOf(name)
+      expect(hrefs.length, name).toBeGreaterThan(0)
+      expect(hrefs.every(h => h === '/register'), name).toBe(true)
     }
     expect(hrefOf('Войти')).toEqual(['/login'])
-    expect(hrefOf('У меня уже есть аккаунт')).toEqual(['/login'])
+    expect(hrefOf('Слушаю →')).toEqual(['#a1'])
+    expect(hrefOf('Сразу к цене')).toEqual(['#price'])
+    expect(hrefOf('Узнать цену →')).toEqual(['#price', '#price', '#price'])
+    for (const id of ['a1', 'a2', 'a3', 'a4', 'a5', 'inside', 'price', 'faq', 'final']) {
+      expect(container.querySelector(`#${id}`), id).not.toBeNull()
+    }
   })
 
-  it('подписи «условные» на макетах на месте', () => {
+  it('диалоги: весь текст в DOM сразу, реплики «Ты» подписаны', () => {
     renderLanding()
-    expect(screen.getAllByText(/Цифры условные/).length).toBe(3)
-    expect(screen.getByText(/Макеты экранов/)).toBeTruthy()
+    expect(screen.getByText('Ну давай, убеди 🙂')).toBeTruthy()
+    expect(screen.getByText('А кто проверит мои развёрнутые решения?')).toBeTruthy()
+    expect(screen.getByText('Хочу попробовать!')).toBeTruthy()
+    expect(screen.getAllByText('Ты').length).toBe(4)
+  })
+
+  it('подпись «Цифры условные» у счётчиков прогноза', () => {
+    renderLanding()
+    expect(screen.getByText(/Цифры условные, прогноз — оценка, а не гарантия/)).toBeTruthy()
   })
 })
 
@@ -78,100 +88,84 @@ describe('лендинг: интерактив', () => {
     const price = screen.getByTestId('price')
     expect(price.textContent).toContain('500')
     expect(price.textContent).toContain('/ месяц')
-    fireEvent.click(screen.getByRole('tab', { name: /На год/ }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Год −20%' }))
     expect(price.textContent).toContain('/ год')
     expect(screen.getByText('400 ₽ в месяц — на 20% выгоднее')).toBeTruthy()
     await screen.findByText((_, el) => el?.getAttribute('data-testid') === 'price' && /4\s800/.test(el.textContent ?? ''), {}, { timeout: 3000 })
   })
 
-  it('FAQ: вкладка «Родителям» и раскрытие ответа', () => {
+  it('FAQ раскрывает ответ', () => {
     renderLanding()
-    fireEvent.click(screen.getByRole('tab', { name: 'Родителям' }))
-    const q = screen.getByRole('button', { name: /Вы гарантируете балл\?/ })
+    const q = screen.getByRole('button', { name: /Как отменить подписку\?/ })
     expect(q.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(q)
     expect(q.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByText(/честно гарантировать балл не может никто/)).toBeTruthy()
+    expect(screen.getByText(/В личном кабинете, в один клик/)).toBeTruthy()
   })
 
-  it('демо «Сдать ДЗ» закрывает урок и открывает следующий', () => {
+  it('демо «Сдать ДЗ» закрывает тему и открывает следующую', () => {
     const { container } = renderLanding()
-    const btn = screen.getAllByRole('button', { name: 'Сдать ДЗ' })[0]
-    expect(container.querySelector('[data-k="0-0"]')?.getAttribute('data-state')).toBe('open')
-    expect(container.querySelector('[data-k="0-2"]')?.getAttribute('data-state')).toBe('locked')
-    fireEvent.click(btn)
-    expect(container.querySelector('[data-k="0-0"]')?.getAttribute('data-state')).toBe('done')
-    expect(container.querySelector('[data-k="0-2"]')?.getAttribute('data-state')).toBe('open')
+    const state = (k: number) => container.querySelector(`[data-k="${k}"]`)?.getAttribute('data-state')
+    expect([0, 1, 2].map(state)).toEqual(['open', 'open', 'locked'])
+    fireEvent.click(screen.getByRole('button', { name: 'Сдать ДЗ →' }))
+    expect([0, 1, 2].map(state)).toEqual(['done', 'open', 'open'])
   })
 
-  it('лист ожидания благодарит и ничего не отправляет пустым', () => {
-    renderLanding()
-    const forms = screen.getAllByRole('textbox', { name: /Контакт для листа ожидания/ })
-    expect(forms).toHaveLength(3)
-    const form = forms[0].closest('form')!
-    fireEvent.click(within(form).getByRole('button', { name: 'Ждать' }))
-    expect(screen.getAllByRole('textbox', { name: /Контакт для листа ожидания/ })).toHaveLength(3)
-    fireEvent.change(forms[0], { target: { value: '@student' } })
-    fireEvent.click(within(form).getByRole('button', { name: 'Ждать' }))
-    expect(screen.getByText('Сообщим о запуске ✓')).toBeTruthy()
+  it('вкладки платформы переключают скриншот', () => {
+    const { container } = renderLanding()
+    const visible = () => [...container.querySelectorAll('#lnd-shot img')].filter(i => i.getAttribute('aria-hidden') !== 'true')
+    expect(visible().map(i => i.getAttribute('src'))).toEqual([SCREENS[0].src])
+    act(() => { fireEvent.click(screen.getByRole('tab', { name: 'Банк задач' })) })
+    expect(visible().map(i => i.getAttribute('src'))).toEqual([SCREENS[3].src])
+    expect(screen.getByRole('tab', { name: 'Банк задач' }).getAttribute('aria-selected')).toBe('true')
   })
 })
 
-describe('логика демо открытия уроков', () => {
-  it('сначала в каждом разделе открыты два первых урока', () => {
-    expect(initialUnlock()).toEqual([
-      ['open', 'open', 'locked', 'locked', 'locked'],
-      ['open', 'open', 'locked', 'locked'],
-    ])
+describe('логика демо открытия тем', () => {
+  it('сначала открыты две первые темы раздела', () => {
+    expect(initialUnlock()).toEqual(['open', 'open', 'locked', 'locked', 'locked'])
   })
 
-  it('раздел целиком проходится, после чего кнопке нечего делать', () => {
+  it('раздел проходится целиком, после этого кнопке нечего делать', () => {
     let st = initialUnlock()
-    for (let i = 0; i < 4; i++) st = submitHomework(st, 1).next
-    expect(st[1]).toEqual(['done', 'done', 'done', 'done'])
-    expect(st[0]).toEqual(initialUnlock()[0])
-    expect(submitHomework(st, 1).changed).toEqual([])
+    for (let i = 0; i < LESSONS.length; i++) st = submitHomework(st).next
+    expect(st.every(s => s === 'done')).toBe(true)
+    expect(submitHomework(st).changed).toEqual([])
+  })
+
+  it('замок качается, только когда открылась новая тема', () => {
+    expect(submitHomework(initialUnlock()).unlocked).toBe(true)
+    expect(submitHomework(['done', 'done', 'done', 'open', 'open']).unlocked).toBe(false)
   })
 })
 
-describe('3D-иконки (правка 2)', () => {
-  it('у каждой иконки из списка есть файл в public/brand/icons', () => {
-    const missing = ICONS.filter(n => !existsSync(resolve(process.cwd(), 'public/brand/icons', `${n}.webp`)))
-    expect(missing).toEqual([])
+describe('ассеты (правка 3)', () => {
+  const pub = (src: string) => resolve(process.cwd(), 'public', src.replace(/^\//, ''))
+
+  it('у каждой иконки, фото и скриншота есть файл', () => {
+    const files = [...ICONS.map(n => `/brand/icons/${n}.webp`), PHOTO.cutout.src, PHOTO.avatar.src, ...SCREENS.map(s => s.src)]
+    expect(files.filter(f => !existsSync(pub(f)))).toEqual([])
   })
 
-  it('все 14 иконок стоят на странице, у каждой явные размеры', () => {
+  it('на первом экране нет 3D-иконок; фото — сразу и с высоким приоритетом', () => {
     const { container } = renderLanding()
-    const imgs = [...container.querySelectorAll<HTMLImageElement>('img[src^="/brand/icons/"]')]
-    const used = new Set(imgs.map(i => i.getAttribute('src')!.replace(/^.*\/|\.webp$/g, '')))
-    expect([...used].sort()).toEqual([...ICONS].sort())
+    const hero = container.querySelector('#top')!
+    expect(hero.querySelector('img[src^="/brand/icons/"]')).toBeNull()
+    const photo = hero.querySelector(`img[src="${PHOTO.cutout.src}"]`)!
+    expect(photo.getAttribute('fetchpriority')).toBe('high')
+    expect(photo.getAttribute('loading')).not.toBe('lazy')
+  })
+
+  it('у всех картинок явные размеры; иконки и скриншоты — lazy', () => {
+    const { container } = renderLanding()
+    const imgs = [...container.querySelectorAll('img')]
     for (const img of imgs) {
-      expect(img.getAttribute('width')).toMatch(/^\d+$/)
-      expect(img.getAttribute('height')).toBe(img.getAttribute('width'))
-      expect(img.getAttribute('alt')).toBe('')
+      expect(img.getAttribute('width'), img.getAttribute('src')!).toMatch(/^\d+$/)
+      expect(img.getAttribute('height'), img.getAttribute('src')!).toMatch(/^\d+$/)
     }
-  })
-
-  it('ракета грузится сразу и с высоким приоритетом, остальные — лениво', () => {
-    const { container } = renderLanding()
-    const imgs = [...container.querySelectorAll<HTMLImageElement>('img[src^="/brand/icons/"]')]
-    const rocket = imgs.filter(i => i.getAttribute('src') === '/brand/icons/hero-rocket.webp')
-    expect(rocket).toHaveLength(1)
-    expect(rocket[0].getAttribute('fetchpriority')).toBe('high')
-    expect(rocket[0].getAttribute('loading')).not.toBe('lazy')
-    for (const img of imgs.filter(i => !rocket.includes(i))) {
-      expect(img.getAttribute('loading')).toBe('lazy')
-      expect(img.getAttribute('decoding')).toBe('async')
+    for (const img of imgs.filter(i => /\/brand\/(icons|screens)\//.test(i.getAttribute('src')!))) {
+      expect(img.getAttribute('loading'), img.getAttribute('src')!).toBe('lazy')
     }
-  })
-
-  it('в «Что внутри» иконки вместо плоских SVG', () => {
-    const { container } = renderLanding()
-    const cards = container.querySelectorAll('#inside .f-card')
-    expect(cards).toHaveLength(6)
-    cards.forEach(c => {
-      expect(c.querySelector('img[src^="/brand/icons/"]')).not.toBeNull()
-      expect(c.querySelector('svg')).toBeNull()
-    })
+    expect(container.querySelectorAll('#lnd-shot img')).toHaveLength(SCREENS.length)
   })
 })

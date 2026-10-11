@@ -11,13 +11,8 @@ export function useAnim() {
   return !useReducedMotion()
 }
 
-export const staggerChild: Variants = {
-  hidden: { opacity: 0, y: 40, scale: 0.96 },
+/** Ребёнок `Stagger` (`data-stagger` прототипа): въезжает снизу по очереди. */
+export const staggerItem: Variants = {
+  hidden: { opacity: 0, y: 40, scale: 0.97 },
   shown: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.6, ease: EASE } },
-}
-
-/** Пункты макетов экранов: въезжают по очереди при показе вкладки. */
-export const screenItem: Variants = {
-  off: { opacity: 0, x: -10 },
-  on: { opacity: 1, x: 0, transition: { duration: 0.3 } },
 }

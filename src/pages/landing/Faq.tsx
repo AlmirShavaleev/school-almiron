@@ -3,77 +3,48 @@ import { useState } from 'react'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
 
-type Audience = 's' | 'p'
+const FAQ: Array<[string, string]> = [
+  ['Подойдёт, если я совсем не понимаю физику?', 'Да. Диагностика покажет, с чего начать, а темы идут от простого к сложному — каждая открывается, когда ты готов.'],
+  ['Сколько времени нужно в неделю?', 'Сколько готов. Обычно 2–3 темы в неделю и пробник раз в месяц. Застрял — тема всё равно откроется по сроку.'],
+  ['Кто проверяет вторую часть?', 'ИИ разбирает решение по критериям ФИПИ, итоговый балл подтверждает преподаватель — до 48 часов.'],
+  ['Как родителю видеть прогресс?', 'На платформе есть страница прогресса: закрытые темы, ДЗ, пробники и прогноз балла.'],
+  ['Как отменить подписку?', 'В личном кабинете, в один клик. Первые 3 дня — бесплатно и без карты.'],
+]
 
-const FAQ: Record<Audience, Array<[string, string]>> = {
-  s: [
-    ['Я ничего не понимаю в физике. Мне подойдёт?', 'Да. Диагностика покажет, с чего начать, а план выстроит темы от простого к сложному.'],
-    ['Сколько времени нужно в неделю?', 'Зависит от времени до экзамена. План считает это сам: обычно 2–3 темы в неделю и пробник раз в месяц.'],
-    ['А если я пришёл поздно, в марте?', 'Все темы, прошедшие по графику, уже открыты. План сожмётся и начнёт с номеров, которые дают больше баллов.'],
-    ['Что если я застряну на задаче?', 'После 2–3 ошибок появится подсказка, у каждой задачи есть разбор.'],
-    ['Почему так дёшево?', 'Это ранний доступ: курс растёт вместе с первыми учениками. Мы не тратим деньги на менеджеров продаж и рассрочки.'],
-  ],
-  p: [
-    ['Как я пойму, что ребёнок занимается?', 'На платформе есть ссылка для родителя: по ней видно, что и сколько сделал ребёнок — закрытые темы, ДЗ, пробники и прогноз балла. А ещё можно получать отчёт в Telegram.'],
-    ['Кто проверяет работы?', 'Первую часть — автоматическая проверка. Вторую — ИИ по критериям ФИПИ, итоговый балл подтверждает преподаватель в течение 48 часов.'],
-    ['Как отменить подписку?', 'В личном кабинете, в один клик. Можно платить помесячно — годовая подписка по желанию, она просто выгоднее.'],
-    ['Что такое демо-доступ?', 'После регистрации 3 дня полного доступа бесплатно и без привязки карты. Понравится — оформишь подписку.'],
-    ['Вы гарантируете балл?', 'Нет, честно гарантировать балл не может никто. Мы показываем прогноз по реальным результатам, чтобы было видно, что подтянуть.'],
-  ],
-}
-
-/**
- * Вопрос-аккордеон. Ответ появляется через opacity/transform, без анимации
- * высоты (правило ТЗ: только transform/opacity).
- */
+/** Вопрос-аккордеон. Ответ — через opacity/transform, без анимации высоты. */
 function Question({ q, a, i }: { q: string; a: string; i: number }) {
   const anim = useAnim()
   const [open, setOpen] = useState(false)
+  const id = `lnd-faq-${i}`
   return (
-    <motion.div
-      className={open ? 'q open' : 'q'}
-      initial={anim ? { opacity: 0, y: 12 } : false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: i * 0.05 }}
-    >
-      <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+    <div className={open ? 'q open' : 'q'}>
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)}>
         {q}<span aria-hidden="true">+</span>
       </button>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
+            id={id}
             className="a"
             initial={anim ? { opacity: 0, y: -6 } : false}
             animate={{ opacity: 1, y: 0 }}
-            exit={anim ? { opacity: 0, transition: { duration: 0.15 } } : undefined}
-            transition={{ duration: 0.3 }}
+            exit={anim ? { opacity: 0 } : undefined}
+            transition={{ duration: 0.25 }}
           >
             <p>{a}</p>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }
 
 export function Faq() {
-  const [who, setWho] = useState<Audience>('s')
   return (
-    <section id="faq">
+    <section id="faq" style={{ paddingTop: 20 }}>
       <div className="wrap faq">
-        <Reveal className="sec-head center">
-          <span className="eyebrow">Вопросы</span>
-          <h2>Частые вопросы</h2>
-        </Reveal>
-        <div className="center">
-          <div className="tabs" role="tablist" aria-label="Для кого вопросы">
-            <button type="button" role="tab" aria-selected={who === 's'} className={who === 's' ? 'on' : undefined} onClick={() => setWho('s')}>Ученикам</button>
-            <button type="button" role="tab" aria-selected={who === 'p'} className={who === 'p' ? 'on' : undefined} onClick={() => setWho('p')}>Родителям</button>
-          </div>
-        </div>
-        <div key={who}>
-          {FAQ[who].map(([q, a], i) => <Question key={q} q={q} a={a} i={i} />)}
-        </div>
+        <Reveal><h2>Частые вопросы</h2></Reveal>
+        {FAQ.map(([q, a], i) => <Question key={q} q={q} a={a} i={i} />)}
       </div>
     </section>
   )

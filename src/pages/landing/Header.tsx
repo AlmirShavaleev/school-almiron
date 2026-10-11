@@ -3,10 +3,9 @@ import { LINKS } from './links'
 import { Mark } from './Brand'
 
 const ANCHORS: Array<[string, string]> = [
-  ['#inside', 'Что внутри'],
-  ['#screens', 'Как выглядит'],
-  ['#unlock', 'Как идёт курс'],
-  ['#prices', 'Цены'],
+  ['#a1', '5 аргументов'],
+  ['#inside', 'Платформа'],
+  ['#price', 'Цена'],
   ['#faq', 'Вопросы'],
 ]
 

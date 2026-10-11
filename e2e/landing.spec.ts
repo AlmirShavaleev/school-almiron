@@ -2,12 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 import path from 'path'
 
 /**
- * Лендинг глазами гостя (ЛЕНДИНГ_ТЗ.md §5): страница открывается и на `/`, и
- * на `/about`, CTA ведут на `/register`, на телефонах нет горизонтального
- * скролла. Запуск: `npx playwright test -c playwright.landing.config.ts`.
+ * Лендинг глазами гостя (ЛЕНДИНГ_ТЗ.md §5, правка 3): страница открывается и
+ * на `/`, и на `/about`, CTA ведут на `/register`, на телефонах нет
+ * горизонтального скролла.
+ * Запуск: `npx playwright test -c playwright.landing.config.ts`.
  */
 
-const TITLE = 'Готовься к экзамену по авторскому курсу в своём темпе'
+const TITLE = 'Дай мне 5 аргументов — и ты поймёшь, почему эта платформа тебе подходит'
 
 async function openLanding(page: Page, url = '/') {
   await page.goto(url)
@@ -26,7 +27,7 @@ test('`/about` тоже открывает лендинг', async ({ page }) => 
 
 test('все CTA регистрации ведут на /register', async ({ page }) => {
   await openLanding(page)
-  for (const name of ['Регистрация', 'Начать бесплатно →', 'Создать аккаунт →', 'Зарегистрироваться', 'Начать с 3 бесплатных дней']) {
+  for (const name of ['Регистрация', 'Попробовать', 'Создать аккаунт →', 'Пройти диагностику', 'Начать с 3 бесплатных дней']) {
     const links = page.getByRole('link', { name, exact: true })
     expect(await links.count(), name).toBeGreaterThan(0)
     for (const href of await links.evaluateAll(els => els.map(e => e.getAttribute('href')))) expect(href, name).toBe('/register')
@@ -55,7 +56,7 @@ for (const width of [360, 390, 430]) {
     })
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
-    await expect(page.getByRole('link', { name: 'Начать бесплатно', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '3 дня бесплатно', exact: true })).toBeVisible()
   })
 }
 
@@ -79,7 +80,11 @@ for (const scheme of ['light', 'dark'] as const) {
         await Promise.all([...document.images].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r })))
         window.scrollTo(0, 0)
       })
+      // Плавающая кнопка телефона на полном снимке легла бы поверх первого
+      // экрана (fixed снимается один раз) — на полном снимке её прячем.
+      const hide = await page.addStyleTag({ content: '.lnd .m-cta { visibility: hidden }' })
       await page.screenshot({ path: path.join(SHOTS!, `лендинг-${label}-${scheme}.png`), fullPage: true })
+      await hide.evaluate(el => el.remove())
       await page.screenshot({ path: path.join(SHOTS!, `лендинг-${label}-${scheme}-первый-экран.png`) })
     })
   }

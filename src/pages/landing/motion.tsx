@@ -6,7 +6,7 @@ import { EASE, useAnim } from './anim'
  * Появление блока при прокрутке (в прототипе — `data-r`): снизу вверх, один
  * раз. При «уменьшить движение» блок рисуется сразу в конечном виде.
  */
-export function Reveal({ children, className, style, id, amount = 0.2 }: {
+export function Reveal({ children, className, style, id, amount = 0.15 }: {
   children: ReactNode
   className?: string
   style?: React.CSSProperties
@@ -19,10 +19,10 @@ export function Reveal({ children, className, style, id, amount = 0.2 }: {
       id={id}
       className={className}
       style={style}
-      initial={anim ? { opacity: 0, y: 34 } : false}
+      initial={anim ? { opacity: 0, y: 30 } : false}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount }}
-      transition={{ duration: 0.7, ease: EASE }}
+      transition={{ duration: 0.6, ease: EASE }}
     >
       {children}
     </motion.div>
@@ -31,10 +31,10 @@ export function Reveal({ children, className, style, id, amount = 0.2 }: {
 
 const staggerParent: Variants = {
   hidden: {},
-  shown: { transition: { staggerChildren: 0.09 } },
+  shown: { transition: { staggerChildren: 0.14 } },
 }
 
-/** Сетка карточек, дети въезжают по очереди (`data-stagger` прототипа). */
+/** Сетка карточек; дети — `motion.*` с `variants={staggerItem}`. */
 export function Stagger({ children, className }: { children: ReactNode; className?: string }) {
   const anim = useAnim()
   return (

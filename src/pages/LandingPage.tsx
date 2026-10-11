@@ -3,17 +3,15 @@ import { MotionConfig } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 import { Header } from './landing/Header'
 import { Hero } from './landing/Hero'
-import { Inside } from './landing/Inside'
+import { Arg1Compare } from './landing/Arg1Compare'
+import { Arg2System } from './landing/Arg2System'
+import { Arg3Unlock } from './landing/Arg3Unlock'
+import { Arg4Ai } from './landing/Arg4Ai'
+import { Arg5Forecast } from './landing/Arg5Forecast'
 import { Screens } from './landing/Screens'
-import { MockExams } from './landing/MockExams'
-import { StudentPath } from './landing/StudentPath'
-import { Unlock } from './landing/Unlock'
-import { CheckPartTwo } from './landing/CheckPartTwo'
-import { Progress } from './landing/Progress'
-import { Subjects } from './landing/Subjects'
 import { Prices } from './landing/Prices'
-import { Faq } from './landing/Faq'
 import { FinalCta, Footer } from './landing/Final'
+import { Faq } from './landing/Faq'
 
 type Theme = 'light' | 'dark'
 const THEME_KEY = 'almiron-landing-theme'
@@ -32,7 +30,8 @@ function systemDark() {
 }
 
 /**
- * Лендинг «Школа Almiron» (ЛЕНДИНГ_ТЗ.md; эталон — лендинг_прототип.html).
+ * Лендинг «Школа Almiron». Эталон с правки 3 — лендинг_прототип_v2.html
+ * («диалог + 5 аргументов», ЛЕНДИНГ_ПРАВКИ_3_диалог.md).
  * Живёт на `/about` и на `/` для гостя (см. RootRedirect в App.tsx). Это
  * ленивый чанк: framer-motion и стили лендинга в кабинет не попадают.
  *
@@ -64,17 +63,15 @@ export function LandingPage() {
         <Header onToggleTheme={toggle} />
         <main>
           <Hero />
-          <Inside />
+          <Arg1Compare />
+          <Arg2System />
+          <Arg3Unlock />
+          <Arg4Ai />
+          <Arg5Forecast />
           <Screens />
-          <MockExams />
-          <StudentPath />
-          <Unlock />
-          <CheckPartTwo />
-          <Progress />
-          <Subjects />
           <Prices />
-          <Faq />
           <FinalCta />
+          <Faq />
         </main>
         <Footer />
       </div>
