@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { EASE, useAnim } from './anim'
 import { LINKS } from './links'
+import { Mark } from './Brand'
 
 /** Плавающие формулы фона: [текст, left, top, задержка петли, размер]. */
 const FLOATERS: Array<[string, string, string, number, number?]> = [
@@ -35,7 +36,8 @@ const up = (delay: number) => ({
 })
 
 /**
- * Первый экран. `photo` — фото автора: пока его нет, в карточке буква «А».
+ * Первый экран. `photo` — фото автора: пока его нет, в карточке знак
+ * «Орбита», вокруг него медленно вращается оранжевая орбита (мотив знака).
  */
 export function Hero({ photo }: { photo?: string }) {
   const anim = useAnim()
@@ -90,14 +92,27 @@ export function Hero({ photo }: { photo?: string }) {
           </motion.div>
         </div>
         <motion.div className="card author" {...a(0.2)}>
-          <motion.div
-            className="ava"
-            initial={anim ? { scale: 0.6, rotate: -10 } : false}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ duration: 0.9, delay: 0.4, type: 'spring', bounce: 0.45 }}
-          >
-            {photo ? <img src={photo} alt="Альмир, автор курса" width={120} height={120} /> : 'А'}
-          </motion.div>
+          <div className="ava-mark">
+            <motion.div
+              className="orbit"
+              aria-hidden="true"
+              initial={false}
+              animate={anim ? { rotate: 360 } : undefined}
+              transition={{ duration: 40, ease: 'linear', repeat: Infinity }}
+            >
+              <svg viewBox="0 0 200 160">
+                <ellipse cx="100" cy="80" rx="96" ry="44" transform="rotate(-22 100 80)" fill="none" stroke="var(--or)" strokeWidth="2" strokeDasharray="6 7" opacity=".55" />
+                <circle cx="186" cy="44" r="6" fill="var(--or)" />
+              </svg>
+            </motion.div>
+            <motion.div
+              initial={anim ? { scale: 0.6, rotate: -10 } : false}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ duration: 0.9, delay: 0.4, type: 'spring', bounce: 0.45 }}
+            >
+              {photo ? <img className="ava-img" src={photo} alt="Альмир, автор курса" width={108} height={108} /> : <Mark size={108} />}
+            </motion.div>
+          </div>
           <q>Не нужно ждать, пока откроют тему, и подстраиваться под вебинары в 19:00. Занимайся, когда удобно, — я прослежу, чтобы ты успел всё.</q>
           <small>Альмир, автор курса</small>
           <div className="hl-list">

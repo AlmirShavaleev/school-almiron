@@ -82,7 +82,7 @@ export function Prices() {
   }
 
   return (
-    <section id="prices" className="alt">
+    <section id="prices" className="alt wm">
       <div className="wrap">
         <Reveal className="sec-head center">
           <span className="eyebrow">Цена</span>

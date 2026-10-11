@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { LINKS } from './links'
+import { Mark } from './Brand'
 
 const ANCHORS: Array<[string, string]> = [
   ['#inside', 'Что внутри'],
@@ -13,7 +14,7 @@ export function Header({ onToggleTheme }: { onToggleTheme: () => void }) {
   return (
     <header className="nav">
       <div className="wrap">
-        <a className="logo" href="#top"><i>A</i>Школа Almiron</a>
+        <a className="logo" href="#top"><Mark size={34} />Школа Almiron</a>
         <nav className="nav-links" aria-label="Разделы">
           {ANCHORS.map(([href, label]) => <a key={href} href={href}>{label}</a>)}
         </nav>

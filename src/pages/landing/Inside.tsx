@@ -14,7 +14,7 @@ const CARDS: Array<{ icon: ReactNode; h: string; p: string }> = [
 
 export function Inside() {
   return (
-    <section id="inside">
+    <section id="inside" className="wm">
       <div className="wrap">
         <Reveal className="sec-head">
           <span className="eyebrow">Что внутри</span>

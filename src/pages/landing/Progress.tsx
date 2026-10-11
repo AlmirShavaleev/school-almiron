@@ -2,6 +2,7 @@ import { animate, motion, useInView } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
 import { EASE, useAnim } from './anim'
+import { Mark } from './Brand'
 
 /** Условный прогноз на макете (подпись «Цифры условные» не убирать). */
 const FORECAST = 71
@@ -45,7 +46,7 @@ export function Progress() {
                 <svg viewBox="0 0 120 120" aria-hidden="true">
                   <defs>
                     <linearGradient id="lnd-gg" x1="0" x2="1">
-                      <stop offset="0" stopColor="#3b7bff" /><stop offset="1" stopColor="#1f55e0" />
+                      <stop offset="0" stopColor="#2f5bea" /><stop offset="1" stopColor="#2449c4" />
                     </linearGradient>
                   </defs>
                   <circle className="g-bg" cx="60" cy="60" r="50" fill="none" strokeWidth="12" />
@@ -84,7 +85,7 @@ export function Progress() {
             <h3 style={{ margin: '14px 0 6px' }}>Бот пишет, когда что-то происходит</h3>
             <p style={{ color: 'var(--ink2)', fontSize: 15 }}>Новое ДЗ, проверка второй части, открытый урок, пробник и итоги недели — всё приходит в Telegram. Не нужно постоянно заходить и проверять.</p>
             <div className="tg">
-              <div className="tg-head"><span className="tg-ava">A</span><div><b>Almiron бот</b><small>бот</small></div></div>
+              <div className="tg-head"><span className="tg-ava"><Mark white size={24} /></span><div><b>Almiron бот</b><small>бот</small></div></div>
               {TG.map(([b, t, time], i) => (
                 <motion.div
                   key={b}

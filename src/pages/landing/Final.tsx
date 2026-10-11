@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Reveal } from './motion'
 import { useAnim } from './anim'
 import { LINKS } from './links'
+import { Mark } from './Brand'
 
 const STEPS: Array<[string, string]> = [
   ['Регистрация', 'Почта или телефон — и ты внутри'],
@@ -18,7 +19,7 @@ export function FinalCta() {
       <div className="wrap">
         <Reveal className="cta">
           <div>
-            <span className="eyebrow">Старт за минуту</span>
+            <span className="eyebrow cta-mark"><Mark white size={28} />Старт за минуту</span>
             <h2>Зарегистрируйся и начни прямо сейчас</h2>
             <p className="lead">Первые 3 дня — полный доступ бесплатно. Без карты, без заявок и без звонков менеджеров.</p>
             <div className="hero-ctas">
@@ -51,7 +52,7 @@ export function Footer() {
     <>
       <footer>
         <div className="wrap">
-          <span>© Школа Almiron, 2026</span>
+          <span className="brand"><Mark size={28} />© Школа Almiron, 2026</span>
           <nav aria-label="Документы">
             <a href={LINKS.privacy}>Политика конфиденциальности</a><span aria-hidden="true">·</span>
             <a href={LINKS.offer}>Договор-оферта</a><span aria-hidden="true">·</span>

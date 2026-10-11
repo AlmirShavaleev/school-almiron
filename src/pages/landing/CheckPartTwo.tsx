@@ -1,6 +1,7 @@
 import { animate, motion, useInView } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { Reveal } from './motion'
+import { Plate } from './Brand'
 import { useAnim } from './anim'
 
 const HAND = [
@@ -69,7 +70,8 @@ export function CheckPartTwo() {
           </Reveal>
           <Reveal className="card">
             <div className="num">2</div><h3>ИИ сверяет с критериями</h3>
-            <div className="sheet auto">
+            <div className="sheet auto plate-like">
+              <div className="plate-h"><b>Критерии ФИПИ</b><span>задача № 24</span></div>
               {anim && (
                 <motion.div
                   className="scan"
@@ -88,12 +90,13 @@ export function CheckPartTwo() {
             <div className="num">3</div><h3>Балл и разбор</h3>
             <div className="score"><b>{shownScore}</b> <span>из 3</span></div>
             <motion.div
-              className="comment"
               initial={anim ? { opacity: 0, y: 16 } : false}
               animate={commented || !anim ? { opacity: 1, y: 0 } : undefined}
               transition={{ duration: 0.6 }}
             >
-              «Решение верное. В следующий раз подпиши, какую систему отсчёта выбрал, — на экзамене за это не снимут, но так понятнее».
+              <Plate tone="trap" title="Комментарий" note="ДЗ · вторая часть">
+                «Решение верное. В следующий раз подпиши, какую систему отсчёта выбрал, — на экзамене за это не снимут, но так понятнее».
+              </Plate>
             </motion.div>
             <p className="txt" style={{ marginTop: 12 }}>Балл и комментарий — до 48 часов.</p>
           </Reveal>

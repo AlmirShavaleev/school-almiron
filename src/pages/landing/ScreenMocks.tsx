@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { screenItem as item } from './anim'
+import { Plate } from './Brand'
 
 /**
  * Макеты экранов кабинета для блока «Как это выглядит». Каждый принимает
@@ -29,12 +30,23 @@ export function VideoScreen({ image, alt = 'Видеоконспект урок�
         <span className="play" aria-hidden="true">▶</span>
       </div>
       <div className="vbar"><i /></div>
-      <div className="vmeta"><b>3.1 Импульс тела</b><span>Видеоконспект · 4 мин</span></div>
+      <div className="vmeta"><b>Импульс тела</b><span>Видеоконспект · 4 мин</span></div>
       <div className="chips">
         {['Определение', 'Направление импульса', 'Примеры'].map((c, i) => (
           <motion.span key={c} className={i === 0 ? 'chip on' : 'chip'} variants={item}>{c}</motion.span>
         ))}
       </div>
+      <motion.div variants={item}>
+        <Plate title="Из кодификатора ЕГЭ" note="п. 1.4.1">
+          Импульс тела — векторная величина, направлен так же, как скорость:
+          <span className="f"><span className="vec">p</span> = m<span className="vec">v</span></span>
+        </Plate>
+      </motion.div>
+      <motion.div variants={item}>
+        <Plate tone="trap" title="Ловушка ЕГЭ" note="частая ошибка">
+          Мяч отскочил от стены с той же по модулю скоростью — импульс изменился на 2mv, а не на ноль.
+        </Plate>
+      </motion.div>
     </>
   )
 }
@@ -46,12 +58,12 @@ export function HomeworkScreen({ image, alt = 'ДЗ с автопроверко�
       <div className="hw-top"><b>ДЗ · Законы сохранения</b><span>6 из 8</span></div>
       <div className="pbar"><i style={{ width: '75%' }} /></div>
       <motion.div className="task" variants={item}>
-        <span className="kim">КИМ 3</span>
+        <div className="task-top"><span className="no dz">№ 1</span><span className="kim">КИМ 3</span></div>
         <p>Скорость тела массой 5 кг за 2 с изменилась на 4 м/с. Чему равна равнодействующая сила? (Н)</p>
         <div className="ans"><span className="inp">10</span><span className="tag tag-ok">✓ Верно</span></div>
       </motion.div>
       <motion.div className="task" variants={item}>
-        <span className="kim">КИМ 4</span>
+        <div className="task-top"><span className="no dz">№ 2</span><span className="kim">КИМ 4</span></div>
         <p>Период маятника 0,8 с. Массу груза увеличили в 2 раза. Каким станет период? (с)</p>
         <div className="ans"><span className="inp">1,6</span><span className="tag tag-soon">Неверно — попробуй ещё</span></div>
         <small className="hint">Подсказка: от чего зависит период математического маятника?</small>
@@ -64,7 +76,7 @@ export function PartTwoScreen({ image, alt = 'Проверка второй ча
   if (image) return <Shot image={image} alt={alt} />
   return (
     <>
-      <div className="hw-top"><b>Задача 24 · вторая часть</b><span className="tag tag-ok">Проверено</span></div>
+      <div className="hw-top"><b>Задача № 24 · вторая часть</b><span className="tag tag-ok">Проверено</span></div>
       <div className="p2">
         <div className="photo">
           <svg viewBox="0 0 160 200" aria-hidden="true">
@@ -107,9 +119,9 @@ export function BankScreen({ image, alt = 'Банк задач по номера
         ))}
       </div>
       <div className="bank">
-        {BANK.map(([k, p, l]) => (
+        {BANK.map(([k, p, l], i) => (
           <motion.div key={k} className="bk" variants={item}>
-            <span className="kim">{k}</span><p>{p}</p><span className="lvl">{l}</span>
+            <span className="no">№ {i + 1}</span><span className="kim">{k}</span><p>{p}</p><span className="lvl">{l}</span>
           </motion.div>
         ))}
       </div>
