@@ -123,3 +123,10 @@ create table public.topic_materials (id uuid primary key default gen_random_uuid
 alter table public.topic_materials enable row level security;
 grant select on public.topic_materials to authenticated;
 grant select on public.topics, public.modules to authenticated; -- как на проде: программу курса ученик читает
+
+-- §288.1: очередь уведомлений и подключение Telegram (столбцы — как на проде 12.10).
+create table public.telegram_connections (id uuid primary key default gen_random_uuid(), profile_id uuid not null, telegram_chat_id bigint,
+  is_enabled boolean not null default true, disconnected_at timestamptz);
+create table public.notification_queue (id uuid primary key default gen_random_uuid(), profile_id uuid not null, channel text not null default 'telegram',
+  event_type text not null, entity_type text, entity_id uuid, deduplication_key text not null unique, payload jsonb not null default '{}'::jsonb,
+  status text not null default 'pending', attempts integer not null default 0, scheduled_for timestamptz not null default now());

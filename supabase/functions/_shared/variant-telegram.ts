@@ -451,6 +451,10 @@ export function isTelegramPreferenceEnabled(
     case 'mock_exam_soon':
     case 'mock_exam_started':
       return prefs.homework ?? true
+    // §288.1. «Открыт урок» (курс по прохождению) — тоже про задания курса:
+    // своей галочки нет, под «Домашние задания».
+    case 'topic_unlocked':
+      return prefs.homework ?? true
     // §233. «Срок ДЗ прошёл» с главной преподавателя — галочка «Просроченное
     // ДЗ» («Если ДЗ не сдано в срок»), она ровно про это.
     case 'topic_homework_reminder':

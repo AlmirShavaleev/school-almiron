@@ -8,10 +8,11 @@
  * доступ к материалам закрытого урока под `authenticated` с RLS, экран
  * «Прохождение» и его совпадение с воротами ученика.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import path from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { STUBS, migrationFiles } from '../../test/sql/migrationChain'
+import { MIGRATIONS, STUBS, migrationFiles } from '../../test/sql/migrationChain'
 
 const U = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
 const ADMIN = U(1), KID = U(2), KID2 = U(3), OUTSIDER = U(4)
@@ -273,5 +274,96 @@ describe('§288 открытие уроков по прохождению', () =
     const locks = await val<{ preview: boolean; topics: Array<Record<string, unknown>> }>(`select my_course_topic_locks($1)`, [id.course])
     expect(locks.preview).toBe(true)
     expect(locks.topics.filter((t) => t.open).map((t) => t.topic_id).sort()).toEqual([id.t1, id.t2, id.u1, id.u2].sort())
+  })
+})
+
+describe('§288.1 «урок открыт ученику» везде, Telegram «Открыт урок», файлы только открытых', () => {
+  const c: Record<string, string> = {}
+  const K3 = U(5)
+
+  beforeAll(async () => {
+    // Раздел 2 файла (замена тел 17 функций) здесь не применяется: этих функций
+    // нет в заглушках; их фрагменты сверены на проде (по одному в каждой).
+    const name = readdirSync(MIGRATIONS).find((f) => /^(PENDING_288_1_open_states|\d+_open_states_288_1)\.sql$/.test(f))
+    if (!name) throw new Error('Не найдена миграция §288.1')
+    const file = readFileSync(path.join(MIGRATIONS, name), 'utf8')
+    const a = file.indexOf('-- 2. Замена вызова')
+    const b = file.indexOf('-- study_plan_freeze_topic_internal')
+    const cut = file.slice(0, file.lastIndexOf('\n', file.lastIndexOf('-- ───', a))) + '\n' + file.slice(b)
+    await db.exec(cut)
+
+    await as(null)
+    await db.query(`insert into profiles (id, email, full_name, role) values ($1, 'k3@t.ru', 'Ученик Три', 'student')`, [K3])
+    c.student = await val(`insert into students (profile_id) values ($1) returning id`, [K3])
+    // курс по датам: урок с датой в будущем и открытый
+    c.sched = await val(`insert into courses (title) values ('По датам') returning id`)
+    c.gs = await val(`insert into groups (course_id, name) values ($1, 's') returning id`, [c.sched])
+    const ms = await val<string>(`insert into modules (course_id, title) values ($1, 'М') returning id`, [c.sched])
+    c.sOpen = await val(`insert into topics (module_id, title, order_index) values ($1, 'Открыт', 1) returning id`, [ms])
+    c.sLater = await val(`insert into topics (module_id, title, order_index, available_from) values ($1, 'Позже', 2, '2099-01-01') returning id`, [ms])
+    // курс по прохождению: p1, p2 (ДЗ), p3
+    c.prog = await val(`insert into courses (title) values ('По прохождению') returning id`)
+    c.gp = await val(`insert into groups (course_id, name) values ($1, 'p') returning id`, [c.prog])
+    const mp = await val<string>(`insert into modules (course_id, title) values ($1, 'М') returning id`, [c.prog])
+    c.p1 = await val(`insert into topics (module_id, title, order_index) values ($1, 'П1', 1) returning id`, [mp])
+    c.p2 = await val(`insert into topics (module_id, title, order_index) values ($1, 'П2', 2) returning id`, [mp])
+    c.p3 = await val(`insert into topics (module_id, title, order_index) values ($1, 'П3', 3) returning id`, [mp])
+    c.hw = await val(`insert into topic_homework (topic_id, is_published) values ($1, true) returning id`, [c.p2])
+    for (const g of [c.gs, c.gp]) await db.query(`insert into group_students (group_id, student_id) values ($1, $2)`, [g, c.student])
+    await as(ADMIN)
+    await db.query(`select admin_course_unlock_mode_set($1, 'progress')`, [c.prog])
+  })
+
+  it('topic_open_with: нет флага — прежний topic_open_now; есть — флаг', async () => {
+    await as(null)
+    expect(await val(`select topic_open_with('{}'::jsonb, 'x', null, null)`)).toBe(true)
+    expect(await val(`select topic_open_with('{}'::jsonb, 'x', false, null)`)).toBe(false)
+    expect(await val(`select topic_open_with('{}'::jsonb, 'x', null, '2099-01-01')`)).toBe(false)
+    expect(await val(`select topic_open_with('{"x": true}'::jsonb, 'x', false, '2099-01-01')`)).toBe(true)
+    expect(await val(`select topic_open_with('{"x": false}'::jsonb, 'x', true, null)`)).toBe(false)
+  })
+
+  it('флаги — только по курсам «по прохождению»; по ученику и «хотя бы одному»', async () => {
+    await as(null)
+    const f = await val<Record<string, boolean>>(`select progress_open_by_student(null, array[$1]::uuid[])`, [c.student])
+    expect(f).toEqual({ [`${c.student}:${c.p1}`]: true, [`${c.student}:${c.p2}`]: true, [`${c.student}:${c.p3}`]: false })
+    // курс по датам во флаги не попадает — значит, его результат прежний
+    expect(await val(`select progress_open_by_student(array[$1]::uuid[], null)`, [c.sched])).toEqual({})
+    expect(await val(`select progress_open_any(array[$1, $2]::uuid[])`, [c.sched, c.prog]))
+      .toEqual({ [c.p1]: true, [c.p2]: true, [c.p3]: false })
+    // без курсов и учеников — пусто (не «все ученики базы»)
+    expect(await val(`select progress_open_by_student(null, null)`)).toEqual({})
+  })
+
+  it('Telegram «Открыт урок»: при подключённом боте — в очередь с ссылкой на урок, один раз', async () => {
+    await as(null)
+    await db.query(`insert into telegram_connections (profile_id, telegram_chat_id) values ($1, 12345)`, [K3])
+    const att = await val<string>(
+      `insert into topic_homework_attempts (homework_id, student_id, status, attempt_number) values ($1, $2, 'submitted', 1) returning id`,
+      [c.hw, c.student])
+    await db.query(`insert into topic_homework_reviews (attempt_id, decision, score) values ($1, 'accepted', 70)`, [att])
+    await db.query(`update topic_homework_attempts set status = 'accepted' where id = $1`, [att])
+    const q = (await db.query<{ event_type: string; payload: Record<string, unknown>; profile_id: string }>(
+      `select event_type, payload, profile_id from notification_queue where entity_id = $1`, [c.p3])).rows
+    expect(q).toHaveLength(1)
+    expect(q[0]).toMatchObject({ event_type: 'topic_unlocked', profile_id: K3 })
+    expect(q[0].payload).toEqual({ course_title: 'По прохождению', title: 'П3', link: `/my-course/${c.gp}/topic/${c.p3}` })
+    expect(await val(`select notified_at is not null from topic_unlock_events where student_id = $1 and topic_id = $2`, [c.student, c.p3])).toBe(true)
+    // повторное событие по тому же уроку — без второго сообщения
+    await db.query(`insert into topic_homework_reviews (attempt_id, decision, score) values ($1, 'accepted', 80)`, [att])
+    await db.query(`update topic_homework_attempts set status = 'submitted' where id = $1`, [att])
+    await db.query(`update topic_homework_attempts set status = 'accepted' where id = $1`, [att])
+    expect(await val(`select count(*)::int from notification_queue where entity_id = $1`, [c.p3])).toBe(1)
+  })
+
+  it('файлы course-materials: в курсе по датам — только открытого урока; по прохождению — по воротам', async () => {
+    await as(K3)
+    expect(await val(`select auth_is_student_of_topic($1)`, [c.sOpen])).toBe(true)
+    expect(await val(`select auth_is_student_of_topic($1)`, [c.sLater])).toBe(false)
+    expect(await val(`select auth_is_student_of_topic($1)`, [c.p3])).toBe(true)
+    await as(ADMIN)
+    await db.query(`select staff_topic_override_set($1, $2, 'closed')`, [c.student, c.p1])
+    await as(K3)
+    expect(await val(`select auth_is_student_of_topic($1)`, [c.p1])).toBe(false)
   })
 })

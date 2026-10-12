@@ -142,6 +142,19 @@ function buildMessage(item: QueueItem, appUrl: string) {
     case 'new_homework_digest':
       return buildHomeworkDigestTelegramMessage(p, appUrl)
 
+    // §288.1. Урок открылся по прохождению (закрыт предыдущий) — ставит
+    // _topic_unlock_events_for. Галочка — «Домашние задания» (см. variant-telegram).
+    case 'topic_unlocked':
+      return {
+        text: (
+        `🔓 <b>Открыт урок</b>
+
+` +
+        `${headline(esc(p.course_title), esc(p.title))}`
+        ),
+        replyMarkup: button(p.link, 'Открыть урок'),
+      }
+
     // Приветствие при добавлении в курс. Ссылок на ДЗ и списка заданий здесь
     // намеренно нет — решение владельца: рассылка по старым ДЗ была бы спамом.
     case 'course_enrolled':
