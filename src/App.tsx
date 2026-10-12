@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { RumTracker } from '@/components/perf/RumTracker'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
 import { LoadingGate } from '@/components/shared/LoadingGate'
@@ -309,6 +310,8 @@ export default function App() {
     <ErrorBoundary>
     <BrowserRouter>
       <AppAuth />
+      {/* §291: свой RUM — сколько ученик ждёт вкладки и запросы к базе */}
+      <RumTracker />
       {/* Vercel Web Analytics — счётчик просмотров страниц на всё приложение
           (решение владельца 14.08, оно же меняет §107 в части «внешние
           счётчики»: здесь нет кук и межсайтовой слежки).
