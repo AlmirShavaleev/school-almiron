@@ -25,7 +25,7 @@ export function migrationFiles(): string[] {
     find(/^\d+_perf_284c_staff_topic_set\.sql$/),
     find(/^(PENDING_282_2|\d+)_subscription_sets(_282_2)?\.sql$/),
     find(/^(PENDING_287|\d+)_promo_testers(_287)?\.sql$/),
-    find(/^(PENDING_288_a|\d+)_unlock(_288_a)?\.sql$/),
-    find(/^(PENDING_288_b|\d+)_gates(_288_b)?\.sql$/),
+    find(/^(PENDING_288_a_unlock|\d+_progress_unlock_288a)\.sql$/),
+    find(/^(PENDING_288_b_gates|\d+_progress_gates_288b)\.sql$/),
   ]
 }
