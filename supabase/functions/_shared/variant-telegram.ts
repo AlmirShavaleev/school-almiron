@@ -487,7 +487,10 @@ export function isTelegramPreferenceEnabled(
     // Зачисление глазами преподавателя — рабочий сигнал «к тебе записались».
     // Галочки под него нет: отключать «сообщите, что у меня новый ученик»
     // нечему. Общий выключатель telegram выше по функции его гасит.
+    // §290. «Подписка/пробный заканчивается завтра» (subscription_ending) — про
+    // доступ к оплаченному курсу, галочки под него тоже нет.
     case 'course_student_enrolled':
+    case 'subscription_ending':
       return true
     case 'lesson_rescheduled':
     case 'lesson_cancelled':

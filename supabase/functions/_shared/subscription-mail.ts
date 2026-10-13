@@ -4,14 +4,14 @@
  * edge-функция subscription-renew (очередь subscription_mail_outbox).
  *
  * Письма MVP: неудачное списание (с датой следующей попытки), подписка
- * закончилась, автопродление отключено. Адреса сайта в тексте нет —
+ * закончилась, автопродление отключено; §290 — «заканчивается завтра». Адреса сайта в тексте нет —
  * только кнопка на кабинет (ссылка из настройки SUBSCRIPTION_APP_URL).
  */
 import { cancelReasonText } from './subscription.ts'
 
 export const RESEND_API = 'https://api.resend.com/emails'
 
-export type MailKind = 'charge_failed' | 'expired' | 'auto_renew_off'
+export type MailKind = 'charge_failed' | 'expired' | 'auto_renew_off' | 'ending_soon'
 
 /** Строка из subscription_mail_claim. */
 export interface MailRow {
@@ -76,6 +76,13 @@ export function buildMail(row: MailRow, cabinetUrl: string | null): Mail {
     subject = row.source === 'trial' ? 'Пробный период закончился' : 'Подписка закончилась'
     lines.push(`${row.source === 'trial' ? 'Пробный период' : 'Подписка'} на ${course} закончилась, доступ к курсу закрыт.`)
     lines.push('Прогресс и работы сохранены — оформите подписку, и всё вернётся на место.')
+  } else if (row.kind === 'ending_soon') {
+    // §290: за сутки до конца пробного/подписки без автопродления
+    const trial = row.status === 'trial'
+    subject = trial ? 'Пробный период заканчивается завтра' : 'Подписка заканчивается завтра'
+    const until = formatDayMsk(row.access_until)
+    lines.push(`${trial ? 'Пробный период' : 'Подписка'} на ${course} заканчивается${until ? ` ${until}` : ' завтра'}.`)
+    lines.push('Оформите подписку в разделе «Моя подписка», чтобы продолжить без перерыва. Прогресс сохранится в любом случае.')
   } else {
     subject = 'Автопродление подписки отключено'
     const until = formatDayMsk(row.access_until)

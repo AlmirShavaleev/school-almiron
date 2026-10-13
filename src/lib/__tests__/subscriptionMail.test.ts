@@ -55,6 +55,16 @@ describe('buildMail', () => {
     expect(m.text).toContain('Курс открыт до 15 октября')
   })
 
+  it('§290 заканчивается завтра: пробный и платный, дата окончания, кнопка', () => {
+    const trial = buildMail(row({ kind: 'ending_soon', status: 'trial', source: 'trial' }), 'https://cab.test')
+    expect(trial.subject).toBe('Пробный период заканчивается завтра')
+    expect(trial.text).toContain('Пробный период на «Курс с подпиской» заканчивается 15 октября')
+    expect(trial.text).toContain('https://cab.test/my-subscription')
+    const paid = buildMail(row({ kind: 'ending_soon', status: 'active' }), null)
+    expect(paid.subject).toBe('Подписка заканчивается завтра')
+    expect(paid.text).not.toContain('Автопродление')
+  })
+
   it('HTML экранируется', () => {
     const m = buildMail(row({ course_title: '<script>x</script>' }), null)
     expect(m.html).not.toContain('<script>')
