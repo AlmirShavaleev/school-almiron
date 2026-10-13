@@ -4,7 +4,8 @@
 -- catalog_access_ok()).
 --
 -- Для нынешних школьников — ничего:
---   • демо — только при подписке на курс в статусе 'trial'; у школьных курсов
+--   • демо — только при обычном пробном периоде по подписке на курс
+--     (status = 'trial' и source = 'trial'; промо-дни — курс целиком); у школьных курсов
 --     тарифов и подписок нет. Кроме того _progress_state зовут только для
 --     курсов 'progress' (сейчас таких нет);
 --   • банк задач: catalog_access_ok() = true для персонала, для школьника (в
@@ -61,10 +62,13 @@ as $$
   ),
   st as (
     select s.id as student_id, s.profile_id,
-           -- §290: пробный период по подписке на этот курс — «демо»
+           -- §290: обычный пробный период по подписке на этот курс — «демо».
+           -- Промокод «N дней бесплатно» тоже ставит status 'trial', но
+           -- source 'manual' — он открывает курс целиком (решение владельца 13.10).
            exists (select 1 from public.student_subscriptions ss
                     where ss.student_id = s.id and ss.course_id = p_course_id
-                      and ss.status = 'trial' and ss.access_until > now()) as is_demo
+                      and ss.status = 'trial' and ss.source = 'trial'
+                      and ss.access_until > now()) as is_demo
       from public.students s
      where s.id = any (p_student_ids)
   ),

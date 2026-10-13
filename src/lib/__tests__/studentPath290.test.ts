@@ -289,6 +289,13 @@ describe('§290-A: демо = первые 2 урока раздела', () => {
     expect(names(await visible(STREET))).toEqual(names([id.p1_1, id.p1_2, id.p1_3, id.p1_4, id.p2_1, id.p2_2, id.p2_3]))
     await db.query(`update student_subscriptions set status = 'trial', source = 'trial' where student_id = $1`, [id.street])
   })
+
+  it('промокод «N дней бесплатно» (status trial, source manual — как ставит _subscription_promo_grant) — курс целиком', async () => {
+    await db.query(`update student_subscriptions set source = 'manual' where student_id = $1`, [id.street])
+    expect(names(await visible(STREET))).toEqual(names([id.p1_1, id.p1_2, id.p1_3, id.p1_4, id.p2_1, id.p2_2, id.p2_3]))
+    await db.query(`update student_subscriptions set source = 'trial' where student_id = $1`, [id.street])
+    expect(names(await visible(STREET))).toEqual(names([id.p1_1, id.p1_2, id.p2_1, id.p2_2]))
+  })
 })
 
 describe('§290-A: банк задач', () => {
