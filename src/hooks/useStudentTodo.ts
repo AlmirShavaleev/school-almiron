@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchGroupIdByCourse } from '@/lib/studentTopicAccess'
+import { fetchLessonCourseIds } from '@/lib/lessonCourses'
 import {
   buildStudentTodo,
   type StudentTodo,
@@ -56,6 +57,11 @@ export function useStudentTodo(profileId: string | undefined) {
 
       if (courseIds.length === 0) { setTodo(EMPTY); setLoading(false); return }
 
+      // 13.10, владелец: ДЗ и тесты «урочных» курсов (раздел «Мой курс») живут
+      // в уроках — в кнопки главной и в списки страницы ДЗ они не попадают.
+      const lessonIds = await fetchLessonCourseIds(courseIds)
+      if (cancelled) return
+
       const [hwRes, attemptsRes, verdictsRes, testAssignRes, testAttemptsRes] = await Promise.all([
         // ДЗ моих курсов вместе с темой: открытость темы считается на клиенте
         // зеркалом `topic_open_now` (§59), поэтому нужны is_open и
@@ -89,7 +95,7 @@ export function useStudentTodo(profileId: string | undefined) {
         const topic = row.topic
         const course = topic?.module?.course
         if (!topic?.id || !course?.id) continue
-        if (!groupByCourse.has(course.id)) continue
+        if (!groupByCourse.has(course.id) || lessonIds.has(course.id)) continue
         homework.push({
           homeworkId:    row.id,
           homeworkTitle: row.title ?? 'Домашнее задание',
@@ -104,7 +110,9 @@ export function useStudentTodo(profileId: string | undefined) {
         })
       }
 
-      const myAttemptIds = new Set((attemptsRes.data ?? []).map((a: any) => a.id))
+      const attempts = ((attemptsRes.data ?? []) as any[])
+        .filter(a => !lessonIds.has(a.homework?.topic?.module?.course?.id))
+      const myAttemptIds = new Set(attempts.map((a: any) => a.id))
       const verdicts: TodoVerdict[] = []
       for (const row of (verdictsRes.data ?? []) as any[]) {
         // Политика вердиктов пускает персонал к чужим разборам; ученику здесь
@@ -124,7 +132,7 @@ export function useStudentTodo(profileId: string | undefined) {
 
       // Названия работ для «Проверено» — по своим же попыткам.
       const titleByAttempt = new Map<string, { title: string; scale: 'five' | 'hundred' | null; homeworkId?: string; topicTitle?: string }>()
-      for (const row of (attemptsRes.data ?? []) as any[]) {
+      for (const row of attempts) {
         titleByAttempt.set(row.id, {
           title: row.homework?.title ?? 'Домашнее задание',
           scale: row.homework?.grade_scale ?? null,
@@ -148,6 +156,7 @@ export function useStudentTodo(profileId: string | undefined) {
       )
       const tests: TodoTest[] = []
       for (const row of (testAssignRes.data ?? []) as any[]) {
+        if (lessonIds.has(row.topic?.module?.course_id)) continue
         tests.push({
           assignmentId: row.id,
           testId:       row.test_id,
@@ -161,7 +170,7 @@ export function useStudentTodo(profileId: string | undefined) {
       }
 
       setTodo(buildStudentTodo({
-        rawAttempts: attemptsRes.data ?? [],
+        rawAttempts: attempts,
         homework,
         tests,
         verdicts,

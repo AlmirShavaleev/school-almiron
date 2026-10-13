@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { fetchLessonCourseIds } from '@/lib/lessonCourses'
 import { useAuthStore } from '@/store/authStore'
 import { useAchievementsBadge } from '@/store/achievementsStore'
 
@@ -45,10 +46,19 @@ export function useSidebarBadges() {
         // что требует действия ПРЯМО СЕЙЧАС и считается одним дешёвым запросом.
         // Полный список «нужно сделать» (включая ещё не начатое ДЗ) живёт на
         // самой странице — там для этого get_student_topic_journal.
-        const { count: returned } = await supabase
+        //
+        // 13.10, владелец: работы «урочных» курсов (раздел «Мой курс») не
+        // считаются — страница ДЗ их не показывает (src/lib/lessonCourses.ts).
+        // Поэтому не count по голове, а строки с курсом: возвращённых — единицы.
+        const { data: returnedRows } = await supabase
           .from('topic_homework_attempts')
-          .select('id', { count: 'exact', head: true })
+          .select('id, homework:topic_homework!inner(topic:topics!inner(module:modules!inner(course_id)))')
           .eq('status', 'returned_for_revision')
+        const courseOf = (r: unknown) =>
+          (r as { homework?: { topic?: { module?: { course_id?: string } } } }).homework?.topic?.module?.course_id ?? ''
+        const rowsReturned = (returnedRows ?? []) as unknown[]
+        const lessonIds = await fetchLessonCourseIds(rowsReturned.map(courseOf))
+        const returned = rowsReturned.filter(r => !lessonIds.has(courseOf(r))).length
         if (returned) next['/my-homework'] = returned
         // §257. Новые (не просмотренные) награды — у «Достижений». Строки
         // наград видны ученику только свои (RLS student_achievements).

@@ -31,6 +31,7 @@ import { useStudentCalendarTopics } from '@/hooks/useStudentCalendarTopics'
 import { StudentCalendarCard } from '@/components/student/home/StudentCalendarCard'
 import { buildCalendarEvents } from '@/lib/studentCalendar'
 import { mskDateKey } from '@/lib/homeworkDeadline'
+import { useLessonCourseIds } from '@/lib/lessonCourses'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -115,15 +116,18 @@ export function StudentDashboard() {
   }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog, retryAchievements])
   // §274. Календарь: всё, кроме дат уроков, уже загружено выше.
   const calendarTopics = useStudentCalendarTopics(courses.map(c => c.courseId))
+  // 13.10, владелец: сроки ДЗ «урочных» курсов (раздел «Мой курс») — в уроках,
+  // не в календаре (src/lib/lessonCourses.ts). Кнопки сверху — так же (useStudentTodo).
+  const lessonCourses = useLessonCourseIds(courses.map(c => c.courseId))
   // День по Москве — один на заход на главную (полночь в открытой вкладке не ловим).
   const [todayMsk] = useState(() => mskDateKey(Date.now()))
   const calendarEvents = useMemo(() => buildCalendarEvents({
     courses: courses.map(c => ({ courseId: c.courseId, groupId: c.groupId, title: c.courseTitle })),
-    homework: journal?.homework ?? [],
+    homework: (journal?.homework ?? []).filter(h => !lessonCourses.ids.has(h.course_id)),
     topics: calendarTopics,
     mocksByGroup,
     today: todayMsk,
-  }), [courses, journal, calendarTopics, mocksByGroup, todayMsk])
+  }), [courses, journal, calendarTopics, mocksByGroup, todayMsk, lessonCourses.ids])
   const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
 
   const cards = useMemo(() => courseCards(
