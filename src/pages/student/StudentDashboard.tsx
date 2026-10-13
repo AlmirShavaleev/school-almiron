@@ -1,140 +1,58 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
-import { useStudentTodo } from '@/hooks/useStudentTodo'
-import { useStudentHomeActivity } from '@/hooks/useStudentHomeActivity'
-import { useStudentTopicJournal } from '@/hooks/useStudentTopicJournal'
-import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
-import { MockExamAlert } from '@/components/student/MockExamAlert'
-import { HomeActions } from '@/components/student/home/HomeActions'
-import { StreakPill } from '@/components/student/home/StreakPill'
-import { StreakCard } from '@/components/student/home/StreakCard'
-import { WeeklySolvedCard } from '@/components/student/home/WeeklySolvedCard'
-import { MyCoursesCard } from '@/components/student/home/MyCoursesCard'
+import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
-import { useExamForecast } from '@/hooks/useExamForecast'
-import { useSchoolPoints } from '@/hooks/useSchoolPoints'
-import { ExamForecastCard } from '@/components/student/home/ExamForecastCard'
-import { SchoolPointsCard } from '@/components/student/home/SchoolPointsCard'
+import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { ExamCountdownPill } from '@/components/student/home/ExamCountdownPill'
-import { courseCards } from '@/lib/studentHome'
+import { ContinueLessonCard } from '@/components/student/home/ContinueLessonCard'
+import { CourseProgressCard } from '@/components/student/home/CourseProgressCard'
 import { examCountdown } from '@/lib/examCountdown'
-import { forecastChange, forecastClaims } from '@/lib/egeForecast'
-import { useAchievements } from '@/hooks/useAchievements'
-import { latestEarned } from '@/lib/achievements'
-import { EGE_SUBJECT_ORDER } from '@/lib/egeScales'
-import { useHomeCatalog } from '@/hooks/useHomeCatalog'
-import { DailyTaskCard } from '@/components/student/home/DailyTaskCard'
-import { WeeklyGoalCard } from '@/components/student/home/WeeklyGoalCard'
-import type { CheckOutcome } from '@/hooks/useCatalogPractice'
-import { useStudentCalendarTopics } from '@/hooks/useStudentCalendarTopics'
-import { StudentCalendarCard } from '@/components/student/home/StudentCalendarCard'
-import { buildCalendarEvents } from '@/lib/studentCalendar'
 import { mskDateKey } from '@/lib/homeworkDeadline'
-import { useLessonCourseIds } from '@/lib/lessonCourses'
+import { primaryContinue } from '@/lib/studentHomeCourses'
 
 /**
- * Главная ученика (§254, макет владельца 02.10).
+ * Главная ученика «без шума» (письмо главная_ученика_без_шума.md, решения
+ * владельца 13.10). Только важное и минимум запросов:
  *
- * Сверху — шапка с серией и кнопки-счётчики «что сдать» (ведут на страницу
- * ДЗ нужным списком); ниже сетка в две колонки: слева «Решено задач по
- * неделям», справа «Серия»; внизу «Эта неделя» по плану (§151) и «Мои курсы».
+ *  1. шапка: «Привет, …», дата и «N дней до ЕГЭ» — считается на клиенте по
+ *     московской дате, без запросов (серия убрана);
+ *  2. идущий/ближайший пробник (MockExamAlert) — как раньше;
+ *  3. «Продолжить урок» — одна заметная карточка: следующая открытая тема с
+ *     несданным ДЗ;
+ *  4. «Мои курсы» — одна карточка на курс: общий % и полоски по разделам
+ *     (доля тем раздела с ДЗ сдано/принято) и «Продолжить».
  *
- * §255: в левой колонке ПЕРВОЙ — «Примерный балл на ЕГЭ» (только у учеников
- * курса ЕГЭ по профильной математике или физике), в правой ПОД «Серией» —
- * «Баллы школы»; в шапке слева от серии — «N дней до ЕГЭ». Растягивается
- * последняя карточка колонки (`flex-1`) — колонки ровные.
+ * Запросы: курсы ученика (students + group_students), пробники групп и одна
+ * RPC `student_home_courses()` на все курсы. Ушли «что сдать», задача дня,
+ * цель недели, прогноз, серия, баллы школы, достижения, календарь и план
+ * недели — вместе с их запросами (student_home_activity, журнал ДЗ, todo,
+ * каталог, прогноз, баллы, синхронизация наград, даты уроков, учебный план).
+ * Сроки ДЗ — на странице «Домашние задания».
  *
- * §256: в левой колонке над прогнозом — «Задача дня» (золотая рамка, ответ
- * вводится здесь) и «Цель недели»; в карточке прогноза — «Решите в каталоге —
- * и балл вырастет». Предмет задачи дня — первый ЕГЭ-предмет ученика
- * (математика раньше физики). После засчитанного ответа перечитываются
- * прогноз (он же даёт «+1 к прогнозу» моделью до/после), баллы и серия.
- *
- * §257: в «Баллах школы» — три последние награды «Достижений» вместо пяти
- * значков §255. Главная вызывает `student_achievements_sync()` (новые награды
- * — тостом «Новая награда: 20 ДЗ · +25», один раз; счётчик у пункта меню) и
- * сообщает базе прогноз по предметам (`claim_forecast_achievement`) — значки
- * «Рост прогноза» и «Цель достигнута», без баллов школы.
- *
- * §274: под сеткой карточек — «Календарь» месяца: сроки ДЗ (журнал ученика,
- * уже загружен для «Моих курсов»), пробники (тот же `useMyMockExams`, что у
- * баннера), открытие уроков и проверочные/контрольные (`topics.available_from`
- * одним запросом по всем курсам). Новых RPC нет; лишний запрос — один.
+ * Ветка podpiska кладёт сюда же плашку пробного (SubscriptionPathCard) над
+ * «Продолжить урок» и редирект на анкету — место отмечено ниже.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
   const dashboard = useStudentDashboard(profile?.id)
-  const { todo, loading: todoLoading, error: todoError } = useStudentTodo(profile?.id)
-  const home = useStudentHomeActivity(profile?.id)
-  const { journal } = useStudentTopicJournal(dashboard.studentId)
   // Подстраховка от «белого экрана»: неполный ответ хука — пустой список, а не TypeError.
   const courses = useMemo(() => dashboard.courses ?? [], [dashboard.courses])
-  // §224.2. Идущий пробник — первым на первом экране после входа.
   const mocksByGroup = useMyMockExams(courses.map(c => c.groupId))
-  // §255. Прогноз — только если есть курс ЕГЭ по профильной математике или
-  // физике (у ОГЭ и прочих карточки нет вовсе, даже скелета).
-  const hasEgeForecast = courses.some(c => c.examType === 'ege' && (c.subject === 'math' || c.subject === 'physics'))
-  const forecast = useExamForecast(hasEgeForecast ? profile?.id : null)
-  const schoolPoints = useSchoolPoints(profile?.id)
-  const achievements = useAchievements(profile?.id, { onFresh: schoolPoints.retry })
-  const latestAwards = useMemo(() => (achievements.data ? latestEarned(achievements.data, 3) : null), [achievements.data])
-  // §257. Прогноз считает только клиент — сообщаем его базе для значков (+0
-  // баллов). Одно сообщение на одно и то же состояние прогноза.
-  const { claimForecast } = achievements
-  const achievementsReady = achievements.data != null
-  const claimed = useRef(new Set<string>())
-  useEffect(() => {
-    if (!achievementsReady) return
-    for (const c of forecastClaims(forecast.data)) {
-      const key = `${c.subject}:${c.first}:${c.current}`
-      if (claimed.current.has(key)) continue
-      claimed.current.add(key)
-      void claimForecast(c.subject, c.first, c.current)
-    }
-  }, [forecast.data, achievementsReady, claimForecast])
-  // §256. Задача дня и цель недели — по первому ЕГЭ-предмету ученика.
-  const daySubject = EGE_SUBJECT_ORDER.find(sub => courses.some(c => c.examType === 'ege' && c.subject === sub)) ?? null
-  const homeCatalog = useHomeCatalog(profile?.id ? daySubject : null)
-  const { check: checkDaily, reload: reloadCatalog } = homeCatalog
-  const { refresh: refreshForecast, data: forecastData } = forecast
-  const { retry: retryPoints } = schoolPoints
-  const { retry: retryHome } = home
-  const { retry: retryAchievements } = achievements
-  const dailyTaskId = homeCatalog.daily?.task?.id ?? null
-  const onDailyCheck = useCallback(async (answer: string): Promise<CheckOutcome> => {
-    if (!dailyTaskId) return { result: null, change: null, error: 'Задача не найдена' }
-    const { result, error } = await checkDaily(dailyTaskId, answer)
-    if (!result) return { result: null, change: null, error }
-    let change = null
-    if (!result.alreadySolved && !result.revealedBefore && result.subject) {
-      const after = await refreshForecast()
-      change = forecastChange(forecastData, after, result.subject)
-    }
-    if (result.counted) { retryPoints(); retryHome(); reloadCatalog(); retryAchievements() }
-    return { result, change, error: null }
-  }, [dailyTaskId, checkDaily, refreshForecast, forecastData, retryPoints, retryHome, reloadCatalog, retryAchievements])
-  // §274. Календарь: всё, кроме дат уроков, уже загружено выше.
-  const calendarTopics = useStudentCalendarTopics(courses.map(c => c.courseId))
-  // 13.10, владелец: сроки ДЗ «урочных» курсов (раздел «Мой курс») — в уроках,
-  // не в календаре (src/lib/lessonCourses.ts). Кнопки сверху — так же (useStudentTodo).
-  const lessonCourses = useLessonCourseIds(courses.map(c => c.courseId))
+  const homeCourses = useStudentHomeCourses(profile?.id)
   // День по Москве — один на заход на главную (полночь в открытой вкладке не ловим).
   const [todayMsk] = useState(() => mskDateKey(Date.now()))
-  const calendarEvents = useMemo(() => buildCalendarEvents({
-    courses: courses.map(c => ({ courseId: c.courseId, groupId: c.groupId, title: c.courseTitle })),
-    homework: (journal?.homework ?? []).filter(h => !lessonCourses.ids.has(h.course_id)),
-    topics: calendarTopics,
-    mocksByGroup,
-    today: todayMsk,
-  }), [courses, journal, calendarTopics, mocksByGroup, todayMsk, lessonCourses.ids])
-  const countdown = examCountdown(home.activity?.today, courses.map(c => c.examType))
+  const countdown = examCountdown(todayMsk, courses.map(c => c.examType))
 
-  const cards = useMemo(() => courseCards(
-    courses.map(c => ({ courseId: c.courseId, groupId: c.groupId, title: c.courseTitle, subject: c.subject })),
-    home.activity?.courses ?? null,
-    journal?.homework ?? [],
-  ), [courses, home.activity, journal])
+  const progress = useMemo(() => homeCourses.courses ?? [], [homeCourses.courses])
+  const next = useMemo(() => primaryContinue(courses, progress), [courses, progress])
+  const items = useMemo(() => {
+    const byId = new Map(progress.map(p => [p.courseId, p]))
+    return courses.map(c => ({
+      courseId: c.courseId, groupId: c.groupId, title: c.courseTitle, subject: c.subject,
+      progress: byId.get(c.courseId) ?? null,
+    }))
+  }, [courses, progress])
 
   if (dashboard.loading) {
     return (
@@ -155,54 +73,20 @@ export function StudentDashboard() {
             {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
-        {(countdown || home.activity) && (
-          <div className="flex flex-wrap items-center gap-2.5">
-            {countdown && <ExamCountdownPill countdown={countdown} />}
-            {home.activity && <StreakPill activity={home.activity} />}
-          </div>
-        )}
+        {countdown && <ExamCountdownPill countdown={countdown} />}
       </header>
 
-      {/* §224.2. Идущий / ближайший пробник — над кнопками: это главное
-          действие дня, пока окно открыто. Подпись курса — курсов бывает два. */}
+      {/* §224.2. Идущий / ближайший пробник — первым: пока окно открыто, это
+          главное действие дня. Подпись курса — курсов бывает два. */}
       {courses.map(c => (
         <MockExamAlert key={c.groupId} exams={mocksByGroup[c.groupId] ?? []} groupId={c.groupId} context={c.courseTitle} />
       ))}
 
-      <HomeActions todo={todo} loading={todoLoading} error={todoError} />
+      {/* podpiska (§290-B): плашка пробного/доступа — SubscriptionPathCard — здесь. */}
 
-      <div className="grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3.5" data-slot="left">
-          {homeCatalog.daily?.task && (
-            <DailyTaskCard
-              daily={homeCatalog.daily}
-              streak={home.activity?.streakDays != null ? home.activity.streak : null}
-              solvedToday={home.activity?.solvedToday === true}
-              onCheck={onDailyCheck}
-            />
-          )}
-          {homeCatalog.weekly && <WeeklyGoalCard goal={homeCatalog.weekly} />}
-          {hasEgeForecast && (
-            <ExamForecastCard data={forecast.data} error={forecast.error} onRetry={forecast.retry} onSetGoal={forecast.setGoal} />
-          )}
-          <WeeklySolvedCard activity={home.activity} error={home.error} onRetry={home.retry} className="flex-1" />
-        </div>
-        <div className="flex min-w-0 flex-col gap-3.5" data-slot="right">
-          <StreakCard activity={home.activity} error={home.error} onRetry={home.retry} />
-          <SchoolPointsCard points={schoolPoints.points} error={schoolPoints.error} onRetry={schoolPoints.retry} awards={latestAwards} className="flex-1" />
-        </div>
-      </div>
+      {next && <ContinueLessonCard groupId={next.course.groupId} courseTitle={next.course.courseTitle} next={next.next} />}
 
-      {/* §274. Календарь месяца — после карточек дня, перед планом недели:
-          «что сдать сегодня» отвечают кнопки сверху, календарь — «что когда». */}
-      {courses.length > 0 && <StudentCalendarCard events={calendarEvents} today={todayMsk} />}
-
-      {/* Эта неделя по учебному плану (§151); без плана не рисуется. Стоит у
-          курсов: кнопки сверху уже отвечают «что сдать», план — взгляд на
-          неделю курса. */}
-      <StudentWeekPlan />
-
-      <MyCoursesCard cards={cards} />
+      <CourseProgressCard items={items} />
     </div>
   )
 }

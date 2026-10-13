@@ -2,7 +2,7 @@ import type { ExamCountdown } from '@/lib/examCountdown'
 
 /**
  * §255 (дополнение владельца 02.10). Плашка «242 дня до ЕГЭ · примерно, до
- * 1 июня» в шапке главной, слева от плашки серии. Что считать и когда не
+ * 1 июня» в шапке главной. Что считать и когда не
  * показывать — `examCountdown` (lib/examCountdown.ts).
  */
 export function ExamCountdownPill({ countdown }: { countdown: ExamCountdown }) {

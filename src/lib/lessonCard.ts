@@ -12,7 +12,7 @@
 import { parseBunnyVideoUrl } from './bunnyVideoUrl'
 import { dueDateKey } from './homeworkDeadline'
 import { isTopicOpen, willOpenByDate, type TopicOpenState } from './topicAvailability'
-import { dayMonthShort, shortDayLabel } from './studentCalendar'
+import { dayMonthShort, shortDayLabel } from './dayLabels'
 import type { TopicSection } from './topicMaterialItems'
 import type { TopicHwStatus } from './studentProgram'
 

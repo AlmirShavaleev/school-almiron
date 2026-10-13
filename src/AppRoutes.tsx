@@ -46,7 +46,6 @@ const StudentCoursePage = lazyPage('StudentCoursePage', () => import('@/pages/St
 const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
 const StudentProfilePage = lazyPage('StudentProfilePage', () => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
 const StudentsPage = lazyPage('StudentsPage', () => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
-const AchievementsPage = lazyPage('AchievementsPage', () => import('@/pages/student/AchievementsPage').then(m => ({ default: m.AchievementsPage })))
 const MyJournalPage = lazyPage('MyJournalPage', () => import('@/pages/student/MyJournalPage').then(m => ({ default: m.MyJournalPage })))
 const MyTopicHomeworkPage = lazyPage('MyTopicHomeworkPage', () => import('@/pages/student/MyTopicHomeworkPage').then(m => ({ default: m.MyTopicHomeworkPage })))
 const CatalogPage = lazyPage('CatalogPage', () => import('@/pages/catalog/CatalogPage').then(m => ({ default: m.CatalogPage })))
@@ -288,10 +287,10 @@ export default function AppRoutes() {
         {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт).
             В предпросмотре — заглушка: здесь личные работы ученика. */}
         <Route path="/my-homework" element={<RoleGuard allow={['student']} preview="stub"><MyTopicHomeworkPage /></RoleGuard>} />
-        {/* §257. «Достижения» заменили «Мой прогресс»; старый адрес ведёт сюда же
-            (закладки, ссылки из уведомлений). Журнал — отдельной страницей. */}
-        <Route path="/achievements" element={<RoleGuard allow={['student']} preview="stub"><AchievementsPage /></RoleGuard>} />
-        <Route path="/my-progress" element={<Navigate to="/achievements" replace />} />
+        {/* 14.10, владелец: баллы школы и «Достижения» выключены совсем. Старые
+            адреса (закладки, ссылки из уведомлений) ведут на главную. */}
+        <Route path="/achievements" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/my-progress" element={<Navigate to="/dashboard" replace />} />
         <Route path="/my-journal" element={<RoleGuard allow={['student']} preview="stub"><MyJournalPage /></RoleGuard>} />
       </Route>
 

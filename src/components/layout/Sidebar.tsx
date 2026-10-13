@@ -9,7 +9,7 @@ import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, Trophy, ListChecks,
+  ChevronRight, ClipboardCheck, X, ListChecks,
   Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
   Gauge,
@@ -50,8 +50,8 @@ const navItems: NavItem[] = [
   // Тот же экран у персонала — вход из «Заданий», рядом с «Тестами». Сохраняет
   // обычный вариант, а не самоназначение (§128).
   { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  // §257. «Достижения» вместо «Прогресс»; счётчик — новые награды (useSidebarBadges).
-  { label: 'Достижения',        path: '/achievements',   icon: <Trophy size={18} />,        roles: ['student'],  section: 'Успехи' },
+  // 14.10, владелец: «Достижения» (и раздел «Успехи») убраны — баллы школы и
+  // награды выключены совсем; /achievements ведёт на главную.
 
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
