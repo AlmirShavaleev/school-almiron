@@ -51,6 +51,8 @@ const SubscriptionResultPage = lazyPage('SubscriptionResultPage', () => import('
 const MySubscriptionPage = lazyPage('MySubscriptionPage', () => import('@/pages/subscription/MySubscriptionPage').then(m => ({ default: m.MySubscriptionPage })))
 const CoursesPage = lazyPage('CoursesPage', () => import('@/pages/subscription/CoursesPage').then(m => ({ default: m.CoursesPage })))
 const OnboardingPage = lazyPage('OnboardingPage', () => import('@/pages/student/OnboardingPage').then(m => ({ default: m.OnboardingPage })))
+const DiagnosticPage = lazyPage('DiagnosticPage', () => import('@/pages/student/DiagnosticPage').then(m => ({ default: m.DiagnosticPage })))
+const DiagnosticResultPage = lazyPage('DiagnosticResultPage', () => import('@/pages/student/DiagnosticResultPage').then(m => ({ default: m.DiagnosticResultPage })))
 const StudentProfilePage = lazyPage('StudentProfilePage', () => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
 const StudentsPage = lazyPage('StudentsPage', () => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
 const AchievementsPage = lazyPage('AchievementsPage', () => import('@/pages/student/AchievementsPage').then(m => ({ default: m.AchievementsPage })))
@@ -296,6 +298,9 @@ export default function AppRoutes() {
         {/* §290-B. Витрина «Курсы» и анкета ученика «с улицы». */}
         <Route path="/courses" element={<RoleGuard allow={['student']} preview="stub"><CoursesPage /></RoleGuard>} />
         <Route path="/start" element={<RoleGuard allow={['student']} preview="stub"><OnboardingPage /></RoleGuard>} />
+        {/* §289. Стартовая диагностика и её результат. */}
+        <Route path="/diagnostic" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticPage /></RoleGuard>} />
+        <Route path="/diagnostic/result" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticResultPage /></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
         {/* §228. «Пробники» ученика — все пробники по всем его группам. */}

@@ -7,8 +7,8 @@
  * школьной группы, анкета не пройдена. Школьник, персонал и тот, кому
  * подписка ещё не открыта, сюда не попадают — уходят на главную.
  *
- * Дальше по плану — диагностика (§289); пока её нет, после анкеты — «Курсы»
- * с курсом выбранного предмета наверху.
+ * Дальше — стартовая диагностика (§289, `/diagnostic`); её можно отложить,
+ * тогда — «Курсы» с курсом выбранного предмета наверху.
  */
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
@@ -91,7 +91,7 @@ export function OnboardingPage() {
     setBusy(true)
     try {
       await saveOnboarding(form)
-      navigate(`/courses?from=start&subject=${form.subject}`, { replace: true })
+      navigate('/diagnostic', { replace: true })
     } catch (err) {
       setError(err instanceof PathError && err.code === 'BAD_INPUT' ? 'Проверьте поля анкеты.' : 'Не удалось сохранить. Попробуйте ещё раз.')
       setBusy(false)

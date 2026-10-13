@@ -113,7 +113,8 @@ function CourseCard({ card, period, recommended, groupId }: {
 
 export function CoursesPage() {
   const [params] = useSearchParams()
-  const fromStart = params.get('from') === 'start'
+  // после анкеты или результата диагностики (§289) — тот же порядок и «Для вас»
+  const fromStart = params.get('from') === 'start' || params.get('from') === 'diagnostic'
   const subject = params.get('subject')
   const { data, isLoading, error } = useShowcase()
   const mine = useMySubscriptions()

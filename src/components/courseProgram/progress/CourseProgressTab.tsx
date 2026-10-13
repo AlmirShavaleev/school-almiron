@@ -6,6 +6,7 @@
  * Ячейка: ✓ закрыт (с % урока) / ○ открыт / ⏳ ДЗ на проверке / 🔒 заблокирован;
  * ✋ — ручная отметка. Подсказка — причина открытия или чего не хватает.
  * Клик — меню «Открыть / Закрыть вручную / Снять отметку» с подтверждением.
+ * §289: у ученика с пройденной диагностикой — значок «Диагн. N/M».
  */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,6 +21,7 @@ import {
   setTopicOverride,
   type MatrixCell,
 } from '@/lib/progressUnlock'
+import { fetchCourseDiagnostics } from '@/lib/diagnostic'
 
 const ICON: Record<MatrixCell[0], string> = { closed: '✓', open: '○', pending_review: '⏳', locked: '🔒' }
 const CELL_CLS: Record<MatrixCell[0], string> = {
@@ -35,6 +37,8 @@ type Action =
 export function CourseProgressTab({ courseId }: { courseId: string }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['course-progress', courseId], queryFn: () => fetchCourseProgressMatrix(courseId) })
+  const diag = useQuery({ queryKey: ['course-diagnostics', courseId], queryFn: () => fetchCourseDiagnostics(courseId) })
+  const diagByStudent = useMemo(() => new Map((diag.data ?? []).map((d) => [d.student_id, d])), [diag.data])
   const [moduleId, setModuleId] = useState<string>('')
   const [stuckOnly, setStuckOnly] = useState(false)
   const [stuckDays, setStuckDays] = useState(7)
@@ -130,6 +134,12 @@ export function CourseProgressTab({ courseId }: { courseId: string }) {
                 <td className="sticky left-0 z-10 border-t border-graphite-100 bg-white p-2">
                   <div className="font-medium text-graphite-900">{s.full_name ?? '—'}</div>
                   <div className="text-graphite-500">закрыто: {s.closed}</div>
+                  {diagByStudent.get(s.id)?.status === 'done' && (
+                    <div className="text-[12px] text-graphite-500" data-testid="progress-diagnostic"
+                      title="Стартовая диагностика: верно из отвеченных. Подробно — в карточке ученика.">
+                      Диагн. {diagByStudent.get(s.id)!.correct}/{diagByStudent.get(s.id)!.answered}
+                    </div>
+                  )}
                   <button type="button" className="text-[12px] text-primary-600 underline" data-testid="progress-open-module"
                     onClick={() => confirmRun(`Открыть ученику ${s.full_name ?? ''} весь раздел?`, () => openModuleForStudent(s.id, activeModule))}>
                     открыть раздел

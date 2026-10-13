@@ -35,6 +35,7 @@ import { mskDateKey } from '@/lib/homeworkDeadline'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPathCard'
+import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -178,6 +179,8 @@ export function StudentDashboard() {
       ))}
 
       {path.data && <SubscriptionPathCard subscriptions={path.data.subscriptions} />}
+      {/* §289: анкета пройдена, диагностика не начата/отложена */}
+      <DiagnosticHomeCard onboarding={path.data?.onboarding} />
 
       <HomeActions todo={todo} loading={todoLoading} error={todoError} />
 

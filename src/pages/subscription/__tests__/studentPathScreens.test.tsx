@@ -68,7 +68,7 @@ beforeEach(() => {
 describe('анкета /start', () => {
   const route = <Route path="/start" element={<OnboardingPage />} />
 
-  it('нужна — поля проверяются; сохранение → «Курсы» с предметом', async () => {
+  it('нужна — поля проверяются; сохранение → диагностика', async () => {
     path.fetchStudentPathHome.mockResolvedValue({ onboarding: onboarding(true), subscriptions: [] })
     path.saveOnboarding.mockResolvedValue(onboarding(false))
     renderAt('/start', route)
@@ -83,7 +83,8 @@ describe('анкета /start', () => {
     fireEvent.change(screen.getByTestId('onboarding-target'), { target: { value: '80' } })
     fireEvent.click(screen.getByTestId('onboarding-submit'))
     await waitFor(() => expect(path.saveOnboarding).toHaveBeenCalledWith(expect.objectContaining({ grade: 11, subject: 'math', target_score: '80' })))
-    expect(await screen.findByTestId('where')).toHaveTextContent('/courses?from=start&subject=math')
+    // §289: после анкеты — стартовая диагностика
+    expect(await screen.findByTestId('where')).toHaveTextContent('/diagnostic')
   })
 
   it('не нужна (школьник, пройдена) или подписка закрыта — на главную', async () => {
