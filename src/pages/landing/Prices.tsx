@@ -11,13 +11,14 @@ export const PRICE_YEAR = 4800
 const fmt = (n: number) => n.toLocaleString('ru-RU')
 
 /**
- * Сравнение месяца подготовки. Полоса — диапазон цены на общей шкале
- * 0–16 000 ₽ (`left`/`w` в процентах), рост — `scaleX`.
+ * Сравнение месяца подготовки (правка 4): три карточки. Полоса под ценой —
+ * шкала 0–16 000 ₽: бледная часть — весь диапазон до максимума, насыщенная —
+ * минимум цены; рост насыщенной — `scaleX`.
  */
-const CMP: Array<{ t: string; left: number; w: number; bg: string; v: string; us?: boolean }> = [
-  { t: 'Репетитор, 2 занятия в неделю', left: 45, w: 55, bg: 'var(--red)', v: '7 200–16 000 ₽' },
-  { t: 'Крупная онлайн-школа', left: 18.75, w: 48.75, bg: 'var(--orange)', v: '3 000–10 800 ₽' },
-  { t: 'Платформа Almiron', left: 0, w: 3.2, bg: 'var(--green)', v: '500 ₽', us: true },
+const CMP: Array<{ t: string; s: string; v: string; min: number; max?: number; bg: string; us?: boolean }> = [
+  { t: 'Репетитор', s: '2 занятия в неделю', v: '7 200 – 16 000 ₽', min: 45, max: 100, bg: 'var(--red)' },
+  { t: 'Онлайн-школа', s: 'групповой курс', v: '3 000 – 10 800 ₽', min: 18.75, max: 67.5, bg: 'var(--orange)' },
+  { t: 'Платформа Almiron', s: 'всё включено', v: '500 ₽', min: 3.2, bg: 'var(--green)', us: true },
 ]
 
 const MEL = 'https://mel.fm/ucheba/yege/3752196-gotovy-platit-do-750-tysyach-v-god-skolko-stoit-podgotovka-k-oge-i-yege-i-mozhno-li-vernut-chast-den'
@@ -30,20 +31,26 @@ function Compare() {
   return (
     <Reveal className="card pbars">
       <div ref={ref}>
-        {CMP.map((r, k) => (
-          <div key={r.t} className={r.us ? 'pb us' : 'pb'}>
-            <span>{r.t}</span>
-            <div className="bar" aria-hidden="true">
-              <motion.i
-                style={{ left: `${r.left}%`, width: `${r.w}%`, background: r.bg }}
-                initial={anim ? { scaleX: 0 } : false}
-                animate={run ? { scaleX: 1 } : undefined}
-                transition={{ duration: 1.1, delay: k * 0.25, ease: EASE }}
-              />
+        <div className="pcmp">
+          {CMP.map((r, k) => (
+            <div key={r.t} className={r.us ? 'pt us' : 'pt'}>
+              <span className="pt-l">{r.t}</span>
+              <span className="pt-s">{r.s}</span>
+              <div className="pt-v">{r.v}</div>
+              <span className="pt-s">в месяц</span>
+              <div className="bar" aria-hidden="true">
+                {r.max && <span className="rng" style={{ width: `${r.max}%`, background: r.bg }} />}
+                <motion.i
+                  style={{ width: `${r.min}%`, background: r.bg }}
+                  initial={anim ? { scaleX: 0 } : false}
+                  animate={run ? { scaleX: 1 } : undefined}
+                  transition={{ duration: 1.1, delay: k * 0.25, ease: EASE }}
+                />
+              </div>
             </div>
-            <span className="v">{r.v}</span>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className="psave">Almiron дешевле онлайн-школы <b>в 6 раз</b>, а репетитора — <b>в 14 раз</b> и больше</div>
         <p className="foot">
           Репетитор: 900–2 000 ₽ за час в регионах × 8 занятий; онлайн-школы: групповой курс ЕГЭ ≈ 25 000 ₽ до конца мая
           (<a href={MEL} target="_blank" rel="noopener noreferrer">«Мел», 12.2025</a>) и от 10 800 ₽ в месяц

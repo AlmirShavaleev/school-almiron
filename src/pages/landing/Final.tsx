@@ -8,7 +8,7 @@ import { Mark } from './Brand'
 import { iconSrc, type IconName } from './icons'
 
 const CHAT: Msg[] = [
-  { text: 'Это были 5 аргументов. Ну что, убедил?' },
+  { text: 'Это были 6 аргументов. Ну что, убедил?' },
   { me: true, text: 'Хочу попробовать!' },
   { text: 'Регистрируйся — первые 3 дня бесплатно, без карты. Начнём с диагностики.' },
 ]

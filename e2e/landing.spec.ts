@@ -8,7 +8,7 @@ import path from 'path'
  * Запуск: `npx playwright test -c playwright.landing.config.ts`.
  */
 
-const TITLE = 'Дай мне 5 аргументов — и ты поймёшь, почему эта платформа тебе подходит'
+const TITLE = 'Дай мне 6 аргументов — и ты поймёшь, почему эта платформа тебе подходит'
 
 async function openLanding(page: Page, url = '/') {
   await page.goto(url)

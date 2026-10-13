@@ -11,11 +11,18 @@ const CHAT: Msg[] = [
   { text: 'Искусственный интеллект разбирает решение по критериям ФИПИ и находит ошибки, а итоговый балл подтверждает преподаватель — в течение 48 часов.' },
 ]
 
-const HAND = [
-  'M10 18 C40 8,60 28,90 16 S140 10,170 20',
-  'M10 44 C50 36,80 52,120 42 S190 36,240 46',
-  'M10 70 C40 64,70 78,110 68 S160 64,200 72',
-  'M10 96 C30 90,60 102,90 94',
+/**
+ * Решение на тетрадном листке (прототип v3): строки «пишутся» по очереди.
+ * Ответ специально без единиц — соседняя карточка ловит «Нет единиц в
+ * ответе», отсюда 2 из 3. [текст, задержка, класс]
+ */
+const PAPER: Array<[React.ReactNode, number, string?]> = [
+  ['Дано: m = 2 кг, F = 10 Н,', 0],
+  ['μ = 0,3;  a — ?', 0.6, 'ind'],
+  ['ma = F − μmg', 1.1],
+  ['a = (F − μmg) / m', 1.7],
+  [<>a = (10 − 0,3·2·10) / 2 = <u>2</u></>, 2.3],
+  ['Ответ: 2', 3, 'ans'],
 ]
 const CRIT: Array<{ t: string; warn?: boolean }> = [
   { t: 'Записаны законы и формулы' },
@@ -25,11 +32,11 @@ const CRIT: Array<{ t: string; warn?: boolean }> = [
 const SCORE = 2
 
 /**
- * Аргумент 4. Сценарий прототипа: строки решения «пишутся» (pathLength), через
+ * Аргумент 5. Сценарий прототипа: строки решения «пишутся» на листке, через
  * 1,3 с полоса сканирует лист и по очереди загораются критерии, к 3,6 с балл
  * досчитывает до 2 и проявляется комментарий.
  */
-export function Arg4Ai() {
+export function ArgAi() {
   const anim = useAnim()
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.3 })
@@ -56,26 +63,26 @@ export function Arg4Ai() {
   const run = inView || !anim
 
   return (
-    <section id="a4">
+    <section id="a5">
       <div className="wrap">
-        <ArgHead n={4} eb="Аргумент четвёртый" title="Вторая часть — проверка с помощью ИИ" chat={CHAT} />
+        <ArgHead n={5} eb="Аргумент пятый" title="Вторая часть — проверка с помощью ИИ" chat={CHAT} />
         <div className="ai" ref={ref}>
           <Reveal className="card">
             <div className="num" aria-hidden="true">1</div>
             <Icon3D name="mail" size={60} />
             <h3>Фото решения</h3>
-            <div className="sheet">
-              <svg viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
-                {HAND.map((d, i) => (
-                  <motion.path
-                    key={d}
-                    d={d}
-                    initial={anim ? { pathLength: 0 } : false}
-                    animate={run ? { pathLength: 1 } : undefined}
-                    transition={{ duration: 0.8, ease: 'easeOut', delay: i * 0.3 }}
-                  />
-                ))}
-              </svg>
+            <div className="sheet paper">
+              {PAPER.map(([t, delay, cls], i) => (
+                <motion.div
+                  key={i}
+                  className={cls ? `hl ${cls}` : 'hl'}
+                  initial={anim ? { clipPath: 'inset(0 100% 0 0)' } : false}
+                  animate={run ? { clipPath: 'inset(0 0% 0 0)' } : undefined}
+                  transition={{ duration: 0.7, ease: 'easeOut', delay }}
+                >
+                  {t}
+                </motion.div>
+              ))}
             </div>
             <p className="txt">Решаешь на бумаге, как на экзамене, и загружаешь фото.</p>
           </Reveal>

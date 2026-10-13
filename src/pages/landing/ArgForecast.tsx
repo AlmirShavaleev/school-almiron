@@ -115,12 +115,12 @@ function Chart() {
   )
 }
 
-/** Аргумент 5. */
-export function Arg5Forecast() {
+/** Аргумент 6. */
+export function ArgForecast() {
   return (
-    <section id="a5" className="alt">
+    <section id="a6" className="alt">
       <div className="wrap">
-        <ArgHead n={5} tone="red" eb="Аргумент пятый" title="Ты знаешь свой балл ещё до экзамена" chat={CHAT} />
+        <ArgHead n={6} tone="red" eb="Аргумент шестой" title="Ты знаешь свой балл ещё до экзамена" chat={CHAT} />
         <div className="fc">
           <Inputs />
           <Chart />

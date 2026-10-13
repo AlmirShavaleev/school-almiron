@@ -3,11 +3,12 @@ import { MotionConfig } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 import { Header } from './landing/Header'
 import { Hero } from './landing/Hero'
-import { Arg1Compare } from './landing/Arg1Compare'
-import { Arg2System } from './landing/Arg2System'
-import { Arg3Unlock } from './landing/Arg3Unlock'
-import { Arg4Ai } from './landing/Arg4Ai'
-import { Arg5Forecast } from './landing/Arg5Forecast'
+import { ArgCozy } from './landing/ArgCozy'
+import { ArgCompare } from './landing/ArgCompare'
+import { ArgSystem } from './landing/ArgSystem'
+import { ArgUnlock } from './landing/ArgUnlock'
+import { ArgAi } from './landing/ArgAi'
+import { ArgForecast } from './landing/ArgForecast'
 import { Screens } from './landing/Screens'
 import { Prices } from './landing/Prices'
 import { FinalCta, Footer } from './landing/Final'
@@ -30,8 +31,9 @@ function systemDark() {
 }
 
 /**
- * Лендинг «Школа Almiron». Эталон с правки 3 — лендинг_прототип_v2.html
- * («диалог + 5 аргументов», ЛЕНДИНГ_ПРАВКИ_3_диалог.md).
+ * Лендинг «Школа Almiron». Эталон с правки 4 — лендинг_прототип_v3.html
+ * («6 аргументов», письмо лендинг_v3_6_аргументов.md; до этого v2 —
+ * «диалог + 5 аргументов»).
  * Живёт на `/about` и на `/` для гостя (см. RootRedirect в App.tsx). Это
  * ленивый чанк: framer-motion и стили лендинга в кабинет не попадают.
  *
@@ -63,11 +65,12 @@ export function LandingPage() {
         <Header onToggleTheme={toggle} />
         <main>
           <Hero />
-          <Arg1Compare />
-          <Arg2System />
-          <Arg3Unlock />
-          <Arg4Ai />
-          <Arg5Forecast />
+          <ArgCozy />
+          <ArgCompare />
+          <ArgSystem />
+          <ArgUnlock />
+          <ArgAi />
+          <ArgForecast />
           <Screens />
           <Prices />
           <FinalCta />

@@ -2,13 +2,15 @@
  * Лендинг «Школа Almiron». Все правила под корнем `.lnd`, чтобы ничего не
  * протекло в кабинет.
  *
- * Правка 3 (ЛЕНДИНГ_ПРАВКИ_3_диалог.md, 12.10.2026): вёрстка — порт
+ * Правка 4 (письмо лендинг_v3_6_аргументов.md, 13.10.2026): вёрстка — порт
+ * `лендинг_прототип_v3.html` («6 аргументов»: lofi-блок первым, закат на
+ * первом экране, листок в линейку, цена карточками). До этого — правка 3,
  * `лендинг_прототип_v2.html` («диалог + 5 аргументов»). Сохранено из правок
  * 1–2: палитра almiron.typ (ink #1B1F2A, grey #6B7080, blue #2F5BEA,
  * blue-soft #EAF0FD, orange #F28C28, dz-ink #C76A12, green #1E9E6A,
  * navy #13254D, card-line #D6DEEF), PT Serif, знак «Орбита», тёмная тема на
  * основе navy, reduced motion. Красный #E5484D — новый, из прототипа: только
- * «слабые места» (минусы репетитора, номера аргументов 1 и 5).
+ * «слабые места» (минусы репетитора, номера аргументов 2 и 6).
  *
  * Анимации — framer-motion в компонентах; здесь только CSS-петли на
  * transform/opacity («печатает…», парение иконок финала, пульс прогноза).
@@ -23,6 +25,33 @@
  */
 @font-face { font-family: 'Manrope Fallback'; src: local('Arial'); font-weight: 400 600; size-adjust: 101.1%; ascent-override: 105.4%; descent-override: 29.7%; line-gap-override: 0% }
 @font-face { font-family: 'Manrope Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'); font-weight: 700 800; size-adjust: 100.2%; ascent-override: 106.4%; descent-override: 29.9%; line-gap-override: 0% }
+/*
+ * Заголовок первого экрана — свой файл Manrope 800 (fonts/manrope-head-800.woff2,
+ * 7,6 КБ): латиница и кириллица из src/assets/fonts/manrope слиты в один файл
+ * и урезаны до букв, цифр и знаков (Manrope — SIL OFL без зарезервированного
+ * имени, подмножество допустимо). Зачем: в общем Manrope кириллица и латиница
+ * — разные файлы и приезжают порознь, и пока одна половина h1 уже Manrope, а
+ * другая ещё запасная, строки ломались иначе — h1 на телефоне прыгал на строку
+ * вниз и обратно (CLS 0.15 на 390 px). Теперь подмена одна, а запасной шрифт
+ * подогнан по метрикам так, что переносы h1 с ним те же. Файл грузится
+ * заранее (preload из Hero.tsx). font-display: optional пробовали — на
+ * холодной загрузке заголовок оставался в Arial.
+ */
+@font-face { font-family: 'Manrope Head'; font-style: normal; font-weight: 800; font-display: swap; src: url('./fonts/manrope-head-800.woff2') format('woff2') }
+
+/*
+ * Рукописные шрифты правки 4, оба SIL OFL 1.1 (тексты лицензий — fonts/OFL-*.txt),
+ * файлы с Google Fonts, лежат у нас: внешних шрифтов лендинг не грузит.
+ *  - Marck Script — рукописная строка аргумента 1; файлы как есть (у шрифта
+ *    зарезервированное имя, изменённую версию так называть нельзя).
+ *  - Caveat — решение на листке; урезан до символов листка (~12 КБ на раскладку
+ *    вместо ~75), вариативный — 500 и 700 из одного файла. Своё имя семейства,
+ *    чтобы урезанный файл не подменил полный Caveat, если тот где-то появится.
+ */
+@font-face { font-family: 'Marck Script'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/marck-script-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116 }
+@font-face { font-family: 'Marck Script'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/marck-script-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD }
+@font-face { font-family: 'Caveat Paper'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('./fonts/caveat-paper-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116 }
+@font-face { font-family: 'Caveat Paper'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('./fonts/caveat-paper-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD }
 @font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-regular.woff2') format('woff2') }
 @font-face { font-family: 'PT Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-italic.woff2') format('woff2') }
 @font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/pt-serif-bold.woff2') format('woff2') }
@@ -31,7 +60,7 @@
   --bg: #ffffff; --bg2: #f7f9fe; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #d6deef;
   --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea;
   --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
-  --red: #e5484d; --redS: #fdecee; --redInk: #c22f35; --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
+  --handInk: #d4700d; --red: #e5484d; --redS: #fdecee; --redInk: #c22f35; --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
   --shadow: 0 12px 32px rgba(27, 31, 42, .07); --r: 22px;
   font-family: Manrope, 'Manrope Fallback', system-ui, sans-serif;
   background: var(--bg);
@@ -45,14 +74,14 @@
 @media (prefers-color-scheme: dark) {
   .lnd:not([data-theme='light']) {
     --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
-    --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+    --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --handInk: #f28c28; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
     --shadow: 0 12px 32px rgba(0, 0, 0, .3);
     color-scheme: dark;
   }
 }
 .lnd[data-theme='dark'] {
   --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
-  --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+  --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --handInk: #f28c28; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
   --shadow: 0 12px 32px rgba(0, 0, 0, .3);
   color-scheme: dark;
 }
@@ -127,26 +156,43 @@
 .lnd .chat-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0 50px }
 @media (max-width: 420px) { .lnd .chat-actions { margin-left: 0 } }
 
-/* HERO: фото крупно, за ним голубое пятно и статичная орбита. Без движения. */
+/* HERO: справа закат «Keep going» в скруглённой рамке. Без движения. */
 .lnd .hero { padding: 56px 0 0; overflow: hidden }
 .lnd .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 30px; align-items: end }
 .lnd .hero .wrap > div:first-child { padding-bottom: 70px }
 .lnd .hero-name { font-family: 'PT Serif', Georgia, serif; font-style: italic; color: var(--ink2); font-size: 18px; margin-bottom: 10px }
+.lnd .hero h1 { font-family: 'Manrope Head', 'Manrope Fallback', system-ui, sans-serif }
 .lnd .hero h1 .bl { color: var(--blueInk) }
 .lnd .hero h1 .or { color: var(--orange) }
 .lnd .hero-chat { margin-top: 26px }
-.lnd .hero-photo { position: relative; height: 620px; display: flex; align-items: flex-end; justify-content: center }
-.lnd .hero-photo img { position: relative; z-index: 2; height: 100%; width: auto; max-width: 100%; object-fit: contain; object-position: bottom }
-.lnd .hp-bg { position: absolute; left: 50%; bottom: 0; width: 520px; height: 520px; margin-left: -260px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, var(--blueS), transparent 70%) }
-.lnd .hp-orbit { position: absolute; z-index: 1; left: 50%; top: 38%; width: 560px; margin-left: -280px }
+.lnd .hero-photo { align-self: center; padding-bottom: 70px }
+.lnd .hero-sun { width: 100%; height: 560px; border-radius: 30px; overflow: hidden; border: 6px solid var(--card); box-shadow: 0 30px 60px rgba(27, 31, 42, .22) }
+.lnd .hero-sun img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 58% 50% }
 @media (max-width: 900px) {
   .lnd .hero .wrap { grid-template-columns: 1fr }
   .lnd .hero .wrap > div:first-child { padding-bottom: 50px }
-  .lnd .hero-photo { height: 420px; order: -1 }
-  .lnd .hp-bg { width: 360px; height: 360px; margin-left: -180px }
-  .lnd .hp-orbit { width: 380px; margin-left: -190px }
+  .lnd .hero-photo { order: -1; padding-bottom: 0 }
+  .lnd .hero-sun { height: 340px }
 }
-@media (max-width: 430px) { .lnd .hero-photo { height: 360px } .lnd .hp-orbit { width: 330px; margin-left: -165px } }
+@media (max-width: 430px) { .lnd .hero-sun { height: 280px; border-radius: 24px } }
+
+/* АРГУМЕНТ 1: lofi-блок. */
+.lnd .cozy-g { display: grid; grid-template-columns: .8fr 1.2fr; gap: 24px; align-items: stretch }
+.lnd .cozy-g > * { min-width: 0 }
+.lnd .cozy-ph { border-radius: 26px; overflow: hidden; box-shadow: 0 24px 60px rgba(27, 31, 42, .16); border: 6px solid var(--card); background: var(--card) }
+.lnd .cozy-ph img { display: block; width: 100%; height: 100%; object-fit: cover }
+.lnd .cozy-txt { padding: 28px; display: flex; flex-direction: column; justify-content: center }
+.lnd .cozy-txt .hero-name { margin-bottom: 6px }
+.lnd .cozy-txt .lead { margin-top: 12px }
+.lnd .cozy-txt .lead + .lead { margin-top: 10px }
+.lnd .cozy-arg { display: flex; align-items: center; gap: 14px; margin-bottom: 18px }
+.lnd .cozy-arg .arg-n { width: 52px; height: 52px; border-radius: 16px; font-size: 24px }
+.lnd .cozy-arg .eb { font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.lnd .hand { font-family: 'Marck Script', cursive; font-size: clamp(26px, 2.6vw, 32px); line-height: 1.25; color: var(--handInk); margin-top: 22px; transform: rotate(-2deg); transform-origin: left center }
+.lnd .hand svg { display: block; width: 220px; height: 16px; margin-top: 4px }
+.lnd .hand path { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; opacity: .7 }
+@media (max-width: 900px) { .lnd .cozy-g { grid-template-columns: 1fr } .lnd .cozy-g > .cozy-ph { max-height: 560px } }
+@media (max-width: 560px) { .lnd .cozy-txt { padding: 22px 18px } }
 
 /* ЗАГОЛОВОК АРГУМЕНТА */
 .lnd .arg-head { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; margin-bottom: 36px }
@@ -186,11 +232,6 @@
 .lnd .st .ic3d { width: 96px; height: 96px; margin: 0 auto 14px; position: relative; z-index: 1 }
 .lnd .st h3 { font-size: 16.5px }
 .lnd .st p { font-size: 14px; color: var(--ink2); margin-top: 4px }
-.lnd .next-plan { margin-top: 34px; padding: 22px 24px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap }
-.lnd .np-list { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; list-style: none }
-.lnd .np { padding: 8px 12px; border-radius: 12px; font-size: 13.5px; font-weight: 700; border: 1px solid var(--line); background: var(--bg2) }
-.lnd .np.done { background: var(--greenS); border-color: transparent; color: var(--greenInk) }
-.lnd .np.now { background: var(--blue); border-color: var(--blue); color: #fff }
 @media (max-width: 900px) { .lnd .flow { grid-template-columns: 1fr 1fr; row-gap: 26px } .lnd .flow-line { display: none } }
 
 /* АРГУМЕНТ 3: две шкалы сен–май и демо «Сдать ДЗ». */
@@ -238,6 +279,12 @@
 .lnd .crit li.ok.warn i { background: var(--orange) }
 .lnd .score { font-size: 52px; font-weight: 800; margin: 6px 0; font-variant-numeric: tabular-nums }
 .lnd .score span { font-size: 22px; color: var(--ink2) }
+/* Листок в линейку с решением от руки (правка 4). Кремовый в обеих темах. */
+.lnd .sheet.paper { height: auto; padding: 10px 16px 12px; background: #fbf8f0 repeating-linear-gradient(180deg, transparent 0 27px, #d9e3f3 27px 28px); border-color: #e9e2d0; font-family: 'Caveat Paper', 'Marck Script', cursive; font-weight: 500; color: #1f3b8f; transform: rotate(-1.2deg); box-shadow: 0 8px 20px rgba(0, 0, 0, .18) }
+.lnd .paper .hl { font-size: 21px; line-height: 28px }
+.lnd .paper .hl.ind { padding-left: 46px }
+.lnd .paper .ans { color: #c0392b; font-weight: 700 }
+.lnd .paper u { text-decoration-thickness: 2px }
 .lnd .cmt { font-family: 'PT Serif', Georgia, serif; background: var(--orangeS); border-left: 4px solid var(--orange); border-radius: 10px; padding: 12px 14px; font-size: 15px }
 @media (max-width: 900px) { .lnd .ai { grid-template-columns: 1fr } }
 
@@ -294,13 +341,20 @@
 }
 
 /* ЦЕНА */
-.lnd .pbars { padding: 28px; max-width: 900px; margin: 0 auto }
-.lnd .pb { display: grid; grid-template-columns: 230px 1fr 150px; gap: 14px; align-items: center; margin-bottom: 16px; font-weight: 700; font-size: 15px }
-.lnd .pb .bar { height: 18px; border-radius: 9px; background: var(--bg2); overflow: hidden; position: relative }
-.lnd .pb .bar i { position: absolute; top: 0; bottom: 0; border-radius: 9px; transform-origin: left center }
-.lnd .pb .v { text-align: right; font-weight: 800; white-space: nowrap }
-.lnd .pb.us .v { color: var(--greenInk); font-size: 20px }
-@media (max-width: 700px) { .lnd .pb { grid-template-columns: 1fr auto } .lnd .pb .bar { grid-column: 1 / -1; order: 3 } .lnd .pbars { padding: 22px 18px } }
+.lnd .pbars { padding: 28px; max-width: 1000px; margin: 0 auto }
+.lnd .pcmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
+.lnd .pt { display: flex; flex-direction: column; gap: 2px; padding: 20px; border-radius: 18px; background: var(--bg2); border: 1px solid var(--line) }
+.lnd .pt-l { font-weight: 800; font-size: 17px }
+.lnd .pt-s { font-size: 13.5px; color: var(--ink2) }
+.lnd .pt-v { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-top: 14px; white-space: nowrap }
+.lnd .pt .bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; position: relative; margin-top: 14px }
+.lnd .pt .bar i, .lnd .pt .bar .rng { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 6px; transform-origin: left center }
+.lnd .pt .bar .rng { opacity: .28 }
+.lnd .pt.us { background: var(--greenS); border: 2px solid var(--green) }
+.lnd .pt.us .pt-v { color: var(--greenInk); font-size: 40px }
+.lnd .psave { margin-top: 20px; text-align: center; font-size: 18px; font-weight: 700 }
+.lnd .psave b { color: var(--greenInk) }
+@media (max-width: 820px) { .lnd .pcmp { grid-template-columns: 1fr } .lnd .pt-v { font-size: 24px } .lnd .pt.us .pt-v { font-size: 34px } .lnd .pbars { padding: 22px 18px } }
 .lnd .bill { text-align: center; margin-top: 30px }
 .lnd .tabs { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 5px }
 .lnd .tabs button { padding: 10px 18px; border-radius: 10px; font-weight: 800; color: var(--ink2) }

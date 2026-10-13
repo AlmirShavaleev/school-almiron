@@ -7,8 +7,16 @@ import { iconSrc } from './icons'
 import type { Msg } from './Chat'
 import { initialUnlock, LESSONS, SECTION, submitHomework, type LessonState } from './unlockLogic'
 
+/**
+ * Обещание «ключей» из прототипа v3. На платформе такой функции сейчас НЕТ —
+ * фраза вынесена отдельно, чтобы владелец решил: оставить (тогда «ключи» —
+ * задача агенту подписки) или заменить мягкой формулировкой. Вопрос — в
+ * отчёте `лендинг_v3_отчёт.md`.
+ */
+const KEYS_PHRASE = 'Плюс у тебя есть несколько ключей: ими можно открыть любую тему раньше — например, ту, что завтра проходите в школе.'
+
 const CHAT: Msg[] = [
-  { text: 'В онлайн-школах уроки открываются по датам, и к весне на оптику и кванты остаётся пара недель. У меня следующая тема открывается, как только ты решил предыдущую. А если застрял — она откроется по сроку, и ты не отстанешь.' },
+  { text: `В онлайн-школах уроки открываются по датам, и к весне на оптику и кванты остаётся пара недель. У меня следующая тема открывается, как только ты решил предыдущую. А если застрял — она откроется по сроку, и ты не отстанешь. ${KEYS_PHRASE}` },
 ]
 
 type Seg = { t: string; w: number; bg: string }
@@ -100,17 +108,17 @@ function UnlockDemo() {
   )
 }
 
-/** Аргумент 3. */
-export function Arg3Unlock() {
+/** Аргумент 4. */
+export function ArgUnlock() {
   const anim = useAnim()
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.35 })
   const run = inView || !anim
 
   return (
-    <section id="a3" className="alt">
+    <section id="a4" className="alt">
       <div className="wrap">
-        <ArgHead n={3} tone="or" eb="Аргумент третий" title="Темы открываются, когда ты готов" chat={CHAT} />
+        <ArgHead n={4} tone="or" eb="Аргумент четвёртый" title="Темы открываются, когда ты готов" chat={CHAT} />
         <div className="vs" ref={ref}>
           <Reveal className="card">
             <span className="tag t-red">По датам — в других школах</span>

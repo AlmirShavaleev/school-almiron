@@ -42,12 +42,12 @@ const CARDS: Array<{ ic: IconName; h: string; tag: string; tone: 't-red' | 't-or
   },
 ]
 
-/** Аргумент 1. Карточки всегда белые — и в тёмной теме (решение прототипа). */
-export function Arg1Compare() {
+/** Аргумент 2. Карточки всегда белые — и в тёмной теме (решение прототипа). */
+export function ArgCompare() {
   return (
-    <section id="a1" className="alt">
+    <section id="a2" className="alt">
       <div className="wrap">
-        <ArgHead n={1} tone="red" eb="Аргумент первый" title="Не репетитор и не урок-шоу" chat={CHAT} />
+        <ArgHead n={2} tone="red" eb="Аргумент второй" title="Не репетитор и не урок-шоу" chat={CHAT} />
         <Stagger className="cmp3">
           {CARDS.map(c => (
             <motion.div key={c.h} className={c.good ? 'card cc good' : 'card cc bad'} variants={staggerItem}>
