@@ -284,7 +284,7 @@ describe('§288.1 «урок открыт ученику» везде, Telegram 
   beforeAll(async () => {
     // Раздел 2 файла (замена тел 17 функций) здесь не применяется: этих функций
     // нет в заглушках; их фрагменты сверены на проде (по одному в каждой).
-    const name = readdirSync(MIGRATIONS).find((f) => /^(PENDING_288_1_open_states|\d+_open_states_288_1)\.sql$/.test(f))
+    const name = readdirSync(MIGRATIONS).find((f) => /^(PENDING_288_1_open_states|\d+_288_1_open_states)\.sql$/.test(f))
     if (!name) throw new Error('Не найдена миграция §288.1')
     const file = readFileSync(path.join(MIGRATIONS, name), 'utf8')
     const a = file.indexOf('-- 2. Замена вызова')

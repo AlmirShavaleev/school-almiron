@@ -1,5 +1,5 @@
 /**
- * §291. RUM в базе (PGlite, настоящая миграция PENDING_291_perf.sql поверх
+ * §291. RUM в базе (PGlite, настоящие миграции §291 — таблицы и функции — поверх
  * заглушек): приём пачки и лимиты, профиль и роль — с сервера, ученик не
  * читает сырьё, сводки только админу, почасовая свёртка и чистка.
  */
@@ -32,9 +32,12 @@ const ingest = (events: unknown[]) => val<number>(`select perf_ingest($1::jsonb)
 beforeAll(async () => {
   db = new PGlite()
   await db.exec(readFileSync(STUBS, 'utf8'))
-  const name = readdirSync(MIGRATIONS).find((f) => /^(PENDING_291_perf|\d+_perf_291)\.sql$/.test(f))
-  if (!name) throw new Error('Не найдена миграция §291')
-  await db.exec(readFileSync(path.join(MIGRATIONS, name), 'utf8'))
+  // Таблицы (через MCP) и функции (SQL Editor) применены отдельно — два файла.
+  for (const re of [/^\d+_perf_rum_291_a_tables\.sql$/, /^\d+_291_perf_functions\.sql$/]) {
+    const name = readdirSync(MIGRATIONS).find((f) => re.test(f))
+    if (!name) throw new Error(`Не найдена миграция §291 ${re}`)
+    await db.exec(readFileSync(path.join(MIGRATIONS, name), 'utf8'))
+  }
   for (const [id, role] of [[ADMIN, 'admin'], [KID, 'student'], [KID2, 'student']] as const) {
     await db.query(`insert into profiles (id, email, full_name, role) values ($1, $2, $3, $4)`, [id, `u${id.slice(-2)}@t.ru`, `Имя${id.slice(-2)}`, role])
   }
