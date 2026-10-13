@@ -19,6 +19,7 @@ const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teac
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
+const PerfAdminPage = lazyPage('PerfAdminPage', () => import('@/pages/admin/PerfAdminPage').then(m => ({ default: m.PerfAdminPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
 const CollectionsPage = lazyPage('CollectionsPage', () => import('@/pages/CollectionsPage').then(m => ({ default: m.CollectionsPage })))
 const CollectionDetailPage = lazyPage('CollectionDetailPage', () => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
@@ -161,6 +162,7 @@ export default function AppRoutes() {
             §169: статус `new` снять было негде, и обращения лежали месяцами.
             Сюда ведёт строка «Разобрать обращения» на «Обзоре». */}
         <Route path="/admin/support" element={<RoleGuard allow={['admin','owner']}><SupportRequestsPage /></RoleGuard>} />
+        <Route path="/admin/perf" element={<RoleGuard allow={['admin','owner']}><PerfAdminPage /></RoleGuard>} />
 
         {/* Только персонал (teacher/curator/admin/owner) */}
         <Route path="/groups" element={<RoleGuard allow={['teacher','curator','admin','owner']}><GroupsPage /></RoleGuard>} />
