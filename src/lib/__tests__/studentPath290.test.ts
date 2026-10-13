@@ -156,7 +156,7 @@ beforeAll(async () => {
   }
   // Пустой урок считается пройденным и открывает следующий; в уроке 3 каждого
   // раздела — задача автопроверки, на нём цепочка «по прохождению» встаёт.
-  for (const t of [id.p1_3, id.p2_3, id.f1_3, id.f2_3]) await db.query(`insert into topic_autocheck_tasks (topic_id) values ($1)`, [t])
+  for (const t of [id.p1_1, id.p1_3, id.p2_3, id.f1_3, id.f2_3]) await db.query(`insert into topic_autocheck_tasks (topic_id) values ($1)`, [t])
   // Урок 1.4 — дата наступила; 1.3 подписочного откроем вручную (в демо не действуют)
   await db.query(`update topics set available_from = current_date - 1 where id = any($1)`, [[id.p1_4, id.f1_4]])
 
@@ -282,6 +282,21 @@ describe('§290-A: демо = первые 2 урока раздела', () => {
       `select jsonb_agg(jsonb_build_object('topic_id', topic_id, 'open', open, 'open_reason', open_reason))
          from _progress_state($1, array[$2]::uuid[])`, [id.paid, id.street])
     expect(reasons.filter((r) => r.open).every((r) => r.open_reason === 'first2')).toBe(true)
+  })
+
+  it('главная: демо, срок и «Продолжить урок»; страница курса: my_course_demo', async () => {
+    await as(STREET)
+    const home = await val<{ onboarding: Record<string, unknown>; subscriptions: Array<Record<string, unknown>> }>(`select student_path_home()`)
+    expect(home.onboarding).toMatchObject({ completed: true })
+    expect(home.subscriptions).toHaveLength(1)
+    expect(home.subscriptions[0]).toMatchObject({
+      course_id: id.paid, status: 'trial', source: 'trial', demo: true, has_access: true,
+      continue: { topic_id: id.p1_1, title: 'Урок 1.1', module_title: 'Раздел 1' },
+    })
+    expect(await val(`select my_course_demo($1)`, [id.paid])).toMatchObject({ demo: true })
+    expect(await val(`select my_course_demo($1)`, [id.free])).toMatchObject({ demo: false })
+    await as(SCHOOL)
+    expect(await val(`select student_path_home()`)).toMatchObject({ subscriptions: [] })
   })
 
   it('после оплаты — обычный режим «по прохождению»: прохождение, дата и ручная отметка открывают', async () => {

@@ -88,7 +88,8 @@ beforeEach(() => {
 afterEach(() => localStorage.clear())
 
 describe('витрина /subscribe', () => {
-  it('флаг выключен (тарифов нет) — «пока недоступно»', async () => {
+  it('флаг выключен (тарифов нет) — гостю «пока недоступно»', async () => {
+    useAuthStore.setState({ profile: null, loading: false } as never)
     api.fetchPublicTariffs.mockResolvedValue([])
     renderAt('/subscribe', <Route path="/subscribe" element={<SubscribePage />} />)
     expect(await screen.findByTestId('subscribe-unavailable')).toBeInTheDocument()
@@ -105,13 +106,12 @@ describe('витрина /subscribe', () => {
     expect(localStorage.getItem('subscription-pending-tariff')).toContain(TARIFF.id)
   })
 
-  it('ученик — сразу к оформлению', async () => {
+  it('§290-B: вошедший ученик — на «Курсы» (карточка на курс)', async () => {
     renderAt('/subscribe', <>
       <Route path="/subscribe" element={<SubscribePage />} />
-      <Route path="/subscribe/checkout/:tariffId" element={<div data-testid="checkout" />} />
+      <Route path="/courses" element={<div data-testid="courses" />} />
     </>)
-    fireEvent.click(await screen.findByTestId('tariff-choose'))
-    expect(screen.getByTestId('checkout')).toBeInTheDocument()
+    expect(await screen.findByTestId('courses')).toBeInTheDocument()
   })
 })
 
@@ -133,6 +133,18 @@ describe('оформление', () => {
     fireEvent.click(screen.getByTestId('checkout-pay'))
     expect(await screen.findByText(/Нужно согласие родителя/)).toBeInTheDocument()
     expect(api.beginCheckout).not.toHaveBeenCalled()
+  })
+
+  it('§290-B: «Мне ещё нет 18» запоминается для повторной оплаты; согласия — заново', async () => {
+    const first = renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
+    fireEvent.click(await screen.findByTestId('checkout-minor'))
+    first.unmount()
+    renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
+    expect(await screen.findByTestId('checkout-minor')).toBeChecked()
+    expect(screen.getByTestId('checkout-offer')).not.toBeChecked()
+    expect(screen.getByTestId('checkout-parent')).not.toBeChecked()
+    fireEvent.click(screen.getByTestId('checkout-minor'))
+    expect(localStorage.getItem('subscription:minor:p1')).toBeNull()
   })
 
   it('оплата: email из профиля, галочка карты уходит как есть, переход на страницу ЮKassa', async () => {
@@ -227,16 +239,36 @@ describe('оформление', () => {
 describe('«Моя подписка»', () => {
   const route = <Route path="/my-subscription" element={<MySubscriptionPage />} />
 
-  it('статус, следующее списание, история; отмена автопродления с подтверждением', async () => {
+  it('статус, следующее списание, история; отмена автопродления — модалкой, карточка обновляется сразу', async () => {
     api.fetchMySubscriptions.mockResolvedValue([SUB])
-    api.setAutoRenew.mockResolvedValue({ auto_renew: false })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    // перечитывание после ответа «зависает» — карточка всё равно должна обновиться
+    api.setAutoRenew.mockImplementation(async () => {
+      api.fetchMySubscriptions.mockImplementation(() => new Promise(() => {}))
+      return { auto_renew: false }
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm')
     renderAt('/my-subscription', route)
     expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent('Курс открыт до 10 ноября 2099')
     expect(screen.getByText(/Следующее списание/)).toBeInTheDocument()
     expect(screen.getByTestId('my-subscription-payments')).toHaveTextContent('Оплачен')
     fireEvent.click(screen.getByTestId('my-subscription-cancel-renew'))
+    // «Оставить» — ничего не меняется
+    fireEvent.click(await screen.findByTestId('auto-renew-confirm-cancel'))
+    expect(screen.queryByTestId('auto-renew-confirm')).toBeNull()
+    expect(api.setAutoRenew).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('my-subscription-cancel-renew'))
+    fireEvent.click(await screen.findByTestId('auto-renew-confirm-confirm'))
     await waitFor(() => expect(api.setAutoRenew).toHaveBeenCalledWith('s1', false))
+    expect(await screen.findByText(/Автопродление выключено/)).toBeInTheDocument()
+    expect(screen.queryByTestId('auto-renew-confirm')).toBeNull()
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+
+  it('способ оплаты — только последние 4 цифры (тест 12.10)', async () => {
+    api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, card_title: 'YooMoney wallet 410011758831136' }])
+    renderAt('/my-subscription', route)
+    expect(await screen.findByText('Способ оплаты: ЮMoney •1136.')).toBeInTheDocument()
+    expect(screen.queryByText(/410011758831136/)).toBeNull()
   })
 
   it('тариф на несколько месяцев — цена «за 3 месяца», а не «в месяц»', async () => {
@@ -245,7 +277,7 @@ describe('«Моя подписка»', () => {
     expect(await screen.findByText(/за 3 месяца/)).toBeInTheDocument()
   })
 
-  it('подписки нет — «Выбрать тариф»', async () => {
+  it('подписки нет — «Выбрать курс»', async () => {
     renderAt('/my-subscription', route)
     expect(await screen.findByText('Подписки пока нет.')).toBeInTheDocument()
   })

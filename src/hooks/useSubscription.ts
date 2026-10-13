@@ -20,6 +20,7 @@ import {
   setAutoRenew,
   type CourseAccess,
 } from '@/lib/subscription/api'
+import type { MySubscription } from '@/lib/subscription/view'
 
 export const SUBSCRIPTION_FLAG = 'subscriptions'
 
@@ -108,10 +109,23 @@ export function useCourseAccess(courseId: string | null | undefined) {
   return { data: got && got.courseId === courseId ? got.data : null }
 }
 
+/**
+ * §290-B (тест 12.10): после «Отменить автопродление» карточка показывала
+ * старое состояние до перезагрузки. Ответ базы кладётся в кэш сразу, потом —
+ * перечитывание для остальных полей.
+ */
 export function useSetAutoRenew() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, on }: { id: string; on: boolean }) => setAutoRenew(id, on),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['subscription'] }),
+    onSuccess: (res, { id, on }) => {
+      const autoRenew = typeof res?.auto_renew === 'boolean' ? res.auto_renew : on
+      qc.setQueryData<MySubscription[]>(['subscription', 'mine'], (list) =>
+        list?.map((s) => (s.id === id
+          ? { ...s, auto_renew: autoRenew, next_charge_at: autoRenew ? s.next_charge_at ?? s.current_period_end : null }
+          : s)))
+      // перечитывание не ждём: кнопка и модалка отпускаются по ответу базы
+      void qc.invalidateQueries({ queryKey: ['subscription'] })
+    },
   })
 }

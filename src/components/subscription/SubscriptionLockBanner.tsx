@@ -33,7 +33,7 @@ export function SubscriptionLockBanner({ courseId }: { courseId: string | null |
         </p>
       </div>
       {enabled && (
-        <Link to={data.tariff_id ? `/subscribe/checkout/${data.tariff_id}` : '/subscribe'}>
+        <Link to={data.tariff_id ? `/subscribe/checkout/${data.tariff_id}` : '/courses'}>
           <Button data-testid="subscription-lock-renew">{hadSubscription ? 'Продлить подписку' : 'Оформить'}</Button>
         </Link>
       )}

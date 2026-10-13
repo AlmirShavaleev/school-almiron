@@ -8,6 +8,7 @@
  */
 
 import { plural } from '@/lib/plural'
+import { maskPaymentTitle } from '../../../supabase/functions/_shared/subscription.ts'
 
 export type SubscriptionStatus = 'pending' | 'trial' | 'active' | 'past_due' | 'cancelled' | 'expired'
 export type PaymentStatus = 'created' | 'pending' | 'waiting_for_capture' | 'succeeded' | 'canceled' | 'refunded' | 'failed'
@@ -200,7 +201,8 @@ export function describeSubscription(s: MySubscription, now: Date = new Date()):
     default:
       headline = 'Подписка ещё не оплачена'
   }
-  if (s.card_title && s.auto_renew) details.push(`Карта: ${s.card_title}.`)
+  // §290 (тест 12.10): номер кошелька/счёта — только последние 4 цифры
+  if (s.card_title && s.auto_renew) details.push(`Способ оплаты: ${maskPaymentTitle(s.card_title)}.`)
 
   const renewable = s.status === 'active' || s.status === 'past_due'
   return {

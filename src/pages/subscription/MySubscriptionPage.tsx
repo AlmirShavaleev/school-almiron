@@ -2,9 +2,14 @@
  * §282. «Моя подписка» (`/my-subscription`, ученик): статус, до какого
  * числа, следующее списание, карта, отменить/включить автопродление,
  * оплатить вручную, история платежей. Сначала вывод — потом таблица.
+ *
+ * §290-B (тест 12.10): подтверждение — модалкой платформы, не window.confirm;
+ * после ответа базы карточка обновляется сразу (useSetAutoRenew).
  */
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Badge } from '@/components/ui/Badge'
 import { useMySubscriptions, useSetAutoRenew } from '@/hooks/useSubscription'
 import {
@@ -27,6 +32,7 @@ const BADGE: Record<Tone, 'success' | 'warning' | 'error' | 'default'> = {
 function SubscriptionCard({ s }: { s: MySubscription }) {
   const v = describeSubscription(s)
   const toggle = useSetAutoRenew()
+  const [asking, setAsking] = useState<'off' | 'on' | null>(null)
   const history = paymentHistory(s)
   const promo = promoLine(s.promo)
 
@@ -55,23 +61,32 @@ function SubscriptionCard({ s }: { s: MySubscription }) {
           <Button
             variant="ghost"
             loading={toggle.isPending}
-            onClick={() => {
-              if (window.confirm('Отключить автопродление? Курс останется открытым до конца оплаченного периода.')) {
-                toggle.mutate({ id: s.id, on: false })
-              }
-            }}
+            onClick={() => setAsking('off')}
             data-testid="my-subscription-cancel-renew"
           >
             Отменить автопродление
           </Button>
         )}
         {v.canEnableAutoRenew && (
-          <Button variant="ghost" loading={toggle.isPending} onClick={() => toggle.mutate({ id: s.id, on: true })} data-testid="my-subscription-enable-renew">
+          <Button variant="ghost" loading={toggle.isPending} onClick={() => setAsking('on')} data-testid="my-subscription-enable-renew">
             Включить автопродление
           </Button>
         )}
       </div>
       {toggle.error && <p className="mt-2 text-[13px] text-verdict-bad-ink">✕ {(toggle.error as Error).message}</p>}
+      <ConfirmDialog
+        open={asking != null}
+        title={asking === 'off' ? 'Отключить автопродление?' : 'Включить автопродление?'}
+        text={asking === 'off'
+          ? 'Курс останется открытым до конца оплаченного периода, дальше деньги списываться не будут.'
+          : 'Следующий период оплатится автоматически сохранённым способом оплаты. Отключить можно в любой момент.'}
+        confirmLabel={asking === 'off' ? 'Отключить' : 'Включить'}
+        cancelLabel={asking === 'off' ? 'Оставить' : 'Отмена'}
+        busy={toggle.isPending}
+        onCancel={() => setAsking(null)}
+        onConfirm={() => toggle.mutate({ id: s.id, on: asking === 'on' }, { onSettled: () => setAsking(null) })}
+        testId="auto-renew-confirm"
+      />
 
       {history.length > 0 && (
         <div className="mt-6">
@@ -119,7 +134,7 @@ export function MySubscriptionPage() {
       {!isLoading && !error && (data ?? []).length === 0 && (
         <div className="platform-surface mt-6 rounded-card p-6">
           <p className="text-[17px] text-graphite-900">Подписки пока нет.</p>
-          <Link to="/subscribe" className="mt-4 inline-block"><Button>Выбрать тариф</Button></Link>
+          <Link to="/courses" className="mt-4 inline-block"><Button>Выбрать курс</Button></Link>
         </div>
       )}
       <div className="mt-6 space-y-4">

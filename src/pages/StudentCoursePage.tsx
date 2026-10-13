@@ -34,6 +34,9 @@ import {
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
+import { Button } from '@/components/ui/Button'
+import { useCourseDemo } from '@/hooks/useStudentPath'
+import { withDemoLocks } from '@/lib/studentPath'
 import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
 import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
@@ -899,9 +902,15 @@ export function StudentCoursePage() {
   // сверху (пока ждут) и модуль работ; прячем, только когда RPC ответила —
   // иначе (миграция не применена, сбой, предпросмотр) темы остаются на месте.
   // Счётчики модулей и курса не трогаем (§141/§152/§162): меняется только список.
+  // §290-B: пробный период по подписке («демо») — открыты первые 2 урока
+  // раздела, остальные — «Доступно по подписке» (решает база, my_course_demo).
+  const demo = useCourseDemo(course?.id, !preview)
+  // §290-B (тест 12.10): раздел без тем («Раздел 0 · Основной») ученику не
+  // показываем — пустая карточка первой в списке только путала.
   const modules = useMemo(
-    () => studentProgramModules(programModules, assessmentsReady),
-    [assessmentsReady, programModules],
+    () => withDemoLocks(studentProgramModules(programModules, assessmentsReady), demo)
+      .filter(m => m.topics.length > 0),
+    [assessmentsReady, programModules, demo],
   )
   // Когда проводится работа — из той же RPC; без неё — просто названия.
   const worksByTopic = useMemo<WorksByTopic>(
@@ -983,6 +992,18 @@ export function StudentCoursePage() {
       {/* §282. Курс платный и подписка не действует — сказать прямо, а не
           показывать пустую программу (RLS отдаёт пусто). */}
       {!preview && <SubscriptionLockBanner courseId={course.id} />}
+
+      {/* §290-B. Демо: сказать, почему остальные уроки под замком, и куда идти */}
+      {demo && (
+        <div className="platform-surface flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-center" role="status" data-testid="course-demo">
+          <Lock className="shrink-0 text-graphite-500" size={24} aria-hidden />
+          <p className="flex-1 text-[15px] text-graphite-700">
+            <span className="font-semibold text-graphite-900">Пробный период.</span> Открыты первые два урока каждого раздела.
+            Остальные уроки — по подписке, прогресс сохранится.
+          </p>
+          <Link to="/courses"><Button data-testid="course-demo-buy">Оформить подписку</Button></Link>
+        </div>
+      )}
 
       {/* §288. Урок открылся прохождением (или датой) с прошлого визита */}
       {openedNotice && (

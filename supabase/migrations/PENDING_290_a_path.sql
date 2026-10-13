@@ -323,6 +323,74 @@ insert into public.course_showcase (slug, title, subtitle, subject, status, sort
 on conflict (slug) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────────
+-- 2б. Главная и страница курса ученика (§290-B)
+--   • student_path_home(): анкета + подписки ученика одним вызовом — для
+--     плашки «До конца пробного — N дня» (только обычный пробный: demo),
+--     «Курс открыт до …» (промо-дни) и «Продолжить урок» (первый открытый
+--     незакрытый урок курса 'progress' — по тому же _progress_state);
+--   • my_course_demo(курс): демо ли у ученика этот курс — подпись замка
+--     «Доступно по подписке» вместо «Откроется после урока …».
+-- ─────────────────────────────────────────────────────────────────────────
+
+create function public.student_path_home()
+returns jsonb
+language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  with me as (select public.auth_student_id() as sid)
+  select jsonb_build_object(
+    'onboarding', public.onboarding_state(),
+    'subscriptions', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'subscription_id', s.id,
+               'course_id', s.course_id,
+               'course_title', c.title,
+               'group_id', (select g.id from public.groups g where g.course_id = s.course_id
+                             order by g.created_at limit 1),
+               'tariff_id', s.tariff_id,
+               'status', s.status,
+               'source', s.source,
+               'demo', s.status = 'trial' and s.source = 'trial' and s.access_until > now(),
+               'has_access', s.status in ('trial', 'active', 'past_due') and s.access_until > now(),
+               'access_until', s.access_until,
+               'auto_renew', s.auto_renew,
+               'continue', (
+                 select jsonb_build_object('topic_id', ps.topic_id, 'title', t.title, 'module_title', m.title)
+                   from public._progress_state(s.course_id, array[me.sid]) ps
+                   join public.topics t on t.id = ps.topic_id
+                   join public.modules m on m.id = ps.module_id
+                  where ps.open and not ps.closed
+                    and s.status in ('trial', 'active', 'past_due') and s.access_until > now()
+                    and public.course_is_progress(s.course_id)
+                  order by m.order_index, ps.rn
+                  limit 1)
+             ) order by s.created_at)
+        from public.student_subscriptions s
+        join public.courses c on c.id = s.course_id
+       where s.student_id = me.sid and s.status <> 'pending'), '[]'::jsonb))
+  from me;
+$$;
+
+create function public.my_course_demo(p_course_id uuid)
+returns jsonb
+language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object(
+           'demo', coalesce(s.status = 'trial' and s.source = 'trial' and s.access_until > now(), false),
+           'access_until', s.access_until,
+           'tariff_id', s.tariff_id)
+    from (select 1) one
+    left join public.student_subscriptions s
+           on s.student_id = public.auth_student_id() and s.course_id = p_course_id;
+$$;
+
+revoke all on function public.student_path_home() from public, anon;
+revoke all on function public.my_course_demo(uuid) from public, anon;
+grant execute on function public.student_path_home() to authenticated, service_role;
+grant execute on function public.my_course_demo(uuid) to authenticated, service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────
 -- 3. Банк задач: кому положено (подключается в части 2)
 --    Пока подписка профилю не открыта (режим тестировщиков / флаг выключен) —
 --    как сейчас, открыт. Иначе: персонал, школьник, ученик с действующей

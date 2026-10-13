@@ -13,7 +13,7 @@ import {
   ChevronRight, ClipboardCheck, X, Trophy, ListChecks,
   Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
-  Gauge,
+  Gauge, Store,
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 
@@ -47,6 +47,8 @@ const navItems: NavItem[] = [
   // `/mock-exams` — список ИТОГОВ из `mock_exam_results`, которую ученик по RLS
   // не читает (§215/§221), то есть на пустой экран. Новый — `my_mock_exams`.
   { label: 'Пробники',          path: '/my-mock-exams',  icon: <Timer size={18} />, roles: ['student'],  section: 'Учёба' },
+  // §290-B. Витрина подписочных курсов — только тем, кому подписка открыта.
+  { label: 'Курсы',             path: '/courses',        icon: <Store size={18} />,         roles: ['student'],  section: 'Учёба', flag: 'subscriptions' },
 
   // 13.10, владелец: у ученика пункта «Конструктор вариантов» нет (был с §124).
   // Страница и маршрут остались — вход по прямой ссылке и у персонала ниже.

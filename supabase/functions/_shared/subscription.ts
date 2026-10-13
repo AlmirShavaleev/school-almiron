@@ -177,7 +177,23 @@ export function cardTitleOf(method: unknown): string | null {
     const brand = typeof card?.card_type === 'string' && card.card_type !== 'Unknown' ? card.card_type : 'Карта'
     return `${brand} •${last4}`
   }
-  return typeof m.title === 'string' && m.title.trim() ? m.title.trim().slice(0, 60) : null
+  // §290 (тест 12.10): кошелёк ЮMoney приходил целиком — «YooMoney wallet
+  // 410011758831136». Номер счёта не храним: только последние 4 цифры.
+  if (m.type === 'yoo_money') {
+    const acc = typeof m.account_number === 'string' ? m.account_number.replace(/\D/g, '') : ''
+    return acc.length >= 4 ? `ЮMoney •${acc.slice(-4)}` : 'ЮMoney'
+  }
+  return typeof m.title === 'string' && m.title.trim() ? maskPaymentTitle(m.title.trim()).slice(0, 60) : null
+}
+
+/** Длинные номера в названии способа оплаты → «•1136»; кошелёк YooMoney → «ЮMoney •1136». */
+export function maskPaymentTitle(title: string): string {
+  const digits = title.match(/\d{5,}/g)
+  if (/yoo\s*money|юmoney|ю\s*money/i.test(title)) {
+    const last = digits?.[digits.length - 1]
+    return last ? `ЮMoney •${last.slice(-4)}` : 'ЮMoney'
+  }
+  return title.replace(/\d{5,}/g, (d) => `•${d.slice(-4)}`)
 }
 
 export function paymentFacts(obj: unknown): PaymentFacts | null {

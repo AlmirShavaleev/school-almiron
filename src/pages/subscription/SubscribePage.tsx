@@ -3,8 +3,11 @@
  * `subscription_tariffs_public()`: при выключенном флаге там пусто, и экран
  * говорит «пока недоступно». Гостя ведём на регистрацию, запомнив тариф
  * (`pendingSubscribe`): после входа он вернётся к оформлению.
+ *
+ * §290-B: вошедшему ученику витрина — «Курсы» (`/courses`, по карточке на
+ * курс); эта страница остаётся для гостя.
  */
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { SchoolMark } from '@/components/brand/SchoolMark'
@@ -18,11 +21,9 @@ export function SubscribePage() {
   const profile = useAuthStore((s) => s.profile)
   const { data: tariffs, isLoading, error } = usePublicTariffs()
 
+  if (profile?.role === 'student') return <Navigate to="/courses" replace />
+
   function choose(t: PublicTariff) {
-    if (profile?.role === 'student') {
-      navigate(`/subscribe/checkout/${t.id}`)
-      return
-    }
     savePendingSubscribe(t.id)
     navigate('/register')
   }
@@ -70,7 +71,7 @@ export function SubscribePage() {
                 <Button
                   className="w-full"
                   onClick={() => choose(t)}
-                  disabled={!!profile && profile.role !== 'student'}
+                  disabled={!!profile}
                   data-testid="tariff-choose"
                 >
                   {t.trial_days > 0 ? 'Попробовать' : 'Оформить'}
@@ -85,7 +86,7 @@ export function SubscribePage() {
             Уже есть аккаунт? <Link to="/login" className="text-primary-600 underline">Войти</Link>
           </p>
         )}
-        {profile && profile.role !== 'student' && (tariffs ?? []).length > 0 && (
+        {profile && (tariffs ?? []).length > 0 && (
           <p className="mt-6 text-[15px] text-graphite-500">Подписку оформляет учётная запись ученика.</p>
         )}
       </div>

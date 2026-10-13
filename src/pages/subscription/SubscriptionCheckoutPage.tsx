@@ -11,6 +11,9 @@
  * экран только показывает ответ — цену не считает. В оформление уходит лишь
  * применённый код; бесплатный исход (дни, месяцы, скидка 100 %) — без
  * страницы ЮKassa, сразу в «Мою подписку».
+ *
+ * §290-B: «Мне ещё нет 18» запоминается в браузере (по ученику) — при
+ * повторной оплате галочка уже стоит; согласия — каждый раз заново.
  */
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -33,6 +36,21 @@ import {
 } from '@/lib/subscription/view'
 
 type AppliedPromo = Extract<PromoPreview, { ok: true }>
+
+const MINOR_KEY = (profileId: string) => `subscription:minor:${profileId}`
+
+function readMinor(profileId: string | undefined): boolean {
+  if (!profileId) return false
+  try { return localStorage.getItem(MINOR_KEY(profileId)) === '1' } catch { return false }
+}
+
+function writeMinor(profileId: string | undefined, v: boolean) {
+  if (!profileId) return
+  try {
+    if (v) localStorage.setItem(MINOR_KEY(profileId), '1')
+    else localStorage.removeItem(MINOR_KEY(profileId))
+  } catch { /* хранилище недоступно — просто не запоминаем */ }
+}
 
 function Check({ checked, onChange, children, error, testId }: {
   checked: boolean
@@ -84,7 +102,7 @@ export function SubscriptionCheckoutPage() {
   const [form, setForm] = useState<CheckoutForm>({
     email: profile?.email ?? '',
     acceptedOffer: false,
-    isMinor: false,
+    isMinor: readMinor(profile?.id),
     parentConsent: false,
     saveCard: false,
   })
@@ -99,7 +117,7 @@ export function SubscriptionCheckoutPage() {
     return (
       <div className="p-6">
         <p className="text-[17px] text-graphite-900">Тариф недоступен.</p>
-        <Link to="/subscribe" className="mt-2 inline-block text-primary-600 underline">К тарифам</Link>
+        <Link to="/courses" className="mt-2 inline-block text-primary-600 underline">К курсам</Link>
       </div>
     )
   }
@@ -180,7 +198,7 @@ export function SubscriptionCheckoutPage() {
         <Check checked={form.acceptedOffer} onChange={(v) => set('acceptedOffer', v)} error={errors.acceptedOffer} testId="checkout-offer">
           Принимаю <DocLink href={s?.offer_url}>условия оферты</DocLink> и <DocLink href={s?.privacy_url}>политику обработки персональных данных</DocLink>
         </Check>
-        <Check checked={form.isMinor} onChange={(v) => set('isMinor', v)} testId="checkout-minor">
+        <Check checked={form.isMinor} onChange={(v) => { set('isMinor', v); writeMinor(profile?.id, v) }} testId="checkout-minor">
           Мне ещё нет 18 лет
         </Check>
         {form.isMinor && (
@@ -189,7 +207,7 @@ export function SubscriptionCheckoutPage() {
           </Check>
         )}
         <Check checked={form.saveCard} onChange={(v) => set('saveCard', v)} testId="checkout-save-card">
-          Сохранить карту и продлевать подписку автоматически каждый месяц. Отключить можно в любой момент в разделе «Моя подписка».
+          Сохранить карту и продлевать подписку автоматически {tariff.period_months === 12 ? 'каждый год' : tariff.period_months === 1 ? 'каждый месяц' : `каждые ${tariff.period_months} мес.`}. Отключить можно в любой момент в разделе «Моя подписка».
         </Check>
       </div>
 
