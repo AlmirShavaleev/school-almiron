@@ -8,6 +8,7 @@ import {
   type HomeworkBuckets, type HomeworkCourseOption, type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
+import { useLessonCourseIds } from '@/lib/lessonCourses'
 
 /**
  * students.id текущего пользователя. Тот же однострочный резолв, что руками
@@ -88,7 +89,14 @@ export function useMyTopicHomework(courseId: string | null = null) {
 
   // Через useMemo, а не выражением: `?? []` каждый раз даёт новый массив, и
   // зависящие от него useMemo пересчитывались бы на каждый рендер.
-  const rows = useMemo(() => journal?.homework ?? [], [journal])
+  const allRows = useMemo(() => journal?.homework ?? [], [journal])
+  // 13.10, владелец: ДЗ «урочных» курсов (раздел «Мой курс») живут в уроках —
+  // здесь их нет, ни в списке, ни в счётчиках, ни в переключателе курсов.
+  const lesson = useLessonCourseIds(useMemo(
+    () => [...allRows.map(r => r.course_id), ...courses.map(c => c.courseId)],
+    [allRows, courses],
+  ))
+  const rows = useMemo(() => allRows.filter(r => !lesson.ids.has(r.course_id)), [allRows, lesson.ids])
 
   const courseIdsKey = useMemo(
     () => Array.from(new Set(rows.map(r => r.course_id))).sort().join(','),
@@ -115,8 +123,9 @@ export function useMyTopicHomework(courseId: string | null = null) {
     // Предмет из прямого чтения перекрывает предмет из зачислений: цвет в
     // кнопке и в карточке обязан считаться одним источником.
     () => homeworkCourseOptions(rows, courses)
+      .filter(o => !lesson.ids.has(o.id))
       .map(o => ({ ...o, subject: subjectByCourseId.get(o.id) ?? o.subject })),
-    [rows, courses, subjectByCourseId],
+    [rows, courses, subjectByCourseId, lesson.ids],
   )
 
   // Курс из адреса, которого у ученика нет (выбыл из группы, ссылка со
@@ -153,7 +162,7 @@ export function useMyTopicHomework(courseId: string | null = null) {
     courseSubject,
     // Ожидание групп входит в загрузку: иначе карточка успела бы отрисоваться
     // неактивной, а через мгновение стать ссылкой — мигание вместо перехода.
-    loading: resolvingStudent || loadingJournal || loadingCourses || loadingGroups,
+    loading: resolvingStudent || loadingJournal || loadingCourses || loadingGroups || !lesson.ready,
     error,
     reload,
     /** Ученик не найден — например, персонал открыл страницу по прямой ссылке. */

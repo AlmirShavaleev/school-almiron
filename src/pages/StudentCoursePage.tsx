@@ -34,6 +34,7 @@ import {
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
+import { isLessonProgram, useLessonCourseIds } from '@/lib/lessonCourses'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -875,6 +876,10 @@ export function StudentCoursePage() {
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
   const { course, modules: programModules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
+  // 13.10, владелец: в «урочном» курсе (раздел «Мой курс») ДЗ живут в уроках —
+  // отдельного блока «Задания» со ссылками на них нет (src/lib/lessonCourses.ts).
+  const lessonIds = useLessonCourseIds(course?.id ? [course.id] : [])
+  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics)) || (!!course?.id && lessonIds.ids.has(course.id))
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
   // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
   // блок «Пробники» по расписанию, как в §224.2.
@@ -1130,7 +1135,7 @@ export function StudentCoursePage() {
       )}
 
       {/* ══ БЛОК ЗАДАНИЙ (только на главном экране курса) ══ */}
-      {!activeMod && (
+      {!activeMod && !lessonCourse && (
         <HomeworkBlock
           modules={programModules}
           onOpenTopic={openTopic}
