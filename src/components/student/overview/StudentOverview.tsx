@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { cn } from '@/utils/cn'
 import { SUBJECT_LABELS } from '@/utils/format'
-import { shortDay } from '@/lib/studentHome'
+import { shortDay } from '@/lib/dayLabels'
 import { ZONE_LABEL, type CatalogZone } from '@/lib/catalogRewards'
 import type { DeadlineTone } from '@/lib/homeworkDeadline'
 import { useStudentOverview } from '@/hooks/useStudentOverview'

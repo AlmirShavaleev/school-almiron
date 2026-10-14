@@ -3,13 +3,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 /**
- * §224.2. Кабинет — первый экран после входа: идущий пробник стоит над
- * списком дел, с подписью курса и одной кнопкой на страницу пробника.
- * §254: хук главной отдаёт только курсы; активность и журнал подменены пустыми.
+ * §224.2. Кабинет — первый экран после входа: идущий пробник стоит первым,
+ * с подписью курса и одной кнопкой на страницу пробника.
+ * 14.10: главная без «что сдать» — пробник стоит первым после шапки; прогресс курсов подменён пустым.
  */
 
 const MIN = 60_000
-vi.mock('@/hooks/useStudentWeekPlan', () => ({ useStudentWeekPlan: () => ({ courses: [], loading: false, error: null }) }))
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector({ profile: { id: 'profile-1', full_name: 'Иванова Анна', role: 'student' } }),
 }))
@@ -23,15 +22,7 @@ vi.mock('@/hooks/useStudentDashboard', () => ({
     loading: false,
   }),
 }))
-vi.mock('@/hooks/useStudentTodo', () => ({
-  useStudentTodo: () => ({ todo: { overdue: [], returned: [], dueSoon: [], noDue: [], tests: [], newlyOpened: [], checked: [], newGrades: [], isClear: true }, loading: false, error: null }),
-}))
-vi.mock('@/hooks/useStudentHomeActivity', () => ({
-  useStudentHomeActivity: () => ({ activity: null, loading: false, error: null, retry: () => {} }),
-}))
-vi.mock('@/hooks/useStudentTopicJournal', () => ({
-  useStudentTopicJournal: () => ({ journal: null, loading: false, error: null, reload: () => {} }),
-}))
+vi.mock('@/hooks/useStudentHomeCourses', () => ({ useStudentHomeCourses: () => ({ courses: [], error: null }) }))
 const loadMockExamsByGroup = vi.fn(async (ids: string[], _preview: boolean) => {
   const now = Date.now()
   const s = now - 233 * MIN

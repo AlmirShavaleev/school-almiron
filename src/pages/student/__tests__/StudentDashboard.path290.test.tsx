@@ -66,7 +66,7 @@ describe('§290-B главная', () => {
     expect(await screen.findByTestId('start-page')).toBeInTheDocument()
   })
 
-  it('пробный — плашка и «Продолжить урок» над кнопками', async () => {
+  it('пробный — плашка; «Продолжить урок» не дублируется (карточка одна — «лёгкой» главной)', async () => {
     state.path = {
       onboarding: onboarding(false),
       subscriptions: [{
@@ -78,7 +78,7 @@ describe('§290-B главная', () => {
     }
     renderHome()
     expect(await screen.findByTestId('subscription-path-banner')).toHaveTextContent('До конца пробного — 2 дня')
-    expect(screen.getByTestId('subscription-path-continue')).toHaveTextContent('Кинематика')
+    expect(screen.queryByTestId('subscription-path-continue')).toBeNull()
   })
 
   it('подписка закрыта (школьник) — без запроса пути и без плашек', async () => {

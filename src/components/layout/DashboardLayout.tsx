@@ -69,7 +69,6 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/my-mock-exams$/, 'Пробники'],
   [/^\/my-homeworks$/, 'Домашние задания'],
   [/^\/my-homework/, 'Домашние задания'],
-  [/^\/achievements$/, 'Достижения'],
   [/^\/my-journal$/, 'Журнал занятий и заданий'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],

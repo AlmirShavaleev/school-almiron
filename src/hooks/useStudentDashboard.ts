@@ -22,7 +22,7 @@ interface StudentDashboardData {
  *
  * §254: плитки StatCard, «Последние ДЗ» и «Мои тесты» ушли с главной — их
  * заменили кнопки-счётчики (`studentTodo`) и карточки «Мои курсы»
- * (`studentHome.courseCards`). Хук больше не тянет попытки ДЗ и тестов, а
+ * (сейчас — `student_home_courses()`, письмо 14.10). Хук больше не тянет попытки ДЗ и тестов, а
  * только членство в группах: курсы нужны карточкам и баннеру пробника (§224.2).
  */
 export function useStudentDashboard(profileId: string | undefined): StudentDashboardData {

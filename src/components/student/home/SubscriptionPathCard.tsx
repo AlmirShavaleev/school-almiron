@@ -11,9 +11,14 @@ import { PlayCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { pathBanners, type PathSubscription } from '@/lib/studentPath'
 
-export function SubscriptionPathCard({ subscriptions, now }: { subscriptions: PathSubscription[]; now?: Date }) {
+export function SubscriptionPathCard({ subscriptions, now, showContinue = true }: {
+  subscriptions: PathSubscription[]
+  now?: Date
+  /** Главная с собственной карточкой «Продолжить урок» — здесь её не дублируем. */
+  showContinue?: boolean
+}) {
   const banners = pathBanners(subscriptions, now)
-  const next = subscriptions.filter((s) => s.has_access && s.continue && s.group_id)
+  const next = showContinue ? subscriptions.filter((s) => s.has_access && s.continue && s.group_id) : []
   if (banners.length === 0 && next.length === 0) return null
 
   return (
