@@ -208,3 +208,11 @@ describe('variant telegram queue helpers', () => {
     expect(lines.join(' ')).not.toContain('Telegram доставлен')
   })
 })
+
+describe('§288.1 «Открыт урок» — галочка «Домашние задания»', () => {
+  it('включено по умолчанию; выключены ДЗ или Telegram — не шлём', () => {
+    expect(isTelegramPreferenceEnabled('topic_unlocked', { telegram: true } as never)).toBe(true)
+    expect(isTelegramPreferenceEnabled('topic_unlocked', { telegram: true, homework: false } as never)).toBe(false)
+    expect(isTelegramPreferenceEnabled('topic_unlocked', { telegram: false, homework: true } as never)).toBe(false)
+  })
+})

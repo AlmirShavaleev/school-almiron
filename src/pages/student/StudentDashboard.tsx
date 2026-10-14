@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
@@ -32,6 +33,10 @@ import { StudentCalendarCard } from '@/components/student/home/StudentCalendarCa
 import { buildCalendarEvents } from '@/lib/studentCalendar'
 import { mskDateKey } from '@/lib/homeworkDeadline'
 import { useLessonCourseIds } from '@/lib/lessonCourses'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
+import { useStudentPathHome } from '@/hooks/useStudentPath'
+import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPathCard'
+import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard'
 
 /**
  * Главная ученика (§254, макет владельца 02.10).
@@ -61,9 +66,15 @@ import { useLessonCourseIds } from '@/lib/lessonCourses'
  * уже загружен для «Моих курсов»), пробники (тот же `useMyMockExams`, что у
  * баннера), открытие уроков и проверочные/контрольные (`topics.available_from`
  * одним запросом по всем курсам). Новых RPC нет; лишний запрос — один.
+ *
+ * §290-B: тем, кому подписка открыта, — `student_path_home()`: ученика «с
+ * улицы» без анкеты — на `/start`; плашка пробного/промо и «Продолжить урок»
+ * над кнопками. Подписка закрыта (школьники сейчас) — запроса нет, главная прежняя.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
+  const subscriptionsOn = useSubscriptionsEnabled()
+  const path = useStudentPathHome(profile?.id, subscriptionsOn.enabled)
   const dashboard = useStudentDashboard(profile?.id)
   const { todo, loading: todoLoading, error: todoError } = useStudentTodo(profile?.id)
   const home = useStudentHomeActivity(profile?.id)
@@ -136,6 +147,8 @@ export function StudentDashboard() {
     journal?.homework ?? [],
   ), [courses, home.activity, journal])
 
+  if (path.data?.onboarding.needed) return <Navigate to="/start" replace />
+
   if (dashboard.loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -168,6 +181,10 @@ export function StudentDashboard() {
       {courses.map(c => (
         <MockExamAlert key={c.groupId} exams={mocksByGroup[c.groupId] ?? []} groupId={c.groupId} context={c.courseTitle} />
       ))}
+
+      {path.data && <SubscriptionPathCard subscriptions={path.data.subscriptions} />}
+      {/* §289: анкета пройдена, диагностика не начата/отложена */}
+      <DiagnosticHomeCard onboarding={path.data?.onboarding} />
 
       <HomeActions todo={todo} loading={todoLoading} error={todoError} />
 

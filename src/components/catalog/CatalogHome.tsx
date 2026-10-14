@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogOverview } from '@/hooks/useCatalogOverview'
@@ -57,7 +58,7 @@ const CHIP: Record<Chip['tone'], string> = {
 
 export function CatalogHome() {
   const { profile } = useAuthStore()
-  const { overview, loading, error, retry } = useCatalogOverview(profile?.id)
+  const { overview, loading, error, locked, retry } = useCatalogOverview(profile?.id)
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6" data-testid="catalog-home">
@@ -66,7 +67,14 @@ export function CatalogHome() {
         <p className="mt-1 text-gray-500">{LEAD}</p>
       </header>
 
-      {overview ? (
+      {locked ? (
+        // §290: банк задач — по подписке или пробному периоду; разделы не показываем
+        <div role="status" data-testid="catalog-locked" className="platform-surface rounded-card p-6">
+          <p className="text-[17px] font-semibold text-graphite-900">Банк задач открывается с подпиской</p>
+          <p className="mt-1 text-[15px] text-graphite-700">Начните пробный период или оформите подписку на курс — задачи и прогресс по ним станут доступны.</p>
+          <Link to="/courses" className="mt-4 inline-block"><Button>К курсам</Button></Link>
+        </div>
+      ) : overview ? (
         <>
           <Summary o={overview} />
           {subjectRows(overview).map(row => (

@@ -32,6 +32,13 @@ import {
   isWorksOnlyModule, studentProgramModules, workWhenLabel, workWhenShort, worksCountLabel, type AssessmentWork,
 } from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
+import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
+import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
+import { Button } from '@/components/ui/Button'
+import { useCourseDemo } from '@/hooks/useStudentPath'
+import { withDemoLocks } from '@/lib/studentPath'
+import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
+import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
 import { isLessonProgram, useLessonCourseIds } from '@/lib/lessonCourses'
@@ -876,10 +883,19 @@ export function StudentCoursePage() {
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
   const { course, modules: programModules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
+  // §288. Курс «по прохождению»: замки уроков и счётчики — уже в программе
+  // (useStudentCourseProgram). Здесь — только «Открыт урок «…»» с прошлого визита.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
+  const locks = useCourseTopicLocks(course?.id, preview ? null : profileId)
+  // «Открыт урок «…»» — посчитан хуком по приходу замков; «Понятно» скрывает его
+  const [dismissedNotice, setDismissedNotice] = useState<CourseTopicLocks | null>(null)
+  const openedNotice = locks.data && locks.data !== dismissedNotice
+    ? openedMessage(locks.opened.map(l => l.title ?? 'новый урок'))
+    : null
   // 13.10, владелец: в «урочном» курсе (раздел «Мой курс») ДЗ живут в уроках —
   // отдельного блока «Задания» со ссылками на них нет (src/lib/lessonCourses.ts).
   const lessonIds = useLessonCourseIds(course?.id ? [course.id] : [])
-  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics)) || (!!course?.id && lessonIds.ids.has(course.id))
+  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics), locks.data?.mode) || (!!course?.id && lessonIds.ids.has(course.id))
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
   // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
   // блок «Пробники» по расписанию, как в §224.2.
@@ -891,9 +907,15 @@ export function StudentCoursePage() {
   // сверху (пока ждут) и модуль работ; прячем, только когда RPC ответила —
   // иначе (миграция не применена, сбой, предпросмотр) темы остаются на месте.
   // Счётчики модулей и курса не трогаем (§141/§152/§162): меняется только список.
+  // §290-B: пробный период по подписке («демо») — открыты первые 2 урока
+  // раздела, остальные — «Доступно по подписке» (решает база, my_course_demo).
+  const demo = useCourseDemo(course?.id, !preview)
+  // §290-B (тест 12.10): раздел без тем («Раздел 0 · Основной») ученику не
+  // показываем — пустая карточка первой в списке только путала.
   const modules = useMemo(
-    () => studentProgramModules(programModules, assessmentsReady),
-    [assessmentsReady, programModules],
+    () => withDemoLocks(studentProgramModules(programModules, assessmentsReady), demo)
+      .filter(m => m.topics.length > 0),
+    [assessmentsReady, programModules, demo],
   )
   // Когда проводится работа — из той же RPC; без неё — просто названия.
   const worksByTopic = useMemo<WorksByTopic>(
@@ -971,6 +993,31 @@ export function StudentCoursePage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+
+      {/* §282. Курс платный и подписка не действует — сказать прямо, а не
+          показывать пустую программу (RLS отдаёт пусто). */}
+      {!preview && <SubscriptionLockBanner courseId={course.id} />}
+
+      {/* §290-B. Демо: сказать, почему остальные уроки под замком, и куда идти */}
+      {demo && (
+        <div className="platform-surface flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-center" role="status" data-testid="course-demo">
+          <Lock className="shrink-0 text-graphite-500" size={24} aria-hidden />
+          <p className="flex-1 text-[15px] text-graphite-700">
+            <span className="font-semibold text-graphite-900">Пробный период.</span> Открыты первые два урока каждого раздела.
+            Остальные уроки — по подписке, прогресс сохранится.
+          </p>
+          <Link to="/courses"><Button data-testid="course-demo-buy">Оформить подписку</Button></Link>
+        </div>
+      )}
+
+      {/* §288. Урок открылся прохождением (или датой) с прошлого визита */}
+      {openedNotice && (
+        <div className="flex items-start justify-between gap-3 rounded-card border border-verdict-ok-ink/20 bg-verdict-ok-tint px-4 py-3 text-[15px] font-semibold text-verdict-ok-ink"
+          role="status" data-testid="progress-opened">
+          <span>🔓 {openedNotice}</span>
+          <button type="button" className="text-[13px] font-normal underline" onClick={() => setDismissedNotice(locks.data)}>Понятно</button>
+        </div>
+      )}
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на

@@ -5,6 +5,7 @@ import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffMode
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
@@ -12,7 +13,7 @@ import {
   ChevronRight, ClipboardCheck, X, Trophy, ListChecks,
   Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
-  Gauge,
+  Gauge, Store,
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 
@@ -28,6 +29,8 @@ interface NavItem {
    * чтобы вернуть пункт в меню, удалите флаг.
    */
   hidden?: boolean
+  /** §282. Пункт показывается, только когда включён флаг (`app_feature_flags`). */
+  flag?: string
 }
 
 const navItems: NavItem[] = [
@@ -44,6 +47,8 @@ const navItems: NavItem[] = [
   // `/mock-exams` — список ИТОГОВ из `mock_exam_results`, которую ученик по RLS
   // не читает (§215/§221), то есть на пустой экран. Новый — `my_mock_exams`.
   { label: 'Пробники',          path: '/my-mock-exams',  icon: <Timer size={18} />, roles: ['student'],  section: 'Учёба' },
+  // §290-B. Витрина подписочных курсов — только тем, кому подписка открыта.
+  { label: 'Курсы',             path: '/courses',        icon: <Store size={18} />,         roles: ['student'],  section: 'Учёба', flag: 'subscriptions' },
 
   // 13.10, владелец: у ученика пункта «Конструктор вариантов» нет (был с §124).
   // Страница и маршрут остались — вход по прямой ссылке и у персонала ниже.
@@ -53,6 +58,7 @@ const navItems: NavItem[] = [
   // §257. «Достижения» вместо «Прогресс»; счётчик — новые награды (useSidebarBadges).
   { label: 'Достижения',        path: '/achievements',   icon: <Trophy size={18} />,        roles: ['student'],  section: 'Успехи' },
 
+  { label: 'Моя подписка',      path: '/my-subscription', icon: <CreditCard size={18} />,   roles: ['student'],  section: 'Аккаунт', flag: 'subscriptions' },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
@@ -61,7 +67,9 @@ const navItems: NavItem[] = [
   { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
-  { label: 'Скорость',          path: '/admin/perf',     icon: <Gauge size={18} />,         roles: ['admin', 'owner'] },
+  // §282. Без флага: тарифы и тексты заводятся ДО включения подписки.
+  { label: 'Подписка',          path: '/admin/subscriptions', icon: <CreditCard size={18} />, roles: ['admin', 'owner'] },
+  { label: 'Скорость',          path: '/admin/perf',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
   { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
@@ -129,7 +137,7 @@ function activeNavPath(paths: readonly string[], pathname: string): string | nul
 }
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/perf'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/perf'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
@@ -151,6 +159,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const badges = useSidebarBadges()
   const curatorships = useMyCuratorships()
+  const { enabled: subscriptionsOn } = useSubscriptionsEnabled()
   const { pathname } = useLocation()
 
   if (!profile) return null
@@ -162,7 +171,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // настоящего ученика; личные страницы из них отвечают заглушкой.
   const menuRole     = effectiveRole ?? profile.role
   const isStudent    = menuRole === 'student'
-  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
+  const visibleItems = navItems.filter(item =>
+    !item.hidden && item.roles.includes(menuRole) && (!item.flag || (item.flag === 'subscriptions' && subscriptionsOn)))
   const activePath   = activeNavPath(
     [...visibleItems, ...(isStudent && curatorships.isCurator ? CURATOR_ITEMS : [])].map(i => i.path),
     pathname,
