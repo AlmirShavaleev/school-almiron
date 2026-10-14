@@ -201,6 +201,11 @@ body::before {
 .catalog-md ol { list-style: decimal; padding-left: 1.6em; margin: 0.4em 0; }
 .catalog-md li { margin: 0.15em 0; line-height: 1.6; }
 .catalog-md th { font-weight: 600; background: #f8fafc; }
+/* Таблицы Markdown (каталог математики №16) — и вне .catalog-html (варианты,
+   задачи темы): широкая таблица прокручивается вбок, страница не уезжает. */
+.catalog-md .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.75em 0; max-width: 100%; }
+.catalog-md table { border-collapse: collapse; min-width: max-content; }
+.catalog-md td, .catalog-md th { border: 1px solid #e5e7eb; padding: 5px 10px; font-size: 0.9375rem; white-space: nowrap; }
 .catalog-md .catalog-math-block,
 .catalog-md .katex-display { overflow-x: auto; overflow-y: hidden; margin: 0.5em 0; padding: 2px 0; }
 .catalog-md .katex { font-size: 1.08em; }
