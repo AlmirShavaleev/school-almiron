@@ -8,7 +8,7 @@
  */
 import { Link } from 'react-router-dom'
 import { PlayCircle } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
+import { Sticker } from '@/components/student/skin/Sticker'
 import { pathBanners, type PathSubscription } from '@/lib/studentPath'
 
 export function SubscriptionPathCard({ subscriptions, now, showContinue = true }: {
@@ -28,17 +28,18 @@ export function SubscriptionPathCard({ subscriptions, now, showContinue = true }
         return (
           <div
             key={`b-${b.courseId}`}
-            className="flex flex-col gap-3 rounded-card border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center"
+            className="stu-card stu-note is-or"
             role="status"
             data-testid="subscription-path-banner"
             data-kind={b.kind}
           >
-            <p className="flex-1 text-[15px] text-graphite-900">
-              <span className="font-semibold">{b.text}.</span>{' '}
-              <span className="text-graphite-700">{b.courseTitle}</span>
+            <Sticker name="clock" size={52} />
+            <p className="stu-note-txt">
+              <b className="font-extrabold">{b.text}.</b>{' '}
+              <span className="stu-muted">{b.courseTitle}</span>
             </p>
-            <Link to={sub ? `/subscribe/checkout/${sub.tariff_id}` : '/courses'}>
-              <Button size="sm" data-testid="subscription-path-buy">Оформить</Button>
+            <Link to={sub ? `/subscribe/checkout/${sub.tariff_id}` : '/courses'} className="stu-btn stu-btn-o" data-testid="subscription-path-buy">
+              Оформить
             </Link>
           </div>
         )

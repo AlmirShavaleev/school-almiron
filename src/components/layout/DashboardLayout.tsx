@@ -13,10 +13,13 @@ import { StudentPreviewBanner } from './StudentPreviewBanner'
 import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { Menu, Moon, Sun } from 'lucide-react'
 import { useWorkModeStore } from '@/store/workModeStore'
 import { workModeAllows } from '@/lib/workMode'
 import { WorkModeClosed, WorkModeStrip, useWorkModeSync } from './WorkMode'
+import { useStudentTheme } from '@/store/studentThemeStore'
+import { studentSkinPage } from '@/components/student/skin/skin'
+import '@/components/student/skin/student.css'
 
 /**
  * Заголовок в шапке. Порядок важен: берётся ПЕРВОЕ совпадение, поэтому
@@ -88,6 +91,7 @@ export function DashboardLayout() {
   useWorkModeSync(isStudent)
   const work = useWorkModeStore(s => s.work)
   const workOffsetMs = useWorkModeStore(s => s.offsetMs)
+  const { theme, toggle: toggleTheme } = useStudentTheme()
 
   // Close sidebar on ESC
   useEffect(() => {
@@ -130,9 +134,15 @@ export function DashboardLayout() {
   const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'Школа Almiron'
   const activeWork = isStudent ? work : null
   const workClosed = !!activeWork && !workModeAllows(location.pathname, activeWork)
+  // Кабинет ученика в стиле лендинга (письмо 14.10): ученик и персонал
+  // «глазами ученика». Кабинет преподавателя и админа не меняется.
+  const skin = (effectiveRole ?? profile.role) === 'student'
 
   return (
-    <div className="flex min-h-screen bg-transparent text-graphite-900">
+    <div
+      className={skin ? 'stu flex min-h-screen' : 'flex min-h-screen bg-transparent text-graphite-900'}
+      data-theme={skin ? theme : undefined}
+    >
       {/* Sidebar — receives open/onClose for mobile drawer behaviour */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -140,11 +150,15 @@ export function DashboardLayout() {
       <div className="flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen">
         <ImpersonationBanner />
         {/* Top bar */}
-        <header className="h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30">
+        <header className={skin
+          ? 'stu-top h-[66px] flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'
+          : 'h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'}>
           {/* Hamburger — visible only on mobile */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-graphite-900 transition-colors shrink-0"
+            className={skin
+              ? 'stu-icon-btn md:hidden'
+              : 'md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-graphite-900 transition-colors shrink-0'}
             aria-label="Открыть меню"
           >
             <Menu size={20} />
@@ -154,7 +168,7 @@ export function DashboardLayout() {
               слева» ничего не сообщала, а иконка лупы рядом читалась как поиск,
               которого здесь нет. Освободившаяся высота отдана содержимому. */}
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold text-graphite-950 truncate leading-tight">
+            <div className={skin ? 'stu-title truncate leading-tight' : 'text-[15px] font-semibold text-graphite-950 truncate leading-tight'}>
               {pageTitle}
             </div>
           </div>
@@ -166,9 +180,22 @@ export function DashboardLayout() {
           {/* Режим представления — только у admin/owner, права не трогает */}
           <StaffModeSwitch />
 
+          {skin && (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="stu-icon-btn"
+              aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              data-testid="student-theme-toggle"
+            >
+              {theme === 'dark' ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+            </button>
+          )}
+
           {/* Avatar + name */}
-          <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
-            <div className="w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15">
+          <div className={skin ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5 pl-3 border-l border-slate-200'}>
+            <div className={skin ? 'stu-ava' : 'w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15'}>
               {profile.avatar_url
                 ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" />
                 : initials
@@ -182,8 +209,8 @@ export function DashboardLayout() {
                 сжимался заголовок страницы, то есть пропадал он, а не
                 украшение. На 1024+ ряд помещается — вид прежний. */}
             <div className="hidden lg:block">
-              <div className="text-sm font-semibold text-graphite-950 leading-tight">{profile.full_name || 'Профиль'}</div>
-              <div className="text-xs text-slate-500 leading-tight">
+              <div className={skin ? 'stu-name' : 'text-sm font-semibold text-graphite-950 leading-tight'}>{profile.full_name || 'Профиль'}</div>
+              <div className={skin ? 'stu-role' : 'text-xs text-slate-500 leading-tight'}>
                 {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
               </div>
             </div>
@@ -213,7 +240,10 @@ export function DashboardLayout() {
             {!isFullscreenReviewRoute && !workClosed && <TelegramOnboarding />}
             {activeWork && workClosed
               ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
-              : <Outlet />}
+              : skin && !studentSkinPage(location.pathname)
+                // Страница ещё в прежнем виде: в тёмной теме — светлым листом.
+                ? <div data-stu-scope="light"><Outlet /></div>
+                : <Outlet />}
           </div>
         </main>
       </div>

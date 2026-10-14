@@ -5,12 +5,12 @@ import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
-import { ExamCountdownPill } from '@/components/student/home/ExamCountdownPill'
+import { HomeHero } from '@/components/student/home/HomeHero'
 import { ContinueLessonCard } from '@/components/student/home/ContinueLessonCard'
 import { CourseProgressCard } from '@/components/student/home/CourseProgressCard'
 import { examCountdown } from '@/lib/examCountdown'
 import { mskDateKey } from '@/lib/homeworkDeadline'
-import { primaryContinue } from '@/lib/studentHomeCourses'
+import { continueHref, primaryContinue } from '@/lib/studentHomeCourses'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPathCard'
@@ -34,6 +34,11 @@ import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard
  * недели — вместе с их запросами (student_home_activity, журнал ДЗ, todo,
  * каталог, прогноз, баллы, синхронизация наград, даты уроков, учебный план).
  * Сроки ДЗ — на странице «Домашние задания».
+ *
+ * Вид — стиль лендинга v3 (письмо ЛК_ученика_в_стиле_лендинга.md, 14.10):
+ * первый экран как hero лендинга (приветствие, реплика пузырём, сцена с
+ * 3D-стикерами и днями до экзамена), «Продолжить урок» с шагами урока как
+ * аргумент 3, курсы карточками. Данные и запросы — прежние.
  *
  * Подписка (§290-B, §289): тем, кому подписка открыта, — `student_path_home()`:
  * ученик «с улицы» без анкеты — на `/start`; плашка пробного/доступа
@@ -68,24 +73,22 @@ export function StudentDashboard() {
   if (dashboard.loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="mx-auto grid max-w-[1120px] gap-3.5" data-testid="student-home">
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
-        <div className="min-w-0">
-          <h1 className="break-words text-2xl font-extrabold tracking-tight text-graphite-950 sm:text-[1.55rem]">
-            Привет, {profile?.full_name?.split(' ')[1] || 'Ученик'}
-          </h1>
-          <p className="text-[15px] text-graphite-500">
-            {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-        </div>
-        {countdown && <ExamCountdownPill countdown={countdown} />}
-      </header>
+    <div className="mx-auto flex max-w-[1140px] flex-col gap-8 pb-10 pt-2 sm:gap-10 sm:pt-4" data-testid="student-home">
+      <HomeHero
+        name={profile?.full_name?.split(' ')[1] || 'Ученик'}
+        todayLabel={new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+        countdown={countdown}
+        next={next ? { title: next.next.title, moduleTitle: next.next.moduleTitle, courseTitle: next.course.courseTitle } : null}
+        continueTo={next ? continueHref(next.course.groupId, next.next) : null}
+        hasCourses={courses.length > 0}
+        coursesOn={subscriptionsOn.enabled}
+      />
 
       {/* §224.2. Идущий / ближайший пробник — первым: пока окно открыто, это
           главное действие дня. Подпись курса — курсов бывает два. */}
@@ -99,7 +102,7 @@ export function StudentDashboard() {
 
       {next && <ContinueLessonCard groupId={next.course.groupId} courseTitle={next.course.courseTitle} next={next.next} />}
 
-      <CourseProgressCard items={items} />
+      <CourseProgressCard items={items} mainCourseId={next?.course.courseId ?? null} />
     </div>
   )
 }

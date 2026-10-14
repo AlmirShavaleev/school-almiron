@@ -36,6 +36,9 @@ vi.mock('@/hooks/useStudentTopicJournal', () => ({ useStudentTopicJournal: () =>
 vi.mock('@/hooks/useMyMockExams', () => ({ useMyMockExams: () => ({}) }))
 
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
+import { useVisibleObserver } from '@/test/visibleObserver'
+
+useVisibleObserver()
 
 const onboarding = (needed: boolean): StudentPathHome['onboarding'] => ({
   needed, completed: !needed, grade: 11, exam: 'ege', subject: 'physics', target_score: 80,

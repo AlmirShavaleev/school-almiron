@@ -32,13 +32,15 @@ function typingDelay(m: Msg) {
  * `autoStart` — запуск сразу (первый экран), иначе — когда диалог виден
  * наполовину. `onDone` — после последней реплики (кнопки под диалогом).
  */
-export function Chat({ msgs, className, autoStart = false, onDone }: {
+export function Chat({ msgs, className, autoStart = false, instant = false, onDone }: {
   msgs: Msg[]
   className?: string
   autoStart?: boolean
+  /** Сразу в конечном виде, без «печатает…» (кабинет: повторный заход на главную). */
+  instant?: boolean
   onDone?: () => void
 }) {
-  const anim = useAnim()
+  const anim = useAnim() && !instant
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.5 })
   const [shown, setShown] = useState(0)

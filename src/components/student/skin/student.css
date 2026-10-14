@@ -1,0 +1,202 @@
+/*
+ * Кабинет ученика в стиле лендинга v3 (письмо ЛК_ученика_в_стиле_лендинга.md,
+ * 14.10.2026). Всё под корнем `.stu`, который ставит DashboardLayout, когда
+ * кабинет показан ученику (или персоналу «глазами ученика»): кабинет
+ * преподавателя и админа не меняется.
+ *
+ * Палитра и тени — те же значения, что у `.lnd` (src/pages/landing/landing.css):
+ * Manrope, синий #2F5BEA, оранжевый #F28C28, зелёный #1E9E6A, navy #13254D,
+ * радиусы 20–22 px. Тёмная тема — navy лендинга, только по переключателю
+ * (`data-theme='dark'`), системную настройку не читаем: светлая по умолчанию.
+ *
+ * Этап 1 — каркас и главная. Страницы, которые ещё не переведены, лежат в
+ * `[data-stu-scope='light']`: в тёмной теме они рисуются светлым листом на
+ * navy-фоне, а не тёмным текстом Tailwind на тёмном фоне.
+ *
+ * Анимации — transform/opacity; при «уменьшить движение» петли выключены.
+ */
+@font-face { font-family: 'PT Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url('../../../pages/landing/fonts/pt-serif-italic.woff2') format('woff2') }
+
+.stu {
+  --bg: #f7f9fe; --bg2: #eef2fb; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #e1e7f3;
+  --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea;
+  --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
+  --red: #e5484d; --redS: #fdecee; --redInk: #c22f35;
+  --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
+  --shadow: 0 12px 32px rgba(27, 31, 42, .07); --r: 22px;
+  --nav: rgba(255, 255, 255, .86);
+  font-family: Manrope, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  color-scheme: light;
+}
+.stu[data-theme='dark'] {
+  --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
+  --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d;
+  --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .3);
+  --nav: rgba(15, 29, 61, .86);
+  color-scheme: dark;
+}
+/* Ещё не переведённая страница в тёмной теме — светлый лист. */
+.stu[data-theme='dark'] [data-stu-scope='light'] {
+  --bg: #f7f9fe; --bg2: #eef2fb; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #e1e7f3;
+  --blueS: #eaf0fd; --blueInk: #2f5bea; --orangeS: #fdf1e4; --orInk: #a8560c;
+  --redS: #fdecee; --redInk: #c22f35; --greenS: #e6f5ee; --greenInk: #157350;
+  --shadow: 0 12px 32px rgba(27, 31, 42, .07);
+  color-scheme: light;
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: var(--r);
+  padding: 12px;
+}
+
+/* ── Боковое меню ─────────────────────────────────────────────── */
+.stu-side { background: var(--card); color: var(--ink); border-right: 1px solid var(--line); box-shadow: var(--shadow) }
+.stu-side .stu-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--ink) }
+.stu-side .stu-sec { padding: 14px 12px 4px; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.stu-side .stu-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 14px; font-size: 15px; font-weight: 700; color: var(--ink2); transition: background-color .2s, color .2s }
+.stu-side .stu-item:hover { background: var(--bg2); color: var(--ink) }
+.stu-side .stu-item[data-active='true'] { background: var(--blueS); color: var(--blueInk) }
+.stu-side .stu-item[data-active='true']::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--orange) }
+.stu-side .stu-badge { min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 12px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums }
+.stu-side .stu-me { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 18px; background: var(--bg2) }
+.stu-side .stu-close { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--ink2) }
+.stu-side .stu-close:hover { background: var(--bg2) }
+.stu-side .stu-out { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 14px; font-size: 15px; font-weight: 700; color: var(--ink2) }
+.stu-side .stu-out:hover { background: var(--bg2); color: var(--ink) }
+.stu-side .stu-line { border-color: var(--line) }
+
+/* Инициалы — оранжевый кружок «Ты» из чата лендинга. */
+.stu .stu-ava { flex: none; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--orangeS); color: var(--orInk); font-weight: 800; font-size: 14px }
+.stu .stu-ava img { width: 100%; height: 100%; object-fit: cover }
+
+/* ── Шапка ────────────────────────────────────────────────────── */
+.stu-top { background: var(--nav); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1.5px solid var(--blue); color: var(--ink) }
+.stu-top .stu-title { font-size: 16px; font-weight: 800; color: var(--ink) }
+.stu-top .stu-icon-btn { width: 42px; height: 42px; flex: none; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); display: grid; place-items: center; transition: transform .2s }
+.stu-top .stu-icon-btn:hover { transform: translateY(-1px) }
+.stu-top .stu-name { font-size: 14px; font-weight: 800; color: var(--ink); line-height: 1.2 }
+.stu-top .stu-role { font-size: 12px; color: var(--ink2); line-height: 1.2 }
+
+/* ── Общие детали страниц ─────────────────────────────────────── */
+.stu .stu-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
+.stu .stu-eb { font-family: 'PT Serif', Georgia, serif; font-style: italic; color: var(--ink2); font-size: 17px }
+.stu .stu-kicker { font-size: 12.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-h1 { font-size: clamp(30px, 4.2vw, 48px); line-height: 1.08; font-weight: 800; letter-spacing: -.02em; color: var(--ink) }
+.stu .stu-h2 { font-size: clamp(22px, 2.6vw, 30px); line-height: 1.15; font-weight: 800; letter-spacing: -.015em; color: var(--ink) }
+.stu .stu-h3 { font-size: 18px; line-height: 1.3; font-weight: 800; color: var(--ink) }
+.stu .stu-muted { color: var(--ink2) }
+.stu .stu-blue { color: var(--blueInk) }
+.stu .stu-orange { color: var(--orange) }
+.stu .stu-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 14px; font-weight: 800; font-size: 15px; transition: transform .2s, box-shadow .2s; text-align: center }
+.stu .stu-btn:hover { transform: translateY(-2px) }
+.stu .stu-btn:focus-visible, .stu .stu-focus:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px }
+.stu .stu-btn-p { background: var(--blue); color: #fff; box-shadow: 0 10px 24px rgba(47, 91, 234, .3) }
+.stu .stu-btn-o { background: var(--orange); color: #fff; box-shadow: 0 10px 24px rgba(242, 140, 40, .3) }
+.stu .stu-btn-g { background: var(--card); border: 1.5px solid var(--line); color: var(--ink) }
+.stu .stu-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 800; white-space: nowrap }
+.stu .t-blue { background: var(--blueS); color: var(--blueInk) }
+.stu .t-or { background: var(--orangeS); color: var(--orInk) }
+.stu .t-green { background: var(--greenS); color: var(--greenInk) }
+.stu .t-grey { background: var(--bg2); color: var(--ink2) }
+.stu .stu-sticker { display: block; flex: none; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(27, 31, 42, .18)) }
+.stu .stu-bar { display: block; height: 10px; border-radius: 5px; background: var(--bg2); overflow: hidden }
+.stu .stu-bar > i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--blue), var(--orange)); transform-origin: left center }
+.stu .stu-bar.thin { height: 7px }
+.stu .stu-bar.green > i { background: var(--green) }
+
+/* ── Чат-пузыри (как hero лендинга) ───────────────────────────── */
+.stu .chat { display: flex; flex-direction: column; gap: 10px }
+.stu .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 92% }
+.stu .msg .av { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden }
+.stu .msg .av img { width: 100%; height: 100%; object-fit: cover }
+.stu .bub { position: relative; padding: 12px 16px; border-radius: 18px 18px 18px 6px; background: var(--card); border: 1px solid var(--line); font-size: 16px; line-height: 1.5; box-shadow: var(--shadow) }
+.stu .bub b { color: var(--blueInk) }
+.stu .bub .txt { transition: opacity .25s }
+.stu .bub.typing .txt { opacity: 0 }
+.stu .dots { position: absolute; left: 16px; top: 50%; margin-top: -4px; display: inline-flex; gap: 4px }
+.stu .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink2); opacity: .5; animation: stu-tp 1s infinite }
+.stu .dots i:nth-child(2) { animation-delay: .15s }
+.stu .dots i:nth-child(3) { animation-delay: .3s }
+@keyframes stu-tp { 0%, 100% { transform: translateY(0); opacity: .4 } 50% { transform: translateY(-4px); opacity: 1 } }
+.stu .msg.me { align-self: flex-end; flex-direction: row-reverse }
+.stu .msg.me .bub { background: var(--blue); color: #fff; border-color: var(--blue); border-radius: 18px 18px 6px 18px }
+.stu .msg.me .av { background: var(--orangeS); font-weight: 800; color: var(--orInk); font-size: 14px }
+@media (max-width: 420px) { .stu .bub { font-size: 15px } .stu .msg { max-width: 100% } }
+
+/* ── Главная ──────────────────────────────────────────────────── */
+.stu .stu-hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 28px; align-items: center }
+.stu .stu-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 0 50px }
+@media (max-width: 420px) { .stu .stu-hero-actions { margin-left: 0 } .stu .stu-hero-actions .stu-btn { flex: 1 1 100% } }
+.stu .stu-scene { position: relative; height: 340px }
+.stu .stu-orbit { position: absolute; left: 50%; top: 50%; width: 360px; height: 150px; margin: -75px 0 0 -180px; border: 3px solid var(--orange); border-radius: 50%; transform: rotate(-22deg); opacity: .8 }
+.stu .stu-count { position: absolute; left: 50%; top: 50%; width: 240px; margin: -92px 0 0 -120px; padding: 20px; z-index: 2; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 30px 60px rgba(19, 37, 77, .22) }
+.stu .stu-count b { font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums }
+.stu .stu-float { position: absolute; z-index: 3; animation: stu-bob 5.5s ease-in-out infinite }
+@keyframes stu-bob { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-12px) rotate(3deg) } }
+@media (max-width: 900px) {
+  .stu .stu-hero { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-scene { height: 220px; order: -1 }
+  .stu .stu-orbit { width: 280px; height: 116px; margin: -58px 0 0 -140px }
+  .stu .stu-count { width: 210px; margin: -70px 0 0 -105px; padding: 16px }
+  .stu .stu-count b { font-size: 48px }
+}
+@media (max-width: 420px) { .stu .stu-scene .stu-float.s-2 { display: none } }
+
+/* «Продолжить урок» — поток шагов, как аргумент 3 лендинга. */
+.stu .stu-lesson { padding: 26px; display: flex; flex-direction: column; gap: 24px }
+.stu .stu-lesson-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center }
+@media (max-width: 640px) {
+  .stu .stu-lesson { padding: 18px }
+  .stu .stu-lesson-head { grid-template-columns: minmax(0, 1fr) }
+}
+.stu .stu-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; position: relative; list-style: none; margin: 0; padding: 0 }
+.stu .stu-flow-line { position: absolute; left: 9%; right: 9%; top: 40px; height: 3px; background: var(--line); border-radius: 3px }
+.stu .stu-flow-fill { position: absolute; inset: 0; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 3px; transform-origin: left center }
+.stu .stu-step { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0 }
+.stu .stu-step .stu-sticker { width: 80px; height: 80px; position: relative; z-index: 1 }
+.stu .stu-step.is-lock .stu-sticker { opacity: .55 }
+.stu .stu-step b { font-size: 15px; font-weight: 800 }
+.stu .stu-step small { font-size: 13px; color: var(--ink2); line-height: 1.35 }
+@media (max-width: 760px) {
+  .stu .stu-flow { grid-template-columns: minmax(0, 1fr); gap: 10px }
+  .stu .stu-flow-line { left: 31px; right: auto; top: 20px; bottom: 20px; width: 3px; height: auto }
+  .stu .stu-flow-fill { transform-origin: center top }
+  .stu .stu-step { flex-direction: row; text-align: left; gap: 14px }
+  .stu .stu-step .stu-sticker { width: 64px; height: 64px }
+  .stu .stu-step > span { display: flex; flex-direction: column; min-width: 0 }
+}
+
+/* Карточки курсов */
+.stu .stu-courses { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px }
+.stu .stu-course { padding: 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.stu .stu-course.is-main { border: 2px solid var(--blue) }
+.stu .stu-pct { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink) }
+.stu .stu-mods { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0 }
+.stu .stu-mods li { display: grid; gap: 5px }
+.stu .stu-mods span { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13.5px }
+
+/* Плашки пробного доступа и диагностики */
+.stu .stu-note { display: flex; align-items: center; gap: 16px; padding: 16px 20px; flex-wrap: wrap }
+.stu .stu-note .stu-note-txt { flex: 1 1 240px; min-width: 0; font-size: 15.5px }
+.stu .stu-note.is-or { border-left: 5px solid var(--orange) }
+.stu .stu-note.is-blue { border-left: 5px solid var(--blue) }
+
+@media (prefers-reduced-motion: reduce) {
+  .stu .stu-float, .stu .dots i { animation: none }
+  .stu .stu-btn:hover, .stu-top .stu-icon-btn:hover { transform: none }
+}
+
+/* Знак «Орбита» (Mark из лендинга): светлая/тёмная версия по теме кабинета. */
+.stu .mark { position: relative; display: inline-block; flex: none }
+.stu .mark img { position: absolute; inset: 0; width: 100%; height: 100% }
+.stu .mark .mark-d { display: none }
+.stu[data-theme='dark'] .mark .mark-l { display: none }
+.stu[data-theme='dark'] .mark .mark-d { display: block }
+
+/* Свои правила без слоя Tailwind перебивают `md:hidden` — кнопки меню
+   (открыть в шапке, закрыть в меню) на широком экране прячем явно. */
+@media (min-width: 768px) {
+  .stu-top .stu-icon-btn.md\:hidden, .stu-side .stu-close { display: none }
+}

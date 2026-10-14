@@ -35,6 +35,9 @@ const loadMockExamsByGroup = vi.fn(async (ids: string[], _preview: boolean) => {
 vi.mock('@/lib/myMockExams', () => ({ loadMockExamsByGroup: (ids: string[], preview: boolean) => loadMockExamsByGroup(ids, preview) }))
 
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
+import { useVisibleObserver } from '@/test/visibleObserver'
+
+useVisibleObserver()
 
 describe('StudentDashboard — идущий пробник (§224.2)', () => {
   it('баннер с подписью курса, одна кнопка на страницу пробника', async () => {

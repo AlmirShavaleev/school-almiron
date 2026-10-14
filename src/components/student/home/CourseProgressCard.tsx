@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
-import { cn } from '@/utils/cn'
-import { getSubjectColor } from '@/lib/subjectColors'
+import { motion } from 'framer-motion'
+import { Stagger } from '@/pages/landing/motion'
+import { staggerItem } from '@/pages/landing/anim'
+import { Sticker } from '@/components/student/skin/Sticker'
+import type { StickerName } from '@/components/student/skin/skin'
 import { continueHref, type HomeCourseProgress } from '@/lib/studentHomeCourses'
 
 export interface CourseProgressItem {
@@ -12,70 +15,90 @@ export interface CourseProgressItem {
   progress: HomeCourseProgress | null
 }
 
-function Bar({ percent, color, label }: { percent: number; color: string; label: string }) {
+function Bar({ percent, label, thin }: { percent: number; label: string; thin?: boolean }) {
   return (
     <span
-      className="block h-2 overflow-hidden rounded-full bg-graphite-100"
+      className={thin ? 'stu-bar thin' : 'stu-bar'}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
     >
-      <i className={cn('block h-full rounded-full', color)} style={{ width: `${percent}%` }} />
+      <i style={{ width: `${percent}%` }} />
     </span>
   )
 }
 
+/** Стикер карточки по предмету — один на карточку. */
+function courseSticker(subject: string | null, i: number): StickerName {
+  const s = (subject ?? '').toLowerCase()
+  if (s.includes('физ') || s.includes('phys')) return 'rocket'
+  if (s.includes('мат') || s.includes('math')) return 'calendar'
+  return (['book', 'target', 'play'] as const)[i % 3]
+}
+
 /**
- * «Мои курсы» и «% по разделам» в одной карточке (письмо 14.10): общий % курса
- * и полоски разделов — доля тем раздела с ДЗ, где ДЗ сдано или принято (та же
- * логика, что «ДЗ принято X из Y»), — и кнопка «Продолжить».
+ * «Мои курсы» (письмо 14.10, стиль лендинга): карточка на курс — 3D-стикер,
+ * общий % и полоски разделов — доля тем раздела с ДЗ, где ДЗ сдано или
+ * принято (та же логика, что «ДЗ принято X из Y»), — и «Продолжить». Курс,
+ * в котором «Продолжить урок» наверху, выделен синей рамкой.
  */
-export function CourseProgressCard({ items }: { items: CourseProgressItem[] }) {
+export function CourseProgressCard({ items, mainCourseId }: { items: CourseProgressItem[]; mainCourseId?: string | null }) {
   if (items.length === 0) return null
   return (
-    <section aria-labelledby="home-courses-h" data-testid="courses-card" className="platform-surface space-y-3 rounded-card p-4 sm:p-5">
-      <h2 id="home-courses-h" className="text-[15px] font-extrabold text-graphite-950">Мои курсы</h2>
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
-        {items.map(c => {
-          const color = getSubjectColor(c.subject)
+    <section aria-labelledby="home-courses-h" data-testid="courses-card" className="flex flex-col gap-4">
+      <div>
+        <span className="stu-kicker">Прогресс по ДЗ</span>
+        <h2 id="home-courses-h" className="stu-h2">Мои курсы</h2>
+      </div>
+      <Stagger className="stu-courses">
+        {items.map((c, i) => {
           const p = c.progress
+          const main = c.courseId === mainCourseId
           return (
-            <article key={c.courseId} data-testid="home-course" className="grid content-start gap-3 rounded-2xl border border-graphite-200 p-3.5">
+            <motion.article
+              key={c.courseId}
+              variants={staggerItem}
+              data-testid="home-course"
+              className={main ? 'stu-card stu-course is-main' : 'stu-card stu-course'}
+            >
               <div className="flex items-start justify-between gap-3">
-                <Link to={`/my-course/${c.groupId}`} className="flex min-w-0 items-start gap-2 text-[15px] font-extrabold leading-snug text-graphite-950 hover:text-primary-700">
-                  <i aria-hidden className={cn('mt-[0.45em] h-2 w-2 shrink-0 rounded-full', color.dot)} />
-                  <span className="min-w-0 break-words">{c.title}</span>
-                </Link>
+                <Sticker name={courseSticker(c.subject, i)} size={64} />
                 {p && p.total > 0 && (
-                  <b className="shrink-0 text-xl font-extrabold tabular-nums text-graphite-950" data-testid="course-percent">{p.percent}%</b>
+                  <span className="text-right">
+                    <b className="stu-pct block" data-testid="course-percent">{p.percent}%</b>
+                    <span className="stu-muted text-[12.5px]">{p.done} из {p.total} тем</span>
+                  </span>
                 )}
               </div>
-              {p && p.total > 0 && <Bar percent={p.percent} color={color.dot} label={`${c.title}: ДЗ сдано по темам`} />}
+              <Link to={`/my-course/${c.groupId}`} className="stu-h3 stu-focus break-words hover:text-[var(--blueInk)]">
+                {c.title}
+              </Link>
+              {p && p.total > 0 && <Bar percent={p.percent} label={`${c.title}: ДЗ сдано по темам`} />}
               {p && p.modules.length > 0 && (
-                <ul className="grid gap-2" aria-label="Разделы">
+                <ul className="stu-mods" aria-label="Разделы">
                   {p.modules.map(m => (
-                    <li key={m.moduleId} className="grid gap-1" data-testid="home-module">
-                      <span className="flex items-baseline justify-between gap-2 text-[13px]">
-                        <span className="min-w-0 break-words text-graphite-700">{m.title}</span>
-                        <span className="shrink-0 font-bold tabular-nums text-graphite-900">{m.percent}%</span>
+                    <li key={m.moduleId} data-testid="home-module">
+                      <span>
+                        <span className="stu-muted min-w-0 break-words">{m.title}</span>
+                        <b className="shrink-0 tabular-nums">{m.percent}%</b>
                       </span>
-                      <Bar percent={m.percent} color={color.dot} label={`${m.title}: ${m.done} из ${m.total} тем с ДЗ сдано`} />
+                      <Bar thin percent={m.percent} label={`${m.title}: ${m.done} из ${m.total} тем с ДЗ сдано`} />
                     </li>
                   ))}
                 </ul>
               )}
               <Link
                 to={continueHref(c.groupId, p?.next ?? null)}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border-[1.5px] border-graphite-300 bg-white px-4 text-sm font-bold text-graphite-900 transition hover:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 sm:min-h-10"
+                className={main ? 'stu-btn stu-btn-p mt-auto' : 'stu-btn stu-btn-g mt-auto'}
               >
                 Продолжить
               </Link>
-            </article>
+            </motion.article>
           )
         })}
-      </div>
+      </Stagger>
     </section>
   )
 }

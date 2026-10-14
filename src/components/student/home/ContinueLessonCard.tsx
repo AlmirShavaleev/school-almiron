@@ -1,26 +1,80 @@
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, PlayCircle } from 'lucide-react'
+import { motion, useInView } from 'framer-motion'
+import { useAnim } from '@/pages/landing/anim'
+import { Sticker } from '@/components/student/skin/Sticker'
+import type { StickerName } from '@/components/student/skin/skin'
 import { continueHref, type HomeContinue } from '@/lib/studentHomeCourses'
 
 /**
- * «Продолжить урок» — одна заметная карточка наверху главной: следующая
- * открытая тема с несданным ДЗ (student_home_courses().continue). Подпись
- * курса — курсов бывает два.
+ * Шаги урока — как аргумент 3 лендинга «Вся подготовка — в одной системе».
+ * Отметок «просмотрено/прочитано» по шагам у главной нет (и запроса за ними
+ * не добавляем), поэтому шаги — карта урока, а не прогресс: выделено одно,
+ * что известно точно, — ДЗ этой темы ещё не сдано.
+ */
+const STEPS: Array<{ icon: StickerName; title: string; hint: string; kind?: 'now' | 'lock' }> = [
+  { icon: 'play', title: 'Видеоконспект', hint: 'коротко и по делу' },
+  { icon: 'book', title: 'Теория', hint: 'формулы и ловушки' },
+  { icon: 'target', title: 'Задачи', hint: 'по номерам экзамена' },
+  { icon: 'check', title: 'ДЗ', hint: 'ждёт сдачи', kind: 'now' },
+  { icon: 'lock', title: 'Что дальше', hint: 'следующая тема', kind: 'lock' },
+]
+
+/**
+ * «Продолжить урок» — одна заметная карточка на главной: следующая открытая
+ * тема с несданным ДЗ (student_home_courses().continue). Подпись курса —
+ * курсов бывает два. Линия под шагами заполняется, шаги выпрыгивают по
+ * очереди (один раз, при появлении в экране; при «уменьшить движение» —
+ * сразу в конечном виде).
  */
 export function ContinueLessonCard({ groupId, courseTitle, next }: { groupId: string; courseTitle: string; next: HomeContinue }) {
+  const anim = useAnim()
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, amount: 0.35 })
+  const run = inView || !anim
+  const to = continueHref(groupId, next)
+
   return (
-    <Link
-      to={continueHref(groupId, next)}
-      data-testid="continue-lesson"
-      className="group flex items-center gap-3.5 rounded-card bg-gradient-to-br from-action-from to-action-to p-4 text-white shadow-action transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:p-5"
-    >
-      <PlayCircle aria-hidden className="h-10 w-10 shrink-0 opacity-90" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1">
-        <small className="block text-[13px] font-semibold text-white/85">Продолжить урок · {courseTitle}</small>
-        <b className="block break-words text-[17px] font-extrabold leading-snug">{next.title}</b>
-        {next.moduleTitle && <small className="block text-[13px] text-white/80">{next.moduleTitle}</small>}
-      </span>
-      <ArrowRight aria-hidden className="h-6 w-6 shrink-0 transition-transform group-hover:translate-x-0.5" />
-    </Link>
+    <section className="stu-card stu-lesson" data-testid="continue-lesson" aria-labelledby="home-lesson-h">
+      <div className="stu-lesson-head">
+        <div className="min-w-0">
+          <span className="stu-kicker block truncate">Продолжить урок · {courseTitle}</span>
+          <h2 id="home-lesson-h" className="stu-h2 break-words">{next.title}</h2>
+          {next.moduleTitle && <span className="stu-muted block text-[14px]">{next.moduleTitle}</span>}
+        </div>
+        <Link to={to} className="stu-btn stu-btn-o" data-testid="continue-lesson-open">К уроку →</Link>
+      </div>
+
+      <div className="stu-flow" ref={ref} role="list" aria-label="Шаги урока">
+        <div className="stu-flow-line" aria-hidden="true">
+          {/* scale по обеим осям: на компьютере линия растёт слева, на
+              телефоне (вертикальная) — сверху; толщина 3px не заметна. */}
+          <motion.div
+            className="stu-flow-fill"
+            initial={anim ? { scale: 0 } : false}
+            animate={run ? { scale: 1 } : { scale: 0 }}
+            transition={{ duration: 1.6, ease: 'easeInOut' }}
+          />
+        </div>
+        {STEPS.map((s, i) => (
+          <motion.div
+            key={s.title}
+            role="listitem"
+            className={s.kind === 'lock' ? 'stu-step is-lock' : 'stu-step'}
+            initial={anim ? { opacity: 0, y: 20, scale: 0.85 } : false}
+            animate={run ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 20, scale: 0.85 }}
+            transition={{ delay: anim ? i * 0.25 : 0, duration: 0.5 }}
+          >
+            <Sticker name={s.icon} size={80} />
+            <span className="flex flex-col items-center gap-1 max-[760px]:items-start">
+              <b>{s.title}</b>
+              {s.kind === 'now'
+                ? <span className="stu-tag t-or">{s.hint}</span>
+                : <small>{s.hint}</small>}
+            </span>
+          </motion.div>
+        ))}
+      </div>
+    </section>
   )
 }

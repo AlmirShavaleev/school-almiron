@@ -53,6 +53,9 @@ vi.mock('@/store/authStore', () => {
 })
 
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
+import { useVisibleObserver } from '@/test/visibleObserver'
+
+useVisibleObserver()
 
 async function renderHome() {
   render(<MemoryRouter initialEntries={['/dashboard']}><StudentDashboard /></MemoryRouter>)
@@ -73,7 +76,9 @@ describe('главная ученика без шума', () => {
   it('«Продолжить урок» ведёт в следующую тему', async () => {
     await renderHome()
     const card = screen.getByTestId('continue-lesson')
-    expect(card).toHaveAttribute('href', '/my-course/g1/topic/t6')
+    expect(within(card).getByRole('link', { name: 'К уроку →' })).toHaveAttribute('href', '/my-course/g1/topic/t6')
+    // Та же тема — у главной кнопки первого экрана.
+    expect(screen.getByTestId('hero-continue')).toHaveAttribute('href', '/my-course/g1/topic/t6')
     expect(card).toHaveTextContent('Второй закон Ньютона')
     expect(card).toHaveTextContent('Физика ЕГЭ')
   })

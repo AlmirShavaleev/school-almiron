@@ -16,6 +16,7 @@ import {
   Gauge, Store,
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
+import { Mark } from '@/pages/landing/Brand'
 
 interface NavItem {
   label:   string
@@ -213,6 +214,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         aria-hidden
       />
 
+      {isStudent ? (
+        <StudentSidebar
+          open={open}
+          onClose={onClose}
+          name={profile.full_name}
+          avatarUrl={(profile as any).avatar_url as string | null | undefined}
+          roleLabel={preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[menuRole] || menuRole}
+          sections={studentSections}
+          badges={badges}
+          activePath={activePath}
+          onSignOut={handleSignOut}
+        />
+      ) : (<>
       {/* Sidebar panel */}
       {/* §225. Меню нового дизайна: тёмно-синий градиент #1a3a80 → #0e1f47,
           активный пункт — жёлтая «таблетка». Раскладка прежняя. */}
@@ -263,30 +277,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {isStudent ? (
-            <div className="px-2 space-y-1">
-              {studentSections.map(sec => (
-                <div key={sec.title}>
-                  {sec.title && (
-                    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-menu-muted select-none">
-                      {sec.title}
-                    </div>
-                  )}
-                  {sec.items.map(item => (
-                    <SidebarNavItem
-                      key={item.path}
-                      item={item}
-                      badge={badges[item.path]}
-                      active={item.path === activePath}
-                      onClose={onClose}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <StaffNavigation items={visibleItems} badges={badges} activePath={activePath} onClose={onClose} />
-          )}
+          <StaffNavigation items={visibleItems} badges={badges} activePath={activePath} onClose={onClose} />
         </nav>
 
         {/* Sign out */}
@@ -300,7 +291,93 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
       </aside>
+      </>)}
     </>
+  )
+}
+
+/**
+ * Меню ученика в стиле лендинга (письмо ЛК_ученика_в_стиле_лендинга.md,
+ * 14.10): светлая карточка (в тёмной теме — navy), Manrope, текущий пункт —
+ * голубая плашка с оранжевой точкой, счётчики — оранжевые. Состав пунктов,
+ * разделы, «Курирую» и подсветка одного пункта — те же, что были.
+ */
+function StudentSidebar({ open, onClose, name, avatarUrl, roleLabel, sections, badges, activePath, onSignOut }: {
+  open: boolean
+  onClose: () => void
+  name: string
+  avatarUrl: string | null | undefined
+  roleLabel: string
+  sections: { title: string; items: NavItem[] }[]
+  badges: Record<string, number>
+  activePath: string | null
+  onSignOut: () => void
+}) {
+  return (
+    <aside
+      data-testid="student-sidebar"
+      className={cn(
+        'stu-side fixed left-0 top-0 h-full w-72 md:w-64 flex flex-col z-50',
+        'transition-transform duration-300 ease-in-out md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+      )}
+    >
+      <div className="h-[66px] px-4 flex items-center justify-between shrink-0">
+        <span className="stu-logo"><Mark size={34} />Школа Almiron</span>
+        <button onClick={onClose} className="stu-close md:hidden" aria-label="Закрыть меню">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="px-3 pb-2">
+        <div className="stu-me">
+          <span className="stu-ava">
+            {avatarUrl ? <img src={avatarUrl} alt="" /> : name.charAt(0)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-extrabold leading-tight">{name}</span>
+            <span className="stu-muted block text-[12px] leading-tight mt-0.5">{roleLabel}</span>
+          </span>
+        </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 pb-3" aria-label="Кабинет">
+        {sections.map(sec => (
+          <div key={sec.title}>
+            {sec.title && <div className="stu-sec select-none">{sec.title}</div>}
+            {sec.items.map(item => {
+              const active = item.path === activePath
+              const badge = badges[item.path]
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={onClose}
+                  data-active={active ? 'true' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className="stu-item stu-focus"
+                >
+                  {item.icon}
+                  <span className="flex-1 min-w-0 truncate">{item.label}</span>
+                  {badge != null && badge > 0 && (
+                    <span data-testid="nav-badge" data-path={item.path} className="stu-badge">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+      </nav>
+
+      <div className="p-3 border-t stu-line">
+        <button onClick={onSignOut} className="stu-out stu-focus">
+          <LogOut size={18} />
+          Выйти
+        </button>
+      </div>
+    </aside>
   )
 }
 
