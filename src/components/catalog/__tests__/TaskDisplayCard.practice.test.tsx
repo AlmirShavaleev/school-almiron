@@ -55,6 +55,7 @@ describe('TaskDisplayCard — проверка ответа (§256)', () => {
   it('неверно: «Пока неверно…», кнопка «Проверить ещё раз», баллов и тоста нет', async () => {
     const onCheck = vi.fn(async () => ({ result: result({ verdict: 'wrong', counted: false, points: 0, answer_html: null }), change: null, error: null }))
     setup(fresh, onCheck)
+    expect(screen.queryByTestId('task-self-check')).toBeNull()
     await answer('8')
     expect(onCheck).toHaveBeenCalledWith('8')
     expect(screen.getByTestId('task-answer-result')).toHaveAttribute('data-verdict', 'wrong')
@@ -132,6 +133,7 @@ describe('TaskDisplayCard — проверка ответа (§256)', () => {
   it('непроверяемая (часть 2 / эталон без короткого ответа): поля нет, ответ — как раньше, без раскрытия', async () => {
     const { onReveal } = setup({ ...fresh, checkable: false }, vi.fn())
     expect(screen.queryByTestId('task-answer-check')).toBeNull()
+    expect(screen.getByTestId('task-self-check')).toHaveTextContent('сверь с решением')
     await act(async () => { fireEvent.click(screen.getByTestId('task-show-answer')) })
     expect(onReveal).not.toHaveBeenCalled()
     expect(screen.getByText('7')).toBeInTheDocument()
@@ -140,6 +142,7 @@ describe('TaskDisplayCard — проверка ответа (§256)', () => {
   it('без practice (персонал, корзина) — карточка как прежде', () => {
     render(<TaskDisplayCard task={task} number={1} />)
     expect(screen.queryByTestId('task-answer-check')).toBeNull()
+    expect(screen.queryByTestId('task-self-check')).toBeNull()
   })
 
   it('ошибка базы (лимит) — текст ошибки', async () => {

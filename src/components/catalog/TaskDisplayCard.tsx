@@ -208,6 +208,14 @@ export function TaskDisplayCard({
         <TaskAnswerCheck taskId={task.id} state={practice.state} onCheck={practice.onCheck} />
       )}
 
+      {/* Задача без автопроверки (вторая часть, доказательство, ответ-выражение):
+          поля ответа нет — говорим ученику, что делать, а не оставляем гадать. */}
+      {practice && pState && !checkable && (
+        <p className="mx-4 mb-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600" data-testid="task-self-check">
+          Самопроверка: реши задачу и сверь с решением — ответ здесь автоматически не проверяется.
+        </p>
+      )}
+
       {/* Action row. Отметка «выполнено» — первая кнопка с подписью, а не
           безымянный кружок в углу: на телефоне кружок не читался как действие. */}
       <div className="px-4 pb-4 flex gap-2 flex-wrap items-center">
