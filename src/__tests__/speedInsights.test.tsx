@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 /**
  * Vercel Speed Insights — замер скорости загрузки страниц у настоящих
@@ -123,9 +123,10 @@ describe('Vercel Speed Insights', () => {
     expect(analytics[0].src).not.toBe(speedInsightsScripts()[0].src)
   })
 
-  it('редирект гостя `/` → `/login` работает при включённом замере', async () => {
+  it('гость на `/` видит лендинг при включённом замере', async () => {
     render(<App />)
 
-    await waitFor(() => expect(window.location.pathname).toBe('/login'))
+    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(window.location.pathname).toBe('/')
   })
 })
