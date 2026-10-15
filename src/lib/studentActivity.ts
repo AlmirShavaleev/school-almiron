@@ -5,6 +5,7 @@
  * в useStudentActivity. «Календарь тем» живёт в программе курса
  * (src/lib/courseRoadmap.ts).
  */
+import { plural } from '@/lib/plural'
 
 const DAY = 86_400_000
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
@@ -40,6 +41,7 @@ export interface ActivityDay {
   level: 0 | 1 | 2 | 3 | 4
   solved: number
   future: boolean
+  today: boolean
 }
 
 export interface ActivityGrid {
@@ -73,9 +75,21 @@ export function activityGrid(raw: ActivityRaw | null | undefined, todayFallback:
       const future = day > today
       const lv = future ? 0 : level(visits.has(day), n)
       if (lv > 0) activeDays++
-      col.push({ day, level: lv, solved: n, future })
+      col.push({ day, level: lv, solved: n, future, today: day === today })
     }
     weeks.push(col)
   }
   return { weeks, streak: raw?.streak ?? 0, record: raw?.record ?? 0, activeDays }
+}
+
+const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота']
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+
+/** Подсказка клетки: «среда, 14 октября: 6 задач» — как было на главной до «лёгкой» (§254). */
+export function dayLabel(d: Pick<ActivityDay, 'day' | 'level' | 'solved' | 'future' | 'today'>): string {
+  const [, m, dd] = d.day.split('-').map(Number)
+  const head = `${d.today ? 'сегодня, ' : ''}${WEEKDAYS[new Date(dayMs(d.day)).getUTCDay()]}, ${dd} ${MONTHS_GEN[m - 1]}`
+  if (d.future) return `${head}: ещё впереди`
+  if (d.solved > 0) return `${head}: ${d.solved} ${plural(d.solved, 'задача', 'задачи', 'задач')}`
+  return d.level > 0 ? `${head}: заходил, задач не решал` : `${head}: не заходил`
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /**
@@ -110,7 +110,15 @@ describe('главная ученика без шума', () => {
     const card = await screen.findByTestId('home-activity')
     expect(within(card).getByTestId('home-streak')).toHaveTextContent('3 дня подряд · рекорд 9')
     expect(card.querySelectorAll('.stu-heat-col')).toHaveLength(12)
-    expect(card.querySelector('[title="14 окт: 6 задач"]')).toHaveClass('lv-3')
+    const cell = card.querySelector('[data-day="2026-10-14"]')!
+    expect(cell).toHaveClass('lv-3')
+    // Наведение — подсказка с днём сразу (не системный title); сегодня обведено.
+    fireEvent.mouseEnter(cell)
+    expect(screen.getByTestId('activity-tip')).toHaveTextContent('среда, 14 октября: 6 задач')
+    fireEvent.mouseLeave(cell)
+    expect(screen.queryByTestId('activity-tip')).toBeNull()
+    expect(card.querySelector('[data-day="2026-10-15"]')).toHaveClass('is-today')
+    expect(card.querySelector('[data-day="2026-10-15"]')).toHaveAttribute('aria-label', 'сегодня, четверг, 15 октября: заходил, задач не решал')
     delete RPC.student_home_activity
   })
 })

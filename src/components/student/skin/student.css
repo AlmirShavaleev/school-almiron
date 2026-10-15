@@ -272,3 +272,12 @@
   .stu .stu-rsec-head { grid-template-columns: 44px minmax(0, 1fr); }
   .stu .stu-rsec-head > span:last-child { grid-column: 2; justify-content: space-between }
 }
+
+/* Подсказка клетки карты посещений и сегодняшний день. */
+.stu .stu-tip { position: fixed; z-index: 60; pointer-events: none; width: max-content; max-width: 240px; padding: 6px 10px; border-radius: 10px; background: var(--navy); color: #fff; font-size: 12.5px; font-weight: 700; box-shadow: 0 10px 24px rgba(19, 37, 77, .25) }
+.stu[data-theme='dark'] .stu-tip { background: #eef2fb; color: #13254d }
+.stu .stu-heat-col i { cursor: default; transition: transform .15s }
+.stu .stu-heat-col i:hover, .stu .stu-heat-col i:focus-visible { transform: scale(1.15); outline: none }
+.stu .stu-heat-col i:focus-visible { box-shadow: 0 0 0 2px var(--blue) }
+.stu .stu-heat-col i.is-today { box-shadow: 0 0 0 2px var(--orange) }
+@media (prefers-reduced-motion: reduce) { .stu .stu-heat-col i { transition: none } .stu .stu-heat-col i:hover { transform: none } }
