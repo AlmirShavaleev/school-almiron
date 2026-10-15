@@ -7,8 +7,7 @@ import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { HomeHero } from '@/components/student/home/HomeHero'
 import { ActivityCard } from '@/components/student/home/ActivityCard'
-import { TopicCalendarCard } from '@/components/student/home/TopicCalendarCard'
-import { useStudentActivity, useTopicCalendar, type CalendarCourse } from '@/hooks/useTopicCalendar'
+import { useStudentActivity } from '@/hooks/useStudentActivity'
 import { ContinueLessonCard } from '@/components/student/home/ContinueLessonCard'
 import { CourseProgressCard } from '@/components/student/home/CourseProgressCard'
 import { examCountdown } from '@/lib/examCountdown'
@@ -71,14 +70,9 @@ export function StudentDashboard() {
     }))
   }, [courses, progress])
 
-  // Этап 2 ЛК (письмо 15.10): «Посещения по дням» и «Календарь тем» вернулись
-  // в новом стиле. Запросы — только чтение: student_home_activity(84), замки
-  // курса «по прохождению», план недель курса по расписанию.
-  const calendarCourses = useMemo<CalendarCourse[]>(() => courses.map(c => ({
-    courseId: c.courseId, groupId: c.groupId, title: c.courseTitle,
-    demo: !!path.data?.subscriptions.some(s => s.course_id === c.courseId && s.demo && s.status === 'trial'),
-  })), [courses, path.data])
-  const calendars = useTopicCalendar(calendarCourses, todayMsk)
+  // Этап 2 ЛК (письмо 15.10): «Посещения по дням» вернулись в новом стиле —
+  // одна RPC student_home_activity(84). «Календарь тем» живёт в программе курса
+  // (письмо ЛК_стиль_календарь_в_программу_курса.md): на главной он раздувался.
   const activity = useStudentActivity(!!profile?.id, todayMsk)
 
   if (path.data?.onboarding.needed) return <Navigate to="/start" replace />
@@ -115,7 +109,6 @@ export function StudentDashboard() {
 
       {next && <ContinueLessonCard groupId={next.course.groupId} courseTitle={next.course.courseTitle} next={next.next} />}
 
-      {courses.length > 0 && calendars && <TopicCalendarCard calendars={calendars} />}
       {courses.length > 0 && activity && <ActivityCard grid={activity} />}
 
       <CourseProgressCard items={items} mainCourseId={next?.course.courseId ?? null} />

@@ -91,17 +91,16 @@ describe('главная ученика без шума', () => {
     expect(within(course).getByRole('link', { name: 'Продолжить' })).toHaveAttribute('href', '/my-course/g1/topic/t6')
   })
 
-  it('снятые блоки не вернулись; запросы — прежние плюс посещения и календарь тем (этап 2 ЛК)', async () => {
+  it('снятые блоки не вернулись; запросы — прежние плюс посещения (этап 2 ЛК); календаря тем на главной нет', async () => {
     await renderHome()
     for (const text of [/Задача дня/, /Цель недели/, /Баллы школы/, /Примерный балл/, /Решено задач/, /Вернули на доработку/]) {
       expect(screen.queryByText(text)).toBeNull()
     }
     await waitFor(() => expect(calls).toContain('rpc:student_home_activity'))
-    await waitFor(() => expect(calls).toContain('from:topics'))
+    expect(screen.queryByTestId('home-calendar')).toBeNull()
     expect([...new Set(calls)].sort()).toEqual([
-      'from:course_study_plan_items', 'from:course_study_plan_overrides', 'from:course_study_plans',
-      'from:group_students', 'from:students', 'from:topics',
-      'rpc:my_course_topic_locks', 'rpc:my_mock_exams', 'rpc:student_home_activity', 'rpc:student_home_courses',
+      'from:group_students', 'from:students',
+      'rpc:my_mock_exams', 'rpc:student_home_activity', 'rpc:student_home_courses',
     ])
   })
 
@@ -113,21 +112,5 @@ describe('главная ученика без шума', () => {
     expect(card.querySelectorAll('.stu-heat-col')).toHaveLength(12)
     expect(card.querySelector('[title="14 окт: 6 задач"]')).toHaveClass('lv-3')
     delete RPC.student_home_activity
-  })
-
-  it('календарь тем курса по расписанию: недели плана, открытая тема — ссылка в урок', async () => {
-    TABLES.course_study_plans = [{ course_id: 'c1', start_date: '2026-09-07' }]
-    TABLES.course_study_plan_items = [{ course_id: 'c1', topic_id: 't5', week_no: 6 }, { course_id: 'c1', topic_id: 't6', week_no: 7 }]
-    TABLES.topics = [
-      { id: 't5', title: 'Первый закон', is_open: true, available_from: null, order_index: 5, module: { course_id: 'c1', order_index: 1 } },
-      { id: 't6', title: 'Второй закон Ньютона', is_open: null, available_from: '2099-01-01', order_index: 6, module: { course_id: 'c1', order_index: 1 } },
-    ]
-    await renderHome()
-    const cal = await screen.findByTestId('home-calendar')
-    expect(within(cal).getByRole('link', { name: /Первый закон/ })).toHaveAttribute('href', '/my-course/g1/topic/t5')
-    expect(within(cal).getByTestId('cal-topic-locked')).toHaveTextContent('Второй закон Ньютона')
-    delete TABLES.course_study_plans
-    delete TABLES.course_study_plan_items
-    delete TABLES.topics
   })
 })

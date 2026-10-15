@@ -241,3 +241,34 @@
 
 /* Тёмная тема: синие стикеры не тонут в navy — мягкий светлый ореол. */
 .stu[data-theme='dark'] .stu-sticker { filter: drop-shadow(0 0 10px rgba(157, 182, 255, .28)) drop-shadow(0 10px 14px rgba(0, 0, 0, .35)) }
+
+/* ── Программа курса: «Календарь тем», дорожка по разделам (вариант А) ── */
+/* Страница курса ещё в прежнем виде: в тёмной теме она светлым листом
+   (data-stu-scope='light'), и карточка вместе с ней. */
+.stu .stu-roadmap { padding: 24px; display: flex; flex-direction: column; gap: 18px; border-radius: 24px }
+.stu .stu-rsecs { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0 }
+.stu .stu-rsec { border: 1px solid var(--line); border-radius: 16px; background: var(--card) }
+.stu .stu-rsec.is-current { border-color: var(--blue); background: color-mix(in srgb, var(--blueS) 60%, var(--card)) }
+.stu .stu-rsec-head { width: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; color: var(--ink); background: none; border: 0; cursor: pointer; font: inherit; border-radius: 16px }
+.stu .stu-ring { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: conic-gradient(var(--blue) calc(var(--p) * 1%), var(--line) 0) }
+.stu .stu-rsec[data-state='done'] .stu-ring { background: conic-gradient(var(--green) 100%, var(--line) 0) }
+.stu .stu-ring > span { width: 34px; height: 34px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-variant-numeric: tabular-nums }
+.stu .stu-rsec-body { display: grid; gap: 8px; padding: 0 14px 14px 70px }
+@media (max-width: 560px) { .stu .stu-rsec-body { padding-left: 14px } }
+.stu .stu-rm-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-weight: 600; font-size: 14px; color: var(--ink); background: var(--card); transition: border-color .2s }
+.stu .stu-rm-row:hover { border-color: var(--blue) }
+.stu .stu-rm-row.is-hw { border-color: color-mix(in srgb, var(--orange) 45%, var(--line)); background: var(--orangeS) }
+.stu .stu-rm-locked { display: flex; gap: 10px; align-items: flex-start; color: var(--ink2); font-size: 14px; padding: 4px 2px }
+.stu .stu-rm-locked small { font-size: 12.5px }
+.stu .stu-pill { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; flex: none }
+.stu .p-hw { background: var(--orange); color: #fff }
+.stu .p-ok { background: var(--greenS); color: var(--greenInk) }
+.stu .p-open { background: var(--blueS); color: var(--blueInk) }
+.stu .p-lock { background: var(--line); color: var(--ink2) }
+.stu .stu-link { color: var(--blueInk); font-weight: 700; font-size: 14px; background: none; border: 0; cursor: pointer; padding: 0 }
+/* Телефон: пилюля переносится под название темы. */
+@media (max-width: 480px) {
+  .stu .stu-rm-row { flex-direction: column; align-items: flex-start; gap: 6px }
+  .stu .stu-rsec-head { grid-template-columns: 44px minmax(0, 1fr); }
+  .stu .stu-rsec-head > span:last-child { grid-column: 2; justify-content: space-between }
+}

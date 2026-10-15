@@ -1,6 +1,6 @@
 import { Sticker } from '@/components/student/skin/Sticker'
 import { plural } from '@/lib/plural'
-import { shortDay, type ActivityDay, type ActivityGrid } from '@/lib/topicCalendar'
+import { shortDay, type ActivityDay, type ActivityGrid } from '@/lib/studentActivity'
 
 const DAYS = ['Пн', '', 'Ср', '', 'Пт', '', 'Вс']
 const LEGEND: Array<[ActivityDay['level'], string]> = [

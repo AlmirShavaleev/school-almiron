@@ -74,6 +74,7 @@ function fixtures(scenario) {
   } else {
     // Пробный период подписки: курс «по прохождению», открыты первые 2 урока.
     fx.rpc.subscription_enabled = true
+    fx.rpc.my_course_demo = (body) => ({ demo: body.p_course_id === IDS.course })
     fx.rpc.my_course_topic_locks = (body) => body.p_course_id === IDS.course
       ? { mode: 'progress', topics: physTopics.slice(0, 12).map((tp, i) => ({
           topic_id: tp.id, title: tp.title, open: i < 2, reason: i < 2 ? 'first2' : null, closed: i === 0,
@@ -95,6 +96,8 @@ const session = makeSession(p.user)
 const scenario = process.env.SCENARIO === 'trial' ? 'trial' : 'schedule'
 const SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
+  // Программа курса: «Календарь тем» — дорожка по разделам (письмо 15.10).
+  { name: `курс-${scenario}`, url: `/my-course/${IDS.group}` },
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
