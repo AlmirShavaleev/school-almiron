@@ -33,7 +33,7 @@ export function SubscriptionPathCard({ subscriptions, now, showContinue = true }
             data-testid="subscription-path-banner"
             data-kind={b.kind}
           >
-            <Sticker name="clock" size={52} />
+            <Sticker name="gift" size={52} />
             <p className="stu-note-txt">
               <b className="font-extrabold">{b.text}.</b>{' '}
               <span className="stu-muted">{b.courseTitle}</span>

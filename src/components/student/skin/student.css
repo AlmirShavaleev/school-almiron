@@ -200,3 +200,44 @@
 @media (min-width: 768px) {
   .stu-top .stu-icon-btn.md\:hidden, .stu-side .stu-close { display: none }
 }
+
+/* ── Этап 2: посещения и календарь тем ────────────────────────── */
+/* Посещения: слева подпись, серия и легенда, справа карта; на узком — столбиком. */
+.stu .stu-activity { padding: 22px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: center; min-width: 0 }
+.stu .stu-activity-side { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+@media (max-width: 860px) { .stu .stu-activity { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-calendar { padding: 22px; display: flex; flex-direction: column; gap: 16px; min-width: 0 }
+
+/* Карта посещений: колонки-недели, клетки квадратные и тянутся по ширине —
+   на 360 px 12 недель помещаются без прокрутки. */
+.stu .stu-heat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px }
+.stu .stu-heat-days { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--ink2); line-height: 1 }
+.stu .stu-heat-days span { display: flex; align-items: center }
+.stu .stu-heat-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px }
+.stu .stu-heat-col { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px }
+.stu .stu-heat-col i, .stu .stu-heat-legend i { display: block; aspect-ratio: 1; border-radius: 5px; max-width: 26px }
+.stu .lv-0 { background: var(--bg2) }
+.stu .lv-1 { background: var(--blueS); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 25%, transparent) }
+.stu .lv-2 { background: color-mix(in srgb, var(--blue) 45%, var(--card)) }
+.stu .lv-3 { background: var(--blue) }
+.stu .lv-4 { background: var(--orange) }
+.stu .stu-heat-col i.is-future { background: transparent; box-shadow: inset 0 0 0 1px var(--line) }
+.stu .stu-heat-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--ink2) }
+.stu .stu-heat-legend li { display: inline-flex; align-items: center; gap: 5px }
+.stu .stu-heat-legend i { width: 12px; height: 12px }
+
+/* Календарь тем: недели — карточки в полосе с прокруткой вбок. */
+.stu .stu-weeks { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; list-style: none; margin: 0; padding: 2px 2px 8px; overscroll-behavior-x: contain }
+.stu .stu-week { scroll-snap-align: start; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--bg2); border: 1px solid transparent; min-width: 0 }
+.stu .stu-week.is-current { background: var(--card); border: 2px solid var(--blue); box-shadow: var(--shadow) }
+.stu .stu-week.is-past { opacity: .72 }
+.stu .stu-cal-list { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 6px 0 0; padding: 0 }
+.stu .stu-cal-topic { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 12px; font-size: 14px; font-weight: 700; line-height: 1.35 }
+.stu .stu-cal-topic.is-open { justify-content: space-between; background: var(--card); border: 1px solid var(--line); color: var(--ink) }
+.stu .stu-week.is-current .stu-cal-topic.is-open { background: var(--blueS); border-color: transparent; color: var(--blueInk) }
+.stu .stu-cal-topic.is-open:hover { border-color: var(--blue) }
+.stu .stu-cal-topic.is-locked { color: var(--ink2); font-weight: 600 }
+.stu .stu-prog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px }
+
+/* Тёмная тема: синие стикеры не тонут в navy — мягкий светлый ореол. */
+.stu[data-theme='dark'] .stu-sticker { filter: drop-shadow(0 0 10px rgba(157, 182, 255, .28)) drop-shadow(0 10px 14px rgba(0, 0, 0, .35)) }

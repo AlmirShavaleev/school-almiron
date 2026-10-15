@@ -15,25 +15,17 @@ export function studentSkinPage(pathname: string): boolean {
 }
 
 /**
- * 3D-стикеры лендинга (`public/brand/icons`, 3dicons.co, CC0) под их смыслом
- * в кабинете. Имена файлов остались от аргументов лендинга, поэтому здесь —
- * что на картинке на самом деле.
+ * 3D-стикеры кабинета — набор лендинга, перекрашенный под бренд (синий и
+ * оранжевый; исходники `D:\Задачник\ЛЕНДИНГ\3d-иконки\`, 3dicons.co, CC0),
+ * WebP 256×256 в `public/brand/stu/`. Красные иконки лендинга
+ * (`public/brand/icons`) в кабинете не используются: спорят с брендом.
+ * `gift` — из новых (письмо ЛК_стиль_новые_3d_иконки.md, 15.10): единственный
+ * красный акцент — плашка пробного периода.
  */
-export const STICKER = {
-  play: 'video',
-  book: 'bank',
-  target: 'forecast',
-  check: 'autocheck',
-  clock: 'check48',
-  bell: 'bot',
-  calendar: 'calendar',
-  calendar25: 'mock',
-  mail: 'mail',
-  lock: 'unlock',
-  search: 'diagnostic',
-  chat: 'part2',
-  rocket: 'rocket',
-} as const
-export type StickerName = keyof typeof STICKER
+export const STICKERS = [
+  'play', 'book', 'target', 'check', 'clock', 'bell', 'calendar', 'calendar25',
+  'mail', 'lock', 'search', 'chat', 'rocket', 'gift',
+] as const
+export type StickerName = (typeof STICKERS)[number]
 
-export const stickerSrc = (name: StickerName) => `/brand/icons/${STICKER[name]}.webp`
+export const stickerSrc = (name: StickerName) => `/brand/stu/${name}.webp`

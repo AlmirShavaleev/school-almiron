@@ -10,9 +10,9 @@ describe('кабинет ученика в стиле лендинга', () => {
     expect(studentSkinPage('/my-course/g1')).toBe(false)
   })
 
-  it('стикеры — файлы лендинга по смыслу картинки', () => {
-    expect(stickerSrc('lock')).toBe('/brand/icons/unlock.webp')
-    expect(stickerSrc('book')).toBe('/brand/icons/bank.webp')
+  it('стикеры — набор под бренд из public/brand/stu', () => {
+    expect(stickerSrc('lock')).toBe('/brand/stu/lock.webp')
+    expect(stickerSrc('gift')).toBe('/brand/stu/gift.webp')
   })
 })
 
