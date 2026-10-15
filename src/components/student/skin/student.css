@@ -323,3 +323,42 @@
 .stu .stu-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer }
 .stu .stu-chip.is-active { background: var(--blue); border-color: var(--blue); color: #fff }
 .stu .stu-chip-n { font-size: 12px; font-weight: 800; opacity: .7 }
+
+/* ── Страница курса (письмо ЛК_стиль_страница_курса.md, макет v2) ─── */
+.stu .stu-chero { padding: 26px; display: flex; flex-direction: column; gap: 18px }
+.stu .stu-chero-stat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center }
+.stu .stu-chero-cta { justify-content: space-between; gap: 12px; min-height: 54px; font-size: 16px }
+@media (max-width: 640px) {
+  .stu .stu-chero-cta { flex-direction: column; align-items: flex-start; gap: 2px; padding-top: 10px; padding-bottom: 10px }
+  .stu .stu-chero-cta > span { max-width: 100% }
+  .stu .stu-chero-cta > small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1 }
+}
+.stu .stu-people { padding: 12px 18px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center }
+.stu .stu-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; color: var(--ink2); font-weight: 600; font-size: 14px; background: none; border: 0; cursor: pointer; padding: 0; text-align: left; max-width: 100% }
+.stu .stu-back > svg { flex: none }
+.stu .stu-back:hover { color: var(--ink) }
+.stu .stu-sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px }
+.stu .stu-sc { padding: 18px; display: grid; gap: 8px; text-align: left; color: var(--ink); font: inherit; cursor: pointer; transition: border-color .2s, transform .2s; min-width: 0 }
+.stu .stu-sc:hover { border-color: var(--blue); transform: translateY(-2px) }
+.stu .stu-sc.is-current { border-color: var(--blue); box-shadow: 0 12px 28px -16px var(--blue) }
+.stu .stu-sc.is-future .stu-sc-n { color: var(--ink2) }
+.stu .stu-sc.is-future { opacity: .85 }
+.stu .stu-sc-n { font-size: 17px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere }
+.stu .stu-num { width: 30px; height: 30px; border-radius: 10px; background: var(--line); color: var(--ink2); display: grid; place-items: center; font-weight: 800; font-size: 13px }
+.stu .stu-sc.is-done .stu-num { background: var(--greenS); color: var(--greenInk) }
+.stu .stu-sc.is-current .stu-num { background: var(--blue); color: #fff }
+.stu .stu-track-lg { height: 10px; border-radius: 5px }
+.stu .stu-lgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; margin: 0; padding: 0 }
+.stu .stu-lt { flex: 1; display: grid; align-content: start; gap: 8px; min-height: 118px; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--ink); min-width: 0; transition: border-color .2s }
+a.stu-lt:hover { border-color: var(--blue) }
+.stu .stu-lt.is-hw { border-color: color-mix(in srgb, var(--orange) 50%, var(--line)); background: var(--orangeS) }
+.stu .stu-lt.is-locked { background: var(--bg2); color: var(--ink2) }
+.stu .stu-lt.is-locked b { font-weight: 600 }
+.stu .stu-tag-dash { background: transparent; color: var(--ink2); border: 1px dashed var(--line) }
+@media (max-width: 760px) { .stu .stu-sgrid, .stu .stu-lgrid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 440px) {
+  .stu .stu-sgrid, .stu .stu-lgrid { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-chero { padding: 18px }
+  .stu .stu-chero-stat { gap: 14px }
+}
+@media (prefers-reduced-motion: reduce) { .stu .stu-sc:hover { transform: none } }

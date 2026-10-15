@@ -139,8 +139,8 @@ describe('StudentCoursePage — модуль «Контрольные работ
     expect(within(card).queryByTestId('module-topics-counter')).toBeNull()
     expect(within(card).queryByTestId('module-homework-counter')).toBeNull()
     expect(card).not.toHaveTextContent(/тем|оценка|провер(ено|ена)|верно/)
-    // Обычные модули — прежними карточками со счётчиком тем.
-    expect(screen.getAllByTestId('module-topics-counter')).toHaveLength(2)
+    // Обычные модули — плитками разделов (ЛК, письмо 15.10).
+    expect(within(screen.getByTestId('section-tiles')).getAllByTestId('module-card')).toHaveLength(2)
   })
 
   it('в модуле с уроками работ нет: в «Механике» — только урок', () => {
@@ -181,7 +181,7 @@ describe('StudentCoursePage — модуль «Контрольные работ
 
   it('прогресс не трогаем: счётчик курса считает все темы, как раньше', () => {
     renderPage()
-    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('Пройдено 0 из 5 тем')
+    expect(screen.getByTestId('course-topics-counter')).toHaveTextContent('пройдено 0 из 5')
   })
 })
 

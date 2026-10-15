@@ -13,9 +13,11 @@ import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { continueHref, type HomeCourseProgress } from '@/lib/studentHomeCourses'
-import { accessLine, courseLadder, publicTitle, visibleSteps, type AccessLine, type CourseLadder, type LadderStep } from '@/lib/myCourses'
+import { loadCourseExtras as loadExtras, loadOpenByModule, type CourseExtras as Extras } from '@/lib/courseMeta'
+import { accessLine, courseLadder, publicTitle, visibleSteps, type AccessLine, type LadderStep } from '@/lib/myCourses'
 import type { PathSubscription } from '@/lib/studentPath'
 import { Sticker } from '@/components/student/skin/Sticker'
+import { DualRing } from '@/components/student/course/DualRing'
 import type { StickerName } from '@/components/student/skin/skin'
 
 /**
@@ -81,54 +83,6 @@ async function loadStudentGroups(profileId: string): Promise<GroupWithCourse[] |
     .map(g => g.groups as GroupWithCourse)
 }
 
-// Узкий тип: таблиц витрины и режима нет в сгенерированных типах (они отстают
-// от базы и руками не дописываются — CLAUDE.md).
-type Rows = PromiseLike<{ data: Array<Record<string, unknown>> | null; error: unknown }>
-type Q = Rows & { in: (c: string, v: string[]) => Q; eq: (c: string, v: unknown) => Q }
-type Db = { from: (t: string) => { select: (c: string) => Q } }
-
-interface Extras {
-  showcase: Map<string, string>
-  progressMode: Set<string>
-}
-
-async function loadExtras(courseIds: string[]): Promise<Extras> {
-  const db = supabase as unknown as Db
-  const [show, modes] = await Promise.all([
-    db.from('course_showcase').select('course_id, title').in('course_id', courseIds).eq('is_active', true),
-    db.from('course_unlock_modes').select('course_id, mode').in('course_id', courseIds),
-  ])
-  return {
-    showcase: new Map(((show.error ? [] : show.data) ?? []).map(r => [String(r.course_id), String(r.title)])),
-    progressMode: new Set(((modes.error ? [] : modes.data) ?? []).filter(r => r.mode === 'progress').map(r => String(r.course_id))),
-  }
-}
-
-/**
- * Открытые темы с ДЗ по разделам — для кольца «открыто» и лестницы (письмо
- * ЛК_стиль_мои_курсы_прогресс_Б.md). Ученик читает `topic_homework` только
- * под политикой `topic_homework_student_select` — опубликованные ДЗ тем,
- * открытых ему сейчас (`student_visible_topics()`: по датам или «по
- * прохождению», с учётом подписки). Темы с ДЗ — та же единица, что
- * «пройдено N из M» в `student_home_courses`. Сбой — null: «открыто» не
- * показываем, а не показываем неправду.
- */
-async function loadOpenByModule(): Promise<Map<string, number> | null> {
-  try {
-    const { data, error } = await supabase.from('topic_homework').select('topic_id, topic:topics!inner(module_id)')
-    if (error) return null
-    const topics = new Map<string, Set<string>>()
-    for (const r of (data ?? []) as unknown as Array<{ topic_id: string; topic: { module_id: string } | null }>) {
-      if (!r.topic?.module_id) continue
-      if (!topics.has(r.topic.module_id)) topics.set(r.topic.module_id, new Set())
-      topics.get(r.topic.module_id)!.add(r.topic_id)
-    }
-    return new Map([...topics].map(([m, set]) => [m, set.size]))
-  } catch {
-    return null
-  }
-}
-
 function courseSticker(subject: string): StickerName {
   const s = subject.toLowerCase()
   if (s.includes('phys') || s.includes('физ')) return 'rocket'
@@ -138,36 +92,6 @@ function courseSticker(subject: string): StickerName {
 
 function isMockOpen(exams: MockLessonListRow[] | undefined): boolean {
   return !!exams?.length && mockAlert(exams, Date.now())?.kind === 'open'
-}
-
-/**
- * Кольцо в два слоя (вариант «Б»): внешнее тонкое светло-синее — доля
- * открытых тем, внутреннее толстое синее — доля пройденных. Внутри — только
- * процент пройденного; «открыто N%» — под кругом (просьба владельца).
- */
-function DualRing({ ladder }: { ladder: CourseLadder }) {
-  const C1 = 2 * Math.PI * 40
-  const C2 = 2 * Math.PI * 30
-  return (
-    <div className="stu-dring" data-testid="course-ring">
-      <div className="stu-dring-c">
-        <svg viewBox="0 0 92 92" aria-hidden="true">
-          <circle cx="46" cy="46" r="40" fill="none" stroke="var(--line)" strokeWidth="5" />
-          {ladder.openPct != null && ladder.openPct > 0 && (
-            <circle cx="46" cy="46" r="40" fill="none" stroke="var(--blueMid)" strokeWidth="5" strokeLinecap="round"
-              strokeDasharray={`${(C1 * ladder.openPct) / 100} ${C1}`} />
-          )}
-          <circle cx="46" cy="46" r="30" fill="none" stroke="var(--line)" strokeWidth="9" />
-          {ladder.donePct > 0 && (
-            <circle cx="46" cy="46" r="30" fill="none" stroke="var(--blue)" strokeWidth="9" strokeLinecap="round"
-              strokeDasharray={`${(C2 * ladder.donePct) / 100} ${C2}`} />
-          )}
-        </svg>
-        <b>{ladder.donePct}%</b>
-      </div>
-      {ladder.openPct != null && <small data-testid="course-open-pct">открыто {ladder.openPct}%</small>}
-    </div>
-  )
 }
 
 /** Лестница разделов: полоска в три цвета, «15/24» или «✓»; больше 6 — текущий и соседние. */

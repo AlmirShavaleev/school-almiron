@@ -74,21 +74,25 @@ function renderPage() {
 }
 
 describe('StudentCoursePage — счётчики', () => {
+  // Шапка курса в стиле ЛК (письмо 15.10). Прогресса с сервера в этих тестах
+  // нет — шапка считает по программе (счётчики §280: пройдено / в счёт / открыто).
   it('§280: главный счётчик — пройденные темы; закрытые в знаменателе, открытые пустые нет', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
+    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('пройдено 0 из 2 · 2 можно делать сейчас')
   })
 
-  it('при нуле опубликованных ДЗ строка говорит словами, а не пустует', async () => {
+  it('нет ДЗ ни к сдаче, ни на проверке — плашек ДЗ нет (словами только ненулевые)', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-homework-counter'))
-      .toHaveTextContent('Домашних заданий пока нет')
+    await screen.findByTestId('course-topics-counter')
+    expect(screen.queryByTestId('course-hw-chips')).toBeNull()
   })
 
-  it('раздел в списке считает тем же правилом, что и курс', async () => {
+  it('плитка раздела считает тем же правилом, что и курс', async () => {
     renderPage()
-    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
-    expect(screen.getByTestId('module-homework-counter')).toHaveTextContent('Домашних заданий пока нет')
+    const tile = (await screen.findAllByTestId('module-card'))[0]
+    expect(tile).toHaveTextContent('Раздел 1')
+    expect(tile).toHaveTextContent('0/2')
+    expect(tile).toHaveTextContent('2 открыто')
   })
 
   it('слова «заданий» там, где считаются темы, больше нет', async () => {
@@ -117,12 +121,12 @@ describe('StudentCoursePage — счётчики', () => {
 })
 
 describe('StudentCoursePage — склонение', () => {
-  it('счётчик тем согласует слово со вторым числом', async () => {
-    // Обращение ученика 09.09: «2 тем» вместо «2 темы». Слово стоит рядом со
-    // ВТОРЫМ числом, с ним и согласуется.
+  it('подпись программы согласует слова с числами', async () => {
+    // Обращение ученика 09.09: «2 тем» вместо «2 темы» — правило то же.
     renderPage()
-    const counter = await screen.findByTestId('course-topics-counter')
-    expect(counter).toHaveTextContent('из 2 темы')
-    expect(counter.textContent).not.toMatch(/из 2 тем(?!ы)/)
+    const tiles = await screen.findByTestId('section-tiles')
+    const note = tiles.parentElement!.textContent ?? ''
+    expect(note).toMatch(/1 раздел · 2 урока с ДЗ/)
+    expect(note).not.toMatch(/2 уроков/)
   })
 })

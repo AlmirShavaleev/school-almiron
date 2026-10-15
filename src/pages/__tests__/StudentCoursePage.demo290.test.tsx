@@ -74,7 +74,8 @@ describe('§290-B страница курса', () => {
 
   it('демо: плашка «Оформить подписку», у закрытого урока — «Доступно по подписке»', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-demo')).toBeInTheDocument()
+    // Пробный период — строкой доступа в шапке курса (письмо 15.10).
+    expect(await screen.findByTestId('course-access')).toHaveAttribute('data-kind', 'trial')
     expect(screen.getByTestId('course-demo-buy').closest('a')).toHaveAttribute('href', '/courses')
     fireEvent.click(screen.getAllByTestId('module-card')[0])
     expect(await screen.findByText('Доступно по подписке')).toBeInTheDocument()
@@ -86,6 +87,6 @@ describe('§290-B страница курса', () => {
     renderPage()
     fireEvent.click((await screen.findAllByTestId('module-card'))[0])
     expect(await screen.findByText(/Откроется после урока «Урок 2»/)).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByTestId('course-demo')).toBeNull())
+    await waitFor(() => expect(screen.queryByTestId('course-demo-buy')).toBeNull())
   })
 })

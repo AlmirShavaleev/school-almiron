@@ -31,9 +31,9 @@ function fixtures(scenario) {
       ? {
           course_id: c.id, topics_done: 9, topics_total: 22,
           modules: [
-            { module_id: 'm-kin', title: 'Кинематика', done: 6, total: 7 },
-            { module_id: 'm-dyn', title: 'Динамика', done: 3, total: 8 },
-            { module_id: 'm-zs', title: 'Законы сохранения', done: 0, total: 7 },
+            // id разделов — те же, что в программе курса (как в настоящей базе).
+            { module_id: IDS.module, title: 'Кинематика', done: 6, total: 12 },
+            { module_id: IDS.module2, title: 'Динамика', done: 3, total: 10 },
           ],
           continue: { topic_id: physTopic.id, title: 'Сила трения покоя', module_title: 'Динамика' },
         }
@@ -127,13 +127,20 @@ function fixtures(scenario) {
       ['Колебания', 12, 0, 0],
     ]
     const done = MODS.reduce((s, m) => s + m[2], 0)
+    // Первые два раздела — разделы программы из общих фикстур, остальные
+    // добавляем в программу, чтобы плитки и прогресс говорили об одном.
+    const modId = (i) => (i === 0 ? IDS.module : i === 1 ? IDS.module2 : `synm-${i}`)
+    const physMod = t.modules.find(m => m.id === IDS.module)
+    for (let i = 2; i < MODS.length; i++) {
+      if (!t.modules.some(m => m.id === modId(i))) t.modules.push({ ...physMod, id: modId(i), title: MODS[i][0], order_index: i + 1, topics: [] })
+    }
     fx.rpc.student_home_courses = [{
       course_id: IDS.course, topics_done: done, topics_total: 102,
-      modules: MODS.map(([title, total, d], i) => ({ module_id: `synm-${i}`, title, done: d, total })),
+      modules: MODS.map(([title, total, d], i) => ({ module_id: modId(i), title, done: d, total })),
       continue: { topic_id: physTopic.id, title: month ? 'Свободное падение' : 'Числа, степени, стандартный вид, единицы', module_title: null },
     }]
     t.topic_homework = MODS.flatMap(([, , , open], i) => Array.from({ length: open }, (_, k) => ({
-      id: `synhw-${i}-${k}`, topic_id: `synt-${i}-${k}`, is_published: true, topic: { module_id: `synm-${i}` },
+      id: `synhw-${i}-${k}`, topic_id: `synt-${i}-${k}`, is_published: true, topic: { module_id: modId(i) },
     })))
     t.course_unlock_modes = [{ course_id: IDS.course, mode: 'progress' }]
     fx.rpc.subscription_enabled = true
@@ -162,13 +169,17 @@ const ALL_SHOTS = [
   { name: `дз-${scenario}`, url: '/my-homework' },
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
   { name: `мои-курсы-${scenario}`, url: '/my-course' },
-  // Программа курса: «Календарь тем» — дорожка по разделам (письмо 15.10).
+  // Страница курса: шапка, люди, плитки разделов (письмо ЛК_стиль_страница_курса.md).
   { name: `курс-${scenario}`, url: `/my-course/${IDS.group}` },
+  // Экран раздела — клик по плитке текущего (или первого) раздела.
+  { name: `раздел-${scenario}`, url: `/my-course/${IDS.group}`, section: true },
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
-// Без курсов и прогресс «Б» — только «Мои курсы».
-const SHOTS = ['empty', 'day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url === '/my-course') : ALL_SHOTS
+// Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
+const SHOTS = scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
+  : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course'))
+  : ALL_SHOTS
 
 for (const width of [1280, 390]) {
   for (const theme of ['light', 'dark']) {
@@ -199,6 +210,11 @@ for (const width of [1280, 390]) {
       })
       await page.waitForTimeout(2200)
       if (s.menu) { await page.click('header button[aria-label="Открыть меню"]'); await page.waitForTimeout(500) }
+      if (s.section) {
+        const cur = page.locator('[data-testid="module-card"][data-state="current"]')
+        const tile = (await cur.count()) > 0 ? cur.first() : page.locator('[data-testid="module-card"]').first()
+        await tile.click(); await page.waitForTimeout(1200); await page.evaluate(() => window.scrollTo(0, 0))
+      }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       const base = path.join(outDir, `лк-${s.name}-${width}-${theme}`)
       await page.screenshot({ path: `${base}.png`, fullPage: !s.menu })
