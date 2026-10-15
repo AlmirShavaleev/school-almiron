@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchLessonCourseIds } from '@/lib/lessonCourses'
+import { fetchLessonHomeworkFilter, keepLessonItem } from '@/lib/lessonCourses'
 import { useAuthStore } from '@/store/authStore'
 
 /**
@@ -47,18 +47,19 @@ export function useSidebarBadges() {
         // Полный список «нужно сделать» (включая ещё не начатое ДЗ) живёт на
         // самой странице — там для этого get_student_topic_journal.
         //
-        // 13.10, владелец: работы «урочных» курсов (раздел «Мой курс») не
-        // считаются — страница ДЗ их не показывает (src/lib/lessonCourses.ts).
-        // Поэтому не count по голове, а строки с курсом: возвращённых — единицы.
+        // 15.10, владелец: работы «урочных» курсов (раздел «Мой курс») — только
+        // открытых сейчас уроков, как на странице ДЗ (src/lib/lessonCourses.ts).
+        // Поэтому не count по голове, а строки с курсом и темой: их единицы.
         const { data: returnedRows } = await supabase
           .from('topic_homework_attempts')
-          .select('id, homework:topic_homework!inner(topic:topics!inner(module:modules!inner(course_id)))')
+          .select('id, homework:topic_homework!inner(topic:topics!inner(id, module:modules!inner(course_id)))')
           .eq('status', 'returned_for_revision')
-        const courseOf = (r: unknown) =>
-          (r as { homework?: { topic?: { module?: { course_id?: string } } } }).homework?.topic?.module?.course_id ?? ''
+        type Row = { homework?: { topic?: { id?: string; module?: { course_id?: string } } } }
+        const courseOf = (r: unknown) => (r as Row).homework?.topic?.module?.course_id ?? ''
+        const topicOf = (r: unknown) => (r as Row).homework?.topic?.id ?? ''
         const rowsReturned = (returnedRows ?? []) as unknown[]
-        const lessonIds = await fetchLessonCourseIds(rowsReturned.map(courseOf))
-        const returned = rowsReturned.filter(r => !lessonIds.has(courseOf(r))).length
+        const lesson = await fetchLessonHomeworkFilter(rowsReturned.map(courseOf))
+        const returned = rowsReturned.filter(r => keepLessonItem(lesson, courseOf(r), topicOf(r))).length
         if (returned) next['/my-homework'] = returned
       } else {
         // Персоналу — сколько сданных работ ждёт вердикта по его курсам.

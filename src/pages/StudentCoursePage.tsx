@@ -41,7 +41,7 @@ import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
 import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
-import { isLessonProgram, useLessonCourseIds } from '@/lib/lessonCourses'
+import { isLessonProgram, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -892,10 +892,17 @@ export function StudentCoursePage() {
   const openedNotice = locks.data && locks.data !== dismissedNotice
     ? openedMessage(locks.opened.map(l => l.title ?? 'новый урок'))
     : null
-  // 13.10, владелец: в «урочном» курсе (раздел «Мой курс») ДЗ живут в уроках —
-  // отдельного блока «Задания» со ссылками на них нет (src/lib/lessonCourses.ts).
-  const lessonIds = useLessonCourseIds(course?.id ? [course.id] : [])
-  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics), locks.data?.mode) || (!!course?.id && lessonIds.ids.has(course.id))
+  // 15.10, владелец: в «урочном» курсе (раздел «Мой курс») блок «Задания» —
+  // только ДЗ уроков, открытых ученику сейчас (src/lib/lessonCourses.ts).
+  const lesson = useLessonHomeworkFilter(course?.id ? [course.id] : [])
+  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics), locks.data?.mode) || (!!course?.id && lesson.filter.lessonIds.has(course.id))
+  const homeworkModules = useMemo(() => {
+    if (!lessonCourse) return programModules
+    // Набор открытых уроков не пришёл — ДЗ урочного курса не показываем
+    // (без него открытый урок от закрытого не отличить).
+    const open = lesson.filter.openTopics
+    return programModules.map(m => ({ ...m, topics: m.topics.filter(t => !!open?.has(t.id)) }))
+  }, [lessonCourse, programModules, lesson.filter.openTopics])
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
   // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
   // блок «Пробники» по расписанию, как в §224.2.
@@ -1182,9 +1189,9 @@ export function StudentCoursePage() {
       )}
 
       {/* ══ БЛОК ЗАДАНИЙ (только на главном экране курса) ══ */}
-      {!activeMod && !lessonCourse && (
+      {!activeMod && (!lessonCourse || lesson.ready) && (
         <HomeworkBlock
-          modules={programModules}
+          modules={homeworkModules}
           onOpenTopic={openTopic}
         />
       )}
