@@ -62,9 +62,6 @@ vi.mock('@/store/authStore', () => ({
 
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
 
-// Название раздела есть и в «Календаре тем» (дорожка), и в карточке раздела — клик по карточке.
-const MODULE_CARD = '[data-testid="module-card"] *'
-
 /** Курс открывается на списке разделов — в раздел надо зайти. */
 async function openModule(view: 'list' | 'cards' = 'list') {
   localStorage.setItem('student-course-view', view)
@@ -75,7 +72,7 @@ async function openModule(view: 'list' | 'cards' = 'list') {
       </Routes>
     </MemoryRouter>,
   )
-  fireEvent.click(await screen.findByText('Механика', { selector: MODULE_CARD }))
+  fireEvent.click(await screen.findByText('Механика'))
   return screen.findAllByTestId(view === 'list' ? 'topic-list-row' : 'lesson-card')
 }
 
@@ -238,7 +235,7 @@ describe('§274 — вид «Карточки»: карточка урока', (
         </Routes>
       </MemoryRouter>,
     )
-    fireEvent.click(await screen.findByText('Механика', { selector: MODULE_CARD }))
+    fireEvent.click(await screen.findByText('Механика'))
     expect(await screen.findByTestId('topics-cards-view')).toBeInTheDocument()
     expect(screen.getByTestId('view-toggle-cards')).toHaveAttribute('aria-pressed', 'true')
   })

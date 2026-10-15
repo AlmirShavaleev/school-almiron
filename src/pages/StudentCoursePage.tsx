@@ -13,7 +13,6 @@ import { LessonCard } from '@/components/courseProgram/LessonCard'
 import { ModuleArt } from '@/components/courseProgram/ModuleArt'
 import { moduleArtKey, moduleCardTitle, moduleIsPractice, moduleTag } from '@/lib/moduleArt'
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
-import { CourseRoadmapCard } from '@/components/student/course/CourseRoadmapCard'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { StatCard } from '@/components/ui/StatCard'
 import { cn } from '@/utils/cn'
@@ -1109,18 +1108,6 @@ export function StudentCoursePage() {
           у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}
       {!activeMod && !preview && <StudentWeekPlan courseId={course.id} />}
 
-      {/* «Календарь тем» — дорожка по разделам (письмо 15.10, вариант «А»):
-          где ученик сейчас и что откроется дальше. Разделы-«только работы»
-          (§259) — не уроки, в дорожку не входят. */}
-      {!activeMod && groupId && (
-        <CourseRoadmapCard
-          modules={modules.filter(m => !isWorksOnlyModule(m))}
-          groupId={groupId}
-          demo={demo}
-          onShowAll={() => document.getElementById('course-modules')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        />
-      )}
-
       {/* ══ STAFF CARDS ══ */}
       {!activeMod && (
         <div className="flex flex-col sm:flex-row gap-3">
@@ -1131,7 +1118,7 @@ export function StudentCoursePage() {
 
       {/* ══ LEVEL 1: MODULE CARDS ══ */}
       {!activeMod && (
-        <div id="course-modules" className="grid grid-cols-1 sm:grid-cols-2 gap-4 scroll-mt-24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {modules.map(mod => (
             isWorksOnlyModule(mod) ? (
               <ModuleWorksCard key={mod.id} mod={mod} works={worksByTopic} onClick={() => setSelectedModule(mod)} />

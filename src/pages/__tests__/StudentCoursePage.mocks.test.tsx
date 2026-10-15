@@ -55,9 +55,6 @@ vi.mock('@/store/authStore', () => ({ useAuthStore: (selector: any) => selector(
 
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
 
-// Название раздела есть и в «Календаре тем» (дорожка), и в карточке раздела — клик по карточке.
-const MODULE_CARD = '[data-testid="module-card"] *'
-
 function renderPage(entry = '/my-course/g1') {
   return render(
     <MemoryRouter initialEntries={[entry]}>
@@ -80,7 +77,7 @@ describe('StudentCoursePage — раздел «Пробники»', () => {
   it('над разделами курса; строка идущего ведёт на страницу пробника', async () => {
     renderPage()
     const section = await screen.findByTestId('mock-exams-section')
-    const moduleCard = screen.getByText('Механика', { selector: MODULE_CARD })
+    const moduleCard = screen.getByText('Механика')
     expect(section.compareDocumentPosition(moduleCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.click(screen.getByTestId('mock-section-open'))
     expect(await screen.findByText('страница пробника')).toBeInTheDocument()
@@ -88,7 +85,7 @@ describe('StudentCoursePage — раздел «Пробники»', () => {
 
   it('внутри раздела курса строки пробника в списке тем нет, даже если у него остался module_id', async () => {
     renderPage()
-    fireEvent.click(await screen.findByText('Механика', { selector: MODULE_CARD }))
+    fireEvent.click(await screen.findByText('Механика'))
     expect(await screen.findByTestId('topics-list-view')).not.toHaveTextContent('Пробник №3')
     expect(screen.queryByTestId('mock-exams-section')).toBeNull()
   })
@@ -118,7 +115,7 @@ describe('StudentCoursePage — баннер идущего пробника (§
     modules = [moduleOf('m1', 'Основной', [{ ...topic('t1'), title: 'Урок перед пробником (пустой)' }])]
     mockExams = [openExam({ title: '№1', module_id: null, ends_at: new Date(now + 7 * min).toISOString() })]
     renderPage()
-    fireEvent.click(await screen.findByText('Основной', { selector: MODULE_CARD }))
+    fireEvent.click(await screen.findByText('Основной'))
     await screen.findByTestId('topics-list-view')
     const banner = screen.getByTestId('mock-alert')
     expect(banner).toHaveTextContent('Идёт пробник «№1»')
@@ -130,7 +127,7 @@ describe('StudentCoursePage — баннер идущего пробника (§
   it('в режиме «Карточки» — тоже', async () => {
     localStorage.setItem('student-course-view', 'cards')
     renderPage()
-    fireEvent.click(await screen.findByText('Механика', { selector: MODULE_CARD }))
+    fireEvent.click(await screen.findByText('Механика'))
     await screen.findByTestId('topics-cards-view')
     expect(screen.getByTestId('mock-alert')).toHaveAttribute('data-kind', 'open')
     localStorage.clear()

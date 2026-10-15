@@ -74,9 +74,6 @@ vi.mock('@/store/staffModeStore', () => ({ usePreviewMode: () => preview }))
 
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
 
-// Название раздела есть и в «Календаре тем» (дорожка), и в карточке раздела — клик по карточке.
-const MODULE_CARD = '[data-testid="module-card"] *'
-
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/my-course/g1']}>
@@ -109,7 +106,7 @@ describe('StudentCoursePage — раздел «Контрольные, само�
     // Проверенная (с оценкой) и без времени — не в разделе.
     expect(section).not.toHaveTextContent('Проверочная: Импульс')
     expect(section).not.toHaveTextContent('КР: Статика')
-    const firstModule = screen.getByText('Механика', { selector: MODULE_CARD })
+    const firstModule = screen.getByText('Механика')
     expect(section.compareDocumentPosition(firstModule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(hookArgs[0]).toEqual(['g1', true])
   })
@@ -148,7 +145,7 @@ describe('StudentCoursePage — модуль «Контрольные работ
 
   it('в модуле с уроками работ нет: в «Механике» — только урок', () => {
     renderPage()
-    fireEvent.click(screen.getByText('Механика', { selector: MODULE_CARD }))
+    fireEvent.click(screen.getByText('Механика'))
     const list = screen.getByTestId('topics-list-view')
     expect(list).toHaveTextContent('Законы Ньютона')
     expect(list).not.toHaveTextContent('КР: Кинематика')
@@ -195,7 +192,7 @@ describe('StudentCoursePage — без данных раздела', () => {
     expect(screen.queryByTestId('assessments-section')).toBeNull()
     expect(screen.getByTestId('mock-exams-section')).toBeInTheDocument()
     expect(worksCard()).toHaveTextContent('Контрольные работы')
-    fireEvent.click(screen.getByText('Механика', { selector: MODULE_CARD }))
+    fireEvent.click(screen.getByText('Механика'))
     expect(screen.getByTestId('topics-list-view')).toHaveTextContent('КР: Кинематика')
   })
 
