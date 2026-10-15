@@ -95,6 +95,39 @@ function fixtures(scenario) {
       ],
     }
   }
+  // Прогресс «Б» (письмо ЛК_стиль_мои_курсы_прогресс_Б.md): один курс физики,
+  // 6 разделов, 102 темы с ДЗ — «первый день» (day0) и «через месяц» (month).
+  // Открытые ДЗ — строки topic_homework с темой и разделом (ученику база
+  // отдаёт только открытые; в харнессе RLS нет, поэтому задаём их явно).
+  if (scenario === 'day0' || scenario === 'month') {
+    const st = t.students.find(s => s.profile_id === IDS.student)
+    t.group_students = t.group_students.filter(g => g.student_id !== st?.id || g.group_id === IDS.group)
+    const month = scenario === 'month'
+    const MODS = [
+      ['Математика для физики', 8, month ? 8 : 0, month ? 8 : 8],
+      ['Кинематика', 24, month ? 15 : 0, month ? 19 : 6],
+      ['Динамика', 22, 0, month ? 2 : 0],
+      ['Законы сохранения', 24, 0, 0],
+      ['Статика', 12, 0, 0],
+      ['Колебания', 12, 0, 0],
+    ]
+    const done = MODS.reduce((s, m) => s + m[2], 0)
+    fx.rpc.student_home_courses = [{
+      course_id: IDS.course, topics_done: done, topics_total: 102,
+      modules: MODS.map(([title, total, d], i) => ({ module_id: `synm-${i}`, title, done: d, total })),
+      continue: { topic_id: physTopic.id, title: month ? 'Свободное падение' : 'Числа, степени, стандартный вид, единицы', module_title: null },
+    }]
+    t.topic_homework = MODS.flatMap(([, , , open], i) => Array.from({ length: open }, (_, k) => ({
+      id: `synhw-${i}-${k}`, topic_id: `synt-${i}-${k}`, is_published: true, topic: { module_id: `synm-${i}` },
+    })))
+    t.course_unlock_modes = [{ course_id: IDS.course, mode: 'progress' }]
+    fx.rpc.subscription_enabled = true
+    fx.rpc.student_path_home = {
+      onboarding: { needed: false, completed: true, diagnostic_status: 'done' },
+      subscriptions: [{ subscription_id: 'sub-1', course_id: IDS.course, course_title: 'Физика ЕГЭ', group_id: IDS.group, tariff_id: 'tar-1',
+        status: 'active', source: 'purchase', demo: false, has_access: true, access_until: new Date(Date.now() + 34 * 864e5).toISOString(), auto_renew: true, continue: null }],
+    }
+  }
   if (scenario === 'empty') {
     const st = t.students.find(s => s.profile_id === IDS.student)
     t.group_students = t.group_students.filter(g => g.student_id !== st?.id)
@@ -107,7 +140,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const p = personas.student
 const session = makeSession(p.user)
 
-const scenario = ['trial', 'empty'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
+const scenario = ['trial', 'empty', 'day0', 'month'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
 const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
@@ -117,8 +150,8 @@ const ALL_SHOTS = [
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
-// Без курсов — только «Мои курсы» (пустое состояние).
-const SHOTS = scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course') : ALL_SHOTS
+// Без курсов и прогресс «Б» — только «Мои курсы».
+const SHOTS = ['empty', 'day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url === '/my-course') : ALL_SHOTS
 
 for (const width of [1280, 390]) {
   for (const theme of ['light', 'dark']) {

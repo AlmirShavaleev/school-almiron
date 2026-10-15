@@ -19,7 +19,7 @@
 
 .stu {
   --bg: #f7f9fe; --bg2: #eef2fb; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #e1e7f3;
-  --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea;
+  --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea; --blueMid: #a9bcf7;
   --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
   --red: #e5484d; --redS: #fdecee; --redInk: #c22f35;
   --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
@@ -33,7 +33,7 @@
 .stu[data-theme='dark'] {
   --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
   --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d;
-  --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+  --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2; --blueMid: #3d4f8f;
   --shadow: 0 12px 32px rgba(0, 0, 0, .3);
   --nav: rgba(15, 29, 61, .86);
   color-scheme: dark;
@@ -283,3 +283,26 @@
 .stu .stu-mc-access[data-kind='trial'], .stu .stu-mc-access[data-kind='expired'] { color: var(--orInk) }
 .stu .stu-btn-sm { min-height: 40px; padding: 0 16px; font-size: 14px }
 @media (prefers-reduced-motion: reduce) { .stu .stu-mc:hover { transform: none } }
+
+/* «Мои курсы», прогресс вариант «Б»: кольцо в два слоя и лестница разделов. */
+.stu .stu-mc-prog { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 18px; align-items: start }
+.stu .stu-dring { display: flex; flex-direction: column; align-items: center; gap: 4px }
+.stu .stu-dring-c { position: relative; width: 92px; height: 92px }
+.stu .stu-dring-c svg { width: 100%; height: 100%; transform: rotate(-90deg) }
+.stu .stu-dring-c b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums }
+.stu .stu-dring small { font-size: 12px; color: var(--ink2); font-weight: 600; white-space: nowrap }
+.stu .stu-steps { display: grid; gap: 8px; margin-top: 10px }
+.stu .stu-step-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 52px; gap: 12px; align-items: center; font-size: 13.5px }
+.stu .stu-step-n { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.stu .stu-step-row.is-cur .stu-step-n { color: var(--blueInk) }
+.stu .stu-step-row.is-future .stu-step-n { color: var(--ink2); font-weight: 500 }
+.stu .stu-step-t { display: flex; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden }
+.stu .stu-step-t i { display: block; height: 100% }
+.stu .stu-step-t .d { background: var(--blue) }
+.stu .stu-step-t .o { background: var(--blueMid) }
+.stu .stu-step-v { text-align: right; color: var(--ink2); font-variant-numeric: tabular-nums; font-weight: 700 }
+@media (max-width: 560px) {
+  .stu .stu-mc-prog { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-dring { align-self: flex-start }
+  .stu .stu-step-row { grid-template-columns: 110px minmax(0, 1fr) 44px; gap: 8px }
+}

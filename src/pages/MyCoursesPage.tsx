@@ -13,7 +13,7 @@ import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { continueHref, type HomeCourseProgress } from '@/lib/studentHomeCourses'
-import { accessLine, publicTitle, type AccessLine } from '@/lib/myCourses'
+import { accessLine, courseLadder, publicTitle, visibleSteps, type AccessLine, type CourseLadder, type LadderStep } from '@/lib/myCourses'
 import type { PathSubscription } from '@/lib/studentPath'
 import { Sticker } from '@/components/student/skin/Sticker'
 import type { StickerName } from '@/components/student/skin/skin'
@@ -26,9 +26,9 @@ import type { StickerName } from '@/components/student/skin/skin'
  * без «(тест)»), режим курса серым, кольцо «пройдено N из M» и полоска
  * разделов — `student_home_courses()` (как на главной), «Продолжить: <тема>»,
  * строка доступа по типу (подписка / пробный / истекла / школьная группа).
- * Клик — программа курса. Рядом с «пройдено» — «открыто N»: сколько тем
- * ученику открыто сейчас (`student_visible_topics`). Курс один — карточка
- * шире. Нет курсов — «Пройти диагностику» и «Выбрать курс».
+ * Клик — программа курса. Прогресс — вариант «Б» (письмо 15.10): кольцо в два
+ * слоя (открыто / пройдено), «пройдено N из M · K можно делать сейчас» и
+ * лестница разделов. Курс один — карточка шире. Нет курсов — «Пройти диагностику» и «Выбрать курс».
  *
  * Только чтение, база не менялась. Прежняя карточка считала «открыто» по всем
  * темам курса — у курса по прохождению выходило 100% и «108/108».
@@ -105,26 +105,25 @@ async function loadExtras(courseIds: string[]): Promise<Extras> {
 }
 
 /**
- * Сколько тем курса ученику открыто СЕЙЧАС — `student_visible_topics()`:
- * тот же набор, по которому база отдаёт ученику темы и ДЗ (по датам или «по
- * прохождению», с учётом подписки). Темы курса — только id и курс. Сбой —
- * null: строку «открыто» не показываем, а не показываем неправду.
+ * Открытые темы с ДЗ по разделам — для кольца «открыто» и лестницы (письмо
+ * ЛК_стиль_мои_курсы_прогресс_Б.md). Ученик читает `topic_homework` только
+ * под политикой `topic_homework_student_select` — опубликованные ДЗ тем,
+ * открытых ему сейчас (`student_visible_topics()`: по датам или «по
+ * прохождению», с учётом подписки). Темы с ДЗ — та же единица, что
+ * «пройдено N из M» в `student_home_courses`. Сбой — null: «открыто» не
+ * показываем, а не показываем неправду.
  */
-async function loadOpenCounts(courseIds: string[]): Promise<Map<string, number> | null> {
+async function loadOpenByModule(): Promise<Map<string, number> | null> {
   try {
-    const rpc = (supabase as unknown as { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> }).rpc
-    const [vis, tops] = await Promise.all([
-      rpc.call(supabase, 'student_visible_topics'),
-      supabase.from('topics').select('id, module:modules!inner(course_id)').in('module.course_id', courseIds),
-    ])
-    if (vis.error || !Array.isArray(vis.data) || tops.error) return null
-    const open = new Set(vis.data as string[])
-    const out = new Map<string, number>()
-    for (const t of (tops.data ?? []) as unknown as Array<{ id: string; module: { course_id: string } | null }>) {
-      if (!t.module || !open.has(t.id)) continue
-      out.set(t.module.course_id, (out.get(t.module.course_id) ?? 0) + 1)
+    const { data, error } = await supabase.from('topic_homework').select('topic_id, topic:topics!inner(module_id)')
+    if (error) return null
+    const topics = new Map<string, Set<string>>()
+    for (const r of (data ?? []) as unknown as Array<{ topic_id: string; topic: { module_id: string } | null }>) {
+      if (!r.topic?.module_id) continue
+      if (!topics.has(r.topic.module_id)) topics.set(r.topic.module_id, new Set())
+      topics.get(r.topic.module_id)!.add(r.topic_id)
     }
-    return out
+    return new Map([...topics].map(([m, set]) => [m, set.size]))
   } catch {
     return null
   }
@@ -141,34 +140,68 @@ function isMockOpen(exams: MockLessonListRow[] | undefined): boolean {
   return !!exams?.length && mockAlert(exams, Date.now())?.kind === 'open'
 }
 
-/** Полоска разделов: сегмент на раздел, ширина — по числу тем с ДЗ, заливка — %. */
-function ModuleSegments({ p }: { p: HomeCourseProgress }) {
-  const mods = p.modules.filter(m => m.total > 0)
-  if (mods.length === 0) return null
+/**
+ * Кольцо в два слоя (вариант «Б»): внешнее тонкое светло-синее — доля
+ * открытых тем, внутреннее толстое синее — доля пройденных. Внутри — только
+ * процент пройденного; «открыто N%» — под кругом (просьба владельца).
+ */
+function DualRing({ ladder }: { ladder: CourseLadder }) {
+  const C1 = 2 * Math.PI * 40
+  const C2 = 2 * Math.PI * 30
   return (
-    <div className="stu-segs" role="list" aria-label="Разделы">
-      {mods.map(m => (
-        <span
-          key={m.moduleId}
-          role="listitem"
-          className="stu-seg"
-          style={{ flexGrow: m.total }}
-          title={`${m.title}: ${m.percent}%`}
-          aria-label={`${m.title}: пройдено ${m.done} из ${m.total}`}
-        >
-          <i style={{ width: `${m.percent}%` }} />
-        </span>
-      ))}
+    <div className="stu-dring" data-testid="course-ring">
+      <div className="stu-dring-c">
+        <svg viewBox="0 0 92 92" aria-hidden="true">
+          <circle cx="46" cy="46" r="40" fill="none" stroke="var(--line)" strokeWidth="5" />
+          {ladder.openPct != null && ladder.openPct > 0 && (
+            <circle cx="46" cy="46" r="40" fill="none" stroke="var(--blueMid)" strokeWidth="5" strokeLinecap="round"
+              strokeDasharray={`${(C1 * ladder.openPct) / 100} ${C1}`} />
+          )}
+          <circle cx="46" cy="46" r="30" fill="none" stroke="var(--line)" strokeWidth="9" />
+          {ladder.donePct > 0 && (
+            <circle cx="46" cy="46" r="30" fill="none" stroke="var(--blue)" strokeWidth="9" strokeLinecap="round"
+              strokeDasharray={`${(C2 * ladder.donePct) / 100} ${C2}`} />
+          )}
+        </svg>
+        <b>{ladder.donePct}%</b>
+      </div>
+      {ladder.openPct != null && <small data-testid="course-open-pct">открыто {ladder.openPct}%</small>}
     </div>
   )
 }
 
-function CourseItem({ card, title, mode, progress, progressNote, openCount, access, mockExams, wide }: {
+/** Лестница разделов: полоска в три цвета, «15/24» или «✓»; больше 6 — текущий и соседние. */
+function Ladder({ steps }: { steps: LadderStep[] }) {
+  const [all, setAll] = useState(false)
+  const { shown, hidden } = all ? { shown: steps, hidden: 0 } : visibleSteps(steps)
+  if (steps.length === 0) return null
+  return (
+    <div className="stu-steps" data-testid="course-ladder">
+      {shown.map(m => (
+        <div key={m.moduleId} className={m.current ? 'stu-step-row is-cur' : m.future ? 'stu-step-row is-future' : 'stu-step-row'} data-testid="ladder-step">
+          <span className="stu-step-n" title={m.title}>{m.title}</span>
+          <span className="stu-step-t" aria-label={`${m.title}: пройдено ${m.done} из ${m.total}, открыто ${m.open}`}>
+            <i className="d" style={{ width: `${(m.done / m.total) * 100}%` }} />
+            <i className="o" style={{ width: `${((m.open - m.done) / m.total) * 100}%` }} />
+          </span>
+          <span className="stu-step-v">{m.complete ? '✓' : `${m.done}/${m.total}`}</span>
+        </div>
+      ))}
+      {hidden > 0 && (
+        <button type="button" className="stu-link self-start" onClick={() => setAll(true)} data-testid="ladder-more">
+          ещё {hidden} {plural(hidden, 'раздел', 'раздела', 'разделов')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CourseItem({ card, title, mode, progress, progressNote, openByModule, access, mockExams, wide }: {
   card: CourseCard
   title: string
   mode: 'progress' | 'schedule'
-  /** Открыто тем сейчас (student_visible_topics); null — не узнали. */
-  openCount: number | null
+  /** Открытые темы с ДЗ по разделам; null — не узнали. */
+  openByModule: Map<string, number> | null
   progress: HomeCourseProgress | null
   /** Прогресса нет: «загружается…» или почему его нет (предпросмотр, сбой). */
   progressNote: string
@@ -179,7 +212,7 @@ function CourseItem({ card, title, mode, progress, progressNote, openCount, acce
   const navigate = useNavigate()
   const done = progress?.done ?? 0
   const total = progress?.total ?? 0
-  const pct = progress?.percent ?? 0
+  const ladder = progress ? courseLadder(progress.modules, openByModule, done, total) : null
   const finished = total > 0 && done >= total
   // Клик по карточке — программа курса; у ссылок и кнопок внутри — свои адреса.
   const open = (e: React.MouseEvent) => {
@@ -203,16 +236,14 @@ function CourseItem({ card, title, mode, progress, progressNote, openCount, acce
         <Sticker name={courseSticker(card.subject)} size={56} />
       </div>
 
-      <div className="flex items-center gap-4">
-        <span className="stu-ring stu-ring-lg" style={{ ['--p' as string]: pct }}>
-          <span>{pct}%</span>
-        </span>
+      <div className="stu-mc-prog">
+        {ladder ? <DualRing ladder={ladder} /> : <span className="stu-ring stu-ring-lg" style={{ ['--p' as string]: 0 }}><span>0%</span></span>}
         <div className="min-w-0 flex-1">
           <p className="text-[14.5px] font-bold" data-testid="course-card-topics">
             {progress ? `пройдено ${done} из ${total}` : progressNote}
-            {openCount != null && <span className="stu-muted font-semibold" data-testid="course-open"> · открыто {openCount}</span>}
+            {ladder?.available != null && <span className="stu-muted font-semibold" data-testid="course-available"> · {ladder.available} можно делать сейчас</span>}
           </p>
-          {progress && <ModuleSegments p={progress} />}
+          {ladder && <Ladder steps={ladder.steps} />}
         </div>
       </div>
 
@@ -248,7 +279,7 @@ export function MyCoursesPage() {
   const [cards,   setCards]   = useState<CourseCard[]>([])
   const [extras,  setExtras]  = useState<Extras>({ showcase: new Map(), progressMode: new Set() })
   const [loading, setLoading] = useState(true)
-  const [openByCourse, setOpenByCourse] = useState<Map<string, number> | null>(null)
+  const [openByModule, setOpenByModule] = useState<Map<string, number> | null>(null)
   // §224.2. Идущий пробник — прямо на карточке курса.
   const mocksByGroup = useMyMockExams(cards.map(c => c.groupId))
 
@@ -272,8 +303,8 @@ export function MyCoursesPage() {
         setCards(list)
         if (list.length > 0) {
           const ids = list.map(c => c.courseId)
-          const [ex, open] = await Promise.all([loadExtras(ids), preview ? Promise.resolve(null) : loadOpenCounts(ids)])
-          if (!cancelled) { setExtras(ex); setOpenByCourse(open) }
+          const [ex, open] = await Promise.all([loadExtras(ids), preview ? Promise.resolve(null) : loadOpenByModule()])
+          if (!cancelled) { setExtras(ex); setOpenByModule(open) }
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -339,7 +370,7 @@ export function MyCoursesPage() {
             title={publicTitle(card.courseTitle, extras.showcase.get(card.courseId))}
             mode={extras.progressMode.has(card.courseId) ? 'progress' : 'schedule'}
             progress={progressByCourse.get(card.courseId) ?? null}
-            openCount={openByCourse ? openByCourse.get(card.courseId) ?? 0 : null}
+            openByModule={openByModule}
             progressNote={preview ? 'прогресс видит сам ученик' : home.courses === null ? 'прогресс загружается…' : 'пройдено 0 тем'}
             access={accessLine(subByCourse.get(card.courseId), { teacher: card.teacher, group: card.groupName })}
             mockExams={mocksByGroup[card.groupId] ?? []}

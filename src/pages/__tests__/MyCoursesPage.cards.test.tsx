@@ -142,17 +142,31 @@ describe('строка доступа', () => {
 })
 
 describe('список', () => {
-  it('«открыто N» — темы, открытые ученику сейчас (student_visible_topics), а не все темы курса', async () => {
-    db.groups = [group('g1', 'c1', 'A'), group('g2', 'c2', 'B')]
-    db.rpc.student_home_courses = [progress('c1', 0, 102, { topic_id: 't1', title: 'Числа' })]
-    db.rpc.student_visible_topics = ['t1', 't2', 't3', 'x9']
-    db.tables.topics = [
-      { id: 't1', module: { course_id: 'c1' } }, { id: 't2', module: { course_id: 'c1' } },
-      { id: 't3', module: { course_id: 'c2' } }, { id: 't4', module: { course_id: 'c1' } },
-    ]
+  it('вариант «Б»: кольцо «23%», под ним «открыто 28%», «6 можно делать сейчас», лестница разделов', async () => {
+    db.groups = [group('g1', 'c1', 'Физика')]
+    db.rpc.student_home_courses = [{
+      course_id: 'c1', topics_done: 23, topics_total: 102,
+      modules: [
+        { module_id: 'm1', title: 'Математика для физики', done: 8, total: 8 },
+        { module_id: 'm2', title: 'Кинематика', done: 15, total: 24 },
+        { module_id: 'm3', title: 'Динамика', done: 0, total: 22 },
+        { module_id: 'm4', title: 'Законы сохранения', done: 0, total: 48 },
+      ],
+      continue: { topic_id: 't1', title: 'Свободное падение', module_title: 'Кинематика' },
+    }]
+    // Открытые ДЗ, которые база отдаёт ученику: m1 — 8 тем, m2 — 19, m3 — 2.
+    const hw = (m: string, n: number) => Array.from({ length: n }, (_, k) => ({ topic_id: `${m}-t${k}`, topic: { module_id: m } }))
+    db.tables.topic_homework = [...hw('m1', 8), ...hw('m2', 19), ...hw('m3', 2)]
     renderPage()
-    const opened = await screen.findAllByTestId('course-open')
-    expect(opened.map(o => o.textContent)).toEqual([' · открыто 2', ' · открыто 1'])
+    const card = await screen.findByTestId('course-card')
+    expect(await within(card).findByTestId('course-open-pct')).toHaveTextContent('открыто 28%')
+    expect(within(card).getByTestId('course-ring')).toHaveTextContent('23%')
+    expect(within(card).getByTestId('course-available')).toHaveTextContent('6 можно делать сейчас')
+    const steps = within(card).getAllByTestId('ladder-step')
+    expect(steps.map(st => st.textContent)).toEqual(['Математика для физики✓', 'Кинематика15/24', 'Динамика0/22', 'Законы сохранения0/48'])
+    expect(steps[1]).toHaveClass('is-cur')
+    expect(steps[2]).toHaveClass('is-cur')
+    expect(steps[3]).toHaveClass('is-future')
     expect(screen.queryByTestId('course-next')).toBeNull()
   })
 
