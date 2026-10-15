@@ -11,7 +11,7 @@
 import { chromium } from '@playwright/test'
 import path from 'node:path'
 import { BASE, makeSession, makeHandler, ensureDir } from './lib.mjs'
-import { personas, baseFixtures, IDS } from './fixtures.mjs'
+import { personas, baseFixtures, IDS, LESSON } from './fixtures.mjs'
 
 const outDir = ensureDir(path.resolve(process.argv[2] || 'screenshots/harness/student-skin'))
 const assetsDir = path.resolve('screenshots/harness/assets')
@@ -74,6 +74,10 @@ function fixtures(scenario) {
   } else {
     // Пробный период подписки: курс «по прохождению», открыты первые 2 урока.
     fx.rpc.subscription_enabled = true
+    t.course_unlock_modes = [{ course_id: IDS.course, mode: 'progress' }]
+    // Оплаченная подписка — на «Математику ЕГЭ, профиль» (группа LESSON, её
+    // ученик видит в «Моих курсах»); «Песочница» остаётся школьной группой.
+    const paid = { id: LESSON.group, course_id: LESSON.course }
     fx.rpc.my_course_demo = (body) => ({ demo: body.p_course_id === IDS.course })
     fx.rpc.my_course_topic_locks = (body) => body.p_course_id === IDS.course
       ? { mode: 'progress', topics: physTopics.slice(0, 12).map((tp, i) => ({
@@ -82,9 +86,19 @@ function fixtures(scenario) {
       : { mode: 'schedule', topics: [] }
     fx.rpc.student_path_home = {
       onboarding: { needed: false, completed: true, grade: 11, exam: 'ege', subject: 'physics', target_score: 85, months_to_exam: 8, hours_per_week: 6, diagnostic_status: 'done' },
-      subscriptions: [{ subscription_id: 'sub-1', course_id: IDS.course, course_title: 'Физика ЕГЭ', group_id: IDS.group, tariff_id: 'tar-1',
-        status: 'trial', source: 'trial', demo: true, has_access: true, access_until: new Date(Date.now() + 2 * 864e5).toISOString(), auto_renew: false, continue: null }],
+      subscriptions: [
+        { subscription_id: 'sub-1', course_id: IDS.course, course_title: 'Физика ЕГЭ', group_id: IDS.group, tariff_id: 'tar-1',
+          status: 'trial', source: 'trial', demo: true, has_access: true, access_until: new Date(Date.now() + 2 * 864e5).toISOString(), auto_renew: false, continue: null },
+        // «Мои курсы»: второй курс — оплаченная подписка (третий — школьная группа).
+        ...(paid ? [{ subscription_id: 'sub-2', course_id: paid.course_id, course_title: 'Математика', group_id: paid.id, tariff_id: 'tar-2',
+          status: 'active', source: 'purchase', demo: false, has_access: true, access_until: new Date(Date.now() + 33 * 864e5).toISOString(), auto_renew: true, continue: null }] : []),
+      ],
     }
+  }
+  if (scenario === 'empty') {
+    const st = t.students.find(s => s.profile_id === IDS.student)
+    t.group_students = t.group_students.filter(g => g.student_id !== st?.id)
+    fx.rpc.student_home_courses = []
   }
   return fx
 }
@@ -93,14 +107,18 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const p = personas.student
 const session = makeSession(p.user)
 
-const scenario = process.env.SCENARIO === 'trial' ? 'trial' : 'schedule'
-const SHOTS = [
+const scenario = ['trial', 'empty'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
+const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
+  // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
+  { name: `мои-курсы-${scenario}`, url: '/my-course' },
   // Программа курса: «Календарь тем» — дорожка по разделам (письмо 15.10).
   { name: `курс-${scenario}`, url: `/my-course/${IDS.group}` },
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
+// Без курсов — только «Мои курсы» (пустое состояние).
+const SHOTS = scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course') : ALL_SHOTS
 
 for (const width of [1280, 390]) {
   for (const theme of ['light', 'dark']) {

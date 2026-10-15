@@ -4,10 +4,12 @@
  * остальные в тёмной теме рисуются светлым листом (`data-stu-scope='light'`),
  * потому что их цвета ещё заданы классами Tailwind под светлый фон.
  *
- * Этап 1: каркас (меню, шапка) и главная `/student`.
+ * Этап 1: каркас (меню, шапка) и главная `/student`; этап 2: «Мои курсы».
  */
 const SKINNED: readonly RegExp[] = [
   /^\/student\/?$/,
+  // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md, 15.10).
+  /^\/my-course\/?$/,
 ]
 
 export function studentSkinPage(pathname: string): boolean {

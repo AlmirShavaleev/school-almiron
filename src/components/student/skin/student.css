@@ -288,3 +288,23 @@
 .stu .stu-tg-strip { border-left: 5px solid var(--blue); color: var(--ink) }
 .stu .stu-tg-strip button, .stu .stu-tg-strip a { color: var(--blueInk); font-weight: 800 }
 @media (max-width: 420px) { .stu .stu-tg-sticker { width: 48px; height: 48px } }
+
+/* ── «Мои курсы» (письмо ЛК_стиль_мои_курсы.md) ─────────────────── */
+.stu .stu-mc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start }
+.stu .stu-mc-single { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; align-items: start }
+@media (max-width: 860px) { .stu .stu-mc-grid, .stu .stu-mc-single { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-mc { padding: 22px; display: flex; flex-direction: column; gap: 16px; cursor: pointer; transition: transform .2s, box-shadow .2s; min-width: 0 }
+.stu .stu-mc:hover { transform: translateY(-2px) }
+.stu .stu-mc-head { display: flex; gap: 14px; align-items: flex-start }
+.stu .stu-ring-lg { width: 72px; height: 72px; flex: none; font-size: 15px }
+.stu .stu-ring-lg > span { width: 58px; height: 58px }
+.stu .stu-segs { display: flex; gap: 4px; margin-top: 8px }
+.stu .stu-seg { display: block; height: 8px; min-width: 10px; border-radius: 4px; background: var(--bg2); overflow: hidden }
+.stu .stu-seg > i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 4px }
+.stu .stu-mc-cta { justify-content: flex-start; max-width: 100%; min-width: 0 }
+.stu .stu-mc-wait { display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px; border-radius: 14px; background: var(--bg2); color: var(--ink2); font-weight: 700; font-size: 14.5px }
+.stu .stu-mc-access { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink2); font-weight: 600 }
+.stu .stu-mc-access[data-kind='trial'], .stu .stu-mc-access[data-kind='expired'] { color: var(--orInk) }
+.stu .stu-btn-sm { min-height: 40px; padding: 0 16px; font-size: 14px }
+.stu .stu-next { padding: 22px; display: flex; flex-direction: column; gap: 14px }
+@media (prefers-reduced-motion: reduce) { .stu .stu-mc:hover { transform: none } }
