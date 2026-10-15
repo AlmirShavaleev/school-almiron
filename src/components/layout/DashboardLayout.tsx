@@ -237,7 +237,7 @@ export function DashboardLayout() {
                 на полноэкранной проверке ДЗ: там рабочая область занимает весь
                 экран, и полоска сверху ломала бы разметку холста. */}
             {activeWork && workClosed && <WorkModeStrip work={activeWork} offsetMs={workOffsetMs} showLink={false} />}
-            {!isFullscreenReviewRoute && !workClosed && <TelegramOnboarding />}
+            {!isFullscreenReviewRoute && !workClosed && <TelegramOnboarding skin={skin} />}
             {activeWork && workClosed
               ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
               : skin && !studentSkinPage(location.pathname)

@@ -20,11 +20,13 @@ export function studentSkinPage(pathname: string): boolean {
  * WebP 256×256 в `public/brand/stu/`. Красные иконки лендинга
  * (`public/brand/icons`) в кабинете не используются: спорят с брендом.
  * `gift` — из новых (письмо ЛК_стиль_новые_3d_иконки.md, 15.10): единственный
- * красный акцент — плашка пробного периода.
+ * красный акцент — плашка пробного периода. `telegram` — синий пузырь из набора
+ * (chat-bubble-blue), молния Messenger заменена бумажным самолётиком (15.10,
+ * владелец): плашка «Привязать Telegram».
  */
 export const STICKERS = [
   'play', 'book', 'target', 'check', 'clock', 'bell', 'calendar', 'calendar25',
-  'mail', 'lock', 'search', 'chat', 'rocket', 'gift',
+  'mail', 'lock', 'search', 'chat', 'rocket', 'gift', 'telegram',
 ] as const
 export type StickerName = (typeof STICKERS)[number]
 
