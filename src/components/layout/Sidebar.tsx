@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 import { Mark } from '@/pages/landing/Brand'
+import { useHomeworkToDoCount } from '@/hooks/useMyTopicHomework'
 
 interface NavItem {
   label:   string
@@ -313,6 +314,9 @@ function StudentSidebar({ open, onClose, name, avatarUrl, roleLabel, sections, b
   activePath: string | null
   onSignOut: () => void
 }) {
+  // Бейдж «Домашние задания» — число «сдать» страницы ДЗ, тем же хуком.
+  const todo = useHomeworkToDoCount()
+  const counts: Record<string, number> = { ...badges, ...(todo ? { '/my-homework': todo } : {}) }
   return (
     <aside
       data-testid="student-sidebar"
@@ -347,7 +351,7 @@ function StudentSidebar({ open, onClose, name, avatarUrl, roleLabel, sections, b
             {sec.title && <div className="stu-sec select-none">{sec.title}</div>}
             {sec.items.map(item => {
               const active = item.path === activePath
-              const badge = badges[item.path]
+              const badge = counts[item.path]
               return (
                 <NavLink
                   key={item.path}

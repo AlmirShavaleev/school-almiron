@@ -306,3 +306,20 @@
   .stu .stu-dring { align-self: flex-start }
   .stu .stu-step-row { grid-template-columns: 110px minmax(0, 1fr) 44px; gap: 8px }
 }
+
+/* ── «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md) ── */
+.stu .stu-hw-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
+.stu .stu-hw-stat { padding: 14px 16px; display: flex; flex-direction: column; gap: 2px }
+.stu .stu-hw-stat b { font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums }
+.stu .stu-hw-stat span { font-size: 13px; font-weight: 700; color: var(--ink2) }
+.stu .stu-hw-stat.is-todo b { color: var(--orange) }
+.stu .stu-hw-stat.is-review b { color: var(--blueInk) }
+.stu .stu-hw-stat.is-done b { color: var(--green) }
+.stu .stu-hw { padding: 16px 18px; display: flex; align-items: center; gap: 16px; list-style: none }
+.stu .stu-hw.is-todo { border-left: 5px solid var(--orange) }
+@media (max-width: 560px) { .stu .stu-hw { flex-direction: column; align-items: stretch } }
+.stu .stu-tag-or { background: var(--orange); color: #fff }
+.stu .stu-hw-done-toggle { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; min-height: 40px; padding: 0 14px; border-radius: 12px; background: var(--greenS); color: var(--greenInk); font-weight: 800; font-size: 14px; border: 0; cursor: pointer }
+.stu .stu-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer }
+.stu .stu-chip.is-active { background: var(--blue); border-color: var(--blue); color: #fff }
+.stu .stu-chip-n { font-size: 12px; font-weight: 800; opacity: .7 }

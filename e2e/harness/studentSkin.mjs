@@ -75,6 +75,21 @@ function fixtures(scenario) {
     // Пробный период подписки: курс «по прохождению», открыты первые 2 урока.
     fx.rpc.subscription_enabled = true
     t.course_unlock_modes = [{ course_id: IDS.course, mode: 'progress' }]
+    // «Домашние задания» (письмо 15.10): физика — урочный курс, открыты уроки
+    // 1–4 (5-й закрыт — его ДЗ на странице нет); ДЗ 3-го урока — автопроверка,
+    // решено 2 задачи из 5.
+    const hwTopics = t.topic_homework.map(h => h.topic_id)
+    for (const tp of t.topics) if (tp.id === hwTopics[0]) tp.lesson_format = 'ege'
+    fx.rpc.student_visible_topics = hwTopics.slice(0, 4)
+    const ac = t.topic_homework[2]
+    if (ac) {
+      ac.autocheck = true
+      t.topic_autocheck_tasks = Array.from({ length: 5 }, (_, k) => ({ id: `ack-${k}`, topic_id: ac.topic_id, code: String(k + 1), position: k }))
+      t.topic_autocheck_answers = [
+        { id: 'aca-0', task_id: 'ack-0', profile_id: IDS.student, attempt_no: 1, answer_raw: '1', is_correct: true },
+        { id: 'aca-1', task_id: 'ack-1', profile_id: IDS.student, attempt_no: 1, answer_raw: '2', is_correct: true },
+      ]
+    }
     // Оплаченная подписка — на «Математику ЕГЭ, профиль» (группа LESSON, её
     // ученик видит в «Моих курсах»); «Песочница» остаётся школьной группой.
     const paid = { id: LESSON.group, course_id: LESSON.course }
@@ -143,6 +158,8 @@ const session = makeSession(p.user)
 const scenario = ['trial', 'empty', 'day0', 'month'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
 const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
+  // «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md).
+  { name: `дз-${scenario}`, url: '/my-homework' },
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
   { name: `мои-курсы-${scenario}`, url: '/my-course' },
   // Программа курса: «Календарь тем» — дорожка по разделам (письмо 15.10).

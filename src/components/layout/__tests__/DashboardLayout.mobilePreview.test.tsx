@@ -5,6 +5,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useAuthStore } from '@/store/authStore'
 import { MOBILE_PREVIEW_SYNC_MS, useStaffModeStore } from '@/store/staffModeStore'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 /**
  * §181. «Мобильный вид» в `DashboardLayout`: при включённом переключателе
  * вместо сайдбара, шапки и страницы — iframe 390×844 с тем же приложением на

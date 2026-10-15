@@ -1,8 +1,11 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Clock, Loader2, RefreshCw,
+  AlertTriangle, ArrowLeft, CheckCircle2, Clock, Loader2, RefreshCw,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
+import { Sticker } from '@/components/student/skin/Sticker'
+import type { BoardRow } from '@/lib/homeworkBoard'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
 import { useAuthStore } from '@/store/authStore'
 import {
@@ -18,11 +21,6 @@ import {
 import { dueUrgency } from '@/lib/topicHomework'
 import { getSubjectColor } from '@/lib/subjectColors'
 import { cn } from '@/utils/cn'
-
-function formatDue(value: string | null): string | null {
-  if (!value) return null
-  return new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-}
 
 function formatWhen(value: string | null): string | null {
   if (!value) return null
@@ -111,16 +109,11 @@ function Chip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={cn(
-        'inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors',
-        active
-          ? 'border-gray-900 bg-gray-900 text-white'
-          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300',
-      )}
+      className={active ? 'stu-chip is-active' : 'stu-chip'}
     >
       {dot && <span className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />}
       <span className="max-w-[12rem] truncate">{label}</span>
-      <span className={cn('text-xs font-semibold', active ? 'text-white/70' : 'text-gray-400')}>{count}</span>
+      <span className="stu-chip-n">{count}</span>
     </button>
   )
 }
@@ -243,31 +236,6 @@ function HomeworkRow({
   )
 }
 
-function Section({
-  title, icon, count, tone, empty, children,
-}: {
-  title: string
-  icon: React.ReactNode
-  count: number
-  tone: string
-  empty: string
-  children: React.ReactNode
-}) {
-  if (count === 0) {
-    return null
-  }
-
-  return (
-    <section>
-      <h2 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-        {icon}
-        {title}
-        <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', tone)}>{count}</span>
-      </h2>
-      <ul className="space-y-2">{children}</ul>
-    </section>
-  )
-}
 
 /**
  * «Домашние задания» ученика — то, чего у него не было вовсе: единый список
@@ -291,7 +259,7 @@ export function MyTopicHomeworkPage() {
   const { todo, loading: todoLoading } = useStudentTodo(show ? profileId : undefined)
 
   const {
-    buckets, totalRows, courseOptions, activeCourseId, topicLink, courseSubject,
+    buckets, totalRows, courseOptions, activeCourseId, topicLink, courseSubject, lessonCourseIds,
     loading: hwLoading, error, reload, noStudentRecord,
   } = useMyTopicHomework(requested)
   const loading = hwLoading || (show != null && todoLoading)
@@ -327,7 +295,7 @@ export function MyTopicHomeworkPage() {
     const byId = new Map(all.map(row => [row.homework_id, row]))
     const rows = homeworkIdsFor(todo, show)
       .map(id => byId.get(id))
-      .filter((row): row is TopicJournalHomework => !!row)
+      .filter((row): row is NonNullable<typeof row> => !!row)
     const rest = new URLSearchParams(searchParams)
     rest.delete('show')
     const allHref = `/my-homework${rest.toString() ? `?${rest}` : ''}`
@@ -347,13 +315,27 @@ export function MyTopicHomeworkPage() {
   // Просрочки считаем по видимым строкам, а не по summary журнала: под отбором
   // «просрочено: 3» из другого курса было бы прямой ложью.
   const overdue = buckets.todo.filter(row => row.is_overdue).length
+  // «Уроки» — курсы «Мой курс» (ДЗ открытых уроков), «Школа» — школьные группы
+  // и контрольные (письмо 15.10, п. 6).
+  const isLesson = (row: BoardRow) => lessonCourseIds.has(row.course_id)
+  const groups = [
+    { key: 'lessons', title: 'Уроки', rows: buckets, filter: isLesson },
+    { key: 'school', title: 'Школа', rows: buckets, filter: (r: BoardRow) => !isLesson(r) },
+  ].map(g => ({
+    key: g.key,
+    title: g.title,
+    todo: g.rows.todo.filter(g.filter),
+    awaiting: g.rows.awaiting.filter(g.filter),
+    done: g.rows.done.filter(g.filter),
+  })).filter(g => g.todo.length + g.awaiting.length + g.done.length > 0)
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-5 pb-10 pt-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Домашние задания</h1>
-          <p data-testid="my-hw-count" className="mt-0.5 text-sm text-gray-500">
+          <span className="stu-kicker">Учёба</span>
+          <h1 className="stu-h2">Домашние задания</h1>
+          <p data-testid="my-hw-count" className="stu-muted mt-1 text-[14px]">
             {total === 0
               ? 'Заданий пока нет'
               : buckets.todo.length > 0
@@ -361,17 +343,20 @@ export function MyTopicHomeworkPage() {
                 : 'Всё сдано — новых заданий нет'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:border-gray-300 hover:text-gray-900"
-        >
-          <RefreshCw size={13} />
+        <button type="button" onClick={reload} className="stu-btn stu-btn-g stu-btn-sm">
+          <RefreshCw size={14} />
           Обновить
         </button>
       </div>
 
-      {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {/* Одно число «сдать» — то же, что бейдж «Домашние задания» в меню (п. 5). */}
+      <div className="stu-hw-stats" data-testid="my-hw-stats">
+        <div className="stu-card stu-hw-stat is-todo"><b>{buckets.todo.length}</b><span>Сдать</span></div>
+        <div className="stu-card stu-hw-stat is-review"><b>{buckets.awaiting.length}</b><span>На проверке</span></div>
+        <div className="stu-card stu-hw-stat is-done"><b>{buckets.done.length}</b><span>Принято</span></div>
+      </div>
+
+      {error && <div className="stu-card stu-note is-or text-[14px]">{error}</div>}
 
       <CourseFilter
         options={courseOptions}
@@ -381,97 +366,125 @@ export function MyTopicHomeworkPage() {
       />
 
       {total === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
-          <ClipboardList size={28} className="mx-auto text-gray-300" />
+        <div className="flex flex-col items-center gap-3 py-12 text-center" data-testid="my-hw-empty">
+          <Sticker name="check" size={96} />
           {activeCourseId ? (
             <>
               {/* Отбор ничего не нашёл — это надо сказать словами, иначе пустой
                   экран читается как «задания пропали». */}
-              <p data-testid="my-hw-empty-filter" className="mt-2 text-sm font-medium text-gray-700">
-                По этому курсу заданий нет
-              </p>
-              <button
-                type="button"
-                onClick={() => pickCourse(null)}
-                className="mt-2 text-xs font-medium text-primary-600 hover:text-primary-700"
-              >
-                Показать все курсы
-              </button>
+              <p data-testid="my-hw-empty-filter" className="stu-h3">По этому курсу заданий нет</p>
+              <button type="button" onClick={() => pickCourse(null)} className="stu-link">Показать все курсы</button>
             </>
           ) : (
             <>
-              <p className="mt-2 text-sm font-medium text-gray-700">Домашних заданий пока нет</p>
-              <p className="mt-1 text-xs text-gray-400">Они появятся здесь, как только преподаватель их выдаст</p>
+              <p className="stu-h3">Домашних заданий пока нет</p>
+              <p className="stu-muted text-[14px]">Они появятся здесь, как только откроется урок с ДЗ</p>
             </>
           )}
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Если нужно сделать пусто, но есть другие — зелёная строка */}
-          {buckets.todo.length === 0 && (buckets.awaiting.length > 0 || buckets.done.length > 0) && (
-            <div className="rounded-xl bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
-              ✓ Всё сдано — новых заданий нет
-            </div>
-          )}
-
-          <Section
-            title="Нужно сделать"
-            icon={<ClipboardList size={13} />}
-            count={buckets.todo.length}
-            tone="bg-orange-100 text-orange-700"
-            empty="Ничего не ждёт — все работы сданы"
-          >
-            {buckets.todo.map(row => (
-              <HomeworkRow
-                key={row.homework_id}
-                row={row}
-                href={topicLink(row)}
-                subject={courseSubject(row)}
-                showDue
-                action="submit"
-              />
-            ))}
-          </Section>
-
-          <Section
-            title="На проверке"
-            icon={<Clock size={13} />}
-            count={buckets.awaiting.length}
-            tone="bg-blue-100 text-blue-700"
-            empty="Нет работ, ожидающих проверки"
-          >
-            {buckets.awaiting.map(row => (
-              <HomeworkRow
-                key={row.homework_id}
-                row={row}
-                href={topicLink(row)}
-                subject={courseSubject(row)}
-                action="open"
-              />
-            ))}
-          </Section>
-
-          <Section
-            title="Проверено"
-            icon={<CheckCircle2 size={13} />}
-            count={buckets.done.length}
-            tone="bg-emerald-100 text-emerald-700"
-            empty="Пока нет проверенных работ"
-          >
-            {buckets.done.map(row => (
-              <HomeworkRow
-                key={row.homework_id}
-                row={row}
-                href={topicLink(row)}
-                subject={courseSubject(row)}
-                showScore
-                action="open"
-              />
-            ))}
-          </Section>
+        <div className="flex flex-col gap-7">
+          {groups.map(g => (
+            <HwGroup
+              key={g.key}
+              title={groups.length > 1 ? g.title : null}
+              todo={g.todo}
+              awaiting={g.awaiting}
+              done={g.done}
+              topicLink={topicLink}
+            />
+          ))}
         </div>
       )}
     </div>
+  )
+}
+
+/** Тип ДЗ пилюлей: автопроверка или вторая часть (проверяет преподаватель). */
+function TypePill({ row }: { row: BoardRow }) {
+  return row.autocheck
+    ? <span className="stu-tag t-blue">автопроверка</span>
+    : <span className="stu-tag t-grey">2 часть</span>
+}
+
+function StatusPill({ row }: { row: BoardRow }) {
+  if (row.status === 'submitted') return <span className="stu-tag t-blue" data-testid="hw-status">на проверке</span>
+  if (row.status === 'accepted') {
+    const score = row.autocheck ? null : formatHomeworkScore(row)
+    return <span className="stu-tag t-green" data-testid="hw-status">принято{score ? ` · ${score}` : ''}</span>
+  }
+  return <span className="stu-tag stu-tag-or" data-testid="hw-status">{row.status === 'returned' ? 'вернули · сдать' : 'сдать'}</span>
+}
+
+/**
+ * Карточка ДЗ (письмо 15.10, п. 2): курс · раздел · урок, тип, статус, срок;
+ * у автопроверки — сколько задач осталось; «Перейти к ДЗ» — урок на вкладке ДЗ.
+ */
+function HwCard({ row, href }: { row: BoardRow; href: string | null }) {
+  const urgency = row.status === 'accepted' || row.status === 'submitted' ? null : dueUrgency(row.due_at)
+  const due = urgency ? getDueText(urgency) : null
+  return (
+    <li className={row.status === 'not_started' || row.status === 'draft' || row.status === 'returned' ? 'stu-card stu-hw is-todo' : 'stu-card stu-hw'} data-testid="my-hw-row" data-status={row.status}>
+      <div className="min-w-0 flex-1">
+        <p className="stu-muted truncate text-[12.5px] font-semibold">
+          {row.course_title}{row.module_title ? ` · ${row.module_title}` : ''}
+        </p>
+        <h3 className="stu-h3 mt-0.5 break-words text-[16px]">{row.topic_title}</h3>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TypePill row={row} />
+          <StatusPill row={row} />
+          {row.autocheck && row.left != null && row.left > 0 && row.total != null && (
+            <span className="stu-muted text-[13px]" data-testid="hw-left">осталось {row.left} из {row.total} задач</span>
+          )}
+          {due && urgency && <span className={cn('text-[13px] font-semibold', getDueTone(urgency.level))}>{due}</span>}
+        </div>
+        {row.comment && (row.status === 'accepted' || row.status === 'returned') && (
+          <p className="stu-muted mt-2 text-[13.5px]" data-testid="hw-comment">
+            <b className="text-[var(--ink)]">Комментарий преподавателя:</b> {row.comment}
+          </p>
+        )}
+      </div>
+      {href && (
+        <Link to={`${href}?tab=homework`} className={row.status === 'accepted' ? 'stu-btn stu-btn-g stu-btn-sm' : 'stu-btn stu-btn-p stu-btn-sm'} data-testid="hw-open">
+          Перейти к ДЗ
+        </Link>
+      )}
+    </li>
+  )
+}
+
+/** Группа «Уроки» / «Школа»: сначала «сдать», потом «на проверке»; «Принято» свёрнуто внизу. */
+function HwGroup({ title, todo, awaiting, done, topicLink }: {
+  title: string | null
+  todo: BoardRow[]
+  awaiting: BoardRow[]
+  done: BoardRow[]
+  topicLink: (row: TopicJournalHomework) => string | null
+}) {
+  const [showDone, setShowDone] = useState(false)
+  return (
+    <section className="flex flex-col gap-3" data-testid="my-hw-group">
+      {title && <h2 className="stu-kicker">{title}</h2>}
+      {todo.length + awaiting.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {[...todo, ...awaiting].map(row => <HwCard key={row.homework_id} row={row} href={topicLink(row)} />)}
+        </ul>
+      )}
+      {done.length > 0 && (
+        <>
+          <button type="button" className="stu-hw-done-toggle stu-focus" aria-expanded={showDone} onClick={() => setShowDone(v => !v)} data-testid="my-hw-done-toggle">
+            <CheckCircle2 size={16} aria-hidden />
+            Принято: {done.length}
+            <span className="stu-muted">{showDone ? 'скрыть' : 'показать'}</span>
+          </button>
+          {showDone && (
+            <ul className="flex flex-col gap-3">
+              {done.map(row => <HwCard key={row.homework_id} row={row} href={topicLink(row)} />)}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 

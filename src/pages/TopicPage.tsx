@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Check, ChevronRight, Circle, Clock, ExternalLink, GraduationCap,
   Loader2, Lock, Play, Video, AlertCircle,
@@ -131,7 +131,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   const [loading, setLoading] = useState(true)
   const [hasHomework, setHasHomework] = useState(false)
   const [hasTest, setHasTest] = useState(false)
-  const [chosen, setChosen] = useState<string | null>(null)
+  // `?tab=homework` — «Перейти к ДЗ» из раздела «Домашние задания» (ЛК, 15.10):
+  // открыть урок сразу на вкладке. Нет такой вкладки — как без параметра.
+  const [searchParams] = useSearchParams()
+  const [chosen, setChosen] = useState<string | null>(() => searchParams.get('tab'))
   /** §239. Ряд вкладок — к нему докручиваем после «Авторское решение». */
   const tabsRef = useRef<HTMLDivElement>(null)
 

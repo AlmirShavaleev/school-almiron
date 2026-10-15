@@ -45,6 +45,14 @@ import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLo
 import { Sidebar } from '@/components/layout/Sidebar'
 import { resetFeatureFlagCache } from '@/hooks/useSubscription'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 const TARIFF: PublicTariff = {
   id: '11111111-2222-4333-8444-555555555555', title: 'Месяц', description: null, price_rub: 2900,
   period_months: 1, trial_days: 7, course_id: 'c1', course_title: 'Курс с подпиской',

@@ -22,6 +22,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useAuthStore } from '@/store/authStore'
 import { refreshWorkMode, useWorkModeStore } from '@/store/workModeStore'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 const ACTIVE = {
   active: true, kind: 'timed', work_kind: 'check', homework_id: 'hw1', topic_id: 'topic-1', course_id: 'c1', group_id: 'g1',
   title: 'Движение по окружности', opens_at: '2026-10-03T05:45:00.000Z', closes_at: '2026-10-03T06:30:00.000Z',

@@ -172,14 +172,13 @@ describe('кнопки главной (useStudentTodo)', () => {
 })
 
 describe('бейдж меню «Домашние задания»', () => {
-  it('возвращённые работы урочного курса — только открытых уроков', async () => {
+  it('у ученика useSidebarBadges его не считает: число «сдать» даёт хук страницы ДЗ (письмо 15.10)', async () => {
     lessonDb()
-    db.tables.notifications = () => ({ count: 0 })
-    db.tables.student_achievements = () => ({ count: 0 })
-    const ret = (course: string, topic: string) => ({ id: topic, homework: { topic: { id: topic, module: { course_id: course } } } })
-    db.tables.topic_homework_attempts = () => ({ data: [ret('cS', 't-S'), ret('cL', 't-L'), ret('cL', 't-X')] })
+    db.tables.notifications = () => ({ count: 2 })
     const { result } = renderHook(() => useSidebarBadges())
-    await waitFor(() => expect(result.current['/my-homework']).toBe(2))
+    await waitFor(() => expect(result.current['/notifications']).toBe(2))
+    expect(result.current['/my-homework']).toBeUndefined()
+    expect(db.calls).not.toContain('topic_homework_attempts')
   })
 })
 

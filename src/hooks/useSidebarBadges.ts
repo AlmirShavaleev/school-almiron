@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchLessonHomeworkFilter, keepLessonItem } from '@/lib/lessonCourses'
 import { useAuthStore } from '@/store/authStore'
 
 /**
@@ -42,25 +41,9 @@ export function useSidebarBadges() {
       if (unread) next['/notifications'] = unread
 
       if (role === 'student') {
-        // Ученику — сколько работ возвращено на доработку: это единственное,
-        // что требует действия ПРЯМО СЕЙЧАС и считается одним дешёвым запросом.
-        // Полный список «нужно сделать» (включая ещё не начатое ДЗ) живёт на
-        // самой странице — там для этого get_student_topic_journal.
-        //
-        // 15.10, владелец: работы «урочных» курсов (раздел «Мой курс») — только
-        // открытых сейчас уроков, как на странице ДЗ (src/lib/lessonCourses.ts).
-        // Поэтому не count по голове, а строки с курсом и темой: их единицы.
-        const { data: returnedRows } = await supabase
-          .from('topic_homework_attempts')
-          .select('id, homework:topic_homework!inner(topic:topics!inner(id, module:modules!inner(course_id)))')
-          .eq('status', 'returned_for_revision')
-        type Row = { homework?: { topic?: { id?: string; module?: { course_id?: string } } } }
-        const courseOf = (r: unknown) => (r as Row).homework?.topic?.module?.course_id ?? ''
-        const topicOf = (r: unknown) => (r as Row).homework?.topic?.id ?? ''
-        const rowsReturned = (returnedRows ?? []) as unknown[]
-        const lesson = await fetchLessonHomeworkFilter(rowsReturned.map(courseOf))
-        const returned = rowsReturned.filter(r => keepLessonItem(lesson, courseOf(r), topicOf(r))).length
-        if (returned) next['/my-homework'] = returned
+        // Ученику бейдж «Домашние задания» — число «сдать» с самой страницы ДЗ
+        // (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md, 15.10, п. 5): его
+        // считает меню ученика тем же хуком (useHomeworkToDoCount), здесь — нет.
       } else {
         // Персоналу — сколько сданных работ ждёт вердикта по его курсам.
         const { count: awaiting } = await supabase
