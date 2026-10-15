@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2, Lock } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { todayLocal } from '@/lib/topicAvailability'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
@@ -14,8 +13,7 @@ import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { continueHref, type HomeCourseProgress } from '@/lib/studentHomeCourses'
-import { fetchCourseTopicLocks } from '@/lib/progressUnlock'
-import { accessLine, nextLessons, publicTitle, type AccessLine, type NextLesson } from '@/lib/myCourses'
+import { accessLine, publicTitle, type AccessLine } from '@/lib/myCourses'
 import type { PathSubscription } from '@/lib/studentPath'
 import { Sticker } from '@/components/student/skin/Sticker'
 import type { StickerName } from '@/components/student/skin/skin'
@@ -28,8 +26,9 @@ import type { StickerName } from '@/components/student/skin/skin'
  * без «(тест)»), режим курса серым, кольцо «пройдено N из M» и полоска
  * разделов — `student_home_courses()` (как на главной), «Продолжить: <тема>»,
  * строка доступа по типу (подписка / пробный / истекла / школьная группа).
- * Клик — программа курса. Курс один — справа «Что дальше» (2 следующих урока
- * с условием открытия). Нет курсов — «Пройти диагностику» и «Выбрать курс».
+ * Клик — программа курса. Рядом с «пройдено» — «открыто N»: сколько тем
+ * ученику открыто сейчас (`student_visible_topics`). Курс один — карточка
+ * шире. Нет курсов — «Пройти диагностику» и «Выбрать курс».
  *
  * Только чтение, база не менялась. Прежняя карточка считала «открыто» по всем
  * темам курса — у курса по прохождению выходило 100% и «108/108».
@@ -105,6 +104,32 @@ async function loadExtras(courseIds: string[]): Promise<Extras> {
   }
 }
 
+/**
+ * Сколько тем курса ученику открыто СЕЙЧАС — `student_visible_topics()`:
+ * тот же набор, по которому база отдаёт ученику темы и ДЗ (по датам или «по
+ * прохождению», с учётом подписки). Темы курса — только id и курс. Сбой —
+ * null: строку «открыто» не показываем, а не показываем неправду.
+ */
+async function loadOpenCounts(courseIds: string[]): Promise<Map<string, number> | null> {
+  try {
+    const rpc = (supabase as unknown as { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> }).rpc
+    const [vis, tops] = await Promise.all([
+      rpc.call(supabase, 'student_visible_topics'),
+      supabase.from('topics').select('id, module:modules!inner(course_id)').in('module.course_id', courseIds),
+    ])
+    if (vis.error || !Array.isArray(vis.data) || tops.error) return null
+    const open = new Set(vis.data as string[])
+    const out = new Map<string, number>()
+    for (const t of (tops.data ?? []) as unknown as Array<{ id: string; module: { course_id: string } | null }>) {
+      if (!t.module || !open.has(t.id)) continue
+      out.set(t.module.course_id, (out.get(t.module.course_id) ?? 0) + 1)
+    }
+    return out
+  } catch {
+    return null
+  }
+}
+
 function courseSticker(subject: string): StickerName {
   const s = subject.toLowerCase()
   if (s.includes('phys') || s.includes('физ')) return 'rocket'
@@ -138,10 +163,12 @@ function ModuleSegments({ p }: { p: HomeCourseProgress }) {
   )
 }
 
-function CourseItem({ card, title, mode, progress, progressNote, access, mockExams, wide }: {
+function CourseItem({ card, title, mode, progress, progressNote, openCount, access, mockExams, wide }: {
   card: CourseCard
   title: string
   mode: 'progress' | 'schedule'
+  /** Открыто тем сейчас (student_visible_topics); null — не узнали. */
+  openCount: number | null
   progress: HomeCourseProgress | null
   /** Прогресса нет: «загружается…» или почему его нет (предпросмотр, сбой). */
   progressNote: string
@@ -183,6 +210,7 @@ function CourseItem({ card, title, mode, progress, progressNote, access, mockExa
         <div className="min-w-0 flex-1">
           <p className="text-[14.5px] font-bold" data-testid="course-card-topics">
             {progress ? `пройдено ${done} из ${total}` : progressNote}
+            {openCount != null && <span className="stu-muted font-semibold" data-testid="course-open"> · открыто {openCount}</span>}
           </p>
           {progress && <ModuleSegments p={progress} />}
         </div>
@@ -211,33 +239,6 @@ function CourseItem({ card, title, mode, progress, progressNote, access, mockExa
   )
 }
 
-function WhatsNext({ items, groupId }: { items: NextLesson[]; groupId: string }) {
-  return (
-    <aside className="stu-card stu-next" aria-labelledby="mc-next-h" data-testid="course-next">
-      <div className="flex items-center gap-3">
-        <Sticker name="lock" size={44} />
-        <h2 id="mc-next-h" className="stu-h3">Что дальше</h2>
-      </div>
-      {items.length > 0 ? (
-        <ul className="grid gap-3">
-          {items.map(t => (
-            <li key={t.id} className="stu-rm-locked">
-              <Lock size={15} aria-hidden className="mt-[3px] shrink-0" />
-              <span className="min-w-0">
-                <span className="block break-words font-semibold">{t.title}</span>
-                <small className="block">{t.note}</small>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="stu-muted text-[14px]">Все уроки уже открыты.</p>
-      )}
-      <Link to={`/my-course/${groupId}`} className="stu-link">Вся программа →</Link>
-    </aside>
-  )
-}
-
 export function MyCoursesPage() {
   const profile  = useAuthStore(s => s.profile)
   const preview  = usePreviewMode()
@@ -247,7 +248,7 @@ export function MyCoursesPage() {
   const [cards,   setCards]   = useState<CourseCard[]>([])
   const [extras,  setExtras]  = useState<Extras>({ showcase: new Map(), progressMode: new Set() })
   const [loading, setLoading] = useState(true)
-  const [next,    setNext]    = useState<NextLesson[] | null>(null)
+  const [openByCourse, setOpenByCourse] = useState<Map<string, number> | null>(null)
   // §224.2. Идущий пробник — прямо на карточке курса.
   const mocksByGroup = useMyMockExams(cards.map(c => c.groupId))
 
@@ -270,8 +271,9 @@ export function MyCoursesPage() {
         }))
         setCards(list)
         if (list.length > 0) {
-          const ex = await loadExtras(list.map(c => c.courseId))
-          if (!cancelled) setExtras(ex)
+          const ids = list.map(c => c.courseId)
+          const [ex, open] = await Promise.all([loadExtras(ids), preview ? Promise.resolve(null) : loadOpenCounts(ids)])
+          if (!cancelled) { setExtras(ex); setOpenByCourse(open) }
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -286,27 +288,6 @@ export function MyCoursesPage() {
     [path.data],
   )
   const progressByCourse = useMemo(() => new Map((home.courses ?? []).map(p => [p.courseId, p])), [home.courses])
-
-  // Курс один — «Что дальше»: замки курса по прохождению или темы с датой.
-  const single = cards.length === 1 ? cards[0] : null
-  const singleId = single?.courseId ?? null
-  const singleMode: 'progress' | 'schedule' = singleId && extras.progressMode.has(singleId) ? 'progress' : 'schedule'
-  const singleDemo = !!(singleId && subByCourse.get(singleId)?.demo)
-  useEffect(() => {
-    if (!singleId) return
-    let alive = true
-    const today = todayLocal()
-    async function load() {
-      const locks = singleMode === 'progress' ? await fetchCourseTopicLocks(singleId!) : null
-      const dated = singleMode === 'progress'
-        ? []
-        : ((await supabase.from('topics').select('id, title, is_open, available_from, module:modules!inner(course_id)').eq('module.course_id', singleId!)).data ?? [])
-      if (!alive) return
-      setNext(nextLessons(locks, dated as unknown as Array<{ id: string; title: string; available_from: string | null; is_open: boolean | null }>, singleDemo, today))
-    }
-    load().catch(() => { if (alive) setNext([]) })
-    return () => { alive = false }
-  }, [singleId, singleMode, singleDemo])
 
   if (loading) {
     return (
@@ -350,7 +331,7 @@ export function MyCoursesPage() {
         </p>
       </div>
 
-      <div className={single ? 'stu-mc-single' : 'stu-mc-grid'}>
+      <div className={cards.length === 1 ? 'stu-mc-single' : 'stu-mc-grid'}>
         {sorted.map(card => (
           <CourseItem
             key={card.groupId}
@@ -358,13 +339,13 @@ export function MyCoursesPage() {
             title={publicTitle(card.courseTitle, extras.showcase.get(card.courseId))}
             mode={extras.progressMode.has(card.courseId) ? 'progress' : 'schedule'}
             progress={progressByCourse.get(card.courseId) ?? null}
+            openCount={openByCourse ? openByCourse.get(card.courseId) ?? 0 : null}
             progressNote={preview ? 'прогресс видит сам ученик' : home.courses === null ? 'прогресс загружается…' : 'пройдено 0 тем'}
             access={accessLine(subByCourse.get(card.courseId), { teacher: card.teacher, group: card.groupName })}
             mockExams={mocksByGroup[card.groupId] ?? []}
-            wide={!!single}
+            wide={cards.length === 1}
           />
         ))}
-        {single && next && <WhatsNext items={next} groupId={single.groupId} />}
       </div>
     </div>
   )

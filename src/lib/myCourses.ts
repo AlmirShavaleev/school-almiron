@@ -7,8 +7,7 @@
  * курса на клиенте — у курса «по прохождению» выходило 100% и «108/108».
  */
 import { plural } from '@/lib/plural'
-import { progressNote, type CourseTopicLocks } from '@/lib/progressUnlock'
-import { DEMO_LOCK_NOTE, type PathSubscription } from '@/lib/studentPath'
+import type { PathSubscription } from '@/lib/studentPath'
 
 const MONTHS = ['янв.', 'февр.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.']
 const DAY = 86_400_000
@@ -70,29 +69,4 @@ export function accessLine(
 export function publicTitle(courseTitle: string, showcaseTitle: string | null | undefined): string {
   if (showcaseTitle && showcaseTitle.trim()) return showcaseTitle.trim()
   return courseTitle.replace(/\s*\((?:тест|новый|test|копия)[^)]*\)/gi, '').replace(/\s+—\s*$/, '').trim() || courseTitle
-}
-
-export interface NextLesson { id: string; title: string; note: string }
-
-/**
- * «Что дальше» (если курс один): следующие 2 закрытых урока с условием
- * открытия. Курс по прохождению — замки базы (в пробном — «Доступно по
- * подписке»); по расписанию — ближайшие темы с будущей датой.
- */
-export function nextLessons(
-  locks: CourseTopicLocks | null,
-  dated: Array<{ id: string; title: string; available_from: string | null; is_open: boolean | null }>,
-  demo: boolean,
-  today: string,
-): NextLesson[] {
-  if (locks?.mode === 'progress') {
-    return locks.topics.filter(l => !l.open).slice(0, 2).map(l => ({
-      id: l.topic_id, title: l.title ?? 'Урок', note: demo ? DEMO_LOCK_NOTE : (progressNote(l, today) ?? 'Откроется позже'),
-    }))
-  }
-  return dated
-    .filter(t => t.is_open !== true && !!t.available_from && t.available_from.slice(0, 10) > today)
-    .sort((a, b) => a.available_from!.localeCompare(b.available_from!))
-    .slice(0, 2)
-    .map(t => ({ id: t.id, title: t.title, note: `Откроется ${shortDate(t.available_from!.slice(0, 10) + 'T00:00:00+03:00')}` }))
 }

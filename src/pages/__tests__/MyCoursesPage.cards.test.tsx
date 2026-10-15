@@ -96,6 +96,8 @@ describe('карточка курса', () => {
     expect(within(card).getByTestId('course-continue')).toHaveTextContent('Продолжить: Равноускоренное движение')
     expect(within(card).getByTestId('course-continue')).toHaveAttribute('href', '/my-course/g1/topic/t7')
     expect(queried).not.toContain('modules')
+    // «Что дальше» справа убран (владелец 15.10).
+    expect(screen.queryByTestId('course-next')).toBeNull()
   })
 
   it('нечего продолжать: «Курс пройден» или «Ждём открытия следующей темы»', async () => {
@@ -140,20 +142,18 @@ describe('строка доступа', () => {
 })
 
 describe('список', () => {
-  it('курс один — справа «Что дальше» с условием открытия', async () => {
-    db.groups = [group('g1', 'c1', 'A')]
-    db.tables.course_unlock_modes = [{ course_id: 'c1', mode: 'progress' }]
-    db.rpc.my_course_topic_locks = {
-      mode: 'progress',
-      topics: [
-        { topic_id: 'a', title: 'Урок A', open: true, reason: 'first2', closed: false, percent: null, after_topic_id: null, after_title: null, opens_on: null },
-        { topic_id: 'b', title: 'Урок B', open: false, reason: null, closed: false, percent: null, after_topic_id: 'a', after_title: 'Урок A', opens_on: null },
-      ],
-    }
+  it('«открыто N» — темы, открытые ученику сейчас (student_visible_topics), а не все темы курса', async () => {
+    db.groups = [group('g1', 'c1', 'A'), group('g2', 'c2', 'B')]
+    db.rpc.student_home_courses = [progress('c1', 0, 102, { topic_id: 't1', title: 'Числа' })]
+    db.rpc.student_visible_topics = ['t1', 't2', 't3', 'x9']
+    db.tables.topics = [
+      { id: 't1', module: { course_id: 'c1' } }, { id: 't2', module: { course_id: 'c1' } },
+      { id: 't3', module: { course_id: 'c2' } }, { id: 't4', module: { course_id: 'c1' } },
+    ]
     renderPage()
-    const next = await screen.findByTestId('course-next')
-    expect(next).toHaveTextContent('Урок B')
-    expect(next).toHaveTextContent('Откроется после урока «Урок A»')
+    const opened = await screen.findAllByTestId('course-open')
+    expect(opened.map(o => o.textContent)).toEqual([' · открыто 2', ' · открыто 1'])
+    expect(screen.queryByTestId('course-next')).toBeNull()
   })
 
   it('нет курсов — «Курсов пока нет», диагностика и витрина', async () => {

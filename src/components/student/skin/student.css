@@ -267,7 +267,7 @@
 
 /* ── «Мои курсы» (письмо ЛК_стиль_мои_курсы.md) ─────────────────── */
 .stu .stu-mc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start }
-.stu .stu-mc-single { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; align-items: start }
+.stu .stu-mc-single { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 780px; gap: 18px }
 @media (max-width: 860px) { .stu .stu-mc-grid, .stu .stu-mc-single { grid-template-columns: minmax(0, 1fr) } }
 .stu .stu-mc { padding: 22px; display: flex; flex-direction: column; gap: 16px; cursor: pointer; transition: transform .2s, box-shadow .2s; min-width: 0 }
 .stu .stu-mc:hover { transform: translateY(-2px) }
@@ -282,5 +282,4 @@
 .stu .stu-mc-access { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink2); font-weight: 600 }
 .stu .stu-mc-access[data-kind='trial'], .stu .stu-mc-access[data-kind='expired'] { color: var(--orInk) }
 .stu .stu-btn-sm { min-height: 40px; padding: 0 16px; font-size: 14px }
-.stu .stu-next { padding: 22px; display: flex; flex-direction: column; gap: 14px }
 @media (prefers-reduced-motion: reduce) { .stu .stu-mc:hover { transform: none } }
