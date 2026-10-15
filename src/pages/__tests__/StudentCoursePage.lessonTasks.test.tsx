@@ -5,13 +5,13 @@ import { countTopics } from '@/lib/studentCourseCounters'
 import type { ModuleProgress } from '@/hooks/useStudentCourseProgram'
 
 /**
- * 13.10, владелец: «с аккаунта ученика убрать ссылки на ДЗ в моём курсе».
- * В «урочном» курсе (уроки нового формата) блока «Задания» со счётчиками
- * «Не сдано / На проверке / Проверено / Тестов ждёт» и «Открыть тему» нет —
- * ДЗ внутри уроков. В курсе школьной группы — как было.
+ * Блок «Задания» на странице курса («Не сдано / На проверке / Проверено /
+ * Тестов ждёт», «Открыть тему»). В «урочном» курсе (уроки нового формата) —
+ * только ДЗ уроков, открытых ученику сейчас (15.10; 13.10 блока не было
+ * вовсе). В курсе школьной группы — как было.
  */
 
-const program = vi.hoisted(() => ({ lessonFormat: null as string | null }))
+const program = vi.hoisted(() => ({ lessonFormat: null as string | null, open: null as Set<string> | null }))
 
 const topic = (id: string) => ({
   id, title: `Урок ${id}`, order_index: 1, max_score: null,
@@ -43,7 +43,7 @@ vi.mock('@/store/authStore', () => ({
 // Режим «по прохождению» и темы с lesson_format в базе — не урочный: решает программа.
 vi.mock('@/lib/lessonCourses', async (orig) => ({
   ...(await orig<object>()),
-  useLessonCourseIds: () => ({ ids: new Set<string>(), ready: true }),
+  useLessonHomeworkFilter: () => ({ filter: { lessonIds: new Set<string>(), openTopics: program.open }, ready: true }),
 }))
 
 import { StudentCoursePage } from '@/pages/StudentCoursePage'
@@ -58,7 +58,7 @@ function renderPage() {
   )
 }
 
-beforeEach(() => { program.lessonFormat = null })
+beforeEach(() => { program.lessonFormat = null; program.open = null })
 
 describe('блок «Задания» на странице курса', () => {
   it('курс школьной группы — блок со счётчиками и «Открыть тему» на месте', async () => {
@@ -68,8 +68,17 @@ describe('блок «Задания» на странице курса', () => {
     expect(screen.getAllByText('Открыть тему').length).toBeGreaterThan(0)
   })
 
-  it('урочный курс — блока «Задания» нет', async () => {
+  it('урочный курс — в блоке только ДЗ открытого урока', async () => {
     program.lessonFormat = 'training'
+    program.open = new Set(['1'])
+    renderPage()
+    expect(await screen.findByRole('heading', { name: /Задания/ })).toBeInTheDocument()
+    expect(screen.getAllByText('Открыть тему')).toHaveLength(1)
+  })
+
+  it('урочный курс, открытых уроков с ДЗ нет — блока «Задания» нет', async () => {
+    program.lessonFormat = 'training'
+    program.open = new Set()
     renderPage()
     expect(await screen.findAllByTestId('module-card')).toHaveLength(1)
     expect(screen.queryByRole('heading', { name: /Задания/ })).toBeNull()

@@ -8,7 +8,7 @@ import {
   type HomeworkBuckets, type HomeworkCourseOption, type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
-import { useLessonCourseIds } from '@/lib/lessonCourses'
+import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 
 /**
  * students.id текущего пользователя. Тот же однострочный резолв, что руками
@@ -90,13 +90,14 @@ export function useMyTopicHomework(courseId: string | null = null) {
   // Через useMemo, а не выражением: `?? []` каждый раз даёт новый массив, и
   // зависящие от него useMemo пересчитывались бы на каждый рендер.
   const allRows = useMemo(() => journal?.homework ?? [], [journal])
-  // 13.10, владелец: ДЗ «урочных» курсов (раздел «Мой курс») живут в уроках —
-  // здесь их нет, ни в списке, ни в счётчиках, ни в переключателе курсов.
-  const lesson = useLessonCourseIds(useMemo(
+  // 15.10, владелец: ДЗ «урочных» курсов (раздел «Мой курс») — только уроков,
+  // открытых ученику сейчас (src/lib/lessonCourses.ts): в списке, счётчиках и
+  // переключателе курсов. Школьные группы — как были.
+  const lesson = useLessonHomeworkFilter(useMemo(
     () => [...allRows.map(r => r.course_id), ...courses.map(c => c.courseId)],
     [allRows, courses],
   ))
-  const rows = useMemo(() => allRows.filter(r => !lesson.ids.has(r.course_id)), [allRows, lesson.ids])
+  const rows = useMemo(() => allRows.filter(r => keepLessonItem(lesson.filter, r.course_id, r.topic_id)), [allRows, lesson.filter])
 
   const courseIdsKey = useMemo(
     () => Array.from(new Set(rows.map(r => r.course_id))).sort().join(','),
@@ -123,9 +124,10 @@ export function useMyTopicHomework(courseId: string | null = null) {
     // Предмет из прямого чтения перекрывает предмет из зачислений: цвет в
     // кнопке и в карточке обязан считаться одним источником.
     () => homeworkCourseOptions(rows, courses)
-      .filter(o => !lesson.ids.has(o.id))
+      // Урочный курс — в переключателе, только если в нём есть открытое ДЗ.
+      .filter(o => !lesson.filter.lessonIds.has(o.id) || rows.some(r => r.course_id === o.id))
       .map(o => ({ ...o, subject: subjectByCourseId.get(o.id) ?? o.subject })),
-    [rows, courses, subjectByCourseId, lesson.ids],
+    [rows, courses, subjectByCourseId, lesson.filter],
   )
 
   // Курс из адреса, которого у ученика нет (выбыл из группы, ссылка со
