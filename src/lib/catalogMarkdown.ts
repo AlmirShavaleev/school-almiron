@@ -310,3 +310,22 @@ export function upgradeCatalogMath(root: ParentNode | null | undefined, katex: K
   }
   return nodes.length
 }
+
+/**
+ * Ответ задачи для показа. Загрузчик пишет метку {@link CATALOG_MD_MARKER} в
+ * условие и решение, а `answer_html` у Markdown-задач (каталог математики ЕГЭ:
+ * «а) $\pm\dfrac{\pi}{6}+2\pi k$; б) …») приходит голым текстом — без метки он
+ * рисовался как HTML, и формулы показывались исходником. Формат задачи один на
+ * все поля: если условие в Markdown (метка или `content_format = 'md'`),
+ * ответ рисуется тем же Markdown+KaTeX. HTML-задачи не меняются.
+ *
+ * Только показ: автопроверка идёт по `answer_spec`, текст ответа она не читает.
+ */
+export function catalogAnswerSource(
+  answer: string | null | undefined,
+  task: { statement_html?: string | null; content_format?: string | null },
+): string | null | undefined {
+  if (!answer || isCatalogMarkdown(answer)) return answer
+  const md = task.content_format === 'md' || isCatalogMarkdown(task.statement_html)
+  return md ? withCatalogMarkdownMarker(answer) : answer
+}

@@ -5,6 +5,7 @@
 import type { CatalogTask, CatalogTaskAsset } from '@/hooks/useCatalog'
 import type { VariantPrintSettings } from '@/types/variantPrint'
 import { extendedAnswerShort, hasExtendedAnswer } from '@/utils/extendedAnswer'
+import { catalogAnswerSource, isCatalogMarkdown } from '@/lib/catalogMarkdown'
 
 export type PrintableTask = CatalogTask & {
   assets?: CatalogTaskAsset[]
@@ -179,7 +180,7 @@ export function buildAnswersList(
   items.forEach((item, idx) => {
     const task = item.task
     if (!task || !task.has_answer || !task.answer_html) return
-    const html = resolveHtml(task.answer_html, task.assets)
+    const html = resolveHtml(catalogAnswerSource(task.answer_html, task), task.assets)
     if (!html) return
     entries.push({
       itemId: item.id,
@@ -196,6 +197,8 @@ export interface KeyEntry {
   itemId: string
   number: string
   shortAnswer: string
+  /** Markdown-задача (каталог математики): ответ с формулами — рисовать KaTeX, а не текстом. */
+  answerMarkdown?: string
 }
 
 /** Strips HTML tags and collapses whitespace for a compact plain-text answer. */
@@ -231,7 +234,10 @@ export function buildKeyTable(items: PrintableItem[]): KeyEntry[] {
     if (!task.has_answer || !task.answer_html) return
     const shortAnswer = htmlToPlainText(task.answer_html)
     if (!shortAnswer) return
-    entries.push({ itemId: item.id, number, shortAnswer })
+    const source = catalogAnswerSource(task.answer_html, task)
+    entries.push(isCatalogMarkdown(source)
+      ? { itemId: item.id, number, shortAnswer, answerMarkdown: source! }
+      : { itemId: item.id, number, shortAnswer })
   })
   return entries
 }

@@ -56,6 +56,19 @@ describe('TaskDisplayCard — задача в Markdown (§269)', () => {
     expect(container.querySelectorAll('.katex').length).toBeGreaterThanOrEqual(3)
   })
 
+  it('ответ с формулами (каталог математики) — KaTeX, а не исходник', async () => {
+    const math = {
+      ...md, id: 'm13', subject: 'Математика',
+      answer_html: String.raw`а) $\pm\dfrac{\pi}{6}+2\pi k,\ k\in\mathbb{Z}$; б) $\dfrac{11\pi}{6};\ \dfrac{13\pi}{6}$`,
+    } as unknown as CatalogTask
+    const { container } = render(<TaskDisplayCard task={math} number={1} defaultOpen={{ answer: true }} />)
+    await waitFor(() => expect(container.querySelector('.catalog-math-pending')).toBeNull())
+    // Ответ — две формулы KaTeX; исходника с «$» на экране нет.
+    expect(container.querySelectorAll('.katex .mfrac').length).toBeGreaterThanOrEqual(3)
+    expect(container.textContent).not.toContain('$')
+    expect(container.textContent).toContain('; б)')
+  })
+
   it('ученик: ответ «−8», допуска нет и запроса эталона нет', async () => {
     render(<TaskDisplayCard task={md} number={1} defaultOpen={{ answer: true }} />)
     expect(screen.getByText('−8')).toBeInTheDocument()
