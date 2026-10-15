@@ -354,8 +354,9 @@ describe('Страница темы в предпросмотре глазами
     expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts', 'my_course_topic_locks']))
   })
 
-  it('§271: «Оцените урок» внизу виден, звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {
+  it('§271: «Оцените урок» в разделе «Отзыв», звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {
     renderPage()
+    fireEvent.click(await screen.findByTestId('topic-seg-review'))
     const block = await screen.findByTestId('topic-rating')
     expect(block).toHaveTextContent('Оцените урок')
     expect(screen.getByTestId('topic-rating-preview')).toHaveTextContent('В предпросмотре оценку не ставят')

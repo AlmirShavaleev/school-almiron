@@ -173,12 +173,14 @@ const ALL_SHOTS = [
   { name: `курс-${scenario}`, url: `/my-course/${IDS.group}` },
   // Экран раздела — клик по плитке текущего (или первого) раздела.
   { name: `раздел-${scenario}`, url: `/my-course/${IDS.group}`, section: true },
+  // Страница урока: плеер сверху, переключатель «Теория / Урок / ДЗ / Отзыв» (15.10).
+  { name: `урок-${scenario}`, url: `/my-course/${IDS.group}/topic/${IDS.topic(1)}` },
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
 // Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
 const SHOTS = scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
-  : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course'))
+  : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course') && !x.url.includes('/topic/'))
   : ALL_SHOTS
 
 for (const width of [1280, 390]) {

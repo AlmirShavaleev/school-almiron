@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Check, ChevronRight, Circle, Clock, ExternalLink, GraduationCap,
-  Loader2, Lock, Play, Video, AlertCircle,
+  Loader2, Lock, Play, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -444,9 +444,15 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // Compute active tab WITHOUT useEffect to avoid infinite loops (PROJECT_STATE §35.2):
   // if chosen tab is no longer available, switch to the first one.
   // §240: у работы по времени по умолчанию открыта сама работа.
-  const defaultTab: TabKey | null = timed && availableTabs.includes('homework') ? 'homework' : availableTabs[0] ?? null
-  const active: TabKey | null = chosen && availableTabs.includes(chosen as TabKey)
-    ? (chosen as TabKey)
+  //
+  // Владелец 15.10: плеер — над переключателем, а не вкладка «Видео»; ниже
+  // крупный переключатель «Теория / Урок / ДЗ / … / Отзыв».
+  const tabs: TabKey[] = availableTabs.filter(t => t !== 'video')
+  const hasPlayer = availableTabs.includes('video') && !!(videoMaterial || videoUrl)
+  const defaultTab: TabKey | null = timed && tabs.includes('homework') ? 'homework' : tabs[0] ?? null
+  const reviewOpen = chosen === 'review'
+  const active: TabKey | null = reviewOpen ? null
+    : chosen && tabs.includes(chosen as TabKey) ? (chosen as TabKey)
     : defaultTab
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -578,12 +584,12 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         aria-selected={isActive}
         onClick={() => setChosen(tabKey)}
         className={cn(
-          // min-w-0 и truncate: длинная подпись («Домашнее задание») в узкой
-          // колонке должна ужиматься, а не распирать сетку.
-          'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
+          // Подвкладка раздела — «таблетка»; min-w-0 и truncate: длинная
+          // подпись должна ужиматься, а не распирать ряд.
+          'inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors',
           isActive
-            ? 'border-primary-500 text-primary-700'
-            : 'border-transparent text-gray-500 hover:text-gray-800',
+            ? 'border-primary-200 bg-primary-50 text-primary-700'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900',
         )}
       >
         <span className="truncate">{label}</span>
@@ -598,44 +604,89 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
    * «Теории» — учебный маршрут владельца: теория → тренировка → формат ЕГЭ →
    * ДЗ. Нет «Теории» — ряд встаёт первым.
    */
-  const sectionRows = groupTopicSections(availableTabs.filter(t => t !== 'training') as TopicSection[])
+  const sectionRows = groupTopicSections(tabs.filter(t => t !== 'training') as TopicSection[])
   const tabRows: Array<(typeof sectionRows)[number] | 'training'> = [...sectionRows]
   if (hasTraining) {
     const theoryIdx = sectionRows.findIndex(r => r.group?.key === 'theory')
     tabRows.splice(theoryIdx + 1, 0, 'training')
   }
 
-  /** Ряд «Тренировка»: жёлтая пометка вместо подписи и одна вкладка. */
-  function renderTrainingRow() {
+  /** Подвкладка «Тренировка · Подтемы»: жёлтая пометка и одна вкладка. */
+  function renderTrainingTab() {
     const isActive = active === 'training'
-    const n = trainingSubtopics.length
     return (
-      <div
-        key="training"
-        data-testid="topic-tab-group-training"
-        className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3"
-      >
-        <span className="shrink-0 px-1 sm:w-32"><TrainingMark /></span>
-        <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            data-testid="topic-tab-training"
-            onClick={() => setChosen('training')}
-            className={cn(
-              'inline-flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:justify-start',
-              isActive
-                ? 'border-primary-500 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-800',
-            )}
-          >
-            <span className="truncate">Подтемы</span>
-            <span className="text-xs text-gray-400">{n}</span>
-          </button>
-        </div>
-      </div>
+      <>
+        <TrainingMark />
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isActive}
+          data-testid="topic-tab-training"
+          onClick={() => setChosen('training')}
+          className={cn(
+            'inline-flex min-w-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors',
+            isActive ? 'border-primary-200 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <span className="truncate">Подтемы</span>
+          <span className="text-xs text-gray-400">{trainingSubtopics.length}</span>
+        </button>
+      </>
     )
+  }
+
+  /** Крупный переключатель: разделы урока (группы рубрик §121) + «Отзыв». */
+  const rawSegments = tabRows.map(row => row === 'training'
+    ? { key: 'training', label: 'Тренировка', tabs: ['training'] as string[], groups: [] as TopicGroupKey[] }
+    : {
+        key: row.group?.key ?? 'other',
+        label: !row.group ? 'Ещё'
+          : row.group.key === 'homework' ? (timed ? TOPIC_KIND_LABEL[topic.kind] : 'ДЗ')
+          : row.group.label,
+        tabs: row.sections as string[],
+        groups: (row.group ? [row.group.key] : []) as TopicGroupKey[],
+      })
+  // «Задачи к уроку» — часть «Урока»: одна кнопка вместо двух. Порядок
+  // разделов — учебный маршрут: Теория → Тренировка → Урок → ДЗ.
+  const tasksSeg = rawSegments.find(sg => sg.key === 'tasks')
+  const lessonSeg = rawSegments.find(sg => sg.key === 'lesson')
+  if (tasksSeg && lessonSeg) {
+    lessonSeg.tabs.push(...tasksSeg.tabs)
+    lessonSeg.groups.push(...tasksSeg.groups)
+  } else if (tasksSeg) tasksSeg.label = 'Урок'
+  const SEG_ORDER = ['theory', 'training', 'lesson', 'tasks', 'homework', 'other']
+  const segments = rawSegments
+    .filter(sg => !(sg === tasksSeg && lessonSeg))
+    .sort((a, b) => SEG_ORDER.indexOf(a.key) - SEG_ORDER.indexOf(b.key))
+  const activeSeg = reviewOpen ? null : segments.find(sg => active && sg.tabs.includes(active)) ?? segments[0] ?? null
+
+  /** Плеер урока — над переключателем (владелец 15.10). */
+  function renderPlayer() {
+    if (!hasPlayer) return null
+    return embedUrl && videoMaterial ? (
+      // Тот же iframe с приёмником событий и отметкой «просмотрено» (§204).
+      <WatchedVideo
+        materialId={videoMaterial.id}
+        embed={embedUrl}
+        title="Видео темы"
+        countWatch={countsVideoWatch}
+        watchMark={videoWatchMarks[videoMaterial.id]}
+        frameClassName="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-md"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      />
+    ) : videoUrl ? (
+      <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-4 rounded-2xl bg-black p-6 shadow-md transition-colors hover:bg-gray-900">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-red-600">
+          <Play size={26} className="ml-1 text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-white">Смотреть видео</div>
+          <div className="mt-0.5 truncate text-xs text-gray-400">{videoUrl}</div>
+        </div>
+        <ExternalLink size={16} className="text-gray-500" />
+      </a>
+    ) : null
   }
 
   return (
@@ -708,55 +759,65 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         </p>
       )}
 
-      {/* ── Tab panel ──
-          Вкладки переносятся, а не скроллятся (§116), и сгруппированы по
-          смыслу (§121): «Теория», «Урок», «Домашнее задание». Раньше они шли
-          сплошной лентой и читались как одна куча.
+      {/* ── Плеер урока: сверху, вне вкладок (владелец 15.10) ── */}
+      {hasPlayer && <div data-testid="topic-player">{renderPlayer()}</div>}
 
-          Подпись группы стоит СЛЕВА в том же ряду, а не над ним. Над вкладками
-          уже заголовок темы, под ними — сам материал; отдельная строка на
-          каждую подпись удвоила бы высоту шапки ровно там, где её и так много.
-          На узком экране подпись встаёт над своими кнопками — как и просил
-          владелец, группировка сохраняется и там.
-
-          Состав групп живёт в общем перечне рубрик (`topicMaterialItems.ts`),
-          второй копии здесь нет: перечень уже однажды разъезжался (§100). */}
-      {availableTabs.length > 0 && (
-        <div ref={tabsRef} role="tablist" aria-label="Разделы темы" className="scroll-mt-4 space-y-1.5 border-b border-gray-200 pb-1.5">
-          {tabRows.map(row => row === 'training' ? renderTrainingRow() : (
-            <div
-              key={row.group?.key ?? 'other'}
-              data-testid={`topic-tab-group-${row.group?.key ?? 'other'}`}
-              className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3"
-            >
-              {row.group && (
-                <span className="flex shrink-0 flex-wrap items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:w-32">
-                  {timed && row.group.key === 'homework' ? TOPIC_KIND_LABEL[topic.kind] : row.group.label}
-                  {/* «Формат ЕГЭ» — только там, где рядом есть тренировка:
-                      отличать урок не от чего, и у математики ничего не
-                      меняется (§234). */}
-                  {row.group.key === 'lesson' && hasTraining && <EgeFormatMark className="normal-case tracking-normal" />}
-                </span>
+      {/* ── Переключатель разделов ──
+          Крупно: «Теория / Урок / ДЗ» (группы рубрик §121, состав — в
+          `topicMaterialItems.ts`) и «Отзыв». Под ним — рубрики выбранного
+          раздела «таблетками» и отметка группы (§122) в том же ряду. */}
+      <div ref={tabsRef} role="tablist" aria-label="Разделы темы" className="scroll-mt-4 space-y-3">
+        <div className="flex gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm" data-testid="topic-segments">
+          {segments.map(sg => (
+            <button
+              key={sg.key}
+              type="button"
+              aria-pressed={activeSeg?.key === sg.key}
+              data-testid={`topic-seg-${sg.key}`}
+              onClick={() => setChosen(sg.tabs.includes('homework') ? 'homework' : sg.tabs[0])}
+              className={cn(
+                'min-w-0 flex-1 truncate rounded-xl px-1.5 py-2.5 text-[14px] font-bold transition-colors sm:px-3 sm:text-[15px]',
+                activeSeg?.key === sg.key ? 'bg-primary-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
               )}
-              <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
-                {row.sections.map(tabKey => renderTab(tabKey))}
-              </div>
-
-              {/*
-                Отметка стоит на ГРУППЕ, а не на каждой вкладке (правка §122 по
-                просмотру владельца): отмечать рубрики по одной оказалось
-                неудобно. Кнопка живёт в конце того же ряда — шапка не растёт.
-
-                «Домашнее задание» кнопки не имеет ни в одном состоянии: его
-                засчитывает преподаватель, приняв работу. Вместо кнопки —
-                состояние словами. Заодно это закрывает вопрос про гейт §95:
-                «Решение ДЗ» лежит в этой же группе, отмечать там нечего.
-              */}
-              {row.group && renderGroupMark(row.group.key)}
-            </div>
+            >
+              {sg.label}
+            </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={reviewOpen}
+            data-testid="topic-seg-review"
+            onClick={() => setChosen('review')}
+            className={cn(
+              'min-w-0 flex-1 truncate rounded-xl px-1.5 py-2.5 text-[14px] font-bold transition-colors sm:px-3 sm:text-[15px]',
+              reviewOpen ? 'bg-primary-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+            )}
+          >
+            Отзыв
+          </button>
         </div>
-      )}
+
+        {/* Ряды рубрик всех разделов в разметке, виден ряд выбранного. */}
+        {segments.map(sg => (
+          <div
+            key={sg.key}
+            role="group"
+            aria-label={sg.label}
+            data-testid={`topic-tab-group-${sg.key}`}
+            data-active={activeSeg?.key === sg.key || undefined}
+            className={activeSeg?.key === sg.key ? 'flex flex-wrap items-center gap-2' : 'hidden'}
+          >
+            {sg.key === 'training'
+              ? renderTrainingTab()
+              : sg.tabs.map(tabKey => renderTab(tabKey))}
+            {/* «Формат ЕГЭ» — только там, где рядом есть тренировка (§234). */}
+            {sg.key === 'lesson' && hasTraining && <EgeFormatMark />}
+            {sg.groups.length > 0 && (
+              <span className="ml-auto flex flex-wrap items-center gap-2">{sg.groups.map(g => <span key={g}>{renderGroupMark(g)}</span>)}</span>
+            )}
+          </div>
+        ))}
+      </div>
 
       {markError && (
         <div data-testid="topic-section-mark-error" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
@@ -765,47 +826,11 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       )}
 
       {/* ── Tab content ── */}
-      {availableTabs.length === 0 ? (
+      {tabs.length === 0 && !reviewOpen && !hasPlayer ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
           Преподаватель ещё не добавил материалы
         </div>
-      ) : active === null ? null : active === 'video' ? (
-        embedUrl && videoMaterial ? (
-          // Рамка та же, что была у внешнего блока: чёрная, скруглённая, с
-          // тенью. Нового плеера здесь нет — тот же iframe плюс приёмник
-          // событий и отметка «просмотрено» (§204).
-          <WatchedVideo
-            materialId={videoMaterial.id}
-            embed={embedUrl}
-            title="Видео темы"
-            countWatch={countsVideoWatch}
-            watchMark={videoWatchMarks[videoMaterial.id]}
-            frameClassName="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-md"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          />
-        ) : (
-        <div className="rounded-2xl overflow-hidden bg-black shadow-md">
-          {videoUrl ? (
-            <a href={videoUrl} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-4 p-6 hover:bg-gray-900 transition-colors">
-              <div className="w-14 h-14 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
-                <Play size={26} className="text-white ml-1" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-white font-semibold">Смотреть видео</div>
-                <div className="text-gray-400 text-xs mt-0.5 truncate">{videoUrl}</div>
-              </div>
-              <ExternalLink size={16} className="text-gray-500" />
-            </a>
-          ) : (
-            <div className="aspect-video flex flex-col items-center justify-center gap-3 bg-gray-900">
-              <Video size={36} className="text-gray-600" />
-              <span className="text-gray-500 text-sm">Видеоурок ещё не добавлен</span>
-            </div>
-          )}
-        </div>
-        )
-      ) : active === 'solution' && solutionState.hasSolution && !solutionState.unlocked ? (
+      ) : active === null ? null : active === 'solution' && solutionState.hasSolution && !solutionState.unlocked ? (
         <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 px-4 py-8 text-center">
           <Lock size={20} className="mx-auto text-amber-500" />
           <p className="mt-2 text-sm font-medium text-amber-900">Решение пока закрыто</p>
@@ -897,9 +922,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         </div>
       ) : null}
 
-      {/* §271. «Оцените урок» — внизу темы при любом формате урока и любой
-          вкладке. В предпросмотре виден, но выключен. */}
-      <TopicRatingBlock topicId={topic.id} preview={preview} />
+      {/* §271. «Оцените урок» — раздел «Отзыв» переключателя (владелец 15.10).
+          В предпросмотре виден, но выключен. */}
+      {reviewOpen && <TopicRatingBlock topicId={topic.id} preview={preview} />}
     </div>
   )
 }

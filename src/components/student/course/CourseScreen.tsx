@@ -230,11 +230,10 @@ export function LessonTiles({ lessons, hrefFor }: {
         const body = (
           <>
             <span className="stu-muted text-[12px] font-bold">Урок {i + 1}</span>
-            <b className="text-[14.5px] leading-snug break-words">
-              {l.tile.state === 'locked' && <Lock size={13} aria-hidden className="mr-1 inline align-[-1px]" />}
-              {l.title}
-            </b>
-            <span className={`${l.tile.overdue ? 'stu-tag t-red' : LESSON_PILL[l.tile.state]} self-start whitespace-normal`} data-testid="lesson-tile-pill">{l.tile.pill}</span>
+            <b className="text-[14.5px] leading-snug break-words">{l.title}</b>
+            {l.tile.state === 'locked'
+              ? <span className="stu-lt-lock" data-testid="lesson-tile-pill"><Lock size={13} aria-hidden />{l.tile.pill}</span>
+              : <span className={`${l.tile.overdue ? 'stu-tag t-red' : LESSON_PILL[l.tile.state]} self-start whitespace-normal`} data-testid="lesson-tile-pill">{l.tile.pill}</span>}
           </>
         )
         return (

@@ -778,7 +778,10 @@ export function StudentCoursePage() {
           ) : (
             // Уроки раздела — простыми плитками (макет v2, решение владельца 15.10).
             <LessonTiles
-              lessons={activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t) }))}
+              lessons={(() => {
+                const no = new Map(activeMod.topics.map((t, i) => [t.title, i + 1]))
+                return activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t, undefined, undefined, no) }))
+              })()}
               hrefFor={id => `/my-course/${groupId}/topic/${id}`}
             />
           )}

@@ -184,11 +184,13 @@ describe('Тренировочный урок (§266)', () => {
     expect(rpcCalls.some(c => c.fn.startsWith('topic_autocheck'))).toBe(false)
   })
 
-  it.each(['training', 'ege', null])('§271: «Оцените урок» — последним блоком темы при формате %s; своя оценка читается', async format => {
+  it.each(['training', 'ege', null])('§271: «Оцените урок» — раздел «Отзыв», при формате %s; своя оценка читается', async format => {
     lesson.format = format
     const { container } = renderPage()
+    // Владелец 15.10: оценка — в разделе «Отзыв» переключателя урока.
+    fireEvent.click(await screen.findByTestId('topic-seg-review'))
     const block = await screen.findByTestId('topic-rating')
-    // Блок — последний на странице темы, под содержимым вкладки.
+    // Блок — последний на странице темы, под переключателем.
     expect(container.firstElementChild?.lastElementChild).toBe(block)
     expect(within(block).getAllByRole('button', { name: /^Оценка \d+ из 10$/ })).toHaveLength(10)
     await waitFor(() => expect(rpcCalls.some(c => c.fn === 'my_topic_rating' && c.args.p_topic_id === TOPIC)).toBe(true))

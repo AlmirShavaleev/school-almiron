@@ -107,9 +107,9 @@ describe('Вкладки рубрик темы (§116)', () => {
 
     const tablist = await screen.findByRole('tablist', { name: 'Разделы темы' })
     expect(tablist.className).not.toContain('overflow-x-auto')
-    // Перенос живёт внутри ряда группы: сетка на узком, flex-wrap на широком.
+    // Перенос живёт внутри ряда раздела: рубрики-«таблетки» с flex-wrap.
     const row = screen.getByTestId('topic-tab-group-theory')
-    expect(row.querySelector('.grid, .sm\:flex-wrap')).not.toBeNull()
+    expect(row.className).toContain('flex-wrap')
   })
 
   it('все рубрики отрисованы разом, а не «где-то правее»', async () => {
@@ -118,8 +118,9 @@ describe('Вкладки рубрик темы (§116)', () => {
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     const tabs = screen.getAllByRole('tab')
 
-    // Видео + шесть рубрик с материалами + решение (гейт) + ДЗ = 9.
-    expect(tabs.length).toBe(9)
+    // Шесть рубрик с материалами + решение (гейт) + ДЗ = 8; видео — плеер
+    // над переключателем, а не вкладка (владелец 15.10).
+    expect(tabs.length).toBe(8)
     for (const label of ['Теория', 'Конспект', 'Задачи', 'Решение задач', 'Рабочий лист задач', 'Рабочий лист ДЗ']) {
       expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
     }

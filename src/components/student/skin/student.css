@@ -354,6 +354,9 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-lt.is-hw { border-color: color-mix(in srgb, var(--orange) 50%, var(--line)); background: var(--orangeS) }
 .stu .stu-lt.is-locked { background: var(--bg2); color: var(--ink2) }
 .stu .stu-lt.is-locked b { font-weight: 600 }
+.stu .stu-lt-lock { display: flex; align-items: flex-start; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink2); line-height: 1.35; overflow-wrap: anywhere }
+.stu .stu-lt-lock > svg { flex: none; margin-top: 2px }
+.stu .stu-lt .stu-tag { max-width: 100%; white-space: normal }
 .stu .stu-tag-dash { background: transparent; color: var(--ink2); border: 1px dashed var(--line) }
 @media (max-width: 760px) { .stu .stu-sgrid, .stu .stu-lgrid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
 @media (max-width: 440px) {

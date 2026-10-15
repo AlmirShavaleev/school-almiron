@@ -97,7 +97,8 @@ describe('Тема-контрольная у ученика (§240)', () => {
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     const labels = screen.getAllByRole('tab').map(t => t.textContent?.replace(/\d+$/, ''))
     expect(labels).toEqual(['Работа', 'Условие', 'Решение', 'Ответы и критерии'])
-    expect(screen.getByTestId('topic-tab-group-homework')).toHaveTextContent('Контрольная работа')
+    // Раздел работы в переключателе подписан её типом.
+    expect(screen.getByTestId('topic-seg-homework')).toHaveTextContent('Контрольная работа')
   })
 
   it('рубрика «Ответы и критерии» открывается как материалы', async () => {
@@ -112,6 +113,8 @@ describe('Тема-контрольная у ученика (§240)', () => {
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     expect(screen.queryByTestId('topic-kind-badge')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Рабочий лист ДЗ/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Видео' })).toHaveAttribute('aria-selected', 'true')
+    // Видео — плеер над переключателем (владелец 15.10), открыт первый раздел.
+    expect(screen.queryByRole('tab', { name: 'Видео' })).toBeNull()
+    expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'true')
   })
 })

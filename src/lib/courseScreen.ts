@@ -121,13 +121,31 @@ export interface LessonTile {
  * подписке», «Откроется 27 октября»). У закрытого урока ДЗ ученику не видно
  * (RLS), поэтому «без ДЗ» — только у открытых.
  */
-export function lessonTile(t: ScreenTopic, today: string = todayLocal(), now: number = Date.now()): LessonTile {
+export function lessonTile(
+  t: ScreenTopic,
+  today: string = todayLocal(),
+  now: number = Date.now(),
+  /** Номер урока по названию в разделе: «после урока «…»» → «после урока 2». */
+  lessonNo?: ReadonlyMap<string, number>,
+): LessonTile {
   if (t.hw_status === 'accepted') return { state: 'done', pill: 'пройдено' }
   if (t.hw_status === 'submitted') return { state: 'review', pill: 'на проверке' }
-  if (!isTopicOpen(t, today)) return { state: 'locked', pill: topicClosedLabel(t, today) }
+  if (!isTopicOpen(t, today)) return { state: 'locked', pill: shortLockLabel(topicClosedLabel(t, today), lessonNo) }
   if (!t.hw_id) return { state: 'nohw', pill: 'без ДЗ' }
   if (!toDo(t, today)) return { state: 'open', pill: 'открыто' }
   const overdue = !!t.hw_due_at && Date.parse(t.hw_due_at) < now
   const pill = t.hw_status === 'returned' ? 'вернули · сдать ДЗ' : 'сдать ДЗ'
   return overdue ? { state: 'hw', pill: `${pill} · просрочено`, overdue } : { state: 'hw', pill }
+}
+
+/**
+ * Подпись замка на плитке — коротко (владелец 15.10): «Откроется после урока 2»
+ * вместо полного названия предыдущего урока в кавычках.
+ */
+export function shortLockLabel(label: string, lessonNo?: ReadonlyMap<string, number>): string {
+  if (!lessonNo) return label
+  return label.replace(/после урока «(.+?)»/, (m, title: string) => {
+    const n = lessonNo.get(title)
+    return n ? `после урока ${n}` : m
+  })
 }

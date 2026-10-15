@@ -113,10 +113,13 @@ describe('Вкладка «Видео» темы (§204)', () => {
     expect(container.textContent).not.toMatch(/мин(ут)?\b|секунд/)
   })
 
-  it('темы без видео вкладка не ломает: прежняя заглушка на месте', async () => {
+  it('у темы без видео плеера нет — ни пустой рамки, ни вкладки «Видео»', async () => {
     materials = []
     renderPage()
-    expect(await screen.findByText('Видеоурок ещё не добавлен')).toBeInTheDocument()
+    expect(await screen.findByTestId('topic-seg-review')).toBeInTheDocument()
+    expect(screen.queryByTestId('topic-player')).toBeNull()
+    expect(screen.queryByText('Видеоурок ещё не добавлен')).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'Видео' })).toBeNull()
   })
 
   it('внешняя ссылка, которую не узнали, по-прежнему открывается наружу', async () => {

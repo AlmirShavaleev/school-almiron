@@ -86,7 +86,8 @@ describe('§290-B страница курса', () => {
     demo.value = false
     renderPage()
     fireEvent.click((await screen.findAllByTestId('module-card'))[0])
-    expect(await screen.findByText(/Откроется после урока «Урок 2»/)).toBeInTheDocument()
+    // Подпись замка на плитке — номером урока (владелец 15.10).
+    expect(await screen.findByText(/Откроется после урока 2/)).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByTestId('course-demo-buy')).toBeNull())
   })
 })
