@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
@@ -105,22 +105,24 @@ describe('Разбор ДЗ → «Решение ДЗ» (§239)', () => {
     Element.prototype.scrollIntoView = vi.fn()
   })
 
-  it('блок ДЗ знает состояние решения и переключает страницу на его вкладку', async () => {
+  it('блок ДЗ знает состояние решения; переход к решению остаётся в разделе ДЗ', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Домашнее задание/ }))
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     const probe = await screen.findByTestId('hw-probe')
     expect(probe).toHaveAttribute('data-unlocked', 'true')
     expect(probe).toHaveAttribute('data-has', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: 'К решению' }))
-    expect(screen.getByRole('tab', { name: /Решение ДЗ/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('materials-probe')).toHaveAttribute('data-section', 'solution')
+    // Решение — в том же разделе, ниже работы: раздел не меняется.
+    expect(screen.getByTestId('topic-seg-homework')).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByTestId('topic-section-solution')).getByTestId('materials-probe'))
+      .toHaveAttribute('data-section', 'solution')
   })
 
   it('решение закрыто — блок ДЗ получает unlocked=false', async () => {
     solutionUnlocked.value = false
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Домашнее задание/ }))
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     expect(await screen.findByTestId('hw-probe')).toHaveAttribute('data-unlocked', 'false')
   })
 })

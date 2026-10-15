@@ -4,12 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
 /**
- * §122. Самоотметка стоит на ГРУППЕ рубрик, а не на каждой вкладке (правка по
- * живому просмотру владельца: отмечать по одной оказалось неудобно).
- *
- * Держим то, на чём легко соврать пользователю: у «Домашнего задания» кнопки
- * нет ни в одном состоянии, у пустой группы кнопки нет вовсе, а подпись
- * говорит «Отметил сам», а не «прочитал».
+ * §122 → владелец 15.10. Самоотметки «Отметить как сделанное» убраны совсем.
+ * Под переключателем остаётся только состояние ДЗ словами — его ставит
+ * преподаватель, приняв работу.
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
@@ -98,7 +95,7 @@ function renderPage() {
   )
 }
 
-describe('Отметка группы рубрик', () => {
+describe('Состояние разделов без самоотметки (владелец 15.10)', () => {
   beforeEach(() => {
     marksState.marks = new Set()
     marksState.canMark = true
@@ -110,59 +107,32 @@ describe('Отметка группы рубрик', () => {
     toggle.mockReset().mockResolvedValue(undefined)
   })
 
-  it('у каждой отмечаемой группы одна кнопка, и она в своём ряду', async () => {
+  it('кнопки «Отметить как сделанное» нет ни в одном разделе', async () => {
+    hasHomework.value = true
     renderPage()
 
-    const theoryRow = await screen.findByTestId('topic-tab-group-theory')
-    const lessonRow = screen.getByTestId('topic-tab-group-lesson')
-
-    expect(within(theoryRow).getByTestId('topic-group-mark-theory')).toBeInTheDocument()
-    expect(within(lessonRow).getByTestId('topic-group-mark-lesson')).toBeInTheDocument()
-    // Порубричной отметки не осталось: два способа отметить одно и то же
-    // разъехались бы.
-    expect(screen.queryByTestId('topic-section-mark')).not.toBeInTheDocument()
+    await screen.findByTestId('topic-seg-theory')
+    for (const seg of ['theory', 'lesson', 'homework']) {
+      fireEvent.click(screen.getByTestId(`topic-seg-${seg}`))
+      await screen.findByTestId('topic-section-stack')
+      expect(screen.queryByRole('button', { name: /Отметить/ })).not.toBeInTheDocument()
+      expect(screen.queryByTestId(`topic-group-mark-${seg}`)).not.toBeInTheDocument()
+    }
+    // У теории ряда состояния нет: там нечего показывать.
+    fireEvent.click(screen.getByTestId('topic-seg-theory'))
+    expect(screen.queryByTestId('topic-tab-group-theory')).not.toBeInTheDocument()
+    expect(toggle).not.toHaveBeenCalled()
   })
 
-  it('нажатие отмечает всю группу', async () => {
-    renderPage()
-
-    fireEvent.click(await screen.findByTestId('topic-group-mark-theory'))
-
-    await waitFor(() => expect(toggle).toHaveBeenCalledWith('theory'))
-  })
-
-  it('отмеченная группа подписана «Отметил сам», а не «прочитал»', async () => {
-    marksState.marks = new Set(['lesson'])
-    renderPage()
-
-    const button = await screen.findByTestId('topic-group-mark-lesson')
-    expect(button).toHaveTextContent('Отметил сам')
-    expect(button).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('topic-group-mark-theory')).toHaveAttribute('aria-pressed', 'false')
-  })
-
-  it('группы без единой рубрики нет вовсе — отмечать нечего', async () => {
-    materials.length = 1 // остался только конспект → группы «Урок» нет
-    renderPage()
-
-    await screen.findByTestId('topic-tab-group-theory')
-    expect(screen.queryByTestId('topic-tab-group-lesson')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('topic-group-mark-lesson')).not.toBeInTheDocument()
-
-    materials.push({
-      kind: 'file', id: 'm2', title: null, position: 1, isVisible: true, section: 'tasks',
-      storagePath: `${TOPIC}/c.pdf`, fileName: 'c.pdf', sizeBytes: 1,
-    })
-  })
-
-  it('группа ДЗ показывает состояние словами и кнопки не имеет', async () => {
+  it('раздел ДЗ показывает состояние словами и кнопки не имеет', async () => {
     hasHomework.value = true
     homeworkState.state = 'submitted'
     renderPage()
 
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     const row = await screen.findByTestId('topic-tab-group-homework')
     expect(within(row).getByTestId('topic-group-homework-state')).toHaveTextContent('На проверке')
-    expect(within(row).queryByTestId('topic-group-mark-homework')).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('принятая работа подписана как принятая', async () => {
@@ -170,37 +140,18 @@ describe('Отметка группы рубрик', () => {
     homeworkState.state = 'accepted'
     renderPage()
 
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     expect(await screen.findByTestId('topic-group-homework-state')).toHaveTextContent('Принято')
   })
 
-  it('закрытое гейтом «Решение ДЗ» кнопки не добавляет — оно в группе ДЗ', async () => {
+  it('закрытое гейтом «Решение ДЗ» — в разделе ДЗ, с заглушкой и состоянием', async () => {
     solution.hasSolution = true
     solution.unlocked = false
     renderPage()
 
-    const row = await screen.findByTestId('topic-tab-group-homework')
-    // Вкладка с замком на месте (§95 не сломан), кнопки отметки в ряду нет.
-    expect(within(row).getByRole('tab', { name: /Решение ДЗ/ })).toBeInTheDocument()
-    expect(within(row).queryByTestId('topic-group-mark-homework')).not.toBeInTheDocument()
-    expect(within(row).getByTestId('topic-group-homework-state')).toBeInTheDocument()
-  })
-
-  it('персоналу кнопок нет — за ученика отмечать нельзя', async () => {
-    marksState.canMark = false
-    renderPage()
-
-    await screen.findByTestId('topic-tab-group-theory')
-    expect(screen.queryByTestId('topic-group-mark-theory')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('topic-group-mark-lesson')).not.toBeInTheDocument()
-  })
-
-  it('отказ базы показывает причину, а не молча возвращает галочку', async () => {
-    toggle.mockRejectedValue(new Error('Не удалось сохранить отметку: нет прав'))
-    renderPage()
-
-    fireEvent.click(await screen.findByTestId('topic-group-mark-theory'))
-
-    expect(await screen.findByTestId('topic-section-mark-error'))
-      .toHaveTextContent('Не удалось сохранить отметку: нет прав')
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
+    const section = await screen.findByTestId('topic-section-solution')
+    expect(within(section).getByText('Решение пока закрыто')).toBeInTheDocument()
+    expect(within(screen.getByTestId('topic-tab-group-homework')).getByTestId('topic-group-homework-state')).toBeInTheDocument()
   })
 })

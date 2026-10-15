@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
 /**
  * §240. Тема-контрольная у ученика: метка «Контрольная работа» над названием,
- * по умолчанию открыта сама работа, рубрики подписаны по-своему («Условие»,
- * «Решение», «Ответы и критерии»). Урок — без изменений (TopicPage.tabs).
+ * по умолчанию открыт раздел работы: сама работа, условие, решение и
+ * критерии подряд. Урок — без изменений (TopicPage.tabs).
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
@@ -92,19 +92,25 @@ describe('Тема-контрольная у ученика (§240)', () => {
     expect(screen.queryByTestId('lesson-hw')).not.toBeInTheDocument()
   })
 
-  it('рубрики подписаны по-своему; видео, теории и конспекта нет (§240.1)', async () => {
+  it('один раздел работы: работа, условие, решение, критерии; видео, теории и конспекта нет (§240.1)', async () => {
     renderPage()
-    await screen.findByRole('tablist', { name: 'Разделы темы' })
-    const labels = screen.getAllByRole('tab').map(t => t.textContent?.replace(/\d+$/, ''))
-    expect(labels).toEqual(['Работа', 'Условие', 'Решение', 'Ответы и критерии'])
+    await screen.findByTestId('topic-section-stack')
+    const segs = [...document.querySelectorAll('[data-testid^="topic-seg-"]')].map(el => el.getAttribute('data-testid'))
+    expect(segs).toEqual(['topic-seg-homework', 'topic-seg-review'])
     // Раздел работы в переключателе подписан её типом.
     expect(screen.getByTestId('topic-seg-homework')).toHaveTextContent('Контрольная работа')
+    const keys = [...screen.getByTestId('topic-section-stack').querySelectorAll('[data-testid^="topic-section-"]')]
+      .map(el => el.getAttribute('data-testid'))
+    expect(keys).toEqual(['topic-section-homework', 'topic-section-worksheet_homework', 'topic-section-solution', 'topic-section-criteria'])
+    expect(screen.queryByTestId('materials-theory')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('materials-notes')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-player')).not.toBeInTheDocument()
   })
 
   it('рубрика «Ответы и критерии» открывается как материалы', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Ответы и критерии/ }))
-    expect(await screen.findByTestId('materials-criteria')).toBeInTheDocument()
+    const crit = await screen.findByTestId('topic-section-criteria')
+    expect(within(crit).getByTestId('materials-criteria')).toBeInTheDocument()
   })
 
   it('урок (или база без столбца kind) — прежняя страница', async () => {
@@ -112,9 +118,12 @@ describe('Тема-контрольная у ученика (§240)', () => {
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     expect(screen.queryByTestId('topic-kind-badge')).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Рабочий лист ДЗ/ })).toBeInTheDocument()
-    // Видео — плеер над переключателем (владелец 15.10), открыт первый раздел.
-    expect(screen.queryByRole('tab', { name: 'Видео' })).toBeNull()
+    // Открыт первый раздел, работа — в разделе «ДЗ» с обычной сдачей.
     expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByTestId('topic-seg-homework'))
+    expect(screen.getByTestId('topic-seg-homework')).toHaveTextContent('ДЗ')
+    expect(await screen.findByTestId('topic-section-worksheet_homework')).toBeInTheDocument()
+    expect(screen.getByTestId('lesson-hw')).toBeInTheDocument()
+    expect(screen.queryByTestId('timed-work-stub')).not.toBeInTheDocument()
   })
 })
