@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -12,7 +12,7 @@ import { mockAlert, type MockLessonListRow } from '@/lib/mockExamLesson'
 import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
-import { continueHref, type HomeCourseProgress } from '@/lib/studentHomeCourses'
+import { type HomeCourseProgress } from '@/lib/studentHomeCourses'
 import { loadCourseExtras as loadExtras, loadOpenByModule, type CourseExtras as Extras } from '@/lib/courseMeta'
 import { accessLine, courseLadder, publicTitle, visibleSteps, type AccessLine, type LadderStep } from '@/lib/myCourses'
 import type { PathSubscription } from '@/lib/studentPath'
@@ -133,19 +133,15 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
   mockExams: MockLessonListRow[]
   wide: boolean
 }) {
-  const navigate = useNavigate()
   const done = progress?.done ?? 0
   const total = progress?.total ?? 0
   const ladder = progress ? courseLadder(progress.modules, openByModule, done, total) : null
   const finished = total > 0 && done >= total
-  // Клик по карточке — программа курса; у ссылок и кнопок внутри — свои адреса.
-  const open = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('a, button')) return
-    navigate(`/my-course/${card.groupId}`)
-  }
+  // Владелец 15.10: в карточке ничего не нажимается, кроме одной кнопки
+  // «Войти в курс» (и оплаты: «Оформить» / «Продлить») — название и разделы не ссылки.
 
   return (
-    <article className={wide ? 'stu-card stu-mc is-wide' : 'stu-card stu-mc'} data-testid="course-card" onClick={open}>
+    <article className={wide ? 'stu-card stu-mc is-wide' : 'stu-card stu-mc'} data-testid="course-card">
       <div className="stu-mc-head">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -153,9 +149,7 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
             <span className="stu-tag t-or">{EXAM_LABELS[card.examType] || card.examType}</span>
             <span className="stu-muted text-[12.5px]" data-testid="course-mode">{mode === 'progress' ? 'по прохождению' : 'по расписанию'}</span>
           </div>
-          <Link to={`/my-course/${card.groupId}`} className="stu-h3 stu-focus mt-2 block break-words hover:text-[var(--blueInk)]" data-testid="course-title">
-            {title}
-          </Link>
+          <h2 className="stu-h3 mt-2 break-words" data-testid="course-title">{title}</h2>
         </div>
         <Sticker name={courseSticker(card.subject)} size={56} />
       </div>
@@ -171,19 +165,19 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
         </div>
       </div>
 
-      {progress?.next ? (
-        <Link to={continueHref(card.groupId, progress.next)} className="stu-btn stu-btn-p stu-mc-cta" data-testid="course-continue">
-          <span className="truncate">Продолжить: {progress.next.title}</span>
-        </Link>
-      ) : (
-        <span className="stu-mc-wait" data-testid="course-continue-none">
+      {progress && !progress.next && (
+        <p className="stu-muted text-[13.5px]" data-testid="course-continue-none">
           {finished ? 'Курс пройден' : 'Ждём открытия следующей темы'}
-        </span>
+        </p>
       )}
+      <Link to={`/my-course/${card.groupId}`} className="stu-btn stu-btn-p stu-mc-cta" data-testid="course-continue">
+        Войти в курс
+      </Link>
 
       <div className="stu-mc-access" data-testid="course-access" data-kind={access.kind}>
         <span className="min-w-0">{access.text}</span>
-        {access.action && (
+        {/* «Моя подписка» не выводим — ссылка; оплата (оформить / продлить) остаётся. */}
+        {access.action && access.kind !== 'subscription' && (
           <Link to={access.action.to} className={access.action.primary ? 'stu-btn stu-btn-o stu-btn-sm' : 'stu-link'}>
             {access.action.label}
           </Link>

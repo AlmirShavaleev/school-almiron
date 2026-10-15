@@ -93,8 +93,10 @@ describe('карточка курса', () => {
     expect(within(card).getByTestId('course-title')).toHaveTextContent('Физика ЕГЭ')
     expect(within(card).getByTestId('course-title')).not.toHaveTextContent('(тест)')
     expect(within(card).getByTestId('course-mode')).toHaveTextContent('по прохождению')
-    expect(within(card).getByTestId('course-continue')).toHaveTextContent('Продолжить: Равноускоренное движение')
-    expect(within(card).getByTestId('course-continue')).toHaveAttribute('href', '/my-course/g1/topic/t7')
+    // Владелец 15.10: в карточке одна кнопка — «Войти в курс»; название не ссылка.
+    expect(within(card).getByTestId('course-continue')).toHaveTextContent('Войти в курс')
+    expect(within(card).getByTestId('course-continue')).toHaveAttribute('href', '/my-course/g1')
+    expect(within(card).getAllByRole('link')).toHaveLength(1)
     expect(queried).not.toContain('modules')
     // «Что дальше» справа убран (владелец 15.10).
     expect(screen.queryByTestId('course-next')).toBeNull()
@@ -133,7 +135,7 @@ describe('строка доступа', () => {
     await screen.findByText(/осталось 2 дня/)
     const byKind = Object.fromEntries(screen.getAllByTestId('course-access').map(a => [a.getAttribute('data-kind'), a]))
     expect(byKind.subscription).toHaveTextContent(/Подписка до .* · автопродление вкл/)
-    expect(within(byKind.subscription).getByRole('link', { name: 'Моя подписка' })).toHaveAttribute('href', '/my-subscription')
+    expect(within(byKind.subscription).queryByRole('link')).toBeNull()
     expect(byKind.trial).toHaveTextContent('Пробный период · осталось 2 дня')
     expect(within(byKind.trial).getByRole('link', { name: 'Оформить подписку' })).toHaveAttribute('href', '/subscribe/checkout/tar-c2')
     expect(byKind.expired).toHaveTextContent(/Доступ закончился/)

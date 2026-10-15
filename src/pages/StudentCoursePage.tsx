@@ -1,37 +1,37 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  BookOpen, Check, Clock, ClipboardList,
+  BookOpen, Clock, ClipboardList,
   GraduationCap, Loader2, Lock, CheckCircle, RotateCcw, AlertCircle,
-  Upload, ArrowLeft, ChevronRight, Play, MessageSquare, BarChart3,
+  Upload, ArrowLeft, ChevronRight, Play,
   LayoutList, LayoutGrid, FileEdit, ListChecks,
 } from 'lucide-react'
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress } from '@/hooks/useStudentCourseProgram'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
-import { LessonCard } from '@/components/courseProgram/LessonCard'
+
 import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
-import { StatCard } from '@/components/ui/StatCard'
+
 import { cn } from '@/utils/cn'
 import {
   doneLabel, donePercent, homeworkLabel, sumCounters,
 } from '@/lib/studentCourseCounters'
-import { SUBJECT_LABELS, EXAM_LABELS, formatDate } from '@/utils/format'
-import { isOverdue, GRADE_SCALE_LABEL } from '@/lib/topicHomework'
-import { testPercent } from '@/lib/studentProgram'
+import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
+
+
 import { type TopicSection } from '@/lib/topicMaterialItems'
 import { isTopicOpen, topicClosedLabel } from '@/lib/topicAvailability'
 import { plural, pluralTopics } from '@/lib/plural'
 import { MockExamsSection } from '@/components/student/MockExamsSection'
 import { CourseAssessmentsSection } from '@/components/student/CourseAssessmentsSection'
-import { CourseHero, PeopleRow, SectionHero, SectionTiles } from '@/components/student/course/CourseScreen'
+import { CourseHero, LessonTiles, PeopleRow, SectionHero, SectionTiles } from '@/components/student/course/CourseScreen'
 import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { loadCourseExtras, loadOpenByModule, type CourseExtras } from '@/lib/courseMeta'
 import { accessLine, courseLadder, publicTitle } from '@/lib/myCourses'
-import { hwChips, sectionTiles } from '@/lib/courseScreen'
+import { hwChips, lessonTile, sectionTiles } from '@/lib/courseScreen'
 import { continueHref } from '@/lib/studentHomeCourses'
 import { useMyCourseAssessments } from '@/hooks/useCourseAssessments'
 import {
@@ -47,7 +47,7 @@ import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
 import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
-import { isLessonProgram, useLessonHomeworkFilter } from '@/lib/lessonCourses'
+
 
 // ─── View preference ─────────────────────────────────────────────────────────
 
@@ -413,328 +413,6 @@ function ViewToggle({ view, onChange }: { view: CourseView; onChange: (v: Course
 // банка). Сдача и прохождение живут на странице темы — здесь только статус и
 // переход, чтобы не заводить вторую точку сдачи.
 
-type FlatTask = TopicProgress & { moduleTitle: string }
-
-function HwStatusBadge({ status, score, max }: { status: string; score: number | null; max: number | null }) {
-  const cfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    not_started:   { label: 'Не сдано',    cls: 'bg-gray-100 text-gray-500',    icon: <AlertCircle size={11} /> },
-    draft:         { label: 'Черновик',    cls: 'bg-sky-100 text-sky-700',      icon: <FileEdit size={11} /> },
-    submitted:     { label: 'На проверке', cls: 'bg-blue-100 text-blue-700',    icon: <Clock size={11} /> },
-    accepted:      { label: score != null && max != null ? `Принято · ${score}/${max} б.` : 'Принято', cls: 'bg-green-100 text-green-700', icon: <CheckCircle size={11} /> },
-    returned:      { label: 'Доработать',  cls: 'bg-orange-100 text-orange-700', icon: <RotateCcw size={11} /> },
-  }
-  const c = cfg[status] || { label: status, cls: 'bg-gray-100 text-gray-400', icon: null }
-  return (
-    <span className={cn('inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap', c.cls)}>
-      {c.icon}{c.label}
-    </span>
-  )
-}
-
-function TestStatusBadge({ topic }: { topic: TopicProgress }) {
-  if (!topic.test_assignment_id) return null
-  if (topic.test_status === 'completed') {
-    const pct = testPercent(topic.test_points, topic.test_max_points)
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-indigo-100 text-indigo-700">
-        <BarChart3 size={11} />
-        Тест: {topic.test_points ?? 0}/{topic.test_max_points ?? 0} б.{pct != null ? ` · ${pct}%` : ''}
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-indigo-50 text-indigo-600">
-      <BarChart3 size={11} />
-      {topic.test_status === 'in_progress' ? 'Тест начат' : 'Тест не пройден'}
-    </span>
-  )
-}
-
-function TopicListRow({
-  topic, index, onOpen, onOpenHomework,
-}: {
-  topic: TopicProgress
-  index: number
-  onOpen: () => void
-  onOpenHomework: () => void
-}) {
-  // То же общее правило, что и у карточки выше — src/lib/topicAvailability.ts
-  const isLocked    = !isTopicOpen(topic)
-  const closedLabel = topicClosedLabel(topic)
-
-  const stateKey = isLocked ? 'locked'
-    : topic.hw_status === 'accepted'      ? 'accepted'
-    : topic.hw_status === 'submitted'     ? 'submitted'
-    : topic.hw_status === 'returned'      ? 'returned'
-    : topic.hw_status === 'draft'         ? 'draft'
-    : topic.hw_status === 'not_started'   ? 'not_started'
-    : 'none'
-
-  const st = LIST_STATE[stateKey]
-  const isDone = topic.hw_status === 'accepted'
-  const canSubmit = !isLocked && topic.hw_id &&
-    (topic.hw_status === 'not_started' || topic.hw_status === 'draft' || topic.hw_status === 'returned')
-
-  return (
-    <div
-      role={isLocked ? 'listitem' : 'button'}
-      tabIndex={isLocked ? -1 : 0}
-      aria-disabled={isLocked || undefined}
-      onClick={() => !isLocked && onOpen()}
-      onKeyDown={e => !isLocked && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
-      className={cn(
-        'rounded-xl border px-4 py-3 transition-all duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-        isLocked ? 'cursor-default' : 'cursor-pointer',
-        st.row,
-        'flex flex-col sm:flex-row sm:items-center sm:gap-4 gap-2',
-      )}
-      data-testid="topic-list-row"
-      data-status={stateKey}
-    >
-      {/* ── Mobile top / Desktop left: number + icon ── */}
-      <div className="flex items-center gap-2 sm:flex-col sm:items-center sm:w-10 sm:gap-1 sm:shrink-0">
-        <div className={cn(
-          'w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0',
-          st.numBg
-        )}>
-          {isDone ? <Check size={14} /> : <span>{index + 1}</span>}
-        </div>
-
-        {/* Status icon — desktop */}
-        <div className="hidden sm:flex" aria-hidden>{st.icon}</div>
-
-        {/* Status pill — mobile */}
-        {st.statusLabel && (
-          <span className={cn(
-            'sm:hidden text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5',
-            st.statusCls
-          )} role="status">
-            {st.icon}{st.statusLabel}
-          </span>
-        )}
-
-        {/* Arrow — mobile */}
-        {!isLocked && (
-          <ChevronRight size={14} className="sm:hidden ml-auto text-gray-300" aria-hidden />
-        )}
-      </div>
-
-      {/* ── Center: title + badges ── */}
-      <div className="flex-1 min-w-0">
-        <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : st.titleCls)}>
-          {isLocked && <Lock size={10} className="inline mr-1 mb-0.5 text-gray-300" aria-hidden />}
-          <TopicKindMark kind={topic.kind} className="mr-1.5" />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
-          {topic.title}
-        </p>
-
-        {/* Результат теста */}
-        {!isLocked && topic.test_status === 'completed' && (
-          <p className="text-xs font-semibold text-indigo-700 mt-0.5">
-            Тест: {topic.test_points ?? 0}/{topic.test_max_points ?? 0} б.
-            {testPercent(topic.test_points, topic.test_max_points) != null &&
-              ` · ${testPercent(topic.test_points, topic.test_max_points)}%`}
-          </p>
-        )}
-        {!isLocked && topic.test_status === 'not_started' && (
-          <p className="text-xs text-indigo-500 mt-0.5">Тест не пройден</p>
-        )}
-
-        {/* Три сигнала «что здесь делать» вместо перечня рубрик (§182) */}
-        {!isLocked && <TopicSignals topic={topic} />}
-
-        {isLocked && (
-          <p className="text-[10px] text-gray-400 mt-0.5">
-            {closedLabel}
-          </p>
-        )}
-      </div>
-
-      {/* ── Right: status + buttons ── */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* Балл за ДЗ стоял здесь вторым числом рядом с сигналом «ДЗ: 18/20 б»
-            (§182) — одна и та же цифра дважды в одной строке. Осталась одна. */}
-
-        {/* Status badge — desktop */}
-        {st.statusLabel && (
-          <span className={cn(
-            'hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap',
-            st.statusCls
-          )} role="status">
-            {st.icon}{st.statusLabel}
-          </span>
-        )}
-
-        {/* Submit HW — сдача живёт на странице темы */}
-        {canSubmit && (
-          <button
-            onClick={e => { e.stopPropagation(); onOpenHomework() }}
-            className={cn(
-              'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px]',
-              topic.hw_status === 'returned'
-                ? 'text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100'
-                : 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
-            )}
-            aria-label={topic.lesson_format === 'training' ? 'Решить задачи с автопроверкой' : topic.hw_status === 'returned' ? 'Переделать домашнее задание' : 'Сдать домашнее задание'}
-          >
-            <Upload size={11} />
-            <span className="hidden sm:inline">
-              {topic.lesson_format === 'training' ? 'Решить задачи' : topic.hw_status === 'returned' ? 'Переделать' : topic.hw_status === 'draft' ? 'Дособрать' : 'Сдать ДЗ'}
-            </span>
-          </button>
-        )}
-
-        {/* Open button */}
-        {!isLocked && (
-          <button
-            onClick={e => { e.stopPropagation(); onOpen() }}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors min-h-[36px] text-primary-700 bg-primary-50 border border-primary-200 hover:bg-primary-100"
-            aria-label={`Открыть тему ${topic.title}`}
-          >
-            {topic.sections.has('video') && <Play size={11} />}
-            Открыть
-          </button>
-        )}
-
-        <ChevronRight size={14} className="hidden sm:block text-gray-300" aria-hidden />
-      </div>
-    </div>
-  )
-}
-
-function HomeworkBlock({
-  modules,
-  onOpenTopic,
-}: {
-  modules: ModuleProgress[]
-  onOpenTopic: (t: TopicProgress) => void
-}) {
-  const flatTasks = useMemo<FlatTask[]>(() => {
-    const list: FlatTask[] = []
-    for (const mod of modules) {
-      for (const t of mod.topics) {
-        if (t.assignment_count > 0) list.push({ ...t, moduleTitle: mod.title })
-      }
-    }
-    // Просроченное несданное — вверх, дальше по дедлайну, темы без дедлайна в конце
-    return list.sort((a, b) => {
-      const aOverdue = !!a.hw_due_at && isOverdue(a.hw_due_at) && a.hw_status !== 'accepted' && a.hw_status !== 'submitted'
-      const bOverdue = !!b.hw_due_at && isOverdue(b.hw_due_at) && b.hw_status !== 'accepted' && b.hw_status !== 'submitted'
-      if (aOverdue && !bOverdue) return -1
-      if (!aOverdue && bOverdue) return 1
-      if (!a.hw_due_at && !b.hw_due_at) return a.order_index - b.order_index
-      if (!a.hw_due_at) return 1
-      if (!b.hw_due_at) return -1
-      return a.hw_due_at.localeCompare(b.hw_due_at)
-    })
-  }, [modules])
-
-  if (flatTasks.length === 0) return null
-
-  const notSubmitted = flatTasks.filter(t => t.hw_status === 'not_started' || t.hw_status === 'draft' || t.hw_status === 'returned').length
-  const submitted    = flatTasks.filter(t => t.hw_status === 'submitted').length
-  const checked      = flatTasks.filter(t => t.hw_status === 'accepted').length
-  const testsLeft    = flatTasks.filter(t => t.test_assignment_id && t.test_status !== 'completed').length
-
-  return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-        <ClipboardList size={20} className="text-primary-600" />
-        Задания
-      </h2>
-
-      {/* StatCards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard title="Не сдано"     value={notSubmitted} icon={<AlertCircle size={18} />} color="red" />
-        <StatCard title="На проверке"  value={submitted}    icon={<Clock size={18} />}       color="orange" />
-        <StatCard title="Проверено"    value={checked}      icon={<CheckCircle size={18} />} color="green" />
-        <StatCard title="Тестов ждёт"  value={testsLeft}    icon={<BarChart3 size={18} />}   color="blue" />
-      </div>
-
-      {/* Flat list */}
-      <div className="space-y-3">
-        {flatTasks.map(task => {
-          const overdue     = !!task.hw_due_at && isOverdue(task.hw_due_at)
-          const overdueFlag = overdue && task.hw_status !== 'accepted' && task.hw_status !== 'submitted'
-
-          return (
-            <div
-              key={task.id}
-              className={cn(
-                'rounded-2xl border bg-white p-4 transition-all',
-                overdueFlag ? 'border-red-200 bg-red-50' : 'border-gray-200'
-              )}
-              data-testid="student-task-row"
-            >
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  {/* Title + module breadcrumb */}
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-0.5">
-                    <span>{task.moduleTitle}</span>
-                    <ChevronRight size={10} />
-                    <span>{task.title}</span>
-                  </div>
-
-                  {task.hw_title && (
-                    <p className="text-sm font-semibold text-gray-800">{task.hw_title}</p>
-                  )}
-                  {task.hw_instructions && (
-                    <p className="text-sm text-gray-600 mt-1 mb-1.5 whitespace-pre-line">{task.hw_instructions}</p>
-                  )}
-
-                  {/* Meta row */}
-                  <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap mt-1">
-                    {task.hw_due_at && (
-                      <span className={cn('flex items-center gap-1', overdueFlag && 'text-red-500 font-semibold')}>
-                        <Clock size={11} />
-                        {overdueFlag ? 'Просрочено · ' : 'Сдать до '}
-                        {formatDate(task.hw_due_at)}
-                      </span>
-                    )}
-                    {task.hw_grade_scale && <span>Шкала: {GRADE_SCALE_LABEL[task.hw_grade_scale]}</span>}
-                    {task.test_title && <span>Тест: {task.test_title}</span>}
-                  </div>
-
-                  {/* Комментарий преподавателя к последнему вердикту */}
-                  {task.hw_comment && (
-                    <div className="mt-2.5 flex items-start gap-2 p-2.5 bg-blue-50 rounded-xl border border-blue-100">
-                      <MessageSquare size={13} className="text-blue-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-blue-800 leading-relaxed">
-                        <span className="font-semibold">Комментарий: </span>
-                        {task.hw_comment}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right column: статусы + переход в тему */}
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  {task.hw_status && (
-                    <HwStatusBadge
-                      status={task.hw_status}
-                      score={task.hw_score}
-                      max={task.hw_max}
-                    />
-                  )}
-                  <TestStatusBadge topic={task} />
-                  <button
-                    onClick={() => onOpenTopic(task)}
-                    className="min-h-11 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100"
-                  >
-                    <Upload size={12} />
-                    Открыть тему
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function StudentCoursePage() {
@@ -753,15 +431,6 @@ export function StudentCoursePage() {
     : null
   // 15.10, владелец: в «урочном» курсе (раздел «Мой курс») блок «Задания» —
   // только ДЗ уроков, открытых ученику сейчас (src/lib/lessonCourses.ts).
-  const lesson = useLessonHomeworkFilter(course?.id ? [course.id] : [])
-  const lessonCourse = isLessonProgram(programModules.flatMap(m => m.topics), locks.data?.mode) || (!!course?.id && lesson.filter.lessonIds.has(course.id))
-  const homeworkModules = useMemo(() => {
-    if (!lessonCourse) return programModules
-    // Набор открытых уроков не пришёл — ДЗ урочного курса не показываем
-    // (без него открытый урок от закрытого не отличить).
-    const open = lesson.filter.openTopics
-    return programModules.map(m => ({ ...m, topics: m.topics.filter(t => !!open?.has(t.id)) }))
-  }, [lessonCourse, programModules, lesson.filter.openTopics])
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
   // в предпросмотре персонала её нет (она про «мою попытку») — там прежний
   // блок «Пробники» по расписанию, как в §224.2.
@@ -1093,7 +762,7 @@ export function StudentCoursePage() {
             <p className="text-sm text-gray-500" data-testid="module-topics-count">
               {activeWorksOnly ? worksCountLabel(activeMod.topics.length) : pluralTopics(activeMod.topics.length)}&nbsp;в разделе
             </p>
-            <ViewToggle view={view} onChange={handleViewChange} />
+            {activeWorksOnly && <ViewToggle view={view} onChange={handleViewChange} />}
           </div>
 
           {activeWorksOnly ? (
@@ -1106,37 +775,19 @@ export function StudentCoursePage() {
                 <WorkItem key={topic.id} topic={topic} work={worksByTopic.get(topic.id)} view={view} onOpen={() => openTopic(topic)} />
               ))}
             </div>
-          ) : view === 'list' ? (
-            <div className="space-y-2" data-testid="topics-list-view">
-              {activeMod.topics.map((topic, i) => (
-                <TopicListRow
-                  key={topic.id}
-                  topic={topic}
-                  index={i}
-                  onOpen={() => openTopic(topic)}
-                  onOpenHomework={() => openTopic(topic)}
-                />
-              ))}
-            </div>
           ) : (
-            <ul className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="topics-cards-view">
-              {activeMod.topics.map((topic, i) => (
-                <li key={topic.id} className="flex min-w-0">
-                  <LessonCard topic={topic} index={i} href={`/my-course/${groupId}/topic/${topic.id}`} />
-                </li>
-              ))}
-            </ul>
+            // Уроки раздела — простыми плитками (макет v2, решение владельца 15.10).
+            <LessonTiles
+              lessons={activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t) }))}
+              hrefFor={id => `/my-course/${groupId}/topic/${id}`}
+            />
           )}
         </div>
       )}
 
-      {/* ══ БЛОК ЗАДАНИЙ (только на главном экране курса) ══ */}
-      {!activeMod && (!lessonCourse || lesson.ready) && (
-        <HomeworkBlock
-          modules={homeworkModules}
-          onOpenTopic={openTopic}
-        />
-      )}
+      {/* Блок «Задания» (Не сдано / На проверке / Проверено / Тестов ждёт) со
+          страницы курса убран (владелец 15.10): ДЗ — в шапке словами и в
+          разделе «Домашние задания». */}
     </div>
   )
 }

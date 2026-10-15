@@ -49,9 +49,6 @@ describe('Default view = cards (§274)', () => {
     expect(PAGE_SRC).toContain('useState<CourseView>(getViewPref)')
   })
 
-  it('list view container uses data-testid="topics-list-view"', () => {
-    expect(PAGE_SRC).toContain('data-testid="topics-list-view"')
-  })
 })
 
 // ─── 3. Status "На проверке" displayed ───────────────────────────────────────
@@ -59,10 +56,6 @@ describe('Default view = cards (§274)', () => {
 describe('Status "На проверке"', () => {
   it('LIST_STATE has submitted state with "На проверке" label', () => {
     expect(PAGE_SRC).toContain("statusLabel: 'На проверке'")
-  })
-
-  it('data-status attribute is set on each row', () => {
-    expect(PAGE_SRC).toContain('data-status={stateKey}')
   })
 
   it('submitted maps to "На проверке" statusLabel', () => {
@@ -118,15 +111,6 @@ describe('Locked topic cannot be opened', () => {
 // ─── 6. Student sees statuses ─────────────────────────────────────────────────
 
 describe('Student sees hw_status', () => {
-  it('stateKey is derived from hw_status', () => {
-    expect(PAGE_SRC).toContain("topic.hw_status === 'accepted'")
-    expect(PAGE_SRC).toContain("topic.hw_status === 'submitted'")
-    expect(PAGE_SRC).toContain("topic.hw_status === 'not_started'")
-  })
-
-  it('TopicListRow uses data-testid="topic-list-row"', () => {
-    expect(PAGE_SRC).toContain('data-testid="topic-list-row"')
-  })
 })
 
 // ─── 7. Teacher/admin не получают ложный student progress ────────────────────
@@ -141,33 +125,16 @@ describe('Teacher/admin: no student progress', () => {
     expect(PAGE_SRC).toContain('не записаны ни в одну группу')
   })
 
-  it('list row data-testid only appears inside activeMod block', () => {
-    const listViewIdx  = PAGE_SRC.indexOf('topics-list-view')
-    const listRowIdx   = PAGE_SRC.indexOf('topic-list-row')
-    // topic-list-row is defined inside TopicListRow component which is only
-    // rendered via the topics-list-view block — both must exist
-    expect(listViewIdx).toBeGreaterThan(-1)
-    expect(listRowIdx).toBeGreaterThan(-1)
-  })
 })
 
 // ─── 8. Mobile layout без горизонтального скролла ────────────────────────────
 
 describe('Mobile layout', () => {
-  it('TopicListRow uses flex-col on mobile (flex flex-col sm:flex-row)', () => {
-    expect(PAGE_SRC).toContain('flex flex-col sm:flex-row sm:items-center sm:gap-4')
-  })
-
   it('max-width container on page prevents overflow', () => {
     // StudentCoursePage wraps content in max-w-4xl
     expect(PAGE_SRC).toContain('max-w-4xl')
   })
 
-  it('status badge hides on mobile (hidden sm:inline-flex)', () => {
-    // Колонки с баллом справа больше нет (§182) — балл несёт сигнал под
-    // названием, он виден на обеих ширинах.
-    expect(PAGE_SRC).toContain('hidden sm:inline-flex')
-  })
 })
 
 // ─── 9. View toggle persists to localStorage ─────────────────────────────────
@@ -204,20 +171,8 @@ describe('View toggle localStorage persistence', () => {
 // ─── 10. Card view still works ────────────────────────────────────────────────
 
 describe('Card view', () => {
-  it('cards view uses data-testid="topics-cards-view"', () => {
-    expect(PAGE_SRC).toContain('data-testid="topics-cards-view"')
-  })
-
   it('cards view still uses grid-cols layout', () => {
     expect(PAGE_SRC).toContain('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4')
-  })
-
-  it('LessonCard (§274) is rendered in cards view', () => {
-    const cardsViewBlock = PAGE_SRC.slice(
-      PAGE_SRC.indexOf('topics-cards-view'),
-      PAGE_SRC.indexOf('topics-cards-view') + 400
-    )
-    expect(cardsViewBlock).toContain('LessonCard')
   })
 
   it('view switch is conditional on view === "list" / "cards"', () => {

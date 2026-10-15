@@ -234,11 +234,11 @@ export function LessonTiles({ lessons, hrefFor }: {
               {l.tile.state === 'locked' && <Lock size={13} aria-hidden className="mr-1 inline align-[-1px]" />}
               {l.title}
             </b>
-            <span className={`${LESSON_PILL[l.tile.state]} self-start whitespace-normal`}>{l.tile.pill}</span>
+            <span className={`${l.tile.overdue ? 'stu-tag t-red' : LESSON_PILL[l.tile.state]} self-start whitespace-normal`} data-testid="lesson-tile-pill">{l.tile.pill}</span>
           </>
         )
         return (
-          <li key={l.id} className="flex" data-testid="lesson-tile" data-state={l.tile.state}>
+          <li key={l.id} className="flex" data-testid="lesson-tile" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>
             {l.tile.state === 'locked'
               ? <div className={LESSON_CLASS.locked} title={l.tile.pill}>{body}</div>
               : <Link to={hrefFor(l.id)} className={`${LESSON_CLASS[l.tile.state]} stu-focus`}>{body}</Link>}

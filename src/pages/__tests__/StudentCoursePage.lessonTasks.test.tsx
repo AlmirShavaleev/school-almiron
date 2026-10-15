@@ -5,10 +5,8 @@ import { countTopics } from '@/lib/studentCourseCounters'
 import type { ModuleProgress } from '@/hooks/useStudentCourseProgram'
 
 /**
- * Блок «Задания» на странице курса («Не сдано / На проверке / Проверено /
- * Тестов ждёт», «Открыть тему»). В «урочном» курсе (уроки нового формата) —
- * только ДЗ уроков, открытых ученику сейчас (15.10; 13.10 блока не было
- * вовсе). В курсе школьной группы — как было.
+ * Блок «Задания» на странице курса убран (владелец 15.10) — ни в урочном курсе,
+ * ни в курсе школьной группы его нет.
  */
 
 const program = vi.hoisted(() => ({ lessonFormat: null as string | null, open: null as Set<string> | null }))
@@ -61,28 +59,23 @@ function renderPage() {
 beforeEach(() => { program.lessonFormat = null; program.open = null })
 
 describe('блок «Задания» на странице курса', () => {
-  it('курс школьной группы — блок со счётчиками и «Открыть тему» на месте', async () => {
+  // Владелец 15.10: блока «Задания» (Не сдано / На проверке / Проверено /
+  // Тестов ждёт) на странице курса нет ни в каком курсе — ДЗ словами в шапке
+  // и в разделе «Домашние задания».
+  it('курс школьной группы — блока нет', async () => {
     renderPage()
-    expect(await screen.findByRole('heading', { name: /Задания/ })).toBeInTheDocument()
-    expect(screen.getByText('Тестов ждёт')).toBeInTheDocument()
-    expect(screen.getAllByText('Открыть тему').length).toBeGreaterThan(0)
+    expect(await screen.findAllByTestId('module-card')).toHaveLength(1)
+    expect(screen.queryByRole('heading', { name: /^Задания/ })).toBeNull()
+    expect(screen.queryByText('Тестов ждёт')).toBeNull()
+    expect(screen.queryByText('Открыть тему')).toBeNull()
   })
 
-  it('урочный курс — в блоке только ДЗ открытого урока', async () => {
+  it('урочный курс — блока нет, ДЗ к сдаче — в шапке словами', async () => {
     program.lessonFormat = 'training'
     program.open = new Set(['1'])
     renderPage()
-    expect(await screen.findByRole('heading', { name: /Задания/ })).toBeInTheDocument()
-    expect(screen.getAllByText('Открыть тему')).toHaveLength(1)
-  })
-
-  it('урочный курс, открытых уроков с ДЗ нет — блока «Задания» нет', async () => {
-    program.lessonFormat = 'training'
-    program.open = new Set()
-    renderPage()
     expect(await screen.findAllByTestId('module-card')).toHaveLength(1)
-    expect(screen.queryByRole('heading', { name: /Задания/ })).toBeNull()
     expect(screen.queryByText('Тестов ждёт')).toBeNull()
-    expect(screen.queryByText('Открыть тему')).toBeNull()
+    expect(screen.getByTestId('course-hw-chips')).toHaveTextContent('ДЗ сдать')
   })
 })

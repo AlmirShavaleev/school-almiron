@@ -15,6 +15,8 @@ export interface ScreenTopic extends TopicOpenState {
   title: string
   hw_id: string | null
   hw_status: 'not_started' | 'draft' | 'submitted' | 'returned' | 'accepted' | null
+  /** Срок ДЗ — для пометки «просрочено» на плитке урока. */
+  hw_due_at?: string | null
 }
 
 export interface ScreenModule {
@@ -109,6 +111,8 @@ export interface LessonTile {
   state: LessonState
   /** Подпись пилюли: «пройдено», «сдать ДЗ», «на проверке», «без ДЗ», условие замка. */
   pill: string
+  /** Срок сдачи прошёл, ДЗ не сдано. */
+  overdue?: boolean
 }
 
 /**
@@ -117,10 +121,13 @@ export interface LessonTile {
  * подписке», «Откроется 27 октября»). У закрытого урока ДЗ ученику не видно
  * (RLS), поэтому «без ДЗ» — только у открытых.
  */
-export function lessonTile(t: ScreenTopic, today: string = todayLocal()): LessonTile {
+export function lessonTile(t: ScreenTopic, today: string = todayLocal(), now: number = Date.now()): LessonTile {
   if (t.hw_status === 'accepted') return { state: 'done', pill: 'пройдено' }
   if (t.hw_status === 'submitted') return { state: 'review', pill: 'на проверке' }
   if (!isTopicOpen(t, today)) return { state: 'locked', pill: topicClosedLabel(t, today) }
   if (!t.hw_id) return { state: 'nohw', pill: 'без ДЗ' }
-  return toDo(t, today) ? { state: 'hw', pill: t.hw_status === 'returned' ? 'вернули · сдать ДЗ' : 'сдать ДЗ' } : { state: 'open', pill: 'открыто' }
+  if (!toDo(t, today)) return { state: 'open', pill: 'открыто' }
+  const overdue = !!t.hw_due_at && Date.parse(t.hw_due_at) < now
+  const pill = t.hw_status === 'returned' ? 'вернули · сдать ДЗ' : 'сдать ДЗ'
+  return overdue ? { state: 'hw', pill: `${pill} · просрочено`, overdue } : { state: 'hw', pill }
 }

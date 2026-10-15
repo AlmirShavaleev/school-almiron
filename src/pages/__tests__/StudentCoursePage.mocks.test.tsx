@@ -86,7 +86,7 @@ describe('StudentCoursePage — раздел «Пробники»', () => {
   it('внутри раздела курса строки пробника в списке тем нет, даже если у него остался module_id', async () => {
     renderPage()
     fireEvent.click(await screen.findByText('Механика'))
-    expect(await screen.findByTestId('topics-list-view')).not.toHaveTextContent('Пробник №3')
+    expect(await screen.findByTestId('lesson-tiles')).not.toHaveTextContent('Пробник №3')
     expect(screen.queryByTestId('mock-exams-section')).toBeNull()
   })
 
@@ -116,7 +116,7 @@ describe('StudentCoursePage — баннер идущего пробника (§
     mockExams = [openExam({ title: '№1', module_id: null, ends_at: new Date(now + 7 * min).toISOString() })]
     renderPage()
     fireEvent.click(await screen.findByText('Основной'))
-    await screen.findByTestId('topics-list-view')
+    await screen.findByTestId('lesson-tiles')
     const banner = screen.getByTestId('mock-alert')
     expect(banner).toHaveTextContent('Идёт пробник «№1»')
     expect(banner).toHaveTextContent('осталось 7 мин')
@@ -128,7 +128,7 @@ describe('StudentCoursePage — баннер идущего пробника (§
     localStorage.setItem('student-course-view', 'cards')
     renderPage()
     fireEvent.click(await screen.findByText('Механика'))
-    await screen.findByTestId('topics-cards-view')
+    await screen.findByTestId('lesson-tiles')
     expect(screen.getByTestId('mock-alert')).toHaveAttribute('data-kind', 'open')
     localStorage.clear()
   })

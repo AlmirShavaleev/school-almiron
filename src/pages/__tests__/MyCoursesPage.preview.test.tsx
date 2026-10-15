@@ -68,7 +68,8 @@ describe('MyCoursesPage в предпросмотре (§178)', () => {
     expect(screen.queryByText('Физика ЕГЭ Шаблон')).not.toBeInTheDocument()
     expect(screen.queryByText('Без курса')).not.toBeInTheDocument()
     // Карточка та же: ссылка на курс по группе и счёт открытых тем.
-    expect(screen.getByRole('link', { name: /Физика ЕГЭ 11А/ })).toHaveAttribute('href', '/my-course/group-1')
+    // Вход в курс — одной кнопкой карточки (владелец 15.10).
+    expect(screen.getByRole('link', { name: 'Войти в курс' })).toHaveAttribute('href', '/my-course/group-1')
     // Прогресс — личное ученика: в предпросмотре персонала его нет (§178).
     expect(screen.getByTestId('course-card-topics')).toHaveTextContent('прогресс видит сам ученик')
     expect(screen.getByTestId('my-courses-preview-hint')).toBeInTheDocument()

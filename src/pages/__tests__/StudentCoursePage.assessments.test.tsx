@@ -146,7 +146,7 @@ describe('StudentCoursePage — модуль «Контрольные работ
   it('в модуле с уроками работ нет: в «Механике» — только урок', () => {
     renderPage()
     fireEvent.click(screen.getByText('Механика'))
-    const list = screen.getByTestId('topics-list-view')
+    const list = screen.getByTestId('lesson-tiles')
     expect(list).toHaveTextContent('Законы Ньютона')
     expect(list).not.toHaveTextContent('КР: Кинематика')
     expect(screen.getByText(/1 тема/)).toBeInTheDocument()
@@ -193,7 +193,7 @@ describe('StudentCoursePage — без данных раздела', () => {
     expect(screen.getByTestId('mock-exams-section')).toBeInTheDocument()
     expect(worksCard()).toHaveTextContent('Контрольные работы')
     fireEvent.click(screen.getByText('Механика'))
-    expect(screen.getByTestId('topics-list-view')).toHaveTextContent('КР: Кинематика')
+    expect(screen.getByTestId('lesson-tiles')).toHaveTextContent('КР: Кинематика')
   })
 
   it('пока грузится — ни раздела, ни прежнего блока, темы на месте', () => {
