@@ -93,11 +93,12 @@ function fixtures(scenario) {
     // Оплаченная подписка — на «Математику ЕГЭ, профиль» (группа LESSON, её
     // ученик видит в «Моих курсах»); «Песочница» остаётся школьной группой.
     const paid = { id: LESSON.group, course_id: LESSON.course }
-    fx.rpc.my_course_demo = (body) => ({ demo: body.p_course_id === IDS.course })
+    // DEMO=0 — тот же курс «по прохождению», но оплаченный: замки «после урока N» вместо «с подпиской».
+    fx.rpc.my_course_demo = (body) => ({ demo: body.p_course_id === IDS.course && process.env.DEMO !== '0' })
     fx.rpc.my_course_topic_locks = (body) => body.p_course_id === IDS.course
       ? { mode: 'progress', topics: physTopics.slice(0, 12).map((tp, i) => ({
           topic_id: tp.id, title: tp.title, open: i < 2, reason: i < 2 ? 'first2' : null, closed: i === 0,
-          percent: null, after_topic_id: null, after_title: i >= 2 ? physTopics[i - 1].title : null, opens_on: null })) }
+          percent: null, after_topic_id: i >= 2 ? physTopics[i - 1].id : null, after_title: i >= 2 ? physTopics[i - 1].title : null, opens_on: null })) }
       : { mode: 'schedule', topics: [] }
     fx.rpc.student_path_home = {
       onboarding: { needed: false, completed: true, grade: 11, exam: 'ege', subject: 'physics', target_score: 85, months_to_exam: 8, hours_per_week: 6, diagnostic_status: 'done' },

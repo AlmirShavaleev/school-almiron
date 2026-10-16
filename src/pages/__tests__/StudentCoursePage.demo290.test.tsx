@@ -24,7 +24,7 @@ const topic = (id: string, over: Record<string, unknown> = {}) => ({
 const lessons = [
   topic('1', { progress: { open: true, note: null } }),
   topic('2', { progress: { open: true, note: null } }),
-  topic('3', { progress: { open: false, note: 'Откроется после урока «Урок 2»' } }),
+  topic('3', { progress: { open: false, note: 'Откроется после урока «Урок 2»', afterTopicId: '2', afterTitle: 'Урок 2' } }),
 ]
 const counters = (ts: unknown[]) => countTopics(ts.map(() => ({ is_open: true, available_from: null, hasHomework: false, hwStatus: null })), '2026-10-13')
 const modules: ModuleProgress[] = [
@@ -78,16 +78,17 @@ describe('§290-B страница курса', () => {
     expect(await screen.findByTestId('course-access')).toHaveAttribute('data-kind', 'trial')
     expect(screen.getByTestId('course-demo-buy').closest('a')).toHaveAttribute('href', '/courses')
     fireEvent.click(screen.getAllByTestId('module-card')[0])
-    expect(await screen.findByText('Доступно по подписке')).toBeInTheDocument()
-    expect(screen.queryByText(/Откроется после урока/)).toBeNull()
+    // Условие — строкой внизу плитки (письмо 16.10): в демо — «🔒 с подпиской».
+    expect(await screen.findByText('🔒 с подпиской')).toBeInTheDocument()
+    expect(screen.queryByText(/после урока/)).toBeNull()
   })
 
   it('не демо — плашки нет, подпись замка прежняя', async () => {
     demo.value = false
     renderPage()
     fireEvent.click((await screen.findAllByTestId('module-card'))[0])
-    // Подпись замка на плитке — номером урока (владелец 15.10).
-    expect(await screen.findByText(/Откроется после урока 2/)).toBeInTheDocument()
+    // Подпись замка на плитке — номером урока (письмо 16.10): «🔒 после урока 2».
+    expect(await screen.findByText('🔒 после урока 2')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByTestId('course-demo-buy')).toBeNull())
   })
 })

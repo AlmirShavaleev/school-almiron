@@ -21,7 +21,15 @@ export interface TopicOpenState {
    * §288. Курс «по прохождению»: открытость решила база (`my_course_topic_locks`),
    * is_open и дата здесь не применяются. Нет поля — курс по датам, правило прежнее.
    */
-  progress?: { open: boolean; note: string | null } | null
+  progress?: {
+    open: boolean
+    note: string | null
+    /** Урок, после которого откроется этот (`my_course_topic_locks.after_topic_id`). */
+    afterTopicId?: string | null
+    afterTitle?: string | null
+    /** Плановая дата урока YYYY-MM-DD, если задана. */
+    opensOn?: string | null
+  } | null
 }
 
 /** Сегодня как YYYY-MM-DD по ЛОКАЛЬНОЙ дате — без сдвига в UTC. */

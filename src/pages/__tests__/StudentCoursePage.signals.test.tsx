@@ -125,7 +125,10 @@ describe('плитки уроков в разделе', () => {
     const [a] = await openModule()
     expect(a).toHaveAttribute('data-state', 'locked')
     expect(within(a).queryByRole('link')).toBeNull()
-    expect(pill(a)).toHaveTextContent(/Откроется|Закрыт/)
+    // Закрыт вручную без даты — «🔒 закрыт»; по нажатию — подсказка, без перехода (письмо 16.10).
+    expect(pill(a)).toHaveTextContent('🔒 закрыт')
+    fireEvent.click(within(a).getByRole('button'))
+    expect(within(a).getByTestId('lesson-tile-tip')).toHaveTextContent('Урок пока закрыт')
   })
 
   it('переключателя «Список/Карточки» у раздела уроков нет', async () => {

@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Lock } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { plural } from '@/lib/plural'
 import { Sticker } from '@/components/student/skin/Sticker'
@@ -177,11 +178,13 @@ export function SectionTiles({ tiles, onOpen, programNote }: {
 }
 
 /** Шапка раздела: «Раздел N · идёт сейчас», название, «пройдено 15 из 24 · 4 открыто», полоска, ДЗ. */
-export function SectionHero({ tile, chips, courseTitle, onBack }: {
+export function SectionHero({ tile, chips, courseTitle, onBack, openLine }: {
   tile: SectionTile
   chips: HwChips
   courseTitle: string
   onBack: () => void
+  /** «открыто 5 из 29 · следующие 5 — пн 19 окт» (письмо 16.10). */
+  openLine?: string
 }) {
   return (
     <>
@@ -199,7 +202,9 @@ export function SectionHero({ tile, chips, courseTitle, onBack }: {
         <div className="flex flex-col gap-2">
           <p className="text-[16px] font-extrabold" data-testid="section-counter">
             пройдено {tile.done} из {tile.total}
-            {tile.open > tile.done && <span className="stu-muted font-medium"> · {tile.open - tile.done} открыто</span>}
+            {openLine
+              ? <span className="stu-muted font-medium"> · {openLine}</span>
+              : tile.open > tile.done && <span className="stu-muted font-medium"> · {tile.open - tile.done} открыто</span>}
           </p>
           <Track done={tile.done} open={tile.open} total={tile.total} thick />
           <Chips chips={chips} />
@@ -212,18 +217,26 @@ export function SectionHero({ tile, chips, courseTitle, onBack }: {
 const LESSON_CLASS: Record<LessonTile['state'], string> = {
   done: 'stu-lt', review: 'stu-lt', hw: 'stu-lt is-hw', open: 'stu-lt', nohw: 'stu-lt', locked: 'stu-lt is-locked',
 }
-const LESSON_PILL: Record<LessonTile['state'], string> = {
-  done: 'stu-tag t-green', review: 'stu-tag t-blue', hw: 'stu-tag stu-tag-or', open: 'stu-tag t-blue', nohw: 'stu-tag stu-tag-dash', locked: 'stu-tag t-grey',
+const FOOT: Record<LessonTile['state'], string> = {
+  done: 'f-ok', review: 'f-rev', hw: 'f-hw', open: 'f-open', nohw: 'f-open', locked: 'f-lock',
 }
 
 /**
- * Плитки уроков раздела. Открытый урок — ссылка в урок; закрытый — без
- * перехода, условие открытия написано на плитке.
+ * Плитки уроков раздела (вариант Б, письмо ЛК_стиль_открытие_урока_в_плитке.md,
+ * 16.10): внизу плитки — одна строка: статус открытого урока или условие
+ * открытия закрытого. Открытый урок — ссылка в урок; закрытый — приглушён,
+ * по нажатию подсказка с тем же условием, без перехода.
  */
 export function LessonTiles({ lessons, hrefFor }: {
   lessons: Array<{ id: string; title: string; tile: LessonTile }>
   hrefFor: (id: string) => string
 }) {
+  const [tip, setTip] = useState<string | null>(null)
+  useEffect(() => {
+    if (!tip) return
+    const t = window.setTimeout(() => setTip(null), 2500)
+    return () => window.clearTimeout(t)
+  }, [tip])
   return (
     <ul className="stu-lgrid" data-testid="lesson-tiles">
       {lessons.map((l, i) => {
@@ -231,16 +244,22 @@ export function LessonTiles({ lessons, hrefFor }: {
           <>
             <span className="stu-muted text-[12px] font-bold">Урок {i + 1}</span>
             <b className="text-[14.5px] leading-snug break-words">{l.title}</b>
-            {l.tile.state === 'locked'
-              ? <span className="stu-lt-lock" data-testid="lesson-tile-pill"><Lock size={13} aria-hidden />{l.tile.pill}</span>
-              : <span className={`${l.tile.overdue ? 'stu-tag t-red' : LESSON_PILL[l.tile.state]} self-start whitespace-normal`} data-testid="lesson-tile-pill">{l.tile.pill}</span>}
+            <span className={`stu-lt-foot ${l.tile.overdue ? 'f-bad' : FOOT[l.tile.state]}`} data-testid="lesson-tile-pill">{l.tile.pill}</span>
           </>
         )
         return (
-          <li key={l.id} className="flex" data-testid="lesson-tile" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>
-            {l.tile.state === 'locked'
-              ? <div className={LESSON_CLASS.locked} title={l.tile.pill}>{body}</div>
-              : <Link to={hrefFor(l.id)} className={`${LESSON_CLASS[l.tile.state]} stu-focus`}>{body}</Link>}
+          <li key={l.id} className="relative flex" data-testid="lesson-tile" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>
+            {l.tile.state === 'locked' ? (
+              <button type="button" className={`${LESSON_CLASS.locked} stu-focus text-left`} onClick={() => setTip(tip === l.id ? null : l.id)}
+                aria-describedby={tip === l.id ? `tip-${l.id}` : undefined}>
+                {body}
+              </button>
+            ) : (
+              <Link to={hrefFor(l.id)} className={`${LESSON_CLASS[l.tile.state]} stu-focus`}>{body}</Link>
+            )}
+            {tip === l.id && l.tile.tip && (
+              <span role="tooltip" id={`tip-${l.id}`} className="stu-lt-tip" data-testid="lesson-tile-tip">{l.tile.tip}</span>
+            )}
           </li>
         )
       })}

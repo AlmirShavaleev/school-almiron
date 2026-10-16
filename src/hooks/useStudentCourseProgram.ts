@@ -451,7 +451,11 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               available_from: t.available_from,
               is_open:        t.is_open ?? null,
               progress:       lockById?.has(t.id)
-                ? { open: lockById.get(t.id)!.open, note: progressNote(lockById.get(t.id)!) }
+                ? {
+                    open: lockById.get(t.id)!.open, note: progressNote(lockById.get(t.id)!),
+                    afterTopicId: lockById.get(t.id)!.after_topic_id, afterTitle: lockById.get(t.id)!.after_title,
+                    opensOn: lockById.get(t.id)!.opens_on,
+                  }
                 : null,
               kind:           t.kind ?? null,
               lesson_format:  t.lesson_format ?? null,

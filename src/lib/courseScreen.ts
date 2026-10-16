@@ -6,7 +6,7 @@
  * `student_home_courses()` и открытые ДЗ по разделам (`loadOpenByModule`) —
  * те же источники, что у «Моих курсов»: «всего» везде одно — уроки с ДЗ.
  */
-import { isTopicOpen, topicClosedLabel, todayLocal, type TopicOpenState } from '@/lib/topicAvailability'
+import { isTopicOpen, todayLocal, willOpenByDate, type TopicOpenState } from '@/lib/topicAvailability'
 import type { HomeModule } from '@/lib/studentHomeCourses'
 import { plural } from '@/lib/plural'
 
@@ -93,59 +93,130 @@ export function sectionTiles(
       complete ? 'пройден'
       : state === 'current' ? (r.hw > 0 ? `идёт сейчас · ${r.hw} ДЗ сдать` : 'идёт сейчас')
       : r.open > r.done ? `открыто ${r.open - r.done} ${plural(r.open - r.done, 'урок', 'урока', 'уроков')}`
-      : mode === 'schedule' && firstDate ? `откроется ${shortDate(firstDate)}`
+      : mode === 'schedule' && firstDate ? `откроется ${openDate(firstDate, today).short}`
       : prev ? `после «${prev}»` : 'впереди'
     return { id: r.m.id, n: r.n, title: r.m.title, state, pill, subtitle, done: r.done, open: r.open, total: r.total }
   })
 }
 
-const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-function shortDate(d: string): string {
-  const [, m, dd] = d.split('-').map(Number)
-  return `${dd} ${MONTHS[m - 1]}`
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'нояб', 'дек']
+const MONTHS_LONG = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+const WD_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+const WD_ACC = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу']
+
+function parts(d: string) {
+  const [y, m, dd] = d.slice(0, 10).split('-').map(Number)
+  return { m, dd, wd: new Date(Date.UTC(y, m - 1, dd)).getUTCDay() }
+}
+const dayDiff = (a: string, b: string) => Math.round((Date.parse(b.slice(0, 10)) - Date.parse(a.slice(0, 10))) / 86_400_000)
+
+
+/**
+ * Дата открытия урока (письмо ЛК_стиль_открытие_урока_в_плитке.md, 16.10):
+ * коротко «пн 19 окт» / «завтра», полностью — «в понедельник, 19 октября».
+ */
+export function openDate(day: string, today: string = todayLocal()): { short: string; long: string } {
+  const { m, dd, wd } = parts(day)
+  if (dayDiff(today, day) === 1) return { short: 'завтра', long: `завтра, ${dd} ${MONTHS_LONG[m - 1]}` }
+  return { short: `${WD_SHORT[wd]} ${dd} ${MONTHS[m - 1]}`, long: `в ${WD_ACC[wd]}, ${dd} ${MONTHS_LONG[m - 1]}` }
+}
+
+export interface LockLine {
+  /** Строка внизу плитки: «🔒 откроется пн 19 окт», «🔒 после урока 7», «🔒 закрыт». */
+  short: string
+  /** Подсказка по нажатию на закрытую плитку — то же условие словами. */
+  tip: string
+}
+
+/**
+ * Условие открытия закрытого урока — одна логика и один текст для плитки,
+ * подсказки и модалки «Урок пройден».
+ *
+ *  · демо подписки — «🔒 с подпиской»;
+ *  · «по прохождению» — «🔒 после урока 7» (номер в разделе); урок из другого
+ *    раздела — «🔒 после «Название»»; нет предыдущего, но есть дата — дата;
+ *  · «по датам» — «🔒 откроется пн 19 окт» / «🔒 откроется завтра» (только
+ *    если дата сама откроет урок);
+ *  · закрыт вручную без даты — «🔒 закрыт».
+ */
+export function lockLine(
+  t: TopicOpenState,
+  today: string = todayLocal(),
+  lessonNo?: ReadonlyMap<string, number>,
+  demoNote?: string,
+): LockLine {
+  const p = t.progress
+  if (p && demoNote && p.note === demoNote) return { short: '🔒 с подпиской', tip: 'Урок откроется с подпиской' }
+  if (p) {
+    if (p.afterTopicId) {
+      const n = lessonNo?.get(p.afterTopicId)
+      if (n) return { short: `🔒 после урока ${n}`, tip: `Откроется, когда пройдёшь урок ${n}${p.afterTitle ? ` «${p.afterTitle}»` : ''}` }
+      if (p.afterTitle) return { short: `🔒 после «${p.afterTitle}»`, tip: `Откроется, когда пройдёшь урок «${p.afterTitle}»` }
+    }
+    const d = p.opensOn && p.opensOn.slice(0, 10) > today ? openDate(p.opensOn, today) : null
+    if (d) return { short: `🔒 откроется ${d.short}`, tip: `Урок откроется ${d.long}` }
+    return { short: '🔒 закрыт', tip: 'Урок пока закрыт' }
+  }
+  const day = willOpenByDate(t, today)
+  if (day) {
+    const d = openDate(day, today)
+    return { short: `🔒 откроется ${d.short}`, tip: `Урок откроется ${d.long}` }
+  }
+  return { short: '🔒 закрыт', tip: 'Урок пока закрыт' }
 }
 
 export type LessonState = 'done' | 'review' | 'hw' | 'open' | 'nohw' | 'locked'
 
 export interface LessonTile {
   state: LessonState
-  /** Подпись пилюли: «пройдено», «сдать ДЗ», «на проверке», «без ДЗ», условие замка. */
+  /** Строка внизу плитки: «✓ пройдено», «сдать ДЗ», «ДЗ на проверке», «открыт · без ДЗ», условие замка. */
   pill: string
+  /** У закрытого — подсказка по нажатию. */
+  tip?: string
   /** Срок сдачи прошёл, ДЗ не сдано. */
   overdue?: boolean
 }
 
 /**
- * Плитка урока: пройдено (ДЗ принято) / на проверке / сдать ДЗ / открыто /
- * без ДЗ / замок с условием («Откроется после урока «…»», «Доступно по
- * подписке», «Откроется 27 октября»). У закрытого урока ДЗ ученику не видно
+ * Плитка урока (вариант Б, письмо 16.10): строка внизу — статус открытого
+ * урока или условие открытия закрытого. У закрытого урока ДЗ ученику не видно
  * (RLS), поэтому «без ДЗ» — только у открытых.
  */
 export function lessonTile(
   t: ScreenTopic,
   today: string = todayLocal(),
   now: number = Date.now(),
-  /** Номер урока по названию в разделе: «после урока «…»» → «после урока 2». */
+  /** Номер урока в разделе по id — для «после урока 7». */
   lessonNo?: ReadonlyMap<string, number>,
+  demoNote?: string,
 ): LessonTile {
-  if (t.hw_status === 'accepted') return { state: 'done', pill: 'пройдено' }
-  if (t.hw_status === 'submitted') return { state: 'review', pill: 'на проверке' }
-  if (!isTopicOpen(t, today)) return { state: 'locked', pill: shortLockLabel(topicClosedLabel(t, today), lessonNo) }
-  if (!t.hw_id) return { state: 'nohw', pill: 'без ДЗ' }
-  if (!toDo(t, today)) return { state: 'open', pill: 'открыто' }
+  if (t.hw_status === 'accepted') return { state: 'done', pill: '✓ пройдено' }
+  if (t.hw_status === 'submitted') return { state: 'review', pill: 'ДЗ на проверке' }
+  if (!isTopicOpen(t, today)) {
+    const l = lockLine(t, today, lessonNo, demoNote)
+    return { state: 'locked', pill: l.short, tip: l.tip }
+  }
+  if (!t.hw_id) return { state: 'nohw', pill: 'открыт · без ДЗ' }
+  if (!toDo(t, today)) return { state: 'open', pill: 'открыт' }
   const overdue = !!t.hw_due_at && Date.parse(t.hw_due_at) < now
   const pill = t.hw_status === 'returned' ? 'вернули · сдать ДЗ' : 'сдать ДЗ'
   return overdue ? { state: 'hw', pill: `${pill} · просрочено`, overdue } : { state: 'hw', pill }
 }
 
 /**
- * Подпись замка на плитке — коротко (владелец 15.10): «Откроется после урока 2»
- * вместо полного названия предыдущего урока в кавычках.
+ * Шапка раздела (письмо 16.10): «открыто 5 из 29 · следующие 5 — пн 19 окт».
+ * Вторая часть — только если у закрытых уроков раздела есть будущие даты.
  */
-export function shortLockLabel(label: string, lessonNo?: ReadonlyMap<string, number>): string {
-  if (!lessonNo) return label
-  return label.replace(/после урока «(.+?)»/, (m, title: string) => {
-    const n = lessonNo.get(title)
-    return n ? `после урока ${n}` : m
-  })
+export function sectionOpenLine(topics: readonly ScreenTopic[], today: string = todayLocal()): string {
+  const open = topics.filter(t => isTopicOpen(t, today)).length
+  const dates = topics
+    .filter(t => !isTopicOpen(t, today))
+    .map(t => (t.progress ? (t.progress.opensOn && t.progress.opensOn.slice(0, 10) > today ? t.progress.opensOn.slice(0, 10) : null) : willOpenByDate(t, today)))
+    .filter((d): d is string => !!d)
+    .sort()
+  const head = `открыто ${open} из ${topics.length}`
+  if (dates.length === 0) return head
+  const next = dates[0]
+  const k = dates.filter(d => d === next).length
+  return `${head} · следующие ${k} — ${openDate(next, today).short}`
 }

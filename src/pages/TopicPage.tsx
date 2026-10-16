@@ -43,10 +43,11 @@ import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
 import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
 import { TopicFeedbackCard } from '@/components/courseProgram/TopicFeedbackCard'
+import { TopicLessonEvents } from '@/components/student/course/LessonEvents'
 import { cn } from '@/utils/cn'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
-import { openedMessage, progressNote } from '@/lib/progressUnlock'
+import { progressNote } from '@/lib/progressUnlock'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -278,11 +279,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   useEffect(() => {
     if (autocheckFinished) refreshLocks()
   }, [autocheckFinished, refreshLocks])
-  // «Открыт урок «…»» — посчитан хуком по приходу замков; «Понятно» скрывает его
-  const [dismissedNotice, setDismissedNotice] = useState<object | null>(null)
-  const openedNotice = progressLocks.data && progressLocks.data !== dismissedNotice
-    ? openedMessage(progressLocks.opened.map(l => l.title ?? 'новый урок'))
-    : null
+  // «Открыт урок «…»» — теперь модалкой «Урок пройден / открыт следующий» (письмо 16.10).
   const autocheckTotal = autocheck.state?.total ?? 0
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -686,12 +683,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
 
-      {openedNotice && (
-        <div className="flex items-start justify-between gap-3 rounded-card bg-verdict-ok-tint px-4 py-3 text-[15px] font-semibold text-verdict-ok-ink"
-          role="status" data-testid="progress-opened">
-          <span>🔓 {openedNotice}</span>
-          <button type="button" className="text-[13px] font-normal underline" onClick={() => setDismissedNotice(progressLocks.data)}>Понятно</button>
-        </div>
+      {/* «Урок пройден / открыт следующий» (письмо 16.10) — вместо полоски «🔓 Открыт урок»:
+          ДЗ сдано — программа перечитывается, модалка сразу. Только ученику. */}
+      {!preview && !embedded && groupId && profile?.role === 'student' && (
+        <TopicLessonEvents who={profile.id} courseId={topic.course_id} groupId={groupId} refreshKey={homeworkState.state} />
       )}
 
       {/* §282. Прямая ссылка на тему закрытого подпиской курса: объяснить, а не показать пустоту. */}

@@ -10,7 +10,6 @@ import { useStudentCourseProgram, type TopicProgress, type ModuleProgress } from
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 
-import { StudentWeekPlan } from '@/components/student/StudentWeekPlan'
 import { usePreviewMode } from '@/store/staffModeStore'
 
 import { cn } from '@/utils/cn'
@@ -31,7 +30,7 @@ import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { loadCourseExtras, loadOpenByModule, type CourseExtras } from '@/lib/courseMeta'
 import { accessLine, courseLadder, publicTitle } from '@/lib/myCourses'
-import { hwChips, lessonTile, sectionTiles } from '@/lib/courseScreen'
+import { hwChips, lessonTile, sectionOpenLine, sectionTiles } from '@/lib/courseScreen'
 import { continueHref } from '@/lib/studentHomeCourses'
 import { useMyCourseAssessments } from '@/hooks/useCourseAssessments'
 import {
@@ -42,8 +41,8 @@ import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLo
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
 import { Button } from '@/components/ui/Button'
 import { useCourseDemo } from '@/hooks/useStudentPath'
-import { withDemoLocks } from '@/lib/studentPath'
-import { openedMessage, type CourseTopicLocks } from '@/lib/progressUnlock'
+import { DEMO_LOCK_NOTE, withDemoLocks } from '@/lib/studentPath'
+import { LessonEvents } from '@/components/student/course/LessonEvents'
 import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
 import { mockAlert } from '@/lib/mockExamLesson'
@@ -424,11 +423,7 @@ export function StudentCoursePage() {
   // (useStudentCourseProgram). Здесь — только «Открыт урок «…»» с прошлого визита.
   const profileId = useAuthStore(s => s.profile?.id ?? null)
   const locks = useCourseTopicLocks(course?.id, preview ? null : profileId)
-  // «Открыт урок «…»» — посчитан хуком по приходу замков; «Понятно» скрывает его
-  const [dismissedNotice, setDismissedNotice] = useState<CourseTopicLocks | null>(null)
-  const openedNotice = locks.data && locks.data !== dismissedNotice
-    ? openedMessage(locks.opened.map(l => l.title ?? 'новый урок'))
-    : null
+  // «Открыт урок «…»» — теперь модалкой «Урок пройден / открыт следующий» (письмо 16.10).
   // 15.10, владелец: в «урочном» курсе (раздел «Мой курс») блок «Задания» —
   // только ДЗ уроков, открытых ученику сейчас (src/lib/lessonCourses.ts).
   // §241. Раздел «Контрольные, самостоятельные и пробники»: у ученика своя RPC;
@@ -605,14 +600,6 @@ export function StudentCoursePage() {
         </div>
       )}
 
-      {/* §288. Урок открылся прохождением (или датой) с прошлого визита */}
-      {openedNotice && (
-        <div className="flex items-start justify-between gap-3 rounded-card border border-verdict-ok-ink/20 bg-verdict-ok-tint px-4 py-3 text-[15px] font-semibold text-verdict-ok-ink"
-          role="status" data-testid="progress-opened">
-          <span>🔓 {openedNotice}</span>
-          <button type="button" className="text-[13px] font-normal underline" onClick={() => setDismissedNotice(locks.data)}>Понятно</button>
-        </div>
-      )}
 
       {/* §224.2. Идущий пробник — сверху в ЛЮБОМ состоянии страницы, и при
           открытом разделе тоже. Раньше раздел «Пробники» стоял только на
@@ -643,7 +630,8 @@ export function StudentCoursePage() {
         </>
       )}
       {activeMod && !activeWorksOnly && activeTile && (
-        <SectionHero tile={activeTile} chips={hwChips([activeMod])} courseTitle={courseTitle} onBack={() => setSelectedModule(null)} />
+        <SectionHero tile={activeTile} chips={hwChips([activeMod])} courseTitle={courseTitle} onBack={() => setSelectedModule(null)}
+          openLine={sectionOpenLine(activeMod.topics)} />
       )}
       {activeWorksOnly && (<>
       {/* ── Back navigation ── */}
@@ -727,9 +715,12 @@ export function StudentCoursePage() {
         <MockExamsSection exams={mockExams} onOpen={openMock} now={mockNow} primaryInBanner={mockBannerOpen} />
       )}
 
-      {/* «Эта неделя» — RPC `student_week_plan()` считает от `auth_student_id()`;
-          у персонала её нет, в предпросмотре блок не зовём вовсе (§178). */}
-      {!activeMod && !preview && <StudentWeekPlan courseId={course.id} />}
+      {/* «Урок пройден / открыт следующий» (письмо 16.10) — вместо полоски «🔓 Открыт урок». */}
+      {!preview && <LessonEvents who={profileId} courseId={course.id} groupId={groupId} modules={modules} />}
+
+      {/* Блок «Неделя N · срок до воскресенья» убран (письмо
+          ЛК_стиль_открытие_урока_в_плитке.md, 16.10): дата открытия — у каждой
+          закрытой плитки урока, сводка — в шапке раздела. */}
 
       {/* ══ STAFF CARDS ══ */}
       {!activeMod && <PeopleRow teacher={course.teacher} curator={course.curator} />}
@@ -779,8 +770,8 @@ export function StudentCoursePage() {
             // Уроки раздела — простыми плитками (макет v2, решение владельца 15.10).
             <LessonTiles
               lessons={(() => {
-                const no = new Map(activeMod.topics.map((t, i) => [t.title, i + 1]))
-                return activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t, undefined, undefined, no) }))
+                const no = new Map(activeMod.topics.map((t, i) => [t.id, i + 1]))
+                return activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t, undefined, undefined, no, demo ? DEMO_LOCK_NOTE : undefined) }))
               })()}
               hrefFor={id => `/my-course/${groupId}/topic/${id}`}
             />
