@@ -525,7 +525,7 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-w-bar { display: block; height: 7px; border-radius: 99px; background: var(--card); overflow: hidden }
 .stu .stu-w-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--blue), var(--orange)) }
 .stu .stu-flip { display: flex; gap: 10px }
-.stu .stu-flip span { position: relative; flex: 1; padding: 12px 0 8px; border-radius: 14px; text-align: center; font-size: 50px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
+.stu .stu-flip span { position: relative; flex: 1; padding: 18px 0 14px; border-radius: 16px; text-align: center; font-size: 76px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
   font-variant-numeric: tabular-nums; background: var(--navy); color: #fff; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18) }
 .stu .stu-flip span::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(255, 255, 255, .14) }
 .stu .stu-quote { margin: 2px 0 0; padding-left: 10px; border-left: 3px solid var(--orange); font-size: 14px; line-height: 1.45 }
@@ -538,6 +538,13 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-mcal td.is-out { background: transparent }
 .stu .stu-mcal td.is-future { background: transparent; color: var(--ink2); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line) }
 .stu .stu-mcal td.is-today { box-shadow: inset 0 0 0 2px var(--ink) }
+.stu .stu-mcal td { padding: 0 }
+.stu .stu-mcal-d { display: block; width: 100%; height: 30px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer }
+.stu .stu-mcal-d:hover { box-shadow: inset 0 0 0 2px var(--blue) }
+.stu .stu-mcal td.is-picked { outline: 2.5px solid var(--orange); outline-offset: 1px }
+.stu .stu-mcal-info { margin: 0; min-height: 34px; padding: 7px 10px; border-radius: 10px; background: var(--bg2); font-size: 13.5px; font-weight: 700; color: var(--ink) }
+.stu .stu-clock-day { display: flex; justify-content: space-between; gap: 8px; margin: 0; font-size: 17px; font-weight: 800; color: var(--ink) }
+.stu .stu-clock-day > span:first-child::first-letter { text-transform: uppercase }
 
 .stu .stu-ntwo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
 @media (max-width: 860px) { .stu .stu-ntwo { grid-template-columns: minmax(0, 1fr) } }
@@ -564,7 +571,7 @@ a.stu-lt:hover { border-color: var(--blue) }
   .stu .stu-cover-st { scale: .65; transform-origin: top right }
   .stu .stu-nava { width: 76px; height: 76px; margin-top: -38px; border-radius: 22px; font-size: 26px }
   .stu .stu-w-big { font-size: 52px }
-  .stu .stu-flip span { font-size: 42px }
+  .stu .stu-flip span { font-size: 64px }
   .stu .stu-ncard { grid-template-rows: auto; grid-template-columns: 76px minmax(0, 1fr) }
   .stu .stu-ncard-ph { height: auto }
   /* Строка Telegram: текст на всю ширину, кнопки — следующей строкой. */

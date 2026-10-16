@@ -208,6 +208,8 @@ const scenario = ['trial', 'empty', 'day0', 'month', 'subs'].includes(process.en
 const subTag = scenario === 'subs' ? `-${['on', 'off', 'ended'].includes(process.env.SUB) ? process.env.SUB : 'on'}` : ''
 const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
+  // Виджеты главной: нажат день в календаре — строка «что было в этот день» (правка 17.10).
+  { name: `главная-виджеты-${scenario}`, url: '/student', widgets: true },
   // «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md).
   { name: `дз-${scenario}`, url: '/my-homework' },
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
@@ -280,8 +282,17 @@ for (const width of [1280, 390]) {
         const tile = (await cur.count()) > 0 ? cur.first() : page.locator('[data-testid="module-card"]').first()
         await tile.click(); await page.waitForTimeout(1200); await page.evaluate(() => window.scrollTo(0, 0))
       }
+      if (s.widgets) {
+        const day = page.locator('[data-testid="home-activity"] td.lv-3 button, [data-testid="home-activity"] td.lv-2 button').first()
+        if (await day.count()) { await day.click(); await page.waitForTimeout(300) }
+      }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       const base = path.join(outDir, `лк-${s.name}-${width}-${theme}`)
+      if (s.widgets) {
+        await page.locator('[data-testid="home-widgets"]').screenshot({ path: `${base}.png` })
+        console.log(`${base}.png`)
+        continue
+      }
       await page.screenshot({ path: `${base}.png`, fullPage: !s.menu && !s.bell })
       console.log(`${base}.png${overflow > 0 ? `  ⚠ горизонтальный скролл ${overflow}px` : ''}`)
     }

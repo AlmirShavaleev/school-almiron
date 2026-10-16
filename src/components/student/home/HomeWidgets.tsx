@@ -60,9 +60,9 @@ export function ClockWidget({ today }: { today: string }) {
       <div className="stu-flip" aria-label={`${two(now.getHours())}:${two(now.getMinutes())}`} role="img">
         <span>{two(now.getHours())}</span><span>{two(now.getMinutes())}</span>
       </div>
-      <p className="flex justify-between gap-2 text-[13px]">
-        <span className="stu-muted">{WEEKDAYS[now.getDay()]}</span>
-        <span className="stu-muted">{now.getDate()} {MONTHS_GEN[now.getMonth()]}</span>
+      <p className="stu-clock-day" data-testid="home-clock-day">
+        <span>{WEEKDAYS[now.getDay()]}</span>
+        <span>{now.getDate()} {MONTHS_GEN[now.getMonth()]}</span>
       </p>
       <p className="stu-quote" data-testid="home-phrase">{phraseOfDay(today)}</p>
     </section>
@@ -85,6 +85,12 @@ export function MonthWidget({ grid, today }: { grid: ActivityGrid; today: string
   // «Сегодня» — из ответа базы (как в прежней ленте), часы устройства — запасной вариант.
   const base = useMemo(() => grid.weeks.flat().find(d => d.today)?.day ?? today, [grid, today])
   const m = monthGrid(base, offset, days)
+  // День, про который строка под сеткой: наведённый, иначе выбранный нажатием, иначе сегодня.
+  const [picked, setPicked] = useState<string | null>(null)
+  const [hover, setHover] = useState<string | null>(null)
+  const shown = hover ?? picked ?? base
+  const shownInfo = days.get(shown) ?? (shown > base ? { day: shown, level: 0, solved: 0, future: true, today: false } as ActivityDay : null)
+  const shownLabel = shownInfo ? dayLabel(shownInfo) : null
   return (
     <section className="stu-card stu-w stu-w-cal" data-testid="home-activity">
       <div className="stu-w-t">
@@ -106,12 +112,22 @@ export function MonthWidget({ grid, today }: { grid: ActivityGrid; today: string
                 const info = c.info
                 const cls = [info?.future ? 'is-future' : `lv-${info?.level ?? 0}`, c.day === base ? 'is-today' : ''].filter(Boolean).join(' ')
                 const label = info ? dayLabel(info) : `${c.n}: нет данных`
-                return <td key={j} className={cls} title={label} aria-label={label} data-day={c.day}>{c.n}</td>
+                return (
+                  <td key={j} className={[cls, picked === c.day ? 'is-picked' : ''].filter(Boolean).join(' ')} data-day={c.day}>
+                    <button type="button" className="stu-mcal-d stu-focus" aria-label={label} aria-pressed={picked === c.day}
+                      onClick={() => setPicked(p => (p === c.day ? null : c.day))}
+                      onMouseEnter={() => setHover(c.day)} onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover(c.day)} onBlur={() => setHover(null)}>
+                      {c.n}
+                    </button>
+                  </td>
+                )
               })}
             </tr>
           ))}
         </tbody>
       </table>
+      <p className="stu-mcal-info" aria-live="polite" data-testid="home-day-info">{shownLabel ?? ' '}</p>
       <ul className="stu-heat-legend" aria-label="Обозначения">
         {LEGEND.map(([lv, label]) => <li key={lv}><i className={`lv-${lv}`} aria-hidden="true" />{label}</li>)}
       </ul>
