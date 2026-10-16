@@ -154,7 +154,12 @@ function SubscriptionCard({ s, title }: { s: MySubscription; title: string }) {
   )
 }
 
-export function MySubscriptionPage() {
+/**
+ * embedded — блок «Мои подписки» на экране «Подписка и курсы» (меню ученика,
+ * письмо 16.10): без своего заголовка страницы; подписок нет — блока нет
+ * (ниже на том же экране — курсы).
+ */
+export function MySubscriptionPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [params] = useSearchParams()
   const { data, isLoading, error } = useMySubscriptions()
   // Публичное название курса (витрина), как в «Моих курсах»: без «— подписка (тест)».
@@ -170,11 +175,15 @@ export function MySubscriptionPage() {
   }, [courseKey])
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-5 pb-10 pt-2">
-      <div>
-        <span className="stu-kicker">Аккаунт</span>
-        <h1 className="stu-h2">Моя подписка</h1>
-      </div>
+    <div className={embedded ? 'flex max-w-[760px] flex-col gap-5' : 'flex max-w-[760px] flex-col gap-5 pb-10 pt-2'} data-testid="my-subscriptions">
+      {embedded ? (
+        (data ?? []).length > 0 && <h2 className="stu-h3">Мои подписки</h2>
+      ) : (
+        <div>
+          <span className="stu-kicker">Аккаунт</span>
+          <h1 className="stu-h2">Моя подписка</h1>
+        </div>
+      )}
       {params.get('started') === 'trial' && (
         <p className="stu-note-ok">Пробный период начался — курс открыт.</p>
       )}
@@ -183,10 +192,10 @@ export function MySubscriptionPage() {
       )}
       {isLoading && <p className="stu-muted">Загружаем…</p>}
       {error && <p className="text-[var(--redInk)]">Не удалось загрузить подписку. Обновите страницу.</p>}
-      {!isLoading && !error && (data ?? []).length === 0 && (
+      {!embedded && !isLoading && !error && (data ?? []).length === 0 && (
         <div className="stu-card flex flex-col items-start gap-3 p-6">
           <p className="text-[17px] font-bold">Подписки пока нет.</p>
-          <Link to="/courses" className="stu-btn stu-btn-p">Выбрать курс</Link>
+          <Link to="/subscription" className="stu-btn stu-btn-p">Выбрать курс</Link>
         </div>
       )}
       {(data ?? []).map((s) => (

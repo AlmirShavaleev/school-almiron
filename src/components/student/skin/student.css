@@ -448,3 +448,41 @@ a.stu-lt:hover { border-color: var(--blue) }
 @media (max-width: 640px) { .stu .stu-lt-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap } .stu .stu-lt-compact { display: inline } }
 .stu .stu-goals-empty { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--blueS); color: var(--blueInk); font-size: 14px; text-decoration: none }
 .stu .stu-goals-empty:hover { filter: brightness(.98) }
+
+/* Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10) */
+.stu .stu-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 96px; z-index: 40; display: none; flex-direction: column; align-items: stretch; gap: 4px; padding: 14px 8px; background: var(--card); border-right: 1px solid var(--line) }
+@media (min-width: 768px) { .stu .stu-rail { display: flex } }
+.stu .stu-rail-logo { display: grid; place-items: center; margin: 2px 0 10px }
+.stu .stu-rail-item { position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 14px; color: var(--ink2); font-size: 12px; font-weight: 700; background: none; border: 0; cursor: pointer; text-decoration: none }
+.stu .stu-rail-item:hover { background: var(--bg2); color: var(--ink) }
+.stu .stu-rail-item[data-active] { background: var(--blueS); color: var(--blueInk) }
+.stu .stu-nav-dot { position: absolute; top: -6px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
+.stu .stu-more-pop { position: absolute; left: calc(100% + 10px); bottom: 0; width: 250px; z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
+.stu .stu-head-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 24px)); z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
+.stu .stu-more-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.stu .stu-more-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; color: var(--ink); font-weight: 700; font-size: 14.5px; background: none; border: 0; cursor: pointer }
+.stu .stu-more-item:hover { background: var(--bg2) }
+.stu .stu-more-item > svg { color: var(--ink2); flex: none }
+.stu .stu-more-tag { font-size: 11.5px; font-weight: 700; color: var(--ink2); background: var(--bg2); border-radius: 999px; padding: 2px 8px; white-space: nowrap }
+.stu .stu-ava-btn { border-radius: 999px; padding: 0; background: none; border: 0; cursor: pointer }
+.stu .stu-bell-dot { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
+.stu .stu-bell-pop { width: min(360px, calc(100vw - 24px)) }
+.stu .stu-bell-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow: auto }
+.stu .stu-bell-item { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-radius: 10px; color: var(--ink); background: none; border: 0; cursor: pointer }
+.stu .stu-bell-item:hover { background: var(--bg2) }
+.stu .stu-bell-item.is-new { background: var(--blueS) }
+.stu .stu-bell-all { display: block; margin-top: 6px; padding: 10px; border-top: 1px solid var(--line); text-align: center; color: var(--blueInk); font-weight: 700; font-size: 14px }
+/* Телефон: нижняя панель на 5 мест и лист «Ещё» */
+.stu .stu-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 4px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--card); border-top: 1px solid var(--line) }
+@media (min-width: 768px) { .stu .stu-tabbar { display: none } }
+.stu .stu-tab { position: relative; display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--ink2); font-size: 11.5px; font-weight: 700; background: none; border: 0; cursor: pointer; text-decoration: none; min-height: 48px }
+.stu .stu-tab[data-active] { color: var(--blueInk) }
+.stu .stu-sheet-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(15, 22, 40, .45); display: flex; align-items: flex-end }
+.stu .stu-sheet { width: 100%; background: var(--card); color: var(--ink); border-radius: 22px 22px 0 0; padding: 14px 10px calc(16px + env(safe-area-inset-bottom, 0px)) }
+.stu .stu-sheet .stu-more-item { padding: 13px 12px; font-size: 15.5px }
+@media (max-width: 767px) {
+  .stu .stu-main { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) }
+  /* Плавающие кнопки угла — над нижней панелью */
+  .stu .fab-slot-0 { bottom: calc(var(--fab-slot-0) + 66px + env(safe-area-inset-bottom, 0px)) }
+  .stu .fab-slot-1 { bottom: calc(var(--fab-slot-1) + 66px + env(safe-area-inset-bottom, 0px)) }
+}

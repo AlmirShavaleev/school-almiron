@@ -145,7 +145,11 @@ function CourseCard({ card, period, recommended, groupId }: {
   )
 }
 
-export function CoursesPage() {
+/**
+ * embedded — «Другие курсы» на экране «Подписка и курсы» (меню ученика, письмо
+ * 16.10): курсы с подпиской там уже выше, в «Моих подписках» — здесь их нет.
+ */
+export function CoursesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [params] = useSearchParams()
   // после анкеты или результата диагностики (§289) — тот же порядок и «Для вас»
   const fromStart = params.get('from') === 'start' || params.get('from') === 'diagnostic'
@@ -158,8 +162,9 @@ export function CoursesPage() {
     const list = [...(data ?? [])]
     // курс предмета из анкеты — первым (сортировка устойчивая)
     if (subject) list.sort((a, b) => Number(b.subject === subject && b.status === 'live') - Number(a.subject === subject && a.status === 'live'))
-    return list
-  }, [data, subject])
+    return embedded ? list.filter((c) => !isSubscribed(c)) : list
+  }, [data, subject, embedded])
+  const hasSubscribed = (data ?? []).some(isSubscribed)
   // переключатель нужен, только если есть что выбирать: курс без подписки с годовым тарифом
   const hasYear = cards.some((c) => c.status === 'live' && c.year_price != null && !isSubscribed(c))
   const maxDiscount = Math.max(0, ...cards.map((c) => c.year_discount_pct ?? 0))
@@ -167,11 +172,15 @@ export function CoursesPage() {
     (mine.data ?? []).find((s) => s.course_id === courseId)?.group_id ?? null
 
   return (
-    <div className="mx-auto flex max-w-[1140px] flex-col gap-6 pb-10 pt-2" data-testid="courses-page">
+    <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex max-w-[1140px] flex-col gap-6 pb-10 pt-2'} data-testid="courses-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="stu-kicker">Подписка</span>
-          <h1 className="stu-h2">Курсы</h1>
+          {embedded ? (
+            <h2 className="stu-h3">{hasSubscribed ? 'Другие курсы' : 'Курсы'}</h2>
+          ) : (<>
+            <span className="stu-kicker">Подписка</span>
+            <h1 className="stu-h2">Курсы</h1>
+          </>)}
           <p className="stu-muted mt-1 text-[14.5px]">
             {fromStart ? 'Начните с бесплатного пробного периода — карта не нужна.' : 'Подписка — на каждый курс отдельно. Прогресс сохраняется, даже если сделать перерыв.'}
           </p>

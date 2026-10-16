@@ -15,6 +15,8 @@ const SKINNED: readonly RegExp[] = [
   // «Курсы» и «Моя подписка» (письмо ЛК_стиль_курсы_и_моя_подписка_без_дублей.md, 16.10).
   /^\/courses\/?$/,
   /^\/my-subscription\/?$/,
+  // «Подписка и курсы» (меню ученика, письмо 16.10).
+  /^\/subscription\/?$/,
 ]
 
 export function studentSkinPage(pathname: string): boolean {

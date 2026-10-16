@@ -1,5 +1,8 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { StudentAvatarMenu, StudentNav } from '@/components/student/nav/StudentNav'
+import { StudentBell } from '@/components/student/nav/StudentBell'
+import { studentPageTitle } from '@/lib/studentNav'
 // import { NotificationBell } from './NotificationBell' // скрыто на время MVP
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { SupportWidget } from '@/components/shared/SupportWidget'
@@ -75,6 +78,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/my-journal$/, 'Журнал занятий и заданий'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],
+  [/^\/subscription$/, 'Подписка и курсы'],
 ]
 
 export function DashboardLayout() {
@@ -143,18 +147,22 @@ export function DashboardLayout() {
       className={skin ? 'stu flex min-h-screen' : 'flex min-h-screen bg-transparent text-graphite-900'}
       data-theme={skin ? theme : undefined}
     >
-      {/* Sidebar — receives open/onClose for mobile drawer behaviour */}
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {/* Меню: у ученика — вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10):
+          колонка 96px на компьютере, нижняя панель на телефоне. У персонала —
+          прежнее боковое меню. */}
+      {skin
+        ? <StudentNav />
+        : <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
-      {/* Main content: no left margin on mobile, 256px on md+ */}
-      <div className="flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen">
+      {/* Main content: no left margin on mobile, 256px on md+ (у ученика — 96px) */}
+      <div className={skin ? 'stu-main flex-1 min-w-0 md:ml-24 flex flex-col min-h-screen' : 'flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen'}>
         <ImpersonationBanner />
         {/* Top bar */}
         <header className={skin
           ? 'stu-top h-[66px] flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'
           : 'h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'}>
-          {/* Hamburger — visible only on mobile */}
-          <button
+          {/* Hamburger — visible only on mobile (у ученика — нижняя панель вместо него) */}
+          {!skin && <button
             onClick={() => setSidebarOpen(true)}
             className={skin
               ? 'stu-icon-btn md:hidden'
@@ -162,14 +170,15 @@ export function DashboardLayout() {
             aria-label="Открыть меню"
           >
             <Menu size={20} />
-          </button>
+          </button>}
 
           {/* Одна строка вместо двух. Подпись «Быстрый доступ через навигацию
               слева» ничего не сообщала, а иконка лупы рядом читалась как поиск,
               которого здесь нет. Освободившаяся высота отдана содержимому. */}
           <div className="min-w-0 flex-1">
             <div className={skin ? 'stu-title truncate leading-tight' : 'text-[15px] font-semibold text-graphite-950 truncate leading-tight'}>
-              {pageTitle}
+              {skin && <span className="stu-muted mr-2 hidden font-semibold lg:inline">Школа Almiron ·</span>}
+              {(skin && studentPageTitle(location.pathname)) || pageTitle}
             </div>
           </div>
 
@@ -193,8 +202,19 @@ export function DashboardLayout() {
             </button>
           )}
 
+          {/* Ученик: колокольчик и аватар с меню «Ещё» (письмо 16.10). В предпросмотре
+              персонала колокольчика нет — это были бы его собственные уведомления. */}
+          {skin && !preview && <StudentBell />}
+          {skin && (
+            <StudentAvatarMenu avatar={
+              <span className="stu-ava">
+                {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" /> : initials}
+              </span>
+            } />
+          )}
+
           {/* Avatar + name */}
-          <div className={skin ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5 pl-3 border-l border-slate-200'}>
+          {!skin && <div className={skin ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5 pl-3 border-l border-slate-200'}>
             <div className={skin ? 'stu-ava' : 'w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15'}>
               {profile.avatar_url
                 ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" />
@@ -214,7 +234,7 @@ export function DashboardLayout() {
                 {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
               </div>
             </div>
-          </div>
+          </div>}
         </header>
 
         {/* Полоса предпросмотра «глазами ученика» (§178): под шапкой, на всю

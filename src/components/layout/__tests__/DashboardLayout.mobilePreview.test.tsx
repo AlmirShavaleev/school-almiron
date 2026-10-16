@@ -170,7 +170,8 @@ describe('DashboardLayout в мобильном виде (§181)', () => {
 
     expect(frame()).toBeNull()
     expect(screen.getByTestId('where')).toHaveTextContent('course:/my-course/g1')
-    expect(screen.getByLabelText('Открыть меню')).toBeInTheDocument()
+    // Меню ученика, вариант В (письмо 16.10): нижняя панель вместо гамбургера.
+    expect(screen.getByTestId('student-tabbar')).toBeInTheDocument()
     expect(screen.queryByTestId('staff-mode-mobile')).not.toBeInTheDocument()
     // Режим роли внутри тот же — «Ученик + телефон»: жёлтая полоса на месте.
     expect(screen.getByTestId('student-preview-banner')).toBeInTheDocument()

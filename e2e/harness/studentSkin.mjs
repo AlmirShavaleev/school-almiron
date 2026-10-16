@@ -219,10 +219,13 @@ const ALL_SHOTS = [
   // Страница урока: плеер сверху, переключатель «Теория / Урок / ДЗ / Отзыв» (15.10).
   { name: `урок-${scenario}`, url: `/my-course/${IDS.group}/topic/${IDS.topic(1)}` },
   // «Курсы» (Месяц и Год) и «Моя подписка» — сценарий subs (письмо 16.10).
-  { name: `курсы${subTag}-месяц`, url: '/courses', subs: true },
-  { name: `курсы${subTag}-год`, url: '/courses', subs: true, year: true },
-  { name: `моя-подписка${subTag}`, url: '/my-subscription', subs: true },
-  { name: 'меню', url: '/student', mobileOnly: true, menu: true },
+  // «Курсы» и «Моя подписка» — один экран «Подписка и курсы» (меню, 16.10); старые адреса — редирект.
+  { name: `подписка-и-курсы${subTag}-месяц`, url: '/courses', subs: true },
+  { name: `подписка-и-курсы${subTag}-год`, url: '/subscription', subs: true, year: true },
+  { name: `меню-ещё-подписчик${subTag}`, url: '/subscription', subs: true, menu: true, lightOnly: true },
+  // Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10): «Ещё» и колокольчик.
+  { name: 'меню-ещё', url: '/student', menu: true, lightOnly: true },
+  { name: 'колокольчик', url: '/student', bell: true, lightOnly: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
 // Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
@@ -251,6 +254,7 @@ for (const width of [1280, 390]) {
     for (const s of SHOTS) {
       if (s.mobileOnly && !mobile) continue
       if (s.darkOnly && theme !== 'dark') continue
+      if (s.lightOnly && theme !== 'light') continue
       await page.goto(BASE + s.url, { waitUntil: 'networkidle', timeout: 30000 })
       await page.waitForTimeout(1200)
       // Блоки «при появлении в экране» — прокрутить донизу и обратно.
@@ -259,12 +263,13 @@ for (const width of [1280, 390]) {
         window.scrollTo(0, 0)
       })
       await page.waitForTimeout(2200)
-      if (s.menu) { await page.click('header button[aria-label="Открыть меню"]'); await page.waitForTimeout(500) }
+      if (s.menu) { await page.click(mobile ? '[data-testid="student-tab-more"]' : '[data-testid="student-nav-more"]'); await page.waitForTimeout(500) }
+      if (s.bell) { await page.click('[data-testid="student-bell"]'); await page.waitForTimeout(500) }
       if (s.year) {
         const y = page.locator('[data-testid="courses-period-12"]')
         if (await y.count()) { await y.click(); await page.waitForTimeout(400) }
       }
-      if (s.subs && s.url === '/my-subscription') {
+      if (s.subs && s.year) {
         const h = page.locator('[data-testid="my-subscription-history-toggle"]')
         if (await h.count()) { await h.click(); await page.waitForTimeout(300) }
       }
@@ -275,7 +280,7 @@ for (const width of [1280, 390]) {
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       const base = path.join(outDir, `лк-${s.name}-${width}-${theme}`)
-      await page.screenshot({ path: `${base}.png`, fullPage: !s.menu })
+      await page.screenshot({ path: `${base}.png`, fullPage: !s.menu && !s.bell })
       console.log(`${base}.png${overflow > 0 ? `  ⚠ горизонтальный скролл ${overflow}px` : ''}`)
     }
     await context.close()

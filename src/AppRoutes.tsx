@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { lazyPage } from '@/lib/lazyPage'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
@@ -48,8 +48,7 @@ const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m
 // §282. Подписка: оформление, возврат из ЮKassa, «Моя подписка».
 const SubscriptionCheckoutPage = lazyPage('SubscriptionCheckoutPage', () => import('@/pages/subscription/SubscriptionCheckoutPage').then(m => ({ default: m.SubscriptionCheckoutPage })))
 const SubscriptionResultPage = lazyPage('SubscriptionResultPage', () => import('@/pages/subscription/SubscriptionResultPage').then(m => ({ default: m.SubscriptionResultPage })))
-const MySubscriptionPage = lazyPage('MySubscriptionPage', () => import('@/pages/subscription/MySubscriptionPage').then(m => ({ default: m.MySubscriptionPage })))
-const CoursesPage = lazyPage('CoursesPage', () => import('@/pages/subscription/CoursesPage').then(m => ({ default: m.CoursesPage })))
+const SubscriptionHubPage = lazyPage('SubscriptionHubPage', () => import('@/pages/subscription/SubscriptionHubPage').then(m => ({ default: m.SubscriptionHubPage })))
 const OnboardingPage = lazyPage('OnboardingPage', () => import('@/pages/student/OnboardingPage').then(m => ({ default: m.OnboardingPage })))
 const DiagnosticPage = lazyPage('DiagnosticPage', () => import('@/pages/student/DiagnosticPage').then(m => ({ default: m.DiagnosticPage })))
 const DiagnosticResultPage = lazyPage('DiagnosticResultPage', () => import('@/pages/student/DiagnosticResultPage').then(m => ({ default: m.DiagnosticResultPage })))
@@ -295,9 +294,12 @@ export default function AppRoutes() {
         {/* §282. Подписка — preview="stub": персоналу в режиме ученика платить нечего. */}
         <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionCheckoutPage /></RoleGuard>} />
         <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionResultPage /></RoleGuard>} />
-        <Route path="/my-subscription" element={<RoleGuard allow={['student']} preview="stub"><MySubscriptionPage /></RoleGuard>} />
+        {/* Меню ученика (письмо 16.10): «Курсы» и «Моя подписка» — один экран «Подписка и курсы».
+            Старые адреса — редирект с сохранением параметров (?started=…, ?from=start…). */}
+        <Route path="/subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionHubPage /></RoleGuard>} />
+        <Route path="/my-subscription" element={<KeepQueryRedirect to="/subscription" />} />
         {/* §290-B. Витрина «Курсы» и анкета ученика «с улицы». */}
-        <Route path="/courses" element={<RoleGuard allow={['student']} preview="stub"><CoursesPage /></RoleGuard>} />
+        <Route path="/courses" element={<KeepQueryRedirect to="/subscription" />} />
         <Route path="/start" element={<RoleGuard allow={['student']} preview="stub"><OnboardingPage /></RoleGuard>} />
         {/* §289. Стартовая диагностика и её результат. */}
         <Route path="/diagnostic" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticPage /></RoleGuard>} />
@@ -322,4 +324,10 @@ export default function AppRoutes() {
     </Suspense>
     </>
   )
+}
+
+/** Редирект со старого адреса с теми же параметрами и якорем (меню ученика, 16.10). */
+function KeepQueryRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: to, search, hash }} replace />
 }
