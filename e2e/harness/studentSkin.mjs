@@ -227,14 +227,24 @@ const ALL_SHOTS = [
   { name: `меню-ещё-подписчик${subTag}`, url: '/subscription', subs: true, menu: true, lightOnly: true },
   // Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10): «Ещё» и колокольчик.
   { name: 'меню-ещё', url: '/student', menu: true, lightOnly: true },
+  // Выкатка в main (письмо 16.10): «невидимость подписки» — школьник без флага (schedule)
+  // и тестировщик (SCENARIO=subs). Прямые адреса подписки: в имени — куда увело.
+  { name: `аудит-главная-${scenario}${subTag}`, url: '/student', audit: true, lightOnly: true },
+  { name: `аудит-меню-ещё-${scenario}${subTag}`, url: '/student', audit: true, menu: true, lightOnly: true },
+  { name: `аудит-курс-${scenario}${subTag}`, url: `/my-course/${IDS.group}`, audit: true, lightOnly: true },
+  { name: `аудит-мои-курсы-${scenario}${subTag}`, url: '/my-course', audit: true, lightOnly: true },
+  { name: `аудит-каталог-${scenario}${subTag}`, url: '/catalog', audit: true, lightOnly: true },
+  { name: `аудит-адрес-subscription-${scenario}${subTag}`, url: '/subscription', audit: true, lightOnly: true, where: true },
+  { name: `аудит-адрес-checkout-${scenario}${subTag}`, url: '/subscribe/checkout/t-month', audit: true, lightOnly: true, where: true },
   { name: 'колокольчик', url: '/student', bell: true, lightOnly: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
 // Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
-const SHOTS = scenario === 'subs' ? ALL_SHOTS.filter(x => x.subs)
+const SHOTS = process.env.AUDIT ? ALL_SHOTS.filter(x => x.audit)
+  : scenario === 'subs' ? ALL_SHOTS.filter(x => x.subs)
   : scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
   : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course') && !x.url.includes('/topic/'))
-  : ALL_SHOTS.filter(x => !x.subs)
+  : ALL_SHOTS.filter(x => !x.subs && !x.audit)
 
 for (const width of [1280, 390]) {
   for (const theme of ['light', 'dark']) {
@@ -294,7 +304,7 @@ for (const width of [1280, 390]) {
         continue
       }
       await page.screenshot({ path: `${base}.png`, fullPage: !s.menu && !s.bell })
-      console.log(`${base}.png${overflow > 0 ? `  ⚠ горизонтальный скролл ${overflow}px` : ''}`)
+      console.log(`${base}.png${overflow > 0 ? `  ⚠ горизонтальный скролл ${overflow}px` : ''}${s.where ? `  → ${new URL(page.url()).pathname}` : ''}`)
     }
     await context.close()
   }
