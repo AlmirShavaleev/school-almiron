@@ -29,6 +29,8 @@ export interface OverviewExam {
   subject: string
   examType: string
   isMine: boolean
+  /** §292: предмет закрыт — нет подписки (или пробного) на этот предмет. */
+  locked: boolean
   total: number
   solved: number
   solved7d: number
@@ -125,6 +127,7 @@ export function normalizeCatalogOverview(raw: unknown): CatalogOverview | null {
       subject: e.subject,
       examType: e.exam_type,
       isMine: e.is_mine === true,
+      locked: e.locked === true,
       total,
       solved: num(e.solved) ?? solvedSum,
       solved7d: num(e.solved_7d) ?? 0,
@@ -266,7 +269,8 @@ export function examBars(e: OverviewExam): Bar[] {
       heightPx,
       on,
       tip: barTip(r),
-      href: r.sectionId ? numberHref(e.subject, e.examType, r.sectionId) : null,
+      // §292: закрытый предмет — столбики не ведут в номера
+      href: r.sectionId && !e.locked ? numberHref(e.subject, e.examType, r.sectionId) : null,
     }
   })
 }

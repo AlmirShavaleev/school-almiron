@@ -9,6 +9,8 @@
  */
 
 import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useTaskLocked } from '@/lib/catalogLock'
+import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { ChevronLeft, BookOpen, AlertCircle } from 'lucide-react'
 
 import {
@@ -32,10 +34,13 @@ export function CatalogTaskPage() {
   // §256. Ученик проверяет ответ и здесь (сюда ведёт поиск по разделу).
   const ids = useMemo(() => (taskId ? [taskId] : []), [taskId])
   const practice = useCatalogPractice(task?.section_id, ids, profile?.role === 'student' && !!task)
+  const taskLocked = useTaskLocked(taskId)
 
   const subjectSlug = searchParams.get('subject') ?? (task?.section ? (SUBJECT_SLUGS[task.section.subject] ?? 'math') : 'math')
   const examSlug    = searchParams.get('exam')    ?? 'ege'
 
+  // §292: задача закрытого по подписке предмета — плашка, а не «Задача не найдена»
+  if (taskLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
   if (loading) return <TaskSkeleton />
   if (error || !task) return <ErrorState message={error ?? 'Задача не найдена'} />
 
