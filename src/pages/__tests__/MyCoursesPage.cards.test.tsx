@@ -173,9 +173,17 @@ describe('список', () => {
   })
 
   it('нет курсов — «Курсов пока нет», диагностика и витрина', async () => {
+    db.subsOn = true
     renderPage()
     const empty = await screen.findByTestId('my-courses-empty')
     expect(within(empty).getByRole('link', { name: 'Пройти диагностику' })).toHaveAttribute('href', '/diagnostic')
     expect(within(empty).getByRole('link', { name: /Выбрать курс/ })).toHaveAttribute('href', '/courses')
+  })
+
+  it('нет курсов и подписка выключена — без диагностики и витрины (выкатка в main, 16.10)', async () => {
+    renderPage()
+    const empty = await screen.findByTestId('my-courses-empty')
+    expect(empty).toHaveTextContent('Как только преподаватель добавит тебя в группу')
+    expect(within(empty).queryByRole('link')).toBeNull()
   })
 })

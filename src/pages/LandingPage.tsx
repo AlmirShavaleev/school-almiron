@@ -13,6 +13,7 @@ import { Screens } from './landing/Screens'
 import { Prices } from './landing/Prices'
 import { FinalCta, Footer } from './landing/Final'
 import { Faq } from './landing/Faq'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 
 type Theme = 'light' | 'dark'
 const THEME_KEY = 'almiron-landing-theme'
@@ -41,6 +42,10 @@ function systemDark() {
  */
 export function LandingPage() {
   const [theme, setTheme] = useState<Theme | undefined>(readTheme)
+  // Подписка не запущена (письмо о выкатке в main, 16.10): цены, «3 дня бесплатно»,
+  // диагностика и вопрос про отмену подписки — только когда подписка включена.
+  // У гостя флаг выключен всегда (тестировщики — по входу).
+  const subs = useSubscriptionsEnabled().enabled
 
   const toggle = useCallback(() => {
     setTheme(prev => {
@@ -72,11 +77,11 @@ export function LandingPage() {
           <ArgAi />
           <ArgForecast />
           <Screens />
-          <Prices />
-          <FinalCta />
-          <Faq />
+          {subs && <Prices />}
+          <FinalCta subs={subs} />
+          <Faq subs={subs} />
         </main>
-        <Footer />
+        <Footer subs={subs} />
       </div>
     </MotionConfig>
   )

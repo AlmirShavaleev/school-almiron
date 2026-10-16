@@ -12,6 +12,12 @@ const CHAT: Msg[] = [
   { me: true, text: 'Хочу попробовать!' },
   { text: 'Регистрируйся — первые 3 дня бесплатно, без карты. Начнём с диагностики.' },
 ]
+/** Подписка не запущена: без пробных дней и диагностики. */
+const CHAT_NO_SUBS: Msg[] = [
+  { text: 'Это были 6 аргументов. Ну что, убедил?' },
+  { me: true, text: 'Хочу попробовать!' },
+  { text: 'Регистрируйся — преподаватель добавит тебя в курс, и начнём.' },
+]
 
 /** Парящие иконки справа: [иконка, размер, позиция, задержка петли]. */
 const FLOAT: Array<[IconName, number, React.CSSProperties, number]> = [
@@ -21,17 +27,17 @@ const FLOAT: Array<[IconName, number, React.CSSProperties, number]> = [
 ]
 
 /** Финальный диалог «Ну что, убедил?» + регистрация. */
-export function FinalCta() {
+export function FinalCta({ subs = true }: { subs?: boolean }) {
   const anim = useAnim()
   return (
     <section id="final">
       <div className="wrap">
         <Reveal className="final">
           <div>
-            <Chat msgs={CHAT} />
+            <Chat msgs={subs ? CHAT : CHAT_NO_SUBS} />
             <div className="chat-actions">
               <Link className="btn btn-o" to={LINKS.register}>Создать аккаунт →</Link>
-              <Link className="btn btn-navy" to={LINKS.diagnostics}>Пройти диагностику</Link>
+              {subs && <Link className="btn btn-navy" to={LINKS.diagnostics}>Пройти диагностику</Link>}
             </div>
           </div>
           <div className="final-ic" aria-hidden="true">
@@ -57,7 +63,7 @@ export function FinalCta() {
   )
 }
 
-export function Footer() {
+export function Footer({ subs = true }: { subs?: boolean }) {
   return (
     <>
       <footer>
@@ -70,7 +76,7 @@ export function Footer() {
           </nav>
         </div>
       </footer>
-      <Link className="btn btn-p m-cta" to={LINKS.register}>3 дня бесплатно</Link>
+      <Link className="btn btn-p m-cta" to={LINKS.register}>{subs ? '3 дня бесплатно' : 'Регистрация'}</Link>
     </>
   )
 }

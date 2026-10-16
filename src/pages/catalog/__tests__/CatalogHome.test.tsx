@@ -29,6 +29,10 @@ vi.mock('@/hooks/useCatalog', async (orig) => ({
   useCatalogPhysicsTopicSections: () => ({ sections: [], loading: false, error: null }),
 }))
 
+// Флаг подписки (выкатка в main, 16.10): тексты замков зависят от него; по умолчанию включён.
+const subsFlag = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: subsFlag.enabled, loading: false }) }))
+
 import { CatalogPage } from '@/pages/catalog/CatalogPage'
 
 const n = (spec: Array<[number, number, number?]>) =>

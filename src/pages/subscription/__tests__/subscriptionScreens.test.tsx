@@ -345,12 +345,12 @@ describe('плашка «курс закрыт»', () => {
     expect(screen.getByTestId('subscription-lock-renew')).toHaveTextContent('Оформить')
   })
 
-  it('флаг выключен — объяснение есть, кнопки оформления нет', async () => {
+  it('флаг выключен — плашки нет вовсе и доступ не запрашивается (выкатка в main, 16.10)', async () => {
     api.fetchSubscriptionsEnabled.mockResolvedValue(false)
     api.fetchCourseAccess.mockResolvedValue({ paid: true, has_access: false, status: null, access_until: null, tariff_id: null })
     await renderBanner()
-    expect(screen.getByTestId('subscription-lock')).toHaveTextContent('Курс доступен по подписке')
-    expect(screen.queryByTestId('subscription-lock-renew')).toBeNull()
+    expect(screen.queryByTestId('subscription-lock')).toBeNull()
+    expect(api.fetchCourseAccess).not.toHaveBeenCalled()
   })
 
   it('ошибка чтения — плашки нет, страница цела', async () => {

@@ -12,9 +12,11 @@ import { useCourseAccess, useSubscriptionsEnabled } from '@/hooks/useSubscriptio
 import { formatDateMsk } from '@/lib/subscription/view'
 
 export function SubscriptionLockBanner({ courseId }: { courseId: string | null | undefined }) {
-  const { data } = useCourseAccess(courseId)
   const { enabled } = useSubscriptionsEnabled()
-  if (!data || !data.paid || data.has_access) return null
+  // Без флага — и запроса нет.
+  const { data } = useCourseAccess(enabled ? courseId : null)
+  // Без флага подписки (не тестировщик) — ни слова о подписке (письмо о выкатке в main, 16.10).
+  if (!enabled || !data || !data.paid || data.has_access) return null
 
   const ended = formatDateMsk(data.access_until)
   // «pending» — начал оформление и не оплатил: подписки ещё не было
@@ -32,7 +34,7 @@ export function SubscriptionLockBanner({ courseId }: { courseId: string | null |
             : 'Оформите подписку, чтобы открыть материалы и задания.'}
         </p>
       </div>
-      {enabled && (
+      {(
         <Link to={data.tariff_id ? `/subscribe/checkout/${data.tariff_id}` : '/courses'}>
           <Button data-testid="subscription-lock-renew">{hadSubscription ? 'Продлить подписку' : 'Оформить'}</Button>
         </Link>

@@ -6,6 +6,7 @@ import { LoadingGate } from '@/components/shared/LoadingGate'
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
+import { SubscriptionsOnly } from '@/components/subscription/SubscriptionsOnly'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
 import { CatalogAttachMode } from '@/components/catalog/CatalogAttachMode'
 import { PreviewStubGate } from '@/components/layout/StudentPreviewUnavailable'
@@ -291,19 +292,20 @@ export default function AppRoutes() {
             (§178): три страницы курса читают программу и материалы, которые
             персоналу и так отдаёт RLS, личное показывают пустым и не пишут. */}
         <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
-        {/* §282. Подписка — preview="stub": персоналу в режиме ученика платить нечего. */}
-        <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionCheckoutPage /></RoleGuard>} />
-        <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionResultPage /></RoleGuard>} />
+        {/* §282. Подписка — preview="stub": персоналу в режиме ученика платить нечего.
+            SubscriptionsOnly: без флага подписки (не тестировщик) — на главную, без цен и оплаты. */}
+        <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionCheckoutPage /></SubscriptionsOnly></RoleGuard>} />
+        <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionResultPage /></SubscriptionsOnly></RoleGuard>} />
         {/* Меню ученика (письмо 16.10): «Курсы» и «Моя подписка» — один экран «Подписка и курсы».
             Старые адреса — редирект с сохранением параметров (?started=…, ?from=start…). */}
-        <Route path="/subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionHubPage /></RoleGuard>} />
+        <Route path="/subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionHubPage /></SubscriptionsOnly></RoleGuard>} />
         <Route path="/my-subscription" element={<KeepQueryRedirect to="/subscription" />} />
         {/* §290-B. Витрина «Курсы» и анкета ученика «с улицы». */}
         <Route path="/courses" element={<KeepQueryRedirect to="/subscription" />} />
         <Route path="/start" element={<RoleGuard allow={['student']} preview="stub"><OnboardingPage /></RoleGuard>} />
         {/* §289. Стартовая диагностика и её результат. */}
         <Route path="/diagnostic" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticPage /></RoleGuard>} />
-        <Route path="/diagnostic/result" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticResultPage /></RoleGuard>} />
+        <Route path="/diagnostic/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><DiagnosticResultPage /></SubscriptionsOnly></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
         {/* §228. «Пробники» ученика — все пробники по всем его группам. */}

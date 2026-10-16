@@ -254,9 +254,12 @@ export function MyCoursesPage() {
         <p className="stu-muted text-[15px]">
           {preview
             ? 'Нет курсов для предпросмотра: вы не персонал ни одного курса, кроме каркасов'
-            : 'Начни с диагностики — она покажет твой уровень и с чего начать. Или сразу выбери курс.'}
+            : subscriptionsOn.enabled
+              ? 'Начни с диагностики — она покажет твой уровень и с чего начать. Или сразу выбери курс.'
+              // Без флага подписки — ни диагностики, ни витрины (выкатка в main, 16.10).
+              : 'Как только преподаватель добавит тебя в группу, курс появится здесь.'}
         </p>
-        {!preview && (
+        {!preview && subscriptionsOn.enabled && (
           <div className="flex flex-wrap justify-center gap-3">
             <Link to="/diagnostic" className="stu-btn stu-btn-g">Пройти диагностику</Link>
             <Link to="/courses" className="stu-btn stu-btn-p">Выбрать курс →</Link>

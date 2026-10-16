@@ -1,8 +1,13 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+// Флаг подписки (выкатка в main, 16.10): цены и «3 дня бесплатно» — только при включённой подписке.
+const flag = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: flag.enabled, loading: false }) }))
+beforeEach(() => { flag.enabled = true })
+
 import { LandingPage } from '@/pages/LandingPage'
 import { initialUnlock, LESSONS, submitHomework } from '../unlockLogic'
 import { ICONS, PHOTO, SCENES, SCREENS } from '../icons'
@@ -194,5 +199,18 @@ describe('ассеты (правка 3)', () => {
       expect(img.getAttribute('loading'), img.getAttribute('src')!).toBe('lazy')
     }
     expect(container.querySelectorAll('#lnd-shot img')).toHaveLength(SCREENS.length)
+  })
+})
+
+describe('лендинг без подписки (гость; подписка не запущена)', () => {
+  it('нет цен, «3 дня бесплатно», диагностики и вопроса про подписку; регистрация на месте', () => {
+    flag.enabled = false
+    renderLanding()
+    expect(document.querySelector('[data-testid="price"]')).toBeNull()
+    expect(screen.queryByText(/3 дня бесплатно|3 бесплатных дней|без карты/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Пройти диагностику' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Как отменить подписку/ })).toBeNull()
+    expect(screen.queryByText(/₽/)).toBeNull()
+    expect(screen.getAllByRole('link', { name: 'Регистрация' }).every(a => a.getAttribute('href') === '/register')).toBe(true)
   })
 })

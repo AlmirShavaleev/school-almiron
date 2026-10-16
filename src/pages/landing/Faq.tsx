@@ -39,12 +39,19 @@ function Question({ q, a, i }: { q: string; a: string; i: number }) {
   )
 }
 
-export function Faq() {
+/** Подписка не запущена: без вопроса про отмену подписки и без диагностики в ответе. */
+const FAQ_NO_SUBS: Array<[string, string]> = [
+  ['Подойдёт, если я совсем не понимаю физику?', 'Да. Темы идут от простого к сложному — каждая открывается, когда ты готов.'],
+  ...FAQ.slice(1, 4),
+]
+
+export function Faq({ subs = true }: { subs?: boolean }) {
+  const list = subs ? FAQ : FAQ_NO_SUBS
   return (
     <section id="faq" style={{ paddingTop: 20 }}>
       <div className="wrap faq">
         <Reveal><h2>Частые вопросы</h2></Reveal>
-        {FAQ.map(([q, a], i) => <Question key={q} q={q} a={a} i={i} />)}
+        {list.map(([q, a], i) => <Question key={q} q={q} a={a} i={i} />)}
       </div>
     </section>
   )

@@ -42,6 +42,10 @@ vi.mock('@/store/authStore', () => ({
   },
 }))
 
+// Флаг подписки (выкатка в main, 16.10): тексты замков зависят от него; по умолчанию включён.
+const subsFlag = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: subsFlag.enabled, loading: false }) }))
+
 import { CatalogSectionPage } from '@/pages/catalog/CatalogSectionPage'
 import { CatalogTopicPage } from '@/pages/catalog/CatalogTopicPage'
 import { CatalogTaskPage } from '@/pages/catalog/CatalogTaskPage'
@@ -78,6 +82,17 @@ describe('§292: закрытый предмет по прямой ссылке'
     expect(await screen.findByTestId('catalog-locked')).toHaveTextContent('Этот предмет откроется с подпиской')
     expect(screen.getByTestId('catalog-locked-back')).toHaveAttribute('href', '/catalog')
     expect(screen.queryByRole('button', { name: /Повторить/ })).toBeNull()
+  })
+
+  it('подписка выключена (не тестировщик) — про курс, ни слова о подписке; замок тот же', async () => {
+    subsFlag.enabled = false
+    mocks.locked.section = true
+    renderAt('/catalog/sec-math?subject=math&exam=ege')
+    const notice = await screen.findByTestId('catalog-locked')
+    expect(notice).toHaveTextContent('Этот предмет откроется вместе с курсом')
+    expect(notice.textContent).not.toMatch(/подписк|пробн/)
+    expect(screen.queryByTestId('catalog-locked-subscribe')).toBeNull()
+    subsFlag.enabled = true
   })
 
   it('тема: плашка', async () => {

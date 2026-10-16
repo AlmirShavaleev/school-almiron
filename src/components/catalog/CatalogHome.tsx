@@ -4,6 +4,7 @@ import { Lock, RefreshCw } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogOverview } from '@/hooks/useCatalogOverview'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { CATALOG_SUBSCRIBE_HREF } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { DIRECTIONS } from '@/hooks/useCatalog'
@@ -191,8 +192,10 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
   const dim = isDimmed(o, e)
   const solved = e.solved
   const go = solved > 0 ? 'Продолжить' : 'Начать'
-  // §292: предмет без подписки — замок; есть куда вести — «Открыть подписку»
-  const lockedTo = e.locked ? CATALOG_SUBSCRIBE_HREF : null
+  // §292: предмет без подписки — замок; есть куда вести — «Открыть подписку».
+  // Без флага подписки (не тестировщик) — «Откроется вместе с курсом», без ссылки (выкатка в main, 16.10).
+  const { enabled: subs } = useSubscriptionsEnabled()
+  const lockedTo = e.locked && subs ? CATALOG_SUBSCRIBE_HREF : null
   return (
     <article
       data-testid="exam-card"
@@ -234,7 +237,7 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
         </Link>
       ) : (
         <p className="flex items-center gap-1.5 border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-500" data-testid="exam-locked">
-          <Lock size={14} aria-hidden="true" />Откроется с подпиской
+          <Lock size={14} aria-hidden="true" />{subs ? 'Откроется с подпиской' : 'Откроется вместе с курсом'}
         </p>
       )}
     </article>
