@@ -172,7 +172,9 @@ describe('сборка: отчёты не попадают в клиентски
         minify: true,
         sourcemap: false,
         lib: { entry: path.join(ROOT, 'src/hooks/useCatalog.ts'), formats: ['es'], fileName: 'useCatalog' },
-        rolldownOptions: { external: (id: string) => !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('@/') && !id.startsWith('\0') },
+        // path.isAbsolute: на Windows алиас «@» раскрывается в «D:\…», а не «/…» —
+        // без этого наши модули уходили во внешние и тем в сборке не было.
+        rolldownOptions: { external: (id: string) => !id.startsWith('.') && !path.isAbsolute(id) && !id.startsWith('@/') && !id.startsWith('\0') },
       },
     })
     const outputs = (Array.isArray(result) ? result : [result]) as Array<{ output: Array<{ type: string; code?: string }> }>

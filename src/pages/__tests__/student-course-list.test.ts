@@ -108,11 +108,6 @@ describe('Locked topic cannot be opened', () => {
   })
 })
 
-// ─── 6. Student sees statuses ─────────────────────────────────────────────────
-
-describe('Student sees hw_status', () => {
-})
-
 // ─── 7. Teacher/admin не получают ложный student progress ────────────────────
 
 describe('Teacher/admin: no student progress', () => {
@@ -131,8 +126,8 @@ describe('Teacher/admin: no student progress', () => {
 
 describe('Mobile layout', () => {
   it('max-width container on page prevents overflow', () => {
-    // StudentCoursePage wraps content in max-w-4xl
-    expect(PAGE_SRC).toContain('max-w-4xl')
+    // StudentCoursePage wraps content in max-w-5xl (§274.1: страница курса шире)
+    expect(PAGE_SRC).toContain('max-w-5xl')
   })
 
 })

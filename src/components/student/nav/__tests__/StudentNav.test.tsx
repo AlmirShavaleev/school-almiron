@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { subscriptionTag, studentPageTitle } from '@/lib/studentNav'
 
 // Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10).
 vi.mock('@/hooks/useMyTopicHomework', () => ({ useHomeworkToDoCount: () => 3 }))
+// Метка «до …» — из «Моих подписок» (тот же access_until, что на карточке), не из student_path_home.
 vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: true }) }))
-vi.mock('@/hooks/useStudentPath', () => ({
-  useStudentPathHome: () => ({ data: { subscriptions: [{ has_access: true, status: 'active', access_until: '2099-11-18T09:00:00Z' }] } }),
+vi.mock('@/lib/subscription/api', () => ({
+  fetchMySubscriptions: async () => [{ has_access: true, status: 'active', access_until: '2099-11-18T09:00:00Z' }],
 }))
 vi.mock('@/hooks/useMyCuratorships', () => ({ useMyCuratorships: () => ({ isCurator: false }) }))
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ signOut: vi.fn(async () => {}) }) }))
@@ -34,11 +35,12 @@ describe('меню ученика', () => {
     expect(within(rail).getByTestId('student-nav-bank')).toHaveAttribute('href', '/catalog')
   })
 
-  it('«Ещё»: Подписка и курсы «до 18 нояб», Настройки, Выйти; переход закрывает меню', () => {
+  it('«Ещё»: Подписка и курсы «до 18 нояб», Настройки, Выйти; переход закрывает меню', async () => {
     renderAt('/student')
     fireEvent.click(screen.getByTestId('student-nav-more'))
     const pop = screen.getByTestId('student-more-pop')
-    expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Подписка и курсыдо 18 нояб', 'Настройки', 'Выйти'])
+    // метка приходит из my_subscriptions (тот же access_until, что на карточке)
+    await waitFor(() => expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Подписка и курсыдо 18 нояб', 'Настройки', 'Выйти']))
     fireEvent.click(within(pop).getByTestId('student-more-subscription'))
     expect(screen.getByTestId('where')).toHaveTextContent('/subscription')
     expect(screen.queryByTestId('student-more-pop')).toBeNull()

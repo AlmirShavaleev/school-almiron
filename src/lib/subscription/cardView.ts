@@ -73,7 +73,8 @@ export function subscriptionCardView(s: MySubscription, now: Date = new Date()):
   if (!s.auto_renew) {
     return { ...base, kind: 'renew_off', line: `Доступ до ${until} · автопродление выключено`, pay: { label: 'Продлить', primary: false } }
   }
-  const from = s.card_title ? ` с ${maskPaymentTitle(s.card_title)}` : ''
+  // «ЮMoney ••1136»: хвост кошелька/карты — двумя точками, одна читалась как разделитель.
+  const from = s.card_title ? ` с ${maskPaymentTitle(s.card_title).replace(/•(\d{4})/g, '••$1')}` : ''
   return {
     ...base,
     kind: 'active',

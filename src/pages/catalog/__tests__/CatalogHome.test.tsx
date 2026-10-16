@@ -218,12 +218,13 @@ describe('CatalogHome — пока цифр нет', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
-  it('§290: банк закрыт (CATALOG_LOCKED) — вместо разделов «К курсам»', () => {
+  it('§290/§292: банк закрыт целиком — плашка CatalogLockedNotice вместо разделов', () => {
     state.role = 'student'
     state.hook = { overview: null, loading: false, error: null, locked: true, retry: vi.fn() } as typeof state.hook
     render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
-    expect(screen.getByTestId('catalog-locked')).toHaveTextContent('Банк задач открывается с подпиской')
-    expect(screen.getByRole('link', { name: 'К курсам' })).toHaveAttribute('href', '/courses')
+    expect(screen.getByTestId('catalog-locked')).toHaveTextContent('Банк задач откроется с подпиской')
+    // CATALOG_SUBSCRIBE_HREF = null в этой ветке — кнопки оформления нет
+    expect(screen.queryByTestId('catalog-locked-subscribe')).toBeNull()
     expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
   })
 })

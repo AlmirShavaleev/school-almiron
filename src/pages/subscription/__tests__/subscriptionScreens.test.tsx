@@ -281,7 +281,7 @@ describe('«Моя подписка»', () => {
   it('способ оплаты — только последние 4 цифры (тест 12.10)', async () => {
     api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, card_title: 'YooMoney wallet 410011758831136' }])
     renderAt('/my-subscription', route)
-    expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent(/спишем .* с ЮMoney •1136$/)
+    expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent(/спишем .* с ЮMoney ••1136$/)
     expect(screen.queryByText(/410011758831136/)).toBeNull()
   })
 
