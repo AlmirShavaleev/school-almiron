@@ -98,9 +98,11 @@ describe('главная ученика без шума', () => {
     }
     await waitFor(() => expect(calls).toContain('rpc:student_home_activity'))
     expect(screen.queryByTestId('home-calendar')).toBeNull()
+    // Цели (письмо 16.10, решение владельца): цель на экзамен и цели недели — два запроса.
+    await waitFor(() => expect(calls).toContain('rpc:my_regular_goals'))
     expect([...new Set(calls)].sort()).toEqual([
-      'from:group_students', 'from:students',
-      'rpc:my_mock_exams', 'rpc:student_home_activity', 'rpc:student_home_courses',
+      'from:group_students', 'from:student_exam_goals', 'from:students',
+      'rpc:my_mock_exams', 'rpc:my_regular_goals', 'rpc:student_home_activity', 'rpc:student_home_courses',
     ])
   })
 

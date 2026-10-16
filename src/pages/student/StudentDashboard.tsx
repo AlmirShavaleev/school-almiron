@@ -17,6 +17,7 @@ import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPathCard'
 import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard'
+import { GoalsCard, type GoalBasisSource } from '@/components/student/home/GoalsCard'
 
 /**
  * Главная ученика «без шума» (письмо главная_ученика_без_шума.md, решения
@@ -75,6 +76,20 @@ export function StudentDashboard() {
   // (письмо ЛК_стиль_календарь_в_программу_курса.md): на главной он раздувался.
   const activity = useStudentActivity(!!profile?.id, todayMsk)
 
+  // «Цели» (письмо 16.10): основание оценки пути — последний пробник курса
+  // предмета с результатом, иначе прогресс курса (как в «Моих курсах»).
+  const goalSources = useMemo<GoalBasisSource[]>(() => items.flatMap(it => {
+    if (it.subject !== 'math' && it.subject !== 'physics') return []
+    const last = (mocksByGroup[it.groupId] ?? [])
+      .filter(m => m.score != null && m.max_score)
+      .sort((a, b) => b.starts_at.localeCompare(a.starts_at))[0]
+    return [{
+      subject: it.subject,
+      mock: last ? { score: last.score as number, max: last.max_score as number } : null,
+      course: it.progress ? { done: it.progress.done, total: it.progress.total } : null,
+    }]
+  }), [items, mocksByGroup])
+
   if (path.data?.onboarding.needed) return <Navigate to="/start" replace />
 
   if (dashboard.loading) {
@@ -108,6 +123,8 @@ export function StudentDashboard() {
       <DiagnosticHomeCard onboarding={path.data?.onboarding} />
 
       {next && <ContinueLessonCard groupId={next.course.groupId} courseTitle={next.course.courseTitle} next={next.next} />}
+
+      {courses.length > 0 && profile?.id && <GoalsCard profileId={profile.id} sources={goalSources} />}
 
       {courses.length > 0 && activity && <ActivityCard grid={activity} />}
 

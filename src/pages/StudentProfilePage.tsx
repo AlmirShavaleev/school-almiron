@@ -1,4 +1,5 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { StudentGoalsStaffBlock } from '@/components/student/StudentGoalsStaffBlock'
 import {
   ArrowLeft, Users,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
@@ -245,6 +246,9 @@ export function StudentProfilePage() {
         настройки ученика.
       */}
       {s.student_id && <StudentSubjectTargets studentId={s.student_id} profileId={s.profile_id ?? null} />}
+
+      {/* Цели, которые поставил себе ученик (письмо 16.10): на экзамен и на неделю, только чтение. */}
+      {s.student_id && <StudentGoalsStaffBlock studentId={s.student_id} />}
 
       {/* §289. Стартовая диагностика ученика «с улицы»; нет диагностики — блока нет. */}
       {s.student_id && <DiagnosticStaffBlock studentId={s.student_id} />}

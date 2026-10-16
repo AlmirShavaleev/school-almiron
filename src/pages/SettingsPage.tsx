@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabase'
 import { disconnectTelegram, requestTelegramLink, sendTelegramTest, startCommandFor } from '@/lib/telegramLinkApi'
 import { TelegramLinkWaiting } from '@/components/shared/TelegramLinkWaiting'
 import { StudentReminderPrefs } from '@/components/student/StudentReminderPrefs'
+import { StudentNotificationsTab } from '@/components/student/settings/StudentNotificationsTab'
+import { StudentGoalsTab } from '@/components/student/settings/StudentGoalsTab'
 import { ROLE_LABELS } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -46,7 +48,11 @@ const NOTIF_ITEMS: { key: keyof NotifPrefs; label: string; sub: string; section:
 export function SettingsPage() {
   const profile    = useAuthStore(s => s.profile)
   const setProfile = useAuthStore(s => s.setProfile)
-  const [tab, setTab] = useState<TabKey>('profile')
+  // ?tab=goals — со ссылки «Поставить цели» на главной (письмо 16.10).
+  const [tab, setTab] = useState<TabKey>(() => {
+    const q = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null
+    return q === 'goals' ? 'role' : q === 'notifications' ? 'notifications' : 'profile'
+  })
 
   if (!profile) return null
 
@@ -81,9 +87,18 @@ export function SettingsPage() {
       </div>
 
       {tab === 'profile'       && <ProfileTab       profile={profile} setProfile={setProfile} />}
-      {tab === 'notifications' && <NotificationsTab profileId={profile.id} userSession={profile} />}
+      {/* Ученику — только то, что реально отправляется, по группам (письмо 16.10). */}
+      {tab === 'notifications' && (profile.role === 'student'
+        ? <StudentNotificationsTab profileId={profile.id} />
+        : <NotificationsTab profileId={profile.id} userSession={profile} />)}
       {tab === 'security'      && <SecurityTab />}
-      {tab === 'role'          && profile.role === 'student' && <StudentRoleTab profileId={profile.id} />}
+      {/* Цели в два уровня (письмо 16.10): цель на экзамен + цели недели. Класс — как раньше. */}
+      {tab === 'role'          && profile.role === 'student' && (
+        <div className="space-y-4">
+          <StudentGoalsTab profileId={profile.id} />
+          <StudentRoleTab profileId={profile.id} />
+        </div>
+      )}
     </div>
   )
 }
@@ -484,9 +499,6 @@ function SecurityTab() {
 function StudentRoleTab({ profileId }: { profileId: string }) {
   const [data, setData] = useState<any>(null)
   const [grade, setGrade] = useState<number>(11)
-  const [examType, setExamType] = useState<string>('ege')
-  const [subject,  setSubject]  = useState<string>('physics')
-  const [target,   setTarget]   = useState<number | ''>('')
   const [saving,   setSaving]   = useState(false)
   const [loading,  setLoading]  = useState(true)
   const [msg,      setMsg]      = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -499,9 +511,6 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
         if (s) {
           setData(s)
           setGrade(s.grade || 11)
-          setExamType(s.target_exam || 'ege')
-          setSubject(s.target_subject || 'physics')
-          setTarget(s.target_score ?? '')
         }
         setLoading(false)
       })
@@ -515,15 +524,12 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
   async function handleSave() {
     if (!data) return
     setSaving(true)
-    const { error } = await supabase.from('students').update({
-      grade,
-      target_exam:    examType,
-      target_subject: subject,
-      target_score:   target === '' ? null : Number(target),
-    } as any).eq('id', data.id)
+    // Цель на экзамен — в «Цели на экзамен» выше (student_exam_goals, письмо 16.10);
+    // прежние students.target_* здесь больше не правятся.
+    const { error } = await supabase.from('students').update({ grade } as any).eq('id', data.id)
     setSaving(false)
     if (error) return showMsg('err', error.message)
-    showMsg('ok', 'Цели обновлены')
+    showMsg('ok', 'Сохранено')
   }
 
   if (loading) {
@@ -547,7 +553,7 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><GraduationCap size={18} />Учебные цели</CardTitle>
+        <CardTitle className="flex items-center gap-2"><GraduationCap size={18} />Класс</CardTitle>
       </CardHeader>
 
       <div className="space-y-4">
@@ -558,36 +564,6 @@ function StudentRoleTab({ profileId }: { profileId: string }) {
             onChange={e => setGrade(Number(e.target.value))}
             options={[8,9,10,11].map(g => ({ value: String(g), label: `${g} класс` }))}
           />
-          <Select
-            label="Экзамен"
-            value={examType}
-            onChange={e => setExamType(e.target.value)}
-            options={[
-              { value: 'ege', label: 'ЕГЭ' },
-              { value: 'oge', label: 'ОГЭ' },
-            ]}
-          />
-          <Select
-            label="Предмет"
-            value={subject}
-            onChange={e => setSubject(e.target.value)}
-            options={[
-              { value: 'physics', label: 'Физика' },
-              { value: 'math',    label: 'Математика' },
-            ]}
-          />
-          <Input
-            label="Целевой балл"
-            type="number"
-            min={0} max={100}
-            value={target}
-            onChange={e => setTarget(e.target.value === '' ? '' : Number(e.target.value))}
-            placeholder="например, 85"
-          />
-        </div>
-
-        <div className="text-xs text-gray-400 bg-gray-50 px-3 py-2 rounded-lg">
-          Эти настройки влияют на подбор материалов, пробников и виджет прогресса в личном кабинете.
         </div>
 
         <SaveBar onSave={handleSave} loading={saving} msg={msg} />
@@ -613,12 +589,16 @@ export function TelegramConnectionBlock({
   variantTelegramEnabled,
   onToggleTelegram,
   onToggleVariantTelegram,
+  onLinkedChange,
 }: {
   profileId: string
   telegramEnabled: boolean
   variantTelegramEnabled: boolean
   onToggleTelegram: () => void
-  onToggleVariantTelegram: () => void
+  /** Нет — строки «варианты и пробники» в блоке нет (у ученика она в группе «Пробники»). */
+  onToggleVariantTelegram?: () => void
+  /** Привязан ли Telegram — для переключателей ученика выше блока (письмо 16.10). */
+  onLinkedChange?: (linked: boolean) => void
 }) {
   const [conn,         setConn]         = useState<TelegramConn | null>(null)
   const [loading,      setLoading]      = useState(true)
@@ -656,6 +636,9 @@ export function TelegramConnectionBlock({
   }, [profileId])
 
   useEffect(() => () => { pollTimers.current.forEach(clearTimeout) }, [])
+
+  const linked = !loading && !!conn && conn.is_enabled !== false
+  useEffect(() => { onLinkedChange?.(linked) }, [linked, onLinkedChange])
 
   /**
    * Экран сам узнаёт об успехе — опрос раз в три секунды, две минуты. Без
@@ -771,7 +754,7 @@ export function TelegramConnectionBlock({
         /* ── Не подключён: idle → waiting → expired ── */
         <div className="space-y-3">
           <p className="text-sm text-gray-500">
-            Подключите Telegram-бота, чтобы получать уведомления о занятиях, домашних заданиях и их проверке прямо в мессенджере.
+            Подключите Telegram-бота, чтобы получать уведомления о домашних заданиях, их проверке и пробниках прямо в мессенджере.
           </p>
 
           {phase === 'expired' ? (
@@ -827,7 +810,7 @@ export function TelegramConnectionBlock({
             </button>
           </div>
 
-          <div className="flex items-center justify-between py-2 border-t border-gray-100">
+          {onToggleVariantTelegram && <div className="flex items-center justify-between py-2 border-t border-gray-100">
             <div>
               <div className="text-sm font-medium text-gray-900">Уведомления о новых вариантах и пробниках в Telegram</div>
               <div className="text-xs text-gray-400">Назначение варианта и изменение дедлайна</div>
@@ -846,7 +829,7 @@ export function TelegramConnectionBlock({
                 variantTelegramEnabled ? 'translate-x-6' : 'translate-x-1'
               )} />
             </button>
-          </div>
+          </div>}
 
           <div className="flex items-center gap-2 flex-wrap">
             <Button

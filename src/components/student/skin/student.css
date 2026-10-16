@@ -380,3 +380,26 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-sub-quiet { align-self: flex-start; font-size: 13px; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 0; cursor: pointer }
 .stu .stu-sub-quiet:hover { color: var(--ink) }
 .stu .stu-note-ok { border-radius: 14px; padding: 12px 16px; background: var(--greenS); color: var(--greenInk); font-weight: 600; font-size: 15px }
+
+/* «Настройки» ученика (письмо 16.10) */
+.stu .stu-set { padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.stu .stu-set-h { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; color: var(--ink) }
+.stu .stu-set-h > svg { color: var(--blue) }
+.stu .stu-set-rows > * + * { border-top: 1px solid var(--line) }
+.stu .stu-set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0 }
+.stu .stu-note-warn { border-radius: 14px; padding: 12px 16px; background: var(--orangeS); color: var(--orInk); font-weight: 600; font-size: 14.5px }
+.stu .stu-pick { min-height: 36px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; font-size: 14px; cursor: pointer; transition: border-color .15s }
+.stu .stu-pick:hover:not(:disabled) { border-color: var(--blue) }
+.stu .stu-pick.is-on { background: var(--blue); border-color: var(--blue); color: #fff }
+.stu .stu-pick:disabled:not(.is-on) { opacity: .45; cursor: not-allowed }
+.stu .stu-input { height: 36px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 0 10px; font-size: 14px; font-weight: 600 }
+.stu .stu-input:focus { outline: none; border-color: var(--blue) }
+.stu .stu-icon-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink2); background: none; border: 0; cursor: pointer }
+.stu .stu-icon-btn:hover { background: var(--bg2); color: var(--ink) }
+.stu .stu-goal-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: var(--bg2) }
+.stu .stu-num-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px }
+.stu .stu-num-grid .stu-pick { padding: 6px 0 }
+.stu .stu-topic-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 280px; overflow: auto }
+.stu .stu-topic-pick .stu-pick { border-radius: 12px; text-align: left }
+.stu .stu-goals { padding: 22px; display: flex; flex-direction: column; gap: 14px }
+.stu .stu-goals-week { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px }
