@@ -42,6 +42,7 @@ import { TopicAutocheckStudent } from '@/components/courseProgram/TopicAutocheck
 import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
 import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
+import { TopicFeedbackCard } from '@/components/courseProgram/TopicFeedbackCard'
 import { cn } from '@/utils/cn'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
@@ -794,6 +795,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       {/* §271. «Оцените урок» — раздел «Отзыв» переключателя (владелец 15.10).
           В предпросмотре виден, но выключен. */}
       {reviewOpen && <TopicRatingBlock topicId={topic.id} preview={preview} />}
+      {/* Опрос по уроку (письмо 16.10) — своя карточка рядом с оценкой, видна в
+          любом разделе, пока не пройден; у работы по времени опроса нет. */}
+      {!timed && <TopicFeedbackCard topicId={topic.id} preview={preview} />}
     </div>
   )
 }

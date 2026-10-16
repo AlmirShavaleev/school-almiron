@@ -74,6 +74,7 @@ const CourseTopicTestsPage = lazyPage('CourseTopicTestsPage', () => import('@/pa
 const StudyPlanPage = lazyPage('StudyPlanPage', () => import('@/pages/StudyPlanPage').then(m => ({ default: m.StudyPlanPage })))
 // §271. Оценки уроков учениками — сводка для персонала.
 const TopicRatingsPage = lazyPage('TopicRatingsPage', () => import('@/pages/TopicRatingsPage').then(m => ({ default: m.TopicRatingsPage })))
+const TopicQualityPage = lazyPage('TopicQualityPage', () => import('@/pages/TopicQualityPage').then(m => ({ default: m.TopicQualityPage })))
 const StudentVariantsPage = lazyPage('StudentVariantsPage', () => import('@/pages/student/StudentVariantsPage').then(m => ({ default: m.StudentVariantsPage })))
 const StudentVariantDetailPage = lazyPage('StudentVariantDetailPage', () => import('@/pages/student/StudentVariantDetailPage').then(m => ({ default: m.StudentVariantDetailPage })))
 const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
@@ -185,6 +186,7 @@ export default function AppRoutes() {
         <Route path="/course-program/:courseId/topic-tests" element={<RoleGuard allow={['teacher','admin','owner']}><CourseTopicTestsPage /></RoleGuard>} />
         <Route path="/course-program/:courseId/plan" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><StudyPlanPage /></RoleGuard>} />
         <Route path="/topic-ratings" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><TopicRatingsPage /></RoleGuard>} />
+        <Route path="/topic-quality" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><TopicQualityPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         {/* Маршрута `/inbox` («Очередь задач») больше нет: §197 снял контур
             «Этапа 4» — выдачу подборок как работ. Очередь показывала строки

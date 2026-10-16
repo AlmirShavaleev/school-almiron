@@ -75,6 +75,7 @@ const navItems: NavItem[] = [
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
   { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Качество уроков',   path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // Рядом с каталогом намеренно: подборка рождается в его корзине, там же её и
@@ -116,6 +117,7 @@ const CURATOR_ITEMS: NavItem[] = [
   { label: 'Проверка ДЗ',     path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Программа курса', path: '/course-program', icon: <BookOpen size={18} />,       roles: [], section: 'Курирую' },
   { label: 'Оценки уроков',   path: '/topic-ratings',  icon: <Star size={18} />,           roles: [], section: 'Курирую' },
+  { label: 'Качество уроков', path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
 ]
 
@@ -144,7 +146,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
-  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/lesson-library'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/topic-quality', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
