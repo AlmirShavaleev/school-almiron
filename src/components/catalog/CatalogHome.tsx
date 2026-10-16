@@ -213,7 +213,7 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
         <span className="text-xs text-gray-500">решено из {formatCount(e.total)}</span>
       </ExamHead>
       <Bars e={e} tone={tone} />
-      <div className="self-start"><ChipRow chips={examChips(o, e)} testId="exam-chips" /></div>
+      <div className="self-start"><ChipRow chips={e.locked ? [] : examChips(o, e)} testId="exam-chips" /></div>
       {!e.locked ? (
         <Link
           to={examHref(e.subject, e.examType)}
