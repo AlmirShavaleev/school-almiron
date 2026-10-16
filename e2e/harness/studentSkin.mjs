@@ -98,7 +98,9 @@ function fixtures(scenario) {
     fx.rpc.my_course_topic_locks = (body) => body.p_course_id === IDS.course
       ? { mode: 'progress', topics: physTopics.slice(0, 12).map((tp, i) => ({
           topic_id: tp.id, title: tp.title, open: i < 2, reason: i < 2 ? 'first2' : null, closed: i === 0,
-          percent: null, after_topic_id: i >= 2 ? physTopics[i - 1].id : null, after_title: i >= 2 ? physTopics[i - 1].title : null, opens_on: null })) }
+          percent: null, after_topic_id: i >= 2 ? physTopics[i - 1].id : null, after_title: i >= 2 ? physTopics[i - 1].title : null,
+          // Дата ИЛИ прохождение (письмо 16.10): по 2 урока в неделю с ближайшего понедельника.
+          opens_on: i >= 2 ? new Date(Date.now() + (((8 - new Date().getDay()) % 7 || 7) + 7 * Math.floor((i - 2) / 2)) * 864e5).toISOString().slice(0, 10) : null })) }
       : { mode: 'schedule', topics: [] }
     fx.rpc.student_path_home = {
       onboarding: { needed: false, completed: true, grade: 11, exam: 'ege', subject: 'physics', target_score: 85, months_to_exam: 8, hours_per_week: 6, diagnostic_status: 'done' },

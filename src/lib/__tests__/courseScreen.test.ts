@@ -40,6 +40,29 @@ describe('строка замка', () => {
   })
 })
 
+describe('по прохождению: дата ИЛИ после предыдущего (письмо 16.10)', () => {
+  const no = new Map([['t3', 3]])
+  const lock = (over: object) => topic({ progress: { open: false, note: null, ...over } })
+
+  it('есть дата и предыдущий — «🔒 пн 19 окт или после урока 3», на телефоне короче, подсказка «или раньше»', () => {
+    expect(lockLine(lock({ afterTopicId: 't3', afterTitle: 'Масса', opensOn: '2026-10-19' }), TODAY, no)).toEqual({
+      short: '🔒 пн 19 окт или после урока 3',
+      compact: '🔒 19 окт · или после ур. 3',
+      tip: 'Откроется в понедельник, 19 октября — или раньше, как только пройдёшь урок 3 «Масса»',
+    })
+  })
+
+  it('даты нет — «🔒 после урока 3»; ни даты, ни предыдущего — «🔒 закрыт»', () => {
+    expect(lockLine(lock({ afterTopicId: 't3' }), TODAY, no).short).toBe('🔒 после урока 3')
+    expect(lockLine(lock({}), TODAY, no).short).toBe('🔒 закрыт')
+  })
+
+  it('шапка раздела без числа: «открыто 1 из 2 · следующие — пн 19 окт»', () => {
+    expect(sectionOpenLine([topic({ id: 'a', progress: { open: true, note: null } }), lock({ opensOn: '2026-10-19' })], TODAY))
+      .toBe('открыто 1 из 2 · следующие — пн 19 окт')
+  })
+})
+
 describe('плитка урока', () => {
   it('статусы открытых: пройдено / на проверке / сдать ДЗ / без ДЗ', () => {
     expect(lessonTile(topic({ hw_status: 'accepted' }), TODAY).pill).toBe('✓ пройдено')

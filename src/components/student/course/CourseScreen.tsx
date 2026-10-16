@@ -244,7 +244,11 @@ export function LessonTiles({ lessons, hrefFor }: {
           <>
             <span className="stu-muted text-[12px] font-bold">Урок {i + 1}</span>
             <b className="text-[14.5px] leading-snug break-words">{l.title}</b>
-            <span className={`stu-lt-foot ${l.tile.overdue ? 'f-bad' : FOOT[l.tile.state]}`} data-testid="lesson-tile-pill">{l.tile.pill}</span>
+            <span className={`stu-lt-foot ${l.tile.overdue ? 'f-bad' : FOOT[l.tile.state]}`} data-testid="lesson-tile-pill">
+              {l.tile.compact
+                ? <><span className="stu-lt-full">{l.tile.pill}</span><span className="stu-lt-compact" aria-hidden>{l.tile.compact}</span></>
+                : l.tile.pill}
+            </span>
           </>
         )
         return (

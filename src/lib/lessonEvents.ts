@@ -81,7 +81,8 @@ export function detectEvent(prev: Snapshot | null, modules: readonly ScreenModul
     if (locked) {
       const no = new Map(m.topics.map((x, i) => [x.id, i + 1]))
       const l = lockLine(locked, today, no)
-      const when = l.tip.startsWith('Урок откроется ') ? l.tip.slice('Урок откроется '.length).split(',')[0] : null
+      // «Урок откроется в понедельник, …» / «Откроется в понедельник, … — или раньше…» → «в понедельник».
+      const when = /^(?:Урок о|О)ткроется (в [^,]+|завтра)/.exec(l.tip)?.[1] ?? null
       return { kind: 'wait', passed, next: lessonOf(m, locked, today), when }
     }
     return null

@@ -126,6 +126,8 @@ export interface LockLine {
   short: string
   /** Подсказка по нажатию на закрытую плитку — то же условие словами. */
   tip: string
+  /** Короче — для узкой плитки на телефоне: «🔒 19 окт · или после ур. 3». */
+  compact?: string
 }
 
 /**
@@ -148,12 +150,21 @@ export function lockLine(
   const p = t.progress
   if (p && demoNote && p.note === demoNote) return { short: '🔒 с подпиской', tip: 'Урок откроется с подпиской' }
   if (p) {
-    if (p.afterTopicId) {
-      const n = lessonNo?.get(p.afterTopicId)
-      if (n) return { short: `🔒 после урока ${n}`, tip: `Откроется, когда пройдёшь урок ${n}${p.afterTitle ? ` «${p.afterTitle}»` : ''}` }
-      if (p.afterTitle) return { short: `🔒 после «${p.afterTitle}»`, tip: `Откроется, когда пройдёшь урок «${p.afterTitle}»` }
-    }
+    // «По прохождению» база открывает урок по любому условию: дата ИЛИ пройден
+    // предыдущий (письмо ЛК_стиль_открытие_урока_ИЛИ.md, 16.10).
+    const n = p.afterTopicId ? lessonNo?.get(p.afterTopicId) : undefined
+    const after = n ? `урока ${n}` : p.afterTitle ? `«${p.afterTitle}»` : null
+    const afterTip = n ? `урок ${n}${p.afterTitle ? ` «${p.afterTitle}»` : ''}` : `урок «${p.afterTitle}»`
     const d = p.opensOn && p.opensOn.slice(0, 10) > today ? openDate(p.opensOn, today) : null
+    if (d && after) {
+      const dayOnly = d.short === 'завтра' ? 'завтра' : d.short.split(' ').slice(1).join(' ')
+      return {
+        short: `🔒 ${d.short} или после ${after}`,
+        compact: n ? `🔒 ${dayOnly} · или после ур. ${n}` : undefined,
+        tip: `Откроется ${d.long} — или раньше, как только пройдёшь ${afterTip}`,
+      }
+    }
+    if (after) return { short: `🔒 после ${after}`, tip: `Откроется, когда пройдёшь ${afterTip}` }
     if (d) return { short: `🔒 откроется ${d.short}`, tip: `Урок откроется ${d.long}` }
     return { short: '🔒 закрыт', tip: 'Урок пока закрыт' }
   }
@@ -173,6 +184,8 @@ export interface LessonTile {
   pill: string
   /** У закрытого — подсказка по нажатию. */
   tip?: string
+  /** Короткая строка для телефона. */
+  compact?: string
   /** Срок сдачи прошёл, ДЗ не сдано. */
   overdue?: boolean
 }
@@ -194,7 +207,7 @@ export function lessonTile(
   if (t.hw_status === 'submitted') return { state: 'review', pill: 'ДЗ на проверке' }
   if (!isTopicOpen(t, today)) {
     const l = lockLine(t, today, lessonNo, demoNote)
-    return { state: 'locked', pill: l.short, tip: l.tip }
+    return { state: 'locked', pill: l.short, tip: l.tip, compact: l.compact }
   }
   if (!t.hw_id) return { state: 'nohw', pill: 'открыт · без ДЗ' }
   if (!toDo(t, today)) return { state: 'open', pill: 'открыт' }
@@ -217,6 +230,8 @@ export function sectionOpenLine(topics: readonly ScreenTopic[], today: string = 
   const head = `открыто ${open} из ${topics.length}`
   if (dates.length === 0) return head
   const next = dates[0]
+  // «По прохождению» урок может открыться и раньше даты — число не обещаем.
+  if (topics.some(t => t.progress)) return `${head} · следующие — ${openDate(next, today).short}`
   const k = dates.filter(d => d === next).length
   return `${head} · следующие ${k} — ${openDate(next, today).short}`
 }

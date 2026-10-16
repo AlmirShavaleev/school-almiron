@@ -444,3 +444,5 @@ a.stu-lt:hover { border-color: var(--blue) }
   .stu .stu-ev-acts { flex-direction: column }
   .stu .stu-ev-acts .stu-btn { width: 100%; justify-content: center }
 }
+.stu .stu-lt-compact { display: none }
+@media (max-width: 640px) { .stu .stu-lt-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap } .stu .stu-lt-compact { display: inline } }
