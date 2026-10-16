@@ -14,19 +14,30 @@ import { personas, baseFixtures, IDS } from './fixtures.mjs'
 const outDir = ensureDir(path.resolve(process.argv[2] || 'screenshots/harness/settings-goals'))
 const assetsDir = path.resolve('screenshots/harness/assets')
 
-const WEEKLY = [
-  { id: 'g1', kind: 'numbers', subject: 'physics', numbers: [3, 7], topic_ids: [], topic_titles: [], target: 10, progress: 6, done: false },
-  { id: 'g2', kind: 'topics', subject: null, numbers: [], topic_ids: ['t'], topic_titles: ['Законы Ньютона'], target: 1, progress: 1, done: true },
-  { id: 'g3', kind: 'days', subject: null, numbers: [], topic_ids: [], topic_titles: [], target: 4, progress: 2, done: false },
+// Цели недели ставит преподаватель (правка письма 16.10 15:46): 3 стандартные цели.
+const GOALS = [
+  { kind: 'days', target: 5, progress: 3, done: false },
+  { kind: 'topics', target: 3, progress: 3, done: true },
+  { kind: 'tasks', target: 20, progress: 12, done: false },
 ]
+const HISTORY = Array.from({ length: 8 }, (_, i) => {
+  const d = new Date(Date.now() - (7 - i) * 7 * 864e5)
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+  return { week_start: d.toISOString().slice(0, 10), total: i < 2 ? 0 : 3, done: i < 2 ? 0 : [3, 2, 3, 1, 3, 1][i - 2] }
+})
 
 function withGoals(fx) {
   fx.tables.student_exam_goals = [{ profile_id: IDS.student, subject: 'physics', goal: 80, updated_at: new Date().toISOString() }]
-  fx.rpc.my_regular_goals = WEEKLY
-  fx.rpc.student_goals_for_staff = { exam: [{ subject: 'physics', goal: 80 }], weekly: WEEKLY }
+  fx.rpc.my_weekly_goals = [{ course_id: IDS.course, course_title: 'Физика ЕГЭ', week_start: HISTORY[7].week_start, goals: GOALS }]
+  fx.rpc.course_weekly_goals_get = { days: 5, topics: 3, tasks: 20 }
+  fx.rpc.student_goals_for_staff = {
+    exam: [{ subject: 'physics', goal: 80 }],
+    courses: [{ course_id: IDS.course, course_title: 'Физика ЕГЭ 2027', custom: false,
+      course_goals: { days: 5, topics: 3, tasks: 20 }, own_goals: null, goals: GOALS, history: HISTORY }],
+  }
   fx.rpc.course_goals_summary = [
-    { student_id: IDS.studentRow, goals: 3, done: 1 },
-    ...[0, 1, 2, 3, 4, 5, 6].map(k => ({ student_id: IDS.otherStudent(k), goals: k % 3 === 0 ? 0 : 2, done: k % 2 })),
+    { student_id: IDS.studentRow, goals: 3, done: 1, behind: true },
+    ...[0, 1, 2, 3, 4, 5, 6].map(k => ({ student_id: IDS.otherStudent(k), goals: 3, done: k % 4, behind: k % 3 === 0 })),
   ]
   fx.rpc.student_home_courses = [{
     course_id: IDS.course, topics_done: 23, topics_total: 102,
@@ -92,12 +103,6 @@ for (const width of [1280, 390]) {
     const fx = withGoals(baseFixtures('student'))
     const { context, page } = await open('student', width, fx, '/settings?tab=goals')
     await shot(page, `настройки-цели-${width}`)
-    const add = page.getByTestId('student-goal-add')
-    if (await add.count()) {
-      await add.click()
-      await page.waitForTimeout(300)
-      await shot(page, `настройки-цели-новая-${width}`, '[data-testid="student-weekly-goals"]')
-    }
     await context.close()
   }
   // Главная ученика: карточка «Цели».
@@ -112,6 +117,13 @@ for (const width of [1280, 390]) {
     const fx = withGoals(baseFixtures('owner'))
     const { context, page } = await open('owner', width, fx, `/students/${IDS.studentRow}`)
     await shot(page, `карточка-ученика-цели-${width}`, '[data-testid="student-goals-staff"]')
+    const edit = page.getByTestId('student-goals-edit')
+    if (await edit.count()) {
+      await edit.click()
+      await page.getByRole('button', { name: 'Своё' }).click()
+      await page.waitForTimeout(300)
+      await shot(page, `карточка-ученика-своё-${width}`, '[data-testid="student-goals-staff"]')
+    }
     await shot(page, `карточка-ученика-${width}`)
     await context.close()
   }

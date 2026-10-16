@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchCourseGoalsSummary, weeklySummaryLabel } from '@/lib/studentGoals'
+import { CourseWeeklyGoalsBlock } from '@/components/goals/WeeklyGoalsEditor'
 import { Link } from 'react-router-dom'
 import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, UserPlus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -224,12 +225,13 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const [students, setStudents] = useState<StudentRow[]>([])
   const [telegramSet, setTelegramSet] = useState<Set<string>>(new Set())
   // Цели недели учеников (письмо 16.10): «выполнено k из n»; null — функции ещё нет, колонки нет.
-  const [goals, setGoals] = useState<Map<string, { goals: number; done: number }> | null>(null)
+  const [goals, setGoals] = useState<Map<string, { goals: number; done: number; behind: boolean }> | null>(null)
+  const [goalsTick, setGoalsTick] = useState(0)
   useEffect(() => {
     let cancelled = false
     fetchCourseGoalsSummary(courseId).then(m => { if (!cancelled) setGoals(m) })
     return () => { cancelled = true }
-  }, [courseId])
+  }, [courseId, goalsTick])
   const [showTelegramColumn, setShowTelegramColumn] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -756,6 +758,9 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
         </div>
       )}
 
+      {/* Цели недели курса — для всех учеников (письмо 16.10); нет функции — блока нет. */}
+      {students.length > 0 && <CourseWeeklyGoalsBlock courseId={courseId} onSaved={() => setGoalsTick(t => t + 1)} />}
+
       {/* Students section */}
       {students.length > 0 ? (
         <div className="space-y-4">
@@ -889,6 +894,10 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                             <span className={cn('text-sm', g && g.goals > 0 && g.done === g.goals ? 'font-semibold text-emerald-700' : 'text-gray-600')}>
                               {weeklySummaryLabel(g?.done ?? 0, g?.goals ?? 0)}
                             </span>
+                            {g?.behind && (
+                              <span className="ml-1.5 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                                title="С четверга: хоть одна цель недели ниже темпа" data-testid="course-student-behind">отстаёт</span>
+                            )}
                           </td>
                         )
                       })()}

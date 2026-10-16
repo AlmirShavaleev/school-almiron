@@ -1,226 +1,305 @@
--- Учебные цели в два уровня (письмо ЛК_стиль_настройки_ученика.md, 16.10; решение владельца 16.10).
+-- Цели недели, которые ставит преподаватель (письмо ЛК_стиль_настройки_ученика.md, правка 16.10 15:46;
+-- решение владельца 16.10 — заменяет вариант, где цели выбирал ученик).
 -- НЕ ПРИМЕНЕНО. Применяет оркестратор после «да» владельца; имя файла — по версии в schema_migrations.
--- Только добавляющая: новая таблица и новые функции. student_exam_goals (глобальная цель) и student_weekly_goals
--- (прежняя автоцель недели §255) не меняются. Повторный прогон — без ошибок.
+-- Только добавляющая: новые таблицы и функции. student_exam_goals (цель на экзамен, её ставит ученик) и
+-- student_weekly_goals (прежняя автоцель §255) не меняются. Повторный прогон — без ошибок.
 --
--- Глобальная цель — уже есть: student_exam_goals (subject, goal), пишет set_my_exam_goal. Здесь — только чтение
--- персоналом вместе с целями недели (student_goals_for_staff).
+-- Набор стандартный — 3 цели, у каждой одно число (null — цель выключена):
+--   days   — заходить на платформу N дней в неделю (3/4/5/6): дни из app_visits (дата по Москве);
+--   topics — пройти N тем в неделю (2/3/4/5): тема пройдена — то же правило, что в «Моих курсах»
+--            (student_home_courses: ДЗ темы сдано/принято); «за неделю» — сдача той попытки, что сейчас
+--            засчитана (принятая, иначе последняя), пришлась на эту неделю;
+--   tasks  — решить N задач в тренировке/каталоге (10/20/30/50): первые верные решения задач каталога без
+--            показанного ответа (catalog_counted_solutions — то же, что в прежней цели недели) + первые верные
+--            ответы автопроверки уроков (topic_autocheck_answers).
+-- Неделя — пн–вс по Москве.
 --
--- Регулярные цели — НОВОЕ: `student_regular_goals`, повторяются каждую неделю, пока ученик их не поменяет или не
--- удалит (строка живёт, пока её не удалили; прогресс всегда за текущую неделю, понедельник по Москве). Типы:
---   numbers — «решить N задач по номерам ЕГЭ» (subject + numbers + target). Считает так же, как прежняя цель недели:
---             catalog_counted_solutions (первое верное решение задачи каталога без показанного ответа);
---   topics  — «пройти тему(ы) курса», 1–3 темы. Тема пройдена — то же правило, что в «Моих курсах»
---             (student_home_courses): есть ДЗ темы со статусом submitted/accepted. Прогресс — сколько из выбранных
---             пройдено (к концу недели или раньше — неважно: тема пройдена, цель выполнена);
---   tasks   — «решить N задач в тренировке/каталоге» за неделю: catalog_counted_solutions + первые верные ответы
---             автопроверки уроков (topic_autocheck_answers);
---   days    — «заниматься N дней в неделю»: дни с решённым (student_solve_days) или с ответом автопроверки.
--- Не больше 6 целей у ученика.
+-- Где хранится. course_weekly_goals — цели курса (по умолчанию для всех учеников курса);
+-- student_weekly_goal_overrides — «своё» для ученика в курсе (нет строки — «как у курса»).
+-- Цели не версионируются: история за прошлые недели считается с текущими числами.
 --
--- Кто пишет. Только ученик своей строкой: set_my_regular_goal / delete_my_regular_goal (definer, auth.uid()).
--- Темы цели — только из курсов, к которым у ученика есть доступ (course_student_has_access).
--- Кто читает. Ученик — my_regular_goals() (свои с прогрессом). Персонал — student_goals_for_staff(student_id)
--- (auth_is_staff_of_student или админ платформы) и сводку по курсу course_goals_summary(course_id) (course_is_staff):
--- «Цели недели: выполнено k из n» для списка учеников. Только чтение.
---
--- Таблица закрыта целиком: RLS включена, политик нет, прав у anon/authenticated нет — только definer-функции.
--- Порядок выкладки: миграция → фронт (без миграции блок целей в настройках и на главной показывает «не удалось
--- загрузить», остальное работает).
+-- Права. Ставит персонал курса (course_is_staff): course_weekly_goals_set, student_weekly_goals_set.
+-- Ученик читает только свои (my_weekly_goals). Персонал читает: course_weekly_goals_get, course_goals_summary
+-- (колонка «Цели недели: k из n» и «отстаёт к четвергу»), student_goals_for_staff (карточка ученика, история 8 недель).
+-- Таблицы закрыты целиком: RLS без политик, прав у anon/authenticated нет — только definer-функции.
 
 -- ──────────────────────────────────────────────────────────────────────────
--- 1. Таблица
+-- 1. Таблицы
 -- ──────────────────────────────────────────────────────────────────────────
-create table if not exists public.student_regular_goals (
-  id          uuid primary key default gen_random_uuid(),
-  profile_id  uuid not null references public.profiles(id) on delete cascade,
-  kind        text not null check (kind in ('numbers', 'topics', 'tasks', 'days')),
-  subject     text check (subject in ('math', 'physics')),
-  numbers     int[] not null default '{}',
-  topic_ids   uuid[] not null default '{}',
-  target      int not null check (target between 1 and 500),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  check (kind <> 'numbers' or (subject is not null and cardinality(numbers) between 1 and 5)),
-  check (kind <> 'topics'  or cardinality(topic_ids) between 1 and 3),
-  check (kind <> 'days'    or target between 1 and 7)
+create table if not exists public.course_weekly_goals (
+  course_id   uuid primary key references public.courses(id) on delete cascade,
+  days        smallint check (days between 3 and 6),
+  topics      smallint check (topics between 2 and 5),
+  tasks       smallint check (tasks in (10, 20, 30, 50)),
+  updated_by  uuid references public.profiles(id) on delete set null,
+  updated_at  timestamptz not null default now()
 );
 
-create index if not exists student_regular_goals_profile_idx on public.student_regular_goals (profile_id);
+create table if not exists public.student_weekly_goal_overrides (
+  course_id   uuid not null references public.courses(id) on delete cascade,
+  student_id  uuid not null references public.students(id) on delete cascade,
+  days        smallint check (days between 3 and 6),
+  topics      smallint check (topics between 2 and 5),
+  tasks       smallint check (tasks in (10, 20, 30, 50)),
+  updated_by  uuid references public.profiles(id) on delete set null,
+  updated_at  timestamptz not null default now(),
+  primary key (course_id, student_id)
+);
+create index if not exists student_weekly_goal_overrides_student_idx on public.student_weekly_goal_overrides (student_id);
 
-alter table public.student_regular_goals enable row level security;
-revoke all on table public.student_regular_goals from public, anon, authenticated;
+alter table public.course_weekly_goals enable row level security;
+alter table public.student_weekly_goal_overrides enable row level security;
+revoke all on table public.course_weekly_goals from public, anon, authenticated;
+revoke all on table public.student_weekly_goal_overrides from public, anon, authenticated;
 
-comment on table public.student_regular_goals is
-  'Цели недели ученика (16.10): повторяются каждую неделю, пока ученик не поменяет. Типы numbers/topics/tasks/days. Закрыта целиком: пишут set_my_regular_goal/delete_my_regular_goal, читают my_regular_goals, student_goals_for_staff, course_goals_summary.';
+comment on table public.course_weekly_goals is
+  'Цели недели курса (16.10): days 3–6, topics 2–5, tasks 10/20/30/50; null — цель выключена. Ставит персонал курса (course_weekly_goals_set).';
+comment on table public.student_weekly_goal_overrides is
+  'Цели недели ученика в курсе, «своё» вместо «как у курса» (16.10). Ставит персонал курса (student_weekly_goals_set).';
 
 -- ──────────────────────────────────────────────────────────────────────────
--- 2. Прогресс за текущую неделю (внутренняя, без grant)
+-- 2. Внутренние: понедельник недели, прогресс, действующие цели (без grant)
 -- ──────────────────────────────────────────────────────────────────────────
-create or replace function public.regular_goals_progress_of(p_profile_id uuid)
-returns table (
-  id uuid, kind text, subject text, numbers int[], topic_ids uuid[], topic_titles text[],
-  target int, progress int, done boolean, week_start date
-)
+create or replace function public._goals_week_start(p_at timestamptz default now())
+returns date
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select date_trunc('week', p_at at time zone 'Europe/Moscow')::date;
+$$;
+
+create or replace function public._weekly_progress_of(p_profile_id uuid, p_week date)
+returns table (days int, topics int, tasks int)
 language sql
 stable
 security definer
 set search_path = public, pg_temp
 as $$
-  with wk as (
-    select date_trunc('week', now() at time zone 'Europe/Moscow')::date as d
+  with rng as (
+    select p_week::timestamp at time zone 'Europe/Moscow' as t0,
+           (p_week + 7)::timestamp at time zone 'Europe/Moscow' as t1
   ),
-  rng as (
-    select (select d from wk)::timestamp at time zone 'Europe/Moscow' as t0,
-           ((select d from wk) + 7)::timestamp at time zone 'Europe/Moscow' as t1
-  ),
-  st as (
-    select s.id from public.students s where s.profile_id = p_profile_id
-  ),
-  cat as (
-    select c.task_id, c.at, c.subject, c.n
-      from public.catalog_counted_solutions(p_profile_id) c
-     where c.at >= (select t0 from rng) and c.at < (select t1 from rng)
-  ),
-  auto as (
-    -- Первый верный ответ автопроверки по задаче — за эту неделю.
-    select a.task_id, min(a.created_at) as at
-      from public.topic_autocheck_answers a
-     where a.profile_id = p_profile_id and a.is_correct
-     group by a.task_id
-    having min(a.created_at) >= (select t0 from rng) and min(a.created_at) < (select t1 from rng)
-  ),
-  days as (
-    select sd.day from public.student_solve_days(p_profile_id) sd
-     where sd.day >= (select wk.d from wk) and sd.day < (select wk.d from wk) + 7
-    union
-    select (a.created_at at time zone 'Europe/Moscow')::date
-      from public.topic_autocheck_answers a
-     where a.profile_id = p_profile_id
-       and a.created_at >= (select t0 from rng) and a.created_at < (select t1 from rng)
-  ),
-  goals as (
-    select g.*,
-           case g.kind
-             when 'numbers' then (select count(*) from cat where cat.subject = g.subject and cat.n = any(g.numbers))::int
-             when 'tasks'   then ((select count(*) from cat where g.subject is null or cat.subject = g.subject)
-                                  + (select count(*) from auto))::int
-             when 'days'    then (select count(*) from days)::int
-             when 'topics'  then (
-               select count(*)::int from unnest(g.topic_ids) tid
-                where exists (
-                  select 1 from public.topic_homework h
-                   where h.topic_id = tid
-                     and (select a.status::text from public.topic_homework_attempts a
-                           where a.homework_id = h.id and a.student_id in (select id from st)
-                           order by (a.status = 'accepted') desc, a.attempt_number desc
-                           limit 1) in ('submitted', 'accepted')))
-           end as progress,
-           case when g.kind = 'topics' then cardinality(g.topic_ids) else g.target end as goal_target
-      from public.student_regular_goals g
-     where g.profile_id = p_profile_id
+  st as (select s.id from public.students s where s.profile_id = p_profile_id),
+  passed as (
+    -- Засчитанная попытка по каждому ДЗ (принятая, иначе последняя) — как в student_home_courses.
+    select h.topic_id,
+           (select a.status::text from public.topic_homework_attempts a
+             where a.homework_id = h.id and a.student_id in (select id from st)
+             order by (a.status = 'accepted') desc, a.attempt_number desc limit 1) as status,
+           (select a.submitted_at from public.topic_homework_attempts a
+             where a.homework_id = h.id and a.student_id in (select id from st)
+             order by (a.status = 'accepted') desc, a.attempt_number desc limit 1) as at
+      from public.topic_homework h
+     where exists (select 1 from public.topic_homework_attempts a where a.homework_id = h.id and a.student_id in (select id from st))
   )
-  select g.id, g.kind, g.subject, g.numbers, g.topic_ids,
-         array(select t.title from unnest(g.topic_ids) with ordinality u(tid, ord) join public.topics t on t.id = u.tid order by u.ord),
-         g.goal_target, least(g.progress, 9999), g.progress >= g.goal_target, (select d from wk)
-    from goals g
-   order by g.created_at;
+  select
+    (select count(distinct v.visited_on)::int from public.app_visits v
+      where v.profile_id = p_profile_id and v.visited_on >= p_week and v.visited_on < p_week + 7),
+    (select count(distinct p.topic_id)::int from passed p
+      where p.status in ('submitted', 'accepted') and p.at >= (select t0 from rng) and p.at < (select t1 from rng)),
+    ((select count(*) from public.catalog_counted_solutions(p_profile_id) c
+       where c.at >= (select t0 from rng) and c.at < (select t1 from rng))
+     + (select count(*) from (
+         select a.task_id from public.topic_autocheck_answers a
+          where a.profile_id = p_profile_id and a.is_correct
+          group by a.task_id
+         having min(a.created_at) >= (select t0 from rng) and min(a.created_at) < (select t1 from rng)) y))::int;
 $$;
+revoke all on function public._weekly_progress_of(uuid, date) from public, anon, authenticated;
 
-revoke all on function public.regular_goals_progress_of(uuid) from public, anon, authenticated;
+create or replace function public._effective_weekly_goals(p_course_id uuid, p_student_id uuid)
+returns table (days smallint, topics smallint, tasks smallint, custom boolean)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(o.days, case when o.student_id is null then c.days end),
+         coalesce(o.topics, case when o.student_id is null then c.topics end),
+         coalesce(o.tasks, case when o.student_id is null then c.tasks end),
+         o.student_id is not null
+    from (select 1) one
+    left join public.course_weekly_goals c on c.course_id = p_course_id
+    left join public.student_weekly_goal_overrides o on o.course_id = p_course_id and o.student_id = p_student_id;
+$$;
+revoke all on function public._effective_weekly_goals(uuid, uuid) from public, anon, authenticated;
 
--- ──────────────────────────────────────────────────────────────────────────
--- 3. Ученик: свои цели с прогрессом, добавить/изменить, удалить
--- ──────────────────────────────────────────────────────────────────────────
-create or replace function public.my_regular_goals()
+-- Цели с прогрессом за неделю: [{kind, target, progress, done}] — только включённые.
+create or replace function public._weekly_goals_json(p_course_id uuid, p_student_id uuid, p_week date)
 returns jsonb
 language sql
 stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb)
-    from public.regular_goals_progress_of(auth.uid()) r;
+  with g as (select * from public._effective_weekly_goals(p_course_id, p_student_id)),
+       pr as (select * from public._weekly_progress_of((select s.profile_id from public.students s where s.id = p_student_id), p_week))
+  select coalesce(jsonb_agg(x.j order by x.ord), '[]'::jsonb)
+    from (
+      select 1 as ord, jsonb_build_object('kind', 'days', 'target', g.days, 'progress', pr.days, 'done', pr.days >= g.days) as j
+        from g, pr where g.days is not null
+      union all
+      select 2, jsonb_build_object('kind', 'topics', 'target', g.topics, 'progress', pr.topics, 'done', pr.topics >= g.topics)
+        from g, pr where g.topics is not null
+      union all
+      select 3, jsonb_build_object('kind', 'tasks', 'target', g.tasks, 'progress', pr.tasks, 'done', pr.tasks >= g.tasks)
+        from g, pr where g.tasks is not null
+    ) x;
 $$;
+revoke all on function public._weekly_goals_json(uuid, uuid, date) from public, anon, authenticated;
 
-comment on function public.my_regular_goals() is
-  'Цели недели вызывающего ученика с прогрессом за текущую неделю (понедельник по Москве): [{id, kind, subject, numbers, topic_ids, topic_titles, target, progress, done, week_start}].';
-revoke all on function public.my_regular_goals() from public, anon;
-grant execute on function public.my_regular_goals() to authenticated;
+-- ──────────────────────────────────────────────────────────────────────────
+-- 3. Ученик: свои цели недели по курсам (только чтение)
+-- ──────────────────────────────────────────────────────────────────────────
+create or replace function public.my_weekly_goals()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with st as (select s.id from public.students s where s.profile_id = auth.uid()),
+       cs as (
+         select distinct g.course_id, c.title
+           from public.group_students gs
+           join public.groups g on g.id = gs.group_id
+           join public.courses c on c.id = g.course_id
+          where gs.student_id in (select id from st)
+       )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'course_id', cs.course_id, 'course_title', cs.title,
+           'week_start', public._goals_week_start(),
+           'goals', public._weekly_goals_json(cs.course_id, (select id from st limit 1), public._goals_week_start()))
+         order by cs.title), '[]'::jsonb)
+    from cs
+   where jsonb_array_length(public._weekly_goals_json(cs.course_id, (select id from st limit 1), public._goals_week_start())) > 0;
+$$;
+comment on function public.my_weekly_goals() is
+  'Цели недели вызывающего ученика по курсам (их ставит преподаватель) с прогрессом за текущую неделю: [{course_id, course_title, week_start, goals:[{kind, target, progress, done}]}].';
+revoke all on function public.my_weekly_goals() from public, anon;
+grant execute on function public.my_weekly_goals() to authenticated;
 
-create or replace function public.set_my_regular_goal(
-  p_id uuid, p_kind text, p_subject text, p_numbers int[], p_topic_ids uuid[], p_target int
-)
-returns uuid
+-- ──────────────────────────────────────────────────────────────────────────
+-- 4. Персонал: поставить цели курсу и ученику
+-- ──────────────────────────────────────────────────────────────────────────
+create or replace function public.course_weekly_goals_get(p_course_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.course_is_staff(p_course_id) then
+    raise exception 'Нет доступа к целям этого курса' using errcode = '42501';
+  end if;
+  return coalesce((select jsonb_build_object('days', c.days, 'topics', c.topics, 'tasks', c.tasks)
+                     from public.course_weekly_goals c where c.course_id = p_course_id),
+                  jsonb_build_object('days', null, 'topics', null, 'tasks', null));
+end;
+$$;
+revoke all on function public.course_weekly_goals_get(uuid) from public, anon;
+grant execute on function public.course_weekly_goals_get(uuid) to authenticated;
+
+create or replace function public.course_weekly_goals_set(p_course_id uuid, p_days int, p_topics int, p_tasks int)
+returns void
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
-declare
-  v_profile uuid := auth.uid();
-  v_id      uuid;
-  v_topics  uuid[] := coalesce(p_topic_ids, '{}');
 begin
-  if v_profile is null or not exists (select 1 from public.students s where s.profile_id = v_profile) then
-    raise exception 'Цели недели ставит ученик' using errcode = '42501';
+  if not public.course_is_staff(p_course_id) then
+    raise exception 'Нет доступа к целям этого курса' using errcode = '42501';
   end if;
-  if p_kind = 'numbers' and exists (select 1 from unnest(coalesce(p_numbers, '{}')) n where n < 1 or n > 27) then
-    raise exception 'Номер задания ЕГЭ — от 1 до 27' using errcode = '22023';
+  if p_days is null and p_topics is null and p_tasks is null then
+    delete from public.course_weekly_goals where course_id = p_course_id;
+    return;
   end if;
-  if p_kind = 'topics' and exists (
-    select 1 from unnest(v_topics) tid
-     where not exists (
-       select 1 from public.topics t join public.modules m on m.id = t.module_id
-        where t.id = tid and public.course_student_has_access(m.course_id))) then
-    raise exception 'Тема не из ваших курсов' using errcode = '42501';
-  end if;
-
-  if p_id is null then
-    if (select count(*) from public.student_regular_goals where profile_id = v_profile) >= 6 then
-      raise exception 'Не больше 6 целей недели' using errcode = '22023';
-    end if;
-    insert into public.student_regular_goals (profile_id, kind, subject, numbers, topic_ids, target)
-    values (v_profile, p_kind, nullif(p_subject, ''), coalesce(p_numbers, '{}'), v_topics,
-            case when p_kind = 'topics' then greatest(cardinality(v_topics), 1) else p_target end)
-    returning id into v_id;
-  else
-    update public.student_regular_goals
-       set kind = p_kind, subject = nullif(p_subject, ''), numbers = coalesce(p_numbers, '{}'), topic_ids = v_topics,
-           target = case when p_kind = 'topics' then greatest(cardinality(v_topics), 1) else p_target end,
-           updated_at = now()
-     where id = p_id and profile_id = v_profile
-    returning id into v_id;
-    if v_id is null then
-      raise exception 'Цель не найдена' using errcode = 'P0002';
-    end if;
-  end if;
-  return v_id;
+  insert into public.course_weekly_goals (course_id, days, topics, tasks, updated_by)
+  values (p_course_id, p_days, p_topics, p_tasks, auth.uid())
+  on conflict (course_id) do update
+    set days = excluded.days, topics = excluded.topics, tasks = excluded.tasks,
+        updated_by = excluded.updated_by, updated_at = now();
 end;
 $$;
+comment on function public.course_weekly_goals_set(uuid, int, int, int) is
+  'Цели недели курса для всех учеников (course_is_staff, иначе 42501): days 3–6, topics 2–5, tasks 10/20/30/50, null — выключена; все null — целей нет.';
+revoke all on function public.course_weekly_goals_set(uuid, int, int, int) from public, anon;
+grant execute on function public.course_weekly_goals_set(uuid, int, int, int) to authenticated;
 
-comment on function public.set_my_regular_goal(uuid, text, text, int[], uuid[], int) is
-  'Ученик добавляет (p_id null) или меняет свою цель недели. numbers: subject + 1–5 номеров 1..27 + target; topics: 1–3 темы своих курсов (target = число тем); tasks: target 1..500; days: target 1..7. Не больше 6 целей.';
-revoke all on function public.set_my_regular_goal(uuid, text, text, int[], uuid[], int) from public, anon;
-grant execute on function public.set_my_regular_goal(uuid, text, text, int[], uuid[], int) to authenticated;
-
-create or replace function public.delete_my_regular_goal(p_id uuid)
-returns boolean
-language sql
+create or replace function public.student_weekly_goals_set(
+  p_course_id uuid, p_student_id uuid, p_custom boolean, p_days int, p_topics int, p_tasks int
+)
+returns void
+language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
-  with d as (
-    delete from public.student_regular_goals where id = p_id and profile_id = auth.uid() returning 1
-  )
-  select exists (select 1 from d);
+begin
+  if not public.course_is_staff(p_course_id) then
+    raise exception 'Нет доступа к целям этого курса' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.group_students gs join public.groups g on g.id = gs.group_id
+                  where g.course_id = p_course_id and gs.student_id = p_student_id) then
+    raise exception 'Ученик не в этом курсе' using errcode = '22023';
+  end if;
+  if not coalesce(p_custom, false) then
+    delete from public.student_weekly_goal_overrides where course_id = p_course_id and student_id = p_student_id;
+    return;
+  end if;
+  insert into public.student_weekly_goal_overrides (course_id, student_id, days, topics, tasks, updated_by)
+  values (p_course_id, p_student_id, p_days, p_topics, p_tasks, auth.uid())
+  on conflict (course_id, student_id) do update
+    set days = excluded.days, topics = excluded.topics, tasks = excluded.tasks,
+        updated_by = excluded.updated_by, updated_at = now();
+end;
 $$;
-
-revoke all on function public.delete_my_regular_goal(uuid) from public, anon;
-grant execute on function public.delete_my_regular_goal(uuid) to authenticated;
+comment on function public.student_weekly_goals_set(uuid, uuid, boolean, int, int, int) is
+  'Цели недели ученика в курсе (course_is_staff): p_custom=false — «как у курса» (своё удаляется), true — «своё» с числами (null — цель выключена).';
+revoke all on function public.student_weekly_goals_set(uuid, uuid, boolean, int, int, int) from public, anon;
+grant execute on function public.student_weekly_goals_set(uuid, uuid, boolean, int, int, int) to authenticated;
 
 -- ──────────────────────────────────────────────────────────────────────────
--- 4. Персонал: цели ученика и сводка по курсу (только чтение)
+-- 5. Персонал: сводка по курсу и карточка ученика (только чтение)
 -- ──────────────────────────────────────────────────────────────────────────
+-- «Отстаёт к четвергу»: с четверга (4-й день недели) хоть одна цель ниже темпа — прогресс меньше
+-- ceil(цель × прошедшие дни / 7).
+create or replace function public.course_goals_summary(p_course_id uuid)
+returns table (student_id uuid, goals int, done int, behind boolean)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_week date := public._goals_week_start();
+  v_dow  int  := extract(isodow from now() at time zone 'Europe/Moscow')::int;
+begin
+  if not public.course_is_staff(p_course_id) then
+    raise exception 'Нет доступа к ученикам этого курса' using errcode = '42501';
+  end if;
+  return query
+  with cs as (
+    select distinct gs.student_id
+      from public.group_students gs join public.groups g on g.id = gs.group_id
+     where g.course_id = p_course_id
+  ),
+  gj as (select cs.student_id, public._weekly_goals_json(p_course_id, cs.student_id, v_week) as j from cs)
+  select gj.student_id,
+         jsonb_array_length(gj.j)::int,
+         (select count(*)::int from jsonb_array_elements(gj.j) e where (e->>'done')::boolean),
+         v_dow >= 4 and exists (
+           select 1 from jsonb_array_elements(gj.j) e
+            where (e->>'progress')::int < ceil((e->>'target')::numeric * v_dow / 7))
+    from gj;
+end;
+$$;
+comment on function public.course_goals_summary(uuid) is
+  'Цели недели учеников курса (course_is_staff, иначе 42501): по ученику — сколько целей, сколько выполнено на этой неделе и отстаёт ли (с четверга, ниже темпа).';
+revoke all on function public.course_goals_summary(uuid) from public, anon;
+grant execute on function public.course_goals_summary(uuid) to authenticated;
+
 create or replace function public.student_goals_for_staff(p_student_id uuid)
 returns jsonb
 language plpgsql
@@ -230,6 +309,7 @@ set search_path = public, pg_temp
 as $$
 declare
   v_profile uuid;
+  v_week    date := public._goals_week_start();
 begin
   if not (public.is_admin_or_owner() or public.auth_is_staff_of_student(p_student_id)) then
     raise exception 'Нет доступа к целям этого ученика' using errcode = '42501';
@@ -238,42 +318,33 @@ begin
   return jsonb_build_object(
     'exam', coalesce((select jsonb_agg(jsonb_build_object('subject', e.subject, 'goal', e.goal) order by e.subject)
                         from public.student_exam_goals e where e.profile_id = v_profile), '[]'::jsonb),
-    'weekly', coalesce((select jsonb_agg(to_jsonb(r)) from public.regular_goals_progress_of(v_profile) r), '[]'::jsonb)
+    'courses', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'course_id', c.id, 'course_title', c.title,
+               'custom', (select eg.custom from public._effective_weekly_goals(c.id, p_student_id) eg),
+               'course_goals', (select jsonb_build_object('days', cw.days, 'topics', cw.topics, 'tasks', cw.tasks)
+                                  from public.course_weekly_goals cw where cw.course_id = c.id),
+               'own_goals', (select jsonb_build_object('days', o.days, 'topics', o.topics, 'tasks', o.tasks)
+                               from public.student_weekly_goal_overrides o where o.course_id = c.id and o.student_id = p_student_id),
+               'goals', public._weekly_goals_json(c.id, p_student_id, v_week),
+               'history', (
+                 select jsonb_agg(jsonb_build_object(
+                          'week_start', w.d,
+                          'total', jsonb_array_length(h.j),
+                          'done', (select count(*) from jsonb_array_elements(h.j) e where (e->>'done')::boolean))
+                        order by w.d)
+                   from generate_series(0, 7) k
+                   cross join lateral (select v_week - 7 * (7 - k) as d) w
+                   cross join lateral (select public._weekly_goals_json(c.id, p_student_id, w.d) as j) h)
+             ) order by c.title)
+        from public.courses c
+       where c.id in (select g.course_id from public.group_students gs join public.groups g on g.id = gs.group_id
+                       where gs.student_id = p_student_id)
+         and (public.is_admin_or_owner() or public.course_is_staff(c.id))), '[]'::jsonb)
   );
 end;
 $$;
-
 comment on function public.student_goals_for_staff(uuid) is
-  'Цели ученика для персонала (auth_is_staff_of_student или админ, иначе 42501): {exam:[{subject, goal}], weekly:[цели недели с прогрессом]}. Только чтение.';
+  'Цели ученика для персонала (auth_is_staff_of_student или админ, иначе 42501): {exam:[{subject, goal}], courses:[{course_id, course_title, custom, course_goals, own_goals, goals:[цели недели с прогрессом], history:[8 недель: week_start, total, done]}]}. Только курсы, где вызывающий — персонал.';
 revoke all on function public.student_goals_for_staff(uuid) from public, anon;
 grant execute on function public.student_goals_for_staff(uuid) to authenticated;
-
-create or replace function public.course_goals_summary(p_course_id uuid)
-returns table (student_id uuid, goals int, done int)
-language plpgsql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  if not public.course_is_staff(p_course_id) then
-    raise exception 'Нет доступа к ученикам этого курса' using errcode = '42501';
-  end if;
-  return query
-  select s.id,
-         count(r.id)::int,
-         count(r.id) filter (where r.done)::int
-    from (select distinct gs.student_id
-            from public.group_students gs
-            join public.groups g on g.id = gs.group_id
-           where g.course_id = p_course_id) cs
-    join public.students s on s.id = cs.student_id
-    left join lateral public.regular_goals_progress_of(s.profile_id) r on true
-   group by s.id;
-end;
-$$;
-
-comment on function public.course_goals_summary(uuid) is
-  'Цели недели учеников курса для персонала (course_is_staff, иначе 42501): по ученику — сколько целей и сколько выполнено на этой неделе.';
-revoke all on function public.course_goals_summary(uuid) from public, anon;
-grant execute on function public.course_goals_summary(uuid) to authenticated;
