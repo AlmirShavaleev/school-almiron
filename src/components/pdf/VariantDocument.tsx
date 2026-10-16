@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
+import { catalogAnswerSource } from '@/lib/catalogMarkdown'
 import { extendedAnswerLabel, hasExtendedAnswer } from '@/utils/extendedAnswer'
 import {
   buildKeyTable,
@@ -158,7 +159,7 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                   : ''
               const answerHtml =
                 effShowAnswers && task.has_answer && task.answer_html
-                  ? resolveTaskHtml(task.answer_html, task.assets)
+                  ? resolveTaskHtml(catalogAnswerSource(task.answer_html, task), task.assets)
                   : ''
               // Часть 2: своего ответа нет, но есть критерии и максимум баллов
               // — именно по ним и проверяют (см. extendedAnswer.ts). Критерии
@@ -241,7 +242,9 @@ export const VariantDocument = forwardRef<HTMLDivElement, Props>(
                 {keyRows.map(row => (
                   <tr key={row.itemId}>
                     <td>{row.number}</td>
-                    <td>{row.shortAnswer}</td>
+                    {row.answerMarkdown
+                      ? <td className="catalog-html" dangerouslySetInnerHTML={{ __html: resolveTaskHtml(row.answerMarkdown, []) }} />
+                      : <td>{row.shortAnswer}</td>}
                   </tr>
                 ))}
               </tbody>

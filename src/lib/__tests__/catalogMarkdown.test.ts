@@ -69,6 +69,22 @@ describe('разметка', () => {
     expect(html).toContain('<td>0,02</td><td>a|b</td>')
     expect(html).not.toContain('---')
   })
+  it('таблица каталога математики: разделитель «|:-:|» из одного дефиса и выравнивание столбцов', () => {
+    const md = [
+      '| Год | Долг после начисления процентов | Платёж |',
+      '|:-:|:-:|-:|',
+      '| 1 | $1{,}1S$ | $x$ |',
+      '| 2 | $1{,}21S - 1{,}1x$ | $x$ |',
+    ].join('\n')
+    const html = render(md)
+    expect(html).toContain('<div class="tbl-wrap"><table><thead><tr><th style="text-align:center">Год</th>')
+    expect(html).toContain('<th style="text-align:right">Платёж</th>')
+    expect(html.match(/<tr>/g)).toHaveLength(3)
+    expect(html).not.toContain(':-:')
+  })
+  it('разделитель без двоеточий — без style, как раньше', () => {
+    expect(render(['| a | b |', '|-|-|', '| 1 | 2 |'].join('\n'))).toContain('<th>a</th><th>b</th>')
+  })
   it('сырой HTML в источнике экранируется', () => {
     const html = render('<img src=x onerror=alert(1)> <script>alert(1)</script> **<b>жирно</b>**')
     expect(html).not.toMatch(/<img|<script|<b>/)

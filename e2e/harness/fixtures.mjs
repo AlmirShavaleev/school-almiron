@@ -81,7 +81,7 @@ export const personas = {
   // §246: главная «Каталога заданий» (фикстуры `apply246`): ученик решает
   // активно, решает, но сравнивать не с кем (решающих < 10), ничего не решал;
   // владелец в режиме учителя — вид персонала.
-  ...Object.fromEntries(['s246active', 's246few', 's246new'].map(k => [
+  ...Object.fromEntries(['s246active', 's246few', 's246new', 's292'].map(k => [
     k, { user: { id: IDS.student, email: 'uchenik@harness.invalid', user_metadata: { full_name: NAMES[0] } } },
   ])),
   o246: { user: { id: IDS.owner, email: 'vladelets@harness.invalid', user_metadata: { full_name: NAMES[4] } }, staffProfileId: IDS.owner, staffMode: 'teacher' },
@@ -1920,6 +1920,7 @@ export function baseFixtures(persona) {
   if (persona === 'o243') apply243(fx)
   if (persona.startsWith('o244')) apply244(fx, persona)
   if (persona.startsWith('s246') || persona === 'o246') apply246(fx, persona)
+  if (persona === 's292') apply292(fx)
   if (persona.startsWith('o249')) apply249(fx, persona)
   if (persona === 'o250') apply250(fx)
   fx.onWrite = (table, method, rows) => { if (method === 'POST' && Array.isArray(fx.tables[table])) fx.tables[table].push(...rows) }
@@ -2558,6 +2559,16 @@ function apply246(fx, persona) {
       : { solved: all, solved_7d: all > 0 ? 18 : 0, solvers: fresh ? 0 : few ? 5 : 31, better_pct: fresh || few ? null : 68 },
     exams,
   }
+}
+
+// ── §292: каталог по предмету подписки ──────────────────────────────────────
+// Тот же ученик, что §246 (s246active), но с подпиской только на физику ЕГЭ:
+// база помечает остальные экзамены `locked`, разделы и задачи — закрыты.
+function apply292(fx) {
+  apply246(fx, 's246active')
+  for (const e of fx.rpc.catalog_my_overview.exams) e.locked = !(e.subject === 'Физика' && e.exam_type === 'ЕГЭ')
+  fx.rpc.catalog_section_allowed = () => false
+  fx.rpc.catalog_tasks_allowed = () => false
 }
 
 // ── §249: вкладка «Проверочные и контрольные» ───────────────────────────────

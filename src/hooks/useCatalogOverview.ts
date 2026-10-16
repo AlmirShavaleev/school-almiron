@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeCatalogOverview, type CatalogOverview } from '@/lib/catalogOverview'
+import { isCatalogLockedError } from '@/lib/catalogLock'
 
 /**
  * §246. Главная каталога одним вызовом `catalog_my_overview()`.
@@ -21,6 +22,7 @@ export function useCatalogOverview(userId: string | null | undefined) {
   const [overview, setOverview] = useState<CatalogOverview | null>(null)
   const [loading, setLoading] = useState(Boolean(userId))
   const [error, setError] = useState<string | null>(null)
+  // §292: закрыто всё (нет подписки ни на один предмет) — плашка, не ошибка
   const [locked, setLocked] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const retry = useCallback(() => setAttempt(a => a + 1), [])
@@ -45,8 +47,7 @@ export function useCatalogOverview(userId: string | null | undefined) {
         if (typeof db.rpc !== 'function') throw new Error('rpc недоступен')
         const { data, error: err } = await db.rpc<unknown>('catalog_my_overview', {})
         if (cancelled) return
-        // §290: банк закрыт (пробный кончился / ученик без группы и подписки)
-        if (err?.hint === 'CATALOG_LOCKED') { setOverview(null); setLocked(true); return }
+        if (isCatalogLockedError(err)) { setOverview(null); setLocked(true); return }
         if (err) throw new Error(err.message ?? 'Не удалось загрузить статистику')
         const parsed = normalizeCatalogOverview(data)
         if (!parsed) throw new Error('Пустой ответ')

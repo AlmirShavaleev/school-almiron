@@ -9,7 +9,7 @@ import type { CheckOutcome } from '@/hooks/useCatalogPractice'
 import type { TaskPracticeState } from '@/lib/catalogRewards'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
 import { applyTaskTexts, fetchCatalogTaskTexts, revealCatalogTaskTexts, type CatalogTaskTexts } from '@/lib/catalogTaskTexts'
-import { isCatalogMarkdown } from '@/lib/catalogMarkdown'
+import { catalogAnswerSource, isCatalogMarkdown } from '@/lib/catalogMarkdown'
 import { digitsOrderNote, examTaskLabel, taskCodeLabel, toleranceLine, withRealMinus } from '@/lib/catalogAnswerSpec'
 import { useStaffAnswerSpec } from '@/hooks/useStaffAnswerSpec'
 import { useAuthStore } from '@/store/authStore'
@@ -135,7 +135,7 @@ export function TaskDisplayCard({
 
   // Resolve asset URLs once per task (memo-like — new object only when task changes)
   const stmt    = resolveTaskHtml(task.statement_html,      task.assets)
-  const ans     = resolveTaskHtml(withRealMinus(view.answer_html), task.assets)
+  const ans     = resolveTaskHtml(catalogAnswerSource(withRealMinus(view.answer_html), task), task.assets)
   const sol     = resolveTaskHtml(view.solution_html,       task.assets)
   const plan    = resolveTaskHtml(view.solution_plan_html,  task.assets)
   const crit    = resolveTaskHtml(view.grade_criteria_html, task.assets)
@@ -206,6 +206,14 @@ export function TaskDisplayCard({
 
       {checkable && practice && (
         <TaskAnswerCheck taskId={task.id} state={practice.state} onCheck={practice.onCheck} />
+      )}
+
+      {/* Задача без автопроверки (вторая часть, доказательство, ответ-выражение):
+          поля ответа нет — говорим ученику, что делать, а не оставляем гадать. */}
+      {practice && pState && !checkable && (
+        <p className="mx-4 mb-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600" data-testid="task-self-check">
+          Самопроверка: реши задачу и сверь с решением — ответ здесь автоматически не проверяется.
+        </p>
       )}
 
       {/* Action row. Отметка «выполнено» — первая кнопка с подписью, а не

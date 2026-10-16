@@ -5,6 +5,7 @@ import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { isAnswerTemplateSvg } from '@/pages/catalog/classifyAnswerTemplate'
 import { extendedAnswerNote, hasExtendedAnswer } from '@/utils/extendedAnswer'
 import { isCatalogMarkdown, renderCatalogContent } from '@/lib/catalogContent'
+import { catalogAnswerSource } from '@/lib/catalogMarkdown'
 import { upgradeMathIn } from '@/lib/katexLoader'
 
 // ── resolveHtml ───────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ export function CatalogTaskContent({
           <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Ответ</div>
           <div
             className="prose prose-sm max-w-none text-gray-800 catalog-html"
-            dangerouslySetInnerHTML={{ __html: resolve(task.answer_html) }}
+            dangerouslySetInnerHTML={{ __html: resolve(catalogAnswerSource(task.answer_html, task)) }}
           />
         </div>
       )}

@@ -9,6 +9,7 @@ import { ru } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useVariantStudentWork, type WorkItem } from '@/hooks/useVariantStudentWork'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
+import { catalogAnswerSource } from '@/lib/catalogMarkdown'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 
 const GRADING_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -115,7 +116,7 @@ function ItemCard({ item, grade, onPointsChange, onCommentChange, onSave, disabl
         <div>
           <p className="text-xs font-medium text-gray-500 mb-1.5">Правильный ответ</p>
           <div className="text-sm font-medium text-green-700 bg-green-50 rounded-lg px-3 py-2 inline-block">
-            <TaskContentRenderer html={resolveTaskHtml(item.answer_html, [])} className="text-green-700" />
+            <TaskContentRenderer html={resolveTaskHtml(catalogAnswerSource(item.answer_html, item), [])} className="text-green-700" />
           </div>
           {autoStatus && (
             <span className={`ml-2 text-xs font-medium ${autoStatus.cls}`}>

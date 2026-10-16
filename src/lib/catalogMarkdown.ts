@@ -23,6 +23,11 @@
  * Подмножество Markdown — ровно то, что есть в данных: абзацы (пустая строка),
  * перенос строки внутри абзаца — `<br>` (строки «А) …», «1) …» идут подряд),
  * **жирный**, *курсив*, списки «- …» и «1. …», таблицы GFM, рисунки.
+ *
+ * Таблицы (каталог математики, №16 — «год / долг / платёж»): разделитель —
+ * один и больше дефисов, как в GFM (`|:-:|`, а не только `| --- |`), двоеточия
+ * задают выравнивание столбца. Широкая таблица прокручивается вбок внутри
+ * `.tbl-wrap`, страница не уезжает (index.css).
  */
 
 export const CATALOG_MD_MARKER = '<!--md-->'
@@ -154,7 +159,7 @@ function inline(text: string): string {
 // ── Блоки ─────────────────────────────────────────────────────────────────────
 
 const TABLE_ROW = /^\s*\|.*\|\s*$/
-const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/
+const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 const BULLET = /^\s*[-*•]\s+(.*)$/
 const ORDERED = /^\s*(\d{1,3})\.\s+(.*)$/
 
@@ -173,11 +178,24 @@ function splitCells(row: string): string[] {
   return cells
 }
 
+type Align = 'left' | 'center' | 'right' | null
+
+/** Выравнивание столбцов из строки-разделителя: `:-:` — по центру, `-:` — вправо, `:-` — влево. */
+export function tableAligns(sepRow: string): Align[] {
+  return splitCells(sepRow).map(c => {
+    const l = c.startsWith(':')
+    const r = c.endsWith(':')
+    return l && r ? 'center' : r ? 'right' : l ? 'left' : null
+  })
+}
+
 function renderTable(lines: string[]): string {
   const head = splitCells(lines[0])
+  const aligns = tableAligns(lines[1])
   const body = lines.slice(2).map(splitCells)
-  const th = head.map(c => `<th>${inline(c)}</th>`).join('')
-  const rows = body.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')
+  const attr = (i: number) => (aligns[i] ? ` style="text-align:${aligns[i]}"` : '')
+  const th = head.map((c, i) => `<th${attr(i)}>${inline(c)}</th>`).join('')
+  const rows = body.map(r => `<tr>${r.map((c, i) => `<td${attr(i)}>${inline(c)}</td>`).join('')}</tr>`).join('')
   return `<div class="tbl-wrap"><table><thead><tr>${th}</tr></thead>${rows ? `<tbody>${rows}</tbody>` : ''}</table></div>`
 }
 
@@ -291,4 +309,23 @@ export function upgradeCatalogMath(root: ParentNode | null | undefined, katex: K
     el.classList.remove('catalog-math-pending')
   }
   return nodes.length
+}
+
+/**
+ * Ответ задачи для показа. Загрузчик пишет метку {@link CATALOG_MD_MARKER} в
+ * условие и решение, а `answer_html` у Markdown-задач (каталог математики ЕГЭ:
+ * «а) $\pm\dfrac{\pi}{6}+2\pi k$; б) …») приходит голым текстом — без метки он
+ * рисовался как HTML, и формулы показывались исходником. Формат задачи один на
+ * все поля: если условие в Markdown (метка или `content_format = 'md'`),
+ * ответ рисуется тем же Markdown+KaTeX. HTML-задачи не меняются.
+ *
+ * Только показ: автопроверка идёт по `answer_spec`, текст ответа она не читает.
+ */
+export function catalogAnswerSource(
+  answer: string | null | undefined,
+  task: { statement_html?: string | null; content_format?: string | null },
+): string | null | undefined {
+  if (!answer || isCatalogMarkdown(answer)) return answer
+  const md = task.content_format === 'md' || isCatalogMarkdown(task.statement_html)
+  return md ? withCatalogMarkdownMarker(answer) : answer
 }
