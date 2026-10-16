@@ -8,7 +8,6 @@ import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { HomeHero } from '@/components/student/home/HomeHero'
 import { ActivityCard } from '@/components/student/home/ActivityCard'
 import { useStudentActivity } from '@/hooks/useStudentActivity'
-import { ContinueLessonCard } from '@/components/student/home/ContinueLessonCard'
 import { CourseProgressCard } from '@/components/student/home/CourseProgressCard'
 import { examCountdown } from '@/lib/examCountdown'
 import { mskDateKey } from '@/lib/homeworkDeadline'
@@ -122,8 +121,8 @@ export function StudentDashboard() {
       {path.data && <SubscriptionPathCard subscriptions={path.data.subscriptions} showContinue={false} />}
       <DiagnosticHomeCard onboarding={path.data?.onboarding} />
 
-      {next && <ContinueLessonCard groupId={next.course.groupId} courseTitle={next.course.courseTitle} next={next.next} />}
-
+      {/* Карточка «Продолжить урок» с лентой шагов снята (16.10, владелец): дублировала
+          кнопку «Продолжить урок →» в шапке и занимала пол-экрана. */}
       {courses.length > 0 && profile?.id && <GoalsCard profileId={profile.id} sources={goalSources} />}
 
       {courses.length > 0 && activity && <ActivityCard grid={activity} />}

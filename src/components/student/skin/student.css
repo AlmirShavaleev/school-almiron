@@ -145,25 +145,12 @@
 }
 @media (max-width: 420px) { .stu .stu-scene .stu-float.s-2 { display: none } }
 
-/* «Продолжить урок» — поток шагов, как аргумент 3 лендинга. */
-.stu .stu-lesson { padding: 26px; display: flex; flex-direction: column; gap: 24px }
-.stu .stu-lesson-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center }
-@media (max-width: 640px) {
-  .stu .stu-lesson { padding: 18px }
-  .stu .stu-lesson-head { grid-template-columns: minmax(0, 1fr) }
-}
-.stu .stu-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; position: relative; list-style: none; margin: 0; padding: 0 }
-.stu .stu-flow-line { position: absolute; left: 9%; right: 9%; top: 40px; height: 3px; background: var(--line); border-radius: 3px }
-.stu .stu-flow-fill { position: absolute; inset: 0; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 3px; transform-origin: left center }
 .stu .stu-step { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0 }
 .stu .stu-step .stu-sticker { width: 80px; height: 80px; position: relative; z-index: 1 }
 .stu .stu-step.is-lock .stu-sticker { opacity: .55 }
 .stu .stu-step b { font-size: 15px; font-weight: 800 }
 .stu .stu-step small { font-size: 13px; color: var(--ink2); line-height: 1.35 }
 @media (max-width: 760px) {
-  .stu .stu-flow { grid-template-columns: minmax(0, 1fr); gap: 10px }
-  .stu .stu-flow-line { left: 31px; right: auto; top: 20px; bottom: 20px; width: 3px; height: auto }
-  .stu .stu-flow-fill { transform-origin: center top }
   .stu .stu-step { flex-direction: row; text-align: left; gap: 14px }
   .stu .stu-step .stu-sticker { width: 64px; height: 64px }
   .stu .stu-step > span { display: flex; flex-direction: column; min-width: 0 }
@@ -457,13 +444,13 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-rail-item:hover { background: var(--bg2); color: var(--ink) }
 .stu .stu-rail-item[data-active] { background: var(--blueS); color: var(--blueInk) }
 .stu .stu-nav-dot { position: absolute; top: -6px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
-.stu .stu-more-pop { position: absolute; left: calc(100% + 10px); bottom: 0; width: 250px; z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
+.stu .stu-more-pop { position: absolute; left: calc(100% + 10px); bottom: 0; width: 290px; max-width: calc(100vw - 120px); z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
 .stu .stu-head-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 24px)); z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
 .stu .stu-more-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
 .stu .stu-more-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; color: var(--ink); font-weight: 700; font-size: 14.5px; background: none; border: 0; cursor: pointer }
 .stu .stu-more-item:hover { background: var(--bg2) }
 .stu .stu-more-item > svg { color: var(--ink2); flex: none }
-.stu .stu-more-tag { font-size: 11.5px; font-weight: 700; color: var(--ink2); background: var(--bg2); border-radius: 999px; padding: 2px 8px; white-space: nowrap }
+.stu .stu-more-tag { flex: none; font-size: 11.5px; font-weight: 700; color: var(--ink2); background: var(--bg2); border-radius: 999px; padding: 2px 8px; white-space: nowrap }
 .stu .stu-ava-btn { border-radius: 999px; padding: 0; background: none; border: 0; cursor: pointer }
 .stu .stu-bell-dot { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
 .stu .stu-bell-pop { width: min(360px, calc(100vw - 24px)) }

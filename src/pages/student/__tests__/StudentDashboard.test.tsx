@@ -60,7 +60,7 @@ useVisibleObserver()
 async function renderHome() {
   render(<MemoryRouter initialEntries={['/dashboard']}><StudentDashboard /></MemoryRouter>)
   await screen.findByTestId('student-home')
-  await screen.findByTestId('continue-lesson')
+  await screen.findByTestId('hero-continue')
 }
 
 beforeEach(() => { calls.length = 0 })
@@ -73,14 +73,11 @@ describe('главная ученика без шума', () => {
     expect(screen.queryByText(/серия/i)).toBeNull()
   })
 
-  it('«Продолжить урок» ведёт в следующую тему', async () => {
+  it('«Продолжить урок» — одна кнопка в шапке, крупной карточки с лентой шагов нет', async () => {
     await renderHome()
-    const card = screen.getByTestId('continue-lesson')
-    expect(within(card).getByRole('link', { name: 'К уроку →' })).toHaveAttribute('href', '/my-course/g1/topic/t6')
-    // Та же тема — у главной кнопки первого экрана.
     expect(screen.getByTestId('hero-continue')).toHaveAttribute('href', '/my-course/g1/topic/t6')
-    expect(card).toHaveTextContent('Второй закон Ньютона')
-    expect(card).toHaveTextContent('Физика ЕГЭ')
+    expect(screen.queryByTestId('continue-lesson')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'К уроку →' })).toBeNull()
   })
 
   it('карточка курса: общий % и полоски по разделам, «Продолжить» — в тему', async () => {
