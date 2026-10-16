@@ -14,6 +14,7 @@
  * дня с решением (день серии §256: сдача ДЗ, верная задача каталога, тест, вариант, пробник).
  */
 import { buildForecastView, forecastAt, normalizeForecastResponse, type ForecastResponse } from './egeForecast'
+import type { StoredForecast } from './scoreForecast'
 import { activeSpec, isEgeSubject } from './egeScales'
 import { isZone, type CatalogZone } from './catalogRewards'
 import { plural } from './plural'
@@ -166,7 +167,18 @@ export function addDaysKey(dayKey: string, n: number): string {
   return new Date(Date.parse(`${dayKey}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10)
 }
 
-export function normalizeCourseSummary(raw: unknown, fallbackNow: Date = new Date()): CourseSummary | null {
+/** Хранимая строка прогноза → колонка сводки (те же три поля, что считает браузер). */
+export function storedSummaryForecast(row: StoredForecast): SummaryForecast {
+  return row.ready && row.score != null
+    ? { kind: 'ready', score: row.score, monthDelta: row.monthDelta, weekAgo: row.weekAgo }
+    : { kind: 'few' }
+}
+
+/**
+ * `stored` — хранимый прогноз учеников курса (`course_score_forecast`, письмо 16.10): у кого строка есть —
+ * балл из неё, без пересчёта; у кого нет (новый ученик) или функции ещё нет (null) — по свидетельствам, как раньше.
+ */
+export function normalizeCourseSummary(raw: unknown, fallbackNow: Date = new Date(), stored: StoredForecast[] | null = null): CourseSummary | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   const course = (r.course ?? {}) as Record<string, unknown>
@@ -183,7 +195,8 @@ export function normalizeCourseSummary(raw: unknown, fallbackNow: Date = new Dat
     const studentId = str(x.student_id)
     if (!studentId) continue
     const data = forecastEnabled ? forecastData(x.forecast, subject, r.titles, now) : null
-    const forecast = forecastEnabled ? summaryForecast(data, subject) : { kind: 'none' as const }
+    const row = forecastEnabled ? stored?.find(r => r.studentId === studentId && r.subject === subject) ?? null : null
+    const forecast: SummaryForecast = !forecastEnabled ? { kind: 'none' } : row ? storedSummaryForecast(row) : summaryForecast(data, subject)
     const assessments = normalizeAssessments(x.assessments)
     const homeworks = normalizeHomeworks(x.homeworks)
     const dl = homeworkDeadlineSummary(homeworks, now.getTime())

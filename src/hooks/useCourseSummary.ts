@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeCourseSummary, type CourseSummary } from '@/lib/courseSummary'
+import { fetchCourseScoreForecast } from '@/lib/scoreForecast'
 
 /**
  * §264. «Сводка» класса — ОДИН вызов `course_summary_for_staff` (PENDING_264) на курс. Прогноз, «вовремя» и
@@ -28,11 +29,15 @@ export function useCourseSummary(courseId: string | null | undefined) {
       const db = supabase as unknown as RpcLike
       if (typeof db.rpc !== 'function') { setLoading(false); return }
       try {
-        const { data: raw, error: rpcError } = await db.rpc<unknown>('course_summary_for_staff', { p_course_id: courseId })
+        // Хранимый прогноз (письмо 16.10) — параллельно; нет функции или строки — сводка считает сама.
+        const [{ data: raw, error: rpcError }, stored] = await Promise.all([
+          db.rpc<unknown>('course_summary_for_staff', { p_course_id: courseId }),
+          fetchCourseScoreForecast(courseId!),
+        ])
         if (cancelled) return
         if (rpcError) { setData(null); setError(rpcError.message || 'Не удалось загрузить') }
         else {
-          const v = normalizeCourseSummary(raw)
+          const v = normalizeCourseSummary(raw, undefined, stored)
           setData(v)
           setError(v ? null : 'Пустой ответ')
         }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeOverview, type StudentOverview } from '@/lib/studentOverview'
+import { fetchStudentScoreForecast } from '@/lib/scoreForecast'
 
 /**
  * §261. Карточка ученика у учителя — ОДИН вызов `student_overview_for_staff` (PENDING_261): прогноз (свидетельства),
@@ -29,11 +30,16 @@ export function useStudentOverview(studentId: string | null | undefined) {
       const db = supabase as unknown as RpcLike
       if (typeof db.rpc !== 'function') { setLoading(false); return }
       try {
-        const { data: raw, error: rpcError } = await db.rpc<unknown>('student_overview_for_staff', { p_student_id: studentId })
+        // Хранимый прогноз (письмо 16.10) — параллельно; нет функции или строки — карточка считает сама.
+        const [{ data: raw, error: rpcError }, stored] = await Promise.all([
+          db.rpc<unknown>('student_overview_for_staff', { p_student_id: studentId }),
+          fetchStudentScoreForecast(studentId!),
+        ])
         if (cancelled) return
         if (rpcError) { setData(null); setError(rpcError.message || 'Не удалось загрузить') }
         else {
           const v = normalizeOverview(raw)
+          if (v) v.stored = stored
           setData(v)
           setError(v ? null : 'Пустой ответ')
         }

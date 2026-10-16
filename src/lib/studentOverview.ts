@@ -12,6 +12,7 @@
  *   * зоны номеров и их пороги — база (`student_kim_zone_shares`, `catalog_reward_rules`), здесь своих порогов нет.
  */
 import { buildForecastView, normalizeForecastResponse, type ForecastResponse } from './egeForecast'
+import type { StoredForecast } from './scoreForecast'
 import { activeSpec, isEgeSubject, part1Numbers, type EgeSubject } from './egeScales'
 import { deadlineLabel, deadlineTone, homeworkDeadline, type DeadlineState, type DeadlineTone } from './homeworkDeadline'
 import { normalizeStaffAchievements, type StaffAchievements } from './achievements'
@@ -264,7 +265,23 @@ export type ForecastSummary =
  * над свидетельствами базы, `current.ready` — покрыта половина номеров части 1. Цель — из ответа (цель ученика,
  * student_exam_goals); `goalFallback` — цель учителя (§216), если ученик своей не ставил.
  */
-export function forecastSummary(data: ForecastResponse | null, subject: string, goalFallback: number | null = null): ForecastSummary {
+export function forecastSummary(
+  data: ForecastResponse | null,
+  subject: string,
+  goalFallback: number | null = null,
+  /** Хранимый прогноз (forecast-daily, письмо 16.10): есть строка — берём её, пересчёта нет. */
+  stored: StoredForecast | null = null,
+): ForecastSummary {
+  if (stored && stored.subject === subject) {
+    const goal = data?.subjects.find(s => s.subject === subject)?.goal ?? goalFallback ?? null
+    if (!stored.ready || stored.score == null) {
+      return { kind: 'few', missing: stored.missing, covered: stored.covered, need: stored.need, goal }
+    }
+    return {
+      kind: 'ready', score: stored.score, low: stored.low ?? stored.score, high: stored.high ?? stored.score,
+      monthDelta: stored.monthDelta, goal, toGoal: goal != null ? goal - stored.score : null,
+    }
+  }
   if (!data || !isEgeSubject(subject)) return { kind: 'none' }
   const spec = activeSpec(subject)
   if (!spec || !data.subjects.some(s => s.subject === subject)) return { kind: 'none' }
@@ -358,6 +375,8 @@ export interface StudentOverview {
   now:      Date
   subjects: OverviewSubject[]
   forecast: ForecastResponse | null
+  /** Хранимый прогноз по предметам (student_score_forecast); null — функции ещё нет, считаем по свидетельствам. */
+  stored?:  StoredForecast[] | null
   activity: {
     streak:  number
     record:  number
@@ -466,7 +485,7 @@ export interface OverviewTile {
 export function overviewTiles(o: StudentOverview, key: string | null): OverviewTile[] {
   const subject = key ? key.split(':')[0] : (o.subjects[0]?.subject ?? '')
   const teacherGoal = o.forecast?.subjects.find(s => s.subject === subject)?.teacherGoal ?? null
-  const fc = forecastSummary(o.forecast, subject, teacherGoal)
+  const fc = forecastSummary(o.forecast, subject, teacherGoal, o.stored?.find(r => r.subject === subject) ?? null)
   const forecast: OverviewTile = fc.kind === 'ready'
     ? {
       key: 'forecast', label: 'Примерный балл ЕГЭ', value: String(fc.score), dashed: false,

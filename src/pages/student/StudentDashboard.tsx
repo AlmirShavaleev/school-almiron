@@ -26,6 +26,7 @@ import { fetchMyExamGoals, fetchMyWeeklyGoals, goalBasis, type ExamGoal, type We
 import { useMySubscriptionsLite } from '@/hooks/useMySubscriptionsLite'
 import { subscriptionTag } from '@/lib/studentNav'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
+import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
 
 /**
  * Главная ученика «как в Notion» в стиле лендинга (письмо
@@ -80,14 +81,15 @@ export function StudentDashboard() {
   const activity = useStudentActivity(!!profile?.id, todayMsk, activityDaysFor(todayMsk))
 
   // Цели: на экзамен — в строке свойств, недели — списком. Читаются один раз.
-  const [goals, setGoals] = useState<{ exam: ExamGoal[]; weekly: WeeklyGoal[] } | null>(null)
+  // Прогноз балла — хранимый (forecast-daily, письмо 16.10): простой select, без пересчёта в браузере.
+  const [goals, setGoals] = useState<{ exam: ExamGoal[]; weekly: WeeklyGoal[]; forecast: StoredForecast[] | null } | null>(null)
   const hasCourses = courses.length > 0
   useEffect(() => {
     if (!profile?.id || !hasCourses) return
     let alive = true
-    Promise.all([fetchMyExamGoals(profile.id), fetchMyWeeklyGoals()])
-      .then(([exam, w]) => { if (alive) setGoals({ exam, weekly: w.data?.goals ?? [] }) })
-      .catch(() => { if (alive) setGoals({ exam: [], weekly: [] }) })
+    Promise.all([fetchMyExamGoals(profile.id), fetchMyWeeklyGoals(), fetchMyScoreForecast()])
+      .then(([exam, w, forecast]) => { if (alive) setGoals({ exam, weekly: w.data?.goals ?? [], forecast }) })
+      .catch(() => { if (alive) setGoals({ exam: [], weekly: [], forecast: null }) })
     return () => { alive = false }
   }, [profile?.id, hasCourses])
 
@@ -137,9 +139,9 @@ export function StudentDashboard() {
     props.push({
       key: 'goal', icon: 'target', label: 'Цель',
       value: goals.exam.length > 0
-        ? goals.exam.map(g => `${EXAM_DAYS[g.subject].short} ${g.goal}+`).join(', ')
+        ? goals.exam.map(g => [`${EXAM_DAYS[g.subject].short} ${g.goal}+`, forecastNote(goals.forecast, g.subject)].filter(Boolean).join(' · ')).join(', ')
         : <Link to="/settings?tab=goals" className="stu-link">поставить</Link>,
-      title: basis || undefined,
+      title: [basis, ...goals.exam.map(g => forecastHint(goals.forecast, g.subject))].filter(Boolean).join('; ') || undefined,
     })
   }
   if (hasCourses) {

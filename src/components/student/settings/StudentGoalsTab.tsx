@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
 import { CalendarCheck, Loader2, Target } from 'lucide-react'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
 import { WeeklyGoalsEditor } from '@/components/goals/WeeklyGoalsEditor'
@@ -41,9 +42,13 @@ export function StudentGoalsTab({ profileId }: { profileId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [custom, setCustom] = useState<Partial<Record<GoalSubject, string>>>({})
 
+  // Прогноз балла — хранимый (считается ночью, письмо 16.10); рядом с целью мелко.
+  const [forecast, setForecast] = useState<StoredForecast[] | null>(null)
+
   useEffect(() => {
     let cancelled = false
     fetchMyExamGoals(profileId).then(g => { if (!cancelled) setExam(g) })
+    fetchMyScoreForecast().then(f => { if (!cancelled) setForecast(f) })
     fetchMyWeeklyGoals().then(r => {
       if (cancelled) return
       const w = r.data ?? { current: null, next: null, goals: [] }
@@ -92,6 +97,11 @@ export function StudentGoalsTab({ profileId }: { profileId: string }) {
             <div key={sub} className="stu-set-row flex-wrap" data-testid={`student-exam-goal-${sub}`}>
               <div className="min-w-0 text-[14.5px] font-semibold">
                 Сдать {SUBJECT_ACC[sub]}{cur != null ? <> на <b>{cur}+</b></> : ''}
+                {forecastNote(forecast, sub) && (
+                  <span className="stu-muted ml-2 text-[13px] font-semibold" title={forecastHint(forecast, sub)} data-testid={`student-forecast-${sub}`}>
+                    · {forecastNote(forecast, sub)}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Цель: ${SUBJECT_LABEL[sub]}`}>
                 {EXAM_PRESETS.map(p => (

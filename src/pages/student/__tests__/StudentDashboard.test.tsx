@@ -14,6 +14,8 @@ import { MemoryRouter } from 'react-router-dom'
 const calls: string[] = []
 const RPC: Record<string, unknown> = {
   my_mock_exams: [],
+  // Хранимый прогноз (forecast-daily, письмо 16.10).
+  my_score_forecast: [{ subject: 'physics', score: 64, low: 58, high: 70, basis: 'по 46 задачам', details: { v: 1, ready: true }, computed_at: '2026-10-16T01:10:00Z' }],
   my_weekly_goals: { current: null, next: null, goals: [{ kind: 'days', target: 4, progress: 3, done: false }, { kind: 'topics', target: 2, progress: 2, done: true }] },
   student_home_courses: [
     {
@@ -102,7 +104,8 @@ describe('главная ученика «как в Notion»', () => {
     await renderHome()
     expect(screen.getByTestId('home-cover')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Альмир · подготовка к ЕГЭ')
-    expect(await screen.findByTestId('home-prop-goal')).toHaveTextContent('Физика 80+')
+    expect(await screen.findByTestId('home-prop-goal')).toHaveTextContent('Физика 80+ · прогноз 64')
+    expect(screen.getByTestId('home-prop-goal').getAttribute('title')).toMatch(/по 46 задачам · обновлено .* в 04:10/)
     expect(screen.getByTestId('home-prop-course')).toHaveTextContent('Физика ЕГЭ')
     expect(within(screen.getByTestId('home-prop-course')).getByRole('link')).toHaveAttribute('href', '/my-course/g1')
     expect(await screen.findByTestId('home-prop-streak')).toHaveTextContent('3 дня подряд')
@@ -186,7 +189,7 @@ describe('главная ученика «как в Notion»', () => {
     for (const c of uniq) {
       expect([
         'from:group_students', 'from:student_exam_goals', 'from:students',
-        'rpc:my_course_demo', 'rpc:my_mock_exams', 'rpc:my_subscriptions', 'rpc:my_weekly_goals',
+        'rpc:my_course_demo', 'rpc:my_mock_exams', 'rpc:my_score_forecast', 'rpc:my_subscriptions', 'rpc:my_weekly_goals',
         'rpc:student_home_activity', 'rpc:student_home_courses', 'rpc:subscriptions_enabled',
       ]).toContain(c)
     }
