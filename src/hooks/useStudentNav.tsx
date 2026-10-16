@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookOpen, ClipboardCheck, House, LibraryBig, LogOut, Settings, ShoppingBag, Star, Timer } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHomeworkToDoCount } from '@/hooks/useMyTopicHomework'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
-import { useAuthStore } from '@/store/authStore'
-import { fetchMySubscriptions } from '@/lib/subscription/api'
-import type { MySubscription } from '@/lib/subscription/view'
+import { useMySubscriptionsLite } from '@/hooks/useMySubscriptionsLite'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
 import { subscriptionTag } from '@/lib/studentNav'
 
@@ -19,31 +17,10 @@ export interface Item { key: string; label: string; to: string; icon: ReactNode;
 
 export interface MoreItem { key: string; label: string; icon: ReactNode; to?: string; tag?: string | null; onClick?: () => void }
 
-/**
- * Подписки ученика для метки «до …» — тот же `my_subscriptions`, что карточки
- * «Мои подписки» (access_until), а не student_path_home: там ещё и пробный, и
- * метка расходилась с карточкой. Без react-query: меню рендерится и там, где
- * QueryClientProvider нет (тесты раскладки), как раньше useStudentPathHome.
- */
-function useMySubscriptionsForNav(enabled: boolean): MySubscription[] | null {
-  const uid = useAuthStore(s => s.profile?.id ?? null)
-  const key = enabled && uid ? uid : null
-  const [got, setGot] = useState<{ key: string; data: MySubscription[] } | null>(null)
-  useEffect(() => {
-    if (!key) return
-    let alive = true
-    fetchMySubscriptions()
-      .then(d => { if (alive) setGot({ key, data: d ?? [] }) })
-      .catch(() => { /* нет сети — метку не показываем */ })
-    return () => { alive = false }
-  }, [key])
-  return got && got.key === key ? got.data : null
-}
-
 export function useStudentNav() {
   const todo = useHomeworkToDoCount()
   const subs = useSubscriptionsEnabled()
-  const mine = useMySubscriptionsForNav(subs.enabled)
+  const mine = useMySubscriptionsLite(subs.enabled)
   const curator = useMyCuratorships()
   const { signOut } = useAuth()
   const navigate = useNavigate()

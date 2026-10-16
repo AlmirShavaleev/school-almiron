@@ -23,7 +23,12 @@ const POLL_INTERVAL_MS = 3_000
  * `skin` — кабинет ученика в стиле лендинга (письмо 14.10): карточка с
  * 3D-стикером «Telegram» и кнопками лендинга. Персоналу — прежний вид.
  */
-export function TelegramOnboarding({ skin = false }: { skin?: boolean } = {}) {
+/**
+ * `compact` — одной строкой (главная ученика «как в Notion», письмо 16.10:
+ * под строкой свойств, а не карточкой над всем). Правило «кому показывать»
+ * то же; «Позже» — там, где у карточки был выбор отложить.
+ */
+export function TelegramOnboarding({ skin = false, compact = false }: { skin?: boolean; compact?: boolean } = {}) {
   const profile = useAuthStore(s => s.profile)
   const { dismissed, dismiss } = useTelegramOnboardingDismissed()
 
@@ -118,15 +123,15 @@ export function TelegramOnboarding({ skin = false }: { skin?: boolean } = {}) {
 
   const { title, body } = telegramBenefit(profile?.role)
 
-  if (prompt === 'strip') {
+  if (prompt === 'strip' || compact) {
     return (
       <div
         data-testid="tg-onboarding-strip"
         className={skin
-          ? 'stu-card stu-tg-strip mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm'
+          ? `stu-card stu-tg-strip ${compact ? '' : 'mb-4 '}flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm`
           : 'mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-primary-200 bg-primary-50/70 px-3.5 py-2 text-sm text-primary-900'}
       >
-        {skin ? <Sticker name="telegram" size={32} /> : <Send size={15} className="shrink-0 text-primary-700" />}
+        {skin ? <Sticker name="telegram" size={compact ? 26 : 32} /> : <Send size={15} className="shrink-0 text-primary-700" />}
         {phase === 'waiting' && linkUrl ? (
           <a
             href={linkUrl}
@@ -149,14 +154,22 @@ export function TelegramOnboarding({ skin = false }: { skin?: boolean } = {}) {
           </>
         ) : (
           <>
-            <span className="min-w-0 flex-1">Telegram не привязан — уведомления не приходят.</span>
+            <span className="min-w-0 flex-1">
+              {compact && prompt === 'card'
+                ? <><b>Привяжи Telegram</b> — будешь сразу узнавать о ДЗ, оценках и сроках.</>
+                : 'Telegram не привязан — уведомления не приходят.'}
+            </span>
             <button
               onClick={handleConnect}
               disabled={busy}
+              data-testid="tg-onboarding-connect"
               className="shrink-0 font-semibold text-primary-800 hover:text-primary-950 disabled:opacity-50"
             >
               {busy ? 'Ожидаем…' : 'Привязать'}
             </button>
+            {compact && prompt === 'card' && (
+              <button onClick={dismiss} className="stu-muted shrink-0 text-[13px] font-semibold hover:opacity-70">Позже</button>
+            )}
           </>
         )}
       </div>

@@ -473,3 +473,103 @@ a.stu-lt:hover { border-color: var(--blue) }
   .stu .fab-slot-0 { bottom: calc(var(--fab-slot-0) + 66px + env(safe-area-inset-bottom, 0px)) }
   .stu .fab-slot-1 { bottom: calc(var(--fab-slot-1) + 66px + env(safe-area-inset-bottom, 0px)) }
 }
+
+/* ── Главная «как в Notion» (письмо ЛК_стиль_главная_как_notion.md, 16.10) ──
+   Композиция Notion — обложка, аватар поверх, заголовок, строка свойств, виджеты,
+   списки с галочками; цвета, шрифты, радиусы и 3D-стикеры — свои, лендинга. */
+.stu .stu-nsheet { overflow: hidden; padding: 0 }
+.stu .stu-cover { position: relative; height: 196px; background: var(--bg2) }
+.stu .stu-cover-img, .stu .stu-cover-grad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover }
+.stu .stu-cover-st { position: absolute; animation: stu-cover-bob 7s ease-in-out infinite }
+@keyframes stu-cover-bob { 0%, 100% { translate: 0 0 } 50% { translate: 0 -8px } }
+@media (prefers-reduced-motion: reduce) { .stu .stu-cover-st { animation: none } }
+.stu .stu-cover-ctl { position: absolute; right: 14px; bottom: 12px; z-index: 3 }
+.stu .stu-cover-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 10px; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .88); color: #1b1f2a; font-size: 12.5px; font-weight: 800; opacity: 0; transition: opacity .2s }
+.stu .stu-cover:hover .stu-cover-btn, .stu .stu-cover-btn:focus-visible, .stu .stu-cover-btn[aria-expanded="true"] { opacity: 1 }
+@media (hover: none), (max-width: 640px) {
+  .stu .stu-cover-btn { opacity: 1; padding: 7px }
+  .stu .stu-cover-btn-t { display: none }
+}
+.stu .stu-cover-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(300px, calc(100vw - 48px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  padding: 10px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 12px 30px rgba(15, 22, 40, .18) }
+.stu .stu-cover-pick { display: grid; gap: 4px; padding: 4px; border-radius: 10px; border: 0; background: none; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer }
+.stu .stu-cover-pick[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--blue) }
+.stu .stu-cover-thumb { position: relative; display: block; height: 44px; border-radius: 8px; overflow: hidden }
+
+.stu .stu-nhead { position: relative; padding: 0 clamp(16px, 4vw, 44px) 20px }
+.stu .stu-nava { width: 92px; height: 92px; margin-top: -46px; border-radius: 26px; border: 4px solid var(--card); background: linear-gradient(135deg, var(--blue), #6f95ff);
+  color: #fff; display: grid; place-items: center; font-size: 32px; font-weight: 800; overflow: hidden; position: relative; z-index: 2; box-shadow: var(--shadow) }
+.stu .stu-nava img { width: 100%; height: 100%; object-fit: cover }
+.stu .stu-nhead-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-top: 12px }
+.stu .stu-ntitle { margin: 0; font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; line-height: 1.15; letter-spacing: -.01em; min-width: 0; overflow-wrap: anywhere }
+.stu .stu-nprops { display: flex; flex-wrap: wrap; gap: 8px 22px; list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px }
+.stu .stu-nprops li { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; min-width: 0; max-width: 100% }
+.stu .stu-nprop-v > span { max-width: 100% }
+.stu .stu-nprops .stu-sticker { filter: none }
+.stu .stu-nprop-v { font-weight: 800; min-width: 0 }
+.stu .stu-nchip { display: inline-block; padding: 2px 10px; border-radius: 8px; background: var(--blueS); color: var(--blueInk); font-size: 13px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle }
+.stu a.stu-nchip:hover { filter: brightness(.97) }
+.stu .stu-nchip.is-static { background: var(--card); color: var(--ink) }
+.stu .stu-nhead .stu-tg-strip { margin-top: 14px; box-shadow: none; border-radius: 14px; padding: 8px 14px }
+
+.stu .stu-widgets { display: grid; grid-template-columns: 1.15fr 1fr 1.25fr; gap: 16px; align-items: stretch }
+@media (max-width: 1080px) { .stu .stu-widgets { grid-template-columns: 1fr 1fr } .stu .stu-w-cal { grid-column: 1 / -1 } }
+@media (max-width: 640px) { .stu .stu-widgets { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-w { padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.stu .stu-w-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-w-t .stu-sticker { filter: none }
+.stu .stu-w-exam { background: var(--orangeS); border-color: transparent }
+.stu .stu-w-big { margin: 0; font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums }
+.stu .stu-w-big small { margin-left: 8px; font-size: 17px; font-weight: 800; letter-spacing: 0; color: var(--ink2) }
+.stu .stu-w-bar { display: block; height: 7px; border-radius: 99px; background: var(--card); overflow: hidden }
+.stu .stu-w-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--blue), var(--orange)) }
+.stu .stu-flip { display: flex; gap: 10px }
+.stu .stu-flip span { position: relative; flex: 1; padding: 12px 0 8px; border-radius: 14px; text-align: center; font-size: 50px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; background: var(--navy); color: #fff; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18) }
+.stu .stu-flip span::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(255, 255, 255, .14) }
+.stu .stu-quote { margin: 2px 0 0; padding-left: 10px; border-left: 3px solid var(--orange); font-size: 14px; line-height: 1.45 }
+.stu .stu-w-nav { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer }
+.stu .stu-w-nav:disabled { opacity: .35; cursor: default }
+.stu .stu-mcal { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed }
+.stu .stu-mcal th { font-size: 11px; font-weight: 700; color: var(--ink2) }
+.stu .stu-mcal td { height: 30px; border-radius: 8px; text-align: center; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink) }
+.stu .stu-mcal td.lv-3, .stu .stu-mcal td.lv-4 { color: #fff }
+.stu .stu-mcal td.is-out { background: transparent }
+.stu .stu-mcal td.is-future { background: transparent; color: var(--ink2); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line) }
+.stu .stu-mcal td.is-today { box-shadow: inset 0 0 0 2px var(--ink) }
+
+.stu .stu-ntwo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
+@media (max-width: 860px) { .stu .stu-ntwo { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-nblock { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px 20px; border-radius: var(--r); background: var(--card); border: 1px solid var(--line) }
+.stu .stu-nblock-h { display: flex; align-items: center; justify-content: space-between; gap: 10px }
+.stu .stu-nblock-h h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 19px; font-weight: 800 }
+.stu .stu-checks { list-style: none; margin: 0; padding: 0; display: grid }
+.stu .stu-checks li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; font-weight: 600; min-width: 0 }
+.stu .stu-checks li:last-child { border-bottom: 0 }
+.stu .stu-cbx { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid color-mix(in srgb, var(--ink2) 70%, transparent); font-size: 12px; font-weight: 900; color: #fff }
+.stu .stu-cbx.on { background: var(--blue); border-color: var(--blue) }
+
+.stu .stu-ncards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; margin: 0; padding: 0 }
+@media (max-width: 860px) { .stu .stu-ncards { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-ncard { flex: 1; display: grid; grid-template-rows: auto 1fr; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; min-width: 0; padding: 0; font: inherit; transition: border-color .2s }
+.stu a.stu-ncard:hover { border-color: var(--blue) }
+.stu .stu-ncard-ph { display: grid; place-items: center; height: 82px; background: linear-gradient(135deg, var(--blueS), var(--orangeS)) }
+.stu .stu-ncard-b { display: grid; gap: 6px; align-content: start; padding: 12px 14px 14px; min-width: 0 }
+.stu .stu-ncard-m { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.stu .stu-ncard.is-locked { background: var(--bg2); color: var(--ink2); cursor: pointer }
+.stu .stu-ncard.is-locked .stu-ncard-ph { filter: grayscale(.4); opacity: .8 }
+@media (max-width: 640px) {
+  .stu .stu-cover { height: 140px }
+  .stu .stu-cover-st { scale: .65; transform-origin: top right }
+  .stu .stu-nava { width: 76px; height: 76px; margin-top: -38px; border-radius: 22px; font-size: 26px }
+  .stu .stu-w-big { font-size: 52px }
+  .stu .stu-flip span { font-size: 42px }
+  .stu .stu-ncard { grid-template-rows: auto; grid-template-columns: 76px minmax(0, 1fr) }
+  .stu .stu-ncard-ph { height: auto }
+  /* Строка Telegram: текст на всю ширину, кнопки — следующей строкой. */
+  .stu .stu-nhead .stu-tg-strip > .flex-1 { flex-basis: calc(100% - 40px) }
+  .stu .stu-nhead .stu-tg-strip > button:first-of-type { margin-left: 38px }
+  .stu .stu-nprops { gap: 8px }
+  .stu .stu-nprops li { width: 100% }
+}

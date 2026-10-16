@@ -241,14 +241,16 @@ for (const width of [1280, 390]) {
       viewport: { width, height: mobile ? 844 : 900 }, deviceScaleFactor: mobile ? 2 : 1,
       isMobile: mobile, hasTouch: mobile, locale: 'ru-RU', timezoneId: 'Europe/Moscow',
     })
-    await context.addInitScript(({ session, theme }) => {
+    await context.addInitScript(({ session, theme, cover }) => {
       try {
         localStorage.setItem('sb-harness-auth-token', JSON.stringify(session))
         localStorage.setItem('almiron:student-theme', theme)
+        // Обложка главной (письмо 16.10): COVER=orbit|sunset|warm|desk|night.
+        if (cover && session?.user?.id) localStorage.setItem(`almiron:home-cover:${session.user.id}`, cover)
         // Диалог «печатает…» — сразу в конечном виде, чтобы снимок был полным.
         sessionStorage.setItem('almiron:home-chat-seen', '1')
       } catch {}
-    }, { session, theme })
+    }, { session, theme, cover: process.env.COVER || null })
     await context.route(u => !u.href.startsWith(BASE), makeHandler({ fixtures: fixtures(scenario), session, assetsDir, log: () => {} }))
     const page = await context.newPage()
     for (const s of SHOTS) {

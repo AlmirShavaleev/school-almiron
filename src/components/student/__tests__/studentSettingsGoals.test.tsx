@@ -70,25 +70,24 @@ describe('уведомления ученика', () => {
 })
 
 describe('цели на главной', () => {
-  it('«Цель: физика 80+», основание и свои цели недели с прогрессом', async () => {
-    st.exam = [{ subject: 'physics', goal: 80 }]
+  it('цели недели «блокнотом»: галочка у выполненной, прогресс у остальных', async () => {
+    // Цель на экзамен с 16.10 — в строке свойств шапки главной (StudentDashboard.test).
     st.rpc.my_weekly_goals = { current: { days: 5, topics: 2, tasks: null }, next: null, goals: [
       { kind: 'days', target: 5, progress: 3, done: false },
       { kind: 'topics', target: 2, progress: 2, done: true },
     ] }
-    render(<MemoryRouter><GoalsCard profileId="p1" sources={[{ subject: 'physics', mock: null, course: { done: 23, total: 102 } }]} /></MemoryRouter>)
-    const goal = await screen.findByTestId('home-exam-goal-physics')
-    expect(goal).toHaveTextContent('Цель: физика 80+')
-    expect(goal).toHaveTextContent('пройдено 23 из 102 тем курса')
-    const goals = screen.getAllByTestId('home-weekly-goal')
+    render(<MemoryRouter><GoalsCard /></MemoryRouter>)
+    const goals = await screen.findAllByTestId('home-weekly-goal')
     expect(goals[0]).toHaveTextContent('Заходить на платформу 5 дней в неделю3 из 5 дней')
+    expect(goals[1]).toHaveAttribute('data-done', 'true')
+    expect(goals[1]).toHaveTextContent('✓')
     expect(screen.getByTestId('home-goals-summary')).toHaveTextContent('выполнено 1 из 2')
     expect(screen.queryByTestId('home-goals-empty')).toBeNull()
   })
 
   it('целей недели нет — мягкая плашка «Поставь цели на неделю» → настройки', async () => {
     st.rpc.my_weekly_goals = { current: null, next: null, goals: [] }
-    render(<MemoryRouter><GoalsCard profileId="p1" sources={[]} /></MemoryRouter>)
+    render(<MemoryRouter><GoalsCard /></MemoryRouter>)
     expect(await screen.findByTestId('home-goals-empty')).toHaveAttribute('href', '/settings?tab=goals')
     expect(screen.getByTestId('home-goals-empty')).toHaveTextContent('Поставь цели на неделю')
     expect(screen.queryByTestId('home-weekly-goal')).toBeNull()
