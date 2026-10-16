@@ -1,9 +1,14 @@
 /**
  * §290-B. «Курсы» (`/courses`, ученик) — витрина по карточке на курс вместо
- * списка тарифов `/subscribe`. Карточки и цены — из `courses_showcase()`:
- * «500 ₽/мес или 4 800 ₽/год (−20 %)», «−N %» считает база из тарифов.
+ * списка тарифов `/subscribe`. Карточки и цены — из `courses_showcase()`.
  * Подписка — на курс (у математики будут две отдельные). Курса ещё нет —
  * карточка «Скоро» с «Сообщить о запуске».
+ *
+ * В стиле ЛК без дублей (письмо ЛК_стиль_курсы_и_моя_подписка_без_дублей.md,
+ * 16.10): цена — одной строкой по выбранному периоду (строки «… /мес или …
+ * /год» нет — это и так видно переключателем); у курса с подпиской цены и
+ * «что входит» нет — пилюля «Подписка активна», срок и «Открыть курс»;
+ * «Скоро» — по высоте содержимого.
  *
  * Оформление — прежнее (`/subscribe/checkout/:tariffId`): email чека,
  * согласия, промокод, ЮKassa; пробный — там же главной кнопкой.
@@ -12,14 +17,20 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { cn } from '@/utils/cn'
+import { Sticker } from '@/components/student/skin/Sticker'
+import type { StickerName } from '@/components/student/skin/skin'
 import { useMySubscriptions } from '@/hooks/useSubscription'
 import { useLaunchNotice, useShowcase } from '@/hooks/useStudentPath'
 import { cardAction, tariffFor, type ShowcaseCard } from '@/lib/studentPath'
-import { daysLabel, formatDateMsk, formatRub } from '@/lib/subscription/view'
+import { daysLabel, formatRub } from '@/lib/subscription/view'
+import { dayMonthMsk, isSubscribed, yearSaving } from '@/lib/subscription/cardView'
 
 type Period = 1 | 12
+
+function sticker(card: ShowcaseCard): StickerName {
+  if (card.status === 'soon') return 'bell'
+  return card.subject === 'math' ? 'calendar' : card.subject === 'physics' ? 'rocket' : 'book'
+}
 
 function CourseCard({ card, period, recommended, groupId }: {
   card: ShowcaseCard
@@ -32,81 +43,104 @@ function CourseCard({ card, period, recommended, groupId }: {
   // выбранного периода у курса нет — берём тот, что есть
   const tariff = tariffFor(card, period) ?? card.tariffs[0] ?? null
   const price = tariff ? tariff.price_rub : null
+  const subscribed = isSubscribed(card)
+  const saving = tariff?.period_months === 12 ? yearSaving(card) : null
 
   return (
     <article
-      className={cn('platform-surface flex flex-col rounded-card p-5 sm:p-6', recommended && 'ring-2 ring-primary-500')}
+      className={recommended ? 'stu-card stu-cc is-rec' : 'stu-card stu-cc'}
       data-testid="course-card"
       data-slug={card.slug}
       data-status={card.status}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-[20px] font-semibold text-graphite-900">{card.title}</h2>
-        {recommended && <span className="rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">Для вас</span>}
-        {card.status === 'soon' && <span className="rounded-full bg-graphite-100 px-2.5 py-0.5 text-xs font-semibold text-graphite-700">Скоро</span>}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            {recommended && <span className="stu-tag t-blue">Для вас</span>}
+            {card.status === 'soon' && <span className="stu-tag t-grey" data-testid="course-card-soon">Скоро</span>}
+            {subscribed && <span className="stu-tag t-green" data-testid="course-card-active">Подписка активна</span>}
+            {card.my_status === 'trial' && card.has_access && <span className="stu-tag t-or">Пробный период</span>}
+          </div>
+          <h2 className="stu-h3 mt-2 break-words">{card.title}</h2>
+          {card.status === 'live' && card.subtitle && <p className="stu-muted mt-1 text-[14.5px]">{card.subtitle}</p>}
+        </div>
+        <Sticker name={sticker(card)} size={56} />
       </div>
-      {card.subtitle && card.status === 'live' && <p className="mt-1 text-[15px] text-graphite-700">{card.subtitle}</p>}
 
-      {card.status === 'live' && price != null && (
-        <p className="mt-4 text-[28px] font-semibold text-graphite-900" data-testid="course-card-price">
-          {formatRub(price)}{' '}
-          <span className="text-[15px] font-normal text-graphite-500">{tariff?.period_months === 12 ? 'в год' : 'в месяц'}</span>
-        </p>
-      )}
-      {card.status === 'live' && card.month_price != null && card.year_price != null && (
-        <p className="text-[13px] text-graphite-500" data-testid="course-card-both">
-          {formatRub(card.month_price)}/мес или {formatRub(card.year_price)}/год
-          {card.year_discount_pct ? ` (−${card.year_discount_pct} %)` : ''}
-        </p>
-      )}
-
-      {card.includes.length > 0 && (
-        <ul className="mt-4 space-y-1.5 text-[15px] text-graphite-700">
-          {card.includes.map((x) => (
-            <li key={x} className="flex items-start gap-2"><Check size={16} className="mt-1 shrink-0 text-verdict-ok" />{x}</li>
-          ))}
-        </ul>
-      )}
-      {card.status === 'live' && card.trial_available && card.trial_days > 0 && (
-        <p className="mt-3 text-[15px] text-graphite-700">
-          Первые {daysLabel(card.trial_days)} — бесплатно и без карты: первые два урока каждого раздела и банк задач.
-        </p>
-      )}
-      {action === 'open' && card.my_access_until && (
-        <p className="mt-3 text-[15px] text-verdict-ok-ink">Курс открыт до {formatDateMsk(card.my_access_until)}</p>
-      )}
-
-      <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row sm:flex-wrap">
-        {action === 'notify' && (
-          card.notify_requested
-            ? <p className="text-[15px] text-graphite-700" data-testid="course-card-notified">✓ Сообщим, когда курс откроется</p>
-            : <Button variant="secondary" loading={notify.isPending} onClick={() => notify.mutate(card.id)} data-testid="course-card-notify">
-                Сообщить о запуске
-              </Button>
-        )}
-        {action === 'open' && (
-          <>
-            {groupId && <Link to={`/my-course/${groupId}`}><Button data-testid="course-card-open">Открыть курс</Button></Link>}
-            {tariff && card.my_status === 'trial' && (
-              <Link to={`/subscribe/checkout/${tariff.id}`}><Button variant="secondary" data-testid="course-card-buy">Оформить подписку</Button></Link>
+      {subscribed ? (
+        <>
+          {card.my_access_until && (
+            <p className="text-[15px] font-semibold" data-testid="course-card-until">открыт до {dayMonthMsk(card.my_access_until)}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            {groupId && <Link to={`/my-course/${groupId}`} className="stu-btn stu-btn-p" data-testid="course-card-open">Открыть курс</Link>}
+            <Link to="/my-subscription" className="stu-link" data-testid="course-card-manage">Управлять подпиской →</Link>
+          </div>
+        </>
+      ) : card.status === 'live' ? (
+        <>
+          {price != null && (
+            <p data-testid="course-card-price">
+              <b className="text-[28px] font-extrabold tracking-tight">{formatRub(price)}</b>{' '}
+              <span className="stu-muted text-[15px]">{tariff?.period_months === 12 ? 'в год' : 'в месяц'}</span>
+              {saving != null && <span className="stu-tag t-green ml-2 align-middle" data-testid="course-card-saving">экономия {formatRub(saving)}</span>}
+            </p>
+          )}
+          {card.includes.length > 0 && (
+            <ul className="space-y-1.5 text-[14.5px]">
+              {card.includes.map((x) => (
+                <li key={x} className="flex items-start gap-2"><Check size={16} className="mt-0.5 shrink-0 text-[var(--greenInk)]" aria-hidden />{x}</li>
+              ))}
+            </ul>
+          )}
+          {card.trial_available && card.trial_days > 0 && (
+            <p className="stu-muted text-[14px]">
+              Первые {daysLabel(card.trial_days)} — бесплатно и без карты: первые два урока каждого раздела и банк задач.
+            </p>
+          )}
+          {action === 'open' && card.my_access_until && (
+            <p className="text-[14.5px] font-semibold">Пробный период до {dayMonthMsk(card.my_access_until)}</p>
+          )}
+          <div className="mt-auto flex flex-wrap gap-2 pt-1">
+            {action === 'open' && (
+              <>
+                {groupId && <Link to={`/my-course/${groupId}`} className="stu-btn stu-btn-p" data-testid="course-card-open">Открыть курс</Link>}
+                {tariff && <Link to={`/subscribe/checkout/${tariff.id}`} className="stu-btn stu-btn-o" data-testid="course-card-buy">Оформить подписку</Link>}
+              </>
             )}
-          </>
-        )}
-        {action === 'trial' && tariff && (
-          <>
-            <Link to={`/subscribe/checkout/${tariff.id}`}>
-              <Button data-testid="course-card-trial">Попробовать {daysLabel(card.trial_days)} бесплатно</Button>
-            </Link>
-            <Link to={`/subscribe/checkout/${tariff.id}`}>
-              <Button variant="secondary" data-testid="course-card-buy">Оформить сразу</Button>
-            </Link>
-          </>
-        )}
-        {action === 'buy' && tariff && (
-          <Link to={`/subscribe/checkout/${tariff.id}`}><Button data-testid="course-card-buy">Оформить</Button></Link>
-        )}
-      </div>
-      {notify.error && <p className="mt-2 text-[13px] text-verdict-bad-ink">✕ Не получилось. Попробуйте ещё раз.</p>}
+            {action === 'trial' && tariff && (
+              <>
+                <Link to={`/subscribe/checkout/${tariff.id}`} className="stu-btn stu-btn-p" data-testid="course-card-trial">
+                  Попробовать {daysLabel(card.trial_days)} бесплатно
+                </Link>
+                <Link to={`/subscribe/checkout/${tariff.id}`} className="stu-btn stu-btn-g" data-testid="course-card-buy">Оформить сразу</Link>
+              </>
+            )}
+            {action === 'buy' && tariff && (
+              <Link to={`/subscribe/checkout/${tariff.id}`} className="stu-btn stu-btn-p" data-testid="course-card-buy">Оформить</Link>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* «Скоро» — одна строка описания, без пустого места. */}
+          {(card.subtitle || card.description) && <p className="stu-muted truncate text-[14.5px]">{card.subtitle || card.description}</p>}
+          {card.notify_requested
+            ? <p className="text-[14.5px] font-semibold text-[var(--greenInk)]" data-testid="course-card-notified">✓ Сообщим, когда курс откроется</p>
+            : (
+              <button
+                type="button"
+                className="stu-btn stu-btn-g self-start"
+                disabled={notify.isPending}
+                onClick={() => notify.mutate(card.id)}
+                data-testid="course-card-notify"
+              >
+                Сообщить о запуске
+              </button>
+            )}
+        </>
+      )}
+      {notify.error && <p className="text-[13px] text-[var(--redInk)]">✕ Не получилось. Попробуйте ещё раз.</p>}
     </article>
   )
 }
@@ -126,46 +160,51 @@ export function CoursesPage() {
     if (subject) list.sort((a, b) => Number(b.subject === subject && b.status === 'live') - Number(a.subject === subject && a.status === 'live'))
     return list
   }, [data, subject])
-  const hasYear = cards.some((c) => c.status === 'live' && c.year_price != null)
+  // переключатель нужен, только если есть что выбирать: курс без подписки с годовым тарифом
+  const hasYear = cards.some((c) => c.status === 'live' && c.year_price != null && !isSubscribed(c))
   const maxDiscount = Math.max(0, ...cards.map((c) => c.year_discount_pct ?? 0))
   const groupOf = (courseId: string | null) =>
     (mine.data ?? []).find((s) => s.course_id === courseId)?.group_id ?? null
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-6" data-testid="courses-page">
-      <h1 className="text-[28px] font-semibold text-graphite-900">Курсы</h1>
-      <p className="mt-1 text-[17px] text-graphite-700">
-        {fromStart ? 'Начните с бесплатного пробного периода — карта не нужна.' : 'Подписка — на каждый курс отдельно. Прогресс сохраняется, даже если сделать перерыв.'}
-      </p>
-
-      {hasYear && (
-        <div className="mt-5 inline-flex rounded-full border-[1.5px] border-graphite-300 bg-white p-1" role="group" aria-label="Период оплаты">
-          {([1, 12] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={period === p}
-              onClick={() => setPeriod(p)}
-              className={cn('min-h-10 rounded-full px-4 text-[15px] font-semibold', period === p ? 'bg-primary-600 text-white' : 'text-graphite-700')}
-              data-testid={`courses-period-${p}`}
-            >
-              {p === 1 ? 'Месяц' : `Год${maxDiscount ? ` −${maxDiscount} %` : ''}`}
-            </button>
-          ))}
+    <div className="mx-auto flex max-w-[1140px] flex-col gap-6 pb-10 pt-2" data-testid="courses-page">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <span className="stu-kicker">Подписка</span>
+          <h1 className="stu-h2">Курсы</h1>
+          <p className="stu-muted mt-1 text-[14.5px]">
+            {fromStart ? 'Начните с бесплатного пробного периода — карта не нужна.' : 'Подписка — на каждый курс отдельно. Прогресс сохраняется, даже если сделать перерыв.'}
+          </p>
         </div>
-      )}
+        {hasYear && (
+          <div className="stu-toggle" role="group" aria-label="Период оплаты">
+            {([1, 12] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={period === p}
+                onClick={() => setPeriod(p)}
+                className={period === p ? 'is-on' : undefined}
+                data-testid={`courses-period-${p}`}
+              >
+                {p === 1 ? 'Месяц' : `Год${maxDiscount ? ` −${maxDiscount} %` : ''}`}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {isLoading && <p className="mt-6 text-graphite-500">Загружаем курсы…</p>}
-      {error && <p className="mt-6 text-verdict-bad-ink">Не удалось загрузить курсы. Обновите страницу.</p>}
+      {isLoading && <p className="stu-muted">Загружаем курсы…</p>}
+      {error && <p className="text-[var(--redInk)]">Не удалось загрузить курсы. Обновите страницу.</p>}
       {!isLoading && !error && cards.length === 0 && (
-        <div className="platform-surface mt-6 rounded-card p-6" data-testid="courses-unavailable">
-          <p className="text-[17px] text-graphite-900">Оформление подписки пока недоступно.</p>
-          <p className="mt-1 text-[15px] text-graphite-500">Если вам дали ссылку или код курса — вступите по ним.</p>
-          <Link to="/join" className="mt-4 inline-block text-primary-600 underline">Вступить по коду</Link>
+        <div className="stu-card flex flex-col gap-2 p-6" data-testid="courses-unavailable">
+          <p className="text-[17px] font-bold">Оформление подписки пока недоступно.</p>
+          <p className="stu-muted text-[14.5px]">Если вам дали ссылку или код курса — вступите по ним.</p>
+          <Link to="/join" className="stu-link">Вступить по коду</Link>
         </div>
       )}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="stu-mc-grid">
         {cards.map((c, i) => (
           <CourseCard
             key={c.id}

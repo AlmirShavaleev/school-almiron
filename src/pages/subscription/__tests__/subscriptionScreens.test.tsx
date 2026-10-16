@@ -256,9 +256,14 @@ describe('«Моя подписка»', () => {
     })
     const confirmSpy = vi.spyOn(window, 'confirm')
     renderAt('/my-subscription', route)
-    expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent('Курс открыт до 10 ноября 2099')
-    expect(screen.getByText(/Следующее списание/)).toBeInTheDocument()
+    // Одна строка статуса вместо трёх (16.10); при автопродлении ручной оплаты нет.
+    expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent(/^Активна до 10 ноября · 10 ноября спишем/)
+    expect(screen.queryByTestId('my-subscription-pay')).toBeNull()
+    // История свёрнута: «История платежей (1)» → таблица.
+    expect(screen.queryByTestId('my-subscription-payments')).toBeNull()
+    fireEvent.click(screen.getByTestId('my-subscription-history-toggle'))
     expect(screen.getByTestId('my-subscription-payments')).toHaveTextContent('Оплачен')
+    expect(screen.getByTestId('my-subscription-payments')).not.toHaveTextContent('Оплата')
     fireEvent.click(screen.getByTestId('my-subscription-cancel-renew'))
     // «Оставить» — ничего не меняется
     fireEvent.click(await screen.findByTestId('auto-renew-confirm-cancel'))
@@ -267,7 +272,8 @@ describe('«Моя подписка»', () => {
     fireEvent.click(screen.getByTestId('my-subscription-cancel-renew'))
     fireEvent.click(await screen.findByTestId('auto-renew-confirm-confirm'))
     await waitFor(() => expect(api.setAutoRenew).toHaveBeenCalledWith('s1', false))
-    expect(await screen.findByText(/Автопродление выключено/)).toBeInTheDocument()
+    expect(await screen.findByText(/автопродление выключено/)).toBeInTheDocument()
+    expect(screen.getByTestId('my-subscription-pay')).toHaveTextContent('Продлить')
     expect(screen.queryByTestId('auto-renew-confirm')).toBeNull()
     expect(confirmSpy).not.toHaveBeenCalled()
   })
@@ -275,14 +281,14 @@ describe('«Моя подписка»', () => {
   it('способ оплаты — только последние 4 цифры (тест 12.10)', async () => {
     api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, card_title: 'YooMoney wallet 410011758831136' }])
     renderAt('/my-subscription', route)
-    expect(await screen.findByText('Способ оплаты: ЮMoney •1136.')).toBeInTheDocument()
+    expect(await screen.findByTestId('my-subscription-headline')).toHaveTextContent(/спишем .* с ЮMoney •1136$/)
     expect(screen.queryByText(/410011758831136/)).toBeNull()
   })
 
-  it('тариф на несколько месяцев — цена «за 3 месяца», а не «в месяц»', async () => {
+  it('тариф на несколько месяцев — пилюля «3 месяца», а не «Месяц»', async () => {
     api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, period_months: 3 }])
     renderAt('/my-subscription', route)
-    expect(await screen.findByText(/за 3 месяца/)).toBeInTheDocument()
+    expect(await screen.findByTestId('my-subscription-tariff')).toHaveTextContent('3 месяца')
   })
 
   it('подписки нет — «Выбрать курс»', async () => {

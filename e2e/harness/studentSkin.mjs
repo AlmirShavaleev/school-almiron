@@ -150,6 +150,45 @@ function fixtures(scenario) {
         status: 'active', source: 'purchase', demo: false, has_access: true, access_until: new Date(Date.now() + 34 * 864e5).toISOString(), auto_renew: true, continue: null }],
     }
   }
+  // «Курсы» и «Моя подписка» (письмо ЛК_стиль_курсы_и_моя_подписка_без_дублей.md,
+  // 16.10): SUB=on — автопродление включено, off — выключено, ended — истекла.
+  if (scenario === 'subs') {
+    const sub = ['on', 'off', 'ended'].includes(process.env.SUB) ? process.env.SUB : 'on'
+    const day = 864e5
+    const until = sub === 'ended' ? new Date(Date.now() - 2 * day).toISOString() : new Date(Date.now() + 33 * day).toISOString()
+    fx.rpc.subscription_enabled = true
+    t.course_showcase = [{ course_id: IDS.course, title: 'Физика ЕГЭ', is_active: true }]
+    const tariffs = (pre, m, y) => [
+      { id: `${pre}-m`, title: 'Месяц', period_months: 1, price_rub: m },
+      { id: `${pre}-y`, title: 'Год', period_months: 12, price_rub: y },
+    ]
+    const has = sub !== 'ended'
+    fx.rpc.courses_showcase = [
+      { id: 'sc-phys', slug: 'physics-ege', title: 'Физика ЕГЭ', subtitle: 'Годовой курс подготовки: теория, задачи, ДЗ с проверкой',
+        description: null, includes: ['Видеоуроки и конспекты', 'Задачи с автопроверкой', 'ДЗ с проверкой преподавателем', 'Пробники в формате ЕГЭ'],
+        subject: 'physics', course_id: IDS.course, status: 'live', tariffs: tariffs('ph', 500, 4800),
+        month_price: 500, year_price: 4800, year_discount_pct: 20, trial_days: 7,
+        my_status: has ? 'active' : 'expired', my_access_until: has ? until : null, has_access: has, trial_available: false, notify_requested: false },
+      { id: 'sc-math', slug: 'math-ege', title: 'Математика ЕГЭ (профиль)', subtitle: 'Профильная математика: от базы до второй части',
+        description: null, includes: ['Видеоуроки и конспекты', 'Задачи с автопроверкой', 'ДЗ с проверкой преподавателем'],
+        subject: 'math', course_id: null, status: 'live', tariffs: tariffs('ma', 600, 5760),
+        month_price: 600, year_price: 5760, year_discount_pct: 20, trial_days: 7,
+        my_status: null, my_access_until: null, has_access: false, trial_available: true, notify_requested: false },
+      { id: 'sc-inf', slug: 'inf-ege', title: 'Информатика ЕГЭ', subtitle: 'Запуск весной: Python, задачи 1–27',
+        description: null, includes: [], subject: 'informatics', course_id: null, status: 'soon', tariffs: [],
+        month_price: null, year_price: null, year_discount_pct: null, trial_days: 0,
+        my_status: null, my_access_until: null, has_access: false, trial_available: false, notify_requested: false },
+    ]
+    fx.rpc.my_subscriptions = [{
+      id: 'sub-1', course_id: IDS.course, course_title: 'Физика ЕГЭ — подписка (тест)', group_id: IDS.group,
+      tariff_id: 'ph-m', tariff_title: 'Месяц', price_rub: 500, period_months: 1,
+      status: sub === 'ended' ? 'expired' : 'active', has_access: has,
+      current_period_end: until, access_until: until, auto_renew: sub === 'on', can_auto_renew: true,
+      next_charge_at: sub === 'on' ? until : null, last_charge_error: null, card_title: 'YooMoney wallet 410011758831136',
+      payments: [{ id: 'pay-1', status: 'succeeded', kind: 'initial', amount_rub: 500, discount_rub: 0,
+        created_at: new Date(Date.now() - day).toISOString(), paid_at: new Date(Date.now() - day).toISOString() }],
+    }]
+  }
   if (scenario === 'empty') {
     const st = t.students.find(s => s.profile_id === IDS.student)
     t.group_students = t.group_students.filter(g => g.student_id !== st?.id)
@@ -162,7 +201,8 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const p = personas.student
 const session = makeSession(p.user)
 
-const scenario = ['trial', 'empty', 'day0', 'month'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
+const scenario = ['trial', 'empty', 'day0', 'month', 'subs'].includes(process.env.SCENARIO) ? process.env.SCENARIO : 'schedule'
+const subTag = scenario === 'subs' ? `-${['on', 'off', 'ended'].includes(process.env.SUB) ? process.env.SUB : 'on'}` : ''
 const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
   // «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md).
@@ -175,13 +215,18 @@ const ALL_SHOTS = [
   { name: `раздел-${scenario}`, url: `/my-course/${IDS.group}`, section: true },
   // Страница урока: плеер сверху, переключатель «Теория / Урок / ДЗ / Отзыв» (15.10).
   { name: `урок-${scenario}`, url: `/my-course/${IDS.group}/topic/${IDS.topic(1)}` },
+  // «Курсы» (Месяц и Год) и «Моя подписка» — сценарий subs (письмо 16.10).
+  { name: `курсы${subTag}-месяц`, url: '/courses', subs: true },
+  { name: `курсы${subTag}-год`, url: '/courses', subs: true, year: true },
+  { name: `моя-подписка${subTag}`, url: '/my-subscription', subs: true },
   { name: 'меню', url: '/student', mobileOnly: true, menu: true },
   { name: 'страница-без-перевода', url: '/my-homework', darkOnly: true },
 ]
 // Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
-const SHOTS = scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
+const SHOTS = scenario === 'subs' ? ALL_SHOTS.filter(x => x.subs)
+  : scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
   : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course') && !x.url.includes('/topic/'))
-  : ALL_SHOTS
+  : ALL_SHOTS.filter(x => !x.subs)
 
 for (const width of [1280, 390]) {
   for (const theme of ['light', 'dark']) {
@@ -212,6 +257,14 @@ for (const width of [1280, 390]) {
       })
       await page.waitForTimeout(2200)
       if (s.menu) { await page.click('header button[aria-label="Открыть меню"]'); await page.waitForTimeout(500) }
+      if (s.year) {
+        const y = page.locator('[data-testid="courses-period-12"]')
+        if (await y.count()) { await y.click(); await page.waitForTimeout(400) }
+      }
+      if (s.subs && s.url === '/my-subscription') {
+        const h = page.locator('[data-testid="my-subscription-history-toggle"]')
+        if (await h.count()) { await h.click(); await page.waitForTimeout(300) }
+      }
       if (s.section) {
         const cur = page.locator('[data-testid="module-card"][data-state="current"]')
         const tile = (await cur.count()) > 0 ? cur.first() : page.locator('[data-testid="module-card"]').first()
