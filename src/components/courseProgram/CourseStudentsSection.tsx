@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { fetchCourseGoalsSummary, weeklySummaryLabel } from '@/lib/studentGoals'
-import { CourseWeeklyGoalsBlock } from '@/components/goals/WeeklyGoalsEditor'
 import { Link } from 'react-router-dom'
 import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, UserPlus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -224,14 +223,14 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const { readOnly } = useMyTeachingScope()
   const [students, setStudents] = useState<StudentRow[]>([])
   const [telegramSet, setTelegramSet] = useState<Set<string>>(new Set())
-  // Цели недели учеников (письмо 16.10): «выполнено k из n»; null — функции ещё нет, колонки нет.
+  // Цели недели, которые поставили себе ученики (письмо 16.10): «выполнено k из n», пусто — не ставил;
+  // null — функции ещё нет, колонки нет. Только чтение.
   const [goals, setGoals] = useState<Map<string, { goals: number; done: number; behind: boolean }> | null>(null)
-  const [goalsTick, setGoalsTick] = useState(0)
   useEffect(() => {
     let cancelled = false
     fetchCourseGoalsSummary(courseId).then(m => { if (!cancelled) setGoals(m) })
     return () => { cancelled = true }
-  }, [courseId, goalsTick])
+  }, [courseId])
   const [showTelegramColumn, setShowTelegramColumn] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -757,9 +756,6 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
           </div>
         </div>
       )}
-
-      {/* Цели недели курса — для всех учеников (письмо 16.10); нет функции — блока нет. */}
-      {students.length > 0 && <CourseWeeklyGoalsBlock courseId={courseId} onSaved={() => setGoalsTick(t => t + 1)} />}
 
       {/* Students section */}
       {students.length > 0 ? (

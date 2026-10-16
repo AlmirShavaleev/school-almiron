@@ -446,3 +446,5 @@ a.stu-lt:hover { border-color: var(--blue) }
 }
 .stu .stu-lt-compact { display: none }
 @media (max-width: 640px) { .stu .stu-lt-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap } .stu .stu-lt-compact { display: inline } }
+.stu .stu-goals-empty { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--blueS); color: var(--blueInk); font-size: 14px; text-decoration: none }
+.stu .stu-goals-empty:hover { filter: brightness(.98) }

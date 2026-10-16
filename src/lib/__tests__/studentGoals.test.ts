@@ -4,9 +4,9 @@ import {
 } from '@/lib/studentGoals'
 import { STUDENT_PREF_KEYS, studentPrefsFrom } from '@/lib/studentNotifGroups'
 
-// Цели в два уровня и уведомления ученика (письмо ЛК_стиль_настройки_ученика.md, правка 16.10 15:46).
+// Цели в два уровня и уведомления ученика (письмо ЛК_стиль_настройки_ученика.md, правка 16.10 17:45).
 
-describe('цели недели (ставит преподаватель)', () => {
+describe('цели недели (ставит сам ученик)', () => {
   it('подписи трёх стандартных целей', () => {
     expect(weeklyGoalTitle('days', 4)).toBe('Заходить на платформу 4 дня в неделю')
     expect(weeklyGoalTitle('days', 5)).toBe('Заходить на платформу 5 дней в неделю')
@@ -19,7 +19,8 @@ describe('цели недели (ставит преподаватель)', () =
     expect(weeklyProgressLabel({ kind: 'topics', progress: 1, target: 2 })).toBe('1 из 2 тем')
     expect(weeklyProgressLabel({ kind: 'tasks', progress: 40, target: 30 })).toBe('30 из 30 задач')
     expect(weeklySummaryLabel(1, 3)).toBe('1 из 3')
-    expect(weeklySummaryLabel(0, 0)).toBe('—')
+    // Ученик целей не ставил — в колонке пусто (письмо 16.10 17:45).
+    expect(weeklySummaryLabel(0, 0)).toBe('')
   })
 
   it('числа целей — только из стандартного набора', () => {

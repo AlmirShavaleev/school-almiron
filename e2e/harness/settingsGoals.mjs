@@ -14,7 +14,7 @@ import { personas, baseFixtures, IDS } from './fixtures.mjs'
 const outDir = ensureDir(path.resolve(process.argv[2] || 'screenshots/harness/settings-goals'))
 const assetsDir = path.resolve('screenshots/harness/assets')
 
-// Цели недели ставит преподаватель (правка письма 16.10 15:46): 3 стандартные цели.
+// Цели недели ставит сам ученик (правка письма 16.10 17:45): 3 стандартные цели.
 const GOALS = [
   { kind: 'days', target: 5, progress: 3, done: false },
   { kind: 'topics', target: 3, progress: 3, done: true },
@@ -28,13 +28,13 @@ const HISTORY = Array.from({ length: 8 }, (_, i) => {
 
 function withGoals(fx) {
   fx.tables.student_exam_goals = [{ profile_id: IDS.student, subject: 'physics', goal: 80, updated_at: new Date().toISOString() }]
-  fx.rpc.my_weekly_goals = [{ course_id: IDS.course, course_title: 'Физика ЕГЭ', week_start: HISTORY[7].week_start, goals: GOALS }]
-  fx.rpc.course_weekly_goals_get = { days: 5, topics: 3, tasks: 20 }
-  fx.rpc.student_goals_for_staff = {
-    exam: [{ subject: 'physics', goal: 80 }],
-    courses: [{ course_id: IDS.course, course_title: 'Физика ЕГЭ 2027', custom: false,
-      course_goals: { days: 5, topics: 3, tasks: 20 }, own_goals: null, goals: GOALS, history: HISTORY }],
-  }
+  const nextMonday = new Date(Date.parse(HISTORY[7].week_start) + 7 * 864e5).toISOString().slice(0, 10)
+  fx.rpc.my_weekly_goals = process.env.GOALS === 'none'
+    ? { week_start: HISTORY[7].week_start, current: null, next: null, goals: [] }
+    : { week_start: HISTORY[7].week_start, current: { days: 5, topics: 3, tasks: 20 },
+        next: { valid_from: nextMonday, days: 5, topics: 3, tasks: 30 }, goals: GOALS }
+  fx.rpc.set_my_weekly_goals = nextMonday
+  fx.rpc.student_goals_for_staff = { exam: [{ subject: 'physics', goal: 80 }], goals: GOALS, history: HISTORY }
   fx.rpc.course_goals_summary = [
     { student_id: IDS.studentRow, goals: 3, done: 1, behind: true },
     ...[0, 1, 2, 3, 4, 5, 6].map(k => ({ student_id: IDS.otherStudent(k), goals: 3, done: k % 4, behind: k % 3 === 0 })),
@@ -117,13 +117,7 @@ for (const width of [1280, 390]) {
     const fx = withGoals(baseFixtures('owner'))
     const { context, page } = await open('owner', width, fx, `/students/${IDS.studentRow}`)
     await shot(page, `карточка-ученика-цели-${width}`, '[data-testid="student-goals-staff"]')
-    const edit = page.getByTestId('student-goals-edit')
-    if (await edit.count()) {
-      await edit.click()
-      await page.getByRole('button', { name: 'Своё' }).click()
-      await page.waitForTimeout(300)
-      await shot(page, `карточка-ученика-своё-${width}`, '[data-testid="student-goals-staff"]')
-    }
+
     await shot(page, `карточка-ученика-${width}`)
     await context.close()
   }

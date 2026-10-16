@@ -3,16 +3,16 @@ import { Link } from 'react-router-dom'
 import { Sticker } from '@/components/student/skin/Sticker'
 import {
   examGoalLabel, fetchMyExamGoals, fetchMyWeeklyGoals, goalBasis, weeklyGoalTitle, weeklyProgressLabel,
-  type CourseWeekly, type ExamGoal, type GoalSubject,
+  type ExamGoal, type GoalSubject, type WeeklyGoal,
 } from '@/lib/studentGoals'
 
 /**
  * «Цели» на главной ученика (письмо ЛК_стиль_настройки_ученика.md, правка
  * 16.10 15:46): сверху — цель на экзамен («Цель: физика 80+», её ставит
  * ученик) и на чём основана оценка пути (последний пробник или «пройдено N из M
- * тем курса»); ниже — «Цели недели», которые поставил преподаватель, с
- * прогрессом («3 из 5 дней»), неделя пн–вс. Ничего нет — одна строка со
- * ссылкой на цель на экзамен.
+ * тем курса»); ниже — «Цели недели», которые поставил себе ученик, с прогрессом
+ * («3 из 5 дней»), неделя пн–вс. Целей недели нет — мягкая плашка «Поставь цели
+ * на неделю» в настройки.
  */
 export interface GoalBasisSource {
   subject: GoalSubject
@@ -22,21 +22,20 @@ export interface GoalBasisSource {
 
 export function GoalsCard({ profileId, sources }: { profileId: string; sources: GoalBasisSource[] }) {
   const [exam, setExam] = useState<ExamGoal[] | null>(null)
-  const [weekly, setWeekly] = useState<CourseWeekly[] | null>(null)
+  const [weekly, setWeekly] = useState<WeeklyGoal[] | null>(null)
 
   useEffect(() => {
     let cancelled = false
     Promise.all([fetchMyExamGoals(profileId), fetchMyWeeklyGoals()]).then(([e, w]) => {
       if (cancelled) return
-      setExam(e); setWeekly(w.error ? [] : w.courses)
+      setExam(e); setWeekly(w.data?.goals ?? [])
     })
     return () => { cancelled = true }
   }, [profileId])
 
   if (exam == null || weekly == null) return null
-  const goals = weekly.flatMap(c => c.goals.map(g => ({ ...g, course: c.courseTitle })))
+  const goals = weekly
   const done = goals.filter(g => g.done).length
-  const many = weekly.length > 1
 
   return (
     <section className="stu-card stu-goals" data-testid="home-goals">
@@ -70,10 +69,10 @@ export function GoalsCard({ profileId, sources }: { profileId: string; sources: 
           </div>
           <ul className="flex flex-col gap-2.5">
             {goals.map(g => (
-              <li key={`${g.course}-${g.kind}`} data-testid="home-weekly-goal" data-done={g.done || undefined}>
+              <li key={g.kind} data-testid="home-weekly-goal" data-done={g.done || undefined}>
                 <div className="flex items-baseline justify-between gap-3 text-[14px]">
                   <span className="min-w-0 font-semibold">
-                    {weeklyGoalTitle(g.kind, g.target)}{many && <span className="stu-muted font-medium"> · {g.course}</span>}
+                    {weeklyGoalTitle(g.kind, g.target)}
                   </span>
                   <span className={g.done ? 'stu-tag t-green shrink-0' : 'stu-muted shrink-0 font-semibold tabular-nums'}>{g.done ? '✓ выполнено' : weeklyProgressLabel(g)}</span>
                 </div>
@@ -81,8 +80,14 @@ export function GoalsCard({ profileId, sources }: { profileId: string; sources: 
               </li>
             ))}
           </ul>
-          <p className="stu-muted text-[12.5px]">Цели недели ставит преподаватель · неделя с понедельника по воскресенье</p>
+          <Link to="/settings?tab=goals" className="stu-link self-start">Изменить цели</Link>
         </div>
+      )}
+      {goals.length === 0 && (
+        <Link to="/settings?tab=goals" className="stu-goals-empty" data-testid="home-goals-empty">
+          <b>Поставь цели на неделю</b>
+          <span className="stu-muted">Заходить, проходить темы, решать задачи — 1–3 цели, каждую неделю</span>
+        </Link>
       )}
     </section>
   )

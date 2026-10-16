@@ -74,62 +74,61 @@ beforeAll(async () => {
 })
 afterAll(async () => { await db?.close() })
 
-describe('цели недели (PENDING_goals_v2)', () => {
+describe('цели недели ученика (PENDING_goals_v2)', () => {
   it('прогресс за неделю: дни из app_visits, темы — сдача на этой неделе, задачи — каталог + автопроверка', async () => {
     const r = (await db.query<{ days: number; topics: number; tasks: number }>(
       `select * from public._weekly_progress_of($1, public._goals_week_start())`, [KID])).rows[0]
     expect(r).toEqual({ days: 3, topics: 2, tasks: 12 })
   })
 
-  it('ставит только персонал курса; чужой преподаватель и ученик — 42501', async () => {
-    await as(STRANGER)
-    expect(await errorOf(`select course_weekly_goals_set($1, 4, 3, 20)`, [COURSE])).toMatch(/Нет доступа/)
-    await as(KID)
-    expect(await errorOf(`select course_weekly_goals_set($1, 4, 3, 20)`, [COURSE])).toMatch(/Нет доступа/)
+  it('ставит только ученик; персонал — 42501; число вне набора — check', async () => {
     await as(TEACHER)
-    expect(await errorOf(`select course_weekly_goals_set($1, 4, 3, 20)`, [COURSE])).toBeNull()
-    expect(await errorOf(`select course_weekly_goals_set($1, 7, null, null)`, [COURSE])).toMatch(/check/)
+    expect(await errorOf(`select set_my_weekly_goals(4, 3, 20)`)).toMatch(/ставит ученик/)
+    await as(KID)
+    expect(await errorOf(`select set_my_weekly_goals(7, null, null)`)).toMatch(/check/)
   })
 
-  it('ученик видит свои цели курса с прогрессом и не видит чужих', async () => {
+  it('первые цели — сразу с этой недели; ученик видит свои с прогрессом', async () => {
     await as(KID)
-    const mine = await val<Array<{ course_id: string; goals: Array<{ kind: string; target: number; progress: number; done: boolean }> }>>(`select my_weekly_goals()`)
-    expect(mine).toHaveLength(1)
-    expect(mine[0].course_id).toBe(COURSE)
-    expect(mine[0].goals).toEqual([
+    const from = await val<string>(`select set_my_weekly_goals(4, 3, 20)::text`)
+    expect(from).toBe(await val<string>(`select public._goals_week_start()::text`))
+    const mine = await val<{ current: unknown; next: unknown; goals: Array<{ kind: string; target: number; progress: number; done: boolean }> }>(`select my_weekly_goals()`)
+    expect(mine.current).toEqual({ days: 4, topics: 3, tasks: 20 })
+    expect(mine.next).toBeNull()
+    expect(mine.goals).toEqual([
       { kind: 'days', target: 4, progress: 3, done: false },
       { kind: 'topics', target: 3, progress: 2, done: false },
       { kind: 'tasks', target: 20, progress: 12, done: false },
     ])
+  })
+
+  it('изменение — со следующего понедельника, текущая неделя по старым', async () => {
+    await as(KID)
+    const wk = await val<string>(`select public._goals_week_start()::text`)
+    const from = await val<string>(`select set_my_weekly_goals(3, null, 10)::text`)
+    expect(from).toBe(await val<string>(`select ($1::date + 7)::text`, [wk]))
+    const mine = await val<{ current: { days: number }; next: { valid_from: string; days: number; tasks: number }; goals: unknown[] }>(`select my_weekly_goals()`)
+    expect(mine.current.days).toBe(4)
+    expect(mine.next).toMatchObject({ days: 3, tasks: 10 })
+    expect(mine.goals).toHaveLength(3)
+  })
+
+  it('персонал курса читает: сводка «k из n», карточка с историей; посторонний — 42501', async () => {
+    await as(STRANGER)
+    expect(await errorOf(`select * from course_goals_summary($1)`, [COURSE])).toMatch(/Нет доступа/)
     expect(await errorOf(`select student_goals_for_staff($1)`, [ST])).toMatch(/Нет доступа/)
+    await as(TEACHER)
+    const rows = (await db.query<{ student_id: string; goals: number; done: number }>(
+      `select student_id, goals, done from course_goals_summary($1) order by student_id`, [COURSE])).rows
+    expect(rows).toEqual([{ student_id: ST, goals: 3, done: 0 }, { student_id: ST2, goals: 0, done: 0 }])
+    const card = await val<{ exam: unknown[]; goals: unknown[]; history: Array<{ total: number }> }>(`select student_goals_for_staff($1)`, [ST])
+    expect(card.goals).toHaveLength(3)
+    expect(card.history).toHaveLength(8)
+    expect(card.history.map(h => h.total)).toEqual([0, 0, 0, 0, 0, 0, 0, 3])
   })
 
-  it('«своё» ученику — вместо курса; «как у курса» — снова курс', async () => {
-    await as(TEACHER)
-    await db.query(`select student_weekly_goals_set($1, $2, true, 3, null, 10)`, [COURSE, ST])
+  it('ученик не читает чужие цели через функции персонала', async () => {
     await as(KID)
-    const own = await val<Array<{ goals: Array<{ kind: string; done: boolean }> }>>(`select my_weekly_goals()`)
-    expect(own[0].goals.map(g => [g.kind, g.done])).toEqual([['days', true], ['tasks', true]])
-    await as(TEACHER)
-    await db.query(`select student_weekly_goals_set($1, $2, false, null, null, null)`, [COURSE, ST])
-    await as(KID)
-    expect((await val<Array<{ goals: unknown[] }>>(`select my_weekly_goals()`))[0].goals).toHaveLength(3)
-  })
-
-  it('сводка курса: «k из n» по ученикам; ученика не из курса не поставить', async () => {
-    await as(TEACHER)
-    const rows = (await db.query<{ student_id: string; goals: number; done: number }>(`select student_id, goals, done from course_goals_summary($1) order by student_id`, [COURSE])).rows
-    expect(rows).toEqual([{ student_id: ST, goals: 3, done: 0 }, { student_id: ST2, goals: 3, done: 0 }])
-    expect(await errorOf(`select student_weekly_goals_set($1, $2, true, 3, null, null)`, [COURSE2, ST])).toMatch(/Нет доступа/)
-  })
-
-  it('карточка ученика: цели, «как у курса», история 8 недель', async () => {
-    await as(TEACHER)
-    const r = await val<{ courses: Array<{ course_id: string; custom: boolean; goals: unknown[]; history: Array<{ total: number; done: number }> }> }>(
-      `select student_goals_for_staff($1)`, [ST])
-    expect(r.courses).toHaveLength(1)
-    expect(r.courses[0]).toMatchObject({ course_id: COURSE, custom: false })
-    expect(r.courses[0].history).toHaveLength(8)
-    expect(r.courses[0].history[7].total).toBe(3)
+    expect(await errorOf(`select student_goals_for_staff($1)`, [ST2])).toMatch(/Нет доступа/)
   })
 })

@@ -70,12 +70,12 @@ describe('уведомления ученика', () => {
 })
 
 describe('цели на главной', () => {
-  it('«Цель: физика 80+», основание и цели недели от преподавателя с прогрессом', async () => {
+  it('«Цель: физика 80+», основание и свои цели недели с прогрессом', async () => {
     st.exam = [{ subject: 'physics', goal: 80 }]
-    st.rpc.my_weekly_goals = [{ course_id: 'c1', course_title: 'Физика', goals: [
+    st.rpc.my_weekly_goals = { current: { days: 5, topics: 2, tasks: null }, next: null, goals: [
       { kind: 'days', target: 5, progress: 3, done: false },
       { kind: 'topics', target: 2, progress: 2, done: true },
-    ] }]
+    ] }
     render(<MemoryRouter><GoalsCard profileId="p1" sources={[{ subject: 'physics', mock: null, course: { done: 23, total: 102 } }]} /></MemoryRouter>)
     const goal = await screen.findByTestId('home-exam-goal-physics')
     expect(goal).toHaveTextContent('Цель: физика 80+')
@@ -83,32 +83,29 @@ describe('цели на главной', () => {
     const goals = screen.getAllByTestId('home-weekly-goal')
     expect(goals[0]).toHaveTextContent('Заходить на платформу 5 дней в неделю3 из 5 дней')
     expect(screen.getByTestId('home-goals-summary')).toHaveTextContent('выполнено 1 из 2')
-    expect(screen.getByTestId('home-goals')).toHaveTextContent('Цели недели ставит преподаватель')
+    expect(screen.queryByTestId('home-goals-empty')).toBeNull()
   })
 
-  it('целей недели нет — блока целей недели нет, цель на экзамен — ссылкой', async () => {
-    st.rpc.my_weekly_goals = []
+  it('целей недели нет — мягкая плашка «Поставь цели на неделю» → настройки', async () => {
+    st.rpc.my_weekly_goals = { current: null, next: null, goals: [] }
     render(<MemoryRouter><GoalsCard profileId="p1" sources={[]} /></MemoryRouter>)
-    expect(await screen.findByRole('link', { name: 'Выбрать балл' })).toHaveAttribute('href', '/settings?tab=goals')
+    expect(await screen.findByTestId('home-goals-empty')).toHaveAttribute('href', '/settings?tab=goals')
+    expect(screen.getByTestId('home-goals-empty')).toHaveTextContent('Поставь цели на неделю')
     expect(screen.queryByTestId('home-weekly-goal')).toBeNull()
   })
 })
 
-describe('цели у преподавателя', () => {
-  it('цель на экзамен, цели недели с выполнением, «как у курса», история 8 недель', async () => {
+describe('цели у преподавателя (только чтение)', () => {
+  it('цель на экзамен, цели недели ученика с выполнением, история 8 недель, без кнопок', async () => {
     st.rpc.student_goals_for_staff = {
       exam: [{ subject: 'math', goal: 70 }],
-      courses: [{
-        course_id: 'c1', course_title: 'Физика', custom: false,
-        course_goals: { days: 4, topics: null, tasks: 30 }, own_goals: null,
-        goals: [{ kind: 'tasks', target: 30, progress: 31, done: true }, { kind: 'days', target: 4, progress: 2, done: false }],
-        history: Array.from({ length: 8 }, (_, i) => ({ week_start: `2026-08-${String(24 + i).padStart(2, '0')}`, total: 2, done: i % 2 ? 2 : 1 })),
-      }],
+      goals: [{ kind: 'tasks', target: 30, progress: 31, done: true }, { kind: 'days', target: 4, progress: 2, done: false }],
+      history: Array.from({ length: 8 }, (_, i) => ({ week_start: `2026-08-${String(24 + i).padStart(2, '0')}`, total: 2, done: i % 2 ? 2 : 1 })),
     }
     render(<StudentGoalsStaffBlock studentId="s1" />)
     expect(await screen.findByTestId('student-goals-staff-exam')).toHaveTextContent('Сдать математику на 70+')
     expect(screen.getByTestId('student-goals-staff-summary')).toHaveTextContent('выполнено 1 из 2')
-    expect(screen.getByTestId('student-goals-mode')).toHaveTextContent('как у курса')
     expect(within(screen.getByTestId('student-goals-history')).getAllByText(/\d\/2/)).toHaveLength(8)
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })

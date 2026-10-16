@@ -8,10 +8,11 @@ import { plural } from '@/lib/plural'
  *
  *  · Цель на экзамен — ставит ученик: «Сдать физику на 80+».
  *    `student_exam_goals` (subject, goal), пишет `set_my_exam_goal` — уже есть.
- *  · Цели недели — ставит преподаватель/владелец, ученик только видит. Набор
- *    стандартный, 3 цели с одним числом: заходить N дней (3–6), пройти N тем
- *    (2–5), решить N задач (10/20/30/50). На курс — для всех учеников, ученику
- *    можно «своё». Миграция PENDING_goals_v2.sql, прогресс считает база.
+ *  · Цели недели — ставит САМ ученик (правка 16.10 17:45), преподаватель
+ *    только видит. Набор стандартный, 3 цели с одним числом: заходить N дней
+ *    (3–6), пройти N тем (2–5), решить N задач (10/20/30/50). Повторяются
+ *    каждую неделю; изменения — со следующего понедельника. Миграция
+ *    PENDING_goals_v2.sql, прогресс считает база.
  */
 
 export type GoalSubject = 'math' | 'physics'
@@ -19,7 +20,12 @@ export type WeeklyKind = 'days' | 'topics' | 'tasks'
 
 export interface ExamGoal { subject: GoalSubject; goal: number }
 export interface WeeklyGoal { kind: WeeklyKind; target: number; progress: number; done: boolean }
-export interface CourseWeekly { courseId: string; courseTitle: string; goals: WeeklyGoal[] }
+/** Свои цели недели ученика: действующие сейчас, отложенные на следующий понедельник и прогресс. */
+export interface MyWeekly {
+  current: GoalNumbers | null
+  next: { validFrom: string; nums: GoalNumbers } | null
+  goals: WeeklyGoal[]
+}
 /** Числа целей: null — цель выключена. */
 export type GoalNumbers = Record<WeeklyKind, number | null>
 
@@ -76,7 +82,7 @@ export function weeklyProgressLabel(g: Pick<WeeklyGoal, 'kind' | 'progress' | 't
 
 /** «Цели недели: выполнено k из n» — для списка учеников у преподавателя. */
 export function weeklySummaryLabel(done: number, total: number): string {
-  return total === 0 ? '—' : `${done} из ${total}`
+  return total === 0 ? '' : `${done} из ${total}`
 }
 
 /** «Цель: физика 80+». */
@@ -96,16 +102,25 @@ export function goalBasis(
 }
 
 // ── Запросы ученика ──────────────────────────────────────────────────────────
-export async function fetchMyWeeklyGoals(): Promise<{ courses: CourseWeekly[]; error: string | null }> {
+export async function fetchMyWeeklyGoals(): Promise<{ data: MyWeekly | null; error: string | null }> {
   const { data, error } = await safeRpc('my_weekly_goals')
-  if (error) return { courses: [], error: 'Не удалось загрузить цели недели' }
-  const courses = (Array.isArray(data) ? data : []).flatMap(r => {
-    const o = obj(r)
-    return typeof o.course_id === 'string'
-      ? [{ courseId: o.course_id, courseTitle: typeof o.course_title === 'string' ? o.course_title : '', goals: parseWeeklyGoals(o.goals) }]
-      : []
-  })
-  return { courses, error: null }
+  if (error) return { data: null, error: 'Не удалось загрузить цели недели' }
+  const o = obj(data)
+  const n = o.next ? obj(o.next) : null
+  return {
+    data: {
+      current: o.current ? parseGoalNumbers(o.current) : null,
+      next: n && typeof n.valid_from === 'string' ? { validFrom: n.valid_from, nums: parseGoalNumbers(n) } : null,
+      goals: parseWeeklyGoals(o.goals),
+    },
+    error: null,
+  }
+}
+
+/** Новые числа — со следующего понедельника (если на эту неделю целей не было — сразу). */
+export async function setMyWeeklyGoals(g: GoalNumbers): Promise<{ validFrom: string | null; error: string | null }> {
+  const { data, error } = await safeRpc('set_my_weekly_goals', { p_days: g.days, p_topics: g.topics, p_tasks: g.tasks })
+  return error ? { validFrom: null, error: 'Не удалось сохранить цели' } : { validFrom: typeof data === 'string' ? data : null, error: null }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,55 +139,28 @@ export async function setMyExamGoal(subject: GoalSubject, goal: number | null): 
   return { error: error ? 'Не удалось сохранить цель' : null }
 }
 
-// ── Персонал ─────────────────────────────────────────────────────────────────
-export async function fetchCourseWeeklyGoals(courseId: string): Promise<GoalNumbers | null> {
-  const { data, error } = await safeRpc('course_weekly_goals_get', { p_course_id: courseId })
-  return error ? null : parseGoalNumbers(data)
-}
-
-export async function setCourseWeeklyGoals(courseId: string, g: GoalNumbers): Promise<{ error: string | null }> {
-  const { error } = await safeRpc('course_weekly_goals_set', { p_course_id: courseId, p_days: g.days, p_topics: g.topics, p_tasks: g.tasks })
-  return { error: error ? 'Не удалось сохранить цели курса' : null }
-}
-
-export async function setStudentWeeklyGoals(courseId: string, studentId: string, custom: boolean, g: GoalNumbers): Promise<{ error: string | null }> {
-  const { error } = await safeRpc('student_weekly_goals_set', {
-    p_course_id: courseId, p_student_id: studentId, p_custom: custom, p_days: g.days, p_topics: g.topics, p_tasks: g.tasks,
-  })
-  return { error: error ? 'Не удалось сохранить цели ученика' : null }
-}
-
-export interface StaffCourseGoals {
-  courseId: string
-  courseTitle: string
-  custom: boolean
-  courseGoals: GoalNumbers
-  ownGoals: GoalNumbers | null
+// ── Персонал: только чтение ──────────────────────────────────────────────────
+export interface StaffGoals {
+  exam: ExamGoal[]
   goals: WeeklyGoal[]
   history: Array<{ weekStart: string; total: number; done: number }>
 }
 
-export async function fetchStudentGoalsForStaff(studentId: string): Promise<{ exam: ExamGoal[]; courses: StaffCourseGoals[]; error: string | null }> {
+export async function fetchStudentGoalsForStaff(studentId: string): Promise<{ data: StaffGoals | null; error: string | null }> {
   const { data, error } = await safeRpc('student_goals_for_staff', { p_student_id: studentId })
-  if (error) return { exam: [], courses: [], error: 'Не удалось загрузить цели ученика' }
+  if (error) return { data: null, error: 'Не удалось загрузить цели ученика' }
   const o = obj(data)
-  const courses = (Array.isArray(o.courses) ? o.courses : []).flatMap(r => {
-    const c = obj(r)
-    if (typeof c.course_id !== 'string') return []
-    return [{
-      courseId: c.course_id,
-      courseTitle: typeof c.course_title === 'string' ? c.course_title : '',
-      custom: c.custom === true,
-      courseGoals: parseGoalNumbers(c.course_goals),
-      ownGoals: c.own_goals ? parseGoalNumbers(c.own_goals) : null,
-      goals: parseWeeklyGoals(c.goals),
-      history: (Array.isArray(c.history) ? c.history : []).map(h => {
+  return {
+    data: {
+      exam: parseExamGoals(o.exam),
+      goals: parseWeeklyGoals(o.goals),
+      history: (Array.isArray(o.history) ? o.history : []).map(h => {
         const x = obj(h)
         return { weekStart: typeof x.week_start === 'string' ? x.week_start : '', total: num(x.total), done: num(x.done) }
       }),
-    }]
-  })
-  return { exam: parseExamGoals(o.exam), courses, error: null }
+    },
+    error: null,
+  }
 }
 
 export async function fetchCourseGoalsSummary(courseId: string): Promise<Map<string, { goals: number; done: number; behind: boolean }> | null> {
