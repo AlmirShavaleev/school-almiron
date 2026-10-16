@@ -11,6 +11,7 @@ import { PhysicsTopicEditorButton } from '@/components/catalog/PhysicsTopicEdito
 import { TaskDisplayCard, type TaskPracticeProps } from '@/components/catalog/TaskDisplayCard'
 import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
 import { useCatalogPractice } from '@/hooks/useCatalogPractice'
+import { useCatalogTopicPage } from '@/hooks/useCatalogTopicPage'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
 
 /** §256: состояние практики спрашиваем не больше чем для стольких задач. */
@@ -34,7 +35,15 @@ export function CatalogTopicPage() {
   const isPhysicsTopicsView = subjectSlugParam === 'physics' && examSlug === 'ege' && view === 'physics-topics'
   const canEditPhysicsTopics = isPhysicsTopicsView && !!profile?.role && ['admin', 'owner'].includes(profile.role)
 
-  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId, retryKey, view)
+  // Страница темы одним запросом (catalog_topic_page): порции по 20, фильтры на
+  // сервере. Без миграции — прежний путь useCatalogTasks (всё тянется сразу).
+  const server = useCatalogTopicPage({ topicId, view, filter, difficulties: difficultyFilter, retryKey })
+  const legacy = useCatalogTasks(server.missing ? topicId : undefined, retryKey, view)
+  const useServer = !server.missing
+  const tasks = useServer ? server.tasks : legacy.tasks
+  const loading = useServer ? server.loading : legacy.loading
+  const error = useServer ? server.error : legacy.error
+  const toggleComplete = useServer ? server.toggleComplete : legacy.toggleComplete
   const { sections: aiSections } = useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)
   const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
   const examSection = sections.find(s => s.id === sectionId)
@@ -54,6 +63,7 @@ export function CatalogTopicPage() {
   })
 
   const filtered = useMemo(() => {
+    if (useServer) return tasks
     const byCompletion =
       filter === 'done' ? tasks.filter(t => t.is_completed)
       : filter === 'todo' ? tasks.filter(t => !t.is_completed)
@@ -61,7 +71,7 @@ export function CatalogTopicPage() {
 
     if (difficultyFilter.size === 0) return byCompletion
     return byCompletion.filter(task => task.difficulty && difficultyFilter.has(task.difficulty))
-  }, [tasks, filter, difficultyFilter])
+  }, [tasks, filter, difficultyFilter, useServer])
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
@@ -69,8 +79,15 @@ export function CatalogTopicPage() {
   useEffect(() => { setVisibleCount(PAGE_SIZE) }, [topicId, filter])
   useEffect(() => { setVisibleCount(PAGE_SIZE) }, [difficultyFilter])
 
-  const visibleTasks = filtered.slice(0, visibleCount)
-  const hasMore = visibleCount < filtered.length
+  const visibleTasks = useServer ? tasks : filtered.slice(0, visibleCount)
+  const filteredCount = useServer ? (server.stats?.filtered ?? 0) : filtered.length
+  const hasMore = useServer ? server.hasMore : visibleCount < filtered.length
+  const shownCount = useServer ? tasks.length : visibleCount
+  const loadMore = () => {
+    if (useServer) server.loadMore()
+    else setVisibleCount(c => c + PAGE_SIZE)
+  }
+  const nextCount = Math.min(useServer ? 20 : PAGE_SIZE, filteredCount - shownCount)
 
   // §256. Ученик проверяет ответ прямо в карточке; персоналу — как прежде.
   const isStudent = profile?.role === 'student'
@@ -84,7 +101,7 @@ export function CatalogTopicPage() {
             const out = await practice.check(taskId, answer)
             // База уже отметила решённую задачу «Выполнено» — показываем это сразу
             // (повторная отметка — тот же upsert, без вреда).
-            const t = tasks.find(x => x.id === taskId)
+            const t = visibleTasks.find(x => x.id === taskId)
             if (out.result?.verdict === 'correct' && t && !t.is_completed) void toggleComplete(taskId, false)
             return out
           },
@@ -93,8 +110,8 @@ export function CatalogTopicPage() {
       : undefined
   )
 
-  const doneCount  = tasks.filter(t => t.is_completed).length
-  const totalCount = tasks.length
+  const doneCount  = useServer ? (server.stats?.done ?? 0) : tasks.filter(t => t.is_completed).length
+  const totalCount = useServer ? (server.stats?.total ?? 0) : tasks.length
   const pct = totalCount ? Math.round(doneCount / totalCount * 100) : 0
 
   // Скелет накрывает ТОЛЬКО список задач, а не всю страницу. Раньше при
@@ -253,7 +270,7 @@ export function CatalogTopicPage() {
           <div>
             {loading ? (
               <TaskListSkeleton />
-            ) : filtered.length === 0 ? (
+            ) : visibleTasks.length === 0 ? (
               <EmptyState filter={filter} hasDifficultyFilter={difficultyFilter.size > 0} />
             ) : (
               <div className="space-y-4">
@@ -271,13 +288,15 @@ export function CatalogTopicPage() {
                     examNumber={examSection?.exam_number ?? null}
                   />
                 ))}
+                {hasMore && <LoadMoreSentinel onVisible={loadMore} />}
                 {hasMore && (
                   <button
-                    onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                    onClick={loadMore}
+                    disabled={useServer && server.loadingMore}
                     className="w-full rounded-2xl border border-gray-200 py-3 text-sm font-medium text-gray-600 transition-[background-color,color,border-color,transform] hover:bg-gray-50 hover:border-primary-400 hover:text-primary-700 active:scale-[0.99]"
                   >
-                    Показать ещё {Math.min(PAGE_SIZE, filtered.length - visibleCount)} задач
-                    <span className="ml-1 text-gray-400 tabular-nums">({visibleCount} из {filtered.length})</span>
+                    {useServer && server.loadingMore ? 'Загружаем…' : <>Показать ещё {nextCount} задач</>}
+                    <span className="ml-1 text-gray-400 tabular-nums">({shownCount} из {filteredCount})</span>
                   </button>
                 )}
               </div>
@@ -572,6 +591,23 @@ function TaskCard({
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Следующая порция — когда низ списка подходит к экрану (кнопка «Показать ещё» остаётся запасной). */
+function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const cb = useRef(onVisible)
+  useEffect(() => { cb.current = onVisible })
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) cb.current()
+    }, { rootMargin: '800px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return <div ref={ref} aria-hidden data-testid="topic-load-more-sentinel" />
+}
 
 function EmptyState({ filter, hasDifficultyFilter }: { filter: Filter; hasDifficultyFilter: boolean }) {
   const msg =

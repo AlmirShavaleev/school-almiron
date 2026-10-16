@@ -20,12 +20,27 @@ interface Props {
 export function TaskContentRenderer({ html, className = '' }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (hasPendingMath(html)) void upgradeMathIn(ref.current)
+    const el = ref.current
+    if (!el || !hasPendingMath(html)) return
+    // KaTeX — только для задач на экране (и чуть ниже): на странице темы
+    // десятки карточек, а формулы считаются в главном потоке.
+    if (typeof IntersectionObserver === 'undefined') {
+      void upgradeMathIn(el)
+      return
+    }
+    const io = new IntersectionObserver(entries => {
+      if (!entries.some(e => e.isIntersecting)) return
+      io.disconnect()
+      void upgradeMathIn(el)
+    }, { rootMargin: '400px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
   }, [html])
   if (!html) return null
   return (
     <div
       ref={ref}
+      data-math-lazy=""
       className={`prose prose-sm max-w-none text-gray-800 catalog-html ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
     />

@@ -65,6 +65,8 @@ export function resolveTaskHtml(html: string | null | undefined, assets: Catalog
       return `<img${before} src="${url}" class="${kindClass}"${after}>`
     }
   )
+  // Рисунки — по мере прокрутки (как в utils/resolveTaskHtml).
+  resolved = resolved.replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async"')
   resolved = resolved
     .replace(/<table/gi, '<div class="tbl-wrap"><table')
     .replace(/<\/table>/gi, '</table></div>')

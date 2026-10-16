@@ -9,7 +9,7 @@ const CONFIG: Record<string, any> = {
     'img',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   ],
-  ALLOWED_ATTR: ['class', 'src', 'alt', 'width', 'height', 'style', 'colspan', 'rowspan'],
+  ALLOWED_ATTR: ['class', 'src', 'alt', 'width', 'height', 'style', 'colspan', 'rowspan', 'loading', 'decoding'],
   ALLOW_DATA_ATTR: false,
   FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input'],
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'href', 'action'],

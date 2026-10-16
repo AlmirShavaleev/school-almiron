@@ -111,9 +111,9 @@ describe('Performance — pagination', () => {
 
   it('show-more button shows remaining count and total', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
-    expect(src).toContain('filtered.length - visibleCount')
-    // JSX expression: {visibleCount} из {filtered.length}
-    expect(src).toContain('{visibleCount} из {filtered.length}')
+    expect(src).toContain('filteredCount - shownCount')
+    // JSX expression: {shownCount} из {filteredCount} (серверные порции и прежний путь)
+    expect(src).toContain('{shownCount} из {filteredCount}')
   })
 
   it('visibleCount resets when topicId or filter changes', () => {
@@ -1077,7 +1077,8 @@ describe('Physics topics mode', () => {
   it('CatalogTopicPage forwards view to hooks and keeps it in links', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
     expect(src).toContain("const view = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'")
-    expect(src).toContain('useCatalogTasks(topicId, retryKey, view)')
+    expect(src).toContain('useCatalogTopicPage({ topicId, view, filter, difficulties: difficultyFilter, retryKey })')
+    expect(src).toContain('useCatalogTasks(server.missing ? topicId : undefined, retryKey, view)')
     expect(src).toContain("useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)")
     expect(src).toContain('useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)')
     expect(src).toContain("view === 'physics-topics' ? '&view=physics-topics' : ''")

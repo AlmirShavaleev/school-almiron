@@ -34,11 +34,14 @@ export function loadKatex(): Promise<KatexLike> {
 }
 
 /** Загрузить KaTeX и дорисовать «ждущие» формулы внутри узла. */
-export async function upgradeMathIn(root: ParentNode | null | undefined): Promise<void> {
+export async function upgradeMathIn(
+  root: ParentNode | null | undefined,
+  opts: { skipLazy?: boolean } = {},
+): Promise<void> {
   if (!root || !root.querySelector('.catalog-math-pending')) return
   try {
     const katex = await loadKatex()
-    upgradeCatalogMath(root, katex)
+    upgradeCatalogMath(root, katex, opts)
   } catch {
     // Чанк не догрузился (обрыв сети) — формулы остаются читаемым исходником.
   }
@@ -54,7 +57,8 @@ export function installCatalogMathObserver(doc: Document = document): () => void
   let scheduled = false
   const run = () => {
     scheduled = false
-    void upgradeMathIn(doc.body)
+    // Карточки задач каталога ([data-math-lazy]) рисуют формулы сами, когда видны.
+    void upgradeMathIn(doc.body, { skipLazy: true })
   }
   const observer = new MutationObserver(() => {
     if (scheduled) return

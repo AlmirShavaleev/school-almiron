@@ -66,6 +66,10 @@ export function resolveTaskHtml(
     }
   )
 
+  // Рисунки — по мере прокрутки: браузер не тянет картинки задач ниже экрана
+  // (страница темы — десятки рисунков сразу).
+  resolved = resolved.replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async"')
+
   // Wrap tables for horizontal scroll on narrow viewports
   resolved = resolved
     .replace(/<table/gi, '<div class="tbl-wrap"><table')

@@ -9,6 +9,12 @@ const mocks = vi.hoisted(() => ({
   useCatalogTasks: vi.fn(),
 }))
 
+vi.mock('@/hooks/useCatalogTopicPage', () => ({
+  // RPC страницы темы нет (схема без миграции) — страница идёт прежним путём useCatalogTasks
+  useCatalogTopicPage: () => ({ missing: true, tasks: [], stats: null, locked: false, loading: false, error: null,
+    hasMore: false, loadingMore: false, loadMore: () => {}, toggleComplete: async () => {} }),
+}))
+
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalogSections: (...args: unknown[]) => mocks.useCatalogSections(...args),
   useCatalogTopics: (...args: unknown[]) => mocks.useCatalogTopics(...args),

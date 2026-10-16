@@ -291,6 +291,9 @@ export function renderCatalogMarkdown(source: string, opts: RenderCatalogMarkdow
 }
 
 /** Есть ли в готовом HTML формулы, ждущие KaTeX. */
+/** Контейнер, формулы которого рисуются только при появлении на экране (TaskContentRenderer). */
+export const LAZY_MATH_SELECTOR = '[data-math-lazy]'
+
 export function hasPendingMath(html: string | null | undefined): boolean {
   return typeof html === 'string' && html.includes('catalog-math-pending')
 }
@@ -299,9 +302,15 @@ export function hasPendingMath(html: string | null | undefined): boolean {
  * Дорисовывает «ждущие» формулы внутри `root` (после того как KaTeX загрузился).
  * Исходник берётся из textContent узла — т. е. уже без экранирования.
  */
-export function upgradeCatalogMath(root: ParentNode | null | undefined, katex: KatexLike): number {
+export function upgradeCatalogMath(
+  root: ParentNode | null | undefined,
+  katex: KatexLike,
+  opts: { skipLazy?: boolean } = {},
+): number {
   if (!root) return 0
   const nodes = Array.from(root.querySelectorAll<HTMLElement>('.catalog-math-pending'))
+    // Узлы в [data-math-lazy] дорисовывает сама карточка, когда дойдёт до экрана.
+    .filter(el => !opts.skipLazy || !el.closest(LAZY_MATH_SELECTOR))
   for (const el of nodes) {
     const tex = el.textContent ?? ''
     const display = el.classList.contains('catalog-math-display')
