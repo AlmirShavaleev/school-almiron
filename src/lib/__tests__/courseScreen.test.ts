@@ -91,3 +91,16 @@ describe('шапка раздела', () => {
     expect(sectionOpenLine([topic(), topic({ id: 'x', is_open: false })], TODAY)).toBe('открыто 1 из 2')
   })
 })
+
+describe('ручное открытие главнее даты (письмо 17.10, topic_open_now)', () => {
+  it('is_open = true + дата в будущем — открыт, без замка; null + будущая — замок с датой; false — «🔒 закрыт»', () => {
+    expect(lessonTile(topic({ is_open: true, available_from: '2027-02-22' }), TODAY)).toMatchObject({ state: 'hw', pill: 'сдать ДЗ' })
+    expect(lessonTile(topic({ is_open: null, available_from: '2026-10-19' }), TODAY)).toMatchObject({ state: 'locked', pill: '🔒 откроется пн 19 окт' })
+    expect(lessonTile(topic({ is_open: false, available_from: '2026-10-19' }), TODAY)).toMatchObject({ state: 'locked', pill: '🔒 закрыт' })
+  })
+
+  it('шапка раздела и плитка раздела: открытая вручную тема не даёт «откроется <дата>»', () => {
+    const ts = [topic({ id: 'a', is_open: true, available_from: '2027-02-22' }), topic({ id: 'b', is_open: true, available_from: '2027-03-01' })]
+    expect(sectionOpenLine(ts, TODAY)).toBe('открыто 2 из 2')
+  })
+})

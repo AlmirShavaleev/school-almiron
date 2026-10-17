@@ -29,6 +29,7 @@ const st = {
   solution: { hasSolution: true, hasHomework: true, unlocked: false, hasCriteria: false, hasCondition: false },
   hw: { opens_at: OPENS as string | null, closes_at: CLOSES as string | null },
   serverNow: '2026-10-01T09:00:00.000Z',
+  open: { available_from: null as string | null, is_open: true as boolean | null },
 }
 
 const file = (id: string, section: string): TopicMaterial => ({
@@ -62,7 +63,7 @@ vi.mock('@/lib/supabase', () => ({
     from: (table: string) => {
       if (table === 'students') return chain({ id: 'student-1' })
       if (table === 'topics') return chain({
-        id: TOPIC, title: 'Проверочная: производная', order_index: 0, available_from: null, is_open: true, kind: st.kind,
+        id: TOPIC, title: 'Проверочная: производная', order_index: 0, available_from: st.open.available_from, is_open: st.open.is_open, kind: st.kind,
         modules: { id: 'mod-1', title: 'Производная', courses: { id: 'c1', title: 'Математика ЕГЭ', subject: 'math' } },
       })
       if (table === 'groups') return chain({ id: GROUP, name: '11А' })
@@ -132,6 +133,7 @@ beforeEach(() => {
   st.solution = { hasSolution: true, hasHomework: true, unlocked: false, hasCriteria: false, hasCondition: false }
   st.hw = { opens_at: OPENS, closes_at: CLOSES }
   st.serverNow = '2026-10-01T09:00:00.000Z'
+  st.open = { available_from: null, is_open: true }
 })
 
 describe('«Ответы и критерии» — гейт как у решения (§258)', () => {
@@ -253,5 +255,35 @@ describe('«Условие» у ученика до окна (§258)', () => {
     expect(segs).toEqual(['topic-seg-homework', 'topic-seg-review'])
     expect(screen.getByTestId('topic-seg-homework')).toHaveAttribute('aria-pressed', 'true')
     expect(stackKeys()).toEqual(['homework', 'worksheet_homework', 'solution', 'criteria'])
+  })
+})
+
+/**
+ * Письмо ЛК_СРОЧНО_открытый_урок_с_будущей_датой.md (17.10): урок открыт
+ * преподавателем вручную, у него дата в будущем — база пускает (`topic_open_now`:
+ * ручное открытие главнее даты), а страница показывала «Тема ещё не открыта».
+ */
+describe('открытость урока у ученика — как topic_open_now', () => {
+  beforeEach(() => { st.kind = 'lesson' })
+
+  it('is_open = true и дата в будущем — открыт, без замка', async () => {
+    st.open = { available_from: '2027-02-22', is_open: true }
+    renderStudent()
+    await screen.findByTestId('topic-section-stack')
+    expect(screen.queryByText('Тема ещё не открыта')).toBeNull()
+  })
+
+  it('is_open = null и дата в будущем — замок с датой', async () => {
+    st.open = { available_from: '2027-02-22', is_open: null }
+    renderStudent()
+    expect(await screen.findByText('Тема ещё не открыта')).toBeInTheDocument()
+    expect(screen.getByText(/Откроется 22 февраля 2027/)).toBeInTheDocument()
+  })
+
+  it('is_open = false — закрыт, дата не обещается', async () => {
+    st.open = { available_from: '2026-09-01', is_open: false }
+    renderStudent()
+    expect(await screen.findByText('Тема ещё не открыта')).toBeInTheDocument()
+    expect(screen.getByText('Урок пока закрыт')).toBeInTheDocument()
   })
 })

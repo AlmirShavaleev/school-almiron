@@ -83,7 +83,8 @@ export function sectionTiles(
     const complete = r.total > 0 && r.done >= r.total
     const state: TileState = complete ? 'done' : i === current ? 'current' : r.open > r.done ? 'open' : 'future'
     const prev = i > 0 ? rows[i - 1].m.title : null
-    const firstDate = r.m.topics.map(t => t.available_from?.slice(0, 10)).filter((d): d is string => !!d && d > today).sort()[0]
+    // «откроется <дата>» — только по темам, которые откроет дата (is_open = null, закрыты сейчас).
+    const firstDate = r.m.topics.filter(t => !isTopicOpen(t, today)).map(t => willOpenByDate(t, today)).filter((d): d is string => !!d).sort()[0]
     const pill: SectionTile['pill'] =
       complete ? { kind: 'ok', text: 'пройден' }
       : r.hw > 0 ? { kind: 'hw', text: `${r.hw} ДЗ сдать` }

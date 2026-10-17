@@ -7,7 +7,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
-import { isTopicOpen } from '@/lib/topicAvailability'
+import { isTopicOpen, willOpenByDate } from '@/lib/topicAvailability'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { useTopicSolutionState } from '@/hooks/useTopicSolutionState'
 import { TopicMaterialItems } from '@/components/courseProgram/TopicMaterialItems'
@@ -316,13 +316,15 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // и без этой проверки владелец увидел бы то, чего ученик не видит.
   // §288: в курсе «по прохождению» решает только замок из базы (is_open и дата
   // там не действуют); персоналу замок — только в превью.
+  // Курс по датам — то же правило, что база (`topic_open_now`): ручное открытие
+  // (is_open = true) главнее даты (письмо ЛК_СРОЧНО_открытый_урок_с_будущей_датой.md,
+  // 17.10 — раньше здесь у ученика решала одна дата, и открытый вручную урок с
+  // датой в будущем показывался «Тема ещё не открыта»).
   const isLocked   = progressLocks.data?.mode === 'progress'
     ? !!progressLock && !progressLock.open && (preview || !canBypassAvailability)
-    : preview && topic
-      ? !isTopicOpen(topic)
-      : topic?.available_from
-        ? topic.available_from.slice(0, 10) > new Date().toLocaleDateString('en-CA') && !canBypassAvailability
-        : false
+    : topic
+      ? !isTopicOpen(topic) && (preview || !canBypassAvailability)
+      : false
 
   // ── States ───────────────────────────────────────────────────────────────────
 
@@ -352,8 +354,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       <p className="text-gray-500 text-sm">
         {progressLock && !progressLock.open
           ? progressNote(progressLock)
-          : topic.available_from && topic.is_open === null
-          ? `Откроется ${new Date(topic.available_from.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
+          : topic.is_open === false
+          ? 'Урок пока закрыт'
+          : willOpenByDate(topic)
+          ? `Откроется ${new Date(willOpenByDate(topic) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
           : 'Откроется позже'}
       </p>
       <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">← Назад</button>
