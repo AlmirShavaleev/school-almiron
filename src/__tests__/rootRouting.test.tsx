@@ -260,11 +260,14 @@ describe('лендинг v3 выключен (по умолчанию) — ка�
     expect(screen.queryByText('landing-v3-stub')).toBeNull()
   })
 
-  it('`/about` — прежний лендинг', async () => {
-    goTo('/about')
+  it('`/about` — на вход с теми же параметрами: прежнего лендинга нет (письмо 17.10)', async () => {
+    goTo('/about?from=mail#x')
     render(<App />)
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
-    expect(screen.queryByText('landing-v3-stub')).toBeNull()
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(window.location.search).toBe('?from=mail')
+    expect(window.location.hash).toBe('#x')
+    expect(screen.queryByText('landing-stub')).toBeNull()
   })
 
   it('`/preview/landing` — v3 для просмотра, с noindex', async () => {
@@ -282,8 +285,10 @@ describe('лендинг v3 выключен (по умолчанию) — ка�
   })
 })
 
-describe('лендинг доступен и на `/about`', () => {
+describe('лендинг v3 включён — он и на `/about`', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
   beforeEach(() => {
+    vi.stubEnv('VITE_LANDING_V3', '1')
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
@@ -295,7 +300,7 @@ describe('лендинг доступен и на `/about`', () => {
     goTo('/about')
     render(<App />)
 
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     expect(pathname()).toBe('/about')
   })
 
@@ -305,7 +310,7 @@ describe('лендинг доступен и на `/about`', () => {
     goTo('/about')
     render(<App />)
 
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     expect(pathname()).toBe('/about')
   })
 })
@@ -316,7 +321,6 @@ describe('лендинг доступен и на `/about`', () => {
  * а не по одному ученику в поддержке.
  */
 const PUBLIC_PATHS: Array<[string, string]> = [
-  ['/about',           'landing-stub'],
   ['/login',           'Вход в систему'],
   ['/register',        'register-stub'],
   ['/forgot-password', 'forgot-stub'],

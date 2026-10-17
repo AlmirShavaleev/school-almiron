@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { RumTracker } from '@/components/perf/RumTracker'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
@@ -83,11 +83,11 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
 // не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
 //
-// Лендинг живёт на `/about`, а не на `/` (решение владельца 12.08): главная —
-// это вход в платформу. Лендинг v3 (ЛЕНДИНГ_ТЗ.md, 11.10) — отдельно от выкатки ЛК
-// (письмо 17.10): за флагом сборки VITE_LANDING_V3 и на скрытом `/preview/landing`
-// (src/lib/landingFlag.ts). Флаг выключен — всё как в main.
-const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
+// Лендинга для гостя сейчас нет (письмо ЛК_убрать_старый_лендинг.md, 17.10:
+// «пусть видят сразу вход в ЛК»): `/` и `/about` — на вход. Прежний лендинг
+// (src/pages/LandingPage.tsx, components/landing) не удалён, просто не
+// подключён — его чанка в сборке нет. Лендинг v3 (ЛЕНДИНГ_ТЗ.md, 11.10) — за
+// флагом сборки VITE_LANDING_V3 и на скрытом `/preview/landing` (src/lib/landingFlag.ts).
 const LandingV3Page     = lazyPage('LandingV3Page', () => import('@/pages/LandingV3Page').then(m => ({ default: m.LandingV3Page })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 const SubscribePage     = lazyPage('SubscribePage', () => import('@/pages/subscription/SubscribePage').then(m => ({ default: m.SubscribePage })))
@@ -157,6 +157,12 @@ function RootRedirect() {
 
   // v3 включён: просто гость видит лендинг прямо на главной (ЛЕНДИНГ_ТЗ.md, 11.10.2026).
   return <LandingV3Page />
+}
+
+/** `/about` без лендинга — на вход с теми же параметрами и якорем (письмо 17.10). */
+function KeepQueryToLogin() {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: '/login', search, hash }} replace />
 }
 
 /** Скрытый просмотр лендинга v3 для владельца: не в меню, поисковикам — noindex. */
@@ -408,7 +414,7 @@ export default function App() {
             ученики и преподаватели — они гости по определению, редирект на вход
             сломал бы вступление в курс. Трогать список только осознанно. */}
         <Route path="/"               element={<RootRedirect />} />
-        <Route path="/about"          element={landingV3Enabled() ? <LandingV3Page /> : <LandingPage />} />
+        <Route path="/about"          element={landingV3Enabled() ? <LandingV3Page /> : <KeepQueryToLogin />} />
         <Route path={LANDING_PREVIEW_PATH} element={<LandingV3Preview />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         {/* §282. Витрина подписки: гость выбирает тариф до регистрации. */}
