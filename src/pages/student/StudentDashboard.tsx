@@ -26,6 +26,8 @@ import { fetchMyExamGoals, fetchMyWeeklyGoals, goalBasis, type ExamGoal, type We
 import { useMySubscriptionsLite } from '@/hooks/useMySubscriptionsLite'
 import { subscriptionTag } from '@/lib/studentNav'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
+import { useMyForecastRanges } from '@/hooks/useMyForecastRanges'
+import { ForecastCard } from '@/components/student/ForecastCard'
 import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
 
 /**
@@ -92,6 +94,13 @@ export function StudentDashboard() {
       .catch(() => { if (alive) setGoals({ exam: [], weekly: [], forecast: null }) })
     return () => { alive = false }
   }, [profile?.id, hasCourses])
+
+  // Виджет «Прогноз ЕГЭ» (письмо 17.10): предметы ЕГЭ ученика — физика и/или математика.
+  const forecastSubjects = useMemo(
+    () => [...new Set(courses.filter(c => c.examType === 'ege').map(c => c.subject ?? ''))].filter(s => s === 'physics' || s === 'math'),
+    [courses],
+  )
+  const ranges = useMyForecastRanges(forecastSubjects.length > 0)
 
   const mySubs = useMySubscriptionsLite(subscriptionsOn.enabled)
   const hw = useMyTopicHomework(null)
@@ -191,10 +200,17 @@ export function StudentDashboard() {
         </p>
       )}
 
-      <div className="stu-widgets" data-testid="home-widgets">
+      <div className={forecastSubjects.length > 0 && activity ? 'stu-widgets has-fc' : 'stu-widgets'} data-testid="home-widgets">
         <ExamWidget data={examData} fallback={examData ? null : countdown} />
         <ClockWidget today={todayMsk} />
         {activity && <MonthWidget grid={activity} today={todayMsk} />}
+        {forecastSubjects.length > 0 && (
+          <section className="stu-card stu-w stu-w-fc" data-testid="home-w-forecast">
+            {forecastSubjects.map(sub => (
+              <ForecastCard key={sub} subject={sub} range={ranges?.find(r => r.subject === sub)} loading={ranges == null} />
+            ))}
+          </section>
+        )}
       </div>
 
       {hasCourses && (

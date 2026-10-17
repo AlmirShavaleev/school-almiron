@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
@@ -33,7 +33,7 @@ function Chips({ chips }: { chips: HwChips }) {
   return <div className="flex flex-wrap gap-2" data-testid="course-hw-chips">{items}</div>
 }
 
-export function CourseHero({ title, subject, examType, mode, ladder, current, chips, next, access }: {
+export function CourseHero({ title, subject, examType, mode, ladder, current, chips, next, access, forecast }: {
   title: string
   subject: string
   examType: string
@@ -44,6 +44,8 @@ export function CourseHero({ title, subject, examType, mode, ladder, current, ch
   chips: HwChips
   next: { title: string; href: string; where: string | null } | null
   access: AccessLine | null
+  /** Компактный «Прогноз ЕГЭ» курса (письмо 17.10); только у ЕГЭ по физике/математике. */
+  forecast?: ReactNode
 }) {
   return (
     <section className="stu-card stu-chero" data-testid="course-hero">
@@ -56,7 +58,10 @@ export function CourseHero({ title, subject, examType, mode, ladder, current, ch
           </div>
           <h1 className="stu-h2 mt-2 break-words" data-testid="course-title">{title}</h1>
         </div>
-        <Sticker name={stickerFor(subject)} size={64} />
+        <div className="flex shrink-0 items-start gap-3">
+          {forecast}
+          <Sticker name={stickerFor(subject)} size={64} />
+        </div>
       </div>
 
       {ladder && (

@@ -200,4 +200,19 @@ describe('главная ученика «как в Notion»', () => {
       ]).toContain(c)
     }
   })
+
+  it('виджет «Прогноз ЕГЭ»: только диапазон; данных мало — «0»', async () => {
+    await renderHome()
+    expect(await screen.findByTestId('forecast-physics-value')).toHaveTextContent('58–70')
+    expect(screen.getByTestId('forecast-physics')).toHaveTextContent('Прогноз ЕГЭ · физика')
+    expect(screen.getByTestId('home-w-forecast').textContent).not.toMatch(/обновлено|задач|цель/i)
+  })
+
+  it('виджет «Прогноз ЕГЭ»: строки нет — «0», без пояснений', async () => {
+    const saved = RPC.my_score_forecast
+    RPC.my_score_forecast = [{ subject: 'physics', score: null, low: null, high: null, basis: 'по 3 задачам', details: { v: 1, ready: false }, computed_at: '2026-10-16T01:10:00Z' }]
+    await renderHome()
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent(/^0$/))
+    RPC.my_score_forecast = saved
+  })
 })

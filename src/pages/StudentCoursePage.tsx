@@ -45,6 +45,8 @@ import { DEMO_LOCK_NOTE, withDemoLocks } from '@/lib/studentPath'
 import { LessonEvents } from '@/components/student/course/LessonEvents'
 import { useAuthStore } from '@/store/authStore'
 import { useServerNow } from '@/hooks/useServerNow'
+import { useMyForecastRanges } from '@/hooks/useMyForecastRanges'
+import { ForecastCard } from '@/components/student/ForecastCard'
 import { mockAlert } from '@/lib/mockExamLesson'
 
 
@@ -440,6 +442,9 @@ export function StudentCoursePage() {
   // §290-B: пробный период по подписке («демо») — открыты первые 2 урока
   // раздела, остальные — «Доступно по подписке» (решает база, my_course_demo).
   const demo = useCourseDemo(course?.id, !preview)
+  // «Прогноз ЕГЭ» в шапке курса (письмо 17.10) — только ЕГЭ по физике/математике, не в предпросмотре.
+  const forecastOn = !preview && course?.exam_type === 'ege' && (course?.subject === 'physics' || course?.subject === 'math')
+  const ranges = useMyForecastRanges(!!forecastOn)
 
   // ЛК в стиле лендинга (письмо ЛК_стиль_страница_курса.md, 15.10): шапка с
   // кольцом в два слоя, преподаватель строкой, плитки разделов и уроков.
@@ -622,6 +627,9 @@ export function StudentCoursePage() {
             current={currentTile ? { title: currentTile.title, left: currentTile.total - currentTile.done } : null}
             chips={courseChips}
             next={nextLesson}
+            forecast={forecastOn
+              ? <ForecastCard compact subject={course.subject} range={ranges?.find(r => r.subject === course.subject)} loading={ranges == null} />
+              : undefined}
             access={preview ? null : pathSub || !demo
               ? accessLine(pathSub, { teacher: course.teacher?.full_name ?? null, group: course.group_name })
               // Демо без строки подписки в ответе — всё равно пробный период (§290-B).

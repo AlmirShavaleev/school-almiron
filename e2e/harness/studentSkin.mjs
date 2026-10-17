@@ -192,6 +192,15 @@ function fixtures(scenario) {
         created_at: new Date(Date.now() - day).toISOString(), paid_at: new Date(Date.now() - day).toISOString() }],
     }]
   }
+  // Виджет «Прогноз ЕГЭ» (письмо 17.10): FORECAST=range — диапазон, zero — данных мало («0»).
+  if (process.env.FORECAST === 'range') {
+    fx.rpc.my_score_forecast = [
+      { subject: 'physics', score: 64, low: 58, high: 70, basis: 'по 46 задачам', details: { v: 1, ready: true }, computed_at: new Date().toISOString() },
+      { subject: 'math', score: 71, low: 66, high: 77, basis: 'по 30 задачам', details: { v: 1, ready: true }, computed_at: new Date().toISOString() },
+    ]
+  } else if (process.env.FORECAST === 'zero') {
+    fx.rpc.my_score_forecast = []
+  }
   if (scenario === 'empty') {
     const st = t.students.find(s => s.profile_id === IDS.student)
     t.group_students = t.group_students.filter(g => g.student_id !== st?.id)
@@ -209,7 +218,8 @@ const subTag = scenario === 'subs' ? `-${['on', 'off', 'ended'].includes(process
 const ALL_SHOTS = [
   { name: `главная-${scenario}`, url: '/student' },
   // Виджеты главной: нажат день в календаре — строка «что было в этот день» (правка 17.10).
-  { name: `главная-виджеты-${scenario}`, url: '/student', widgets: true },
+  { name: `главная-виджеты-${scenario}${process.env.FORECAST ? '-' + process.env.FORECAST : ''}`, url: '/student', widgets: true },
+  { name: `прогноз-курс-${scenario}${process.env.FORECAST ? '-' + process.env.FORECAST : ''}`, url: `/my-course/${IDS.group}`, forecast: true },
   // «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md).
   { name: `дз-${scenario}`, url: '/my-homework' },
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md).
@@ -241,6 +251,7 @@ const ALL_SHOTS = [
 ]
 // Без курсов — только «Мои курсы»; подписчик (прогресс «Б») — ещё и страница курса.
 const SHOTS = process.env.AUDIT ? ALL_SHOTS.filter(x => x.audit)
+  : process.env.FORECAST ? ALL_SHOTS.filter(x => x.widgets || x.forecast)
   : scenario === 'subs' ? ALL_SHOTS.filter(x => x.subs)
   : scenario === 'empty' ? ALL_SHOTS.filter(x => x.url === '/my-course')
   : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course') && !x.url.includes('/topic/'))
@@ -298,6 +309,11 @@ for (const width of [1280, 390]) {
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       const base = path.join(outDir, `лк-${s.name}-${width}-${theme}`)
+      if (s.forecast) {
+        await page.locator('[data-testid="course-hero"]').screenshot({ path: `${base}.png` })
+        console.log(`${base}.png`)
+        continue
+      }
       if (s.widgets) {
         await page.locator('[data-testid="home-widgets"]').screenshot({ path: `${base}.png` })
         console.log(`${base}.png`)
