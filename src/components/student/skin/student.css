@@ -600,3 +600,17 @@ a.stu-lt:hover { border-color: var(--blue) }
 .stu .stu-fc.is-compact .stu-fc-t { font-size: 11px; justify-content: flex-end }
 .stu .stu-fc.is-compact .stu-fc-v { font-size: 30px; color: var(--blueInk) }
 @media (max-width: 640px) { .stu .stu-fc-v { font-size: 48px } .stu .stu-fc.is-compact .stu-fc-v { font-size: 24px } }
+
+/* Шапка курса: прогноз отдельной строкой (жалоба 17.10). На компьютере —
+   компактная карточка слева, на телефоне — во всю ширину; иконка курса меньше. */
+.stu .stu-chero-fc { display: flex; margin-top: -6px }
+.stu .stu-chero-fc .stu-fc.is-compact { text-align: left; display: inline-grid; grid-template-columns: auto auto; align-items: baseline; gap: 4px 14px }
+.stu .stu-chero-fc .stu-fc.is-compact .stu-fc-t { justify-content: flex-start }
+@media (max-width: 640px) {
+  .stu .stu-chero-st { width: 44px; height: 44px }
+  .stu .stu-chero-fc .stu-fc.is-compact { flex: 1; grid-template-columns: minmax(0, 1fr) auto }
+}
+@media (max-width: 420px) {
+  /* Узкий телефон: кольцо над текстом, иначе текст идёт по 2–3 слова в строке. */
+  .stu .stu-chero-stat { grid-template-columns: minmax(0, 1fr); justify-items: start }
+}
