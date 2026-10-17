@@ -122,7 +122,8 @@ export function CatalogTopicPage() {
   // и фильтры — то есть ровно то, что не менялось. На четыре секунды это
   // выглядело как поломка, хотя менялся один блок.
   // §292: закрытый по подписке предмет по прямой ссылке — плашка, не пустой список и не ошибка
-  if (sectionLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
+  // (catalog_topic_page отвечает CATALOG_LOCKED и во вкладке «Физические темы», где проверки раздела нет)
+  if (sectionLocked || (useServer && server.locked)) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
   if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (

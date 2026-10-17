@@ -22,6 +22,10 @@ vi.mock('@/hooks/useCatalog', () => ({
   useCatalogTasks: (...a: unknown[]) => mocks.useCatalogTasks(...a),
   SUBJECT_SLUGS: { 'Математика': 'math', 'Физика': 'physics' },
 }))
+vi.mock('@/lib/catalogLock', async (orig) => ({
+  ...(await orig<typeof import('@/lib/catalogLock')>()),
+  useSectionLocked: () => false,
+}))
 vi.mock('@/hooks/useCatalogPractice', () => ({
   useCatalogPractice: () => ({ state: null, check: vi.fn(), reveal: vi.fn() }),
 }))
@@ -84,6 +88,16 @@ describe('страница темы на серверных порциях', () 
     fireEvent.click(screen.getByRole('button', { name: 'Сложная' }))
     const last = mocks.useCatalogTopicPage.mock.calls.at(-1)![0] as { difficulties: Set<string> }
     expect([...last.difficulties]).toEqual(['сложная'])
+  })
+
+  it('§292: сервер ответил «закрыто» (и во вкладке «Физические темы») — плашка, не пустой список', () => {
+    mocks.useCatalogTopicPage.mockReturnValue({
+      missing: false, tasks: [], stats: { total: 0, done: 0, filtered: 0, byDifficulty: {} }, locked: true,
+      loading: false, error: null, hasMore: false, loadingMore: false, loadMore: vi.fn(), toggleComplete: vi.fn(),
+    })
+    renderPage('/catalog/sec-1/topic/topic-1?subject=physics&exam=ege&view=physics-topics')
+    expect(screen.getByText(/откроется/)).toBeInTheDocument()
+    expect(screen.queryByText('Задачи не найдены.')).toBeNull()
   })
 
   it('без миграции — прежний путь', () => {

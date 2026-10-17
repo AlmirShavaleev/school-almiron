@@ -32,6 +32,11 @@ vi.mock('@/lib/catalogLock', async (orig) => ({
   useSectionLocked: () => mocks.locked.section,
   useTaskLocked: () => mocks.locked.task,
 }))
+vi.mock('@/hooks/useCatalogTopicPage', () => ({
+  // страница темы прежним путём (useCatalogTasks) — замок раздела проверяется так же
+  useCatalogTopicPage: () => ({ missing: true, tasks: [], stats: null, locked: false, loading: false, error: null,
+    hasMore: false, loadingMore: false, loadMore: () => {}, toggleComplete: async () => {} }),
+}))
 vi.mock('@/hooks/useCatalogPractice', () => ({
   useCatalogPractice: () => ({ state: null, loading: false, error: null, check: vi.fn(), reveal: vi.fn() }),
 }))
