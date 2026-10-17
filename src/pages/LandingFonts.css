@@ -1,0 +1,4 @@
+/* §225. Лендинг живёт в своём стиле (ЛЕНДИНГ_СТИЛЬ.md) и остаётся на Inter.
+   Кабинет перешёл на Manrope, и общий импорт Inter из index.css ушёл — здесь
+   он подключается только вместе со страницей лендинга. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');

@@ -8,7 +8,7 @@ const flag = vi.hoisted(() => ({ enabled: true }))
 vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: flag.enabled, loading: false }) }))
 beforeEach(() => { flag.enabled = true })
 
-import { LandingPage } from '@/pages/LandingPage'
+import { LandingV3Page as LandingPage } from '@/pages/LandingV3Page'
 import { initialUnlock, LESSONS, submitHomework } from '../unlockLogic'
 import { ICONS, PHOTO, SCENES, SCREENS } from '../icons'
 
@@ -211,6 +211,7 @@ describe('лендинг без подписки (гость; подписка �
     expect(screen.queryByRole('link', { name: 'Пройти диагностику' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Как отменить подписку/ })).toBeNull()
     expect(screen.queryByText(/₽/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Цена' })).toBeNull()
     expect(screen.getAllByRole('link', { name: 'Регистрация' }).every(a => a.getAttribute('href') === '/register')).toBe(true)
   })
 })

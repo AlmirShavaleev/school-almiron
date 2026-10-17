@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 /**
@@ -57,6 +57,7 @@ vi.mock('@/lib/supabase', () => ({
 
 // Страницы-заглушки: тест про адреса, а не про их содержимое.
 vi.mock('@/pages/LandingPage', () => ({ LandingPage: () => <div>landing-stub</div> }))
+vi.mock('@/pages/LandingV3Page', () => ({ LandingV3Page: () => <div>landing-v3-stub</div> }))
 vi.mock('@/pages/PaymentResultPage', () => ({ PaymentResultPage: () => <div>payment-stub</div> }))
 vi.mock('@/pages/auth/RegisterPage', () => ({ RegisterPage: () => <div>register-stub</div> }))
 vi.mock('@/pages/auth/ForgotPasswordPage', () => ({ ForgotPasswordPage: () => <div>forgot-stub</div> }))
@@ -77,8 +78,10 @@ function pathname() {
   return window.location.pathname
 }
 
-describe('корень: гость видит лендинг, остальные ветки RootRedirect', () => {
+describe('корень при включённом лендинге v3 (VITE_LANDING_V3=1): гость видит v3, остальные ветки RootRedirect', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
   beforeEach(() => {
+    vi.stubEnv('VITE_LANDING_V3', '1')
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
@@ -90,7 +93,7 @@ describe('корень: гость видит лендинг, остальные
   it('гость без отложенных намерений видит лендинг на `/`, адрес не меняется', async () => {
     render(<App />)
 
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(pathname()).toBe('/')
     expect(screen.queryByText('Вход в систему')).toBeNull()
@@ -102,7 +105,7 @@ describe('корень: гость видит лендинг, остальные
 
     expect(await screen.findByText('Вход в систему')).toBeTruthy()
     expect(pathname()).toBe('/login')
-    expect(screen.queryByText('landing-stub')).toBeNull()
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
     expect(localStorage.getItem('student-invite-pending')).not.toBeNull()
   })
 
@@ -124,7 +127,7 @@ describe('корень: гость видит лендинг, остальные
 
     expect(await screen.findByText('Вход в систему')).toBeTruthy()
     expect(pathname()).toBe('/login')
-    expect(screen.queryByText('landing-stub')).toBeNull()
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
   })
 
   it('редирект `/` → `/login` не зацикливается: адрес стабилен', async () => {
@@ -225,12 +228,57 @@ describe('корень: гость видит лендинг, остальные
     render(<App />)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(pathname()).toBe('/')
-    expect(screen.queryByText('landing-stub')).toBeNull()
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
 
     release({ data: { session: null } })
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     expect(pathname()).toBe('/')
     supabase.auth.getSession = original
+  })
+})
+
+/**
+ * Выкатка ЛК без нового лендинга (письмо ЛК_выкатка_без_нового_лендинга.md,
+ * 17.10): флаг сборки VITE_LANDING_V3 по умолчанию выключен — публичные
+ * страницы как в main: гость на `/` — на вход, `/about` — прежний лендинг.
+ * Владелец смотрит v3 по скрытому `/preview/landing` (noindex).
+ */
+describe('лендинг v3 выключен (по умолчанию) — как в main', () => {
+  beforeEach(() => {
+    sessionValue = null
+    profileRow = null
+    useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  it('гость на `/` уходит на вход, лендинга v3 нет', async () => {
+    goTo('/')
+    render(<App />)
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
+  })
+
+  it('`/about` — прежний лендинг', async () => {
+    goTo('/about')
+    render(<App />)
+    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
+  })
+
+  it('`/preview/landing` — v3 для просмотра, с noindex', async () => {
+    goTo('/preview/landing')
+    render(<App />)
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
+    expect(pathname()).toBe('/preview/landing')
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toContain('noindex')
+  })
+
+  it('`/subscribe` у гостя — на главную (витрины тарифов не видно), а оттуда на вход', async () => {
+    goTo('/subscribe')
+    render(<App />)
+    await waitFor(() => expect(pathname()).toBe('/login'))
   })
 })
 

@@ -65,6 +65,8 @@ import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
+import { LANDING_PREVIEW_PATH, landingV3Enabled } from '@/lib/landingFlag'
+import { SubscriptionsOnly } from '@/components/subscription/SubscriptionsOnly'
 
 // Auth pages — тоже ленивые. Они тянут react-hook-form + zod + resolvers, а
 // вошедший пользователь не видит ни одной из них: держать их во входном чанке
@@ -81,9 +83,12 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
 // не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
 //
-// Лендинг — на `/about` и на `/` для гостя без отложенных намерений
-// (ЛЕНДИНГ_ТЗ.md, 11.10.2026; см. RootRedirect).
+// Лендинг живёт на `/about`, а не на `/` (решение владельца 12.08): главная —
+// это вход в платформу. Лендинг v3 (ЛЕНДИНГ_ТЗ.md, 11.10) — отдельно от выкатки ЛК
+// (письмо 17.10): за флагом сборки VITE_LANDING_V3 и на скрытом `/preview/landing`
+// (src/lib/landingFlag.ts). Флаг выключен — всё как в main.
 const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
+const LandingV3Page     = lazyPage('LandingV3Page', () => import('@/pages/LandingV3Page').then(m => ({ default: m.LandingV3Page })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 const SubscribePage     = lazyPage('SubscribePage', () => import('@/pages/subscription/SubscribePage').then(m => ({ default: m.SubscribePage })))
 
@@ -147,10 +152,23 @@ function RootRedirect() {
   // как и раньше, там намерение подхватится после входа. Именно `replace`:
   // иначе «назад» из формы входа возвращало бы на `/`, а тот снова редиректил
   // бы на вход — кнопка «назад» переставала бы работать.
-  if (guestHasPendingIntent()) return <Navigate to="/login" replace />
+  // Лендинг v3 выключен (по умолчанию, как в main) — любой гость на вход.
+  if (!landingV3Enabled() || guestHasPendingIntent()) return <Navigate to="/login" replace />
 
-  // Просто гость — видит лендинг прямо на главной (ЛЕНДИНГ_ТЗ.md, 11.10.2026).
-  return <LandingPage />
+  // v3 включён: просто гость видит лендинг прямо на главной (ЛЕНДИНГ_ТЗ.md, 11.10.2026).
+  return <LandingV3Page />
+}
+
+/** Скрытый просмотр лендинга v3 для владельца: не в меню, поисковикам — noindex. */
+function LandingV3Preview() {
+  useEffect(() => {
+    const meta = document.createElement('meta')
+    meta.name = 'robots'
+    meta.content = 'noindex, nofollow'
+    document.head.appendChild(meta)
+    return () => { meta.remove() }
+  }, [])
+  return <LandingV3Page />
 }
 
 /**
@@ -390,10 +408,12 @@ export default function App() {
             ученики и преподаватели — они гости по определению, редирект на вход
             сломал бы вступление в курс. Трогать список только осознанно. */}
         <Route path="/"               element={<RootRedirect />} />
-        <Route path="/about"          element={<LandingPage />} />
+        <Route path="/about"          element={landingV3Enabled() ? <LandingV3Page /> : <LandingPage />} />
+        <Route path={LANDING_PREVIEW_PATH} element={<LandingV3Preview />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         {/* §282. Витрина подписки: гость выбирает тариф до регистрации. */}
-        <Route path="/subscribe"      element={<SubscribePage />} />
+        {/* Без флага подписки (гость — всегда) — на главную: витрины тарифов не видно (выкатка в main, 16.10). */}
+        <Route path="/subscribe"      element={<SubscriptionsOnly><SubscribePage /></SubscriptionsOnly>} />
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

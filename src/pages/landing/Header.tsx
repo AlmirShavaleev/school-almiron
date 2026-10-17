@@ -9,13 +9,14 @@ const ANCHORS: Array<[string, string]> = [
   ['#faq', 'Вопросы'],
 ]
 
-export function Header({ onToggleTheme }: { onToggleTheme: () => void }) {
+/** `subs` — подписка включена: без неё блока цен нет, и пункта «Цена» тоже. */
+export function Header({ onToggleTheme, subs = true }: { onToggleTheme: () => void; subs?: boolean }) {
   return (
     <header className="nav">
       <div className="wrap">
         <a className="logo" href="#top"><Mark size={34} />Школа Almiron</a>
         <nav className="nav-links" aria-label="Разделы">
-          {ANCHORS.map(([href, label]) => <a key={href} href={href}>{label}</a>)}
+          {ANCHORS.filter(([href]) => subs || href !== '#price').map(([href, label]) => <a key={href} href={href}>{label}</a>)}
         </nav>
         <div className="nav-r">
           <button type="button" className="theme-t" onClick={onToggleTheme} aria-label="Сменить тему">◐</button>
