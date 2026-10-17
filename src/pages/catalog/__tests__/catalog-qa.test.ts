@@ -1311,7 +1311,8 @@ describe('Answer display states', () => {
     // TaskDisplayCard resolves answer HTML via resolveTaskHtml
     // §262: ответ — из задачи или из текстов, полученных раскрытием (view).
     // §269: ответ-число показывается с настоящим минусом (withRealMinus).
-    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(withRealMinus(view.answer_html)')
+    // 8817c51: у Markdown-задачи ответ идёт тем же Markdown+KaTeX (catalogAnswerSource).
+    expect(read('src/components/catalog/TaskDisplayCard.tsx')).toContain('resolveTaskHtml(catalogAnswerSource(withRealMinus(view.answer_html), task)')
   })
 })
 

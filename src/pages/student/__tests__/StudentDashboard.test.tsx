@@ -1,368 +1,218 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import type { StudentWeekCourse } from '@/hooks/useStudentWeekPlan'
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { buildStudentTodo, type StudentTodo, type TodoHomework, type TodoVerdict } from '@/lib/studentTodo'
-import {
-  filterHomeworkByCourse, homeworkCourseOptions, splitHomeworkBuckets, type TopicJournalHomework,
-} from '@/lib/topicJournal'
-import type { HomeActivity } from '@/lib/studentHome'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 
 /**
- * §254. Главная ученика: кнопки-счётчики вместо списков, серия с
- * календарём, задачи по неделям, «Мои курсы». Переписан целиком: прежние
- * проверки стерегли плитки StatCard, «Последние ДЗ», баннер «У вас N работ на
- * доработке» — всё это снято с главной по макету владельца 02.10 (кнопка
- * «Вернули на доработку» заменяет баннер).
+ * Главная ученика «как в Notion» (письмо ЛК_стиль_главная_как_notion.md, 16.10).
  *
- * Хуки подменены, но список дел собирается НАСТОЯЩИМ `buildStudentTodo`, а
- * страница ДЗ раскладывает строки настоящими функциями `lib/topicJournal`:
- * проверяется стык «кнопка → список», а не выдумка теста.
+ * Хуки главной настоящие, подменён Supabase — «записывающим» клиентом: так
+ * проверяется и картинка, и то, КАКИЕ запросы главная делает. Хуки соседних
+ * экранов (журнал ДЗ, программа курса) и приглашение в Telegram подменены:
+ * у них свои тесты, здесь — только то, как главная их показывает.
  */
 
-const TODAY = new Date().toLocaleDateString('en-CA')
-const dayShift = (n: number) => {
-  const d = new Date(`${TODAY}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
+const calls: string[] = []
+const RPC: Record<string, unknown> = {
+  my_mock_exams: [],
+  // Хранимый прогноз (forecast-daily, письмо 16.10).
+  my_score_forecast: [{ subject: 'physics', score: 64, low: 58, high: 70, basis: 'по 46 задачам', details: { v: 1, ready: true }, computed_at: '2026-10-16T01:10:00Z' }],
+  my_weekly_goals: { current: null, next: null, goals: [{ kind: 'days', target: 4, progress: 3, done: false }, { kind: 'topics', target: 2, progress: 2, done: true }] },
+  student_home_courses: [
+    {
+      course_id: 'c1', topics_total: 10, topics_done: 4,
+      modules: [
+        { module_id: 'm1', title: 'Кинематика', order_index: 1, total: 5, done: 4 },
+        { module_id: 'm2', title: 'Динамика', order_index: 2, total: 5, done: 0 },
+      ],
+      continue: { topic_id: 't6', title: 'Второй закон Ньютона', module_title: 'Динамика' },
+    },
+  ],
+}
+const TABLES: Record<string, unknown> = {
+  students: { id: 'st-1' },
+  student_exam_goals: [{ subject: 'physics', goal: 80 }],
+  group_students: [
+    { group_id: 'g1', groups: { id: 'g1', course_id: 'c1', courses: { id: 'c1', title: 'Физика ЕГЭ', subject: 'physics', exam_type: 'ege' } } },
+  ],
 }
 
-const state = {
-  todo: buildStudentTodo({ rawAttempts: [], homework: [], tests: [], verdicts: [] }) as StudentTodo,
-  activity: null as HomeActivity | null,
-  activityError: null as string | null,
-  journal: [] as TopicJournalHomework[],
-  courses: [] as Array<{ courseId: string; groupId: string; courseTitle: string; subject: string | null }>,
+function builder(table: string) {
+  const res = Promise.resolve({ data: TABLES[table] ?? null, error: null })
+  const b: Record<string, unknown> = {}
+  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit', 'maybeSingle', 'single']) b[m] = () => b
+  b.then = res.then.bind(res)
+  return b
 }
 
-const useStudentWeekPlanMock = vi.fn(() => ({ courses: [] as StudentWeekCourse[], loading: false, error: null as string | null }))
-vi.mock('@/hooks/useStudentWeekPlan', () => ({ useStudentWeekPlan: () => useStudentWeekPlanMock() }))
-vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector: (s: unknown) => unknown) => selector({ profile: { id: 'profile-1', full_name: 'Shavaleev Almir' } }),
-}))
-const useStudentDashboardMock = vi.fn()
-vi.mock('@/hooks/useStudentDashboard', () => ({ useStudentDashboard: (...a: unknown[]) => useStudentDashboardMock(...a) }))
-vi.mock('@/hooks/useStudentTodo', () => ({
-  useStudentTodo: (profileId?: string) => ({ todo: state.todo, loading: false, error: null, reload: vi.fn(), _for: profileId }),
-}))
-const retry = vi.fn()
-vi.mock('@/hooks/useStudentHomeActivity', () => ({
-  useStudentHomeActivity: () => ({ activity: state.activity, loading: false, error: state.activityError, retry }),
-}))
-vi.mock('@/hooks/useStudentTopicJournal', () => ({
-  useStudentTopicJournal: () => ({ journal: { homework: state.journal, tests: [], summary: {} }, loading: false, error: null, reload: vi.fn() }),
-}))
-vi.mock('@/hooks/useMyMockExams', () => ({ useMyMockExams: () => ({}) }))
-vi.mock('@/hooks/useMyTopicHomework', () => ({
-  useMyTopicHomework: (courseId: string | null = null) => {
-    const courseOptions = homeworkCourseOptions(state.journal, [])
-    const activeCourseId = courseId && courseOptions.some(o => o.id === courseId) ? courseId : null
-    return {
-      buckets: splitHomeworkBuckets(filterHomeworkByCourse(state.journal, activeCourseId)),
-      totalRows: state.journal.length, courseOptions, activeCourseId, summary: null,
-      topicLink: () => null, courseSubject: () => null,
-      loading: false, error: null, reload: vi.fn(), noStudentRecord: false,
-    }
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: (table: string) => { calls.push(`from:${table}`); return builder(table) },
+    rpc: (fn: string) => { calls.push(`rpc:${fn}`); return Promise.resolve({ data: RPC[fn] ?? null, error: null }) },
   },
+}))
+vi.mock('@/store/authStore', () => {
+  const state = { profile: { id: 'profile-1', full_name: 'Шавалеев Альмир', role: 'student', avatar_url: null } }
+  return { useAuthStore: (selector: (s: typeof state) => unknown) => selector(state) }
+})
+vi.mock('@/components/shared/TelegramOnboarding', () => ({
+  TelegramOnboarding: ({ compact }: { compact?: boolean }) => <div data-testid="tg-line" data-compact={compact || undefined} />,
+}))
+const hw = vi.hoisted(() => ({
+  todo: [] as Array<Record<string, unknown>>,
+}))
+vi.mock('@/hooks/useMyTopicHomework', () => ({
+  useMyTopicHomework: () => ({
+    buckets: { todo: hw.todo },
+    loading: false,
+    topicLink: (r: { topic_id: string }) => `/my-course/g1/topic/${r.topic_id}`,
+  }),
+}))
+const topic = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
+  id, title, kind: 'lesson', hw_id: `hw-${id}`, hw_status: null, hw_due_at: null, available_from: null, is_open: true, progress: null, ...extra,
+})
+vi.mock('@/hooks/useStudentCourseProgram', () => ({
+  useStudentCourseProgram: () => ({
+    loading: false,
+    modules: [{
+      id: 'm2', title: 'Динамика',
+      topics: [
+        topic('t5', 'Первый закон Ньютона', { hw_status: 'accepted' }),
+        topic('t6', 'Второй закон Ньютона'),
+        topic('t7', 'Принцип суперпозиции', { hw_id: null }),
+        topic('t8', 'Третий закон Ньютона', { is_open: null, available_from: '2099-10-19T00:00:00Z' }),
+      ],
+    }],
+  }),
 }))
 
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
-import { MyTopicHomeworkPage } from '@/pages/student/MyTopicHomeworkPage'
+import { useVisibleObserver } from '@/test/visibleObserver'
 
-const open = { is_open: true, available_from: null }
-function hw(id: string, dueAt: string | null, topicTitle = `Тема ${id}`): TodoHomework {
-  return {
-    homeworkId: id, homeworkTitle: 'Домашнее задание', topicId: `t-${id}`, topicTitle,
-    courseId: 'c1', courseTitle: 'Физика ЕГЭ', courseSubject: 'physics', groupId: 'g1', dueAt, topic: open,
-  }
-}
-function journalRow(id: string, status: TopicJournalHomework['status'], over: Partial<TopicJournalHomework> = {}): TopicJournalHomework {
-  return {
-    homework_id: id, title: 'Домашнее задание', topic_id: `t-${id}`, topic_title: `Тема ${id}`, module_title: null,
-    course_id: 'c1', course_title: 'Физика ЕГЭ', due_at: null, grade_scale: 'five', status,
-    score: null, comment: null, submitted_at: null, reviewed_at: null, attempts_count: 0, is_overdue: false, ...over,
-  }
-}
-const verdict = (attemptId: string, homeworkId: string, createdAt: string, topicTitle: string, score: number): TodoVerdict => ({
-  attemptId, homeworkId, topicTitle, homeworkTitle: 'Домашнее задание', decision: 'accepted', score, gradeScale: 'five', comment: null, createdAt,
-})
+useVisibleObserver()
 
-function activity(over: Partial<HomeActivity> = {}): HomeActivity {
-  return { today: TODAY, from: dayShift(-83), streak: 0, record: 0, visitedToday: false, visits: [], solved: [], courses: [], ...over }
+async function renderHome() {
+  render(<MemoryRouter initialEntries={['/student']}><StudentDashboard /></MemoryRouter>)
+  await screen.findByTestId('student-home')
+  await screen.findByTestId('hero-continue')
 }
 
-/** Ученик как у 11А: 2 просрочки (давняя — 40 дней), 3 в окне, работы до мая, 2 свежие оценки. */
-function typicalStudent() {
-  const homework = [
-    hw('o1', dayShift(-40)), hw('o2', dayShift(-3)),
-    hw('s1', dayShift(9), 'Динамика'), hw('s2', dayShift(11)), hw('s3', dayShift(14)),
-    hw('l1', dayShift(30)), hw('l2', dayShift(200)),
-    hw('a1', dayShift(-20), 'Производные'), hw('a2', dayShift(-25), 'Кинематика'),
-  ]
-  const rawAttempts = ['a1', 'a2'].map((id, i) => ({
-    id: `att-${id}`, student_id: 's', status: 'accepted', attempt_number: 1, submitted_at: `${dayShift(-5 - i)}T10:00:00Z`,
-    homework: { id, title: 'Домашнее задание', grade_scale: 'five', due_at: null, topic: { id: `t-${id}`, title: 'x', module: { id: 'm', course: { id: 'c1', title: 'Физика ЕГЭ' } } } },
-  }))
-  state.todo = buildStudentTodo({
-    rawAttempts, homework, tests: [],
-    verdicts: [verdict('att-a1', 'a1', `${dayShift(-1)}T12:00:00Z`, 'Производные', 4), verdict('att-a2', 'a2', `${dayShift(-2)}T12:00:00Z`, 'Кинематика', 5)],
-  })
-  state.journal = [
-    ...['o1', 'o2'].map(id => journalRow(id, 'not_started', { is_overdue: true, due_at: id === 'o1' ? dayShift(-40) : dayShift(-3) })),
-    ...['s1', 's2', 's3', 'l1', 'l2'].map(id => journalRow(id, 'not_started', { due_at: dayShift(9) })),
-    journalRow('a1', 'accepted', { score: 4, reviewed_at: `${dayShift(-1)}T12:00:00Z` }),
-    journalRow('a2', 'accepted', { score: 5, reviewed_at: `${dayShift(-2)}T12:00:00Z` }),
-  ]
-}
+beforeEach(() => { calls.length = 0; hw.todo = []; try { localStorage.clear() } catch { /* нет */ } })
 
-function renderHome(initial = '/student') {
-  return render(
-    <MemoryRouter initialEntries={[initial]}>
-      <Routes>
-        <Route path="/student" element={<StudentDashboard />} />
-        <Route path="/my-homework" element={<MyTopicHomeworkPage />} />
-        <Route path="/my-course/:groupId" element={<p>страница курса</p>} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
-beforeEach(() => {
-  state.todo = buildStudentTodo({ rawAttempts: [], homework: [], tests: [], verdicts: [] })
-  state.activity = activity()
-  state.activityError = null
-  state.journal = []
-  state.courses = []
-  useStudentDashboardMock.mockImplementation(() => ({ courses: state.courses, studentId: 'st-1', loading: false }))
-})
-
-describe('главная ученика — кнопки-счётчики (§254)', () => {
-  it('просрочено, сдать за 2 недели, новые оценки — счёт и подписи', () => {
-    typicalStudent()
-    renderHome()
-    const overdue = screen.getByTestId('home-action-overdue')
-    expect(overdue).toHaveTextContent('2')
-    expect(overdue).toHaveTextContent('Просрочено')
-    expect(overdue).toHaveTextContent('самое давнее — 40 дней')
-    const soon = screen.getByTestId('home-action-soon')
-    expect(soon).toHaveTextContent('3')
-    expect(soon).toHaveTextContent('Сдать за 2 недели')
-    expect(soon).toHaveTextContent('ближайшее — через 9 дней')
-    const grades = screen.getByTestId('home-action-checked')
-    expect(grades).toHaveTextContent('2')
-    expect(grades).toHaveTextContent('«Производные» — 4/5')
-    // Работы до мая — не кнопкой: окно 14 дней не пусто.
-    expect(screen.queryByTestId('home-action-later')).toBeNull()
-    expect(screen.queryByTestId('student-todo-clear')).toBeNull()
+describe('главная ученика «как в Notion»', () => {
+  it('шапка: обложка, «Имя · подготовка к ЕГЭ», свойства — цель, курс, серия; Telegram строкой', async () => {
+    RPC.student_home_activity = { today: '2026-10-15', streak: 3, record: 9, visits: [], solved: [] }
+    await renderHome()
+    expect(screen.getByTestId('home-cover')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Альмир · подготовка к ЕГЭ')
+    expect(await screen.findByTestId('home-prop-goal')).toHaveTextContent('Физика 80+ · прогноз 64')
+    expect(screen.getByTestId('home-prop-goal').getAttribute('title')).toMatch(/по 46 задачам · обновлено .* в 04:10/)
+    expect(screen.getByTestId('home-prop-course')).toHaveTextContent('Физика ЕГЭ')
+    expect(within(screen.getByTestId('home-prop-course')).getByRole('link')).toHaveAttribute('href', '/my-course/g1')
+    expect(await screen.findByTestId('home-prop-streak')).toHaveTextContent('3 дня подряд')
+    expect(screen.getByTestId('tg-line')).toHaveAttribute('data-compact', 'true')
+    delete RPC.student_home_activity
   })
 
-  it('кнопки — ссылки на страницу ДЗ с фильтром', () => {
-    typicalStudent()
-    renderHome()
-    expect(screen.getByTestId('home-action-overdue')).toHaveAttribute('href', '/my-homework?show=overdue')
-    expect(screen.getByTestId('home-action-soon')).toHaveAttribute('href', '/my-homework?show=soon')
-    expect(screen.getByTestId('home-action-checked')).toHaveAttribute('href', '/my-homework?show=checked')
+  it('обложку можно сменить — выбор запоминается', async () => {
+    await renderHome()
+    expect(screen.getByTestId('home-cover')).toHaveAttribute('data-cover', 'orbit')
+    fireEvent.click(screen.getByTestId('home-cover-change'))
+    fireEvent.click(screen.getByTestId('home-cover-desk'))
+    expect(screen.getByTestId('home-cover')).toHaveAttribute('data-cover', 'desk')
+    expect(localStorage.getItem('almiron:home-cover:profile-1')).toBe('desk')
   })
 
-  it.each([
-    ['overdue', 'Просрочено', ['Тема o1', 'Тема o2']],
-    ['soon', 'Сдать за 2 недели', ['Тема s1', 'Тема s2', 'Тема s3']],
-    ['checked', 'Новые оценки', ['Тема a1', 'Тема a2']],
-  ])('кнопка «%s» открывает страницу ДЗ сразу нужным списком', (show, title, topics) => {
-    typicalStudent()
-    renderHome()
-    fireEvent.click(screen.getByTestId(`home-action-${show}`))
-    const list = screen.getByTestId('my-hw-show')
-    expect(list).toHaveAttribute('data-show', show)
-    expect(within(list).getByRole('heading', { level: 1 })).toHaveTextContent(title)
-    const rows = within(list).getAllByTestId('my-hw-row').map(r => r.querySelector('h3')?.textContent)
-    expect(rows).toEqual(topics)
-    // Путь назад ко всем заданиям есть всегда.
-    expect(within(list).getByTestId('my-hw-show-all')).toHaveAttribute('href', '/my-homework')
+  it('виджеты: дни до ЕГЭ с долей учебного года, часы с фразой дня', async () => {
+    await renderHome()
+    const exam = screen.getByTestId('home-w-exam')
+    expect(within(exam).getByTestId('exam-countdown').textContent).toMatch(/^\d+(день|дня|дней)$/)
+    expect(exam).toHaveTextContent('до ЕГЭ по физике · ≈ 1 июня')
+    expect(within(exam).getByTestId('home-year-pct')).toHaveTextContent(/учебный год пройден на \d+ %/)
+    expect(screen.getByTestId('home-w-clock').querySelectorAll('.stu-flip span')).toHaveLength(2)
+    expect(screen.getByTestId('home-phrase').textContent!.length).toBeGreaterThan(10)
   })
 
-  it('кнопка с нулём не рисуется', () => {
-    state.todo = buildStudentTodo({ rawAttempts: [], homework: [hw('o1', dayShift(-2))], tests: [], verdicts: [] })
-    renderHome()
-    expect(screen.getByTestId('home-action-overdue')).toHaveTextContent('1')
-    expect(screen.queryByTestId('home-action-soon')).toBeNull()
-    expect(screen.queryByTestId('home-action-later')).toBeNull()
-    expect(screen.queryByTestId('home-action-checked')).toBeNull()
+  it('мини-календарь месяца: та же шкала, сегодня обведено, листается назад', async () => {
+    RPC.student_home_activity = { today: '2026-10-15', streak: 3, record: 9, visits: ['2026-10-13', '2026-10-14', '2026-10-15', '2026-09-20'], solved: [{ day: '2026-10-14', n: 6 }] }
+    await renderHome()
+    const card = await screen.findByTestId('home-activity')
+    expect(within(card).getByTestId('home-month-title')).toHaveTextContent('Октябрь 2026')
+    expect(card.querySelector('[data-day="2026-10-14"]')).toHaveClass('lv-3')
+    expect(card.querySelector('[data-day="2026-10-15"]')).toHaveClass('is-today')
+    expect(card.querySelector('[data-day="2026-10-16"]')).toHaveClass('is-future')
+    // Нажатие на день — строка под сеткой: что было в этот день; по умолчанию — сегодня.
+    expect(within(card).getByTestId('home-day-info')).toHaveTextContent('сегодня, четверг, 15 октября: заходил, задач не решал')
+    const day14 = within(card.querySelector('[data-day="2026-10-14"]') as HTMLElement).getByRole('button')
+    expect(day14).toHaveAccessibleName('среда, 14 октября: 6 задач')
+    fireEvent.click(day14)
+    expect(within(card).getByTestId('home-day-info')).toHaveTextContent('среда, 14 октября: 6 задач')
+    expect(card.querySelector('[data-day="2026-10-14"]')).toHaveClass('is-picked')
+    expect(within(card).getByTestId('home-streak')).toHaveTextContent('подряд 3 дня')
+    expect(within(card).getByTestId('home-streak')).toHaveTextContent('рекорд 9')
+    fireEvent.click(within(card).getByTestId('home-month-prev'))
+    expect(within(card).getByTestId('home-month-title')).toHaveTextContent('Сентябрь 2026')
+    expect(card.querySelector('[data-day="2026-09-20"]')).toHaveClass('lv-1')
+    delete RPC.student_home_activity
   })
 
-  it('всё по нулям — спокойная строка «Всё сдано, новых заданий нет», кнопок нет', () => {
-    renderHome()
-    expect(screen.getByTestId('student-todo-clear')).toHaveTextContent('Всё сдано, новых заданий нет')
-    expect(screen.queryAllByTestId(/^home-action-/)).toHaveLength(0)
+  it('«Цели недели» и «Сегодня» — списками с галочками: ДЗ к сдаче и следующий урок', async () => {
+    hw.todo = [{ homework_id: 'h1', topic_id: 't4', topic_title: 'Сила', is_overdue: true }]
+    await renderHome()
+    const goals = await screen.findAllByTestId('home-weekly-goal')
+    expect(goals).toHaveLength(2)
+    expect(goals[1]).toHaveAttribute('data-done', 'true')
+    const today = screen.getAllByTestId('home-today-item')
+    expect(today.map(t => t.textContent)).toEqual(['Сдать ДЗ «Сила»просрочено', 'Урок «Второй закон Ньютона»урок'])
+    expect(within(today[0]).getByRole('link')).toHaveAttribute('href', '/my-course/g1/topic/t4')
   })
 
-  it('окно 14 дней пусто, работы позже есть — «Сдать позже» с датой ближайшей, ведёт в свой список', () => {
-    state.todo = buildStudentTodo({ rawAttempts: [], homework: [hw('l1', dayShift(20)), hw('l2', dayShift(90))], tests: [], verdicts: [] })
-    state.journal = [journalRow('l1', 'not_started', { due_at: dayShift(20) }), journalRow('l2', 'not_started', { due_at: dayShift(90) })]
-    renderHome()
-    const later = screen.getByTestId('home-action-later')
-    expect(later).toHaveTextContent('Сдать позже')
-    const [, m, d] = dayShift(20).split('-').map(Number)
-    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
-    expect(later).toHaveTextContent(`ближайшее — ${d} ${months[m - 1]}`)
-    expect(later).toHaveAttribute('href', '/my-homework?show=later')
-    fireEvent.click(later)
-    expect(within(screen.getByTestId('my-hw-show')).getAllByTestId('my-hw-row')).toHaveLength(2)
+  it('«Продолжить»: три урока со следующего, замок — как в плитках курса; закрытый не ведёт', async () => {
+    await renderHome()
+    const cards = await screen.findAllByTestId('home-continue-card')
+    expect(cards.map(c => c.getAttribute('data-state'))).toEqual(['hw', 'nohw', 'locked'])
+    expect(cards[0]).toHaveTextContent('Урок 2 · Второй закон Ньютона')
+    expect(within(cards[0]).getByRole('link')).toHaveAttribute('href', '/my-course/g1/topic/t6')
+    expect(within(cards[2]).getByTestId('home-continue-pill').textContent).toMatch(/^🔒/)
+    expect(within(cards[2]).queryByRole('link')).toBeNull()
   })
 
-  it('вернули на доработку — своей кнопкой; без срока и тестирования — строкой ссылок, не теряются', () => {
-    state.todo = buildStudentTodo({
-      rawAttempts: [{ id: 'r', student_id: 's', status: 'returned_for_revision', attempt_number: 1, submitted_at: `${dayShift(-3)}T10:00:00Z`,
-        homework: { id: 'r1', title: 'ДЗ', grade_scale: 'five', due_at: null, topic: { id: 't-r1', title: 'x', module: { id: 'm', course: { id: 'c1', title: 'Ф' } } } } }],
-      homework: [hw('r1', null, 'Законы Ньютона'), hw('n1', null), hw('n2', null)],
-      tests: [{ assignmentId: 'ta', testId: 'tt', testTitle: 'Кинематика', topicId: 't9', topicTitle: 'Т', completed: false, groupId: 'g1' }],
-      verdicts: [],
-    })
-    renderHome()
-    expect(screen.getByTestId('home-action-returned')).toHaveTextContent('Вернули на доработку')
-    expect(screen.getByTestId('home-action-returned')).toHaveTextContent('«Законы Ньютона»')
-    const extras = screen.getByTestId('home-extras')
-    expect(within(extras).getByText('Без срока: 2')).toHaveAttribute('href', '/my-homework?show=nodue')
-    expect(within(extras).getByText('Тестирование «Кинематика»')).toHaveAttribute('href', '/my-course/g1/topic/t9')
-    expect(screen.queryByTestId('student-todo-clear')).toBeNull()
-  })
-})
-
-describe('главная ученика — серия и календарь (§254)', () => {
-  it('серия и рекорд из базы, точки недели в шапке', () => {
-    const monday = (() => { const d = new Date(`${TODAY}T12:00:00Z`); return (d.getUTCDay() + 6) % 7 })()
-    state.activity = activity({ streak: 5, record: 12, visitedToday: true, visits: Array.from({ length: 5 }, (_, i) => dayShift(-i)) })
-    renderHome()
-    expect(screen.getByTestId('streak-pill')).toHaveTextContent('5 дней подряд')
-    // Горят дни этой недели с заходами — не больше, чем прошло дней недели.
-    const lit = screen.getByTestId('streak-pill').querySelectorAll('[data-on]').length
-    expect(lit).toBe(Math.min(5, monday + 1))
-    expect(screen.getByTestId('streak-number')).toHaveTextContent('5')
-    expect(screen.getByTestId('streak-card')).toHaveTextContent('дней подряд · рекорд — 12 дней')
+  it('«Продолжить урок →» в шапке и карточка курса — как раньше', async () => {
+    await renderHome()
+    expect(screen.getByTestId('hero-continue')).toHaveAttribute('href', '/my-course/g1/topic/t6')
+    const course = screen.getByTestId('home-course')
+    expect(within(course).getByTestId('course-percent')).toHaveTextContent('40%')
+    expect(within(course).getAllByTestId('home-module').map(m => m.textContent)).toEqual(['Кинематика80%', 'Динамика0%'])
   })
 
-  it('сегодня ещё не заходил — серия не обнуляется до конца дня, сегодняшняя клетка «не заходили»', () => {
-    state.activity = activity({ streak: 3, record: 3, visitedToday: false, visits: [dayShift(-1), dayShift(-2), dayShift(-3)] })
-    renderHome()
-    expect(screen.getByTestId('streak-pill')).toHaveTextContent('3 дня подряд')
-    const today = screen.getByTestId('activity-calendar').querySelector('[data-today]')!
-    expect(today.getAttribute('aria-label')).toMatch(/: не заходили$/)
+  it('снятые блоки не вернулись; запросы — те же источники, без новых RPC', async () => {
+    await renderHome()
+    for (const text of [/Задача дня/, /Баллы школы/, /Примерный балл/, /Вернули на доработку/]) {
+      expect(screen.queryByText(text)).toBeNull()
+    }
+    await waitFor(() => expect(calls).toContain('rpc:student_home_activity'))
+    await waitFor(() => expect(calls).toContain('rpc:my_weekly_goals'))
+    const uniq = [...new Set(calls)].sort()
+    for (const c of uniq) {
+      expect([
+        'from:group_students', 'from:student_exam_goals', 'from:students',
+        'rpc:my_course_demo', 'rpc:my_mock_exams', 'rpc:my_score_forecast', 'rpc:my_subscriptions', 'rpc:my_weekly_goals',
+        'rpc:student_home_activity', 'rpc:student_home_courses', 'rpc:subscriptions_enabled',
+      ]).toContain(c)
+    }
   })
 
-  it('разрыв: серия 0, рекорд остаётся', () => {
-    state.activity = activity({ streak: 0, record: 7, visits: [dayShift(-3)] })
-    renderHome()
-    expect(screen.getByTestId('streak-pill')).toHaveTextContent('Начните серию')
-    expect(screen.getByTestId('streak-card')).toHaveTextContent('рекорд — 7 дней')
+  it('виджет «Прогноз ЕГЭ»: только диапазон; данных мало — «0»', async () => {
+    await renderHome()
+    expect(await screen.findByTestId('forecast-physics-value')).toHaveTextContent('58–70')
+    expect(screen.getByTestId('forecast-physics')).toHaveTextContent('Прогноз ЕГЭ · физика')
+    expect(screen.getByTestId('home-w-forecast').textContent).not.toMatch(/обновлено|задач|цель/i)
   })
 
-  it('новичок: серия 0, пустой календарь и дружелюбный текст', () => {
-    renderHome()
-    expect(screen.getByTestId('streak-number')).toHaveTextContent('0')
-    expect(screen.getByTestId('streak-newbie')).toHaveTextContent('Заходите каждый день — здесь появится ваша серия')
-    const cells = screen.getByTestId('activity-calendar').querySelectorAll('i')
-    expect(cells).toHaveLength(84)
-    expect([...cells].filter(c => c.getAttribute('data-level') && c.getAttribute('data-level') !== '0')).toHaveLength(0)
-    expect(screen.getByTestId('weeks-empty')).toBeInTheDocument()
-  })
-
-  it('клетки: ступени по задачам, будущие дни пустые с пунктиром, подсказка при фокусе', () => {
-    state.activity = activity({
-      streak: 2, record: 2, visitedToday: true, visits: [dayShift(-1), TODAY],
-      solved: [{ day: dayShift(-1), n: 1, hw: 1, catalog: 0, mock: 0, test: 0 }, { day: TODAY, n: 12, hw: 0, catalog: 12, mock: 0, test: 0 }],
-    })
-    renderHome()
-    const cal = screen.getByTestId('activity-calendar')
-    expect(cal.querySelector(`[data-day="${dayShift(-1)}"]`)).toHaveAttribute('data-level', '1')
-    const today = cal.querySelector('[data-today]') as HTMLElement
-    expect(today).toHaveAttribute('data-level', '4')
-    const future = cal.querySelectorAll('[data-future]')
-    const dow = (new Date(`${TODAY}T12:00:00Z`).getUTCDay() + 6) % 7
-    expect(future).toHaveLength(6 - dow)
-    future.forEach(f => { expect(f.className).toContain('border-dashed'); expect(f).not.toHaveAttribute('tabindex') })
-    fireEvent.focus(today)
-    expect(screen.getByTestId('home-tip').textContent).toMatch(/: 12 задач$/)
-    fireEvent.blur(today)
-    expect(screen.queryByTestId('home-tip')).toBeNull()
-  })
-
-  it('база не ответила — главная живёт, вместо серии строка с повтором', () => {
-    state.activity = null
-    state.activityError = 'function student_home_activity does not exist'
-    typicalStudent()
-    renderHome()
-    expect(screen.queryByTestId('streak-pill')).toBeNull()
-    expect(screen.getByTestId('home-action-overdue')).toBeInTheDocument()
-    fireEvent.click(within(screen.getByTestId('streak-card')).getByRole('button', { name: 'Повторить' }))
-    expect(retry).toHaveBeenCalled()
-  })
-})
-
-describe('главная ученика — задачи по неделям и курсы (§254)', () => {
-  it('10 недель, текущая — акцентом и с числом, подсказка при наведении', () => {
-    state.activity = activity({
-      streak: 1, record: 1, visitedToday: true, visits: [TODAY],
-      solved: [{ day: TODAY, n: 4, hw: 4, catalog: 0, mock: 0, test: 0 }, { day: dayShift(-7), n: 9, hw: 0, catalog: 9, mock: 0, test: 0 }],
-    })
-    renderHome()
-    const bars = within(screen.getByTestId('week-bars')).getAllByRole('listitem')
-    expect(bars).toHaveLength(10)
-    const current = bars[9]
-    expect(current).toHaveAttribute('data-current')
-    expect(current).toHaveAttribute('data-n', '4')
-    expect(current.textContent).toContain('4')
-    expect(bars[8]).toHaveAttribute('data-n', '9')
-    fireEvent.mouseEnter(bars[8])
-    expect(screen.getByTestId('home-tip').textContent).toMatch(/^неделя с \d+ \S+: 9 задач$/)
-  })
-
-  it('«Мои курсы»: тем пройдено, ДЗ принято, средняя оценка; карточка — ссылка на курс', () => {
-    state.courses = [
-      { courseId: 'c1', groupId: 'g1', courseTitle: 'Физика ЕГЭ 11А', subject: 'physics' },
-      { courseId: 'c2', groupId: 'g2', courseTitle: 'Математика ЕГЭ', subject: 'math' },
-    ]
-    state.activity = activity({ courses: [{ courseId: 'c1', topicsTotal: 52, topicsDone: 9 }, { courseId: 'c2', topicsTotal: 48, topicsDone: 6 }] })
-    state.journal = [
-      journalRow('h1', 'accepted', { score: 4 }), journalRow('h2', 'accepted', { score: 5 }), journalRow('h3', 'returned'),
-      journalRow('m1', 'accepted', { course_id: 'c2', grade_scale: null, score: null }), journalRow('m2', 'not_started', { course_id: 'c2' }),
-    ]
-    renderHome()
-    const [phys, math] = screen.getAllByTestId('home-course')
-    expect(phys).toHaveAttribute('href', '/my-course/g1')
-    expect(phys).toHaveTextContent('Физика ЕГЭ 11А')
-    expect(phys).toHaveTextContent('9 / 52тем пройдено')
-    expect(phys).toHaveTextContent('2 / 3ДЗ принято')
-    expect(phys).toHaveTextContent('4,5средняя оценка')
-    expect(math).toHaveTextContent('6 / 48')
-    expect(math).toHaveTextContent('1 / 2')
-    expect(math).toHaveTextContent('—средняя оценка')
-    fireEvent.click(phys)
-    expect(screen.getByText('страница курса')).toBeInTheDocument()
-  })
-
-  it('старых плиток и списков на главной нет', () => {
-    typicalStudent()
-    state.courses = [{ courseId: 'c1', groupId: 'g1', courseTitle: 'Физика', subject: 'physics' }]
-    renderHome()
-    expect(screen.queryByText('Последние ДЗ')).toBeNull()
-    expect(screen.queryByText('Мои тесты')).toBeNull()
-    expect(screen.queryByText('Личный маршрут')).toBeNull()
-    expect(screen.queryByText('На проверке/доработке')).toBeNull()
-    expect(screen.getAllByText('Мои курсы')).toHaveLength(1)
-  })
-
-  it('приветствие по прежнему правилу имени и «Эта неделя» по плану (§151) на месте', () => {
-    useStudentWeekPlanMock.mockReturnValueOnce({
-      courses: [{
-        course_id: 'c1', group_id: 'g1', course_title: 'Физика', subject: 'physics',
-        week_no: 1, weeks_total: 10, week_start: '2026-09-07', week_end: '2026-09-13',
-        deadline: '2026-09-13T21:00:00+00:00',
-        topics: [{ topic_id: 't1', title: 'Кинематика', open_now: true, hw_published: true, hw_status: 'not_started', done: false, marked: false }],
-      }],
-      loading: false, error: null,
-    })
-    renderHome()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Привет, Almir')
-    expect(screen.getByTestId('student-week-plan')).toHaveTextContent('Кинематика')
+  it('виджет «Прогноз ЕГЭ»: строки нет — «0», без пояснений', async () => {
+    const saved = RPC.my_score_forecast
+    RPC.my_score_forecast = [{ subject: 'physics', score: null, low: null, high: null, basis: 'по 3 задачам', details: { v: 1, ready: false }, computed_at: '2026-10-16T01:10:00Z' }]
+    await renderHome()
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent(/^0$/))
+    RPC.my_score_forecast = saved
   })
 })

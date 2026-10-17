@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { RumTracker } from '@/components/perf/RumTracker'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
@@ -64,6 +64,9 @@ import { Toaster } from '@/components/ui/Toaster'
 import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
+import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
+import { LANDING_PREVIEW_PATH, landingV3Enabled } from '@/lib/landingFlag'
+import { SubscriptionsOnly } from '@/components/subscription/SubscriptionsOnly'
 
 // Auth pages — тоже ленивые. Они тянут react-hook-form + zod + resolvers, а
 // вошедший пользователь не видит ни одной из них: держать их во входном чанке
@@ -80,11 +83,14 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
 // не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
 //
-// Лендинг живёт на `/about`, а не на `/` (решение владельца 12.08): главная —
-// это вход в платформу, а витрина откладывается, но не удаляется. Страница,
-// стили и секции не тронуты, поменялся только адрес.
-const LandingPage       = lazyPage('LandingPage', () => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })))
+// Лендинга для гостя сейчас нет (письмо ЛК_убрать_старый_лендинг.md, 17.10:
+// «пусть видят сразу вход в ЛК»): `/` и `/about` — на вход. Прежний лендинг
+// (src/pages/LandingPage.tsx, components/landing) не удалён, просто не
+// подключён — его чанка в сборке нет. Лендинг v3 (ЛЕНДИНГ_ТЗ.md, 11.10) — за
+// флагом сборки VITE_LANDING_V3 и на скрытом `/preview/landing` (src/lib/landingFlag.ts).
+const LandingV3Page     = lazyPage('LandingV3Page', () => import('@/pages/LandingV3Page').then(m => ({ default: m.LandingV3Page })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
+const SubscribePage     = lazyPage('SubscribePage', () => import('@/pages/subscription/SubscribePage').then(m => ({ default: m.SubscribePage })))
 
 // Protected app subtree (DashboardLayout + all its child routes) — lazy so its page code stays out of the entry chunk
 const AppRoutes = lazyPage('AppRoutes', () => import('@/AppRoutes'))
@@ -99,11 +105,9 @@ function FullScreenSpinner({ label = 'вход в приложение' }: { lab
 }
 
 /**
- * `/` → рабочий экран вошедшего, форма входа для гостя.
- *
- * Лендинга здесь больше нет — он переехал на `/about`. Главная стала входом в
- * платформу: по адресу приходят те, кто уже учится, а не те, кого надо
- * уговаривать.
+ * `/` → рабочий экран вошедшего, лендинг для гостя (с 11.10.2026, ЛЕНДИНГ_ТЗ.md;
+ * с 12.08 по 11.10 гость уходил на `/login`). Гость с отложенным намерением
+ * (приглашение, ссылка преподавателя, возврат из письма) по-прежнему уходит на вход.
  *
  * Уйти на `/login` можно только УБЕДИВШИСЬ, что сессии нет. Пока `loading` или
  * пока есть `user` без загруженного профиля — держим спиннер: `/login` назад не
@@ -129,7 +133,7 @@ function RootRedirect() {
     // роль читается как «ещё не знаем» и приглашение не трогает (у только что
     // зарегистрировавшегося профиль едет позже, а вести его надо как раз туда).
     const role = profile?.role ?? null
-    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role)
+    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role) || getPendingSubscribePath(role)
     if (pendingPath && (profile || user)) {
       navigate(pendingPath, { replace: true })
       return
@@ -143,9 +147,46 @@ function RootRedirect() {
   // (§108: бесконечный спиннер не должен быть достижимым состоянием).
   if (loading || profile || user) return <FullScreenSpinner />
 
-  // Гость. Именно `replace`: иначе «назад» из формы входа возвращало бы на `/`,
-  // а тот снова редиректил бы на вход — кнопка «назад» переставала бы работать.
-  return <Navigate to="/login" replace />
+  // Гость с отложенным намерением — висящее приглашение ученика или ссылка
+  // преподавателя — или пришедший по ссылке из письма Supabase: ведём на вход,
+  // как и раньше, там намерение подхватится после входа. Именно `replace`:
+  // иначе «назад» из формы входа возвращало бы на `/`, а тот снова редиректил
+  // бы на вход — кнопка «назад» переставала бы работать.
+  // Лендинг v3 выключен (по умолчанию, как в main) — любой гость на вход.
+  if (!landingV3Enabled() || guestHasPendingIntent()) return <Navigate to="/login" replace />
+
+  // v3 включён: просто гость видит лендинг прямо на главной (ЛЕНДИНГ_ТЗ.md, 11.10.2026).
+  return <LandingV3Page />
+}
+
+/** `/about` без лендинга — на вход с теми же параметрами и якорем (письмо 17.10). */
+function KeepQueryToLogin() {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: '/login', search, hash }} replace />
+}
+
+/** Скрытый просмотр лендинга v3 для владельца: не в меню, поисковикам — noindex. */
+function LandingV3Preview() {
+  useEffect(() => {
+    const meta = document.createElement('meta')
+    meta.name = 'robots'
+    meta.content = 'noindex, nofollow'
+    document.head.appendChild(meta)
+    return () => { meta.remove() }
+  }, [])
+  return <LandingV3Page />
+}
+
+/**
+ * Есть ли у гостя дело, ради которого он должен попасть на вход, а не на
+ * витрину. Роль `null` — «ещё не знаем»: проверка приглашение не вычищает.
+ * Параметры `access_token` / `error` / `code` в адресе — это возврат из письма
+ * подтверждения или сброса, его разбирает вход, а не лендинг.
+ */
+function guestHasPendingIntent(): boolean {
+  if (getPendingInvitePath(null) || getPendingTeacherJoinLinkPath(null)) return true
+  const { hash, search } = window.location
+  return /(^|[#&])(access_token|error|error_code)=/.test(hash) || /[?&](code|error)=/.test(search)
 }
 
 /**
@@ -373,8 +414,12 @@ export default function App() {
             ученики и преподаватели — они гости по определению, редирект на вход
             сломал бы вступление в курс. Трогать список только осознанно. */}
         <Route path="/"               element={<RootRedirect />} />
-        <Route path="/about"          element={<LandingPage />} />
+        <Route path="/about"          element={landingV3Enabled() ? <LandingV3Page /> : <KeepQueryToLogin />} />
+        <Route path={LANDING_PREVIEW_PATH} element={<LandingV3Preview />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
+        {/* §282. Витрина подписки: гость выбирает тариф до регистрации. */}
+        {/* Без флага подписки (гость — всегда) — на главную: витрины тарифов не видно (выкатка в main, 16.10). */}
+        <Route path="/subscribe"      element={<SubscriptionsOnly><SubscribePage /></SubscriptionsOnly>} />
         <Route path="/login"          element={<LoginPage />} />
         <Route path="/register"       element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -142,6 +142,32 @@ function buildMessage(item: QueueItem, appUrl: string) {
     case 'new_homework_digest':
       return buildHomeworkDigestTelegramMessage(p, appUrl)
 
+    // §288.1. Урок открылся по прохождению (закрыт предыдущий) — ставит
+    // _topic_unlock_events_for. Галочка — «Домашние задания» (см. variant-telegram).
+    case 'topic_unlocked':
+      return {
+        text: (
+        `🔓 <b>Открыт урок</b>
+
+` +
+        `${headline(esc(p.course_title), esc(p.title))}`
+        ),
+        replyMarkup: button(p.link, 'Открыть урок'),
+      }
+
+    // §290. За сутки до конца пробного/подписки без автопродления — ставит
+    // subscription_ending_soon_tick (cron раз в час, один раз на дату окончания).
+    case 'subscription_ending':
+      return {
+        text: (
+        `⏳ <b>${p.trial ? 'Пробный период заканчивается завтра' : 'Подписка заканчивается завтра'}</b>
+
+` +
+        `Курс «${esc(p.course_title ?? 'Курс')}». Оформите подписку, чтобы продолжить без перерыва — прогресс сохранится.`
+        ),
+        replyMarkup: button(p.link, 'Моя подписка'),
+      }
+
     // Приветствие при добавлении в курс. Ссылок на ДЗ и списка заданий здесь
     // намеренно нет — решение владельца: рассылка по старым ДЗ была бы спамом.
     case 'course_enrolled':

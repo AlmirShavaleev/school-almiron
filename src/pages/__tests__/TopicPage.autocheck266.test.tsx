@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 /**
- * §266. Тренировочный урок у ученика: пометка в шапке, вкладка
- * «Автопроверка» вместо ДЗ, ввод ответа (не число — без запроса, попытка не
+ * §266. Тренировочный урок у ученика: в разделе «ДЗ» — задачи автопроверки
+ * вместо загрузки работы (пометки формата в шапке с 15.10 нет), ввод ответа (не число — без запроса, попытка не
  * тратится), закрытая задача — вердикт и решение. Урок «Формат ЕГЭ» — как
  * раньше, задачи автопроверки не запрашиваются.
  */
@@ -115,20 +115,24 @@ describe('Тренировочный урок (§266)', () => {
     rpcCalls.length = 0
   })
 
-  it('шапка: «Тренировочный»; вкладка «Автопроверка» вместо «Домашнего задания»', async () => {
+  it('шапка без пометки формата; в разделе «ДЗ» — автопроверка, а не загрузка работы', async () => {
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
-    expect(screen.getByTestId('lesson-format-mark')).toHaveTextContent('Тренировочный')
-    await waitFor(() => expect(screen.getByRole('tab', { name: /Автопроверка/ })).toBeInTheDocument())
-    expect(screen.queryByRole('tab', { name: /Домашнее задание/ })).toBeNull()
-    // Вкладка видна сразу по формату урока, состояние задач приходит отдельным
-    // запросом — ждём его, а не полагаемся на порядок ответов (§271 добавил ещё один).
+    // Владелец 15.10: пометки «Тренировочный» в шапке больше нет.
+    expect(screen.queryByTestId('lesson-format-mark')).toBeNull()
+    expect(screen.queryByText('Тренировочный')).toBeNull()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
+    expect(screen.getByTestId('topic-seg-homework')).toHaveTextContent('ДЗ')
+    // Состояние задач приходит отдельным запросом — ждём его, а не полагаемся
+    // на порядок ответов (§271 добавил ещё один).
     expect(await screen.findByTestId('topic-group-autocheck-state')).toHaveTextContent('решено 0 из 2')
+    expect(within(screen.getByTestId('topic-section-homework')).getByTestId('autocheck-block')).toBeInTheDocument()
+    expect(screen.queryByTestId('hw-upload')).toBeNull()
   })
 
   it('открытая задача: «Введите число» без запроса; верный ответ — вердикт, решение, оценка', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Автопроверка/ }))
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     const block = await screen.findByTestId('autocheck-block')
     expect(within(block).getByTestId('autocheck-summary')).toHaveTextContent('Решено 0 из 2 · оценка после всех задач')
 
@@ -174,22 +178,27 @@ describe('Тренировочный урок (§266)', () => {
     expect(screen.getByTestId('topic-group-autocheck-state')).toHaveTextContent('оценка 50 из 100')
   })
 
-  it('урок «Формат ЕГЭ»: пометка, обычное ДЗ, автопроверка не запрашивается', async () => {
+  it('урок «Формат ЕГЭ»: без пометки на странице, обычное ДЗ, автопроверка не запрашивается', async () => {
     lesson.format = 'ege'
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
-    expect(screen.getByTestId('lesson-format-mark')).toHaveTextContent('Формат ЕГЭ')
-    fireEvent.click(screen.getByRole('tab', { name: /Домашнее задание/ }))
+    // Пометка «Формат ЕГЭ» на странице урока больше не рисуется (владелец 15.10).
+    expect(screen.queryByTestId('lesson-format-mark')).toBeNull()
+    expect(screen.queryByText('Формат ЕГЭ')).toBeNull()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     expect(await screen.findByTestId('hw-upload')).toBeInTheDocument()
     expect(rpcCalls.some(c => c.fn.startsWith('topic_autocheck'))).toBe(false)
   })
 
-  it.each(['training', 'ege', null])('§271: «Оцените урок» — последним блоком темы при формате %s; своя оценка читается', async format => {
+  it.each(['training', 'ege', null])('§271: «Оцените урок» — раздел «Отзыв», при формате %s; своя оценка читается', async format => {
     lesson.format = format
     const { container } = renderPage()
+    // Владелец 15.10: оценка — в разделе «Отзыв» переключателя урока.
+    fireEvent.click(await screen.findByTestId('topic-seg-review'))
     const block = await screen.findByTestId('topic-rating')
-    // Блок — последний на странице темы, под содержимым вкладки.
-    expect(container.firstElementChild?.lastElementChild).toBe(block)
+    // Внизу темы: оценка, сразу за ней — опрос по уроку (письмо 16.10), своей карточкой.
+    expect(container.firstElementChild?.lastElementChild).toBe(screen.getByTestId('topic-feedback'))
+    expect(screen.getByTestId('topic-feedback').previousElementSibling).toBe(block)
     expect(within(block).getAllByRole('button', { name: /^Оценка \d+ из 10$/ })).toHaveLength(10)
     await waitFor(() => expect(rpcCalls.some(c => c.fn === 'my_topic_rating' && c.args.p_topic_id === TOPIC)).toBe(true))
   })
@@ -199,7 +208,8 @@ describe('Тренировочный урок (§266)', () => {
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
     expect(screen.queryByTestId('lesson-format-mark')).toBeNull()
-    expect(screen.getByRole('tab', { name: /Домашнее задание/ })).toBeInTheDocument()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
+    expect(await screen.findByTestId('hw-upload')).toBeInTheDocument()
     expect(rpcCalls.some(c => c.fn.startsWith('topic_autocheck'))).toBe(false)
   })
 })

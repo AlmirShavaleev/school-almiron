@@ -1,0 +1,616 @@
+/*
+ * Кабинет ученика в стиле лендинга v3 (письмо ЛК_ученика_в_стиле_лендинга.md,
+ * 14.10.2026). Всё под корнем `.stu`, который ставит DashboardLayout, когда
+ * кабинет показан ученику (или персоналу «глазами ученика»): кабинет
+ * преподавателя и админа не меняется.
+ *
+ * Палитра и тени — те же значения, что у `.lnd` (src/pages/landing/landing.css):
+ * Manrope, синий #2F5BEA, оранжевый #F28C28, зелёный #1E9E6A, navy #13254D,
+ * радиусы 20–22 px. Тёмная тема — navy лендинга, только по переключателю
+ * (`data-theme='dark'`), системную настройку не читаем: светлая по умолчанию.
+ *
+ * Этап 1 — каркас и главная. Страницы, которые ещё не переведены, лежат в
+ * `[data-stu-scope='light']`: в тёмной теме они рисуются светлым листом на
+ * navy-фоне, а не тёмным текстом Tailwind на тёмном фоне.
+ *
+ * Анимации — transform/opacity; при «уменьшить движение» петли выключены.
+ */
+@font-face { font-family: 'PT Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url('../../../pages/landing/fonts/pt-serif-italic.woff2') format('woff2') }
+
+.stu {
+  --bg: #f7f9fe; --bg2: #eef2fb; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #e1e7f3;
+  --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea; --blueMid: #a9bcf7;
+  --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
+  --red: #e5484d; --redS: #fdecee; --redInk: #c22f35;
+  --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
+  --shadow: 0 12px 32px rgba(27, 31, 42, .07); --r: 22px;
+  --nav: rgba(255, 255, 255, .86);
+  font-family: Manrope, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  color-scheme: light;
+}
+.stu[data-theme='dark'] {
+  --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
+  --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d;
+  --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2; --blueMid: #3d4f8f;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .3);
+  --nav: rgba(15, 29, 61, .86);
+  color-scheme: dark;
+}
+/* Ещё не переведённая страница в тёмной теме — светлый лист. */
+.stu[data-theme='dark'] [data-stu-scope='light'] {
+  --bg: #f7f9fe; --bg2: #eef2fb; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #e1e7f3;
+  --blueS: #eaf0fd; --blueInk: #2f5bea; --orangeS: #fdf1e4; --orInk: #a8560c;
+  --redS: #fdecee; --redInk: #c22f35; --greenS: #e6f5ee; --greenInk: #157350;
+  --shadow: 0 12px 32px rgba(27, 31, 42, .07);
+  color-scheme: light;
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: var(--r);
+  padding: 12px;
+}
+
+/* ── Боковое меню ─────────────────────────────────────────────── */
+.stu-side { background: var(--card); color: var(--ink); border-right: 1px solid var(--line); box-shadow: var(--shadow) }
+.stu-side .stu-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--ink) }
+.stu-side .stu-sec { padding: 14px 12px 4px; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.stu-side .stu-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 14px; font-size: 15px; font-weight: 700; color: var(--ink2); transition: background-color .2s, color .2s }
+.stu-side .stu-item:hover { background: var(--bg2); color: var(--ink) }
+.stu-side .stu-item[data-active='true'] { background: var(--blueS); color: var(--blueInk) }
+.stu-side .stu-item[data-active='true']::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--orange) }
+.stu-side .stu-badge { min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 12px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums }
+.stu-side .stu-me { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 18px; background: var(--bg2) }
+.stu-side .stu-close { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--ink2) }
+.stu-side .stu-close:hover { background: var(--bg2) }
+.stu-side .stu-out { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 14px; font-size: 15px; font-weight: 700; color: var(--ink2) }
+.stu-side .stu-out:hover { background: var(--bg2); color: var(--ink) }
+.stu-side .stu-line { border-color: var(--line) }
+
+/* Инициалы — оранжевый кружок «Ты» из чата лендинга. */
+.stu .stu-ava { flex: none; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--orangeS); color: var(--orInk); font-weight: 800; font-size: 14px }
+.stu .stu-ava img { width: 100%; height: 100%; object-fit: cover }
+
+/* ── Шапка ────────────────────────────────────────────────────── */
+.stu-top { background: var(--nav); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1.5px solid var(--blue); color: var(--ink) }
+.stu-top .stu-title { font-size: 16px; font-weight: 800; color: var(--ink) }
+.stu-top .stu-icon-btn { width: 42px; height: 42px; flex: none; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); display: grid; place-items: center; transition: transform .2s }
+.stu-top .stu-icon-btn:hover { transform: translateY(-1px) }
+.stu-top .stu-name { font-size: 14px; font-weight: 800; color: var(--ink); line-height: 1.2 }
+.stu-top .stu-role { font-size: 12px; color: var(--ink2); line-height: 1.2 }
+
+/* ── Общие детали страниц ─────────────────────────────────────── */
+.stu .stu-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
+.stu .stu-eb { font-family: 'PT Serif', Georgia, serif; font-style: italic; color: var(--ink2); font-size: 17px }
+.stu .stu-kicker { font-size: 12.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-h1 { font-size: clamp(30px, 4.2vw, 48px); line-height: 1.08; font-weight: 800; letter-spacing: -.02em; color: var(--ink) }
+.stu .stu-h2 { font-size: clamp(22px, 2.6vw, 30px); line-height: 1.15; font-weight: 800; letter-spacing: -.015em; color: var(--ink) }
+.stu .stu-h3 { font-size: 18px; line-height: 1.3; font-weight: 800; color: var(--ink) }
+.stu .stu-muted { color: var(--ink2) }
+.stu .stu-blue { color: var(--blueInk) }
+.stu .stu-orange { color: var(--orange) }
+.stu .stu-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 14px; font-weight: 800; font-size: 15px; transition: transform .2s, box-shadow .2s; text-align: center }
+.stu .stu-btn:hover { transform: translateY(-2px) }
+.stu .stu-btn:focus-visible, .stu .stu-focus:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px }
+.stu .stu-btn-p { background: var(--blue); color: #fff; box-shadow: 0 10px 24px rgba(47, 91, 234, .3) }
+.stu .stu-btn-o { background: var(--orange); color: #fff; box-shadow: 0 10px 24px rgba(242, 140, 40, .3) }
+.stu .stu-btn-g { background: var(--card); border: 1.5px solid var(--line); color: var(--ink) }
+.stu .stu-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 800; white-space: nowrap }
+.stu .t-blue { background: var(--blueS); color: var(--blueInk) }
+.stu .t-or { background: var(--orangeS); color: var(--orInk) }
+.stu .t-green { background: var(--greenS); color: var(--greenInk) }
+.stu .t-grey { background: var(--bg2); color: var(--ink2) }
+.stu .t-red { background: var(--redS); color: var(--redInk) }
+.stu .stu-sticker { display: block; flex: none; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(27, 31, 42, .18)) }
+.stu .stu-bar { display: block; height: 10px; border-radius: 5px; background: var(--bg2); overflow: hidden }
+.stu .stu-bar > i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--blue), var(--orange)); transform-origin: left center }
+.stu .stu-bar.thin { height: 7px }
+.stu .stu-bar.green > i { background: var(--green) }
+
+/* ── Чат-пузыри (как hero лендинга) ───────────────────────────── */
+.stu .chat { display: flex; flex-direction: column; gap: 10px }
+.stu .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 92% }
+.stu .msg .av { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden }
+.stu .msg .av img { width: 100%; height: 100%; object-fit: cover }
+.stu .bub { position: relative; padding: 12px 16px; border-radius: 18px 18px 18px 6px; background: var(--card); border: 1px solid var(--line); font-size: 16px; line-height: 1.5; box-shadow: var(--shadow) }
+.stu .bub b { color: var(--blueInk) }
+.stu .bub .txt { transition: opacity .25s }
+.stu .bub.typing .txt { opacity: 0 }
+.stu .dots { position: absolute; left: 16px; top: 50%; margin-top: -4px; display: inline-flex; gap: 4px }
+.stu .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink2); opacity: .5; animation: stu-tp 1s infinite }
+.stu .dots i:nth-child(2) { animation-delay: .15s }
+.stu .dots i:nth-child(3) { animation-delay: .3s }
+@keyframes stu-tp { 0%, 100% { transform: translateY(0); opacity: .4 } 50% { transform: translateY(-4px); opacity: 1 } }
+.stu .msg.me { align-self: flex-end; flex-direction: row-reverse }
+.stu .msg.me .bub { background: var(--blue); color: #fff; border-color: var(--blue); border-radius: 18px 18px 6px 18px }
+.stu .msg.me .av { background: var(--orangeS); font-weight: 800; color: var(--orInk); font-size: 14px }
+@media (max-width: 420px) { .stu .bub { font-size: 15px } .stu .msg { max-width: 100% } }
+
+/* ── Главная ──────────────────────────────────────────────────── */
+.stu .stu-hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 28px; align-items: center }
+.stu .stu-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 0 50px }
+@media (max-width: 420px) { .stu .stu-hero-actions { margin-left: 0 } .stu .stu-hero-actions .stu-btn { flex: 1 1 100% } }
+.stu .stu-scene { position: relative; height: 340px }
+.stu .stu-orbit { position: absolute; left: 50%; top: 50%; width: 360px; height: 150px; margin: -75px 0 0 -180px; border: 3px solid var(--orange); border-radius: 50%; transform: rotate(-22deg); opacity: .8 }
+.stu .stu-count { position: absolute; left: 50%; top: 50%; width: 240px; margin: -92px 0 0 -120px; padding: 20px; z-index: 2; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 30px 60px rgba(19, 37, 77, .22) }
+.stu .stu-count b { font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums }
+.stu .stu-float { position: absolute; z-index: 3; animation: stu-bob 5.5s ease-in-out infinite }
+@keyframes stu-bob { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-12px) rotate(3deg) } }
+@media (max-width: 900px) {
+  .stu .stu-hero { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-scene { height: 220px; order: -1 }
+  .stu .stu-orbit { width: 280px; height: 116px; margin: -58px 0 0 -140px }
+  .stu .stu-count { width: 210px; margin: -70px 0 0 -105px; padding: 16px }
+  .stu .stu-count b { font-size: 48px }
+}
+@media (max-width: 420px) { .stu .stu-scene .stu-float.s-2 { display: none } }
+
+.stu .stu-step { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0 }
+.stu .stu-step .stu-sticker { width: 80px; height: 80px; position: relative; z-index: 1 }
+.stu .stu-step.is-lock .stu-sticker { opacity: .55 }
+.stu .stu-step b { font-size: 15px; font-weight: 800 }
+.stu .stu-step small { font-size: 13px; color: var(--ink2); line-height: 1.35 }
+@media (max-width: 760px) {
+  .stu .stu-step { flex-direction: row; text-align: left; gap: 14px }
+  .stu .stu-step .stu-sticker { width: 64px; height: 64px }
+  .stu .stu-step > span { display: flex; flex-direction: column; min-width: 0 }
+}
+
+/* Карточки курсов */
+.stu .stu-courses { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px }
+.stu .stu-course { padding: 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.stu .stu-course.is-main { border: 2px solid var(--blue) }
+.stu .stu-pct { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink) }
+.stu .stu-mods { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0 }
+.stu .stu-mods li { display: grid; gap: 5px }
+.stu .stu-mods span { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13.5px }
+
+/* Плашки пробного доступа и диагностики */
+.stu .stu-note { display: flex; align-items: center; gap: 16px; padding: 16px 20px; flex-wrap: wrap }
+.stu .stu-note .stu-note-txt { flex: 1 1 240px; min-width: 0; font-size: 15.5px }
+.stu .stu-note.is-or { border-left: 5px solid var(--orange) }
+.stu .stu-note.is-blue { border-left: 5px solid var(--blue) }
+
+@media (prefers-reduced-motion: reduce) {
+  .stu .stu-float, .stu .dots i { animation: none }
+  .stu .stu-btn:hover, .stu-top .stu-icon-btn:hover { transform: none }
+}
+
+/* Знак «Орбита» (Mark из лендинга): светлая/тёмная версия по теме кабинета. */
+.stu .mark { position: relative; display: inline-block; flex: none }
+.stu .mark img { position: absolute; inset: 0; width: 100%; height: 100% }
+.stu .mark .mark-d { display: none }
+.stu[data-theme='dark'] .mark .mark-l { display: none }
+.stu[data-theme='dark'] .mark .mark-d { display: block }
+
+/* Свои правила без слоя Tailwind перебивают `md:hidden` — кнопки меню
+   (открыть в шапке, закрыть в меню) на широком экране прячем явно. */
+@media (min-width: 768px) {
+  .stu-top .stu-icon-btn.md\:hidden, .stu-side .stu-close { display: none }
+}
+
+/* ── Этап 2: посещения и календарь тем ────────────────────────── */
+/* Посещения: слева подпись, серия и легенда, справа карта; на узком — столбиком. */
+.stu .stu-activity { padding: 22px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: center; min-width: 0 }
+.stu .stu-activity-side { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+@media (max-width: 860px) { .stu .stu-activity { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-calendar { padding: 22px; display: flex; flex-direction: column; gap: 16px; min-width: 0 }
+
+/* Карта посещений: колонки-недели, клетки квадратные и тянутся по ширине —
+   на 360 px 12 недель помещаются без прокрутки. */
+.stu .stu-heat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px }
+.stu .stu-heat-days { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--ink2); line-height: 1 }
+.stu .stu-heat-days span { display: flex; align-items: center }
+.stu .stu-heat-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px }
+.stu .stu-heat-col { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px }
+.stu .stu-heat-col i, .stu .stu-heat-legend i { display: block; aspect-ratio: 1; border-radius: 5px; max-width: 26px }
+.stu .lv-0 { background: var(--bg2) }
+.stu .lv-1 { background: var(--blueS); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 25%, transparent) }
+.stu .lv-2 { background: color-mix(in srgb, var(--blue) 45%, var(--card)) }
+.stu .lv-3 { background: var(--blue) }
+.stu .lv-4 { background: var(--orange) }
+.stu .stu-heat-col i.is-future { background: transparent; box-shadow: inset 0 0 0 1px var(--line) }
+.stu .stu-heat-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--ink2) }
+.stu .stu-heat-legend li { display: inline-flex; align-items: center; gap: 5px }
+.stu .stu-heat-legend i { width: 12px; height: 12px }
+
+/* Календарь тем: недели — карточки в полосе с прокруткой вбок. */
+.stu .stu-weeks { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; list-style: none; margin: 0; padding: 2px 2px 8px; overscroll-behavior-x: contain }
+.stu .stu-week { scroll-snap-align: start; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--bg2); border: 1px solid transparent; min-width: 0 }
+.stu .stu-week.is-current { background: var(--card); border: 2px solid var(--blue); box-shadow: var(--shadow) }
+.stu .stu-week.is-past { opacity: .72 }
+.stu .stu-cal-list { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 6px 0 0; padding: 0 }
+.stu .stu-cal-topic { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 12px; font-size: 14px; font-weight: 700; line-height: 1.35 }
+.stu .stu-cal-topic.is-open { justify-content: space-between; background: var(--card); border: 1px solid var(--line); color: var(--ink) }
+.stu .stu-week.is-current .stu-cal-topic.is-open { background: var(--blueS); border-color: transparent; color: var(--blueInk) }
+.stu .stu-cal-topic.is-open:hover { border-color: var(--blue) }
+.stu .stu-cal-topic.is-locked { color: var(--ink2); font-weight: 600 }
+.stu .stu-prog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px }
+
+/* Тёмная тема: синие стикеры не тонут в navy — мягкий светлый ореол. */
+.stu[data-theme='dark'] .stu-sticker { filter: drop-shadow(0 0 10px rgba(157, 182, 255, .28)) drop-shadow(0 10px 14px rgba(0, 0, 0, .35)) }
+
+/* ── Общие детали: кольцо прогресса, строка с замком, ссылка ─────── */
+.stu .stu-ring { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: conic-gradient(var(--blue) calc(var(--p) * 1%), var(--line) 0) }
+.stu .stu-ring > span { width: 34px; height: 34px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-variant-numeric: tabular-nums }
+.stu .stu-rm-locked { display: flex; gap: 10px; align-items: flex-start; color: var(--ink2); font-size: 14px; padding: 4px 2px }
+.stu .stu-rm-locked small { font-size: 12.5px }
+.stu .stu-link { color: var(--blueInk); font-weight: 700; font-size: 14px; background: none; border: 0; cursor: pointer; padding: 0 }
+
+/* Подсказка клетки карты посещений и сегодняшний день. */
+.stu .stu-tip { position: fixed; z-index: 60; pointer-events: none; width: max-content; max-width: 240px; padding: 6px 10px; border-radius: 10px; background: var(--navy); color: #fff; font-size: 12.5px; font-weight: 700; box-shadow: 0 10px 24px rgba(19, 37, 77, .25) }
+.stu[data-theme='dark'] .stu-tip { background: #eef2fb; color: #13254d }
+.stu .stu-heat-col i { cursor: default; transition: transform .15s }
+.stu .stu-heat-col i:hover, .stu .stu-heat-col i:focus-visible { transform: scale(1.15); outline: none }
+.stu .stu-heat-col i:focus-visible { box-shadow: 0 0 0 2px var(--blue) }
+.stu .stu-heat-col i.is-today { box-shadow: 0 0 0 2px var(--orange) }
+@media (prefers-reduced-motion: reduce) { .stu .stu-heat-col i { transition: none } .stu .stu-heat-col i:hover { transform: none } }
+
+/* Плашка «Привяжи Telegram» в кабинете ученика. */
+.stu .stu-tg { position: relative; overflow: hidden; border-left: 5px solid var(--blue) }
+.stu .stu-tg-sticker { margin-top: -4px }
+.stu .stu-tg-strip { border-left: 5px solid var(--blue); color: var(--ink) }
+.stu .stu-tg-strip button, .stu .stu-tg-strip a { color: var(--blueInk); font-weight: 800 }
+@media (max-width: 420px) { .stu .stu-tg-sticker { width: 48px; height: 48px } }
+
+/* ── «Мои курсы» (письмо ЛК_стиль_мои_курсы.md) ─────────────────── */
+.stu .stu-mc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start }
+.stu .stu-mc-single { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 780px; gap: 18px }
+@media (max-width: 860px) { .stu .stu-mc-grid, .stu .stu-mc-single { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-mc { padding: 22px; display: flex; flex-direction: column; gap: 16px; transition: transform .2s, box-shadow .2s; min-width: 0 }
+.stu .stu-mc-head { display: flex; gap: 14px; align-items: flex-start }
+.stu .stu-ring-lg { width: 72px; height: 72px; flex: none; font-size: 15px }
+.stu .stu-ring-lg > span { width: 58px; height: 58px }
+.stu .stu-segs { display: flex; gap: 4px; margin-top: 8px }
+.stu .stu-seg { display: block; height: 8px; min-width: 10px; border-radius: 4px; background: var(--bg2); overflow: hidden }
+.stu .stu-seg > i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 4px }
+.stu .stu-mc-cta { justify-content: center; max-width: 100%; min-width: 0 }
+.stu .stu-mc-wait { display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px; border-radius: 14px; background: var(--bg2); color: var(--ink2); font-weight: 700; font-size: 14.5px }
+.stu .stu-mc-access { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink2); font-weight: 600 }
+.stu .stu-mc-access[data-kind='trial'], .stu .stu-mc-access[data-kind='expired'] { color: var(--orInk) }
+.stu .stu-btn-sm { min-height: 40px; padding: 0 16px; font-size: 14px }
+
+
+/* «Мои курсы», прогресс вариант «Б»: кольцо в два слоя и лестница разделов. */
+.stu .stu-mc-prog { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 18px; align-items: start }
+.stu .stu-dring { display: flex; flex-direction: column; align-items: center; gap: 4px }
+.stu .stu-dring-c { position: relative; width: 92px; height: 92px }
+.stu .stu-dring-c svg { width: 100%; height: 100%; transform: rotate(-90deg) }
+.stu .stu-dring-c b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums }
+.stu .stu-dring small { font-size: 12px; color: var(--ink2); font-weight: 600; white-space: nowrap }
+.stu .stu-steps { display: grid; gap: 8px; margin-top: 10px }
+.stu .stu-step-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 52px; gap: 12px; align-items: center; font-size: 13.5px }
+.stu .stu-step-n { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.stu .stu-step-row.is-cur .stu-step-n { color: var(--ink) }
+.stu .stu-step-row.is-future .stu-step-n { color: var(--ink2); font-weight: 500 }
+.stu .stu-step-t { display: flex; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden }
+.stu .stu-step-t i { display: block; height: 100% }
+.stu .stu-step-t .d { background: var(--blue) }
+.stu .stu-step-t .o { background: var(--blueMid) }
+.stu .stu-step-v { text-align: right; color: var(--ink2); font-variant-numeric: tabular-nums; font-weight: 700 }
+@media (max-width: 560px) {
+  .stu .stu-mc-prog { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-dring { align-self: flex-start }
+  .stu .stu-step-row { grid-template-columns: 110px minmax(0, 1fr) 44px; gap: 8px }
+}
+
+/* ── «Домашние задания» (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md) ── */
+.stu .stu-hw-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
+.stu .stu-hw-stat { padding: 14px 16px; display: flex; flex-direction: column; gap: 2px }
+.stu .stu-hw-stat b { font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums }
+.stu .stu-hw-stat span { font-size: 13px; font-weight: 700; color: var(--ink2) }
+.stu .stu-hw-stat.is-todo b { color: var(--orange) }
+.stu .stu-hw-stat.is-review b { color: var(--blueInk) }
+.stu .stu-hw-stat.is-done b { color: var(--green) }
+.stu .stu-hw { padding: 16px 18px; display: flex; align-items: center; gap: 16px; list-style: none }
+.stu .stu-hw.is-todo { border-left: 5px solid var(--orange) }
+@media (max-width: 560px) { .stu .stu-hw { flex-direction: column; align-items: stretch } }
+.stu .stu-tag-or { background: var(--orange); color: #fff }
+.stu .stu-hw-done-toggle { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; min-height: 40px; padding: 0 14px; border-radius: 12px; background: var(--greenS); color: var(--greenInk); font-weight: 800; font-size: 14px; border: 0; cursor: pointer }
+.stu .stu-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer }
+.stu .stu-chip.is-active { background: var(--blue); border-color: var(--blue); color: #fff }
+.stu .stu-chip-n { font-size: 12px; font-weight: 800; opacity: .7 }
+
+/* ── Страница курса (письмо ЛК_стиль_страница_курса.md, макет v2) ─── */
+.stu .stu-chero { padding: 26px; display: flex; flex-direction: column; gap: 18px }
+.stu .stu-chero-stat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center }
+.stu .stu-chero-cta { justify-content: space-between; gap: 12px; min-height: 54px; font-size: 16px }
+@media (max-width: 640px) {
+  .stu .stu-chero-cta { flex-direction: column; align-items: flex-start; gap: 2px; padding-top: 10px; padding-bottom: 10px }
+  .stu .stu-chero-cta > span { max-width: 100% }
+  .stu .stu-chero-cta > small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1 }
+}
+.stu .stu-people { padding: 12px 18px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center }
+.stu .stu-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; color: var(--ink2); font-weight: 600; font-size: 14px; background: none; border: 0; cursor: pointer; padding: 0; text-align: left; max-width: 100% }
+.stu .stu-back > svg { flex: none }
+.stu .stu-back:hover { color: var(--ink) }
+.stu .stu-sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px }
+.stu .stu-sc { padding: 18px; display: grid; gap: 8px; text-align: left; color: var(--ink); font: inherit; cursor: pointer; transition: border-color .2s, transform .2s; min-width: 0 }
+.stu .stu-sc:hover { border-color: var(--blue); transform: translateY(-2px) }
+.stu .stu-sc.is-current { border-color: var(--blue); box-shadow: 0 12px 28px -16px var(--blue) }
+.stu .stu-sc.is-future .stu-sc-n { color: var(--ink2) }
+.stu .stu-sc.is-future { opacity: .85 }
+.stu .stu-sc-n { font-size: 17px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere }
+.stu .stu-num { width: 30px; height: 30px; border-radius: 10px; background: var(--line); color: var(--ink2); display: grid; place-items: center; font-weight: 800; font-size: 13px }
+.stu .stu-sc.is-done .stu-num { background: var(--greenS); color: var(--greenInk) }
+.stu .stu-sc.is-current .stu-num { background: var(--blue); color: #fff }
+.stu .stu-track-lg { height: 10px; border-radius: 5px }
+.stu .stu-lgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; margin: 0; padding: 0 }
+.stu .stu-lt { flex: 1; display: grid; align-content: start; gap: 8px; min-height: 118px; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--ink); min-width: 0; transition: border-color .2s }
+a.stu-lt:hover { border-color: var(--blue) }
+.stu .stu-lt.is-hw { border-color: color-mix(in srgb, var(--orange) 50%, var(--line)); background: var(--orangeS) }
+.stu .stu-lt.is-locked { background: var(--bg2); color: var(--ink2) }
+.stu .stu-lt.is-locked b { font-weight: 600 }
+.stu .stu-lt-lock { display: flex; align-items: flex-start; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink2); line-height: 1.35; overflow-wrap: anywhere }
+.stu .stu-lt-lock > svg { flex: none; margin-top: 2px }
+.stu .stu-lt .stu-tag { max-width: 100%; white-space: normal }
+.stu .stu-tag-dash { background: transparent; color: var(--ink2); border: 1px dashed var(--line) }
+@media (max-width: 760px) { .stu .stu-sgrid, .stu .stu-lgrid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 440px) {
+  .stu .stu-sgrid, .stu .stu-lgrid { grid-template-columns: minmax(0, 1fr) }
+  .stu .stu-chero { padding: 18px }
+  .stu .stu-chero-stat { gap: 14px }
+}
+@media (prefers-reduced-motion: reduce) { .stu .stu-sc:hover { transform: none } }
+
+/* «Курсы» и «Моя подписка» без дублей (письмо 16.10) */
+.stu .stu-cc { padding: 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.stu .stu-cc.is-rec { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blueS) }
+.stu .stu-toggle { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--card); border: 1px solid var(--line) }
+.stu .stu-toggle > button { min-height: 38px; padding: 0 16px; border-radius: 999px; font-weight: 700; font-size: 14.5px; color: var(--ink2); background: none; border: 0; cursor: pointer }
+.stu .stu-toggle > button.is-on { background: var(--blue); color: #fff }
+.stu .stu-sub { padding: 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.stu .stu-sub-history { border-top: 1px solid var(--line); padding-top: 12px }
+.stu .stu-sub-history td { border-bottom: 1px solid var(--line) }
+.stu .stu-sub-history tr:last-child td { border-bottom: 0 }
+.stu .stu-sub-history-toggle { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14.5px; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer }
+.stu .stu-sub-quiet { align-self: flex-start; font-size: 13px; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 0; cursor: pointer }
+.stu .stu-sub-quiet:hover { color: var(--ink) }
+.stu .stu-note-ok { border-radius: 14px; padding: 12px 16px; background: var(--greenS); color: var(--greenInk); font-weight: 600; font-size: 15px }
+
+/* «Настройки» ученика (письмо 16.10) */
+.stu .stu-set { padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.stu .stu-set-h { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; color: var(--ink) }
+.stu .stu-set-h > svg { color: var(--blue) }
+.stu .stu-set-rows > * + * { border-top: 1px solid var(--line) }
+.stu .stu-set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0 }
+.stu .stu-note-warn { border-radius: 14px; padding: 12px 16px; background: var(--orangeS); color: var(--orInk); font-weight: 600; font-size: 14.5px }
+.stu .stu-pick { min-height: 36px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; font-size: 14px; cursor: pointer; transition: border-color .15s }
+.stu .stu-pick:hover:not(:disabled) { border-color: var(--blue) }
+.stu .stu-pick.is-on { background: var(--blue); border-color: var(--blue); color: #fff }
+.stu .stu-pick:disabled:not(.is-on) { opacity: .45; cursor: not-allowed }
+.stu .stu-input { height: 36px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 0 10px; font-size: 14px; font-weight: 600 }
+.stu .stu-input:focus { outline: none; border-color: var(--blue) }
+.stu .stu-icon-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink2); background: none; border: 0; cursor: pointer }
+.stu .stu-icon-btn:hover { background: var(--bg2); color: var(--ink) }
+.stu .stu-goal-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: var(--bg2) }
+.stu .stu-num-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px }
+.stu .stu-num-grid .stu-pick { padding: 6px 0 }
+.stu .stu-topic-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 280px; overflow: auto }
+.stu .stu-topic-pick .stu-pick { border-radius: 12px; text-align: left }
+.stu .stu-goals { padding: 22px; display: flex; flex-direction: column; gap: 14px }
+.stu .stu-goals-week { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px }
+
+/* Плитки уроков, вариант Б (письмо 16.10): строка внизу, подсказка у закрытой */
+.stu .stu-lt-foot { font-size: 13px; font-weight: 700; margin-top: auto; overflow-wrap: anywhere }
+.stu .stu-lt-foot.f-ok { color: var(--greenInk) }
+.stu .stu-lt-foot.f-hw { color: var(--orInk) }
+.stu .stu-lt-foot.f-bad { color: var(--redInk) }
+.stu .stu-lt-foot.f-rev { color: var(--ink2) }
+.stu .stu-lt-foot.f-open { color: var(--blueInk) }
+.stu .stu-lt-foot.f-lock { color: var(--ink2); font-weight: 600 }
+.stu button.stu-lt { font: inherit; cursor: pointer; width: 100% }
+.stu .stu-lt.is-locked b { color: var(--ink2) }
+.stu .stu-lt-tip { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 6px); z-index: 5; background: var(--ink); color: var(--card); font-size: 13px; font-weight: 600; padding: 8px 10px; border-radius: 10px; box-shadow: 0 8px 20px rgba(15, 22, 40, .2) }
+@media (max-width: 640px) { .stu .stu-lgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px } .stu .stu-lt { min-height: 104px; padding: 10px } }
+
+/* Модалка «Урок пройден / открыт следующий» (письмо 16.10) */
+.stu .stu-ev-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(15, 22, 40, .45); display: grid; place-items: center; padding: 16px }
+.stu .stu-ev-modal { position: relative; width: min(420px, 100%); background: var(--card); color: var(--ink); border-radius: 22px; padding: 24px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(15, 22, 40, .25); animation: stu-ev-pop .28s ease-out }
+@keyframes stu-ev-pop { from { transform: translateY(8px) scale(.97); opacity: .4 } to { transform: none; opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .stu .stu-ev-modal { animation: none } }
+.stu .stu-ev-x { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--ink2); background: none; border: 0; cursor: pointer }
+.stu .stu-ev-x:hover { background: var(--bg2) }
+.stu .stu-ev-badge { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; font-size: 26px; background: var(--greenS); color: var(--greenInk) }
+.stu .stu-ev-badge.is-blue { background: var(--blueS); color: var(--blueInk) }
+.stu .stu-ev-h { margin: 0; font-size: 20px; font-weight: 800; text-wrap: balance; padding-right: 30px }
+.stu .stu-ev-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 4px }
+.stu .stu-ev-card.is-locked { background: var(--bg2); border-color: transparent }
+.stu .stu-ev-tn { font-size: 12px; color: var(--ink2); font-weight: 700 }
+.stu .stu-ev-tt { font-weight: 700 }
+.stu .stu-ev-card.is-locked .stu-ev-tt { color: var(--ink2) }
+.stu .stu-ev-st { font-size: 13px; font-weight: 700; color: var(--blueInk) }
+.stu .stu-ev-card.is-locked .stu-ev-st { color: var(--ink2) }
+.stu .stu-ev-list { display: grid; gap: 6px }
+.stu .stu-ev-list .stu-ev-card { padding: 9px 12px }
+.stu .stu-ev-acts { display: flex; flex-wrap: wrap; gap: 10px }
+.stu .stu-ev-acts .stu-btn-p { flex: 1 }
+@media (max-width: 640px) {
+  .stu .stu-ev-scrim { place-items: end stretch; padding: 0 }
+  .stu .stu-ev-modal { width: 100%; border-radius: 22px 22px 0 0; padding: 22px 16px calc(20px + env(safe-area-inset-bottom, 0px)) }
+  .stu .stu-ev-acts { flex-direction: column }
+  .stu .stu-ev-acts .stu-btn { width: 100%; justify-content: center }
+}
+.stu .stu-lt-compact { display: none }
+@media (max-width: 640px) { .stu .stu-lt-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap } .stu .stu-lt-compact { display: inline } }
+.stu .stu-goals-empty { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--blueS); color: var(--blueInk); font-size: 14px; text-decoration: none }
+.stu .stu-goals-empty:hover { filter: brightness(.98) }
+
+/* Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10) */
+.stu .stu-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 96px; z-index: 40; display: none; flex-direction: column; align-items: stretch; gap: 4px; padding: 14px 8px; background: var(--card); border-right: 1px solid var(--line) }
+@media (min-width: 768px) { .stu .stu-rail { display: flex } }
+.stu .stu-rail-logo { display: grid; place-items: center; margin: 2px 0 10px }
+.stu .stu-rail-item { position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 14px; color: var(--ink2); font-size: 12px; font-weight: 700; background: none; border: 0; cursor: pointer; text-decoration: none }
+.stu .stu-rail-item:hover { background: var(--bg2); color: var(--ink) }
+.stu .stu-rail-item[data-active] { background: var(--blueS); color: var(--blueInk) }
+.stu .stu-nav-dot { position: absolute; top: -6px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
+.stu .stu-more-pop { position: absolute; left: calc(100% + 10px); bottom: 0; width: 290px; max-width: calc(100vw - 120px); z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
+.stu .stu-head-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 24px)); z-index: 60; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px; box-shadow: 0 12px 30px rgba(15, 22, 40, .16) }
+.stu .stu-more-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.stu .stu-more-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; color: var(--ink); font-weight: 700; font-size: 14.5px; background: none; border: 0; cursor: pointer }
+.stu .stu-more-item:hover { background: var(--bg2) }
+.stu .stu-more-item > svg { color: var(--ink2); flex: none }
+.stu .stu-more-tag { flex: none; font-size: 11.5px; font-weight: 700; color: var(--ink2); background: var(--bg2); border-radius: 999px; padding: 2px 8px; white-space: nowrap }
+.stu .stu-ava-btn { border-radius: 999px; padding: 0; background: none; border: 0; cursor: pointer }
+.stu .stu-bell-dot { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; line-height: 1 }
+.stu .stu-bell-pop { width: min(360px, calc(100vw - 24px)) }
+.stu .stu-bell-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow: auto }
+.stu .stu-bell-item { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-radius: 10px; color: var(--ink); background: none; border: 0; cursor: pointer }
+.stu .stu-bell-item:hover { background: var(--bg2) }
+.stu .stu-bell-item.is-new { background: var(--blueS) }
+.stu .stu-bell-all { display: block; margin-top: 6px; padding: 10px; border-top: 1px solid var(--line); text-align: center; color: var(--blueInk); font-weight: 700; font-size: 14px }
+/* Телефон: нижняя панель на 5 мест и лист «Ещё» */
+.stu .stu-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 4px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--card); border-top: 1px solid var(--line) }
+@media (min-width: 768px) { .stu .stu-tabbar { display: none } }
+.stu .stu-tab { position: relative; display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--ink2); font-size: 11.5px; font-weight: 700; background: none; border: 0; cursor: pointer; text-decoration: none; min-height: 48px }
+.stu .stu-tab[data-active] { color: var(--blueInk) }
+.stu .stu-sheet-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(15, 22, 40, .45); display: flex; align-items: flex-end }
+.stu .stu-sheet { width: 100%; background: var(--card); color: var(--ink); border-radius: 22px 22px 0 0; padding: 14px 10px calc(16px + env(safe-area-inset-bottom, 0px)) }
+.stu .stu-sheet .stu-more-item { padding: 13px 12px; font-size: 15.5px }
+@media (max-width: 767px) {
+  .stu .stu-main { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) }
+  /* Плавающие кнопки угла — над нижней панелью */
+  .stu .fab-slot-0 { bottom: calc(var(--fab-slot-0) + 66px + env(safe-area-inset-bottom, 0px)) }
+  .stu .fab-slot-1 { bottom: calc(var(--fab-slot-1) + 66px + env(safe-area-inset-bottom, 0px)) }
+}
+
+/* ── Главная «как в Notion» (письмо ЛК_стиль_главная_как_notion.md, 16.10) ──
+   Композиция Notion — обложка, аватар поверх, заголовок, строка свойств, виджеты,
+   списки с галочками; цвета, шрифты, радиусы и 3D-стикеры — свои, лендинга. */
+.stu .stu-nsheet { overflow: hidden; padding: 0 }
+.stu .stu-cover { position: relative; height: 196px; background: var(--bg2) }
+.stu .stu-cover-img, .stu .stu-cover-grad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover }
+.stu .stu-cover-st { position: absolute; animation: stu-cover-bob 7s ease-in-out infinite }
+@keyframes stu-cover-bob { 0%, 100% { translate: 0 0 } 50% { translate: 0 -8px } }
+@media (prefers-reduced-motion: reduce) { .stu .stu-cover-st { animation: none } }
+.stu .stu-cover-ctl { position: absolute; right: 14px; bottom: 12px; z-index: 3 }
+.stu .stu-cover-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 10px; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .88); color: #1b1f2a; font-size: 12.5px; font-weight: 800; opacity: 0; transition: opacity .2s }
+.stu .stu-cover:hover .stu-cover-btn, .stu .stu-cover-btn:focus-visible, .stu .stu-cover-btn[aria-expanded="true"] { opacity: 1 }
+@media (hover: none), (max-width: 640px) {
+  .stu .stu-cover-btn { opacity: 1; padding: 7px }
+  .stu .stu-cover-btn-t { display: none }
+}
+.stu .stu-cover-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(300px, calc(100vw - 48px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  padding: 10px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 12px 30px rgba(15, 22, 40, .18) }
+.stu .stu-cover-pick { display: grid; gap: 4px; padding: 4px; border-radius: 10px; border: 0; background: none; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer }
+.stu .stu-cover-pick[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--blue) }
+.stu .stu-cover-thumb { position: relative; display: block; height: 44px; border-radius: 8px; overflow: hidden }
+
+.stu .stu-nhead { position: relative; padding: 0 clamp(16px, 4vw, 44px) 20px }
+.stu .stu-nava { width: 92px; height: 92px; margin-top: -46px; border-radius: 26px; border: 4px solid var(--card); background: linear-gradient(135deg, var(--blue), #6f95ff);
+  color: #fff; display: grid; place-items: center; font-size: 32px; font-weight: 800; overflow: hidden; position: relative; z-index: 2; box-shadow: var(--shadow) }
+.stu .stu-nava img { width: 100%; height: 100%; object-fit: cover }
+.stu .stu-nhead-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-top: 12px }
+.stu .stu-ntitle { margin: 0; font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; line-height: 1.15; letter-spacing: -.01em; min-width: 0; overflow-wrap: anywhere }
+.stu .stu-nprops { display: flex; flex-wrap: wrap; gap: 8px 22px; list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px }
+.stu .stu-nprops li { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; min-width: 0; max-width: 100% }
+.stu .stu-nprop-v > span { max-width: 100% }
+.stu .stu-nprops .stu-sticker { filter: none }
+.stu .stu-nprop-v { font-weight: 800; min-width: 0 }
+.stu .stu-nchip { display: inline-block; padding: 2px 10px; border-radius: 8px; background: var(--blueS); color: var(--blueInk); font-size: 13px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle }
+.stu a.stu-nchip:hover { filter: brightness(.97) }
+.stu .stu-nchip.is-static { background: var(--card); color: var(--ink) }
+.stu .stu-nhead .stu-tg-strip { margin-top: 14px; box-shadow: none; border-radius: 14px; padding: 8px 14px }
+
+.stu .stu-widgets { display: grid; grid-template-columns: 1.15fr 1fr 1.25fr; gap: 16px; align-items: stretch }
+@media (max-width: 1080px) { .stu .stu-widgets { grid-template-columns: 1fr 1fr } .stu .stu-w-cal { grid-column: 1 / -1 } }
+@media (max-width: 640px) { .stu .stu-widgets { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-w { padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.stu .stu-w-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-w-t .stu-sticker { filter: none }
+.stu .stu-w-exam { background: var(--orangeS); border-color: transparent }
+.stu .stu-w-big { margin: 0; font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums }
+.stu .stu-w-big small { margin-left: 8px; font-size: 17px; font-weight: 800; letter-spacing: 0; color: var(--ink2) }
+.stu .stu-w-bar { display: block; height: 7px; border-radius: 99px; background: var(--card); overflow: hidden }
+.stu .stu-w-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--blue), var(--orange)) }
+.stu .stu-flip { display: flex; gap: 10px }
+.stu .stu-flip span { position: relative; flex: 1; padding: 18px 0 14px; border-radius: 16px; text-align: center; font-size: 76px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; background: var(--navy); color: #fff; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18) }
+.stu .stu-flip span::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(255, 255, 255, .14) }
+.stu .stu-quote { margin: 2px 0 0; padding-left: 10px; border-left: 3px solid var(--orange); font-size: 14px; line-height: 1.45 }
+.stu .stu-w-nav { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer }
+.stu .stu-w-nav:disabled { opacity: .35; cursor: default }
+.stu .stu-mcal { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed }
+.stu .stu-mcal th { font-size: 11px; font-weight: 700; color: var(--ink2) }
+.stu .stu-mcal td { height: 30px; border-radius: 8px; text-align: center; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink) }
+.stu .stu-mcal td.lv-3, .stu .stu-mcal td.lv-4 { color: #fff }
+.stu .stu-mcal td.is-out { background: transparent }
+.stu .stu-mcal td.is-future { background: transparent; color: var(--ink2); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line) }
+.stu .stu-mcal td.is-today { box-shadow: inset 0 0 0 2px var(--ink) }
+.stu .stu-mcal td { padding: 0 }
+.stu .stu-mcal-d { display: block; width: 100%; height: 30px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer }
+.stu .stu-mcal-d:hover { box-shadow: inset 0 0 0 2px var(--blue) }
+.stu .stu-mcal td.is-picked { outline: 2.5px solid var(--orange); outline-offset: 1px }
+.stu .stu-mcal-info { margin: 0; min-height: 34px; padding: 7px 10px; border-radius: 10px; background: var(--bg2); font-size: 13.5px; font-weight: 700; color: var(--ink) }
+.stu .stu-clock-day { display: flex; justify-content: space-between; gap: 8px; margin: 0; font-size: 17px; font-weight: 800; color: var(--ink) }
+.stu .stu-clock-day > span:first-child::first-letter { text-transform: uppercase }
+
+.stu .stu-ntwo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px }
+@media (max-width: 860px) { .stu .stu-ntwo { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-nblock { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px 20px; border-radius: var(--r); background: var(--card); border: 1px solid var(--line) }
+.stu .stu-nblock-h { display: flex; align-items: center; justify-content: space-between; gap: 10px }
+.stu .stu-nblock-h h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 19px; font-weight: 800 }
+.stu .stu-checks { list-style: none; margin: 0; padding: 0; display: grid }
+.stu .stu-checks li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; font-weight: 600; min-width: 0 }
+.stu .stu-checks li:last-child { border-bottom: 0 }
+.stu .stu-cbx { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid color-mix(in srgb, var(--ink2) 70%, transparent); font-size: 12px; font-weight: 900; color: #fff }
+.stu .stu-cbx.on { background: var(--blue); border-color: var(--blue) }
+
+.stu .stu-ncards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; margin: 0; padding: 0 }
+@media (max-width: 860px) { .stu .stu-ncards { grid-template-columns: minmax(0, 1fr) } }
+.stu .stu-ncard { flex: 1; display: grid; grid-template-rows: auto 1fr; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; min-width: 0; padding: 0; font: inherit; transition: border-color .2s }
+.stu a.stu-ncard:hover { border-color: var(--blue) }
+.stu .stu-ncard-ph { display: grid; place-items: center; height: 82px; background: linear-gradient(135deg, var(--blueS), var(--orangeS)) }
+.stu .stu-ncard-b { display: grid; gap: 6px; align-content: start; padding: 12px 14px 14px; min-width: 0 }
+.stu .stu-ncard-m { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.stu .stu-ncard.is-locked { background: var(--bg2); color: var(--ink2); cursor: pointer }
+.stu .stu-ncard.is-locked .stu-ncard-ph { filter: grayscale(.4); opacity: .8 }
+@media (max-width: 640px) {
+  .stu .stu-cover { height: 140px }
+  .stu .stu-cover-st { scale: .65; transform-origin: top right }
+  .stu .stu-nava { width: 76px; height: 76px; margin-top: -38px; border-radius: 22px; font-size: 26px }
+  .stu .stu-w-big { font-size: 52px }
+  .stu .stu-flip span { font-size: 64px }
+  .stu .stu-ncard { grid-template-rows: auto; grid-template-columns: 76px minmax(0, 1fr) }
+  .stu .stu-ncard-ph { height: auto }
+  /* Строка Telegram: текст на всю ширину, кнопки — следующей строкой. */
+  .stu .stu-nhead .stu-tg-strip > .flex-1 { flex-basis: calc(100% - 40px) }
+  .stu .stu-nhead .stu-tg-strip > button:first-of-type { margin-left: 38px }
+  .stu .stu-nprops { gap: 8px }
+  .stu .stu-nprops li { width: 100% }
+}
+
+/* ── «Прогноз ЕГЭ» (письмо ЛК_виджет_прогноз_балла.md, 17.10): заголовок и одно
+   крупное значение — диапазон; данных мало — «0». На главной — под «До ЕГЭ» и
+   часами (календарь на две строки), в шапке курса — компактно. */
+@media (min-width: 1081px) {
+  .stu .stu-widgets.has-fc .stu-w-cal { grid-row: span 2 }
+  .stu .stu-widgets.has-fc .stu-w-fc { grid-column: 1 / 3 }
+}
+@media (max-width: 1080px) and (min-width: 641px) { .stu .stu-widgets .stu-w-fc { grid-column: 1 / -1 } }
+.stu .stu-w-fc { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px }
+.stu .stu-fc { display: grid; gap: 4px; align-content: start; min-width: 0 }
+.stu .stu-w-fc .stu-fc + .stu-fc { padding-left: 16px; border-left: 1px solid var(--line) }
+@media (max-width: 640px) { .stu .stu-w-fc .stu-fc + .stu-fc { padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--line) } }
+.stu .stu-fc-t { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-fc-t .stu-sticker { filter: none }
+.stu .stu-fc-v { margin: 0; font-size: 56px; font-weight: 800; line-height: 1.05; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink) }
+.stu .stu-fc.is-compact { padding: 10px 14px; border-radius: 16px; background: var(--blueS); text-align: right }
+.stu .stu-fc.is-compact .stu-fc-t { font-size: 11px; justify-content: flex-end }
+.stu .stu-fc.is-compact .stu-fc-v { font-size: 30px; color: var(--blueInk) }
+@media (max-width: 640px) { .stu .stu-fc-v { font-size: 48px } .stu .stu-fc.is-compact .stu-fc-v { font-size: 24px } }
+
+/* Шапка курса: прогноз отдельной строкой (жалоба 17.10). На компьютере —
+   компактная карточка слева, на телефоне — во всю ширину; иконка курса меньше. */
+.stu .stu-chero-fc { display: flex; margin-top: -6px }
+.stu .stu-chero-fc .stu-fc.is-compact { text-align: left; display: inline-grid; grid-template-columns: auto auto; align-items: baseline; gap: 4px 14px }
+.stu .stu-chero-fc .stu-fc.is-compact .stu-fc-t { justify-content: flex-start }
+@media (max-width: 640px) {
+  .stu .stu-chero-st { width: 44px; height: 44px }
+  .stu .stu-chero-fc .stu-fc.is-compact { flex: 1; grid-template-columns: minmax(0, 1fr) auto }
+}
+@media (max-width: 420px) {
+  /* Узкий телефон: кольцо над текстом, иначе текст идёт по 2–3 слова в строке. */
+  .stu .stu-chero-stat { grid-template-columns: minmax(0, 1fr); justify-items: start }
+}

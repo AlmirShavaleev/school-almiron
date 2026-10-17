@@ -6,6 +6,14 @@ import { useAuthStore } from '@/store/authStore'
 import { resetCuratorshipsCache } from '@/hooks/useMyCuratorships'
 import { useStaffModeStore } from '@/store/staffModeStore'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 /**
  * Ученик-куратор входит как ученик — меню рисуется его ролью, и раздать
  * пункты кураторства через `roles` невозможно: там `student`. Проверяем, что

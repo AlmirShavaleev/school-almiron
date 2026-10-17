@@ -12,7 +12,7 @@
 import { parseBunnyVideoUrl } from './bunnyVideoUrl'
 import { dueDateKey } from './homeworkDeadline'
 import { isTopicOpen, willOpenByDate, type TopicOpenState } from './topicAvailability'
-import { dayMonthShort, shortDayLabel } from './studentCalendar'
+import { dayMonthShort, shortDayLabel } from './dayLabels'
 import type { TopicSection } from './topicMaterialItems'
 import type { TopicHwStatus } from './studentProgram'
 
@@ -138,6 +138,8 @@ export interface LessonStatus {
  */
 export function lessonStatus(topic: LessonCardTopic, today: string, openToday?: string): LessonStatus | null {
   if (!isTopicOpen(topic, openToday)) {
+    // §288: курс «по прохождению» — подпись из базы («после урока «N»» / дата)
+    if (topic.progress) return { label: topic.progress.note ?? 'Откроется позже', tone: 'locked' }
     const day = willOpenByDate(topic, openToday)
     return { label: day ? `Откроется ${dayMonthShort(day)}` : 'Откроется позже', tone: 'locked' }
   }

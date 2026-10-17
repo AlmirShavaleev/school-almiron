@@ -70,7 +70,8 @@ describe('MyCoursesPage — идущий пробник на карточке к
     const alert = await screen.findByTestId('mock-alert')
     const cards = screen.getAllByTestId('course-card')
     expect(cards).toHaveLength(2)
-    expect(cards[0]).toHaveTextContent('Песочница — пробник (тест)')
+    // Служебная пометка «(тест)» в названии ученику не показывается (письмо 15.10).
+    expect(cards[0]).toHaveTextContent('Песочница — пробник')
     expect(within(cards[0]).getByTestId('mock-alert')).toBe(alert)
     expect(within(cards[1]).queryByTestId('mock-alert')).toBeNull()
     expect(alert).toHaveTextContent('Идёт пробник «№1»')

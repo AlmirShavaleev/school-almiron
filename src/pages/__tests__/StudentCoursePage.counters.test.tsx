@@ -74,21 +74,25 @@ function renderPage() {
 }
 
 describe('StudentCoursePage — счётчики', () => {
+  // Шапка курса в стиле ЛК (письмо 15.10). Прогресса с сервера в этих тестах
+  // нет — шапка считает по программе (счётчики §280: пройдено / в счёт / открыто).
   it('§280: главный счётчик — пройденные темы; закрытые в знаменателе, открытые пустые нет', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
+    expect(await screen.findByTestId('course-topics-counter')).toHaveTextContent('пройдено 0 из 2 · 2 можно делать сейчас')
   })
 
-  it('при нуле опубликованных ДЗ строка говорит словами, а не пустует', async () => {
+  it('нет ДЗ ни к сдаче, ни на проверке — плашек ДЗ нет (словами только ненулевые)', async () => {
     renderPage()
-    expect(await screen.findByTestId('course-homework-counter'))
-      .toHaveTextContent('Домашних заданий пока нет')
+    await screen.findByTestId('course-topics-counter')
+    expect(screen.queryByTestId('course-hw-chips')).toBeNull()
   })
 
-  it('раздел в списке считает тем же правилом, что и курс', async () => {
+  it('плитка раздела считает тем же правилом, что и курс', async () => {
     renderPage()
-    expect(await screen.findByTestId('module-topics-counter')).toHaveTextContent('Пройдено 0 из 2 темы · открыто 2')
-    expect(screen.getByTestId('module-homework-counter')).toHaveTextContent('Домашних заданий пока нет')
+    const tile = (await screen.findAllByTestId('module-card'))[0]
+    expect(tile).toHaveTextContent('Раздел 1')
+    expect(tile).toHaveTextContent('0/2')
+    expect(tile).toHaveTextContent('2 открыто')
   })
 
   it('слова «заданий» там, где считаются темы, больше нет', async () => {
@@ -98,31 +102,20 @@ describe('StudentCoursePage — счётчики', () => {
     expect(container.textContent).not.toMatch(/\d+ \/ \d+ заданий/)
   })
 
-  it('неделя по учебному плану монтируется на странице курса и фильтруется по нему (§151)', async () => {
-    const week: StudentWeekCourse = {
-      course_id: 'c1', group_id: 'g1', course_title: 'Физика ЕГЭ 11А', subject: 'physics',
-      week_no: 1, weeks_total: 10, week_start: '2026-09-07', week_end: '2026-09-13',
-      deadline: '2026-09-13T21:00:00+00:00',
-      topics: [{ topic_id: 't1', title: 'Тема недели', open_now: true, hw_published: false, hw_status: 'none', done: false, marked: false }],
-    }
-    useStudentWeekPlanMock.mockReturnValue({
-      courses: [week, { ...week, course_id: 'other', topics: [{ ...week.topics[0], title: 'Чужая тема' }] }],
-      loading: false, error: null,
-    })
+  it('блока «Неделя N» на странице курса нет — даты у плиток уроков (письмо 16.10)', async () => {
     renderPage()
-    const block = await screen.findByTestId('student-week-plan')
-    expect(block).toHaveTextContent('Тема недели')
-    expect(block).not.toHaveTextContent('Чужая тема')
+    await screen.findByTestId('course-topics-counter')
+    expect(screen.queryByTestId('student-week-plan')).toBeNull()
   })
 })
 
 describe('StudentCoursePage — склонение', () => {
-  it('счётчик тем согласует слово со вторым числом', async () => {
-    // Обращение ученика 09.09: «2 тем» вместо «2 темы». Слово стоит рядом со
-    // ВТОРЫМ числом, с ним и согласуется.
+  it('подпись программы согласует слова с числами', async () => {
+    // Обращение ученика 09.09: «2 тем» вместо «2 темы» — правило то же.
     renderPage()
-    const counter = await screen.findByTestId('course-topics-counter')
-    expect(counter).toHaveTextContent('из 2 темы')
-    expect(counter.textContent).not.toMatch(/из 2 тем(?!ы)/)
+    const tiles = await screen.findByTestId('section-tiles')
+    const note = tiles.parentElement!.textContent ?? ''
+    expect(note).toMatch(/1 раздел · 2 урока с ДЗ/)
+    expect(note).not.toMatch(/2 уроков/)
   })
 })

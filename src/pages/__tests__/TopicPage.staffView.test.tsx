@@ -7,8 +7,7 @@ import { StudentViewScope, useStaffModeStore } from '@/store/staffModeStore'
  * §250. Страница темы ученика, встроенная во вкладку «Курс» у ОБЫЧНОГО учителя
  * (не admin/owner — у него переключателя режимов нет вовсе): под
  * `StudentViewScope` она работает как предпросмотр §178 — ученическая вёрстка,
- * сдать ДЗ нельзя (кнопка выключена), отметить рубрику нельзя, ни одной
- * записи в базу; своей шапки ученика («Назад», «Мои курсы ›») нет — на её
+ * сдать ДЗ нельзя (кнопка выключена), ни одной записи в базу; своей шапки ученика («Назад», «Мои курсы ›») нет — на её
  * месте полоса учителя. Неопубликованное ДЗ ученику не видно — и здесь его нет.
  */
 
@@ -106,20 +105,18 @@ describe('Тема глазами ученика во вкладке «Курс�
     expect(screen.getByTestId('staff-bar')).toBeInTheDocument()
     expect(screen.queryByText('Мои курсы')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Назад/ })).not.toBeInTheDocument()
-    expect(screen.getByTestId('topic-tab-group-theory')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'true')
     // Строку students не ищет: у учителя её нет, тема — под его RLS.
     expect(queried).not.toContain('students')
   })
 
-  it('«Отметить как сделанное» выключено с подсказкой; «Сдать ДЗ» выключено; ничего не пишется', async () => {
+  it('«Сдать ДЗ» выключено; самоотметки нет; ничего не пишется', async () => {
     renderEmbedded()
-    const mark = await screen.findByTestId('topic-group-mark-theory')
-    expect(mark).toBeDisabled()
-    expect(mark).toHaveAttribute('title', 'В предпросмотре не сохраняется')
-    fireEvent.click(mark)
-    expect(mark).toHaveAttribute('aria-pressed', 'false')
+    await screen.findByTestId('topic-seg-theory')
+    // Самоотметки на странице нет вовсе (владелец 15.10).
+    expect(screen.queryByRole('button', { name: /Отметить/ })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: /Домашнее задание/ }))
+    fireEvent.click(screen.getByTestId('topic-seg-homework'))
     const start = await screen.findByTestId('hw-start-attempt')
     expect(start).toBeDisabled()
     fireEvent.click(start)
@@ -129,11 +126,12 @@ describe('Тема глазами ученика во вкладке «Курс�
     expect(written).toEqual([])
   })
 
-  it('неопубликованное ДЗ ученику не видно — и во «Курсе» вкладки «Домашнее задание» нет', async () => {
+  it('неопубликованное ДЗ ученику не видно — и во «Курсе» раздела «ДЗ» нет', async () => {
     hwRow.is_published = false
     renderEmbedded()
     await screen.findByRole('heading', { name: 'Отбор корней' })
-    await waitFor(() => expect(screen.getByTestId('topic-tab-group-theory')).toBeInTheDocument())
-    expect(screen.queryByRole('tab', { name: /Домашнее задание/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('topic-seg-theory')).toBeInTheDocument())
+    expect(screen.queryByTestId('topic-seg-homework')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-section-homework')).not.toBeInTheDocument()
   })
 })

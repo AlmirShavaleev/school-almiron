@@ -29,6 +29,10 @@ vi.mock('@/hooks/useCatalog', async (orig) => ({
   useCatalogPhysicsTopicSections: () => ({ sections: [], loading: false, error: null }),
 }))
 
+// Флаг подписки (выкатка в main, 16.10): тексты замков зависят от него; по умолчанию включён.
+const subsFlag = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/hooks/useSubscription', () => ({ useSubscriptionsEnabled: () => ({ enabled: subsFlag.enabled, loading: false }) }))
+
 import { CatalogPage } from '@/pages/catalog/CatalogPage'
 
 const n = (spec: Array<[number, number, number?]>) =>
@@ -184,6 +188,30 @@ describe('CatalogHome — пока цифр нет', () => {
     expect(within(card('Физика ОГЭ')).getByRole('link')).toHaveAttribute('href', '/catalog?subject=physics&exam=oge')
   })
 
+  it('§292: предмет без подписки — замок «Откроется с подпиской», номера и карточка не ссылки; остальные — как были', () => {
+    state.role = 'student'
+    const r = raw('active')
+    ;(r.exams[0] as Record<string, unknown>).locked = true   // Математика ЕГЭ
+    state.hook = { overview: normalizeCatalogOverview(r) as CatalogOverview, loading: false, error: null, retry: vi.fn() }
+    render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
+    const lockedCard = screen.getAllByTestId('exam-card').find(c => c.dataset.exam === 'Математика ЕГЭ')!
+    expect(lockedCard).toHaveAttribute('data-locked', 'true')
+    expect(within(lockedCard).getByTestId('exam-locked')).toHaveTextContent('Откроется с подпиской')
+    expect(within(lockedCard).queryAllByRole('link')).toHaveLength(0)
+    const open = screen.getAllByTestId('exam-card').find(c => c.dataset.exam === 'Физика ЕГЭ')!
+    expect(open).toHaveAttribute('data-locked', 'false')
+    expect(within(open).getByRole('link', { name: /Физика ЕГЭ/ })).toHaveAttribute('href', '/catalog?subject=physics&exam=ege')
+  })
+
+  it('§292: закрыто всё (CATALOG_LOCKED) — плашка вместо красной ошибки и разделов', () => {
+    state.role = 'student'
+    state.hook = { overview: null, loading: false, error: null, locked: true, retry: vi.fn() } as typeof state.hook
+    render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
+    expect(screen.getByTestId('catalog-locked')).toHaveTextContent('Банк задач откроется с подпиской')
+    expect(screen.queryByTestId('catalog-home-error')).toBeNull()
+    expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
+  })
+
   it('ошибка функции: страница живая, «Повторить» перезапрашивает', () => {
     const retry = vi.fn()
     state.role = 'student'
@@ -193,5 +221,14 @@ describe('CatalogHome — пока цифр нет', () => {
     expect(screen.getAllByTestId('exam-card')).toHaveLength(4)
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(retry).toHaveBeenCalledTimes(1)
+  })
+  it('§290/§292: банк закрыт целиком — плашка CatalogLockedNotice вместо разделов', () => {
+    state.role = 'student'
+    state.hook = { overview: null, loading: false, error: null, locked: true, retry: vi.fn() } as typeof state.hook
+    render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
+    expect(screen.getByTestId('catalog-locked')).toHaveTextContent('Банк задач откроется с подпиской')
+    // CATALOG_SUBSCRIBE_HREF = null в этой ветке — кнопки оформления нет
+    expect(screen.queryByTestId('catalog-locked-subscribe')).toBeNull()
+    expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
   })
 })

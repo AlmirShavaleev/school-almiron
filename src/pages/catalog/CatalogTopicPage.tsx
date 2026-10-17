@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useSectionLocked } from '@/lib/catalogLock'
+import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { ChevronLeft, CheckCircle2, BookOpen, AlertCircle, RefreshCw, Sparkles, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 
@@ -48,6 +50,7 @@ export function CatalogTopicPage() {
   const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
   const examSection = sections.find(s => s.id === sectionId)
   const aiSection = aiSections.find(s => s.id === sectionId)
+  const sectionLocked = useSectionLocked(isPhysicsTopicsView ? null : sectionId)
   const { topics } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
 
   const topic   = topics.find(t => t.id === topicId)
@@ -118,6 +121,8 @@ export function CatalogTopicPage() {
   // переключении темы серым закрывалось всё: хлебные крошки, левый список тем
   // и фильтры — то есть ровно то, что не менялось. На четыре секунды это
   // выглядело как поломка, хотя менялся один блок.
+  // §292: закрытый по подписке предмет по прямой ссылке — плашка, не пустой список и не ошибка
+  if (sectionLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
   if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (

@@ -7,6 +7,8 @@ import { telegramBenefit, telegramPromptFor } from '@/lib/telegramOnboarding'
 import { fetchOwnTelegramLinked, requestTelegramLink, sendTelegramTest, startCommandFor } from '@/lib/telegramLinkApi'
 import { TelegramLinkWaiting } from '@/components/shared/TelegramLinkWaiting'
 import { toast } from '@/store/toastStore'
+import { Sticker } from '@/components/student/skin/Sticker'
+import { cn } from '@/utils/cn'
 
 /**
  * Сколько ждём возвращения человека из Telegram. Привязку подтверждает бот на
@@ -17,7 +19,16 @@ import { toast } from '@/store/toastStore'
 const POLL_TOTAL_MS    = 120_000
 const POLL_INTERVAL_MS = 3_000
 
-export function TelegramOnboarding() {
+/**
+ * `skin` — кабинет ученика в стиле лендинга (письмо 14.10): карточка с
+ * 3D-стикером «Telegram» и кнопками лендинга. Персоналу — прежний вид.
+ */
+/**
+ * `compact` — одной строкой (главная ученика «как в Notion», письмо 16.10:
+ * под строкой свойств, а не карточкой над всем). Правило «кому показывать»
+ * то же; «Позже» — там, где у карточки был выбор отложить.
+ */
+export function TelegramOnboarding({ skin = false, compact = false }: { skin?: boolean; compact?: boolean } = {}) {
   const profile = useAuthStore(s => s.profile)
   const { dismissed, dismiss } = useTelegramOnboardingDismissed()
 
@@ -112,14 +123,15 @@ export function TelegramOnboarding() {
 
   const { title, body } = telegramBenefit(profile?.role)
 
-  if (prompt === 'strip') {
+  if (prompt === 'strip' || compact) {
     return (
       <div
         data-testid="tg-onboarding-strip"
-        className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-primary-200
-                   bg-primary-50/70 px-3.5 py-2 text-sm text-primary-900"
+        className={skin
+          ? `stu-card stu-tg-strip ${compact ? '' : 'mb-4 '}flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm`
+          : 'mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-primary-200 bg-primary-50/70 px-3.5 py-2 text-sm text-primary-900'}
       >
-        <Send size={15} className="shrink-0 text-primary-700" />
+        {skin ? <Sticker name="telegram" size={compact ? 26 : 32} /> : <Send size={15} className="shrink-0 text-primary-700" />}
         {phase === 'waiting' && linkUrl ? (
           <a
             href={linkUrl}
@@ -142,14 +154,22 @@ export function TelegramOnboarding() {
           </>
         ) : (
           <>
-            <span className="min-w-0 flex-1">Telegram не привязан — уведомления не приходят.</span>
+            <span className="min-w-0 flex-1">
+              {compact && prompt === 'card'
+                ? <><b>Привяжи Telegram</b> — будешь сразу узнавать о ДЗ, оценках и сроках.</>
+                : 'Telegram не привязан — уведомления не приходят.'}
+            </span>
             <button
               onClick={handleConnect}
               disabled={busy}
+              data-testid="tg-onboarding-connect"
               className="shrink-0 font-semibold text-primary-800 hover:text-primary-950 disabled:opacity-50"
             >
               {busy ? 'Ожидаем…' : 'Привязать'}
             </button>
+            {compact && prompt === 'card' && (
+              <button onClick={dismiss} className="stu-muted shrink-0 text-[13px] font-semibold hover:opacity-70">Позже</button>
+            )}
           </>
         )}
       </div>
@@ -159,17 +179,22 @@ export function TelegramOnboarding() {
   return (
     <div
       data-testid="tg-onboarding-card"
-      className="mb-4 rounded-2xl border border-primary-200 bg-gradient-to-br from-primary-50 to-white
-                 p-4 sm:p-5 shadow-sm"
+      className={skin
+        ? 'stu-card stu-tg mb-5 p-4 sm:p-5'
+        : 'mb-4 rounded-2xl border border-primary-200 bg-gradient-to-br from-primary-50 to-white p-4 sm:p-5 shadow-sm'}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-800 text-white">
-          <Send size={18} />
-        </div>
+      <div className={skin ? 'flex items-start gap-4' : 'flex items-start gap-3'}>
+        {skin ? (
+          <Sticker name="telegram" size={64} className="stu-tg-sticker" />
+        ) : (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-800 text-white">
+            <Send size={18} />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-bold leading-tight text-graphite-950">{title}</h3>
-          <p className="mt-1 text-sm leading-snug text-slate-600">{body}</p>
+          <h3 className={skin ? 'stu-h3 leading-tight' : 'text-[15px] font-bold leading-tight text-graphite-950'}>{title}</h3>
+          <p className={skin ? 'stu-muted mt-1 text-[14.5px] leading-snug' : 'mt-1 text-sm leading-snug text-slate-600'}>{body}</p>
 
           {phase === 'waiting' && linkUrl ? (
             <div className="mt-3">
@@ -197,8 +222,9 @@ export function TelegramOnboarding() {
                 onClick={handleConnect}
                 disabled={busy}
                 data-testid="tg-onboarding-connect"
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-800 px-4 py-2
-                           text-sm font-bold text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+                className={skin
+                  ? 'stu-btn stu-btn-p disabled:opacity-50'
+                  : 'inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-800 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-primary-700 disabled:opacity-50'}
               >
                 {busy && <Loader2 size={14} className="animate-spin" />}
                 Привязать Telegram
@@ -206,14 +232,14 @@ export function TelegramOnboarding() {
 
               <button
                 onClick={dismiss}
-                className="rounded-xl px-3 py-2 text-sm text-slate-500 transition-colors hover:text-slate-700"
+                className={skin ? 'stu-btn stu-btn-g' : 'rounded-xl px-3 py-2 text-sm text-slate-500 transition-colors hover:text-slate-700'}
               >
                 Позже
               </button>
 
               <Link
                 to="/settings"
-                className="px-1 text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline sm:ml-auto"
+                className={cn('px-1 text-xs underline-offset-2 hover:underline sm:ml-auto', skin ? 'stu-muted' : 'text-slate-400 hover:text-slate-600')}
               >
                 Настройки уведомлений
               </Link>
@@ -224,7 +250,7 @@ export function TelegramOnboarding() {
         <button
           onClick={dismiss}
           aria-label="Скрыть"
-          className="shrink-0 text-slate-400 transition-colors hover:text-slate-600"
+          className={skin ? 'stu-muted shrink-0 transition-opacity hover:opacity-70' : 'shrink-0 text-slate-400 transition-colors hover:text-slate-600'}
         >
           <X size={16} />
         </button>

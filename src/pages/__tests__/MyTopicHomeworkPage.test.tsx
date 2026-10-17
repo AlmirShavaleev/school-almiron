@@ -24,14 +24,19 @@ const state = {
   loading: false,
   error: null as string | null,
   noStudentRecord: false,
+  /** Курсы «Мой курс» — их ДЗ в группе «Уроки», остальные — «Школа». */
+  lessonCourseIds: new Set<string>(),
 }
 
 vi.mock('@/hooks/useMyTopicHomework', () => ({
   useMyTopicHomework: (courseId: string | null = null) => {
+    // Строки раздела — строки журнала с признаком автопроверки (lib/homeworkBoard).
+    const rows = state.rows.map(r => ({ autocheck: false, left: null, total: null, ...r }))
     const courseOptions = homeworkCourseOptions(state.rows, state.courses)
     const activeCourseId = courseId && courseOptions.some(o => o.id === courseId) ? courseId : null
     return {
-      buckets: splitHomeworkBuckets(filterHomeworkByCourse(state.rows, activeCourseId)),
+      buckets: splitHomeworkBuckets(filterHomeworkByCourse(rows, activeCourseId)),
+      lessonCourseIds: state.lessonCourseIds,
       totalRows: state.rows.length,
       courseOptions,
       activeCourseId,
@@ -101,102 +106,94 @@ describe('MyTopicHomeworkPage — список ДЗ ученика', () => {
     state.loading = false
     state.error = null
     state.noStudentRecord = false
+    state.lessonCourseIds = new Set()
   })
 
   it('показывает предстоящее ДЗ, которое ученик ещё не начинал', () => {
-    // Именно этого не было видно нигде: дашборд читает только начатые попытки,
-    // поэтому не начатое ДЗ для ученика не существовало.
-    // Срок задаём ОТНОСИТЕЛЬНО сегодняшнего дня. Раньше здесь стояла жёсткая
-    // дата и ожидание «Срок: 5 августа»; теперь карточка печатает остаток
-    // словами («осталось N дней»), и с жёсткой датой тест протух бы сам —
-    // сначала стал бы «просрочено», а потом менял бы число каждый день.
-    // Дата без времени и по ЛОКАЛЬНОМУ календарю: dueUrgency сравнивает
-    // строки YYYY-MM-DD, и ISO с временем даёт сдвиг на день в минусовых зонах.
+    // Срок — относительно сегодняшнего дня (по локальному календарю): карточка
+    // печатает остаток словами, жёсткая дата протухла бы сама.
     const due = new Date()
     due.setDate(due.getDate() + 10)
     const inTenDays = due.toLocaleDateString('en-CA')
     state.rows = [hw({ homework_id: 'a', status: 'not_started', due_at: inTenDays })]
     renderPage()
 
-    // Заголовком карточки стала ТЕМА, а своё название ДЗ ушло в строку с
-    // курсом: «Физика ЕГЭ · ДЗ по кинематике». Поэтому тему ищем целой
-    // строкой, а название — по вхождению.
-    expect(screen.getByText('Кинематика')).toBeInTheDocument()
-    expect(screen.getByText(/ДЗ по кинематике/)).toBeInTheDocument()
-    expect(screen.getByText('Не сдано')).toBeInTheDocument()
-    // Строка срока собрана из иконки и текста, поэтому getByText по подстроке
-    // её не находит — сверяем текст всей карточки.
-    expect(screen.getByTestId('my-hw-row').textContent).toContain('осталось 10 дней')
+    const row = screen.getByTestId('my-hw-row')
+    expect(within(row).getByText('Кинематика')).toBeInTheDocument()
+    expect(within(row).getByTestId('hw-status')).toHaveTextContent('сдать')
+    expect(within(row).getByText('2 часть')).toBeInTheDocument()
+    expect(row.textContent).toContain('осталось 10 дней')
     expect(screen.getByTestId('my-hw-count')).toHaveTextContent('Нужно сделать: 1')
   })
 
-  it('показывает проверенную работу с оценкой и комментарием учителя', () => {
+  it('принятое — свёрнуто внизу «Принято: N»; раскрыл — балл и комментарий учителя', () => {
     state.rows = [hw({
       homework_id: 'b', status: 'accepted', score: 4, grade_scale: 'five',
       comment: 'Проверь знаки в третьем действии', reviewed_at: '2026-07-29T10:00:00Z',
     })]
     renderPage()
 
-    expect(screen.getByText('Принято')).toBeInTheDocument()
-    // Слово «Оценка:» из карточки убрано — балл стоит отдельной плашкой
-    // справа от заголовка и печатается через formatHomeworkScore.
-    expect(screen.getByText('4 / 5')).toBeInTheDocument()
-    expect(screen.getByText('Проверь знаки в третьем действии')).toBeInTheDocument()
+    expect(screen.queryByTestId('my-hw-row')).toBeNull()
+    fireEvent.click(screen.getByTestId('my-hw-done-toggle'))
+    const row = screen.getByTestId('my-hw-row')
+    expect(within(row).getByTestId('hw-status')).toHaveTextContent('принято · 4 / 5')
+    expect(within(row).getByTestId('hw-comment')).toHaveTextContent('Проверь знаки в третьем действии')
   })
 
   it('помечает просроченное и выносит счёт просрочек в подзаголовок', () => {
     state.rows = [hw({ homework_id: 'c', status: 'not_started', is_overdue: true, due_at: '2026-07-01T00:00:00Z' })]
     renderPage()
 
-    expect(screen.getByText('Просрочено')).toBeInTheDocument()
+    expect(screen.getByTestId('my-hw-row').textContent).toMatch(/просрочено на/)
     expect(screen.getByTestId('my-hw-count')).toHaveTextContent('просрочено: 1')
   })
 
-  it('строка ведёт на тему курса, где эту работу можно сдать', () => {
+  it('«Перейти к ДЗ» ведёт в урок сразу на вкладку ДЗ', () => {
     state.rows = [hw({ homework_id: 'd', status: 'returned', topic_id: 'topic-42' })]
     renderPage()
 
-    expect(screen.getByTestId('my-hw-row').closest('a'))
-      .toHaveAttribute('href', '/my-course/g1/topic/topic-42')
+    expect(within(screen.getByTestId('my-hw-row')).getByRole('link', { name: 'Перейти к ДЗ' }))
+      .toHaveAttribute('href', '/my-course/g1/topic/topic-42?tab=homework')
   })
 
-  it('карточка — настоящая ссылка целиком: кликается вся и берётся в Tab', () => {
-    // Не `div` с onClick: у ссылки есть фокус с клавиатуры, «открыть в новой
-    // вкладке» и адрес в статусной строке.
-    state.rows = [hw({ homework_id: 'd', status: 'not_started', topic_id: 'topic-7' })]
-    renderPage()
-
-    const row = screen.getByTestId('my-hw-row')
-    expect(row.tagName).toBe('A')
-    expect(row).toHaveAttribute('href', '/my-course/g1/topic/topic-7')
-    // Кнопка действия лежит ВНУТРИ ссылки — кликается любая точка карточки.
-    expect(row.textContent).toContain('Сдать')
-  })
-
-  it('без адреса карточка не притворяется ссылкой', () => {
-    // Достижимо, только если карта групп не доехала: работу в списке ученик
-    // видит через то же членство в группе, что даёт и адрес.
+  it('без адреса кнопки «Перейти к ДЗ», ведущей в никуда, нет', () => {
+    // Достижимо, только если карта групп не доехала.
     state.groups = new Map()
     state.rows = [hw({ homework_id: 'd', status: 'not_started' })]
     renderPage()
 
-    const row = screen.getByTestId('my-hw-row')
-    expect(row.closest('a')).toBeNull()
-    expect(row.className).not.toContain('cursor-pointer')
-    expect(row.className).not.toContain('hover:')
-    // И кнопки «Сдать», ведущей в никуда, тоже нет.
-    expect(row.textContent).not.toContain('Сдать')
+    expect(screen.getByTestId('my-hw-row').querySelector('a')).toBeNull()
   })
 
   it('курс-черновик (is_active = false) ссылку не отнимает', () => {
-    // §123.3: у ученика 11А оба курса были черновиками, и карточки не вели
-    // никуда. Признак витрины не решает, откроется ли тема; список курсов в
-    // ряду переключателей при этом собирается из строк журнала.
+    // §123.3: признак витрины не решает, откроется ли тема.
     state.courses = []
     state.rows = [hw({ homework_id: 'd', status: 'not_started', topic_id: 'topic-9' })]
     renderPage()
 
-    expect(screen.getByTestId('my-hw-row')).toHaveAttribute('href', '/my-course/g1/topic/topic-9')
+    expect(screen.getByTestId('hw-open')).toHaveAttribute('href', '/my-course/g1/topic/topic-9?tab=homework')
+  })
+
+  it('ДЗ с автопроверкой — карточкой: пилюля «автопроверка», «осталось N из M задач»', () => {
+    state.rows = [{ ...hw({ homework_id: 'ac', status: 'not_started' }), autocheck: true, left: 3, total: 10 } as never]
+    renderPage()
+
+    const row = screen.getByTestId('my-hw-row')
+    expect(within(row).getByText('автопроверка')).toBeInTheDocument()
+    expect(within(row).getByTestId('hw-left')).toHaveTextContent('осталось 3 из 10 задач')
+  })
+
+  it('уроки и школа — отдельными группами, счётчики сверху по всем', () => {
+    state.lessonCourseIds = new Set(['c1'])
+    state.rows = [
+      hw({ homework_id: 'l1', status: 'not_started', course_id: 'c1' }),
+      hw({ homework_id: 's1', status: 'submitted', course_id: 'c2', course_title: 'Физика 11А' }),
+    ]
+    renderPage()
+
+    const groups = screen.getAllByTestId('my-hw-group')
+    expect(groups.map(g => g.querySelector('h2')?.textContent)).toEqual(['Уроки', 'Школа'])
+    expect(screen.getByTestId('my-hw-stats').textContent).toBe('1Сдать1На проверке0Принято')
   })
 
   it('когда заданий нет вовсе — понятная заглушка, а не пустой экран', () => {

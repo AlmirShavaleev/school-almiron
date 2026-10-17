@@ -7,7 +7,8 @@ import { JournalView } from '@/components/journal/JournalView'
  * §257. «Журнал занятий и заданий» ученика — отдельной страницей.
  *
  * Жил внизу «Мой прогресс». Страницу заменили «Достижения», и журнал не
- * потерялся: он открывается из «Подробной статистики» (`/my-journal`). Сам
+ * потерялся: он открывается из «Подробной статистики» (`/my-journal`); с 14.10
+ * «Достижений» нет, и ссылка «назад» ведёт на главную. Сам
  * журнал не тронут — тот же `JournalView`, уроки ведут на `/lessons/:id`.
  */
 export function MyJournalPage() {
@@ -15,8 +16,8 @@ export function MyJournalPage() {
 
   return (
     <div className="mx-auto grid max-w-[1120px] gap-3.5" data-testid="my-journal-page">
-      <Link to="/achievements" className="inline-flex w-max items-center gap-1 text-sm font-semibold text-primary-700 hover:underline">
-        <ChevronLeft size={15} aria-hidden />Достижения
+      <Link to="/dashboard" className="inline-flex w-max items-center gap-1 text-sm font-semibold text-primary-700 hover:underline">
+        <ChevronLeft size={15} aria-hidden />Главная
       </Link>
       <h1 className="text-2xl font-extrabold tracking-tight text-graphite-950 sm:text-[1.55rem]">Журнал занятий и заданий</h1>
       {loading ? (

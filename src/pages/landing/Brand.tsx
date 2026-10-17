@@ -1,0 +1,16 @@
+/**
+ * Знак «Орбита» из `_бренд/` (файлы в `public/brand/` как есть, не
+ * перерисованы). Светлая и тёмная версии лежат рядом, видимую выбирает CSS
+ * по теме лендинга — без JS и без мигания при загрузке.
+ */
+export function Mark({ size = 34, white = false, className }: { size?: number; white?: boolean; className?: string }) {
+  if (white) {
+    return <img className={className} src="/brand/orbita-belyj.svg" alt="" width={size} height={size} aria-hidden="true" />
+  }
+  return (
+    <span className={className ? `mark ${className}` : 'mark'} style={{ width: size, height: size }} aria-hidden="true">
+      <img className="mark-l" src="/brand/orbita-svetlyj-fon.svg" alt="" width={size} height={size} />
+      <img className="mark-d" src="/brand/orbita-temnyj-fon.svg" alt="" width={size} height={size} />
+    </span>
+  )
+}

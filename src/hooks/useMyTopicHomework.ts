@@ -8,7 +8,38 @@ import {
   type HomeworkBuckets, type HomeworkCourseOption, type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
-import { useLessonCourseIds } from '@/lib/lessonCourses'
+import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
+import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
+
+/**
+ * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
+ * сколько задач осталось по урокам. Ученику база отдаёт только ДЗ и задачи
+ * открытых ему тем (политики §282.2) и только свои ответы. Сбой — пусто:
+ * такие ДЗ остаются со статусом журнала.
+ */
+async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; progress: Map<string, AutocheckProgress> }> {
+  const empty = { hw: new Set<string>(), progress: new Map<string, AutocheckProgress>() }
+  if (topicIds.length === 0) return empty
+  try {
+    const db = supabase as unknown as {
+      from: (t: string) => { select: (c: string) => { in: (c: string, v: string[]) => { eq: (c: string, v: unknown) => PromiseLike<{ data: unknown[] | null; error: unknown }> } & PromiseLike<{ data: unknown[] | null; error: unknown }> } }
+    }
+    const hwRes = await db.from('topic_homework').select('id, topic_id').in('topic_id', topicIds).eq('autocheck', true)
+    if (hwRes.error) return empty
+    const hwRows = (hwRes.data ?? []) as Array<{ id: string; topic_id: string }>
+    if (hwRows.length === 0) return empty
+    const acTopics = [...new Set(hwRows.map(h => h.topic_id))]
+    const tasksRes = await db.from('topic_autocheck_tasks').select('id, topic_id').in('topic_id', acTopics)
+    const tasks = (tasksRes.error ? [] : tasksRes.data ?? []) as Array<{ id: string; topic_id: string }>
+    const answersRes = tasks.length
+      ? await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', tasks.map(t => t.id))
+      : { data: [], error: null }
+    const answers = (answersRes.error ? [] : answersRes.data ?? []) as Array<{ task_id: string; is_correct: boolean }>
+    return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, answers) }
+  } catch {
+    return empty
+  }
+}
 
 /**
  * students.id текущего пользователя. Тот же однострочный резолв, что руками
@@ -90,13 +121,29 @@ export function useMyTopicHomework(courseId: string | null = null) {
   // Через useMemo, а не выражением: `?? []` каждый раз даёт новый массив, и
   // зависящие от него useMemo пересчитывались бы на каждый рендер.
   const allRows = useMemo(() => journal?.homework ?? [], [journal])
-  // 13.10, владелец: ДЗ «урочных» курсов (раздел «Мой курс») живут в уроках —
-  // здесь их нет, ни в списке, ни в счётчиках, ни в переключателе курсов.
-  const lesson = useLessonCourseIds(useMemo(
+  // 15.10, владелец: ДЗ «урочных» курсов (раздел «Мой курс») — только уроков,
+  // открытых ученику сейчас (src/lib/lessonCourses.ts): в списке, счётчиках и
+  // переключателе курсов. Школьные группы — как были.
+  const lesson = useLessonHomeworkFilter(useMemo(
     () => [...allRows.map(r => r.course_id), ...courses.map(c => c.courseId)],
     [allRows, courses],
   ))
-  const rows = useMemo(() => allRows.filter(r => !lesson.ids.has(r.course_id)), [allRows, lesson.ids])
+  const openRows = useMemo(() => allRows.filter(r => keepLessonItem(lesson.filter, r.course_id, r.topic_id)), [allRows, lesson.filter])
+
+  // 15.10 (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md): ДЗ с автопроверкой —
+  // тоже карточкой; «сдать», пока остались задачи, «принято» — когда все закрыты.
+  const topicKey = useMemo(() => [...new Set(openRows.map(r => r.topic_id))].sort().join(','), [openRows])
+  const [autocheck, setAutocheck] = useState<{ key: string; hw: Set<string>; progress: Map<string, AutocheckProgress> } | null>(null)
+  useEffect(() => {
+    let alive = true
+    loadAutocheck(topicKey ? topicKey.split(',') : []).then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
+    return () => { alive = false }
+  }, [topicKey])
+  const autocheckReady = !!autocheck && autocheck.key === topicKey
+  const rows = useMemo<BoardRow[]>(
+    () => withAutocheck(openRows, autocheckReady ? autocheck!.hw : new Set(), autocheckReady ? autocheck!.progress : new Map()),
+    [openRows, autocheck, autocheckReady],
+  )
 
   const courseIdsKey = useMemo(
     () => Array.from(new Set(rows.map(r => r.course_id))).sort().join(','),
@@ -123,9 +170,10 @@ export function useMyTopicHomework(courseId: string | null = null) {
     // Предмет из прямого чтения перекрывает предмет из зачислений: цвет в
     // кнопке и в карточке обязан считаться одним источником.
     () => homeworkCourseOptions(rows, courses)
-      .filter(o => !lesson.ids.has(o.id))
+      // Урочный курс — в переключателе, только если в нём есть открытое ДЗ.
+      .filter(o => !lesson.filter.lessonIds.has(o.id) || rows.some(r => r.course_id === o.id))
       .map(o => ({ ...o, subject: subjectByCourseId.get(o.id) ?? o.subject })),
-    [rows, courses, subjectByCourseId, lesson.ids],
+    [rows, courses, subjectByCourseId, lesson.filter],
   )
 
   // Курс из адреса, которого у ученика нет (выбыл из группы, ссылка со
@@ -137,7 +185,7 @@ export function useMyTopicHomework(courseId: string | null = null) {
     [courseId, courseOptions],
   )
 
-  const buckets = useMemo<HomeworkBuckets>(
+  const buckets = useMemo<HomeworkBuckets<BoardRow>>(
     () => splitHomeworkBuckets(filterHomeworkByCourse(rows, activeCourseId)),
     [rows, activeCourseId],
   )
@@ -162,10 +210,23 @@ export function useMyTopicHomework(courseId: string | null = null) {
     courseSubject,
     // Ожидание групп входит в загрузку: иначе карточка успела бы отрисоваться
     // неактивной, а через мгновение стать ссылкой — мигание вместо перехода.
-    loading: resolvingStudent || loadingJournal || loadingCourses || loadingGroups || !lesson.ready,
+    /** Курсы «Мой курс» (уроки): остальные ДЗ — школьные группы, своей группой «Школа». */
+    lessonCourseIds: lesson.filter.lessonIds,
+    loading: resolvingStudent || loadingJournal || loadingCourses || loadingGroups || !lesson.ready || !autocheckReady,
     error,
     reload,
     /** Ученик не найден — например, персонал открыл страницу по прямой ссылке. */
     noStudentRecord: !resolvingStudent && !studentId,
   }
+}
+
+/**
+ * Число «сдать» для бейджа «Домашние задания» в меню ученика — тот же хук и
+ * то же правило, что счётчик «Сдать» на странице (письмо 15.10, п. 5): ДЗ
+ * открытых уроков, включая автопроверку, и школьные. null — ещё грузится.
+ */
+export function useHomeworkToDoCount(): number | null {
+  const { buckets, loading, noStudentRecord } = useMyTopicHomework(null)
+  if (noStudentRecord) return 0
+  return loading ? null : buckets.todo.length
 }

@@ -1,9 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw } from 'lucide-react'
+import { Lock, RefreshCw } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogOverview } from '@/hooks/useCatalogOverview'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
+import { CATALOG_SUBSCRIBE_HREF } from '@/lib/catalogLock'
+import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { DIRECTIONS } from '@/hooks/useCatalog'
 import {
   examBars, examChips, examHref, examSubtitle, formatCount, isDimmed, numberRange, overallRank,
@@ -57,7 +60,7 @@ const CHIP: Record<Chip['tone'], string> = {
 
 export function CatalogHome() {
   const { profile } = useAuthStore()
-  const { overview, loading, error, retry } = useCatalogOverview(profile?.id)
+  const { overview, loading, error, locked, retry } = useCatalogOverview(profile?.id)
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6" data-testid="catalog-home">
@@ -66,7 +69,9 @@ export function CatalogHome() {
         <p className="mt-1 text-gray-500">{LEAD}</p>
       </header>
 
-      {overview ? (
+      {locked ? (
+        <CatalogLockedNotice whole />
+      ) : overview ? (
         <>
           <Summary o={overview} />
           {subjectRows(overview).map(row => (
@@ -187,11 +192,16 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
   const dim = isDimmed(o, e)
   const solved = e.solved
   const go = solved > 0 ? 'Продолжить' : 'Начать'
+  // §292: предмет без подписки — замок; есть куда вести — «Открыть подписку».
+  // Без флага подписки (не тестировщик) — «Откроется вместе с курсом», без ссылки (выкатка в main, 16.10).
+  const { enabled: subs } = useSubscriptionsEnabled()
+  const lockedTo = e.locked && subs ? CATALOG_SUBSCRIBE_HREF : null
   return (
     <article
       data-testid="exam-card"
       data-exam={`${e.subject} ${e.examType}`}
       data-dim={dim ? 'true' : 'false'}
+      data-locked={e.locked ? 'true' : 'false'}
       className={cn(
         // Одна колонка minmax(0,1fr): без неё подписи 26 номеров физики раздвигают
         // карточку по min-content и она вылезает за экран на 390. Строка чипов
@@ -206,15 +216,30 @@ function ExamCard({ o, e }: { o: CatalogOverview; e: OverviewExam }) {
         <span className="text-xs text-gray-500">решено из {formatCount(e.total)}</span>
       </ExamHead>
       <Bars e={e} tone={tone} />
-      <div className="self-start"><ChipRow chips={examChips(o, e)} testId="exam-chips" /></div>
-      <Link
-        to={examHref(e.subject, e.examType)}
-        aria-label={`${go}: ${e.subject} ${e.examType}`}
-        className="flex items-center justify-between border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-900 after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-400"
-      >
-        <span>{go}</span>
-        <span aria-hidden="true" className={TONE_GO[tone]}>→</span>
-      </Link>
+      <div className="self-start"><ChipRow chips={e.locked ? [] : examChips(o, e)} testId="exam-chips" /></div>
+      {!e.locked ? (
+        <Link
+          to={examHref(e.subject, e.examType)}
+          aria-label={`${go}: ${e.subject} ${e.examType}`}
+          className="flex items-center justify-between border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-900 after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-400"
+        >
+          <span>{go}</span>
+          <span aria-hidden="true" className={TONE_GO[tone]}>→</span>
+        </Link>
+      ) : lockedTo ? (
+        <Link
+          to={lockedTo}
+          aria-label={`Открыть подписку: ${e.subject} ${e.examType}`}
+          className="flex items-center justify-between border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-900 after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-400"
+        >
+          <span className="inline-flex items-center gap-1.5"><Lock size={14} aria-hidden="true" />Открыть подписку</span>
+          <span aria-hidden="true" className={TONE_GO[tone]}>→</span>
+        </Link>
+      ) : (
+        <p className="flex items-center gap-1.5 border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-500" data-testid="exam-locked">
+          <Lock size={14} aria-hidden="true" />{subs ? 'Откроется с подпиской' : 'Откроется вместе с курсом'}
+        </p>
+      )}
     </article>
   )
 }

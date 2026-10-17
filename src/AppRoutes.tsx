@@ -1,11 +1,12 @@
 import { Suspense } from 'react'
-import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { lazyPage } from '@/lib/lazyPage'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
 // Layouts
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { RoleGuard } from '@/components/auth/RoleGuard'
+import { SubscriptionsOnly } from '@/components/subscription/SubscriptionsOnly'
 import { SchoolPresencePublisher } from '@/components/admin/SchoolPresencePublisher'
 import { CatalogAttachMode } from '@/components/catalog/CatalogAttachMode'
 import { PreviewStubGate } from '@/components/layout/StudentPreviewUnavailable'
@@ -18,8 +19,9 @@ const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/stud
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
-const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
+const SubscriptionsAdminPage = lazyPage('SubscriptionsAdminPage', () => import('@/pages/admin/SubscriptionsAdminPage').then(m => ({ default: m.SubscriptionsAdminPage })))
 const PerfAdminPage = lazyPage('PerfAdminPage', () => import('@/pages/admin/PerfAdminPage').then(m => ({ default: m.PerfAdminPage })))
+const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
 const CollectionsPage = lazyPage('CollectionsPage', () => import('@/pages/CollectionsPage').then(m => ({ default: m.CollectionsPage })))
 const CollectionDetailPage = lazyPage('CollectionDetailPage', () => import('@/pages/CollectionDetailPage').then(m => ({ default: m.CollectionDetailPage })))
@@ -44,9 +46,15 @@ const LessonLibraryPage = lazyPage('LessonLibraryPage', () => import('@/pages/Le
 const MyCoursesPage = lazyPage('MyCoursesPage', () => import('@/pages/MyCoursesPage').then(m => ({ default: m.MyCoursesPage })))
 const StudentCoursePage = lazyPage('StudentCoursePage', () => import('@/pages/StudentCoursePage').then(m => ({ default: m.StudentCoursePage })))
 const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
+// §282. Подписка: оформление, возврат из ЮKassa, «Моя подписка».
+const SubscriptionCheckoutPage = lazyPage('SubscriptionCheckoutPage', () => import('@/pages/subscription/SubscriptionCheckoutPage').then(m => ({ default: m.SubscriptionCheckoutPage })))
+const SubscriptionResultPage = lazyPage('SubscriptionResultPage', () => import('@/pages/subscription/SubscriptionResultPage').then(m => ({ default: m.SubscriptionResultPage })))
+const SubscriptionHubPage = lazyPage('SubscriptionHubPage', () => import('@/pages/subscription/SubscriptionHubPage').then(m => ({ default: m.SubscriptionHubPage })))
+const OnboardingPage = lazyPage('OnboardingPage', () => import('@/pages/student/OnboardingPage').then(m => ({ default: m.OnboardingPage })))
+const DiagnosticPage = lazyPage('DiagnosticPage', () => import('@/pages/student/DiagnosticPage').then(m => ({ default: m.DiagnosticPage })))
+const DiagnosticResultPage = lazyPage('DiagnosticResultPage', () => import('@/pages/student/DiagnosticResultPage').then(m => ({ default: m.DiagnosticResultPage })))
 const StudentProfilePage = lazyPage('StudentProfilePage', () => import('@/pages/StudentProfilePage').then(m => ({ default: m.StudentProfilePage })))
 const StudentsPage = lazyPage('StudentsPage', () => import('@/pages/StudentsPage').then(m => ({ default: m.StudentsPage })))
-const AchievementsPage = lazyPage('AchievementsPage', () => import('@/pages/student/AchievementsPage').then(m => ({ default: m.AchievementsPage })))
 const MyJournalPage = lazyPage('MyJournalPage', () => import('@/pages/student/MyJournalPage').then(m => ({ default: m.MyJournalPage })))
 const MyTopicHomeworkPage = lazyPage('MyTopicHomeworkPage', () => import('@/pages/student/MyTopicHomeworkPage').then(m => ({ default: m.MyTopicHomeworkPage })))
 const CatalogPage = lazyPage('CatalogPage', () => import('@/pages/catalog/CatalogPage').then(m => ({ default: m.CatalogPage })))
@@ -66,6 +74,7 @@ const CourseTopicTestsPage = lazyPage('CourseTopicTestsPage', () => import('@/pa
 const StudyPlanPage = lazyPage('StudyPlanPage', () => import('@/pages/StudyPlanPage').then(m => ({ default: m.StudyPlanPage })))
 // §271. Оценки уроков учениками — сводка для персонала.
 const TopicRatingsPage = lazyPage('TopicRatingsPage', () => import('@/pages/TopicRatingsPage').then(m => ({ default: m.TopicRatingsPage })))
+const TopicQualityPage = lazyPage('TopicQualityPage', () => import('@/pages/TopicQualityPage').then(m => ({ default: m.TopicQualityPage })))
 const StudentVariantsPage = lazyPage('StudentVariantsPage', () => import('@/pages/student/StudentVariantsPage').then(m => ({ default: m.StudentVariantsPage })))
 const StudentVariantDetailPage = lazyPage('StudentVariantDetailPage', () => import('@/pages/student/StudentVariantDetailPage').then(m => ({ default: m.StudentVariantDetailPage })))
 const StudentVariantBuildPage = lazyPage('StudentVariantBuildPage', () => import('@/pages/student/StudentVariantBuildPage').then(m => ({ default: m.StudentVariantBuildPage })))
@@ -162,6 +171,8 @@ export default function AppRoutes() {
             §169: статус `new` снять было негде, и обращения лежали месяцами.
             Сюда ведёт строка «Разобрать обращения» на «Обзоре». */}
         <Route path="/admin/support" element={<RoleGuard allow={['admin','owner']}><SupportRequestsPage /></RoleGuard>} />
+        {/* §282. Подписка: тарифы, подписчики, платежи, флаг. Доступна до включения флага — тарифы заводят заранее. */}
+        <Route path="/admin/subscriptions" element={<RoleGuard allow={['admin','owner']}><SubscriptionsAdminPage /></RoleGuard>} />
         <Route path="/admin/perf" element={<RoleGuard allow={['admin','owner']}><PerfAdminPage /></RoleGuard>} />
 
         {/* Только персонал (teacher/curator/admin/owner) */}
@@ -175,6 +186,7 @@ export default function AppRoutes() {
         <Route path="/course-program/:courseId/topic-tests" element={<RoleGuard allow={['teacher','admin','owner']}><CourseTopicTestsPage /></RoleGuard>} />
         <Route path="/course-program/:courseId/plan" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><StudyPlanPage /></RoleGuard>} />
         <Route path="/topic-ratings" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><TopicRatingsPage /></RoleGuard>} />
+        <Route path="/topic-quality" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><TopicQualityPage /></RoleGuard>} />
         <Route path="/lesson-library" element={<RoleGuard allow={['teacher','admin','owner']}><LessonLibraryPage /></RoleGuard>} />
         {/* Маршрута `/inbox` («Очередь задач») больше нет: §197 снял контур
             «Этапа 4» — выдачу подборок как работ. Очередь показывала строки
@@ -280,6 +292,20 @@ export default function AppRoutes() {
             (§178): три страницы курса читают программу и материалы, которые
             персоналу и так отдаёт RLS, личное показывают пустым и не пишут. */}
         <Route path="/my-course" element={<RoleGuard allow={['student']} preview="allow"><MyCoursesPage /></RoleGuard>} />
+        {/* §282. Подписка — preview="stub": персоналу в режиме ученика платить нечего.
+            SubscriptionsOnly: без флага подписки (не тестировщик) — на главную, без цен и оплаты. */}
+        <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionCheckoutPage /></SubscriptionsOnly></RoleGuard>} />
+        <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionResultPage /></SubscriptionsOnly></RoleGuard>} />
+        {/* Меню ученика (письмо 16.10): «Курсы» и «Моя подписка» — один экран «Подписка и курсы».
+            Старые адреса — редирект с сохранением параметров (?started=…, ?from=start…). */}
+        <Route path="/subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionHubPage /></SubscriptionsOnly></RoleGuard>} />
+        <Route path="/my-subscription" element={<KeepQueryRedirect to="/subscription" />} />
+        {/* §290-B. Витрина «Курсы» и анкета ученика «с улицы». */}
+        <Route path="/courses" element={<KeepQueryRedirect to="/subscription" />} />
+        <Route path="/start" element={<RoleGuard allow={['student']} preview="stub"><OnboardingPage /></RoleGuard>} />
+        {/* §289. Стартовая диагностика и её результат. */}
+        <Route path="/diagnostic" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticPage /></RoleGuard>} />
+        <Route path="/diagnostic/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><DiagnosticResultPage /></SubscriptionsOnly></RoleGuard>} />
         <Route path="/my-course/:groupId" element={<RoleGuard allow={['student']} preview="allow"><StudentCoursePage /></RoleGuard>} />
         <Route path="/my-course/:groupId/topic/:topicId" element={<RoleGuard allow={['student']} preview="allow"><TopicPage /></RoleGuard>} />
         {/* §228. «Пробники» ученика — все пробники по всем его группам. */}
@@ -288,10 +314,10 @@ export default function AppRoutes() {
         {/* Новый контур ДЗ. Не путать с /my-homeworks (Homework V2, скрыт).
             В предпросмотре — заглушка: здесь личные работы ученика. */}
         <Route path="/my-homework" element={<RoleGuard allow={['student']} preview="stub"><MyTopicHomeworkPage /></RoleGuard>} />
-        {/* §257. «Достижения» заменили «Мой прогресс»; старый адрес ведёт сюда же
-            (закладки, ссылки из уведомлений). Журнал — отдельной страницей. */}
-        <Route path="/achievements" element={<RoleGuard allow={['student']} preview="stub"><AchievementsPage /></RoleGuard>} />
-        <Route path="/my-progress" element={<Navigate to="/achievements" replace />} />
+        {/* 14.10, владелец: баллы школы и «Достижения» выключены совсем. Старые
+            адреса (закладки, ссылки из уведомлений) ведут на главную. */}
+        <Route path="/achievements" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/my-progress" element={<Navigate to="/dashboard" replace />} />
         <Route path="/my-journal" element={<RoleGuard allow={['student']} preview="stub"><MyJournalPage /></RoleGuard>} />
       </Route>
 
@@ -300,4 +326,10 @@ export default function AppRoutes() {
     </Suspense>
     </>
   )
+}
+
+/** Редирект со старого адреса с теми же параметрами и якорем (меню ученика, 16.10). */
+function KeepQueryRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: to, search, hash }} replace />
 }

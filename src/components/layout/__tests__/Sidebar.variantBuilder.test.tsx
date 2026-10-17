@@ -5,6 +5,14 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { useAuthStore } from '@/store/authStore'
 import { useStaffModeStore } from '@/store/staffModeStore'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 /**
  * 13.10, владелец: у ученика в меню нет «Конструктора вариантов» (страница и
  * маршрут остались). У учителя пункт остаётся — вход из «Заданий».

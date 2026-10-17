@@ -12,3 +12,8 @@
 # без разбора нельзя.
 PROJECT_STATE.md merge=union
 ОРКЕСТРАЦИЯ.md merge=union
+
+# Данные каталога физики (§253): тест сверяет их с выводом скрипта байт в байт,
+# а при core.autocrlf=true на Windows они выгружались с CRLF — держим LF везде.
+src/lib/physicsDifficulty.data.json text eol=lf
+src/lib/physicsTopicsCatalog.data.json text eol=lf

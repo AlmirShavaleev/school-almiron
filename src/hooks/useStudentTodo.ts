@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchGroupIdByCourse } from '@/lib/studentTopicAccess'
-import { fetchLessonCourseIds } from '@/lib/lessonCourses'
+import { fetchLessonHomeworkFilter, keepLessonItem } from '@/lib/lessonCourses'
 import {
   buildStudentTodo,
   type StudentTodo,
@@ -57,9 +57,9 @@ export function useStudentTodo(profileId: string | undefined) {
 
       if (courseIds.length === 0) { setTodo(EMPTY); setLoading(false); return }
 
-      // 13.10, владелец: ДЗ и тесты «урочных» курсов (раздел «Мой курс») живут
-      // в уроках — в кнопки главной и в списки страницы ДЗ они не попадают.
-      const lessonIds = await fetchLessonCourseIds(courseIds)
+      // 15.10, владелец: ДЗ и тесты «урочных» курсов (раздел «Мой курс») — только
+      // уроков, открытых ученику сейчас (src/lib/lessonCourses.ts).
+      const lesson = await fetchLessonHomeworkFilter(courseIds)
       if (cancelled) return
 
       const [hwRes, attemptsRes, verdictsRes, testAssignRes, testAttemptsRes] = await Promise.all([
@@ -95,7 +95,7 @@ export function useStudentTodo(profileId: string | undefined) {
         const topic = row.topic
         const course = topic?.module?.course
         if (!topic?.id || !course?.id) continue
-        if (!groupByCourse.has(course.id) || lessonIds.has(course.id)) continue
+        if (!groupByCourse.has(course.id) || !keepLessonItem(lesson, course.id, topic.id)) continue
         homework.push({
           homeworkId:    row.id,
           homeworkTitle: row.title ?? 'Домашнее задание',
@@ -111,7 +111,7 @@ export function useStudentTodo(profileId: string | undefined) {
       }
 
       const attempts = ((attemptsRes.data ?? []) as any[])
-        .filter(a => !lessonIds.has(a.homework?.topic?.module?.course?.id))
+        .filter(a => keepLessonItem(lesson, a.homework?.topic?.module?.course?.id, a.homework?.topic?.id))
       const myAttemptIds = new Set(attempts.map((a: any) => a.id))
       const verdicts: TodoVerdict[] = []
       for (const row of (verdictsRes.data ?? []) as any[]) {
@@ -156,7 +156,7 @@ export function useStudentTodo(profileId: string | undefined) {
       )
       const tests: TodoTest[] = []
       for (const row of (testAssignRes.data ?? []) as any[]) {
-        if (lessonIds.has(row.topic?.module?.course_id)) continue
+        if (!keepLessonItem(lesson, row.topic?.module?.course_id, row.topic_id)) continue
         tests.push({
           assignmentId: row.id,
           testId:       row.test_id,

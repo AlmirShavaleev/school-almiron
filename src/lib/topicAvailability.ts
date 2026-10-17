@@ -17,6 +17,19 @@ export interface TopicOpenState {
   is_open: boolean | null
   /** YYYY-MM-DD либо ISO-строка; сравнивается по локальной дате. */
   available_from: string | null
+  /**
+   * §288. Курс «по прохождению»: открытость решила база (`my_course_topic_locks`),
+   * is_open и дата здесь не применяются. Нет поля — курс по датам, правило прежнее.
+   */
+  progress?: {
+    open: boolean
+    note: string | null
+    /** Урок, после которого откроется этот (`my_course_topic_locks.after_topic_id`). */
+    afterTopicId?: string | null
+    afterTitle?: string | null
+    /** Плановая дата урока YYYY-MM-DD, если задана. */
+    opensOn?: string | null
+  } | null
 }
 
 /** Сегодня как YYYY-MM-DD по ЛОКАЛЬНОЙ дате — без сдвига в UTC. */
@@ -36,6 +49,7 @@ export function availableFromDay(topic: TopicOpenState): string | null {
  * и в `topic_open_now`.
  */
 export function isTopicOpen(topic: TopicOpenState, today: string = todayLocal()): boolean {
+  if (topic.progress) return topic.progress.open
   if (topic.is_open !== null && topic.is_open !== undefined) return topic.is_open
   const day = availableFromDay(topic)
   return day === null || day <= today
@@ -82,6 +96,7 @@ export function topicToggleLabel(topic: TopicOpenState, today: string = todayLoc
 }
 
 export function topicClosedLabel(topic: TopicOpenState, today: string = todayLocal()): string {
+  if (topic.progress) return topic.progress.note ?? 'Откроется позже'
   const day = willOpenByDate(topic, today)
   if (!day) return 'Откроется позже'
   // Формат тот же, что был у карточек ученика до тумблера: «Откроется 1 сентября».

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { verdictMark } from '@/lib/studentTodo'
-import { courseAverage } from '@/lib/studentHome'
 import { fiveOf, toneOf } from '@/lib/courseGrades'
 import { formatScore } from '@/lib/courseStats'
 import { scoreCaption, scoreTone } from '@/lib/courseAssessments'
@@ -13,25 +12,11 @@ import { formatGrade } from '@/lib/studentOverview'
  * (до пересчёта) не ломают ни подпись, ни средний.
  */
 describe('§265. отображение оценок по шкалам', () => {
-  it('главная и «Мои задания»: 5-балльная — «4/5», урок после ×20 — «80/100», без балла — «принято»', () => {
+  it('«Мои задания»: 5-балльная — «4/5», урок после ×20 — «80/100», без балла — «принято»', () => {
     expect(verdictMark({ score: 4, gradeScale: 'five' })).toBe('4/5')
     expect(verdictMark({ score: 80, gradeScale: 'hundred' })).toBe('80/100')
     expect(verdictMark({ score: null, gradeScale: 'hundred' })).toBe('принято')
     expect(verdictMark({ score: null, gradeScale: null })).toBe('принято')
-  })
-
-  it('средний курса: оценки 2–5 — «3,5»; только 100-балльные — «85/100»; принятые без балла в средний не идут', () => {
-    expect(courseAverage([
-      { status: 'accepted', score: 2, grade_scale: 'five' },
-      { status: 'accepted', score: 5, grade_scale: 'five' },
-      { status: 'accepted', score: 80, grade_scale: 'hundred' },
-    ] as never)).toBe('3,5')
-    expect(courseAverage([
-      { status: 'accepted', score: 80, grade_scale: 'hundred' },
-      { status: 'accepted', score: 90, grade_scale: 'hundred' },
-      { status: 'accepted', score: null, grade_scale: 'hundred' },
-    ] as never)).toBe('85/100')
-    expect(courseAverage([{ status: 'accepted', score: null, grade_scale: null }] as never)).toBe('—')
   })
 
   it('журнал ДЗ: цвет урока после ×20 тот же, что был у оценки (80 → «4», 100 → «5», 60 → «3», 40 → «2»)', () => {

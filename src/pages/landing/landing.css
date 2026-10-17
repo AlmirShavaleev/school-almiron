@@ -1,0 +1,415 @@
+/*
+ * Лендинг «Школа Almiron». Все правила под корнем `.lnd`, чтобы ничего не
+ * протекло в кабинет.
+ *
+ * Правка 4 (письмо лендинг_v3_6_аргументов.md, 13.10.2026): вёрстка — порт
+ * `лендинг_прототип_v3.html` («6 аргументов»: lofi-блок первым, закат на
+ * первом экране, листок в линейку, цена карточками). До этого — правка 3,
+ * `лендинг_прототип_v2.html` («диалог + 5 аргументов»). Сохранено из правок
+ * 1–2: палитра almiron.typ (ink #1B1F2A, grey #6B7080, blue #2F5BEA,
+ * blue-soft #EAF0FD, orange #F28C28, dz-ink #C76A12, green #1E9E6A,
+ * navy #13254D, card-line #D6DEEF), PT Serif, знак «Орбита», тёмная тема на
+ * основе navy, reduced motion. Красный #E5484D — новый, из прототипа: только
+ * «слабые места» (минусы репетитора, номера аргументов 2 и 6).
+ *
+ * Анимации — framer-motion в компонентах; здесь только CSS-петли на
+ * transform/opacity («печатает…», парение иконок финала, пульс прогноза).
+ */
+/*
+ * Запасной шрифт под метрики Manrope (CLS). Пока Manrope едет, текст рисуется
+ * Arial с поправками — ширина строк почти та же (Manrope шире Arial на ~1 %
+ * в обычном и на 0,2 % в жирном, мерили по кириллице заголовка), поэтому
+ * подмена шрифта не переносит строки заголовка. Без поправки запасным был
+ * system-ui (Segoe UI), и h1 перекладывался: CLS ~0.06–0.07.
+ * ascent/descent — из hhea Manrope (2132/600 при UPM 2000), делённые на size-adjust.
+ */
+@font-face { font-family: 'Manrope Fallback'; src: local('Arial'); font-weight: 400 600; size-adjust: 101.1%; ascent-override: 105.4%; descent-override: 29.7%; line-gap-override: 0% }
+@font-face { font-family: 'Manrope Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'); font-weight: 700 800; size-adjust: 100.2%; ascent-override: 106.4%; descent-override: 29.9%; line-gap-override: 0% }
+/*
+ * Заголовок первого экрана — свой файл Manrope 800 (fonts/manrope-head-800.woff2,
+ * 7,6 КБ): латиница и кириллица из src/assets/fonts/manrope слиты в один файл
+ * и урезаны до букв, цифр и знаков (Manrope — SIL OFL без зарезервированного
+ * имени, подмножество допустимо). Зачем: в общем Manrope кириллица и латиница
+ * — разные файлы и приезжают порознь, и пока одна половина h1 уже Manrope, а
+ * другая ещё запасная, строки ломались иначе — h1 на телефоне прыгал на строку
+ * вниз и обратно (CLS 0.15 на 390 px). Теперь подмена одна, а запасной шрифт
+ * подогнан по метрикам так, что переносы h1 с ним те же. Файл грузится
+ * заранее (preload из Hero.tsx). font-display: optional пробовали — на
+ * холодной загрузке заголовок оставался в Arial.
+ */
+@font-face { font-family: 'Manrope Head'; font-style: normal; font-weight: 800; font-display: swap; src: url('./fonts/manrope-head-800.woff2') format('woff2') }
+
+/*
+ * Рукописные шрифты правки 4, оба SIL OFL 1.1 (тексты лицензий — fonts/OFL-*.txt),
+ * файлы с Google Fonts, лежат у нас: внешних шрифтов лендинг не грузит.
+ *  - Marck Script — рукописная строка аргумента 1; файлы как есть (у шрифта
+ *    зарезервированное имя, изменённую версию так называть нельзя).
+ *  - Caveat — решение на листке; урезан до символов листка (~12 КБ на раскладку
+ *    вместо ~75), вариативный — 500 и 700 из одного файла. Своё имя семейства,
+ *    чтобы урезанный файл не подменил полный Caveat, если тот где-то появится.
+ */
+@font-face { font-family: 'Marck Script'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/marck-script-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116 }
+@font-face { font-family: 'Marck Script'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/marck-script-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD }
+@font-face { font-family: 'Caveat Paper'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('./fonts/caveat-paper-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116 }
+@font-face { font-family: 'Caveat Paper'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('./fonts/caveat-paper-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD }
+@font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-regular.woff2') format('woff2') }
+@font-face { font-family: 'PT Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url('./fonts/pt-serif-italic.woff2') format('woff2') }
+@font-face { font-family: 'PT Serif'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/pt-serif-bold.woff2') format('woff2') }
+
+.lnd {
+  --bg: #ffffff; --bg2: #f7f9fe; --card: #ffffff; --ink: #1b1f2a; --ink2: #6b7080; --line: #d6deef;
+  --blue: #2f5bea; --blue2: #1f45c8; --blueS: #eaf0fd; --blueInk: #2f5bea;
+  --orange: #f28c28; --orangeS: #fdf1e4; --orInk: #a8560c;
+  --handInk: #d4700d; --red: #e5484d; --redS: #fdecee; --redInk: #c22f35; --green: #1e9e6a; --greenS: #e6f5ee; --greenInk: #157350; --navy: #13254d;
+  --shadow: 0 12px 32px rgba(27, 31, 42, .07); --r: 22px;
+  font-family: Manrope, 'Manrope Fallback', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  min-height: 100vh;
+  overflow-x: clip;
+  font-variant-numeric: normal;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  .lnd:not([data-theme='light']) {
+    --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
+    --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --handInk: #f28c28; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+    --shadow: 0 12px 32px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+.lnd[data-theme='dark'] {
+  --bg: #0f1d3d; --bg2: #13254d; --card: #172b57; --ink: #eef2fb; --ink2: #a9b4ce; --line: #25396a;
+  --blueS: #1c3266; --blueInk: #9db6ff; --orangeS: #3a2c1c; --orInk: #ffa94d; --handInk: #f28c28; --redS: #3a1e27; --redInk: #ff8f94; --greenS: #173a31; --greenInk: #5fd3a2;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+.lnd *, .lnd *::before, .lnd *::after { box-sizing: border-box; margin: 0; padding: 0 }
+.lnd a { color: inherit; text-decoration: none }
+.lnd button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit }
+.lnd .wrap { max-width: 1140px; margin: 0 auto; padding: 0 16px }
+.lnd section { padding: 90px 0; position: relative; scroll-margin-top: 66px }
+.lnd .alt { background: var(--bg2) }
+.lnd h1 { font-size: clamp(30px, 4.6vw, 54px); line-height: 1.08; font-weight: 800; letter-spacing: -.02em }
+.lnd h2 { font-size: clamp(26px, 3.4vw, 40px); line-height: 1.15; font-weight: 800; letter-spacing: -.015em }
+.lnd h3 { font-size: 19px; font-weight: 800 }
+.lnd .lead { font-size: 18px; color: var(--ink2) }
+.lnd .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 24px; border-radius: 14px; font-weight: 800; transition: transform .2s, box-shadow .2s }
+.lnd .btn:hover { transform: translateY(-2px) }
+.lnd .btn:disabled { opacity: .5; cursor: default; transform: none }
+.lnd .btn-p { background: var(--blue); color: #fff; box-shadow: 0 10px 24px rgba(47, 91, 234, .3) }
+.lnd .btn-o { background: var(--orange); color: #fff; box-shadow: 0 10px 24px rgba(242, 140, 40, .3) }
+.lnd .btn-g { background: var(--card); border: 1.5px solid var(--line) }
+.lnd .tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 800 }
+.lnd .t-blue { background: var(--blueS); color: var(--blueInk) }
+.lnd .t-or { background: var(--orangeS); color: var(--orInk) }
+.lnd .t-red { background: var(--redS); color: var(--redInk) }
+.lnd .t-green { background: var(--greenS); color: var(--greenInk) }
+.lnd .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
+.lnd .ic3d { display: block; width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(27, 31, 42, .14)) }
+.lnd .foot { font-size: 12px; color: var(--ink2); margin-top: 12px }
+.lnd .foot a { text-decoration: underline }
+.lnd .center { text-align: center }
+
+/* Знак «Орбита»: светлая/тёмная версия по теме, без JS. */
+.lnd .mark { position: relative; display: inline-block; flex: none }
+.lnd .mark img { position: absolute; inset: 0; width: 100%; height: 100% }
+.lnd .mark .mark-d { display: none }
+@media (prefers-color-scheme: dark) {
+  .lnd:not([data-theme='light']) .mark .mark-l { display: none }
+  .lnd:not([data-theme='light']) .mark .mark-d { display: block }
+}
+.lnd[data-theme='dark'] .mark .mark-l { display: none }
+.lnd[data-theme='dark'] .mark .mark-d { display: block }
+
+/* NAV */
+.lnd .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1.5px solid var(--blue) }
+.lnd .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 66px; gap: 16px }
+.lnd .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; white-space: nowrap }
+.lnd .nav-links { display: flex; gap: 24px; font-weight: 700; color: var(--ink2); font-size: 15px; white-space: nowrap }
+.lnd .nav-links a:hover { color: var(--blueInk) }
+.lnd .nav-r { display: flex; gap: 10px; align-items: center }
+.lnd .theme-t { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); display: grid; place-items: center }
+@media (max-width: 960px) { .lnd .nav-links { display: none } }
+@media (max-width: 560px) { .lnd .nav-r .btn-g { display: none } .lnd .nav-r .btn { padding: 10px 14px } .lnd .logo { font-size: 16px } }
+@media (max-width: 420px) { .lnd .theme-t { display: none } }
+
+/* CHAT. Место под каждое сообщение занято с самого начала (opacity 0), а
+ * «печатает…» лежит поверх скрытого текста — раскладка не сдвигается (CLS). */
+.lnd .chat { display: flex; flex-direction: column; gap: 10px }
+.lnd .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 92% }
+.lnd .msg .av { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden }
+.lnd .msg .av img { width: 100%; height: 100%; object-fit: cover }
+.lnd .bub { position: relative; padding: 12px 16px; border-radius: 18px 18px 18px 6px; background: var(--card); border: 1px solid var(--line); font-size: 16px; box-shadow: var(--shadow) }
+.lnd .bub b { color: var(--blueInk) }
+.lnd .bub .txt { transition: opacity .25s }
+.lnd .bub.typing .txt { opacity: 0 }
+.lnd .dots { position: absolute; left: 16px; top: 50%; margin-top: -4px; display: inline-flex; gap: 4px }
+.lnd .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink2); opacity: .5; animation: lnd-tp 1s infinite }
+.lnd .dots i:nth-child(2) { animation-delay: .15s }
+.lnd .dots i:nth-child(3) { animation-delay: .3s }
+@keyframes lnd-tp { 0%, 100% { transform: translateY(0); opacity: .4 } 50% { transform: translateY(-4px); opacity: 1 } }
+.lnd .msg.me { align-self: flex-end; flex-direction: row-reverse }
+.lnd .msg.me .bub { background: var(--blue); color: #fff; border-color: var(--blue); border-radius: 18px 18px 6px 18px }
+.lnd .msg.me .av { background: var(--orangeS); font-weight: 800; color: var(--orInk); font-size: 14px }
+.lnd .chat-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0 50px }
+@media (max-width: 420px) { .lnd .chat-actions { margin-left: 0 } }
+
+/* HERO: справа закат «Keep going» в скруглённой рамке. Без движения. */
+.lnd .hero { padding: 56px 0 0; overflow: hidden }
+.lnd .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 30px; align-items: end }
+.lnd .hero .wrap > div:first-child { padding-bottom: 70px }
+.lnd .hero-name { font-family: 'PT Serif', Georgia, serif; font-style: italic; color: var(--ink2); font-size: 18px; margin-bottom: 10px }
+.lnd .hero h1 { font-family: 'Manrope Head', 'Manrope Fallback', system-ui, sans-serif }
+.lnd .hero h1 .bl { color: var(--blueInk) }
+.lnd .hero h1 .or { color: var(--orange) }
+.lnd .hero-chat { margin-top: 26px }
+.lnd .hero-photo { align-self: center; padding-bottom: 70px }
+.lnd .hero-sun { width: 100%; height: 560px; border-radius: 30px; overflow: hidden; border: 6px solid var(--card); box-shadow: 0 30px 60px rgba(27, 31, 42, .22) }
+.lnd .hero-sun img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 58% 50% }
+@media (max-width: 900px) {
+  .lnd .hero .wrap { grid-template-columns: 1fr }
+  .lnd .hero .wrap > div:first-child { padding-bottom: 50px }
+  .lnd .hero-photo { order: -1; padding-bottom: 0 }
+  .lnd .hero-sun { height: 340px }
+}
+@media (max-width: 430px) { .lnd .hero-sun { height: 280px; border-radius: 24px } }
+
+/* АРГУМЕНТ 1: lofi-блок. */
+.lnd .cozy-g { display: grid; grid-template-columns: .8fr 1.2fr; gap: 24px; align-items: stretch }
+.lnd .cozy-g > * { min-width: 0 }
+.lnd .cozy-ph { border-radius: 26px; overflow: hidden; box-shadow: 0 24px 60px rgba(27, 31, 42, .16); border: 6px solid var(--card); background: var(--card) }
+.lnd .cozy-ph img { display: block; width: 100%; height: 100%; object-fit: cover }
+.lnd .cozy-txt { padding: 28px; display: flex; flex-direction: column; justify-content: center }
+.lnd .cozy-txt .hero-name { margin-bottom: 6px }
+.lnd .cozy-txt .lead { margin-top: 12px }
+.lnd .cozy-txt .lead + .lead { margin-top: 10px }
+.lnd .cozy-arg { display: flex; align-items: center; gap: 14px; margin-bottom: 18px }
+.lnd .cozy-arg .arg-n { width: 52px; height: 52px; border-radius: 16px; font-size: 24px }
+.lnd .cozy-arg .eb { font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.lnd .hand { font-family: 'Marck Script', cursive; font-size: clamp(26px, 2.6vw, 32px); line-height: 1.25; color: var(--handInk); margin-top: 22px; transform: rotate(-2deg); transform-origin: left center }
+.lnd .hand svg { display: block; width: 220px; height: 16px; margin-top: 4px }
+.lnd .hand path { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; opacity: .7 }
+@media (max-width: 900px) { .lnd .cozy-g { grid-template-columns: 1fr } .lnd .cozy-g > .cozy-ph { max-height: 560px } }
+@media (max-width: 560px) { .lnd .cozy-txt { padding: 22px 18px } }
+
+/* ЗАГОЛОВОК АРГУМЕНТА */
+.lnd .arg-head { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; margin-bottom: 36px }
+.lnd .arg-n { width: 64px; height: 64px; border-radius: 20px; background: var(--blue); color: #fff; display: grid; place-items: center; font-size: 28px; font-weight: 800; box-shadow: 0 10px 24px rgba(47, 91, 234, .3) }
+.lnd .arg-n.or { background: var(--orange); box-shadow: 0 10px 24px rgba(242, 140, 40, .3) }
+.lnd .arg-n.red { background: var(--red); box-shadow: 0 10px 24px rgba(229, 72, 77, .3) }
+.lnd .arg-head .eb { font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.lnd .arg-chat { margin-top: 16px; max-width: 760px }
+@media (max-width: 560px) {
+  .lnd .arg-head { grid-template-columns: 1fr; gap: 12px }
+  .lnd .arg-n { width: 48px; height: 48px; border-radius: 15px; font-size: 22px }
+}
+
+/* АРГУМЕНТ 1: три карточки — всегда белые, и в тёмной теме тоже. */
+.lnd .cmp3 { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 20px; align-items: stretch }
+.lnd .cc { padding: 26px; display: flex; flex-direction: column; gap: 12px; background: #fff; color: #1b1f2a; border-color: #d6deef }
+.lnd .cc .ic3d { width: 64px; height: 64px }
+.lnd .cc-top { display: flex; justify-content: space-between; align-items: center; gap: 10px }
+.lnd .cc ul { list-style: none; display: grid; gap: 10px }
+.lnd .cc li { display: flex; gap: 10px; font-size: 15px }
+.lnd .cc li::before { content: ''; flex: none; width: 26px; height: 26px; margin-top: -1px; background: center / contain no-repeat }
+.lnd .cc.bad li::before { background-image: url('/brand/icons/cross.webp') }
+.lnd .cc.good li::before { background-image: url('/brand/icons/tickg.webp') }
+.lnd .cc.good { border: 2px solid #2f5bea; background: linear-gradient(180deg, #eaf0fd, #fff 40%) }
+.lnd .cc .t-red { background: #fdecee; color: #c9333a }
+.lnd .cc .t-or { background: #fdf1e4; color: #a8560c }
+.lnd .cc .t-blue { background: #eaf0fd; color: #2f5bea }
+.lnd .cc .price-l { margin-top: auto; padding-top: 12px; border-top: 1px dashed #d6deef; font-weight: 800; color: #6b7080 }
+.lnd .cc .price-l:hover, .lnd .cc.good .price-l { color: #2f5bea }
+@media (max-width: 900px) { .lnd .cmp3 { grid-template-columns: 1fr } }
+
+/* АРГУМЕНТ 2: пять шагов урока, линия заполняется слева направо (scaleX). */
+.lnd .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; position: relative; list-style: none }
+.lnd .flow-line { position: absolute; left: 8%; right: 8%; top: 62px; height: 3px; background: var(--line); border-radius: 3px }
+.lnd .flow-fill { position: absolute; inset: 0; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 3px; transform-origin: left center }
+.lnd .st { position: relative; text-align: center; padding: 0 6px }
+.lnd .st .ic3d { width: 96px; height: 96px; margin: 0 auto 14px; position: relative; z-index: 1 }
+.lnd .st h3 { font-size: 16.5px }
+.lnd .st p { font-size: 14px; color: var(--ink2); margin-top: 4px }
+@media (max-width: 900px) { .lnd .flow { grid-template-columns: 1fr 1fr; row-gap: 26px } .lnd .flow-line { display: none } }
+
+/* АРГУМЕНТ 3: две шкалы сен–май и демо «Сдать ДЗ». */
+.lnd .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px }
+.lnd .vs .card { padding: 24px; min-width: 0 }
+.lnd .vs .card.us { border: 2px solid var(--blue) }
+.lnd .tl { display: flex; height: 44px; border-radius: 12px; overflow: hidden; gap: 3px; margin-top: 16px }
+.lnd .tl i { display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 800; color: #fff; flex: none; min-width: 0; white-space: nowrap; overflow: hidden; transform-origin: left center }
+.lnd .tl-axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink2); margin-top: 8px; font-weight: 700 }
+.lnd .vs .foot { font-size: 13.5px }
+.lnd .u-demo { margin-top: 20px; padding: 22px; display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center }
+.lnd .u-demo .ic3d { width: 90px; height: 90px }
+.lnd .u-title { font-weight: 800; margin-bottom: 10px }
+.lnd .u-row { display: flex; gap: 10px; flex-wrap: wrap; list-style: none }
+.lnd .les { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; font-weight: 700; border: 1px solid var(--line); background: var(--bg2); transition: background-color .3s, color .3s, border-color .3s }
+.lnd .les .i { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-size: 12px; background: var(--line) }
+.lnd .les.done { background: var(--greenS); border-color: transparent; color: var(--greenInk) }
+.lnd .les.done .i { background: var(--green); color: #fff }
+.lnd .les.open { background: var(--blueS); border-color: var(--blue); color: var(--blueInk) }
+.lnd .les.open .i { background: var(--blue); color: #fff }
+.lnd .les.locked { color: var(--ink2) }
+.lnd .u-act { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
+.lnd .u-act .btn { padding: 10px 18px }
+.lnd .u-act .foot { margin: 0 }
+@media (max-width: 900px) { .lnd .vs { grid-template-columns: 1fr } .lnd .u-demo { grid-template-columns: 1fr } }
+@media (max-width: 430px) { .lnd .tl i { font-size: 10.5px } .lnd .tl-axis { font-size: 10.5px } }
+
+/* АРГУМЕНТ 4: проверка второй части. */
+.lnd .ai { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px }
+.lnd .ai .card { padding: 24px; position: relative; overflow: hidden }
+.lnd .ai .num { position: absolute; right: 18px; top: 12px; font-size: 44px; font-weight: 800; color: var(--line) }
+.lnd .ai .ic3d { width: 60px; height: 60px }
+.lnd .ai h3 { margin-top: 10px }
+.lnd .ai .txt { font-size: 14px; color: var(--ink2) }
+.lnd .sheet { height: 140px; border-radius: 14px; background: var(--bg2); border: 1px solid var(--line); margin: 14px 0; position: relative; overflow: hidden; padding: 12px }
+.lnd .sheet.auto { height: auto; padding: 4px 14px }
+.lnd .sheet svg { width: 100%; height: 100% }
+.lnd .sheet path { stroke: var(--ink2); stroke-width: 2.2; fill: none; stroke-linecap: round }
+.lnd .scan { position: absolute; left: 0; right: 0; height: 40px; top: -44px; background: linear-gradient(180deg, transparent, rgba(47, 91, 234, .35), transparent) }
+.lnd .crit { list-style: none; margin: 12px 0 }
+.lnd .crit li { display: flex; gap: 8px; align-items: center; font-size: 14.5px; padding: 6px 0; opacity: .35; transition: opacity .4s }
+.lnd .crit li.ok { opacity: 1 }
+.lnd .crit li i { flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--line); display: grid; place-items: center; font-style: normal; font-size: 12px; color: #fff; transition: background-color .3s }
+.lnd .crit li.ok i { background: var(--green) }
+.lnd .crit li.ok.warn i { background: var(--orange) }
+.lnd .score { font-size: 52px; font-weight: 800; margin: 6px 0; font-variant-numeric: tabular-nums }
+.lnd .score span { font-size: 22px; color: var(--ink2) }
+/* Листок в линейку с решением от руки (правка 4). Кремовый в обеих темах. */
+.lnd .sheet.paper { height: auto; padding: 10px 16px 12px; background: #fbf8f0 repeating-linear-gradient(180deg, transparent 0 27px, #d9e3f3 27px 28px); border-color: #e9e2d0; font-family: 'Caveat Paper', 'Marck Script', cursive; font-weight: 500; color: #1f3b8f; transform: rotate(-1.2deg); box-shadow: 0 8px 20px rgba(0, 0, 0, .18) }
+.lnd .paper .hl { font-size: 21px; line-height: 28px }
+.lnd .paper .hl.ind { padding-left: 46px }
+.lnd .paper .ans { color: #c0392b; font-weight: 700 }
+.lnd .paper u { text-decoration-thickness: 2px }
+.lnd .cmt { font-family: 'PT Serif', Georgia, serif; background: var(--orangeS); border-left: 4px solid var(--orange); border-radius: 10px; padding: 12px 14px; font-size: 15px }
+@media (max-width: 900px) { .lnd .ai { grid-template-columns: 1fr } }
+
+/* АРГУМЕНТ 5: счётчики → ИИ-прогноз и график пробников. */
+.lnd .fc { display: grid; grid-template-columns: 1fr 1.25fr; gap: 24px; align-items: stretch }
+.lnd .inputs { padding: 26px; display: flex; flex-direction: column; gap: 14px }
+.lnd .inp-row { display: flex; gap: 14px; align-items: center; padding: 12px; border-radius: 16px; background: var(--bg2) }
+.lnd .inp-row .ic3d { width: 52px; height: 52px }
+.lnd .inp-row b { display: block; font-size: 22px; font-variant-numeric: tabular-nums }
+.lnd .inp-row small { color: var(--ink2); font-size: 13px }
+.lnd .brain { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; background: var(--navy); color: #fff }
+.lnd .brain .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--orange); animation: lnd-pulse 1.4s infinite }
+@keyframes lnd-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(242, 140, 40, .6) } 50% { box-shadow: 0 0 0 10px rgba(242, 140, 40, 0) } }
+.lnd .brain small { display: block; font-size: 13px; opacity: .75 }
+.lnd .brain .res { margin-left: auto; font-size: 30px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums }
+.lnd .inputs .foot { margin: 0 }
+.lnd .chart { padding: 26px; min-width: 0 }
+.lnd .chart-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px }
+.lnd .chart svg { width: 100%; height: auto; overflow: visible; display: block }
+.lnd .c-grid line { stroke: var(--line); stroke-width: 1 }
+.lnd .c-ax text { fill: var(--ink2); font-size: 12px; font-weight: 700; font-family: Manrope, 'Manrope Fallback', sans-serif }
+.lnd .c-goal { stroke: var(--orange); stroke-width: 2; stroke-dasharray: 6 6 }
+.lnd .c-goal-t { fill: var(--orInk); font-size: 12.5px; font-weight: 800; font-family: Manrope, 'Manrope Fallback', sans-serif }
+.lnd .c-line { fill: none; stroke: var(--blue); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round }
+.lnd .c-pt { fill: var(--card); stroke: var(--blue); stroke-width: 3 }
+.lnd .c-lbl { fill: var(--ink); font-size: 13px; font-weight: 800; font-family: Manrope, 'Manrope Fallback', sans-serif }
+.lnd .c-last { fill: var(--orange); stroke: var(--card); stroke-width: 3 }
+@media (max-width: 900px) { .lnd .fc { grid-template-columns: 1fr } .lnd .chart { padding: 20px 14px } }
+
+/* ТАК ВЫГЛЯДИТ ПЛАТФОРМА */
+.lnd .sec-head { margin-bottom: 34px }
+.lnd .sec-head h2 { margin-top: 12px }
+.lnd .sec-head .lead { margin-top: 10px }
+.lnd .scr { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 22px; align-items: start }
+.lnd .scr > * { min-width: 0 }
+.lnd .scr-tabs { display: grid; gap: 10px }
+.lnd .scr-tabs button { position: relative; overflow: hidden; display: flex; gap: 12px; align-items: center; text-align: left; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); font-weight: 800; transition: border-color .25s, box-shadow .25s, color .25s }
+.lnd .scr-tabs button img { flex: none; width: 40px; height: 40px; object-fit: contain }
+.lnd .scr-tabs button.on { border-color: var(--blue); box-shadow: var(--shadow); color: var(--blueInk) }
+.lnd .scr-tabs .tprog { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--blue); transform-origin: left center }
+.lnd .frame { background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 31, 42, .1); overflow: hidden }
+.lnd .fr-bar { display: flex; gap: 6px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bg2) }
+.lnd .fr-bar i { width: 10px; height: 10px; border-radius: 50%; background: #f5a3a6 }
+.lnd .fr-bar i:nth-child(2) { background: #ffd08a }
+.lnd .fr-bar i:nth-child(3) { background: #8fd9b6 }
+.lnd .fr-bar span { margin-left: 10px; font-size: 12.5px; color: var(--ink2); font-weight: 700 }
+.lnd .shot { aspect-ratio: 16 / 10; background: #fff; position: relative; overflow: hidden }
+.lnd .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: top center; display: block }
+@media (max-width: 900px) {
+  .lnd .scr { grid-template-columns: minmax(0, 1fr) }
+  .lnd .scr-tabs { grid-template-columns: 1fr 1fr }
+  .lnd .scr-tabs button { font-size: 13.5px; padding: 10px; gap: 8px }
+  .lnd .scr-tabs button img { width: 30px; height: 30px }
+}
+
+/* ЦЕНА */
+.lnd .pbars { padding: 28px; max-width: 1000px; margin: 0 auto }
+.lnd .pcmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
+.lnd .pt { display: flex; flex-direction: column; gap: 2px; padding: 20px; border-radius: 18px; background: var(--bg2); border: 1px solid var(--line) }
+.lnd .pt-l { font-weight: 800; font-size: 17px }
+.lnd .pt-s { font-size: 13.5px; color: var(--ink2) }
+.lnd .pt-v { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-top: 14px; white-space: nowrap }
+.lnd .pt .bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; position: relative; margin-top: 14px }
+.lnd .pt .bar i, .lnd .pt .bar .rng { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 6px; transform-origin: left center }
+.lnd .pt .bar .rng { opacity: .28 }
+.lnd .pt.us { background: var(--greenS); border: 2px solid var(--green) }
+.lnd .pt.us .pt-v { color: var(--greenInk); font-size: 40px }
+.lnd .psave { margin-top: 20px; text-align: center; font-size: 18px; font-weight: 700 }
+.lnd .psave b { color: var(--greenInk) }
+@media (max-width: 820px) { .lnd .pcmp { grid-template-columns: 1fr } .lnd .pt-v { font-size: 24px } .lnd .pt.us .pt-v { font-size: 34px } .lnd .pbars { padding: 22px 18px } }
+.lnd .bill { text-align: center; margin-top: 30px }
+.lnd .tabs { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 5px }
+.lnd .tabs button { padding: 10px 18px; border-radius: 10px; font-weight: 800; color: var(--ink2) }
+.lnd .tabs button.on { background: var(--blue); color: #fff }
+.lnd .plans { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; max-width: 900px; margin: 30px auto 0 }
+.lnd .plan { padding: 28px; position: relative }
+.lnd .plan.best { border: 2px solid var(--blue) }
+.lnd .plan h3 { margin-top: 10px }
+.lnd .plan.best h3 { margin-top: 0 }
+.lnd .plan .badge { position: absolute; top: -14px; left: 26px; background: var(--orange); color: #fff; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 800 }
+.lnd .price { font-size: 54px; font-weight: 800; letter-spacing: -.02em; margin: 10px 0 2px; font-variant-numeric: tabular-nums }
+.lnd .price small { font-size: 18px; color: var(--ink2) }
+.lnd .plan ul { list-style: none; margin: 18px 0 24px; display: grid; gap: 8px }
+.lnd .plan li { display: flex; gap: 10px; font-size: 15px }
+.lnd .plan li::before { content: ''; flex: none; width: 24px; height: 24px; background: url('/brand/icons/tickg.webp') center / contain no-repeat }
+.lnd .plan .btn { width: 100% }
+@media (max-width: 760px) { .lnd .plans { grid-template-columns: 1fr } }
+
+/* ФИНАЛ: диалог на navy. */
+.lnd .final { background: var(--navy); color: #eef2fb; border-radius: 32px; padding: 48px; display: grid; grid-template-columns: 1.2fr .8fr; gap: 30px; align-items: center; overflow: hidden; position: relative }
+.lnd .final .bub { background: #1c3266; border-color: #2b4583; color: #eef2fb; box-shadow: none }
+.lnd .final .bub b { color: #9db6ff }
+.lnd .final .msg.me .bub { background: var(--orange); border-color: var(--orange) }
+.lnd .final .msg .av { background: #fff; border-color: transparent }
+.lnd .final .msg.me .av { background: #fdf1e4; color: #a8560c }
+.lnd .final .dots i { background: #eef2fb }
+.lnd .final .chat-actions { margin-left: 0; margin-top: 22px }
+.lnd .btn-navy { border: 1.5px solid #2b4583; color: #eef2fb }
+.lnd .final-ic { position: relative; height: 260px }
+.lnd .final-ic .fl { position: absolute; filter: drop-shadow(0 18px 22px rgba(0, 0, 0, .25)) }
+.lnd .final-ic .fl img { width: 100%; height: 100%; object-fit: contain; display: block }
+.lnd .bob { animation: lnd-bob 5s ease-in-out infinite }
+@keyframes lnd-bob { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-14px) rotate(3deg) } }
+@media (max-width: 860px) { .lnd .final { grid-template-columns: 1fr; padding: 28px 18px } .lnd .final-ic { height: 180px } }
+
+/* FAQ */
+.lnd .faq { max-width: 820px; margin: 0 auto }
+.lnd .faq h2 { text-align: center; margin-bottom: 24px }
+.lnd .q { border-bottom: 1px solid var(--line) }
+.lnd .q button { width: 100%; display: flex; justify-content: space-between; gap: 16px; padding: 20px 0; font-weight: 800; font-size: 17px; text-align: left }
+.lnd .q button span { flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--blueS); color: var(--blueInk); display: grid; place-items: center; transition: transform .3s }
+.lnd .q.open button span { transform: rotate(45deg) }
+.lnd .q .a { color: var(--ink2); padding-bottom: 20px }
+
+/* ПОДВАЛ */
+.lnd footer { padding: 40px 0 100px; color: var(--ink2); font-size: 14px }
+.lnd footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px }
+.lnd footer .brand { display: inline-flex; align-items: center; gap: 10px }
+.lnd footer nav { display: flex; flex-wrap: wrap; gap: 6px }
+.lnd footer nav a:hover { color: var(--blueInk) }
+.lnd .m-cta { display: none }
+@media (max-width: 700px) { .lnd .m-cta { display: flex; position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60 } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lnd *, .lnd *::before, .lnd *::after { animation: none !important; transition: none !important }
+}
+.lnd .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
+.lnd .les { position: relative }

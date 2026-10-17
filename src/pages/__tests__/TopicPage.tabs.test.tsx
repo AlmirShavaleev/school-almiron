@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
@@ -94,7 +94,25 @@ function resetMaterials(list: TopicMaterial[] = FULL_MATERIALS) {
   materials.push(...list)
 }
 
-describe('Вкладки рубрик темы (§116)', () => {
+/** Ключи разделов переключателя в порядке DOM. */
+function segKeys() {
+  return [...document.querySelectorAll('[data-testid^="topic-seg-"]')]
+    .map(el => el.getAttribute('data-testid')!.replace('topic-seg-', ''))
+}
+
+/** Ключи рубрик открытого раздела в порядке DOM. */
+function stackKeys() {
+  const stack = screen.getByTestId('topic-section-stack')
+  return [...stack.querySelectorAll('[data-testid^="topic-section-"]')]
+    .map(el => el.getAttribute('data-testid')!.replace('topic-section-', ''))
+}
+
+/** Состав открытого раздела; ждёт, пока страница дочитает данные. */
+async function expectStack(keys: string[]) {
+  await waitFor(() => expect(stackKeys()).toEqual(keys))
+}
+
+describe('Разделы темы (владелец 15.10; было §116, §121)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetMaterials()
@@ -102,97 +120,46 @@ describe('Вкладки рубрик темы (§116)', () => {
     noSolution.value = false
   })
 
-  it('лента больше не скроллится: вкладки переносятся', async () => {
-    renderPage()
-
-    const tablist = await screen.findByRole('tablist', { name: 'Разделы темы' })
-    expect(tablist.className).not.toContain('overflow-x-auto')
-    // Перенос живёт внутри ряда группы: сетка на узком, flex-wrap на широком.
-    const row = screen.getByTestId('topic-tab-group-theory')
-    expect(row.querySelector('.grid, .sm\:flex-wrap')).not.toBeNull()
-  })
-
-  it('все рубрики отрисованы разом, а не «где-то правее»', async () => {
+  it('разделы — крупные кнопки, подвкладок нет', async () => {
     renderPage()
 
     await screen.findByRole('tablist', { name: 'Разделы темы' })
-    const tabs = screen.getAllByRole('tab')
-
-    // Видео + шесть рубрик с материалами + решение (гейт) + ДЗ = 9.
-    expect(tabs.length).toBe(9)
-    for (const label of ['Теория', 'Конспект', 'Задачи', 'Решение задач', 'Рабочий лист задач', 'Рабочий лист ДЗ']) {
-      expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
-    }
+    expect(segKeys()).toEqual(['theory', 'lesson', 'homework', 'review'])
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('активная вкладка есть всегда и она одна', async () => {
+  it('все рубрики раздела отрисованы подряд, каждая в своём разделе', async () => {
     renderPage()
 
-    await screen.findByRole('tablist', { name: 'Разделы темы' })
-    const selected = screen.getAllByRole('tab').filter(t => t.getAttribute('aria-selected') === 'true')
+    await expectStack(['notes', 'theory'])
 
-    expect(selected).toHaveLength(1)
+    fireEvent.click(screen.getByTestId('topic-seg-lesson'))
+    await expectStack(['tasks', 'task_solution', 'worksheet_tasks'])
+    expect(screen.getByTestId('topic-seg-lesson')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'false')
+
+    // В ДЗ задание идёт первым, решение последним.
+    fireEvent.click(screen.getByTestId('topic-seg-homework'))
+    await expectStack(['homework', 'worksheet_homework', 'solution'])
   })
 
-  it('закрытая гейтом рубрика решения осталась с замком', async () => {
+  it('закрытое гейтом решение — заглушка с замком на месте рубрики (§95)', async () => {
     renderPage()
 
-    const tab = await screen.findByRole('tab', { name: /Решение ДЗ/ })
-    expect(tab.querySelector('svg.lucide-lock')).not.toBeNull()
-  })
-
-  /**
-   * §121. Вкладки шли сплошной лентой и читались как куча. Теперь три
-   * смысловые группы; составы живут в общем перечне рубрик, и тест сторожит
-   * именно то, что видно на экране.
-   */
-  it('вкладки разложены по группам «Теория», «Урок», «Домашнее задание»', async () => {
-    renderPage()
-
-    await screen.findByRole('tablist', { name: 'Разделы темы' })
-
-    expect(screen.getByTestId('topic-tab-group-theory')).toBeInTheDocument()
-    expect(screen.getByTestId('topic-tab-group-lesson')).toBeInTheDocument()
-    expect(screen.getByTestId('topic-tab-group-homework')).toBeInTheDocument()
-  })
-
-  it('в группе ДЗ задание идёт первым, решение последним', async () => {
-    renderPage()
-
-    const group = await screen.findByTestId('topic-tab-group-homework')
-    const labels = within(group).getAllByRole('tab').map(t => t.textContent?.trim())
-
-    expect(labels?.[0]).toContain('Домашнее задание')
-    expect(labels?.at(-1)).toContain('Решение ДЗ')
-  })
-
-  it('каждая вкладка стоит в своей группе, а не где придётся', async () => {
-    renderPage()
-
-    const lesson = await screen.findByTestId('topic-tab-group-lesson')
-    expect(within(lesson).getByRole('tab', { name: /Задачи/ })).toBeInTheDocument()
-    expect(within(lesson).queryByRole('tab', { name: /Конспект/ })).not.toBeInTheDocument()
-
-    const theory = screen.getByTestId('topic-tab-group-theory')
-    expect(within(theory).getByRole('tab', { name: /Конспект/ })).toBeInTheDocument()
-  })
-
-  it('замок §95 остаётся видимым в своей группе', async () => {
-    renderPage()
-
-    const group = await screen.findByTestId('topic-tab-group-homework')
-    const tab = within(group).getByRole('tab', { name: /Решение ДЗ/ })
-
-    expect(tab.querySelector('svg.lucide-lock')).not.toBeNull()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
+    const solution = await screen.findByTestId('topic-section-solution')
+    expect(within(solution).getByText('Решение пока закрыто')).toBeInTheDocument()
+    expect(solution.querySelector('svg.lucide-lock')).not.toBeNull()
   })
 })
 
 /**
- * §121, пункт 4: у темы без ДЗ не должно быть ни подписи «Домашнее задание»,
- * ни пустого места под ней.
+ * §121, пункт 4: у темы без ДЗ не должно быть ни раздела «ДЗ», ни пустого
+ * места под ним.
  */
-describe('Пустая группа вкладок не рисуется (§121)', () => {
-  it('нет ДЗ и решения — нет и группы «Домашнее задание»', async () => {
+describe('Пустой раздел не рисуется (§121)', () => {
+  it('нет ДЗ и решения — нет и раздела «ДЗ»', async () => {
     resetMaterials([
       { kind: 'file', id: 'm1', title: null, position: 0, isVisible: true, section: 'notes', storagePath: `${TOPIC}/b.pdf`, fileName: 'b.pdf', sizeBytes: 1 },
       { kind: 'file', id: 'm2', title: null, position: 1, isVisible: true, section: 'tasks', storagePath: `${TOPIC}/c.pdf`, fileName: 'c.pdf', sizeBytes: 1 },
@@ -202,9 +169,9 @@ describe('Пустая группа вкладок не рисуется (§121)
 
     renderPage()
 
-    await screen.findByTestId('topic-tab-group-theory')
-    expect(screen.getByTestId('topic-tab-group-lesson')).toBeInTheDocument()
-    expect(screen.queryByTestId('topic-tab-group-homework')).not.toBeInTheDocument()
-    expect(screen.queryByText('Домашнее задание')).not.toBeInTheDocument()
+    await screen.findByTestId('topic-seg-theory')
+    expect(segKeys()).toEqual(['theory', 'lesson', 'review'])
+    expect(screen.queryByTestId('topic-seg-homework')).not.toBeInTheDocument()
+    expect(screen.queryByText('ДЗ')).not.toBeInTheDocument()
   })
 })

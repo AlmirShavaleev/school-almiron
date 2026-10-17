@@ -63,6 +63,9 @@ import { onlyEgeTrack } from '@/lib/training'
 import { CourseSummaryTab } from '@/components/course/CourseSummaryTab'
 import { CourseReminderSettings } from '@/components/course/CourseReminderSettings'
 import { edgeMask, useScrollEdges } from '@/hooks/useScrollEdges'
+import { CourseProgressTab } from '@/components/courseProgram/progress/CourseProgressTab'
+import { CourseUnlockModeSetting } from '@/components/courseProgram/progress/CourseUnlockModeSetting'
+import { fetchCourseUnlockMode } from '@/lib/progressUnlock'
 
 // ─── Inline editable text ────────────────────────────────────────────────────
 function InlineEdit({
@@ -1372,7 +1375,7 @@ function MaterialsMatrix({
  * — только подпись, ключ `program` прежний: старые ссылки `?tab=program`
  * открывают её же.
  */
-const COURSE_TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'summary', 'students', 'settings'] as const
+const COURSE_TABS = ['course', 'program', 'materials', 'homework', 'assessments', 'summary', 'students', 'progress', 'settings'] as const
 type CourseTab = typeof COURSE_TABS[number]
 /** Вкладка по умолчанию — та, у которой в адресе нет `?tab=`. */
 const DEFAULT_TAB: CourseTab = 'course'
@@ -1381,7 +1384,7 @@ const DEFAULT_TAB: CourseTab = 'course'
  * курс глазами ученика строится по классу (группе), а у каркаса класса нет;
  * каркас открывается на «Сроках и статистике», как раньше на «Программе».
  */
-const STUDENT_TABS = ['course', 'homework', 'summary', 'students'] as const satisfies readonly CourseTab[]
+const STUDENT_TABS = ['course', 'homework', 'summary', 'students', 'progress'] as const satisfies readonly CourseTab[]
 /** Параметры адреса вкладки «Курс»: открытый раздел и тема (§250). */
 const KURS_PARAMS = ['module', 'topic'] as const
 /**
@@ -1399,6 +1402,10 @@ function parseCourseTab(raw: string | null): CourseTab {
 
 export function CourseProgramPage() {
   const profile = useAuthStore(s => s.profile)
+  // §288. Режим открытия уроков курса (нет строки — по датам).
+  // ответ привязан к курсу: при смене курса режим прошлого не показывается
+  const [unlockModeOf, setUnlockModeOf] = useState<{ courseId: string; mode: 'schedule' | 'progress' } | null>(null)
+  const [unlockReload, setUnlockReload] = useState(0)
   const { readOnly } = useMyTeachingScope()
   // Роль `curator` из списка убрана: с 2026-08-05 куратор программу читает, но
   // не правит, и база это подтверждает (`course_is_teacher_staff`). Оставлять
@@ -1655,6 +1662,13 @@ export function CourseProgramPage() {
    * неактивным черновиком и остаётся в своём классе.
    */
   const selectedCourse = courses.find(c => c.id === selectedId) || null
+  const unlockMode = unlockModeOf && unlockModeOf.courseId === selectedId ? unlockModeOf.mode : 'schedule'
+  useEffect(() => {
+    if (!selectedId) return
+    let alive = true
+    fetchCourseUnlockMode(selectedId).then(m => { if (alive) setUnlockModeOf({ courseId: selectedId, mode: m }) }).catch(() => {})
+    return () => { alive = false }
+  }, [selectedId, unlockReload])
 
   /**
    * §244. Цифры по курсам — одним вызовом базы, только пока открыт список:
@@ -2213,6 +2227,8 @@ export function CourseProgramPage() {
                 // §264: «Сводка» класса — рядом с «Учениками».
                 ...(isTemplate ? [] : [{ key: 'summary',  label: 'Сводка' }]),
                 ...(isTemplate ? [] : [{ key: 'students',  label: 'Ученики' }]),
+                // §288: курс «по прохождению» — кто какие уроки закрыл, ручные отметки.
+                ...(!isTemplate && unlockMode === 'progress' ? [{ key: 'progress', label: 'Прохождение' }] : []),
                 ...(canEdit ? [{ key: 'settings', label: 'Настройки' }] : []),
               ].map(t => (
                 <button
@@ -2450,6 +2466,10 @@ export function CourseProgramPage() {
               <CourseStudentsSection courseId={selectedCourse.id} />
             )}
 
+            {tab === 'progress' && !isTemplate && (
+              <CourseProgressTab courseId={selectedCourse.id} />
+            )}
+
             {/* Settings tab */}
             {tab === 'settings' && canEdit && (
               <div className="space-y-8">
@@ -2461,6 +2481,15 @@ export function CourseProgramPage() {
                 />
                 {/* §264. Напоминания ученикам в Telegram — на курс (у каркаса учеников нет). */}
                 {!isTemplate && <CourseReminderSettings courseId={selectedCourse.id} />}
+                {/* §288. Открытие уроков: по датам / по прохождению — переключает админ. */}
+                {!isTemplate && (
+                  <CourseUnlockModeSetting
+                    courseId={selectedCourse.id}
+                    mode={unlockMode}
+                    canChange={profile?.role === 'admin' || profile?.role === 'owner'}
+                    onChanged={() => setUnlockReload(n => n + 1)}
+                  />
+                )}
               </div>
             )}
         </div>
