@@ -24,6 +24,11 @@ function fixtures(scenario) {
   if (student && math && !t.group_students.some(g => g.group_id === math.id && g.student_id === student.id)) {
     t.group_students.push({ id: 'aa000000-0000-4000-8000-0000000000e1', group_id: math.id, student_id: student.id, joined_at: new Date(Date.now() - 864e5 * 30).toISOString() })
   }
+  // Длинное название курса (жалоба 17.10: шапка курса на телефоне): COURSE_TITLE=«…».
+  if (process.env.COURSE_TITLE) {
+    const c = t.courses.find(x => x.id === IDS.course)
+    if (c) c.title = process.env.COURSE_TITLE
+  }
   const physTopic = t.topics.find(tp => tp.course_id === IDS.course) ?? t.topics[0]
   fx.rpc.student_home_courses = t.courses
     .filter(c => ['physics', 'math'].includes(c.subject))
@@ -257,7 +262,8 @@ const SHOTS = process.env.AUDIT ? ALL_SHOTS.filter(x => x.audit)
   : ['day0', 'month'].includes(scenario) ? ALL_SHOTS.filter(x => x.url.startsWith('/my-course') && !x.url.includes('/topic/'))
   : ALL_SHOTS.filter(x => !x.subs && !x.audit)
 
-for (const width of [1280, 390]) {
+const WIDTHS = process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : [1280, 390]
+for (const width of WIDTHS) {
   for (const theme of ['light', 'dark']) {
     const mobile = width < 768
     const context = await browser.newContext({

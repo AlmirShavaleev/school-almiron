@@ -49,8 +49,11 @@ export function CourseHero({ title, subject, examType, mode, ladder, current, ch
 }) {
   return (
     <section className="stu-card stu-chero" data-testid="course-hero">
+      {/* Колонка названия тянется (flex-1 min-w-0), прогноз — отдельной строкой под
+          ней: в одной строке с названием карточка прогноза сжимала его до буквы
+          на строку (жалоба ученика 17.10, iPhone 390). */}
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="stu-tag t-blue">{SUBJECT_LABELS[subject] || subject}</span>
             <span className="stu-tag t-or">{EXAM_LABELS[examType] || examType}</span>
@@ -58,11 +61,9 @@ export function CourseHero({ title, subject, examType, mode, ladder, current, ch
           </div>
           <h1 className="stu-h2 mt-2 break-words" data-testid="course-title">{title}</h1>
         </div>
-        <div className="flex shrink-0 items-start gap-3">
-          {forecast}
-          <Sticker name={stickerFor(subject)} size={64} />
-        </div>
+        <Sticker name={stickerFor(subject)} size={64} className="stu-chero-st" />
       </div>
+      {forecast && <div className="stu-chero-fc" data-testid="course-hero-forecast">{forecast}</div>}
 
       {ladder && (
         <div className="stu-chero-stat">
