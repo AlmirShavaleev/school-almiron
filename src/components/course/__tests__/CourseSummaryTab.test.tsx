@@ -64,7 +64,9 @@ describe('CourseSummaryTab', () => {
   it('один вызов на курс; шапка и строки как в макете', async () => {
     renderTab()
     await screen.findByTestId('course-summary-table')
-    expect(state.calls).toEqual([['course_summary_for_staff', { p_course_id: 'c-1' }]])
+    // Один вызов карточки/сводки + параллельно хранимый прогноз (forecast-daily, письмо 16.10).
+    expect(state.calls.filter(c => (c as unknown[])[0] === 'course_summary_for_staff')).toEqual([['course_summary_for_staff', { p_course_id: 'c-1' }]])
+    expect(state.calls).toContainEqual(['course_score_forecast', { p_course_id: 'c-1' }])
     expect(screen.getByText('Сводка класса · Физика ЕГЭ 10А')).toBeTruthy()
     expect(screen.getByText('3 ученика · за 30 дней')).toBeTruthy()
     expect(screen.getByTestId('summary-chip-homework').textContent).toBe('ДЗ вовремя 50 %')
@@ -126,6 +128,6 @@ describe('CourseSummaryTab', () => {
     state.res = { data: DATA, error: null }
     fireEvent.click(screen.getByText('Повторить'))
     await waitFor(() => expect(screen.getByTestId('course-summary-table')).toBeTruthy())
-    expect(state.calls).toHaveLength(2)
+    expect(state.calls.filter(c => (c as unknown[])[0] === 'course_summary_for_staff')).toHaveLength(2)
   })
 })

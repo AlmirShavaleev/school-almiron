@@ -5,16 +5,19 @@ import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useStaffMode } from '@/store/staffMode
 import { useAuth } from '@/hooks/useAuth'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
+import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import type { UserRole } from '@/types'
 import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
-  ChevronRight, ClipboardCheck, X, Trophy, ListChecks,
+  ChevronRight, ClipboardCheck, X, ListChecks,
   Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
-  Gauge,
+  Gauge, Store,
 } from 'lucide-react'
 import { SchoolMark } from '@/components/brand/SchoolMark'
+import { Mark } from '@/pages/landing/Brand'
+import { useHomeworkToDoCount } from '@/hooks/useMyTopicHomework'
 
 interface NavItem {
   label:   string
@@ -28,6 +31,8 @@ interface NavItem {
    * чтобы вернуть пункт в меню, удалите флаг.
    */
   hidden?: boolean
+  /** §282. Пункт показывается, только когда включён флаг (`app_feature_flags`). */
+  flag?: string
 }
 
 const navItems: NavItem[] = [
@@ -44,15 +49,18 @@ const navItems: NavItem[] = [
   // `/mock-exams` — список ИТОГОВ из `mock_exam_results`, которую ученик по RLS
   // не читает (§215/§221), то есть на пустой экран. Новый — `my_mock_exams`.
   { label: 'Пробники',          path: '/my-mock-exams',  icon: <Timer size={18} />, roles: ['student'],  section: 'Учёба' },
+  // §290-B. Витрина подписочных курсов — только тем, кому подписка открыта.
+  { label: 'Курсы',             path: '/courses',        icon: <Store size={18} />,         roles: ['student'],  section: 'Учёба', flag: 'subscriptions' },
 
   // 13.10, владелец: у ученика пункта «Конструктор вариантов» нет (был с §124).
   // Страница и маршрут остались — вход по прямой ссылке и у персонала ниже.
   // Тот же экран у персонала — вход из «Заданий», рядом с «Тестами». Сохраняет
   // обычный вариант, а не самоназначение (§128).
   { label: 'Конструктор вариантов', path: '/student/variants/generate', icon: <Wand2 size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  // §257. «Достижения» вместо «Прогресс»; счётчик — новые награды (useSidebarBadges).
-  { label: 'Достижения',        path: '/achievements',   icon: <Trophy size={18} />,        roles: ['student'],  section: 'Успехи' },
+  // 14.10, владелец: «Достижения» (и раздел «Успехи») убраны — баллы школы и
+  // награды выключены совсем; /achievements ведёт на главную.
 
+  { label: 'Моя подписка',      path: '/my-subscription', icon: <CreditCard size={18} />,   roles: ['student'],  section: 'Аккаунт', flag: 'subscriptions' },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 
@@ -61,10 +69,13 @@ const navItems: NavItem[] = [
   { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
-  { label: 'Скорость',          path: '/admin/perf',     icon: <Gauge size={18} />,         roles: ['admin', 'owner'] },
+  // §282. Без флага: тарифы и тексты заводятся ДО включения подписки.
+  { label: 'Подписка',          path: '/admin/subscriptions', icon: <CreditCard size={18} />, roles: ['admin', 'owner'] },
+  { label: 'Скорость',          path: '/admin/perf',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
   { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Качество уроков',   path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // Рядом с каталогом намеренно: подборка рождается в его корзине, там же её и
@@ -106,6 +117,7 @@ const CURATOR_ITEMS: NavItem[] = [
   { label: 'Проверка ДЗ',     path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Программа курса', path: '/course-program', icon: <BookOpen size={18} />,       roles: [], section: 'Курирую' },
   { label: 'Оценки уроков',   path: '/topic-ratings',  icon: <Star size={18} />,           roles: [], section: 'Курирую' },
+  { label: 'Качество уроков', path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
 ]
 
@@ -129,12 +141,12 @@ function activeNavPath(paths: readonly string[], pathname: string): string | nul
 }
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/perf'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/perf'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
-  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/lesson-library'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/topic-quality', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]
@@ -151,6 +163,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const badges = useSidebarBadges()
   const curatorships = useMyCuratorships()
+  const { enabled: subscriptionsOn } = useSubscriptionsEnabled()
   const { pathname } = useLocation()
 
   if (!profile) return null
@@ -162,7 +175,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // настоящего ученика; личные страницы из них отвечают заглушкой.
   const menuRole     = effectiveRole ?? profile.role
   const isStudent    = menuRole === 'student'
-  const visibleItems = navItems.filter(item => !item.hidden && item.roles.includes(menuRole))
+  const visibleItems = navItems.filter(item =>
+    !item.hidden && item.roles.includes(menuRole) && (!item.flag || (item.flag === 'subscriptions' && subscriptionsOn)))
   const activePath   = activeNavPath(
     [...visibleItems, ...(isStudent && curatorships.isCurator ? CURATOR_ITEMS : [])].map(i => i.path),
     pathname,
@@ -203,6 +217,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         aria-hidden
       />
 
+      {isStudent ? (
+        <StudentSidebar
+          open={open}
+          onClose={onClose}
+          name={profile.full_name}
+          avatarUrl={(profile as any).avatar_url as string | null | undefined}
+          roleLabel={preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[menuRole] || menuRole}
+          sections={studentSections}
+          badges={badges}
+          activePath={activePath}
+          onSignOut={handleSignOut}
+        />
+      ) : (<>
       {/* Sidebar panel */}
       {/* §225. Меню нового дизайна: тёмно-синий градиент #1a3a80 → #0e1f47,
           активный пункт — жёлтая «таблетка». Раскладка прежняя. */}
@@ -253,30 +280,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {isStudent ? (
-            <div className="px-2 space-y-1">
-              {studentSections.map(sec => (
-                <div key={sec.title}>
-                  {sec.title && (
-                    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-menu-muted select-none">
-                      {sec.title}
-                    </div>
-                  )}
-                  {sec.items.map(item => (
-                    <SidebarNavItem
-                      key={item.path}
-                      item={item}
-                      badge={badges[item.path]}
-                      active={item.path === activePath}
-                      onClose={onClose}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <StaffNavigation items={visibleItems} badges={badges} activePath={activePath} onClose={onClose} />
-          )}
+          <StaffNavigation items={visibleItems} badges={badges} activePath={activePath} onClose={onClose} />
         </nav>
 
         {/* Sign out */}
@@ -290,7 +294,96 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
       </aside>
+      </>)}
     </>
+  )
+}
+
+/**
+ * Меню ученика в стиле лендинга (письмо ЛК_ученика_в_стиле_лендинга.md,
+ * 14.10): светлая карточка (в тёмной теме — navy), Manrope, текущий пункт —
+ * голубая плашка с оранжевой точкой, счётчики — оранжевые. Состав пунктов,
+ * разделы, «Курирую» и подсветка одного пункта — те же, что были.
+ */
+function StudentSidebar({ open, onClose, name, avatarUrl, roleLabel, sections, badges, activePath, onSignOut }: {
+  open: boolean
+  onClose: () => void
+  name: string
+  avatarUrl: string | null | undefined
+  roleLabel: string
+  sections: { title: string; items: NavItem[] }[]
+  badges: Record<string, number>
+  activePath: string | null
+  onSignOut: () => void
+}) {
+  // Бейдж «Домашние задания» — число «сдать» страницы ДЗ, тем же хуком.
+  const todo = useHomeworkToDoCount()
+  const counts: Record<string, number> = { ...badges, ...(todo ? { '/my-homework': todo } : {}) }
+  return (
+    <aside
+      data-testid="student-sidebar"
+      className={cn(
+        'stu-side fixed left-0 top-0 h-full w-72 md:w-64 flex flex-col z-50',
+        'transition-transform duration-300 ease-in-out md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+      )}
+    >
+      <div className="h-[66px] px-4 flex items-center justify-between shrink-0">
+        <span className="stu-logo"><Mark size={34} />Школа Almiron</span>
+        <button onClick={onClose} className="stu-close md:hidden" aria-label="Закрыть меню">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="px-3 pb-2">
+        <div className="stu-me">
+          <span className="stu-ava">
+            {avatarUrl ? <img src={avatarUrl} alt="" /> : name.charAt(0)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-extrabold leading-tight">{name}</span>
+            <span className="stu-muted block text-[12px] leading-tight mt-0.5">{roleLabel}</span>
+          </span>
+        </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 pb-3" aria-label="Кабинет">
+        {sections.map(sec => (
+          <div key={sec.title}>
+            {sec.title && <div className="stu-sec select-none">{sec.title}</div>}
+            {sec.items.map(item => {
+              const active = item.path === activePath
+              const badge = counts[item.path]
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={onClose}
+                  data-active={active ? 'true' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className="stu-item stu-focus"
+                >
+                  {item.icon}
+                  <span className="flex-1 min-w-0 truncate">{item.label}</span>
+                  {badge != null && badge > 0 && (
+                    <span data-testid="nav-badge" data-path={item.path} className="stu-badge">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+      </nav>
+
+      <div className="p-3 border-t stu-line">
+        <button onClick={onSignOut} className="stu-out stu-focus">
+          <LogOut size={18} />
+          Выйти
+        </button>
+      </div>
+    </aside>
   )
 }
 

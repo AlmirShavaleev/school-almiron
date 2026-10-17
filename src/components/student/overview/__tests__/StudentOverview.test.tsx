@@ -73,7 +73,9 @@ describe('карточка ученика — «Ученик целиком»', 
     state.res = { data: FULL, error: null }
     render(<StudentOverview studentId="st-1" onOpenReport={() => {}} />)
     await screen.findByTestId('overview-tiles')
-    expect(state.calls).toEqual([['student_overview_for_staff', { p_student_id: 'st-1' }]])
+    // Один вызов карточки/сводки + параллельно хранимый прогноз (forecast-daily, письмо 16.10).
+    expect(state.calls.filter(c => (c as unknown[])[0] === 'student_overview_for_staff')).toEqual([['student_overview_for_staff', { p_student_id: 'st-1' }]])
+    expect(state.calls).toContainEqual(['student_score_forecast', { p_student_id: 'st-1' }])
     const tiles = within(screen.getByTestId('overview-tiles'))
     expect(tiles.getByText('Примерный балл ЕГЭ')).toBeInTheDocument()
     expect(tiles.getByText('Каталог')).toBeInTheDocument()
@@ -147,6 +149,6 @@ describe('карточка ученика — «Ученик целиком»', 
     state.res = { data: EMPTY, error: null }
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     await screen.findByTestId('overview-tiles')
-    expect(state.calls).toHaveLength(2)
+    expect(state.calls.filter(c => (c as unknown[])[0] === 'student_overview_for_staff')).toHaveLength(2)
   })
 })

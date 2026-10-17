@@ -4,10 +4,11 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import type { TopicTaskRow } from '@/hooks/useTopicTasks'
 
 /**
- * §175. Вкладка «Задачи» на странице темы: одна задача на экране, лента шагов,
+ * §175. Задачи к уроку на странице темы: одна задача на экране, лента шагов,
  * текущая — в адресе. Здесь проверяется связка страница + лента: `?task=` в
- * адресе страницы восстанавливает задачу, а счёт в шапке группы и в ленте —
- * один и тот же (хук один, поднят на страницу — §162).
+ * адресе страницы восстанавливает задачу, а счёт под переключателем и в
+ * ленте — один и тот же (хук один, поднят на страницу — §162). С 15.10
+ * задачи — часть раздела «Урок»; у темы без урока раздел «Урок» из них одних.
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
@@ -111,7 +112,11 @@ function renderPage(search = '') {
 }
 
 async function openTasks() {
-  fireEvent.click(await screen.findByRole('tab', { name: /Задачи/ }))
+  // Рубрик урока у темы нет — раздел из одних задач, подписан «Урок».
+  const seg = await screen.findByTestId('topic-seg-tasks')
+  expect(seg).toHaveTextContent('Урок')
+  fireEvent.click(seg)
+  await screen.findByTestId('topic-section-test')
 }
 
 describe('Страница темы — задачи к уроку (§175)', () => {
@@ -144,11 +149,11 @@ describe('Страница темы — задачи к уроку (§175)', () 
     expect(screen.getByRole('button', { name: /Проверить ещё раз/ })).toBeInTheDocument()
   })
 
-  it('счёт в шапке группы и в ленте — одно число', async () => {
+  it('счёт под переключателем и в ленте — одно число', async () => {
     renderPage()
     await openTasks()
 
-    expect(screen.getByTestId('topic-group-tasks-state')).toHaveTextContent('решено 1 из 3')
+    expect(within(screen.getByTestId('topic-tab-group-tasks')).getByTestId('topic-group-tasks-state')).toHaveTextContent('решено 1 из 3')
     expect(screen.getByText(/Решено 1 из 3/)).toBeInTheDocument()
     const squares = within(screen.getByTestId('topic-tasks-strip')).getAllByRole('button')
     expect(squares.filter(b => b.getAttribute('data-state') === 'solved')).toHaveLength(1)

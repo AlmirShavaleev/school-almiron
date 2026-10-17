@@ -135,13 +135,13 @@ export function needsAction(row: TopicJournalHomework): boolean {
   return row.status === 'not_started' || row.status === 'draft' || row.status === 'returned'
 }
 
-export interface HomeworkBuckets {
+export interface HomeworkBuckets<R extends TopicJournalHomework = TopicJournalHomework> {
   /** Нужно сделать: не начато / черновик / возвращено. Просроченные — первыми. */
-  todo: TopicJournalHomework[]
+  todo: R[]
   /** Сдано, ждёт вердикта. */
-  awaiting: TopicJournalHomework[]
+  awaiting: R[]
   /** Принято. Свежепроверенные сверху. */
-  done: TopicJournalHomework[]
+  done: R[]
 }
 
 /** Просроченное вперёд, затем по дедлайну; работы без срока — в конец. */
@@ -164,7 +164,7 @@ function byReviewedDesc(a: TopicJournalHomework, b: TopicJournalHomework): numbe
  * (просрочка должна быть выше близкого дедлайна), и проверять это удобнее
  * напрямую. Сортировка не мутирует вход.
  */
-export function splitHomeworkBuckets(rows: TopicJournalHomework[]): HomeworkBuckets {
+export function splitHomeworkBuckets<R extends TopicJournalHomework>(rows: R[]): HomeworkBuckets<R> {
   return {
     todo: rows.filter(needsAction).slice().sort(byDue),
     awaiting: rows.filter(r => r.status === 'submitted').slice().sort(byDue),
@@ -219,9 +219,9 @@ export function homeworkCourseOptions(
  * `splitHomeworkBuckets` уже после него — фильтр не имеет права пересортировать
  * список, иначе «сначала срочное» держалось бы только в режиме «Все».
  */
-export function filterHomeworkByCourse(
-  rows: TopicJournalHomework[], courseId: string | null,
-): TopicJournalHomework[] {
+export function filterHomeworkByCourse<R extends TopicJournalHomework>(
+  rows: R[], courseId: string | null,
+): R[] {
   if (!courseId) return rows
   return rows.filter(r => r.course_id === courseId)
 }

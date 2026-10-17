@@ -1,5 +1,8 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { StudentAvatarMenu, StudentNav } from '@/components/student/nav/StudentNav'
+import { StudentBell } from '@/components/student/nav/StudentBell'
+import { studentPageTitle } from '@/lib/studentNav'
 // import { NotificationBell } from './NotificationBell' // скрыто на время MVP
 import { ImpersonationBanner } from '@/components/demo/ImpersonationBanner'
 import { SupportWidget } from '@/components/shared/SupportWidget'
@@ -13,10 +16,13 @@ import { StudentPreviewBanner } from './StudentPreviewBanner'
 import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { Menu, Moon, Sun } from 'lucide-react'
 import { useWorkModeStore } from '@/store/workModeStore'
 import { workModeAllows } from '@/lib/workMode'
 import { WorkModeClosed, WorkModeStrip, useWorkModeSync } from './WorkMode'
+import { useStudentTheme } from '@/store/studentThemeStore'
+import { studentSkinPage } from '@/components/student/skin/skin'
+import '@/components/student/skin/student.css'
 
 /**
  * Заголовок в шапке. Порядок важен: берётся ПЕРВОЕ совпадение, поэтому
@@ -69,10 +75,10 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/my-mock-exams$/, 'Пробники'],
   [/^\/my-homeworks$/, 'Домашние задания'],
   [/^\/my-homework/, 'Домашние задания'],
-  [/^\/achievements$/, 'Достижения'],
   [/^\/my-journal$/, 'Журнал занятий и заданий'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],
+  [/^\/subscription$/, 'Подписка и курсы'],
 ]
 
 export function DashboardLayout() {
@@ -89,6 +95,7 @@ export function DashboardLayout() {
   useWorkModeSync(isStudent)
   const work = useWorkModeStore(s => s.work)
   const workOffsetMs = useWorkModeStore(s => s.offsetMs)
+  const { theme, toggle: toggleTheme } = useStudentTheme()
 
   // Close sidebar on ESC
   useEffect(() => {
@@ -131,32 +138,47 @@ export function DashboardLayout() {
   const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'Школа Almiron'
   const activeWork = isStudent ? work : null
   const workClosed = !!activeWork && !workModeAllows(location.pathname, activeWork)
+  // Кабинет ученика в стиле лендинга (письмо 14.10): ученик и персонал
+  // «глазами ученика». Кабинет преподавателя и админа не меняется.
+  const skin = (effectiveRole ?? profile.role) === 'student'
 
   return (
-    <div className="flex min-h-screen bg-transparent text-graphite-900">
-      {/* Sidebar — receives open/onClose for mobile drawer behaviour */}
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+    <div
+      className={skin ? 'stu flex min-h-screen' : 'flex min-h-screen bg-transparent text-graphite-900'}
+      data-theme={skin ? theme : undefined}
+    >
+      {/* Меню: у ученика — вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10):
+          колонка 96px на компьютере, нижняя панель на телефоне. У персонала —
+          прежнее боковое меню. */}
+      {skin
+        ? <StudentNav />
+        : <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
-      {/* Main content: no left margin on mobile, 256px on md+ */}
-      <div className="flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen">
+      {/* Main content: no left margin on mobile, 256px on md+ (у ученика — 96px) */}
+      <div className={skin ? 'stu-main flex-1 min-w-0 md:ml-24 flex flex-col min-h-screen' : 'flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen'}>
         <ImpersonationBanner />
         {/* Top bar */}
-        <header className="h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30">
-          {/* Hamburger — visible only on mobile */}
-          <button
+        <header className={skin
+          ? 'stu-top h-[66px] flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'
+          : 'h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'}>
+          {/* Hamburger — visible only on mobile (у ученика — нижняя панель вместо него) */}
+          {!skin && <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-graphite-900 transition-colors shrink-0"
+            className={skin
+              ? 'stu-icon-btn md:hidden'
+              : 'md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-graphite-900 transition-colors shrink-0'}
             aria-label="Открыть меню"
           >
             <Menu size={20} />
-          </button>
+          </button>}
 
           {/* Одна строка вместо двух. Подпись «Быстрый доступ через навигацию
               слева» ничего не сообщала, а иконка лупы рядом читалась как поиск,
               которого здесь нет. Освободившаяся высота отдана содержимому. */}
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold text-graphite-950 truncate leading-tight">
-              {pageTitle}
+            <div className={skin ? 'stu-title truncate leading-tight' : 'text-[15px] font-semibold text-graphite-950 truncate leading-tight'}>
+              {skin && <span className="stu-muted mr-2 hidden font-semibold lg:inline">Школа Almiron ·</span>}
+              {(skin && studentPageTitle(location.pathname)) || pageTitle}
             </div>
           </div>
 
@@ -167,9 +189,33 @@ export function DashboardLayout() {
           {/* Режим представления — только у admin/owner, права не трогает */}
           <StaffModeSwitch />
 
+          {skin && (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="stu-icon-btn"
+              aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              data-testid="student-theme-toggle"
+            >
+              {theme === 'dark' ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+            </button>
+          )}
+
+          {/* Ученик: колокольчик и аватар с меню «Ещё» (письмо 16.10). В предпросмотре
+              персонала колокольчика нет — это были бы его собственные уведомления. */}
+          {skin && !preview && <StudentBell />}
+          {skin && (
+            <StudentAvatarMenu avatar={
+              <span className="stu-ava">
+                {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" /> : initials}
+              </span>
+            } />
+          )}
+
           {/* Avatar + name */}
-          <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
-            <div className="w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15">
+          {!skin && <div className={skin ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5 pl-3 border-l border-slate-200'}>
+            <div className={skin ? 'stu-ava' : 'w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15'}>
               {profile.avatar_url
                 ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" />
                 : initials
@@ -183,12 +229,12 @@ export function DashboardLayout() {
                 сжимался заголовок страницы, то есть пропадал он, а не
                 украшение. На 1024+ ряд помещается — вид прежний. */}
             <div className="hidden lg:block">
-              <div className="text-sm font-semibold text-graphite-950 leading-tight">{profile.full_name || 'Профиль'}</div>
-              <div className="text-xs text-slate-500 leading-tight">
+              <div className={skin ? 'stu-name' : 'text-sm font-semibold text-graphite-950 leading-tight'}>{profile.full_name || 'Профиль'}</div>
+              <div className={skin ? 'stu-role' : 'text-xs text-slate-500 leading-tight'}>
                 {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
               </div>
             </div>
-          </div>
+          </div>}
         </header>
 
         {/* Полоса предпросмотра «глазами ученика» (§178): под шапкой, на всю
@@ -211,10 +257,15 @@ export function DashboardLayout() {
                 на полноэкранной проверке ДЗ: там рабочая область занимает весь
                 экран, и полоска сверху ломала бы разметку холста. */}
             {activeWork && workClosed && <WorkModeStrip work={activeWork} offsetMs={workOffsetMs} showLink={false} />}
-            {!isFullscreenReviewRoute && !workClosed && <TelegramOnboarding />}
+            {/* Главная ученика (письмо 16.10, «как в Notion») показывает приглашение
+                сама — строкой под строкой свойств. */}
+            {!isFullscreenReviewRoute && !workClosed && !(skin && location.pathname === '/student') && <TelegramOnboarding skin={skin} />}
             {activeWork && workClosed
               ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
-              : <Outlet />}
+              : skin && !studentSkinPage(location.pathname)
+                // Страница ещё в прежнем виде: в тёмной теме — светлым листом.
+                ? <div data-stu-scope="light"><Outlet /></div>
+                : <Outlet />}
           </div>
         </main>
       </div>

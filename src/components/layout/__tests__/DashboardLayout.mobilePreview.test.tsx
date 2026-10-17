@@ -5,6 +5,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useAuthStore } from '@/store/authStore'
 import { MOBILE_PREVIEW_SYNC_MS, useStaffModeStore } from '@/store/staffModeStore'
 
+// Бейдж «Домашние задания» ученика считает хук страницы ДЗ (письмо 15.10) —
+// здесь проверяется меню, а не страница: число подменено.
+vi.mock('@/hooks/useMyTopicHomework', async (orig) => ({
+  ...(await orig<object>()),
+  useHomeworkToDoCount: () => null,
+}))
+
+
 /**
  * §181. «Мобильный вид» в `DashboardLayout`: при включённом переключателе
  * вместо сайдбара, шапки и страницы — iframe 390×844 с тем же приложением на
@@ -162,7 +170,8 @@ describe('DashboardLayout в мобильном виде (§181)', () => {
 
     expect(frame()).toBeNull()
     expect(screen.getByTestId('where')).toHaveTextContent('course:/my-course/g1')
-    expect(screen.getByLabelText('Открыть меню')).toBeInTheDocument()
+    // Меню ученика, вариант В (письмо 16.10): нижняя панель вместо гамбургера.
+    expect(screen.getByTestId('student-tabbar')).toBeInTheDocument()
     expect(screen.queryByTestId('staff-mode-mobile')).not.toBeInTheDocument()
     // Режим роли внутри тот же — «Ученик + телефон»: жёлтая полоса на месте.
     expect(screen.getByTestId('student-preview-banner')).toBeInTheDocument()

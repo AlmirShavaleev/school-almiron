@@ -5,9 +5,9 @@ import type { TopicMaterial } from '@/lib/topicMaterialItems'
 import { buildTrainingSubtopics, type TrainingItemRow, type TrainingSubtopic } from '@/lib/training'
 
 /**
- * §234. Вкладка «Тренировка» на странице темы: своя группа между «Теорией» и
- * «Уроком», у «Урока» — пометка «Формат ЕГЭ». Тема без тренировки (математика)
- * остаётся ровно такой, как была.
+ * §234. Раздел «Тренировка» на странице темы: между «Теорией» и «Уроком».
+ * Пометок «Формат ЕГЭ» и «Тренировка» на странице с 15.10 нет. Тема без
+ * тренировки (математика) остаётся ровно такой, как была.
  */
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000234'
@@ -92,23 +92,22 @@ describe('Вкладка «Тренировка» (§234)', () => {
     )
   })
 
-  it('группа стоит между «Теорией» и «Уроком», у «Урока» — «Формат ЕГЭ»', async () => {
+  it('раздел стоит между «Теорией» и «Уроком»; пометок формата нет', async () => {
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
 
-    const order = [...document.querySelectorAll('[data-testid^="topic-tab-group-"]')].map(el => el.getAttribute('data-testid'))
-    expect(order.slice(0, 3)).toEqual(['topic-tab-group-theory', 'topic-tab-group-training', 'topic-tab-group-lesson'])
-    expect(within(screen.getByTestId('topic-tab-group-lesson')).getByTestId('ege-format-mark')).toHaveTextContent('Формат ЕГЭ')
-    expect(within(screen.getByTestId('topic-tab-group-training')).getByTestId('training-mark')).toHaveTextContent('Тренировка')
-    // Три видимые подтемы: 1.15 скрыта учителем.
-    expect(screen.getByTestId('topic-tab-training')).toHaveTextContent('Подтемы3')
+    const order = [...document.querySelectorAll('[data-testid^="topic-seg-"]')].map(el => el.getAttribute('data-testid'))
+    expect(order.slice(0, 3)).toEqual(['topic-seg-theory', 'topic-seg-training', 'topic-seg-lesson'])
+    expect(screen.getByTestId('topic-seg-training')).toHaveTextContent('Тренировка')
+    expect(screen.queryByTestId('ege-format-mark')).toBeNull()
+    expect(screen.queryByTestId('training-mark')).toBeNull()
   })
 
-  it('на вкладке — пояснение и подтемы в порядке кодификатора, без скрытой', async () => {
+  it('в разделе — пояснение и подтемы в порядке кодификатора, без скрытой', async () => {
     renderPage()
-    fireEvent.click(await screen.findByTestId('topic-tab-training'))
+    fireEvent.click(await screen.findByTestId('topic-seg-training'))
 
-    expect(await screen.findByTestId('topic-training')).toHaveTextContent('Задачи на отработку приёмов. Не в формате ЕГЭ, в прогноз балла не идут.')
+    expect(within(await screen.findByTestId('topic-section-training')).getByTestId('topic-training')).toHaveTextContent('Задачи на отработку приёмов. Не в формате ЕГЭ, в прогноз балла не идут.')
     const codes = screen.getAllByTestId('training-subtopic').map(el => el.getAttribute('data-code'))
     expect(codes).toEqual(['1.14', '1.17', '1.18'])
 
@@ -124,22 +123,22 @@ describe('Вкладка «Тренировка» (§234)', () => {
     expect(within(second).getByTestId('training-place-lesson')).toBeInTheDocument()
   })
 
-  it('тема без тренировки — ни группы, ни «Формат ЕГЭ» (математика не меняется)', async () => {
+  it('тема без тренировки — ни раздела, ни «Формат ЕГЭ» (математика не меняется)', async () => {
     training.subtopics = []
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
 
-    expect(screen.queryByTestId('topic-tab-group-training')).toBeNull()
+    expect(screen.queryByTestId('topic-seg-training')).toBeNull()
     expect(screen.queryByTestId('ege-format-mark')).toBeNull()
     expect(screen.queryByTestId('training-mark')).toBeNull()
   })
 
-  it('все подтемы скрыты — группы нет, пометки «Формат ЕГЭ» тоже', async () => {
+  it('все подтемы скрыты — раздела нет, пометки «Формат ЕГЭ» тоже', async () => {
     training.subtopics = buildTrainingSubtopics(rows('1.14', 'Свободное падение'), ['1.14'])
     renderPage()
     await screen.findByRole('tablist', { name: 'Разделы темы' })
 
-    expect(screen.queryByTestId('topic-tab-group-training')).toBeNull()
+    expect(screen.queryByTestId('topic-seg-training')).toBeNull()
     expect(screen.queryByTestId('ege-format-mark')).toBeNull()
   })
 })

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useSectionLocked } from '@/lib/catalogLock'
+import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogPractice } from '@/hooks/useCatalogPractice'
@@ -42,6 +44,10 @@ export function CatalogSectionPage() {
   // поиск не зависят от загрузки — сносить их вместе со списком значит
   // показывать пустой экран там, где половина содержимого уже известна.
   const listLoading = loading || (view === 'physics-topics' && aiSectionsLoading)
+  // §292: в разрезе «по темам ИИ» id — не раздел каталога, там не проверяем
+  const sectionLocked = useSectionLocked(view === 'exam' ? sectionId : null)
+  // §292: закрытый по подписке предмет по прямой ссылке — плашка, не пустой список и не ошибка
+  if (sectionLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
   if (error || (view === 'physics-topics' && aiSectionsError)) return <ErrorState message={(error || aiSectionsError)!} onRetry={() => setRetryKey(key => key + 1)} />
 
   // Build topic tree (root topics + their children)

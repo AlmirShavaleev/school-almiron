@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchLessonCourseIds } from '@/lib/lessonCourses'
 import { useAuthStore } from '@/store/authStore'
-import { useAchievementsBadge } from '@/store/achievementsStore'
 
 /**
  * Счётчики на пунктах меню — путь -> число. Ноль/отсутствие ключа = бейдж не рисуем.
@@ -28,10 +26,11 @@ export function useSidebarBadges() {
   const role = profile?.role
 
   useEffect(() => {
-    if (!profileId || !role) { setBadges({}); return }
     let cancelled = false
 
     async function load() {
+      // Без входа — пустые счётчики; через await, а не синхронным setState в эффекте.
+      if (!profileId || !role) { await Promise.resolve(); if (!cancelled) setBadges({}); return }
       const next: Record<string, number> = {}
 
       const { count: unread } = await supabase
@@ -42,38 +41,9 @@ export function useSidebarBadges() {
       if (unread) next['/notifications'] = unread
 
       if (role === 'student') {
-        // Ученику — сколько работ возвращено на доработку: это единственное,
-        // что требует действия ПРЯМО СЕЙЧАС и считается одним дешёвым запросом.
-        // Полный список «нужно сделать» (включая ещё не начатое ДЗ) живёт на
-        // самой странице — там для этого get_student_topic_journal.
-        //
-        // 13.10, владелец: работы «урочных» курсов (раздел «Мой курс») не
-        // считаются — страница ДЗ их не показывает (src/lib/lessonCourses.ts).
-        // Поэтому не count по голове, а строки с курсом: возвращённых — единицы.
-        const { data: returnedRows } = await supabase
-          .from('topic_homework_attempts')
-          .select('id, homework:topic_homework!inner(topic:topics!inner(module:modules!inner(course_id)))')
-          .eq('status', 'returned_for_revision')
-        const courseOf = (r: unknown) =>
-          (r as { homework?: { topic?: { module?: { course_id?: string } } } }).homework?.topic?.module?.course_id ?? ''
-        const rowsReturned = (returnedRows ?? []) as unknown[]
-        const lessonIds = await fetchLessonCourseIds(rowsReturned.map(courseOf))
-        const returned = rowsReturned.filter(r => !lessonIds.has(courseOf(r))).length
-        if (returned) next['/my-homework'] = returned
-        // §257. Новые (не просмотренные) награды — у «Достижений». Строки
-        // наград видны ученику только свои (RLS student_achievements).
-        // До миграции §257 таблицы нет — ошибка запроса = счётчика нет.
-        // Таблицы нет в сгенерированных типах (они отстают от прода, руками не
-        // дописываются — CLAUDE.md), отсюда узкий тип запроса.
-        // Сбой этого запроса не должен ронять остальные счётчики меню.
-        try {
-          const untyped = supabase as unknown as { from: (t: string) => { select: (c: string, o: { count: 'exact'; head: true }) => { is: (col: string, v: null) => PromiseLike<{ count: number | null; error: unknown }> } } }
-          const { count: fresh, error: freshErr } = await untyped
-            .from('student_achievements')
-            .select('key', { count: 'exact', head: true })
-            .is('seen_at', null)
-          if (!freshErr && fresh) next['/achievements'] = fresh
-        } catch { /* счётчика наград нет */ }
+        // Ученику бейдж «Домашние задания» — число «сдать» с самой страницы ДЗ
+        // (письмо ЛК_стиль_раздел_ДЗ_открытые_уроки.md, 15.10, п. 5): его
+        // считает меню ученика тем же хуком (useHomeworkToDoCount), здесь — нет.
       } else {
         // Персоналу — сколько сданных работ ждёт вердикта по его курсам.
         const { count: awaiting } = await supabase
@@ -90,13 +60,5 @@ export function useSidebarBadges() {
     return () => { cancelled = true }
   }, [profileId, role])
 
-  // §257. Sync на главной и «увидел» на странице «Достижения» сообщают число
-  // сразу — меню не ждёт своего следующего запроса.
-  const achievementsNew = useAchievementsBadge(st => st.newCount)
-  if (role === 'student' && achievementsNew != null) {
-    const { ['/achievements']: _old, ...rest } = badges
-    void _old
-    return achievementsNew > 0 ? { ...rest, '/achievements': achievementsNew } : rest
-  }
   return badges
 }

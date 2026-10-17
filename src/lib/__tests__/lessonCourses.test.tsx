@@ -1,9 +1,10 @@
 /**
- * 13.10, владелец: «с аккаунта ученика убрать ссылки на ДЗ в моём курсе».
  * ДЗ «урочных» курсов (раздел «Мой курс»: темы с lesson_format или режим «по
- * прохождению») не попадают ни на «Домашние задания», ни в кнопки главной, ни
- * в бейдж меню. ДЗ школьных групп — как было. База подменена на уровне
- * `@/lib/supabase`: проверяются настоящие хуки и одно общее правило.
+ * прохождению») на «Домашних заданиях», в кнопках главной и в бейдже меню —
+ * только уроков, открытых ученику сейчас (`student_visible_topics()`; 15.10,
+ * до этого — не показывались вовсе, 13.10). ДЗ школьных групп — как было.
+ * База подменена на уровне `@/lib/supabase`: проверяются настоящие хуки и одно
+ * общее правило.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
@@ -15,6 +16,8 @@ type Res = { data?: unknown; count?: number | null; error?: unknown }
 const db = vi.hoisted(() => ({
   tables: {} as Record<string, (f: Record<string, unknown>) => { data?: unknown; count?: number | null; error?: unknown }>,
   calls: [] as string[],
+  /** Ответ `student_visible_topics()`: открытые уроки или ошибка. */
+  open: { data: ['t-S', 't-L'] as unknown, error: null as unknown },
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -36,7 +39,7 @@ vi.mock('@/lib/supabase', () => {
     }
     return c
   }
-  return { supabase: { from: (t: string) => chain(t), rpc: () => Promise.resolve({ data: null, error: null }) } }
+  return { supabase: { from: (t: string) => chain(t), rpc: (fn: string) => Promise.resolve(fn === 'student_visible_topics' ? db.open : { data: null, error: null }) } }
 })
 
 // Курсы ученика: школьная группа cS и «урочный» cL.
@@ -58,7 +61,7 @@ vi.mock('@/hooks/useMyCourseMemberships', () => ({
   }),
 }))
 
-import { fetchLessonCourseIds, isLessonProgram, resetLessonCourseCache } from '../lessonCourses'
+import { fetchLessonCourseIds, isLessonProgram, keepLessonItem, resetLessonHomeworkCache as resetLessonCourseCache } from '../lessonCourses'
 import { useStudentTodo } from '@/hooks/useStudentTodo'
 import { useSidebarBadges } from '@/hooks/useSidebarBadges'
 import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
@@ -77,6 +80,7 @@ beforeEach(() => {
   db.tables = {}
   db.calls = []
   journal.rows = []
+  db.open = { data: ['t-S', 't-L'], error: null }
   useAuthStore.setState({
     profile: { id: 'p1', email: 's@t.ru', full_name: 'Аня', role: 'student', created_at: '', updated_at: '' },
     loading: false,
@@ -101,20 +105,32 @@ describe('признак «урочного» курса', () => {
   })
 })
 
+describe('правило keepLessonItem', () => {
+  it('школьный курс — всегда; урочный — только открытый урок; без набора — нет', () => {
+    const f = { lessonIds: new Set(['cL']), openTopics: new Set(['t1']) }
+    expect(keepLessonItem(f, 'cS', 'tX')).toBe(true)
+    expect(keepLessonItem(f, 'cL', 't1')).toBe(true)
+    expect(keepLessonItem(f, 'cL', 't2')).toBe(false)
+    expect(keepLessonItem({ lessonIds: new Set(['cL']), openTopics: null }, 'cL', 't1')).toBe(false)
+  })
+})
+
 describe('кнопки главной (useStudentTodo)', () => {
-  it('ДЗ, попытки и тесты урочного курса не считаются; школьные — как были', async () => {
+  it('урочный курс — только открытые уроки (ДЗ, попытки, тесты); школьные — как были', async () => {
     lessonDb()
     db.tables.students = () => ({ data: { id: 'st1' } })
     db.tables.topic_homework = () => ({
       data: [
         { id: 'hwS', title: 'ДЗ школы', due_at: null, topic: topicOf('cS', 'S') },
         { id: 'hwL', title: 'ДЗ урока', due_at: null, topic: topicOf('cL', 'L') },
+        { id: 'hwX', title: 'ДЗ закрытого урока', due_at: null, topic: topicOf('cL', 'X') },
       ],
     })
     db.tables.topic_homework_attempts = () => ({
       data: [
         { id: 'aS', homework_id: 'hwS', student_id: 'st1', status: 'returned_for_revision', attempt_number: 1, created_at: '2026-10-10T10:00:00Z', homework: { id: 'hwS', title: 'ДЗ школы', grade_scale: 'five', topic: topicOf('cS', 'S') } },
         { id: 'aL', homework_id: 'hwL', student_id: 'st1', status: 'returned_for_revision', attempt_number: 1, created_at: '2026-10-10T10:00:00Z', homework: { id: 'hwL', title: 'ДЗ урока', grade_scale: 'five', topic: topicOf('cL', 'L') } },
+        { id: 'aX', homework_id: 'hwX', student_id: 'st1', status: 'returned_for_revision', attempt_number: 1, created_at: '2026-10-10T10:00:00Z', homework: { id: 'hwX', title: 'ДЗ закрытого урока', grade_scale: 'five', topic: topicOf('cL', 'X') } },
       ],
     })
     db.tables.topic_homework_reviews = () => ({ data: [] })
@@ -122,6 +138,7 @@ describe('кнопки главной (useStudentTodo)', () => {
       data: [
         { id: 'taS', test_id: 'tS', topic_id: 't-S', topic: { id: 't-S', title: 'Тема S', module: { course_id: 'cS' } }, test: { id: 'tS', title: 'Тест школы' } },
         { id: 'taL', test_id: 'tL', topic_id: 't-L', topic: { id: 't-L', title: 'Тема L', module: { course_id: 'cL' } }, test: { id: 'tL', title: 'Тест урока' } },
+        { id: 'taX', test_id: 'tX', topic_id: 't-X', topic: { id: 't-X', title: 'Тема X', module: { course_id: 'cL' } }, test: { id: 'tX', title: 'Тест закрытого урока' } },
       ],
     })
     db.tables.topic_test_attempts = () => ({ data: [] })
@@ -130,20 +147,38 @@ describe('кнопки главной (useStudentTodo)', () => {
     const dump = JSON.stringify(result.current.todo)
     expect(dump).toContain('hwS')
     expect(dump).toContain('Тест школы')
+    expect(dump).toContain('hwL')
+    expect(dump).toContain('Тест урока')
+    expect(dump).not.toContain('hwX')
+    expect(dump).not.toContain('закрытого урока')
+  })
+
+  it('набор открытых уроков не пришёл — ДЗ урочного курса не показываются, школьные на месте', async () => {
+    lessonDb()
+    db.open = { data: null, error: { message: 'нет функции' } }
+    db.tables.students = () => ({ data: { id: 'st1' } })
+    db.tables.topic_homework = () => ({
+      data: [
+        { id: 'hwS', title: 'ДЗ школы', due_at: null, topic: topicOf('cS', 'S') },
+        { id: 'hwL', title: 'ДЗ урока', due_at: null, topic: topicOf('cL', 'L') },
+      ],
+    })
+    const { result } = renderHook(() => useStudentTodo('p1'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const dump = JSON.stringify(result.current.todo)
+    expect(dump).toContain('hwS')
     expect(dump).not.toContain('hwL')
-    expect(dump).not.toContain('Тест урока')
   })
 })
 
 describe('бейдж меню «Домашние задания»', () => {
-  it('возвращённые работы урочного курса не считаются', async () => {
+  it('у ученика useSidebarBadges его не считает: число «сдать» даёт хук страницы ДЗ (письмо 15.10)', async () => {
     lessonDb()
-    db.tables.notifications = () => ({ count: 0 })
-    db.tables.student_achievements = () => ({ count: 0 })
-    const ret = (course: string) => ({ id: course, homework: { topic: { module: { course_id: course } } } })
-    db.tables.topic_homework_attempts = () => ({ data: [ret('cS'), ret('cL'), ret('cL')] })
+    db.tables.notifications = () => ({ count: 2 })
     const { result } = renderHook(() => useSidebarBadges())
-    await waitFor(() => expect(result.current['/my-homework']).toBe(1))
+    await waitFor(() => expect(result.current['/notifications']).toBe(2))
+    expect(result.current['/my-homework']).toBeUndefined()
+    expect(db.calls).not.toContain('topic_homework_attempts')
   })
 })
 
@@ -154,14 +189,27 @@ describe('страница «Домашние задания» (useMyTopicHomewo
     score: null, comment: null, submitted_at: null, reviewed_at: null, attempts_count: 0, is_overdue: false,
   })
 
-  it('ни строк, ни переключателя урочного курса; школьные — на месте', async () => {
+  it('урочный курс — только ДЗ открытых уроков (журнал отдаёт все); школьные — на месте', async () => {
     lessonDb()
+    db.open = { data: ['t-h1', 't-h2'], error: null }
+    db.tables.students = () => ({ data: { id: 'st1' } })
+    db.tables.courses = () => ({ data: [{ id: 'cS', subject: 'physics' }, { id: 'cL', subject: 'physics' }] })
+    journal.rows = [row('h1', 'cS'), row('h2', 'cL'), row('h3', 'cL')]
+    const { result } = renderHook(() => useMyTopicHomework())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.totalRows).toBe(2)
+    expect(result.current.buckets.todo.map(r => r.homework_id).sort()).toEqual(['h1', 'h2'])
+    expect(result.current.courseOptions.map(o => o.id).sort()).toEqual(['cL', 'cS'])
+  })
+
+  it('в урочном курсе ни один урок с ДЗ не открыт — курса нет ни в списке, ни в переключателе', async () => {
+    lessonDb()
+    db.open = { data: ['t-h1'], error: null }
     db.tables.students = () => ({ data: { id: 'st1' } })
     db.tables.courses = () => ({ data: [{ id: 'cS', subject: 'physics' }] })
     journal.rows = [row('h1', 'cS'), row('h2', 'cL'), row('h3', 'cL')]
     const { result } = renderHook(() => useMyTopicHomework())
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.totalRows).toBe(1)
     expect(result.current.buckets.todo.map(r => r.homework_id)).toEqual(['h1'])
     expect(result.current.courseOptions.map(o => o.id)).toEqual(['cS'])
   })

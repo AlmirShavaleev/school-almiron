@@ -310,9 +310,11 @@ describe('хуки ученика в предпросмотре (§178)', () => 
       expect(queried).not.toContain('topic_homework_attempts')
       expect(queried).not.toContain('topic_test_attempts')
       expect(queried).not.toContain('topic_homework_reviews')
-      // §182: прогресс по задачам к уроку — тоже чужой. RPC не зовётся вовсе,
+      // §182: прогресс по задачам к уроку — тоже чужой. RPC прогресса не зовётся,
       // и в предпросмотре у темы нет ни «N из M», ни выдуманных нулей.
-      expect(rpc).not.toHaveBeenCalled()
+      // §288: зовутся только замки курса — персоналу это расчёт «ученик без
+      // прогресса» (превью показывает замки), чужого прогресса в нём нет.
+      expect(rpc.mock.calls.map(c => c[0])).toEqual(['my_course_topic_locks'])
       expect(t.tasks_total).toBe(0)
       expect(t.tasks_closed).toBe(0)
     })

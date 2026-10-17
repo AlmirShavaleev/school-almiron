@@ -1,0 +1,44 @@
+/**
+ * §282. Курс закрыт подпиской — сказать прямо, а не показывать пустую
+ * программу (пустота из-за RLS выглядела бы как «нет данных»).
+ *
+ * Показывается, только если курс платный и доступа нет (`my_course_access`).
+ * Кнопка «Продлить» — только при включённом флаге: без него оформить нельзя.
+ */
+import { Link } from 'react-router-dom'
+import { Lock } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { useCourseAccess, useSubscriptionsEnabled } from '@/hooks/useSubscription'
+import { formatDateMsk } from '@/lib/subscription/view'
+
+export function SubscriptionLockBanner({ courseId }: { courseId: string | null | undefined }) {
+  const { enabled } = useSubscriptionsEnabled()
+  // Без флага — и запроса нет.
+  const { data } = useCourseAccess(enabled ? courseId : null)
+  // Без флага подписки (не тестировщик) — ни слова о подписке (письмо о выкатке в main, 16.10).
+  if (!enabled || !data || !data.paid || data.has_access) return null
+
+  const ended = formatDateMsk(data.access_until)
+  // «pending» — начал оформление и не оплатил: подписки ещё не было
+  const hadSubscription = !!data.status && data.status !== 'pending'
+  return (
+    <div className="platform-surface mb-4 flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-center" data-testid="subscription-lock" role="status">
+      <Lock className="shrink-0 text-graphite-500" size={28} aria-hidden />
+      <div className="flex-1">
+        <p className="text-[17px] font-semibold text-graphite-900">
+          {hadSubscription ? 'Подписка закончилась — курс закрыт' : 'Курс доступен по подписке'}
+        </p>
+        <p className="text-[15px] text-graphite-700">
+          {hadSubscription
+            ? `${ended ? `Доступ закрылся ${ended}. ` : ''}Прогресс и работы сохранены — продлите подписку, и всё вернётся.`
+            : 'Оформите подписку, чтобы открыть материалы и задания.'}
+        </p>
+      </div>
+      {(
+        <Link to={data.tariff_id ? `/subscribe/checkout/${data.tariff_id}` : '/courses'}>
+          <Button data-testid="subscription-lock-renew">{hadSubscription ? 'Продлить подписку' : 'Оформить'}</Button>
+        </Link>
+      )}
+    </div>
+  )
+}

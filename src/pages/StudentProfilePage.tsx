@@ -1,4 +1,5 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { StudentGoalsStaffBlock } from '@/components/student/StudentGoalsStaffBlock'
 import {
   ArrowLeft, Users,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
@@ -19,6 +20,7 @@ import { useAuthStore } from '@/store/authStore'
 import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/components/students/DistributeJoinRequestWizard'
 import { enrollableGroups } from '@/lib/enrollmentTargets'
 import { Plus, BookOpen, Calendar } from 'lucide-react'
+import { DiagnosticStaffBlock } from '@/components/student/DiagnosticStaffBlock'
 
 // Кольцо посещаемости, бейдж статуса легаси-ДЗ и значок посещения удалены
 // вместе со своими блоками (см. комментарий у секции анализа ниже): все три
@@ -244,6 +246,12 @@ export function StudentProfilePage() {
         настройки ученика.
       */}
       {s.student_id && <StudentSubjectTargets studentId={s.student_id} profileId={s.profile_id ?? null} />}
+
+      {/* Цели, которые поставил себе ученик (письмо 16.10): на экзамен и на неделю, только чтение. */}
+      {s.student_id && <StudentGoalsStaffBlock studentId={s.student_id} />}
+
+      {/* §289. Стартовая диагностика ученика «с улицы»; нет диагностики — блока нет. */}
+      {s.student_id && <DiagnosticStaffBlock studentId={s.student_id} />}
 
       {/* §261: плитки «Работы / Средний балл / Сдано с опозданием» секции анализа дублировали плитки сводки —
           здесь секция без них (сигналы внимания, слабые темы, обратная связь — на месте). */}

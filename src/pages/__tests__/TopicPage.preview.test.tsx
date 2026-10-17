@@ -7,13 +7,13 @@ import { useToastStore } from '@/store/toastStore'
 /**
  * §178/§179. Страница темы в предпросмотре глазами ученика — приёмочный
  * тест: владелец (owner) в режиме `student` видит ученическую вёрстку с
- * лентой задач из `topic_tasks_for_staff`; задачи и «Отметить как сделанное»
- * работают в памяти вкладки (§179): вердикт — чистая `preview_task_verdict`,
+ * лентой задач из `topic_tasks_for_staff`; задачи работают в памяти вкладки
+ * (§179), самоотметки с 15.10 нет вовсе: вердикт — чистая `preview_task_verdict`,
  * разбор — от `catalog_task_texts` (§262); ДЗ и тест из банка по-прежнему выключены. И
  * НИ ОДНА RPC/таблица записи не вызывается — даже если действия дёргать
  * руками.
  *
- * Хуки ученика здесь настоящие (задачи, отметки, состояние ДЗ, блок ДЗ, тест
+ * Хуки ученика здесь настоящие (задачи, состояние ДЗ, блок ДЗ, тест
  * из банка); подменён только Supabase — со шпионом на каждый вызов.
  */
 
@@ -135,9 +135,13 @@ function expectNothingWritten() {
   }
 }
 
+/** Задачи к уроку: рубрик урока нет — раздел «Урок» из одних задач. */
+async function openTasksSeg() {
+  fireEvent.click(await screen.findByTestId('topic-seg-tasks'))
+}
 async function openTasks() {
   renderPage()
-  fireEvent.click(await screen.findByRole('tab', { name: /Задачи/ }))
+  await openTasksSeg()
   await screen.findByTestId('topic-tasks-strip')
 }
 function square(n: number) {
@@ -159,16 +163,17 @@ describe('Страница темы в предпросмотре глазами
     useStaffModeStore.setState({ mode: 'student', profileId: 'owner-1', choiceMade: true })
   })
 
-  it('открывается без строки students и показывает ученические группы вкладок', async () => {
+  it('открывается без строки students и показывает ученические разделы', async () => {
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Кинематика' })).toBeInTheDocument()
-    expect(screen.getByTestId('topic-tab-group-theory')).toBeInTheDocument()
+    expect(screen.getByTestId('topic-seg-theory')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('topic-seg-tasks')).toHaveTextContent('Урок')
     expect(queried).not.toContain('students')
   })
 
   it('лента задач — из topic_tasks_for_staff, всё «не начато», картинки условий на месте', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Задачи/ }))
+    await openTasksSeg()
 
     const strip = await screen.findByTestId('topic-tasks-strip')
     const squares = within(strip).getAllByRole('button')
@@ -283,30 +288,20 @@ describe('Страница темы в предпросмотре глазами
     expectNothingWritten()
   })
 
-  it('«Отметить как сделанное» работает в памяти: отметка ставится и снимается, таблица отметок не трогается', async () => {
+  it('самоотметки «Отметить как сделанное» нет, таблица отметок не трогается', async () => {
     renderPage()
-    const mark = await screen.findByTestId('topic-group-mark-theory')
-    expect(mark).toBeEnabled()
-    expect(mark).not.toHaveAttribute('title')
-    expect(mark).toHaveTextContent('Отметить как сделанное')
-
-    fireEvent.click(mark)
-    await waitFor(() => expect(screen.getByTestId('topic-group-mark-theory')).toHaveAttribute('aria-pressed', 'true'))
-    expect(screen.getByTestId('topic-group-mark-theory')).toHaveTextContent('Отметил сам')
-    expect(useToastStore.getState().toasts).toEqual([])
-
-    fireEvent.click(screen.getByTestId('topic-group-mark-theory'))
-    await waitFor(() => expect(screen.getByTestId('topic-group-mark-theory')).toHaveAttribute('aria-pressed', 'false'))
-
+    await screen.findByTestId('topic-seg-theory')
+    expect(screen.queryByRole('button', { name: /Отметить/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-group-mark-theory')).not.toBeInTheDocument()
     expect(queried).not.toContain('topic_section_marks')
     expect(written).toEqual([])
   })
 
   it('ДЗ — блок ученика «не сдано», кнопка сдачи выключена, попытки не читаются', async () => {
     renderPage()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     expect(await screen.findByTestId('topic-group-homework-state')).toHaveTextContent('Не сдано')
 
-    fireEvent.click(screen.getByRole('tab', { name: /Домашнее задание/ }))
     const start = await screen.findByTestId('hw-start-attempt')
     expect(start).toBeDisabled()
     expect(start).toHaveAttribute('title', 'В предпросмотре не сохраняется')
@@ -317,7 +312,7 @@ describe('Страница темы в предпросмотре глазами
 
   it('тест из банка — «Начать тест» выключена, попытка не читается', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('tab', { name: /Задачи/ }))
+    await openTasksSeg()
     const start = await screen.findByRole('button', { name: 'Начать тест' })
     expect(start).toBeDisabled()
     expect(queried).not.toContain('topic_test_attempts')
@@ -341,20 +336,21 @@ describe('Страница темы в предпросмотре глазами
     await screen.findByText('Верно')
     expect(screen.getByText(/Решено 2 из 3/)).toBeInTheDocument()
 
-    // Отметка группы — в памяти; ДЗ и тест из банка — по-прежнему noop.
-    fireEvent.click(screen.getByTestId('topic-group-mark-theory'))
+    // ДЗ и тест из банка — по-прежнему noop.
     fireEvent.click(screen.getByRole('button', { name: 'Начать тест' }))
-    fireEvent.click(screen.getByRole('tab', { name: /Домашнее задание/ }))
+    fireEvent.click(screen.getByTestId('topic-seg-homework'))
     fireEvent.click(await screen.findByTestId('hw-start-attempt'))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Кинематика' })).toBeInTheDocument())
     expectNothingWritten()
-    // Из RPC вообще — только чтение состава, состояние решения и вердикт.
-    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts']))
+    // Из RPC вообще — только чтение состава, состояние решения и вердикт;
+    // §288: и замки уроков курса (тоже только чтение — превью показывает замки).
+    expect(new Set(calledRpcs())).toEqual(new Set(['topic_tasks_for_staff', 'topic_solution_state', 'topic_test_assignment_items', 'preview_task_verdict', 'catalog_task_texts', 'my_course_topic_locks']))
   })
 
-  it('§271: «Оцените урок» внизу виден, звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {
+  it('§271: «Оцените урок» в разделе «Отзыв», звёзды выключены, подпись «В предпросмотре оценку не ставят»', async () => {
     renderPage()
+    fireEvent.click(await screen.findByTestId('topic-seg-review'))
     const block = await screen.findByTestId('topic-rating')
     expect(block).toHaveTextContent('Оцените урок')
     expect(screen.getByTestId('topic-rating-preview')).toHaveTextContent('В предпросмотре оценку не ставят')
@@ -371,6 +367,6 @@ describe('Страница темы в предпросмотре глазами
     topicRow.is_open = false
     renderPage()
     expect(await screen.findByText('Тема ещё не открыта')).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: /Задачи/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('topic-seg-tasks')).not.toBeInTheDocument()
   })
 })

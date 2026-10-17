@@ -1,13 +1,17 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 /**
- * Маршрутизация корня после того, как лендинг сняли с главной (12.08).
+ * Маршрутизация корня. История: 12.08 лендинг сняли с главной (гость уходил
+ * на вход), 11.10 вернули — гость без отложенных намерений видит лендинг
+ * прямо на `/` (ЛЕНДИНГ_ТЗ.md).
  *
  * Что здесь сторожится и почему именно это:
  *
- * 1. Гость на `/` попадает на форму входа, а не на витрину. Владелец хочет,
- *    чтобы `alminion.ru` вёл сразу в платформу.
+ * 1. Гость на `/` видит лендинг, адрес остаётся `/`. Гость с отложенным
+ *    намерением — висящее приглашение ученика, ссылка преподавателя, возврат
+ *    из письма Supabase — уходит на вход, как раньше: там намерение
+ *    подхватывается после входа.
  * 2. Вошедший на `/` попадает в кабинет, а не на «войдите». Это не косметика:
  *    `/login` обратно на `/` не отправляет, поэтому ошибочный редирект стал бы
  *    для человека с живой сессией тупиком.
@@ -53,6 +57,7 @@ vi.mock('@/lib/supabase', () => ({
 
 // Страницы-заглушки: тест про адреса, а не про их содержимое.
 vi.mock('@/pages/LandingPage', () => ({ LandingPage: () => <div>landing-stub</div> }))
+vi.mock('@/pages/LandingV3Page', () => ({ LandingV3Page: () => <div>landing-v3-stub</div> }))
 vi.mock('@/pages/PaymentResultPage', () => ({ PaymentResultPage: () => <div>payment-stub</div> }))
 vi.mock('@/pages/auth/RegisterPage', () => ({ RegisterPage: () => <div>register-stub</div> }))
 vi.mock('@/pages/auth/ForgotPasswordPage', () => ({ ForgotPasswordPage: () => <div>forgot-stub</div> }))
@@ -73,8 +78,10 @@ function pathname() {
   return window.location.pathname
 }
 
-describe('корень: лендинг снят с главной', () => {
+describe('корень при включённом лендинге v3 (VITE_LANDING_V3=1): гость видит v3, остальные ветки RootRedirect', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
   beforeEach(() => {
+    vi.stubEnv('VITE_LANDING_V3', '1')
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
@@ -83,15 +90,48 @@ describe('корень: лендинг снят с главной', () => {
     goTo('/')
   })
 
-  it('гость на `/` видит форму входа, а не лендинг', async () => {
+  it('гость без отложенных намерений видит лендинг на `/`, адрес не меняется', async () => {
+    render(<App />)
+
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(pathname()).toBe('/')
+    expect(screen.queryByText('Вход в систему')).toBeNull()
+  })
+
+  it('гость с висящим приглашением ученика уходит на вход, приглашение не вычищается', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123', savedAt: Date.now() }))
     render(<App />)
 
     expect(await screen.findByText('Вход в систему')).toBeTruthy()
     expect(pathname()).toBe('/login')
-    expect(screen.queryByText('landing-stub')).toBeNull()
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
+    expect(localStorage.getItem('student-invite-pending')).not.toBeNull()
+  })
+
+  it('гость с висящей ссылкой преподавателя уходит на вход', async () => {
+    localStorage.setItem('teacher-join-link-pending', JSON.stringify({ token: 'tok-1', savedAt: Date.now() }))
+    render(<App />)
+
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+  })
+
+  it.each([
+    '/#access_token=x&type=signup',
+    '/#error=access_denied&error_code=otp_expired',
+    '/?code=pkce-code',
+  ])('возврат из письма (%s) у гостя ведёт на вход, а не на лендинг', async (url) => {
+    goTo(url)
+    render(<App />)
+
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
   })
 
   it('редирект `/` → `/login` не зацикливается: адрес стабилен', async () => {
+    localStorage.setItem('student-invite-pending', JSON.stringify({ type: 'token', value: 'abc123', savedAt: Date.now() }))
     render(<App />)
     await screen.findByText('Вход в систему')
 
@@ -176,7 +216,7 @@ describe('корень: лендинг снят с главной', () => {
     expect(localStorage.getItem('student-invite-pending')).toBeNull()
   })
 
-  it('пока сессия не разобрана, гостя на вход не отправляют', async () => {
+  it('пока сессия не разобрана, гостю не показывают ни вход, ни лендинг', async () => {
     // `loading` держится true: getSession ещё не ответил. Ранний редирект здесь
     // и есть тот самый тупик — человек с живой сессией уехал бы на «войдите».
     let release: (value: { data: { session: null } }) => void = () => {}
@@ -188,15 +228,67 @@ describe('корень: лендинг снят с главной', () => {
     render(<App />)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(pathname()).toBe('/')
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
 
     release({ data: { session: null } })
-    await waitFor(() => expect(pathname()).toBe('/login'))
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
+    expect(pathname()).toBe('/')
     supabase.auth.getSession = original
   })
 })
 
-describe('лендинг переехал на `/about`, а не удалён', () => {
+/**
+ * Выкатка ЛК без нового лендинга (письмо ЛК_выкатка_без_нового_лендинга.md,
+ * 17.10): флаг сборки VITE_LANDING_V3 по умолчанию выключен — публичные
+ * страницы как в main: гость на `/` — на вход, `/about` — прежний лендинг.
+ * Владелец смотрит v3 по скрытому `/preview/landing` (noindex).
+ */
+describe('лендинг v3 выключен (по умолчанию) — как в main', () => {
   beforeEach(() => {
+    sessionValue = null
+    profileRow = null
+    useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  it('гость на `/` уходит на вход, лендинга v3 нет', async () => {
+    goTo('/')
+    render(<App />)
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(screen.queryByText('landing-v3-stub')).toBeNull()
+  })
+
+  it('`/about` — на вход с теми же параметрами: прежнего лендинга нет (письмо 17.10)', async () => {
+    goTo('/about?from=mail#x')
+    render(<App />)
+    expect(await screen.findByText('Вход в систему')).toBeTruthy()
+    expect(pathname()).toBe('/login')
+    expect(window.location.search).toBe('?from=mail')
+    expect(window.location.hash).toBe('#x')
+    expect(screen.queryByText('landing-stub')).toBeNull()
+  })
+
+  it('`/preview/landing` — v3 для просмотра, с noindex', async () => {
+    goTo('/preview/landing')
+    render(<App />)
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
+    expect(pathname()).toBe('/preview/landing')
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toContain('noindex')
+  })
+
+  it('`/subscribe` у гостя — на главную (витрины тарифов не видно), а оттуда на вход', async () => {
+    goTo('/subscribe')
+    render(<App />)
+    await waitFor(() => expect(pathname()).toBe('/login'))
+  })
+})
+
+describe('лендинг v3 включён — он и на `/about`', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
+  beforeEach(() => {
+    vi.stubEnv('VITE_LANDING_V3', '1')
     sessionValue = null
     profileRow = null
     useAuthStore.setState({ user: null, session: null, profile: null, loading: true })
@@ -208,7 +300,7 @@ describe('лендинг переехал на `/about`, а не удалён', 
     goTo('/about')
     render(<App />)
 
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     expect(pathname()).toBe('/about')
   })
 
@@ -218,7 +310,7 @@ describe('лендинг переехал на `/about`, а не удалён', 
     goTo('/about')
     render(<App />)
 
-    expect(await screen.findByText('landing-stub')).toBeTruthy()
+    expect(await screen.findByText('landing-v3-stub')).toBeTruthy()
     expect(pathname()).toBe('/about')
   })
 })
@@ -229,7 +321,6 @@ describe('лендинг переехал на `/about`, а не удалён', 
  * а не по одному ученику в поддержке.
  */
 const PUBLIC_PATHS: Array<[string, string]> = [
-  ['/about',           'landing-stub'],
   ['/login',           'Вход в систему'],
   ['/register',        'register-stub'],
   ['/forgot-password', 'forgot-stub'],

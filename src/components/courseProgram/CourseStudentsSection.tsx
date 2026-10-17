@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { fetchCourseGoalsSummary, weeklySummaryLabel } from '@/lib/studentGoals'
 import { Link } from 'react-router-dom'
 import { Loader2, Users, AlertCircle, MessageCircle, RefreshCw, Copy, CheckCircle2, Copy as CopyIcon, RotateCcw, Pencil, UserMinus, UserPlus, Check, X, Lock, Unlock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -222,6 +223,14 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
   const { readOnly } = useMyTeachingScope()
   const [students, setStudents] = useState<StudentRow[]>([])
   const [telegramSet, setTelegramSet] = useState<Set<string>>(new Set())
+  // Цели недели, которые поставили себе ученики (письмо 16.10): «выполнено k из n», пусто — не ставил;
+  // null — функции ещё нет, колонки нет. Только чтение.
+  const [goals, setGoals] = useState<Map<string, { goals: number; done: number; behind: boolean }> | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchCourseGoalsSummary(courseId).then(m => { if (!cancelled) setGoals(m) })
+    return () => { cancelled = true }
+  }, [courseId])
   const [showTelegramColumn, setShowTelegramColumn] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -780,6 +789,7 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                     {showTelegramColumn && (
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Telegram</th>
                     )}
+                    {goals && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Цели недели</th>}
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Зачислен</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Действия</th>
                   </tr>
@@ -873,6 +883,20 @@ export function CourseStudentsSection({ courseId }: { courseId: string }) {
                           )}
                         </td>
                       )}
+                      {goals && (() => {
+                        const g = goals.get(student.studentId)
+                        return (
+                          <td className="px-4 py-2" data-testid="course-student-goals">
+                            <span className={cn('text-sm', g && g.goals > 0 && g.done === g.goals ? 'font-semibold text-emerald-700' : 'text-gray-600')}>
+                              {weeklySummaryLabel(g?.done ?? 0, g?.goals ?? 0)}
+                            </span>
+                            {g?.behind && (
+                              <span className="ml-1.5 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                                title="С четверга: хоть одна цель недели ниже темпа" data-testid="course-student-behind">отстаёт</span>
+                            )}
+                          </td>
+                        )
+                      })()}
                       <td className="px-4 py-2">
                         <span className="text-sm text-gray-600">{formatDate(student.enrolledAt)}</span>
                       </td>
