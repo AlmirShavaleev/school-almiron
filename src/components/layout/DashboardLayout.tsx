@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { Sidebar } from './Sidebar'
-import { StudentAvatarMenu, StudentNav } from '@/components/student/nav/StudentNav'
+import { StaffAvatarMenu, StaffNav, StudentAvatarMenu, StudentNav } from '@/components/student/nav/StudentNav'
 import { StudentBell } from '@/components/student/nav/StudentBell'
 import { studentPageTitle } from '@/lib/studentNav'
 // import { NotificationBell } from './NotificationBell' // скрыто на время MVP
@@ -9,14 +8,14 @@ import { SupportWidget } from '@/components/shared/SupportWidget'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { useAuthStore } from '@/store/authStore'
-import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useMobilePreview, useStaffMode } from '@/store/staffModeStore'
+import { ROLE_LABELS, useMobilePreview, useStaffMode } from '@/store/staffModeStore'
 import { StaffModeSwitch } from './StaffModeSwitch'
 import { StaffModeGate } from './StaffModeGate'
 import { StudentPreviewBanner } from './StudentPreviewBanner'
 import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
-import { Menu, Moon, Sun } from 'lucide-react'
+import { useEffect } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { useWorkModeStore } from '@/store/workModeStore'
 import { workModeAllows } from '@/lib/workMode'
 import { WorkModeClosed, WorkModeStrip, useWorkModeSync } from './WorkMode'
@@ -87,7 +86,6 @@ export function DashboardLayout() {
   const { enabled: mobilePreview } = useMobilePreview()
   const navigate = useNavigate()
   const location = useLocation()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   // §263. Режим работы ученика: пока идёт его проверочная/контрольная или
   // пробник, всё, кроме страницы работы, закрыто (замки держит и сервер).
   // Предпросмотр персонала «глазами ученика» режима не получает.
@@ -96,15 +94,6 @@ export function DashboardLayout() {
   const work = useWorkModeStore(s => s.work)
   const workOffsetMs = useWorkModeStore(s => s.offsetMs)
   const { theme, toggle: toggleTheme } = useStudentTheme()
-
-  // Close sidebar on ESC
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSidebarOpen(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
 
   useEffect(() => {
     if (!loading && !profile) navigate('/login')
@@ -138,47 +127,32 @@ export function DashboardLayout() {
   const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'Школа Almiron'
   const activeWork = isStudent ? work : null
   const workClosed = !!activeWork && !workModeAllows(location.pathname, activeWork)
-  // Кабинет ученика в стиле лендинга (письмо 14.10): ученик и персонал
-  // «глазами ученика». Кабинет преподавателя и админа не меняется.
-  const skin = (effectiveRole ?? profile.role) === 'student'
+  // Стиль нового ЛК: ученик (письмо 14.10) и с 17.10 учитель и админ
+  // (письмо ЛК_учитель_и_админ_редизайн.md) — один каркас, свои пункты меню.
+  // Страницы персонала, ещё не переведённые в новый вид, в тёмной теме идут
+  // светлым листом (как непереведённые экраны ученика).
+  const viewRole = effectiveRole ?? profile.role
+  const studentView = viewRole === 'student'
 
   return (
-    <div
-      className={skin ? 'stu flex min-h-screen' : 'flex min-h-screen bg-transparent text-graphite-900'}
-      data-theme={skin ? theme : undefined}
-    >
+    <div className="stu flex min-h-screen" data-theme={theme}>
       {/* Меню: у ученика — вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10):
           колонка 96px на компьютере, нижняя панель на телефоне. У персонала —
           прежнее боковое меню. */}
-      {skin
-        ? <StudentNav />
-        : <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      {studentView ? <StudentNav /> : <StaffNav role={viewRole} />}
 
       {/* Main content: no left margin on mobile, 256px on md+ (у ученика — 96px) */}
-      <div className={skin ? 'stu-main flex-1 min-w-0 md:ml-24 flex flex-col min-h-screen' : 'flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen'}>
+      <div className="stu-main flex-1 min-w-0 md:ml-24 flex flex-col min-h-screen">
         <ImpersonationBanner />
         {/* Top bar */}
-        <header className={skin
-          ? 'stu-top h-[66px] flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'
-          : 'h-16 bg-white/82 backdrop-blur-xl border-b border-slate-200/70 flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30'}>
-          {/* Hamburger — visible only on mobile (у ученика — нижняя панель вместо него) */}
-          {!skin && <button
-            onClick={() => setSidebarOpen(true)}
-            className={skin
-              ? 'stu-icon-btn md:hidden'
-              : 'md:hidden w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-graphite-900 transition-colors shrink-0'}
-            aria-label="Открыть меню"
-          >
-            <Menu size={20} />
-          </button>}
-
+        <header className="stu-top h-[66px] flex items-center px-4 md:px-8 gap-3 shrink-0 sticky top-0 z-30">
           {/* Одна строка вместо двух. Подпись «Быстрый доступ через навигацию
               слева» ничего не сообщала, а иконка лупы рядом читалась как поиск,
               которого здесь нет. Освободившаяся высота отдана содержимому. */}
           <div className="min-w-0 flex-1">
-            <div className={skin ? 'stu-title truncate leading-tight' : 'text-[15px] font-semibold text-graphite-950 truncate leading-tight'}>
-              {skin && <span className="stu-muted mr-2 hidden font-semibold lg:inline">Школа Almiron ·</span>}
-              {(skin && studentPageTitle(location.pathname)) || pageTitle}
+            <div className="stu-title truncate leading-tight">
+              <span className="stu-muted mr-2 hidden font-semibold lg:inline">Школа Almiron ·</span>
+              {(studentView && studentPageTitle(location.pathname)) || pageTitle}
             </div>
           </div>
 
@@ -189,52 +163,35 @@ export function DashboardLayout() {
           {/* Режим представления — только у admin/owner, права не трогает */}
           <StaffModeSwitch />
 
-          {skin && (
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="stu-icon-btn"
-              aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-              title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-              data-testid="student-theme-toggle"
-            >
-              {theme === 'dark' ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="stu-icon-btn"
+            aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+            title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+            data-testid="student-theme-toggle"
+          >
+            {theme === 'dark' ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+          </button>
 
-          {/* Ученик: колокольчик и аватар с меню «Ещё» (письмо 16.10). В предпросмотре
-              персонала колокольчика нет — это были бы его собственные уведомления. */}
-          {skin && !preview && <StudentBell />}
-          {skin && (
+          {/* Колокольчик и аватар с меню «Ещё» (ученик — письмо 16.10, персонал — 17.10).
+              В предпросмотре «глазами ученика» колокольчика нет — это были бы
+              собственные уведомления персонала. */}
+          {!preview && <StudentBell />}
+          {studentView ? (
             <StudentAvatarMenu avatar={
               <span className="stu-ava">
                 {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" /> : initials}
               </span>
             } />
+          ) : (
+            <StaffAvatarMenu role={viewRole} avatar={
+              <span className="stu-ava" title={`${profile.full_name || 'Профиль'} · ${ROLE_LABELS[viewRole] || viewRole}`}>
+                {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" /> : initials}
+              </span>
+            } />
           )}
 
-          {/* Avatar + name */}
-          {!skin && <div className={skin ? 'flex items-center gap-2.5' : 'flex items-center gap-2.5 pl-3 border-l border-slate-200'}>
-            <div className={skin ? 'stu-ava' : 'w-9 h-9 rounded-lg bg-primary-950 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0 shadow-sm shadow-primary-950/15'}>
-              {profile.avatar_url
-                ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="" />
-                : initials
-              }
-            </div>
-            {/* §190. Имя и роль показываем с 1024, а не с 640. Между ними
-                шапка уже с боковым меню (`md:ml-64`), и переключатель режимов
-                с подписями занимает 383px из 588 доступных: имя не помещалось,
-                но и не сжималось — вся страница уезжала вбок, а мобильный
-                Chrome в ответ ужимал кабинет целиком (§158). Первым до нуля
-                сжимался заголовок страницы, то есть пропадал он, а не
-                украшение. На 1024+ ряд помещается — вид прежний. */}
-            <div className="hidden lg:block">
-              <div className={skin ? 'stu-name' : 'text-sm font-semibold text-graphite-950 leading-tight'}>{profile.full_name || 'Профиль'}</div>
-              <div className={skin ? 'stu-role' : 'text-xs text-slate-500 leading-tight'}>
-                {preview ? PREVIEW_ROLE_LABEL : ROLE_LABELS[effectiveRole ?? profile.role] || profile.role}
-              </div>
-            </div>
-          </div>}
         </header>
 
         {/* Полоса предпросмотра «глазами ученика» (§178): под шапкой, на всю
@@ -259,10 +216,10 @@ export function DashboardLayout() {
             {activeWork && workClosed && <WorkModeStrip work={activeWork} offsetMs={workOffsetMs} showLink={false} />}
             {/* Главная ученика (письмо 16.10, «как в Notion») показывает приглашение
                 сама — строкой под строкой свойств. */}
-            {!isFullscreenReviewRoute && !workClosed && !(skin && location.pathname === '/student') && <TelegramOnboarding skin={skin} />}
+            {!isFullscreenReviewRoute && !workClosed && !(studentView && location.pathname === '/student') && <TelegramOnboarding skin />}
             {activeWork && workClosed
               ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
-              : skin && !studentSkinPage(location.pathname)
+              : !(studentView && studentSkinPage(location.pathname))
                 // Страница ещё в прежнем виде: в тёмной теме — светлым листом.
                 ? <div data-stu-scope="light"><Outlet /></div>
                 : <Outlet />}

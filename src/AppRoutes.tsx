@@ -254,10 +254,13 @@ export default function AppRoutes() {
 
         <Route path="/variant-builder" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />
         <Route path="/variant-builder/:variantId" element={<RoleGuard allow={['teacher','admin','owner']}><VariantBuilderPage /></RoleGuard>} />
-        <Route path="/variants" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsHomePage /></RoleGuard>} />
-        <Route path="/variants/exam/:examSubject/:examType" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsListPage /></RoleGuard>} />
-        <Route path="/variants/exam/:examSubject/:examType/auto" element={<RoleGuard allow={['teacher','admin','owner']}><VariantAutoBuildPage /></RoleGuard>} />
-        <Route path="/variants/all" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantsListPage /></RoleGuard>} />
+        {/* 17.10, владелец (письмо ЛК_учитель_и_админ_редизайн.md): разделы «Тесты»
+            (/variants) и «Банк тестов» (/tests) убраны — входы ведут на главную
+            кабинета. Страницы не удалены, просто не подключены. Карточка варианта,
+            выдача и работы учеников по вариантам живы: на них ведут журналы и уведомления. */}
+        <Route path="/variants" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/variants/exam/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/variants/all" element={<Navigate to="/dashboard" replace />} />
         <Route path="/variants/:variantId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><VariantDetailPage /></RoleGuard>} />
         <Route path="/variants/:variantId/assign" element={<RoleGuard allow={['teacher','admin','owner']}><AssignVariantPage /></RoleGuard>} />
         <Route path="/variants/:variantId/assignments" element={<RoleGuard allow={['teacher','admin','owner']}><VariantAssignmentsPage /></RoleGuard>} />
@@ -278,8 +281,7 @@ export default function AppRoutes() {
         <Route path="/homework-queue" element={<RoleGuard allow={['teacher','curator','admin','owner']} allowCourseCurator><HomeworkReviewQueuePage /></RoleGuard>} />
 
         {/* Банк тестов */}
-        <Route path="/tests" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankPage /></RoleGuard>} />
-        <Route path="/tests/:testId" element={<RoleGuard allow={['teacher','curator','admin','owner']}><TestBankTestPage /></RoleGuard>} />
+        <Route path="/tests/*" element={<Navigate to="/dashboard" replace />} />
 
         {/* Маршруты «Этапа 4» (`/assign-homework`, `/review-submissions[/:id]`,
             `/my-assignments[/:id]`) сняты в §197 вместе с выдачей подборки как

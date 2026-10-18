@@ -23,7 +23,7 @@ vi.mock('@/lib/supabase', () => ({
 function buttonAt(path: string) {
   const r = render(<MemoryRouter initialEntries={[path]}><SupportWidget /></MemoryRouter>)
   const b = screen.getByTestId('support-widget-button')
-  const out = { compact: b.classList.contains('fab-compact'), big: b.classList.contains('w-14'), slot0: b.classList.contains('fab-slot-0') }
+  const out = { compact: b.classList.contains('fab-compact'), big: b.classList.contains('help-fab') && !b.classList.contains('is-compact'), slot0: b.classList.contains('fab-slot-0') }
   r.unmount()
   return out
 }

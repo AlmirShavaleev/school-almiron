@@ -53,7 +53,8 @@ describe('Переключатель с режимом «Ученик» (§178)'
     renderAt('/admin')
     expect(screen.getByTestId('staff-mode-admin')).toBeInTheDocument()
     expect(screen.getByTestId('staff-mode-teacher')).toBeInTheDocument()
-    expect(screen.getByTestId('staff-mode-student')).toHaveTextContent('Ученик')
+    // Компактно (письмо 17.10): подпись — у выбранного режима, у остальных — имя кнопки и подсказка.
+    expect(screen.getByTestId('staff-mode-student')).toHaveAccessibleName('Ученик')
   })
 
   it('owner тоже видит три режима', () => {

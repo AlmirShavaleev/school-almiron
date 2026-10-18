@@ -14,6 +14,7 @@ import { StudentReminderPrefs } from '@/components/student/StudentReminderPrefs'
 import { StudentNotificationsTab } from '@/components/student/settings/StudentNotificationsTab'
 import { StudentGoalsTab } from '@/components/student/settings/StudentGoalsTab'
 import { ROLE_LABELS } from '@/utils/format'
+import { QuickLogin } from '@/components/demo/QuickLogin'
 import { cn } from '@/utils/cn'
 
 type TabKey = 'profile' | 'notifications' | 'security' | 'role'
@@ -98,6 +99,18 @@ export function SettingsPage() {
           <StudentGoalsTab profileId={profile.id} />
           <StudentRoleTab profileId={profile.id} />
         </div>
+      )}
+
+      {/* «Быстрый вход» под тестовыми учётками (demo_users) — только владельцу,
+          свёрнуто внизу настроек (письмо ЛК_учитель_и_админ_редизайн.md, 17.10):
+          на главной панели админа держать вход без пароля на виду рискованно.
+          Сервер (`demo-impersonate`) сам пускает только admin/owner и не даёт
+          войти под админом. */}
+      {profile.role === 'owner' && (
+        <details className="rounded-2xl border border-gray-200 bg-white px-4 py-3" data-testid="settings-testing">
+          <summary className="cursor-pointer text-sm font-semibold text-gray-700">Для тестирования</summary>
+          <div className="mt-3"><QuickLogin /></div>
+        </details>
       )}
     </div>
   )

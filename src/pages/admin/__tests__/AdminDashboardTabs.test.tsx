@@ -141,40 +141,32 @@ function open(label: string) {
 }
 
 describe('перечень вкладок', () => {
-  it('семь вкладок в утверждённом порядке', () => {
+  it('шесть вкладок: «Сейчас» слита с «Обзором» (письмо 17.10)', () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    const labels = ['Сейчас', 'Обзор', 'Ученики', 'Учёба', 'Сайт', 'Видео', 'Команда']
+    const labels = ['Обзор', 'Ученики', 'Учёба', 'Сайт', 'Видео', 'Команда']
     labels.forEach(l => expect(screen.getByRole('button', { name: l })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Сейчас' })).not.toBeInTheDocument()
   })
 
-  it('«Сейчас» открывает живую панель, а не заглушку', () => {
-    // Место, оставленное §147, занято настоящей панелью.
-    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    open('Сейчас')
-    expect(screen.getByTestId('live-now-stub')).toBeInTheDocument()
-    expect(screen.queryByText(/Живая панель школы готовится/)).not.toBeInTheDocument()
-  })
-
-  it('панель получает числа §107 сверху, а не считает их заново', () => {
-    // Второй счётчик тех же величин развёл бы два ответа на один вопрос:
-    // «ждут проверки» на «Обзоре» и на «Сейчас» обязаны совпадать всегда.
+  it('живая панель — на «Обзоре», под делами; числа §107 приходят сверху, а не считаются заново', () => {
     schoolStats = { ...QUIET_SCHOOL, homework_pending: 9, homework_submitted_today: 4 }
     dormantRows = [{ student_id: 's-1' }, { student_id: 's-2' }]
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    open('Сейчас')
-
     const panel = screen.getByTestId('live-now-stub')
     expect(panel).toHaveAttribute('data-pending', '9')
     expect(panel).toHaveAttribute('data-today', '4')
     expect(panel).toHaveAttribute('data-dormant', '2')
   })
 
-  it('живая панель не монтируется, пока вкладку не открыли', () => {
-    // На ней висят подписка присутствия и подписка на изменения таблиц.
-    // Смонтированная заранее, она держала бы сокеты у того, кто на «Сейчас» не
-    // заглядывает.
+  it('на других вкладках живой панели нет (подписки не держим зря)', () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    open('Команда')
     expect(screen.queryByTestId('live-now-stub')).not.toBeInTheDocument()
+  })
+
+  it('«Быстрого входа (демо)» на панели нет (письмо 17.10)', () => {
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    expect(screen.queryByText(/Быстрый вход/)).not.toBeInTheDocument()
   })
 
   it('плитки чисел разъехались по вкладкам, а не висят над всеми сразу', () => {

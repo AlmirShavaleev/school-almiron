@@ -90,9 +90,9 @@ describe('экран обращений', () => {
     expect(screen.getByText('Новых обращений нет')).toBeInTheDocument()
   })
 
-  it('«Закрыть» записывает, кто и когда закрыл', async () => {
+  it('«Решено» записывает, кто и когда закрыл', async () => {
     render(<SupportRequestsPage />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Закрыть' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Решено' }))
 
     await waitFor(() => expect(updates).toHaveLength(1))
     expect(updates[0].patch.status).toBe('closed')
@@ -116,7 +116,7 @@ describe('экран обращений', () => {
     render(<SupportRequestsPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Все' }))
     expect(await screen.findByRole('button', { name: 'Открыть заново' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Закрыть' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Решено' })).not.toBeInTheDocument()
   })
 
   it('отказ базы виден словами, а не пустым списком', async () => {

@@ -10,7 +10,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { StaffTab } from '@/components/admin/StaffTab'
 import { CreateUserModal } from '@/components/modals/CreateUserModal'
-import { QuickLogin } from '@/components/demo/QuickLogin'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAdminDashboard, type AdminCourse } from '@/hooks/useAdminDashboard'
@@ -58,12 +57,11 @@ function RoleBadge({ role }: { role: string }) {
 // слово «группа» уходит из интерфейса; подписки — потому что денежный контур
 // не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
 // технические: код удалён, данные не тронуты.
-type Tab = 'now' | 'overview' | 'students' | 'learning' | 'site' | 'video' | 'staff'
+// 17.10 (письмо ЛК_учитель_и_админ_редизайн.md): «Сейчас» слита с «Обзором» —
+// обе отвечали «что сегодня» (очередь проверки, сдано сегодня); живая панель
+// школы стоит в «Обзоре» под карточками-делами вместо карточки «Сегодня».
+type Tab = 'overview' | 'students' | 'learning' | 'site' | 'video' | 'staff'
 const TABS: { key: Tab; label: string }[] = [
-  // «Сейчас» — место под живую панель школы, её делает отдельная работа. Место
-  // занято намеренно: порядок вкладок утверждён владельцем целиком, и вставлять
-  // первую вкладку позже значило бы двигать все остальные.
-  { key: 'now',      label: 'Сейчас' },
   { key: 'overview', label: 'Обзор' },
   { key: 'students', label: 'Ученики' },
   { key: 'learning', label: 'Учёба' },
@@ -231,8 +229,9 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      {/* ── Быстрый вход (демо impersonation) ─────────────────────── */}
-      <QuickLogin />
+      {/* «Быстрый вход (демо)» убран с панели (письмо 17.10): вход без пароля
+          под чужими учётками — только владельцу, в настройках, свёрнутым блоком
+          «Для тестирования». */}
 
       {/* ── Tabs ─────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap">
@@ -254,17 +253,6 @@ export function AdminDashboard() {
         <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
           {schoolError}
         </div>
-      )}
-
-      {/* ══ СЕЙЧАС ══════════════════════════════════════════════ */}
-      {tab === 'now' && (
-        <LiveNow
-          pendingReview={school?.homework_pending ?? null}
-          submittedToday={school?.homework_submitted_today ?? null}
-          dormant={analytics.dormant}
-          profiles={profiles}
-          schoolError={schoolError}
-        />
       )}
 
       {/* ══ ОБЗОР ════════════════════════════════════════════════
@@ -323,6 +311,16 @@ export function AdminDashboard() {
             </div>
             <SourceNote at={schoolAt} />
           </Card>
+
+          {/* Живая панель школы (бывшая вкладка «Сейчас», 17.10): кто сейчас на
+              платформе и что происходит — под карточками-делами. */}
+          <LiveNow
+            pendingReview={school?.homework_pending ?? null}
+            submittedToday={school?.homework_submitted_today ?? null}
+            dormant={analytics.dormant}
+            profiles={profiles}
+            schoolError={schoolError}
+          />
         </div>
       )}
 

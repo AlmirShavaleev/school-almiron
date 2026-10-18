@@ -44,13 +44,13 @@ const BUCKET = 'support-attachments'
 const STATUS_LABELS: Record<Status, { label: string; cls: string }> = {
   new:         { label: 'Новое',    cls: 'bg-amber-100 text-amber-800' },
   in_progress: { label: 'В работе', cls: 'bg-blue-100 text-blue-800' },
-  closed:      { label: 'Закрыто',  cls: 'bg-gray-100 text-gray-600' },
+  closed:      { label: 'Решено',   cls: 'bg-green-100 text-green-800' },
 }
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'new',         label: 'Новые' },
   { key: 'in_progress', label: 'В работе' },
-  { key: 'closed',      label: 'Закрытые' },
+  { key: 'closed',      label: 'Решённые' },
   { key: 'all',         label: 'Все' },
 ]
 
@@ -185,8 +185,9 @@ export function SupportRequestsPage() {
                   </Button>
                 )}
                 {r.status !== 'closed' && (
-                  <Button size="sm" variant="primary" loading={saving === r.id} onClick={() => setStatus(r.id, 'closed')}>
-                    Закрыть
+                  // «Решено» (письмо 17.10) — тот же статус closed + resolved_at/resolved_by.
+                  <Button size="sm" variant="primary" loading={saving === r.id} onClick={() => setStatus(r.id, 'closed')} data-testid="support-resolve">
+                    Решено
                   </Button>
                 )}
                 {r.status === 'closed' && (

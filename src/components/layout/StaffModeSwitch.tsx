@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Shield, GraduationCap, Eye, Smartphone } from 'lucide-react'
-import { cn } from '@/utils/cn'
 import { useMobilePreview, useStaffMode, type StaffMode } from '@/store/staffModeStore'
 
 /**
@@ -54,7 +53,9 @@ export function StaffModeSwitch() {
       role="group"
       aria-label="Режим представления"
       data-testid="staff-mode-switch"
-      className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 shrink-0"
+      // Компактно в шапке нового ЛК (письмо 17.10): иконки, подпись — только у
+      // выбранного режима и с 1280px; остальные подписи — в подсказке.
+      className="stu-mode shrink-0"
     >
       {OPTIONS.map(option => {
         const active = option.mode === mode
@@ -66,21 +67,17 @@ export function StaffModeSwitch() {
             aria-pressed={active}
             title={option.mode === 'student' ? 'Предпросмотр глазами ученика' : `Режим: ${option.label}`}
             data-testid={`staff-mode-${option.mode}`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 md:px-2.5 py-1.5 rounded-[7px] text-xs font-semibold transition-colors',
-              active
-                ? 'bg-white text-graphite-950 shadow-sm'
-                : 'text-slate-500 hover:text-graphite-900'
-            )}
+            aria-label={option.label}
+            className="stu-mode-b stu-focus"
           >
             {option.icon}
-            <span className="hidden md:inline">{option.label}</span>
+            {active && <span className="hidden xl:inline">{option.label}</span>}
           </button>
         )
       })}
       {mobile.available && (
         <>
-          <span aria-hidden className="mx-0.5 hidden h-4 w-px bg-slate-300 md:block" />
+          <span aria-hidden className="stu-mode-sep hidden md:block" />
           <button
             type="button"
             onClick={() => mobile.setEnabled(!mobile.enabled)}
@@ -88,12 +85,7 @@ export function StaffModeSwitch() {
             aria-label="Мобильный вид"
             title="Мобильный вид"
             data-testid="staff-mode-mobile"
-            className={cn(
-              'hidden md:flex items-center px-2 py-1.5 rounded-[7px] transition-colors',
-              mobile.enabled
-                ? 'bg-white text-graphite-950 shadow-sm'
-                : 'text-slate-500 hover:text-graphite-900'
-            )}
+            className="stu-mode-b stu-focus hidden md:flex"
           >
             <Smartphone size={14} />
           </button>

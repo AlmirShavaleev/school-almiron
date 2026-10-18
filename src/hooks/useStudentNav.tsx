@@ -15,7 +15,11 @@ import { subscriptionTag } from '@/lib/studentNav'
  */
 export interface Item { key: string; label: string; to: string; icon: ReactNode; match: RegExp; badge?: number | null }
 
-export interface MoreItem { key: string; label: string; icon: ReactNode; to?: string; tag?: string | null; onClick?: () => void }
+export interface MoreItem {
+  key: string; label: string; icon: ReactNode; to?: string; tag?: string | null; onClick?: () => void
+  /** Подзаголовок группы над пунктом (кабинет персонала: «Админ», «Учёба»…). */
+  section?: string
+}
 
 export function useStudentNav() {
   const todo = useHomeworkToDoCount()

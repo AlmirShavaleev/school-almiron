@@ -614,3 +614,43 @@ a.stu-lt:hover { border-color: var(--blue) }
   /* Узкий телефон: кольцо над текстом, иначе текст идёт по 2–3 слова в строке. */
   .stu .stu-chero-stat { grid-template-columns: minmax(0, 1fr); justify-items: start }
 }
+
+/* ── Кабинет учителя и админа в стиле нового ЛК (письмо ЛК_учитель_и_админ_редизайн.md, 17.10) ── */
+/* Переключатель «Администратор / Учитель / Ученик» — компактно: иконки, подпись у выбранного. */
+.stu .stu-mode { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--line) }
+.stu .stu-mode-b { display: inline-flex; align-items: center; gap: 6px; height: 30px; min-width: 32px; justify-content: center; padding: 0 9px; border: 0; border-radius: 9px;
+  background: none; color: var(--ink2); font-size: 12.5px; font-weight: 800; cursor: pointer; transition: background .2s, color .2s }
+.stu .stu-mode-b:hover { color: var(--ink) }
+.stu .stu-mode-b[aria-pressed="true"] { background: var(--card); color: var(--blueInk); box-shadow: 0 2px 8px rgba(15, 22, 40, .08) }
+.stu .stu-mode-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--line) }
+/* Подзаголовок группы в «Ещё» персонала. */
+.stu .stu-more-sec { display: block; padding: 8px 10px 2px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
+.stu .stu-more-list li:first-child .stu-more-sec { padding-top: 2px }
+/* «Ещё» персонала длиннее ученического — прокрутка внутри. */
+.stu .stu-more-pop { max-height: calc(100vh - 40px); overflow-y: auto }
+.stu .stu-head-pop { max-height: calc(100vh - 90px); overflow-y: auto }
+.stu .stu-more-pop.is-tall { position: fixed; left: 106px; top: 12px; bottom: auto; max-height: calc(100vh - 24px) }
+
+/* ── Кнопка помощи (письмо 17.10): 3D-стикер «?» + «Нужна помощь?» ──
+   Стикер нарисован CSS в манере наших 3D-иконок: синий шар с бликом и мягкой
+   тенью, белый «?». На телефоне и на узких экранах пробника — только стикер;
+   высота кнопки — прежние 56px (--fab-help-size), стек плавающих кнопок не сдвигается. */
+.help-fab { display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 6px 18px 6px 6px; border: 1px solid var(--line, #e1e7f3); border-radius: 999px;
+  background: var(--card, #fff); color: var(--ink, #1b1f2a); font: inherit; font-size: 14.5px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 12px 30px rgba(15, 22, 40, .18); transition: transform .2s, box-shadow .2s }
+.help-fab:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(15, 22, 40, .22) }
+.help-fab:active { transform: scale(.97) }
+.help-fab:focus-visible { outline: 3px solid var(--blue, #2f5bea); outline-offset: 3px }
+.help-q { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #9db6ff 0%, #4a74f0 32%, #2f5bea 55%, #1d3fb8 100%);
+  color: #fff; font-size: 26px; font-weight: 900; line-height: 1; text-shadow: 0 2px 0 rgba(13, 30, 90, .45);
+  box-shadow: inset -4px -6px 10px rgba(10, 25, 90, .35), inset 3px 4px 8px rgba(255, 255, 255, .35), 0 6px 12px rgba(29, 63, 184, .35) }
+.help-q::before { content: ""; position: absolute; left: 22%; top: 14%; width: 30%; height: 20%; border-radius: 50%; background: rgba(255, 255, 255, .55); filter: blur(1px); transform: rotate(-25deg) }
+.help-q.is-small { width: 36px; height: 36px; font-size: 21px }
+.help-fab.is-compact { width: 44px; height: 44px; padding: 0; border: 0; background: none; box-shadow: none }
+.help-fab.is-compact .help-fab-t { display: none }
+@media (max-width: 640px) {
+  .help-fab { width: 56px; padding: 0; justify-content: center; border: 0; background: none; box-shadow: none }
+  .help-fab .help-q { width: 52px; height: 52px; font-size: 30px }
+  .help-fab-t { display: none }
+}

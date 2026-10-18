@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { CheckCircle2, ImagePlus, LifeBuoy, Loader2, X } from 'lucide-react'
+import { CheckCircle2, ImagePlus, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { FAB_COMPACT, FAB_SLOT, isFabCompactPath } from '@/lib/floatingStack'
+import { FAB_SLOT, isFabCompactPath } from '@/lib/floatingStack'
 // re-export ниже (строка ~84) транзитный и имени в файл не вводит — импорт обязателен
 import { imagesFromTransfer, nextScreenshotIndex } from '@/lib/clipboardFiles'
 
@@ -210,17 +210,19 @@ export function SupportWidget() {
     <>
       {/* Плавающая кнопка — правый нижний угол, на любой странице */}
       {!open && (
+        // 17.10 (письмо ЛК_учитель_и_админ_редизайн.md): вместо тёмного круга со
+        // спасательным кругом — 3D-стикер «?» и подпись «Нужна помощь?» (на
+        // телефоне и на узких экранах пробника — только стикер, подпись в подсказке).
         <button
           onClick={handleOpen}
           data-testid="support-widget-button"
-          aria-label="Сообщить о проблеме"
+          aria-label="Нужна помощь? Сообщить о проблеме"
+          title="Нужна помощь?"
           data-compact={compact || undefined}
-          className={`${FAB_SLOT.help} ${compact ? FAB_COMPACT : 'w-14 h-14'} rounded-full bg-primary-900 text-white
-                     shadow-xl shadow-primary-950/25 flex items-center justify-center
-                     hover:bg-primary-800 hover:scale-105 active:scale-95
-                     transition-all duration-200`}
+          className={`${FAB_SLOT.help} help-fab ${compact ? 'fab-compact is-compact' : ''}`}
         >
-          <LifeBuoy size={compact ? 19 : 22} />
+          <span className="help-q" aria-hidden="true">?</span>
+          <span className="help-fab-t">Нужна помощь?</span>
         </button>
       )}
 
@@ -246,11 +248,9 @@ export function SupportWidget() {
           >
             <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
-                  <LifeBuoy size={18} className="text-primary-800" />
-                </div>
+                <span className="help-q is-small" aria-hidden="true">?</span>
                 <div>
-                  <h2 className="font-bold text-graphite-950 text-[15px] leading-tight">Сообщить о проблеме</h2>
+                  <h2 className="font-bold text-graphite-950 text-[15px] leading-tight">Нашли ошибку или нужна помощь?</h2>
                   <p className="text-xs text-slate-400 mt-0.5">Что пошло не так?</p>
                 </div>
               </div>
