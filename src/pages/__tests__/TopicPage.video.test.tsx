@@ -112,9 +112,11 @@ describe('Вкладка «Видео» темы (§204)', () => {
 
   it('минут ученику не видно даже у просмотренного видео', async () => {
     watchRows = [{ item_id: 'v1', max_position: 900, duration_seconds: 900 }]
-    const { container } = renderPage()
+    renderPage()
     await screen.findByTestId('video-watched-badge')
-    expect(container.textContent).not.toMatch(/мин(ут)?\b|секунд/)
+    // Только плеер и отметка: опрос по уроку («· 30 секунд») может выехать рядом
+    // и к минутам просмотра отношения не имеет — тест через раз цеплял его.
+    expect(screen.getByTestId('topic-player').textContent).not.toMatch(/мин(ут)?\b|секунд/)
   })
 
   it('у темы без видео плеера нет — ни пустой рамки, ни вкладки «Видео»', async () => {
