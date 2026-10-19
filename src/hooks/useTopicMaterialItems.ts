@@ -25,6 +25,35 @@ import { onlyEgeTrack } from '@/lib/training'
  * поэтому клиент ничего дополнительно не фильтрует: если строка пришла,
  * её можно показывать.
  */
+/**
+ * Один запрос на тему для всех, кто смонтировался разом (письмо 19.10): страница
+ * урока и каждая рубрика раздела звали свой `topic_material_items` — ×5 на
+ * загрузку. Ответ живёт секунды: это склейка одновременных запросов, а не кэш;
+ * `reload()` его сбрасывает.
+ */
+const SHARE_MS = 3_000
+const inflight = new Map<string, { at: number; value: Promise<{ data: unknown[] | null; error: { message: string } | null }> }>()
+
+/** Для тестов: забыть общие ответы. */
+export function resetTopicMaterialsShare() { inflight.clear() }
+
+function fetchTopicMaterials(topicId: string, fresh: boolean) {
+  const hit = inflight.get(topicId)
+  if (!fresh && hit && Date.now() - hit.at < SHARE_MS) return hit.value
+  // §234: только материалы темы. Тренировку читает свой хук
+  // (`useTopicTraining`) — здесь она попала бы во вкладки, счётчики
+  // рубрик и в «тема пройдена» на клиенте.
+  const value = Promise.resolve(onlyEgeTrack(supabase
+    .from('topic_material_items')
+    .select('*')
+    .eq('topic_id', topicId))
+    .order('position', { ascending: true })
+    .order('created_at', { ascending: true }))
+    .then(r => ({ data: (r.data ?? null) as unknown[] | null, error: r.error ? { message: r.error.message } : null }))
+  inflight.set(topicId, { at: Date.now(), value })
+  return value
+}
+
 export function useTopicMaterialItems(topicId: string | null) {
   const profile = useAuthStore(s => s.profile)
   const [materials, setMaterials] = useState<TopicMaterial[]>([])
@@ -42,15 +71,7 @@ export function useTopicMaterialItems(topicId: string | null) {
     setLoading(true)
     setError(null)
 
-    // §234: только материалы темы. Тренировку читает свой хук
-    // (`useTopicTraining`) — здесь она попала бы во вкладки, счётчики
-    // рубрик и в «тема пройдена» на клиенте.
-    onlyEgeTrack(supabase
-      .from('topic_material_items')
-      .select('*')
-      .eq('topic_id', topicId))
-      .order('position', { ascending: true })
-      .order('created_at', { ascending: true })
+    fetchTopicMaterials(topicId, tick > 0)
       .then(({ data, error: err }) => {
         if (cancelled) return
         if (err) setError(err.message)

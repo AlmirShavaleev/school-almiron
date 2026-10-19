@@ -610,12 +610,19 @@ export function TopicMaterialItems({
   className,
   section,
   hideAddForm,
+  hideIds,
 }: {
   topicId: string
   canManage: boolean
   className?: string
   section?: TopicMaterialSection | 'video'
   hideAddForm?: boolean
+  /**
+   * Материалы, которые страница уже показывает сама (письмо 19.10: видео урока
+   * стоит плеером над разделами — второй iframe того же ролика в «Теории» на
+   * телефоне вдвое раздувал память, и вкладка перезагружалась).
+   */
+  hideIds?: readonly string[]
 }) {
   const {
     materials, loading, error,
@@ -658,7 +665,8 @@ export function TopicMaterialItems({
   // Имена всех файлов темы — по ним считается номер следующего скриншота.
   const attachedNames = materials.map(m => (m.kind === 'file' ? m.fileName : null))
 
-  const visible = studentPreview ? materials.filter(m => m.isVisible) : materials
+  const shown = hideIds?.length ? materials.filter(m => !hideIds.includes(m.id)) : materials
+  const visible = studentPreview ? shown.filter(m => m.isVisible) : shown
 
   // Фильтруем материалы по section
   let filtered = visible

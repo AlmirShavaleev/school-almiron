@@ -131,3 +131,11 @@ describe('Отметка «просмотрено» у видео (§204)', () =
     expect(await screen.findByTitle('Видеоразбор')).toHaveAttribute('src', VIDEO_URL)
   })
 })
+
+describe('hideIds — ролик, который страница уже показывает плеером (письмо 19.10)', () => {
+  it('скрытый ролик в рубрике не рисуется, второго iframe нет; остальные — как были', async () => {
+    materials = [video('v1'), video('v2')]
+    render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="theory" hideIds={['v1']} />)
+    await waitFor(() => expect(document.querySelectorAll('iframe')).toHaveLength(1))
+  })
+})

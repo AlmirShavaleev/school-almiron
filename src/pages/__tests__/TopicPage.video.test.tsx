@@ -62,7 +62,11 @@ vi.mock('@/components/courseProgram/TopicVariantStudent', () => ({
 }))
 vi.mock('@/components/courseProgram/TopicHomeworkStudent', () => ({ TopicHomeworkStudent: () => null }))
 vi.mock('@/components/courseProgram/TopicTestStudent', () => ({ TopicTestStudent: () => null }))
-vi.mock('@/components/courseProgram/TopicMaterialItems', () => ({ TopicMaterialItems: () => null }))
+// Рубрика раздела: помечаем, какие материалы ей велено не показывать (письмо 19.10).
+vi.mock('@/components/courseProgram/TopicMaterialItems', () => ({
+  TopicMaterialItems: ({ section, hideIds }: { section: string; hideIds?: string[] }) =>
+    <div data-testid={`rubric-${section}`} data-hide={(hideIds ?? []).join(',')} />,
+}))
 
 import { TopicPage } from '@/pages/TopicPage'
 
@@ -127,5 +131,20 @@ describe('Вкладка «Видео» темы (§204)', () => {
     renderPage()
     expect(await screen.findByText('Смотреть видео')).toBeInTheDocument()
     expect(screen.queryByTitle('Видео темы')).not.toBeInTheDocument()
+  })
+})
+
+describe('видео урока — один плеер (письмо 19.10: вкладка на телефоне перезагружалась)', () => {
+  it('ролик в «Теории» не повторяется: рубрике велено скрыть ролик плеера, iframe один', async () => {
+    materials = [{ ...bunnyVideo, section: 'theory' } as TopicMaterial]
+    renderPage()
+    await screen.findByTitle('Видео темы')
+    expect(document.querySelectorAll('iframe')).toHaveLength(1)
+    expect(await screen.findByTestId('rubric-theory')).toHaveAttribute('data-hide', 'v1')
+  })
+
+  it('плеер грузится лениво', async () => {
+    renderPage()
+    expect(await screen.findByTitle('Видео темы')).toHaveAttribute('loading', 'lazy')
   })
 })

@@ -622,7 +622,9 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       ) : isMaterialSection(key) ? (
         // По общему списку, а не перечислением: с §95 рубрик семь, и вкладка
         // «Решение задач» открывалась пустой — её не было в перечне (§100).
-        <TopicMaterialItems topicId={topic.id} canManage={false} section={key} />
+        <TopicMaterialItems topicId={topic.id} canManage={false} section={key}
+          // Ролик плеера сверху в рубрике не повторяем: два iframe одного видео (письмо 19.10).
+          hideIds={hasPlayer && videoMaterial ? [videoMaterial.id] : undefined} />
       ) : key === 'training' ? (
         <TopicTrainingStudent topicId={topic.id} subtopics={trainingSubtopics} countView={!preview} />
       ) : key === 'homework' && timed ? (
