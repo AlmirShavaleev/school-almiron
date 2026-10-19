@@ -42,7 +42,10 @@ export function WatchedVideo({
     embedUrl: embed,
     enabled: countWatch,
     iframeRef,
-    onProgress: setLive,
+    // timeupdate приходит несколько раз в секунду: перерисовываем, только когда
+    // позиция сдвинулась на целую секунду или пришла длительность (письмо 19.10).
+    onProgress: p => setLive(prev =>
+      prev && Math.floor(prev.maxPositionSec) === Math.floor(p.maxPositionSec) && prev.durationSec === p.durationSec ? prev : p),
   })
 
   const watched =
@@ -52,7 +55,7 @@ export function WatchedVideo({
   return (
     <div className="space-y-2">
       <div className={frameClassName ?? 'aspect-video w-full overflow-hidden rounded-xl bg-black'}>
-        <iframe ref={iframeRef} src={embed} title={title} allow={allow} allowFullScreen className="h-full w-full" />
+        <iframe ref={iframeRef} src={embed} title={title} allow={allow} allowFullScreen loading="lazy" className="h-full w-full" />
       </div>
       {watched && (
         <div
