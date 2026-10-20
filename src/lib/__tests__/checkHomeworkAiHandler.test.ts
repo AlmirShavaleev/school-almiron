@@ -99,8 +99,12 @@ describe('боевой путь (без benchmark)', () => {
     expect(state.fetches).toHaveLength(1)
     const call = state.fetches[0]
     expect(call.url).toBe('https://openrouter.ai/api/v1/chat/completions')
-    expect(call.hasSignal).toBe(false)
+    // 20.10 (письмо ЛК_СРОЧНО_ИИ_через_ретранслятор_Vercel.md): у боевого запроса
+    // таймаут 120 с — иначе запрос висел до лимита воркера 150 с.
+    expect(call.hasSignal).toBe(true)
     expect(call.headers.Authorization).toBe(`Bearer ${ENV.AI_API_KEY}`)
+    // AI_RELAY_SECRET в окружении теста не задан — заголовка ретранслятора нет.
+    expect(call.headers['X-Relay-Secret']).toBeUndefined()
     expect(Object.keys(call.body as object)).toEqual(['model', 'messages', 'response_format', 'max_tokens'])
     expect(call.body).toMatchObject({ model: 'google/gemini-3.8-flash', response_format: { type: 'json_object' }, max_tokens: 16000 })
   })

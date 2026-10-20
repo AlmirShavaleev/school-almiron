@@ -6,10 +6,15 @@
 // иначе сборщик функции не положит пакеты в eszip.
 //
 // Модель разбора (`parseModel`) передаёт вызывающий: у каждой функции своё
-// чтение окружения (AI_PARSE_MODEL), модуль Deno.env не трогает.
+// чтение окружения (AI_PARSE_MODEL), модуль Deno.env не трогает. То же с
+// секретом ретранслятора: `ai.env` передаёт вызывающий (письмо 20.10).
 
+import { aiChatFetch } from './aiFetch.ts'
 import { renderDensityFor } from './findings.ts'
 import { extractAnnotationText, type ParseEngine } from './reference.ts'
+
+/** Разбор PDF-эталона: меньше общего таймаута модели (см. parsePdf). */
+export const PDF_PARSE_TIMEOUT_MS = 60_000
 
 /**
  * PDF → JPEG постранично. PDFium отдаёт сырой BGRA, кодировщик ждёт RGBA —
@@ -149,18 +154,12 @@ async function initPdfium(PDFiumLibrary: { init: (o?: Record<string, unknown>) =
  * приходят и в ветке ошибки инференса, поэтому даже отказ модели отдаёт текст.
  */
 export async function parsePdf(
-  ai: { apiKey: string; baseUrl: string; parseModel: string },
+  ai: { apiKey: string; baseUrl: string; parseModel: string; env?: (name: string) => string | undefined },
   file: { dataUrl: string; fileName: string; engine: ParseEngine },
 ): Promise<{ text: string; pages: number }> {
-  const response = await fetch(`${ai.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${ai.apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://alminion.ru',
-      'X-Title': 'School Almiron',
-    },
-    body: JSON.stringify({
+  // Разбор PDF — 60 с: в том же запросе после него ещё идёт модель (120 с), а
+  // воркер живёт 150 с. Обрыв — ошибкой движка, следующий движок попробует.
+  const response = await aiChatFetch(ai.baseUrl, ai.apiKey, ({
       model: ai.parseModel,
       // Ответ модели не нужен вовсе — платим только за разбор и вход.
       max_tokens: 1,
@@ -174,8 +173,7 @@ export async function parsePdf(
       // Умолчание у поставщика — ПЛАТНЫЙ mistral-ocr, поэтому движок всегда
       // указываем явно.
       plugins: [{ id: 'file-parser', pdf: { engine: file.engine } }],
-    }),
-  })
+    }), ai.env ?? (() => undefined), { 'HTTP-Referer': 'https://alminion.ru', 'X-Title': 'School Almiron' }, PDF_PARSE_TIMEOUT_MS)
 
   const payload = await response.json().catch(() => null)
   const parsed = extractAnnotationText(payload)

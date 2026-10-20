@@ -20,6 +20,7 @@
 // ПРОВАЙДЕР. Тот же OpenAI-совместимый /chat/completions: AI_MODEL,
 // AI_BASE_URL, AI_API_KEY (запасное имя ключа — OPENROUTER_API_KEY).
 
+import { aiChatFetch } from './aiFetch.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -145,13 +146,10 @@ Deno.serve(async (req) => {
       return fail(400, 'У ученика нет работ — черновик собирать не из чего')
     }
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // aiChatFetch: X-Relay-Secret для ретранслятора на Vercel и таймаут 120 с (письмо 20.10).
+    let response: Response
+    try {
+      response = await aiChatFetch(baseUrl, apiKey, {
         model,
         temperature: 0.4,
         max_tokens: 600,
@@ -159,8 +157,10 @@ Deno.serve(async (req) => {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: `Данные об ученике (обезличенные):\n${JSON.stringify(payload, null, 1)}` },
         ],
-      }),
-    })
+      }, name => Deno.env.get(name))
+    } catch (e) {
+      return fail(502, e instanceof Error ? e.message : String(e))
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '')

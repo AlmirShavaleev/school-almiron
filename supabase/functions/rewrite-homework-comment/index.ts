@@ -34,6 +34,7 @@
 // AI_BASE_URL, AI_API_KEY (запасное имя — OPENROUTER_API_KEY). Ключ нигде не
 // печатается и не логируется.
 
+import { aiChatFetch } from './aiFetch.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   SYSTEM_PROMPT,
@@ -137,13 +138,10 @@ Deno.serve(async (req) => {
     const model = Deno.env.get('REWRITE_COMMENT_MODEL') || DEFAULT_MODEL
     const baseUrl = (Deno.env.get('AI_BASE_URL') || DEFAULT_BASE_URL).replace(/\/+$/, '')
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // aiChatFetch: X-Relay-Secret для ретранслятора на Vercel и таймаут 120 с (письмо 20.10).
+    let response: Response
+    try {
+      response = await aiChatFetch(baseUrl, apiKey, {
         model,
         temperature: 0.3,
         max_tokens: MAX_TOKENS,
@@ -151,8 +149,10 @@ Deno.serve(async (req) => {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessage(input) },
         ],
-      }),
-    })
+      }, name => Deno.env.get(name))
+    } catch (e) {
+      return fail(502, e instanceof Error ? e.message : String(e))
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
