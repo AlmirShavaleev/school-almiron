@@ -25,6 +25,7 @@
 // OPENROUTER_API_KEY), AI_BASE_URL, AI_MODEL, AI_PARSE_MODEL; SUPABASE_URL,
 // SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY — их даёт платформа.
 
+import { AI_TIMEOUT_MESSAGE, aiChatFetch } from './aiFetch.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   MAX_REFERENCE_BYTES,
@@ -281,20 +282,16 @@ async function checkStudent(
 
   let response: Response
   try {
-    response = await fetch(`${ai.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${ai.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://alminion.ru',
-        'X-Title': 'School Almiron',
-      },
-      body: JSON.stringify(chatRequestBody(ai.model, [{ role: 'user', content }])),
-      signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
-    })
+    // aiChatFetch: X-Relay-Secret для ретранслятора на Vercel (письмо 20.10).
+    response = await aiChatFetch(
+      ai.baseUrl, ai.apiKey, chatRequestBody(ai.model, [{ role: 'user', content }]),
+      name => Deno.env.get(name),
+      { 'HTTP-Referer': 'https://alminion.ru', 'X-Title': 'School Almiron' },
+      MODEL_TIMEOUT_MS,
+    )
   } catch (err) {
     const name = (err as { name?: string })?.name
-    if (name === 'TimeoutError' || name === 'AbortError') {
+    if (name === 'TimeoutError' || name === 'AbortError' || (err instanceof Error && err.message === AI_TIMEOUT_MESSAGE)) {
       throw new Error(`Модель не ответила за ${Math.round(MODEL_TIMEOUT_MS / 1000)} с — запустите проверку ещё раз`, { cause: err })
     }
     throw new Error(`Модель недоступна: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
@@ -434,7 +431,7 @@ async function loadFileText(
   let engine: ParseEngine | null = nextEngine(null)
   while (engine) {
     try {
-      const parsed = await parsePdf(ai, { dataUrl, fileName, engine })
+      const parsed = await parsePdf({ ...ai, env: name => Deno.env.get(name) }, { dataUrl, fileName, engine })
       if (parsed.text && isParseUsable(parsed.text, parsed.pages)) {
         await admin.from('mock_exam_file_text_cache').upsert({
           storage_path: path, size_bytes: bytes.length, engine, text: parsed.text, chars: parsed.text.length,

@@ -19,6 +19,7 @@
 // `ai_benchmark_results`, без заявки, ai_jobs и находок (`handleBenchmark`,
 // чистая часть — `benchmark.ts`). Боевой путь от замера не зависит.
 
+import { AI_TIMEOUT_MS, aiChatFetch } from './aiFetch.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   CRITERIA_CHAR_LIMIT,
@@ -523,17 +524,15 @@ async function runCheck(
   // Тело — `chatRequestBody` (бой; max_tokens по модели, у Gemini 16000) или
   // `benchmarkRequestBody` (замер §247); сообщения у обоих одни и те же.
   const modelStartedAt = Date.now()
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://alminion.ru',
-      'X-Title': 'School Almiron',
-    },
-    body: JSON.stringify(opts.requestBody([{ role: 'user', content: [{ type: 'text', text: prompt }, ...content] }])),
-    ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
-  })
+  // Через aiChatFetch: X-Relay-Secret для ретранслятора на Vercel и обрыв по
+  // таймауту (бой — 120 с, меньше лимита воркера 150 с; замер §247 — свой).
+  const response = await aiChatFetch(
+    baseUrl, apiKey,
+    opts.requestBody([{ role: 'user', content: [{ type: 'text', text: prompt }, ...content] }]),
+    name => Deno.env.get(name),
+    { 'HTTP-Referer': 'https://alminion.ru', 'X-Title': 'School Almiron' },
+    opts.timeoutMs ?? AI_TIMEOUT_MS,
+  )
 
   const payload = await response.json().catch(() => null)
   if (probe) {
@@ -1096,7 +1095,7 @@ async function loadMaterialText(
 
   while (engine) {
     try {
-      const parsed = await parsePdf({ ...ai, parseModel: parseModelOf() }, { dataUrl, fileName, engine })
+      const parsed = await parsePdf({ ...ai, parseModel: parseModelOf(), env: name => Deno.env.get(name) }, { dataUrl, fileName, engine })
       if (parsed.text && isParseUsable(parsed.text, parsed.pages)) {
         await admin.from('topic_material_text_cache').upsert({
           material_id: pdf.id,
