@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { noteReload } from '@/lib/perf/rum'
 
 /**
  * Экран ожидания с пределом по времени.
@@ -77,7 +78,7 @@ export function LoadingGate({ label, fullScreen = false, message }: LoadingGateP
           </p>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => { noteReload('button:loading'); window.location.reload() }}
             className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
           >
             <RefreshCw size={15} />Обновить

@@ -1,12 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { RumTracker } from '@/components/perf/RumTracker'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
-import { isChunkLoadError, lazyPage } from '@/lib/lazyPage'
+import { freshUrl, isChunkLoadError, lazyPage } from '@/lib/lazyPage'
+import { noteError, noteReload } from '@/lib/perf/rum'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
+  // 21.10: что уронило приложение — в RUM (`error …`), иначе причину не узнать.
+  componentDidCatch(error: Error) { noteError(error) }
   render() {
     if (this.state.error) {
       const error = this.state.error as Error
@@ -26,7 +29,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
               </p>
               <button
                 className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm"
-                onClick={() => window.location.reload()}
+                // Свежий index.html (?_r=), а не из кэша: иначе те же старые имена файлов (21.10).
+                onClick={() => { noteReload('button:update'); window.location.replace(freshUrl(window.location.href)) }}
               >
                 Обновить страницу
               </button>
@@ -45,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
             </pre>
             <button
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm"
-              onClick={() => window.location.reload()}
+              onClick={() => { noteReload('button:error'); window.location.reload() }}
             >
               Перезагрузить
             </button>
