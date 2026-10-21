@@ -7,6 +7,8 @@ import {
   __resetRumForTests,
   apiLabel,
   deviceClass,
+  noteError,
+  noteReload,
   queueSize,
   record,
   routeChanged,
@@ -123,5 +125,41 @@ describe('экран «Скорость»: помощники', () => {
     const now = new Date('2026-10-12T21:30:00Z') // 00:30 МСК 13.10
     expect(periodRange('today', now).from).toBe('2026-10-12T21:00:00.000Z')
     expect(periodRange('hour', now).from).toBe('2026-10-12T20:30:00.000Z')
+  })
+})
+
+describe('диагностика перезагрузок (21.10)', () => {
+  beforeEach(() => { localStorage.clear() })
+
+  it('перезагрузка — событие nav «reload <причина> <путь>» сразу keepalive-запросом', () => {
+    const t: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(t)
+    takeBatch()
+    window.history.replaceState(null, '', '/my-course/0c430ec6-1111-2222-3333-444444444444/topic/0c430ec6-1111-2222-3333-555555555555')
+    noteReload('chunk:TopicPage')
+    expect(t.sendOnExit).toHaveBeenCalledWith([expect.objectContaining({ k: 'nav', l: 'reload chunk:TopicPage /my-course/:id/topic/:id' })])
+    expect(localStorage.getItem('rum:pending')).toBeNull()
+    stop()
+  })
+
+  it('без входа событие ждёт в localStorage и уходит при следующем старте', () => {
+    noteReload('button:error')
+    expect(localStorage.getItem('rum:pending')).toContain('reload button:error')
+    const t: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(t)
+    expect(takeBatch().map(e => e.l)).toEqual(expect.arrayContaining([expect.stringMatching(/^reload button:error/)]))
+    stop()
+  })
+
+  it('ошибки страницы — «error <сообщение>», не больше 20 за загрузку; uuid вырезаются', () => {
+    const t: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(t)
+    takeBatch()
+    window.dispatchEvent(new ErrorEvent('error', { error: new TypeError('x of 0c430ec6-1111-2222-3333-444444444444 is undefined') }))
+    for (let i = 0; i < 30; i++) noteError('loop')
+    const labels = takeBatch().map(e => e.l)
+    expect(labels[0]).toBe('error TypeError: x of :id is undefined')
+    expect(labels.filter(l => l.startsWith('error'))).toHaveLength(20)
+    stop()
   })
 })

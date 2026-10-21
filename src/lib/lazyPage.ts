@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react'
+import { noteError, noteReload } from '@/lib/perf/rum'
 
 /**
  * Почему это нужно.
@@ -9,33 +10,48 @@ import { lazy, type ComponentType } from 'react'
  * Выходит новый деплой — имена меняются, старых файлов на сервере больше нет.
  * Пользователь переходит на страницу, браузер просит файл со старым хешем,
  * получает 404 и роняет приложение с «Failed to fetch dynamically imported
- * module». До разбиения этого не было: весь код уже лежал в одном загруженном
- * куске, и переходы вообще ничего не догружали.
+ * module». Лечится перезагрузкой: свежий index.html принесёт новые имена.
  *
- * Лечится перезагрузкой страницы: свежий index.html принесёт новые имена.
- * Делаем это сами и молча — пользователю незачем видеть стек ошибки из-за
- * того, что мы выкатили обновление, пока у него была открыта вкладка.
- *
- * Перезагружаем не больше одного раза на страницу (флаг в sessionStorage):
- * если файл не грузится по другой причине — сеть, блокировщик, сломанный
- * деплой, — бесконечный цикл перезагрузок был бы хуже честной ошибки.
- * После удачной загрузки флаг снимаем, чтобы следующий деплой снова мог
- * восстановиться сам.
+ * Защита от цикла перезагрузок (письмо ЛК_СРОЧНО_урок_перезагрузка_НЕ_исправлено.md,
+ * 21.10: у учеников урок перезагружался каждые 2–3 с, 5 раз подряд). Раньше
+ * защитой был один флаг в sessionStorage, который снимался после удачной
+ * загрузки, — цикл оставался возможен:
+ *  · sessionStorage недоступен или не переживает перезагрузку (встроенные
+ *    браузеры приложений) — флага нет вовсе;
+ *  · браузер отдаёт из кэша старый index.html — перезагрузка приносит те же
+ *    старые имена файлов, а флаги разных чанков снимают друг друга.
+ * Теперь:
+ *  · автоперезагрузка — не чаще одной за RELOAD_COOLDOWN_MS на вкладку, отметка
+ *    времени — в `window.name` (переживает перезагрузку без всякого хранилища)
+ *    и дублем в localStorage; удачная загрузка её НЕ снимает;
+ *  · перезагрузка — переходом на тот же адрес с `?_r=<время>`: так браузер
+ *    обязан взять index.html из сети, а не из кэша; параметр потом убирается;
+ *  · перед перезагрузкой — событие в RUM (`reload chunk:<имя>`), после отказа —
+ *    `error` с текстом, чтобы причина была видна в perf_events.
+ * Второй сбой за окно — честная ошибка (её покажет граница ошибок с кнопкой
+ * «Обновить»), а не новая перезагрузка.
  */
+export const RELOAD_COOLDOWN_MS = 120_000
+const MARK = 'almiron-chunk-reload:'
+const LS_KEY = 'almiron:chunk-reload-at'
+export const BUST_PARAM = '_r'
+
 export function lazyPage<T extends ComponentType<any>>(
   name: string,
   load: () => Promise<{ default: T }>,
 ) {
   return lazy(async () => {
-    const key = `chunk-reload:${name}`
     try {
-      const mod = await load()
-      safeSessionRemove(key)
-      return mod
+      return await load()
     } catch (error) {
-      if (!isChunkLoadError(error) || safeSessionGet(key)) throw error
-      safeSessionSet(key, '1')
-      window.location.reload()
+      if (!isChunkLoadError(error)) throw error
+      if (!mayAutoReload(Date.now())) {
+        noteError(`chunk ${name} after reload: ${error instanceof Error ? error.message : String(error)}`)
+        throw error
+      }
+      markAutoReload(Date.now())
+      noteReload(`chunk:${name}`)
+      reloadFresh()
       // Страница уже перезагружается — отдаём промис, который никогда не
       // разрешится, чтобы React не успел показать вспышку ошибки.
       return new Promise<never>(() => {})
@@ -53,14 +69,52 @@ export function isChunkLoadError(error: unknown): boolean {
   return /dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk \S+ failed/i.test(message)
 }
 
-// sessionStorage может быть недоступен (приватный режим, жёсткие настройки) —
-// тогда просто работаем без защиты от повторов, а не падаем на ровном месте.
-function safeSessionGet(key: string): string | null {
-  try { return window.sessionStorage.getItem(key) } catch { return null }
+/** Когда была последняя автоперезагрузка этой вкладки (0 — не было). */
+export function lastAutoReload(): number {
+  let at = 0
+  try {
+    const m = window.name.match(new RegExp(`${MARK}(\\d+)`))
+    if (m) at = Number(m[1])
+  } catch { /* нет window.name — смотрим хранилище */ }
+  try {
+    at = Math.max(at, Number(window.localStorage.getItem(LS_KEY)) || 0)
+  } catch { /* хранилище недоступно — хватит window.name */ }
+  return at
 }
-function safeSessionSet(key: string, value: string): void {
-  try { window.sessionStorage.setItem(key, value) } catch { /* не критично */ }
+
+export function mayAutoReload(now: number): boolean {
+  return now - lastAutoReload() >= RELOAD_COOLDOWN_MS
 }
-function safeSessionRemove(key: string): void {
-  try { window.sessionStorage.removeItem(key) } catch { /* не критично */ }
+
+export function markAutoReload(now: number): void {
+  try {
+    const rest = window.name.replace(new RegExp(`${MARK}\\d+`, 'g'), '')
+    window.name = `${rest}${MARK}${now}`
+  } catch { /* не критично */ }
+  try { window.localStorage.setItem(LS_KEY, String(now)) } catch { /* не критично */ }
+}
+
+/** Тот же адрес с `?_r=<время>`: index.html — из сети, не из кэша браузера. */
+export function freshUrl(href: string, now: number = Date.now()): string {
+  const u = new URL(href)
+  u.searchParams.set(BUST_PARAM, String(now))
+  return u.toString()
+}
+
+function reloadFresh(): void {
+  try {
+    window.location.replace(freshUrl(window.location.href))
+  } catch {
+    window.location.reload()
+  }
+}
+
+/** После перезагрузки убрать `?_r=` из адресной строки (без перехода). */
+export function stripBustParam(): void {
+  try {
+    const u = new URL(window.location.href)
+    if (!u.searchParams.has(BUST_PARAM)) return
+    u.searchParams.delete(BUST_PARAM)
+    window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash)
+  } catch { /* не критично */ }
 }
