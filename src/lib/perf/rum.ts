@@ -6,7 +6,12 @@
  *           завершились и 300 мс тишины». Метка — путь с id → `:id`;
  *   api   — запрос к Supabase: «МЕТОД /rest/v1/<таблица>», «POST /rest/v1/rpc/<функция>»,
  *           «… /storage/v1/object», «POST /functions/v1/<функция>», статус, мс;
- *   nav   — первая загрузка: ttfb, dcl, lcp.
+ *   nav   — первая загрузка: ttfb, dcl, lcp; с 21.10 (письмо
+ *           ЛК_СРОЧНО_урок_перезагрузка_НЕ_исправлено.md) ещё диагностика —
+ *           `type <navigate|reload|back_forward|prerender> <путь>` (как открыли
+ *           страницу), `reload <причина> <путь>` (перед программной перезагрузкой),
+ *           `error <сообщение>` (window.onerror / unhandledrejection). Отдельного
+ *           kind нет: в базе ограничение route|api|nav, а выкатить нужно сегодня.
  * Профиль и роль добавляет сервер (`perf_ingest`, auth.uid()). Отправка
  * пачкой раз в 30 с и при уходе со страницы; любые ошибки — молча: RUM не
  * должен мешать ученику.
@@ -148,6 +153,57 @@ export function timedFetch(base: typeof fetch): typeof fetch {
   }
 }
 
+// ── диагностика перезагрузок и ошибок (21.10) ────────────────────────────────
+
+const PENDING_KEY = 'rum:pending'
+const MAX_ERRORS = 20
+let errorsThisPage = 0
+let activeTransport: RumTransport | null = null
+
+function readPending(): PerfEvent[] {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY)
+    localStorage.removeItem(PENDING_KEY)
+    const list = raw ? JSON.parse(raw) : []
+    return Array.isArray(list) ? list.slice(-50) : []
+  } catch {
+    return []
+  }
+}
+
+function keepPending(events: PerfEvent[]): void {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY)
+    const prev = raw ? JSON.parse(raw) : []
+    localStorage.setItem(PENDING_KEY, JSON.stringify([...(Array.isArray(prev) ? prev : []), ...events].slice(-50)))
+  } catch { /* RUM молчит */ }
+}
+
+/**
+ * Перед любой программной перезагрузкой: пишем причину и сразу отправляем
+ * keepalive-запросом. Нет входа или запрос не ушёл — событие лежит в
+ * localStorage и уйдёт при следующем старте страницы.
+ */
+export function noteReload(reason: string): void {
+  try {
+    const ev: PerfEvent = { k: 'nav', l: `reload ${reason} ${routeLabel(location.pathname)}`.slice(0, 120), ms: Math.round(now()), d: device }
+    keepPending([ev])
+    if (activeTransport?.signedIn()) {
+      activeTransport.sendOnExit([ev])
+      try { localStorage.removeItem(PENDING_KEY) } catch { /* RUM молчит */ }
+    }
+  } catch { /* RUM молчит */ }
+}
+
+/** Ошибка страницы — коротко, без стека; не больше 20 на загрузку. */
+export function noteError(message: unknown): void {
+  if (errorsThisPage >= MAX_ERRORS) return
+  errorsThisPage++
+  const text = (message instanceof Error ? `${message.name}: ${message.message}` : String(message ?? 'unknown'))
+    .replace(UUID_RE, ':id').replace(/\s+/g, ' ').trim()
+  record('nav', `error ${text}`.slice(0, 120), now())
+}
+
 // ── отправка ───────────────────────────────────────────────────────────────
 
 export interface RumTransport {
@@ -165,6 +221,13 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
   if (started || typeof window === 'undefined') return () => {}
   started = true
   sampled = Math.random() < (opts.sampleRate ?? 1)
+  activeTransport = t
+  // Перезагрузки прошлой страницы, которые не успели уйти (21.10).
+  for (const ev of readPending()) queue.push(ev)
+  const onError = (e: ErrorEvent) => noteError(e.error ?? e.message)
+  const onRejection = (e: PromiseRejectionEvent) => noteError(e.reason)
+  window.addEventListener('error', onError)
+  window.addEventListener('unhandledrejection', onRejection)
 
   const flush = () => {
     if (!t.signedIn() || queue.length === 0) return
@@ -190,6 +253,9 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
     clearInterval(timer)
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pagehide', flushOnExit)
+    window.removeEventListener('error', onError)
+    window.removeEventListener('unhandledrejection', onRejection)
+    activeTransport = null
     started = false
   }
 }
@@ -200,6 +266,8 @@ export function recordNavigationTiming(): void {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
     const label = routeLabel(location.pathname)
     if (nav) {
+      // Как открыли страницу: navigate / reload (F5 или программно) / back_forward.
+      record('nav', `type ${nav.type || 'unknown'} ${label}`, nav.domContentLoadedEventEnd > 0 ? nav.domContentLoadedEventEnd : 0)
       if (nav.responseStart > 0) record('nav', `ttfb ${label}`, nav.responseStart)
       const dcl = () => record('nav', `dcl ${label}`, nav.domContentLoadedEventEnd)
       if (nav.domContentLoadedEventEnd > 0) dcl()
@@ -229,6 +297,8 @@ export function recordNavigationTiming(): void {
 /** Только для тестов: сбросить состояние модуля. */
 export function __resetRumForTests(): void {
   queue.length = 0
+  errorsThisPage = 0
+  activeTransport = null
   inflight = 0
   routeStart = null
   sawRequest = false
