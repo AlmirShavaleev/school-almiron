@@ -8,6 +8,9 @@ describe('playUrl / bunnyGuidOf', () => {
     const u = new URL(playUrl(`https://iframe.mediadelivery.net/embed/726880/${GUID}?responsive=true`))
     expect(u.searchParams.get('autoplay')).toBe('true')
     expect(u.searchParams.get('preload')).toBe('false')
+    // iPhone: в странице, без нативного плеера iOS (письмо 27.10).
+    expect(u.searchParams.get('playsinline')).toBe('true')
+    expect(u.searchParams.get('disableIosPlayer')).toBe('true')
     expect(u.searchParams.get('responsive')).toBe('true')
   })
   it('YouTube и прочие: autoplay=1; кривой адрес — как есть', () => {

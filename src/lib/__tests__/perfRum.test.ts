@@ -9,6 +9,7 @@ import {
   deviceClass,
   noteError,
   noteNav,
+  noteUrgentNav,
   noteReload,
   queueSize,
   record,
@@ -143,12 +144,20 @@ describe('диагностика перезагрузок (21.10)', () => {
     stop()
   })
 
-  it('без входа событие ждёт в localStorage и уходит при следующем старте', () => {
+  it('без входа событие ждёт в localStorage и уходит keepalive-запросом, как только вход появился', async () => {
+    vi.useFakeTimers()
     noteReload('button:error')
     expect(localStorage.getItem('rum:pending')).toContain('reload button:error')
-    const t: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    let signed = false
+    const t: RumTransport = { signedIn: () => signed, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
     const stop = startRum(t)
-    expect(takeBatch().map(e => e.l)).toEqual(expect.arrayContaining([expect.stringMatching(/^reload button:error/)]))
+    // В общую пачку не кладём: вкладку, которую убили раз, часто убивают и второй.
+    expect(takeBatch().map(e => e.l).filter(l => l.startsWith('reload'))).toEqual([])
+    expect(localStorage.getItem('rum:pending')).toContain('reload button:error')
+    signed = true
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(t.sendOnExit).toHaveBeenCalledWith([expect.objectContaining({ l: expect.stringMatching(/^reload button:error/) })])
+    expect(localStorage.getItem('rum:pending')).toBeNull()
     stop()
   })
 
@@ -181,10 +190,11 @@ describe('диагностика падений вкладки (письмо 27.
     stop()
   })
 
-  it('отметка осталась (вкладку убили, pagehide не было) — nav «crash <маршрут>»', () => {
+  it('отметка осталась (вкладку убили, pagehide не было) — nav «crash <маршрут>» важным событием', () => {
     localStorage.setItem('rum:alive', '/my-course/:id/topic/:id')
-    const stop = startRum(t())
-    expect(labels()).toContain('crash /my-course/:id/topic/:id')
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    expect(tr.sendOnExit).toHaveBeenCalledWith([expect.objectContaining({ k: 'nav', l: 'crash /my-course/:id/topic/:id' })])
     expect(localStorage.getItem('rum:alive')).not.toBeNull()
     stop()
   })
@@ -201,8 +211,32 @@ describe('диагностика падений вкладки (письмо 27.
     stop()
   })
 
+  it('play / play-load / play-ready — сразу keepalive-запросом, без входа ждут в localStorage', () => {
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    noteUrgentNav('play', '/my-course/abc/topic/11111111-2222-4333-8444-555555555555')
+    expect(tr.sendOnExit).toHaveBeenLastCalledWith([expect.objectContaining({ k: 'nav', l: 'play /my-course/abc/topic/:id' })])
+    expect(localStorage.getItem('rum:pending')).toBeNull()
+    stop()
+    noteUrgentNav('play-ready', '/watch/11111111-2222-4333-8444-555555555555')
+    expect(localStorage.getItem('rum:pending')).toContain('play-ready /watch/:id')
+  })
+
   it('nav «play <маршрут>» — запуск плеера', () => {
     noteNav('play', '/my-course/abc/topic/11111111-2222-4333-8444-555555555555')
     expect(labels()).toEqual(['play /my-course/abc/topic/:id'])
+  })
+})
+
+describe('ложный crash (харнесс 27.10)', () => {
+  it('повторный startRum в той же загрузке (StrictMode, перемонтирование) падения не сообщает', () => {
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    let stop = startRum(tr)
+    stop()
+    stop = startRum(tr)
+    const sentLabels = (tr.sendOnExit as ReturnType<typeof vi.fn>).mock.calls.flat(2).map((e: { l: string }) => e.l)
+    expect(sentLabels.filter(l => l.startsWith('crash'))).toEqual([])
+    expect(localStorage.getItem('rum:alive')).not.toBeNull()
+    stop()
   })
 })
