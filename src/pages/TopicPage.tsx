@@ -48,6 +48,8 @@ import { cn } from '@/utils/cn'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
 import { progressNote } from '@/lib/progressUnlock'
+import { readPagePosition, savePagePosition, takeScrollPosition } from '@/lib/pagePosition'
+import { noteNav } from '@/lib/perf/rum'
 import { ownStudentRow } from '@/lib/ownStudent'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -133,7 +135,11 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // `?tab=homework` — «Перейти к ДЗ» из раздела «Домашние задания» (ЛК, 15.10):
   // открыть урок сразу на вкладке. Нет такой вкладки — как без параметра.
   const [searchParams] = useSearchParams()
-  const [chosen, setChosen] = useState<string | null>(() => searchParams.get('tab'))
+  // Раздел — из адреса, иначе тот, что был открыт до ухода на страницу видео
+  // (письмо 27.10, iPhone: «назад» возвращает в урок на то же место).
+  const [chosen, setChosen] = useState<string | null>(() =>
+    searchParams.get('tab') ?? readPagePosition(window.location.pathname)?.tab ?? null)
+  useEffect(() => { savePagePosition(window.location.pathname, { tab: chosen }) }, [chosen])
   /** §239. Ряд вкладок — к нему докручиваем после «Авторское решение». */
   const tabsRef = useRef<HTMLDivElement>(null)
 
@@ -325,6 +331,17 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     : topic
       ? !isTopicOpen(topic) && (preview || !canBypassAvailability)
       : false
+
+  // Вернулись в урок со страницы видео — прокрутка туда, где нажали ▶.
+  const restoredScroll = useRef(false)
+  useEffect(() => {
+    if (loading || !topic || restoredScroll.current) return
+    restoredScroll.current = true
+    const y = takeScrollPosition(window.location.pathname)
+    if (y == null) return
+    requestAnimationFrame(() => window.scrollTo(0, y))
+    noteNav('restore')
+  }, [loading, topic])
 
   // ── States ───────────────────────────────────────────────────────────────────
 

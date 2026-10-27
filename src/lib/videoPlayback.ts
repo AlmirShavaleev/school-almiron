@@ -58,7 +58,8 @@ export function useIsActiveVideo(id: string): boolean {
 
 /**
  * Адрес плеера для запуска по нажатию: сразу играть, не тянуть видео заранее.
- * Bunny — `autoplay=true&preload=false`; YouTube/Vimeo — `autoplay=1`.
+ * Bunny — `autoplay=true&preload=false&playsinline=true&disableIosPlayer=true`;
+ * YouTube/Vimeo — `autoplay=1`.
  */
 export function playUrl(embed: string): string {
   try {
@@ -66,6 +67,10 @@ export function playUrl(embed: string): string {
     if (u.hostname.endsWith('mediadelivery.net')) {
       u.searchParams.set('autoplay', 'true')
       u.searchParams.set('preload', 'false')
+      // iPhone (письмо 27.10): играть в странице и никогда не открывать
+      // нативный плеер iOS — с ним документ уходил в hidden и WebKit убивал вкладку.
+      u.searchParams.set('playsinline', 'true')
+      u.searchParams.set('disableIosPlayer', 'true')
     } else {
       u.searchParams.set('autoplay', '1')
     }
@@ -79,6 +84,15 @@ export function playUrl(embed: string): string {
 export function bunnyGuidOf(embed: string): string | null {
   const m = embed.match(/mediadelivery\.net\/(?:embed|play)\/\d+\/([0-9a-f-]{36})/i)
   return m ? m[1] : null
+}
+
+/** Телефон: тач-экран или узкий экран — там плеер открывается отдельной страницей. */
+export function isPhoneViewport(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    if (window.matchMedia?.('(pointer: coarse)').matches) return true
+  } catch { /* старые браузеры */ }
+  return window.innerWidth < 768
 }
 
 /** Для тестов. */

@@ -154,3 +154,17 @@ describe('видео урока — один плеер (письмо 19.10: в�
     expect(document.querySelector('iframe')).toBeNull()
   })
 })
+
+describe('возврат со страницы видео (письмо 27.10, iPhone)', () => {
+  it('урок поднимает прокрутку, где нажали ▶, один раз', async () => {
+    sessionStorage.setItem(`page-pos:/my-course/${GROUP}/topic/${TOPIC}`, JSON.stringify({ y: 480 }))
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(cb => { cb(0); return 0 })
+    window.history.replaceState(null, '', `/my-course/${GROUP}/topic/${TOPIC}`)
+    renderPage()
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 480))
+    expect(JSON.parse(sessionStorage.getItem(`page-pos:/my-course/${GROUP}/topic/${TOPIC}`)!).y).toBe(0)
+    scrollTo.mockRestore(); raf.mockRestore()
+    sessionStorage.clear()
+  })
+})
