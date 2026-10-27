@@ -566,6 +566,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         title="Видео темы"
         countWatch={countsVideoWatch}
         watchMark={videoWatchMarks[videoMaterial.id]}
+        thumbFile={videoMaterial.kind === 'video' ? videoMaterial.thumbFile : null}
         frameClassName="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-md"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
       />

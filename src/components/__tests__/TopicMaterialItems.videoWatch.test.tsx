@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
 /**
@@ -111,6 +111,7 @@ describe('Отметка «просмотрено» у видео (§204)', () =
     watchRows = [{ item_id: 'v1', max_position: 900, duration_seconds: 900 }]
     render(<TopicMaterialItems topicId={TOPIC} canManage section="video" />)
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Видеоразбор' }))
     await screen.findByTitle('Видеоразбор')
     expect(queried).not.toContain('video_watch_daily')
     expect(screen.queryByTestId('video-watched-badge')).not.toBeInTheDocument()
@@ -121,14 +122,20 @@ describe('Отметка «просмотрено» у видео (§204)', () =
     watchRows = [{ item_id: 'v1', max_position: 900, duration_seconds: 900 }]
     render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="video" />)
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Видеоразбор' }))
     await screen.findByTitle('Видеоразбор')
     expect(queried).not.toContain('video_watch_daily')
     expect(screen.queryByTestId('video-watched-badge')).not.toBeInTheDocument()
   })
 
-  it('плеер остался плеером: тот же embed-адрес в iframe', async () => {
+  it('плеер остался плеером: тот же embed-адрес в iframe, по нажатию — с автозапуском без предзагрузки', async () => {
     render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="video" />)
-    expect(await screen.findByTitle('Видеоразбор')).toHaveAttribute('src', VIDEO_URL)
+    expect(document.querySelector('iframe')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Видеоразбор' }))
+    const src = new URL((await screen.findByTitle('Видеоразбор')).getAttribute('src')!)
+    expect(`${src.origin}${src.pathname}`).toBe(VIDEO_URL)
+    expect(src.searchParams.get('autoplay')).toBe('true')
+    expect(src.searchParams.get('preload')).toBe('false')
   })
 })
 
@@ -136,6 +143,48 @@ describe('hideIds — ролик, который страница уже пок�
   it('скрытый ролик в рубрике не рисуется, второго iframe нет; остальные — как были', async () => {
     materials = [video('v1'), video('v2')]
     render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="theory" hideIds={['v1']} />)
-    await waitFor(() => expect(document.querySelectorAll('iframe')).toHaveLength(1))
+    await waitFor(() => expect(screen.getAllByTestId('video-facade')).toHaveLength(1))
+  })
+})
+
+describe('фасад и один живой плеер (письмо 27.10: видео на телефоне роняло страницу)', () => {
+  const eight = () => Array.from({ length: 8 }, (_, i) =>
+    ({ ...video(`v${i + 1}`), title: `Ролик ${i + 1}`, position: i }) as TopicMaterial)
+  const bunnyFrames = () => document.querySelectorAll('iframe[src*="mediadelivery.net"]')
+
+  it('урок с 8 видео: до нажатия 0 iframe Bunny, после — ровно 1; второй ролик снимает первый', async () => {
+    materials = eight()
+    render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="theory" />)
+    expect(await screen.findAllByTestId('video-facade')).toHaveLength(8)
+    expect(bunnyFrames()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Смотреть: Ролик 3' }))
+    expect(bunnyFrames()).toHaveLength(1)
+    expect(screen.getByTitle('Ролик 3')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Смотреть: Ролик 6' }))
+    expect(bunnyFrames()).toHaveLength(1)
+    expect(screen.getByTitle('Ролик 6')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Смотреть: Ролик 3' })).toBeInTheDocument()
+  })
+
+  it('карточка ушла со страницы (свернули раздел) — плеер снят, iframe нет', async () => {
+    materials = eight()
+    const { unmount } = render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="theory" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Ролик 1' }))
+    expect(bunnyFrames()).toHaveLength(1)
+    unmount()
+    await Promise.resolve()
+    const { activeVideo } = await import('@/lib/videoPlayback')
+    expect(activeVideo()).toBeNull()
+    expect(bunnyFrames()).toHaveLength(0)
+  })
+
+  it('без CDN обложек — тёмная плашка с названием, без картинки и без iframe', async () => {
+    render(<TopicMaterialItems topicId={TOPIC} canManage={false} section="theory" />)
+    const facade = await screen.findByTestId('video-facade')
+    expect(facade.querySelector('img')).toBeNull()
+    expect(facade).toHaveTextContent('Видеоразбор')
+    expect(document.querySelector('iframe')).toBeNull()
   })
 })

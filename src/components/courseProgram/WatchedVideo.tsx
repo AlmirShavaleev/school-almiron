@@ -1,28 +1,32 @@
-import { useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, Play } from 'lucide-react'
 import { useVideoWatch } from '@/hooks/useVideoWatch'
 import type { VideoWatchMark } from '@/hooks/useVideoWatchMarks'
 import { isVideoWatched } from '@/lib/videoWatch'
+import { bunnyThumbnailUrl } from '@/lib/lessonCard'
+import { bunnyGuidOf, mountVideo, playUrl, setActiveVideo, useIsActiveVideo } from '@/lib/videoPlayback'
+import { noteNav } from '@/lib/perf/rum'
 
 /**
  * Плеер темы со счётчиком просмотра (§204).
  *
  * Один компонент на оба места, где ученик смотрит видео: карточку материала в
- * рубрике (`TopicMaterialItems`) и вкладку «Видео» темы (`TopicPage`). Два
- * плеера уже было — и именно поэтому на вкладке «Видео» адрес Bunny до §204 не
- * превращался в плеер вовсе. Третьей копии не заводим.
+ * рубрике (`TopicMaterialItems`) и плеер урока (`TopicPage`). Третьей копии не
+ * заводим.
  *
- * Вёрстка не менялась: рамку задаёт вызывающий (`frameClassName`), здесь
- * добавились только ссылка на iframe — через неё идёт протокол player.js — и
- * отметка «просмотрено».
+ * С 27.10 (письмо ЛК_СРОЧНО_видео_на_телефоне_роняет_страницу.md) — **фасад**:
+ * до нажатия ▶ никакого iframe, только обложка Bunny (или тёмная плашка с
+ * названием) и кнопка. iframe создаётся по нажатию, сразу с автозапуском и
+ * без предзагрузки, и живой на странице всегда один (`videoPlayback.ts`):
+ * запуск второго ролика снимает первый, его просмотр перед этим дописывается.
+ * В уроке до 8 видео, и восемь плееров Bunny разом роняли вкладку на телефоне.
  *
  * Минуты ученику не показываются (решение владельца): ему видно только, дошёл
- * он до конца или нет. Отметка собирается из двух источников — записанного в
- * базе просмотра и того, что плеер сообщил прямо сейчас; второе, чтобы после
- * просмотра не приходилось перезагружать страницу ради галочки.
+ * он до конца или нет. Отметка — из записанного в базе просмотра и того, что
+ * плеер сообщил прямо сейчас.
  */
 export function WatchedVideo({
-  materialId, embed, title, countWatch, watchMark, frameClassName, allow,
+  materialId, embed, title, countWatch, watchMark, frameClassName, allow, thumbFile,
 }: {
   materialId: string
   embed: string
@@ -33,14 +37,22 @@ export function WatchedVideo({
   watchMark?: VideoWatchMark
   frameClassName?: string
   allow?: string
+  /** Имя своей обложки Bunny (§283), если ставили кадр заставки. */
+  thumbFile?: string | null
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [live, setLive] = useState<{ maxPositionSec: number; durationSec: number | null } | null>(null)
+  const playing = useIsActiveVideo(materialId)
+  const [posterFailed, setPosterFailed] = useState(false)
+
+  // Карточка ушла со страницы (свернули раздел, сменили вкладку) — плеер снят.
+  useEffect(() => mountVideo(materialId), [materialId])
 
   useVideoWatch({
     itemId: materialId,
     embedUrl: embed,
-    enabled: countWatch,
+    // Счёт — только пока плеер живой: снятие плеера = cleanup с flush().
+    enabled: countWatch && playing,
     iframeRef,
     // timeupdate приходит несколько раз в секунду: перерисовываем, только когда
     // позиция сдвинулась на целую секунду или пришла длительность (письмо 19.10).
@@ -52,10 +64,45 @@ export function WatchedVideo({
     isVideoWatched(watchMark?.maxPositionSec ?? null, watchMark?.durationSec ?? null) ||
     isVideoWatched(live?.maxPositionSec ?? null, live?.durationSec ?? null)
 
+  const poster = posterFailed ? null : bunnyThumbnailUrl(bunnyGuidOf(embed), undefined, thumbFile)
+
+  function start() {
+    noteNav('play')
+    setActiveVideo(materialId)
+  }
+
   return (
     <div className="space-y-2">
       <div className={frameClassName ?? 'aspect-video w-full overflow-hidden rounded-xl bg-black'}>
-        <iframe ref={iframeRef} src={embed} title={title} allow={allow} allowFullScreen loading="lazy" className="h-full w-full" />
+        {playing ? (
+          <iframe
+            ref={iframeRef}
+            src={playUrl(embed)}
+            title={title}
+            allow={allow ?? 'autoplay; encrypted-media; picture-in-picture; fullscreen'}
+            allowFullScreen
+            className="h-full w-full"
+            data-testid="video-iframe"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={start}
+            aria-label={`Смотреть: ${title}`}
+            data-testid="video-facade"
+            className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black text-white"
+          >
+            {poster ? (
+              <img src={poster} alt="" loading="lazy" decoding="async" onError={() => setPosterFailed(true)}
+                className="absolute inset-0 h-full w-full object-cover opacity-90" />
+            ) : (
+              <span className="absolute inset-x-4 bottom-4 truncate text-left text-sm font-semibold text-white/80">{title}</span>
+            )}
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-gray-900 shadow-lg transition-transform group-hover:scale-105">
+              <Play size={28} className="ml-1" fill="currentColor" />
+            </span>
+          </button>
+        )}
       </div>
       {watched && (
         <div
