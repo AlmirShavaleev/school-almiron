@@ -29,6 +29,10 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown'] as const
  *
  * Решение вынесено в `shouldTouch`, чтобы правило проверялось без часов.
  */
+/** Отметка присутствия: не дольше 5 с и не чаще раза в 10 с (письмо 27.10). */
+export const TOUCH_TIMEOUT_MS = 5_000
+export const TOUCH_MIN_GAP_MS = 10_000
+
 export function useSchoolPresence() {
   const profile = useAuthStore(s => s.profile)
   const profileId = profile?.id ?? null
@@ -39,13 +43,29 @@ export function useSchoolPresence() {
 
     let stopped = false
     let lastTouchAt = 0
+    let inFlight = false
 
-    function sendTouch(now: number) {
+    function sendTouch(now: number, fromActivity = false) {
+      // 27.10 (письмо ЛК_СРОЧНО_шторм_запросов_программа_курса.md): отметка
+      // уходила на КАЖДЫЙ клик и нажатие клавиши, а при плохой сети висела
+      // ~21 с. Теперь — не чаще раза в TOUCH_MIN_GAP_MS, не пока предыдущая
+      // в пути, и обрыв через TOUCH_TIMEOUT_MS без повтора.
+      if (inFlight || (fromActivity && now - lastTouchAt < TOUCH_MIN_GAP_MS)) return
       lastTouchAt = now
+      inFlight = true
       // Ошибку глушим намеренно: отметка присутствия не должна мешать работе,
       // как и счётчик визитов в App.tsx. Не прошла — человек пропадёт из
       // списка по истечении окна, и это честнее, чем сломанный экран.
-      void (supabase as any).rpc('school_presence_touch').then(() => {}, () => {})
+      // Узкий тип: `abortSignal` есть у построителя запроса supabase-js, но не у
+      // подмен в тестах — поэтому проверяем, а не зовём вслепую.
+      type Touch = PromiseLike<unknown> & { abortSignal?: (s: AbortSignal) => PromiseLike<unknown> }
+      let call: Touch | PromiseLike<unknown>
+      try {
+        call = (supabase as unknown as { rpc: (fn: string) => Touch }).rpc('school_presence_touch')
+        const c = call as Touch
+        if (c && typeof c.abortSignal === 'function') call = c.abortSignal(AbortSignal.timeout(TOUCH_TIMEOUT_MS))
+      } catch { inFlight = false; return }
+      void Promise.resolve(call).then(() => {}, () => {}).finally(() => { inFlight = false })
     }
 
     function tick() {
@@ -71,8 +91,8 @@ export function useSchoolPresence() {
       const now = Date.now()
       noteActivity(now)
       // Действие — повод отметиться сразу: иначе первые секунды после
-      // возвращения человек числился бы ушедшим.
-      sendTouch(now)
+      // возвращения человек числился бы ушедшим. Но не чаще раза в 10 с.
+      sendTouch(now, true)
     }
 
     function onVisibility() {

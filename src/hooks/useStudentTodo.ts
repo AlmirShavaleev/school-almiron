@@ -9,6 +9,7 @@ import {
   type TodoTest,
   type TodoVerdict,
 } from '@/lib/studentTodo'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 /**
  * Список дел ученика: что просрочено, что вернули, что сдавать, что открылось.
@@ -39,8 +40,7 @@ export function useStudentTodo(profileId: string | undefined) {
     setError(null)
 
     async function load(pid: string) {
-      const { data: student } = await supabase
-        .from('students').select('id').eq('profile_id', pid).maybeSingle()
+      const { data: student } = await ownStudentRow(pid)
       if (cancelled) return
       // Профиль без строки students — это персонал, зашедший на ученический
       // маршрут. Пустой список честнее выдуманного.

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 export interface Lesson {
   id: string
@@ -41,8 +42,7 @@ export function useLessons() {
 
       try {
         if (effectiveRole === 'student') {
-          const { data: student } = await supabase
-            .from('students').select('id').eq('profile_id', profile!.id).single()
+          const { data: student } = await ownStudentRow(profile!.id)
 
           if (!student) { setLoading(false); return }
 

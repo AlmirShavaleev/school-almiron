@@ -48,6 +48,7 @@ import { cn } from '@/utils/cn'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
 import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
 import { progressNote } from '@/lib/progressUnlock'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,8 +189,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         // 1. Student record (страница ученика: без записи students темы нет).
         // В предпросмотре её и не ищем — тему персоналу отдаёт RLS.
         if (!preview) {
-          const { data: student } = await supabase
-            .from('students').select('id').eq('profile_id', profile!.id).single()
+          const { data: student } = await ownStudentRow(profile!.id)
           if (!student || cancelled) return
         }
 

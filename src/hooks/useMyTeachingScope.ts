@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useNeedsOwnDataFilter } from '@/store/staffModeStore'
 import { useMyCuratorships } from '@/hooks/useMyCuratorships'
+import { ownStudentId as fetchOwnStudentId } from '@/lib/ownStudent'
 
 /**
  * «Что моё» для владельца в режиме учителя: своя строка `teachers`, курсы, где
@@ -64,6 +65,72 @@ function isStaffByRole(role: string | undefined): boolean {
   return role === 'teacher' || role === 'admin' || role === 'owner'
 }
 
+/**
+ * Один набор «что моё» на сессию (письмо ЛК_СРОЧНО_шторм_запросов_программа_курса.md,
+ * 27.10). Хук стоит и в странице, и в каждом тумблере открытости урока
+ * (TopicOpenToggle): у владельца в режиме учителя программа из 36 уроков
+ * давала 36 × 4 запроса (students, teachers, courses, groups) на каждое
+ * перемонтирование — ~170 запросов за 2–3 минуты правки, и в эти минуты
+ * очередь PostgREST тормозила всем (p95 API 13–14 с). Теперь — один общий
+ * ответ на ключ «профиль · режим · курируемое». Набор за сессию почти не
+ * меняется; ошибка не кэшируется.
+ */
+type ScopeData = Pick<TeachingScope, 'teacherId' | 'courseIds' | 'groupIds' | 'ownStudentId'>
+const scopeCache = new Map<string, Promise<ScopeData>>()
+
+export function resetTeachingScopeCache(): void { scopeCache.clear() }
+;(globalThis as { __resetTeachingScopeCache?: () => void }).__resetTeachingScopeCache = resetTeachingScopeCache
+
+async function loadScope(profileId: string, needsFilter: boolean, curated: string[]): Promise<ScopeData> {
+  // Строка `students` есть у любого, кто хоть раз был учеником, — у
+  // владельца её обычно нет, и null тут законный ответ.
+  const ownStudentId = await fetchOwnStudentId(profileId)
+
+  let teacherId: string | null = null
+  const courseIds = new Set<string>(curated)
+  const groupIds = new Set<string>()
+
+  if (needsFilter) {
+    const { data: teacher } = await supabase
+      .from('teachers').select('id').eq('profile_id', profileId).maybeSingle()
+    teacherId = teacher?.id ?? null
+
+    // Свои курсы — это и те, которыми владеешь, и те, где ведёшь группу.
+    // Один owner_id недостаточно: курс мог завести админ, а вести его ты.
+    const [ownedRes, taughtRes] = await Promise.all([
+      supabase.from('courses').select('id').eq('owner_id', profileId),
+      teacherId
+        ? supabase.from('groups').select('id, course_id').eq('teacher_id', teacherId)
+        : Promise.resolve({ data: [] as Array<{ id: string; course_id: string | null }> }),
+    ])
+    for (const c of (ownedRes.data ?? []) as Array<{ id: string }>) courseIds.add(c.id)
+    for (const g of (taughtRes.data ?? []) as Array<{ id: string; course_id: string | null }>) {
+      groupIds.add(g.id)
+      if (g.course_id) courseIds.add(g.course_id)
+    }
+  }
+
+  // Группы курируемых курсов — по закону «один курс = одна группа» их
+  // ровно по одной, но берём запросом, а не догадкой.
+  if (curated.length > 0) {
+    const { data: curatedGroups } = await supabase
+      .from('groups').select('id').in('course_id', curated)
+    for (const g of (curatedGroups ?? []) as Array<{ id: string }>) groupIds.add(g.id)
+  }
+
+  return { teacherId, courseIds: Array.from(courseIds), groupIds: Array.from(groupIds), ownStudentId }
+}
+
+function sharedScope(profileId: string, needsFilter: boolean, curatedKey: string): Promise<ScopeData> {
+  const key = `${profileId}|${needsFilter ? 1 : 0}|${curatedKey}`
+  const hit = scopeCache.get(key)
+  if (hit) return hit
+  const p = loadScope(profileId, needsFilter, curatedKey ? curatedKey.split(',') : [])
+  p.catch(() => scopeCache.delete(key))
+  scopeCache.set(key, p)
+  return p
+}
+
 export function useMyTeachingScope(): TeachingScope {
   const profile = useAuthStore(s => s.profile)
   const needsFilter = useNeedsOwnDataFilter()
@@ -95,65 +162,11 @@ export function useMyTeachingScope(): TeachingScope {
     let cancelled = false
     setScope({ ...IDLE, active: true, loading: true, readOnly: curatorMode })
 
-    const curated = curatedKey ? curatedKey.split(',') : []
-
-    async function load(profileId: string) {
-      // Строка `students` есть у любого, кто хоть раз был учеником, — у
-      // владельца её обычно нет, и null тут законный ответ.
-      const ownStudentRes = await supabase
-        .from('students').select('id').eq('profile_id', profileId).maybeSingle()
-      const ownStudentId = ownStudentRes.data?.id ?? null
-
-      let teacherId: string | null = null
-      const courseIds = new Set<string>(curated)
-      const groupIds = new Set<string>()
-
-      if (needsFilter) {
-        const { data: teacher } = await supabase
-          .from('teachers').select('id').eq('profile_id', profileId).maybeSingle()
-        teacherId = teacher?.id ?? null
-
-        // Свои курсы — это и те, которыми владеешь, и те, где ведёшь группу.
-        // Один owner_id недостаточно: курс мог завести админ, а вести его ты.
-        const [ownedRes, taughtRes] = await Promise.all([
-          supabase.from('courses').select('id').eq('owner_id', profileId),
-          teacherId
-            ? supabase.from('groups').select('id, course_id').eq('teacher_id', teacherId)
-            : Promise.resolve({ data: [] as Array<{ id: string; course_id: string | null }> }),
-        ])
-
-        if (cancelled) return
-
-        for (const c of (ownedRes.data ?? []) as Array<{ id: string }>) courseIds.add(c.id)
-        for (const g of (taughtRes.data ?? []) as Array<{ id: string; course_id: string | null }>) {
-          groupIds.add(g.id)
-          if (g.course_id) courseIds.add(g.course_id)
-        }
-      }
-
-      // Группы курируемых курсов — по закону «один курс = одна группа» их
-      // ровно по одной, но берём запросом, а не догадкой.
-      if (curated.length > 0) {
-        const { data: curatedGroups } = await supabase
-          .from('groups').select('id').in('course_id', curated)
-        if (cancelled) return
-        for (const g of (curatedGroups ?? []) as Array<{ id: string }>) groupIds.add(g.id)
-      }
-
+    sharedScope(profile.id, needsFilter, curatedKey).then(data => {
       if (cancelled) return
+      setScope({ active: true, loading: false, ...data, readOnly: curatorMode })
+    }, () => { /* сбой — остаёмся в «грузится», как раньше при отказе запроса */ })
 
-      setScope({
-        active:    true,
-        loading:   false,
-        teacherId,
-        courseIds: Array.from(courseIds),
-        groupIds:  Array.from(groupIds),
-        ownStudentId,
-        readOnly:  curatorMode,
-      })
-    }
-
-    void load(profile.id)
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsFilter, profile?.id, profile?.role, curatorMode, pendingCuratorCheck, curatedKey])
