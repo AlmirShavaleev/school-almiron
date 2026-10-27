@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 export interface MyCourseGroupMembership {
   groupId: string
@@ -47,7 +48,7 @@ export function useMyCourseMemberships() {
         return
       }
 
-      const { data: student } = await supabase.from('students').select('id').eq('profile_id', uid).maybeSingle()
+      const { data: student } = await ownStudentRow(uid)
       if (!student) {
         if (!cancelled) { setCourses([]); setLoading(false) }
         return

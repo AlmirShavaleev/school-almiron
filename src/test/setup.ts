@@ -57,3 +57,11 @@ afterEach(() => {
   sessionStorage.clear()
   localStorage.clear()
 })
+
+// Общие кэши «на сессию» (свой students.id, «что моё» персонала — письмо 27.10):
+// между тестами сбрасываем, иначе ответ одного теста перетекает в другой.
+afterEach(() => {
+  const g = globalThis as { __resetOwnStudentCache?: () => void; __resetTeachingScopeCache?: () => void }
+  g.__resetOwnStudentCache?.()
+  g.__resetTeachingScopeCache?.()
+})

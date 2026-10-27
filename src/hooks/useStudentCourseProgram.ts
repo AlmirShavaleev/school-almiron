@@ -17,6 +17,7 @@ import type { MockLessonListRow } from '@/lib/mockExamLesson'
 import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
 import { onlyEgeTrack } from '@/lib/training'
 import { firstVideoGuidByTopic, firstVideoThumbByTopic } from '@/lib/lessonCard'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 /**
  * Программа курса глазами ученика.
@@ -226,8 +227,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         group = row
       } else {
         // 1. Get student id
-        const { data: student } = await supabase
-          .from('students').select('id').eq('profile_id', profile!.id).single()
+        const { data: student } = await ownStudentRow(profile!.id)
         if (!student) return
         studentId = student.id
 

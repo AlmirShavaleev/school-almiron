@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 /**
  * §218. К пробнику — его шаблон и баллы по заданиям: без них выгрузка в
@@ -59,8 +60,7 @@ export function useMockExams(tick = 0) {
         const role = effectiveRole ?? profile!.role
 
         if (role === 'student') {
-          const { data: st } = await supabase
-            .from('students').select('id').eq('profile_id', profile!.id).single()
+          const { data: st } = await ownStudentRow(profile!.id)
           if (!st) return
 
           // Student sees their own results joined with exam info
