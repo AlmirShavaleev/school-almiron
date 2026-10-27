@@ -19,6 +19,7 @@ import type { PathSubscription } from '@/lib/studentPath'
 import { Sticker } from '@/components/student/skin/Sticker'
 import { DualRing } from '@/components/student/course/DualRing'
 import type { StickerName } from '@/components/student/skin/skin'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 /**
  * «Мои курсы» в стиле лендинга (письмо ЛК_стиль_мои_курсы.md, 15.10):
@@ -71,8 +72,7 @@ async function loadPreviewGroups(): Promise<GroupWithCourse[]> {
 }
 
 async function loadStudentGroups(profileId: string): Promise<GroupWithCourse[] | null> {
-  const { data: student } = await supabase
-    .from('students').select('id').eq('profile_id', profileId).single()
+  const { data: student } = await ownStudentRow(profileId)
   if (!student) return null
   const { data: gs } = await supabase
     .from('group_students')

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 export interface AttendanceRow {
   student_id:   string
@@ -48,8 +49,7 @@ export function useAttendanceReport() {
         if (!teacher) { setGroups([]); return }
         groupsQuery = groupsQuery.eq('teacher_id', teacher.id)
       } else if (effectiveRole === 'student') {
-        const { data: student } = await supabase
-          .from('students').select('id').eq('profile_id', profile!.id).single()
+        const { data: student } = await ownStudentRow(profile!.id)
         if (!student) { setGroups([]); return }
         const { data: gs } = await supabase
           .from('group_students').select('group_id').eq('student_id', student.id)

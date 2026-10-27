@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 export function useGroups() {
   const profile = useAuthStore(s => s.profile)
@@ -25,8 +26,7 @@ export function useGroups() {
         const baseSelect = '*, courses(title,subject,exam_type,is_template), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
 
         if (role === 'student') {
-          const { data: st } = await supabase
-            .from('students').select('id').eq('profile_id', profile!.id).single()
+          const { data: st } = await ownStudentRow(profile!.id)
           if (!st) return
           const { data: gs } = await supabase
             .from('group_students').select('group_id').eq('student_id', st.id)

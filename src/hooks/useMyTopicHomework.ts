@@ -10,6 +10,7 @@ import {
 import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
 import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
@@ -57,7 +58,7 @@ export function useMyStudentId(enabled = true) {
     if (!profileId || !enabled) { setStudentId(null); setLoading(false); return }
     let cancelled = false
     setLoading(true)
-    supabase.from('students').select('id').eq('profile_id', profileId).maybeSingle()
+    ownStudentRow(profileId)
       .then(({ data }) => {
         if (cancelled) return
         setStudentId(data?.id ?? null)

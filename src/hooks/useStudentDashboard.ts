@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ownStudentRow } from '@/lib/ownStudent'
 
 export interface StudentCourseCard {
   groupId: string
@@ -34,11 +35,7 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
 
     async function load() {
       try {
-        const { data: student } = await supabase
-          .from('students')
-          .select('id')
-          .eq('profile_id', profileId!)
-          .maybeSingle()
+        const { data: student } = await ownStudentRow(profileId!)
 
         if (cancelled) return
         if (!student) { setData({ courses: [], studentId: null, loading: false }); return }
