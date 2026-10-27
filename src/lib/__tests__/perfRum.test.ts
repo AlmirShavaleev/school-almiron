@@ -8,6 +8,7 @@ import {
   apiLabel,
   deviceClass,
   noteError,
+  noteNav,
   noteReload,
   queueSize,
   record,
@@ -161,5 +162,47 @@ describe('диагностика перезагрузок (21.10)', () => {
     expect(labels[0]).toBe('error TypeError: x of :id is undefined')
     expect(labels.filter(l => l.startsWith('error'))).toHaveLength(20)
     stop()
+  })
+})
+
+describe('диагностика падений вкладки (письмо 27.10, видео на телефоне)', () => {
+  const t = (): RumTransport => ({ signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() })
+  const labels = () => takeBatch(1000).filter(e => e.k === 'nav').map(e => e.l)
+
+  it('страница закрылась сама (pagehide) — при следующем старте падения нет', () => {
+    window.history.replaceState(null, '', '/my-course/0b0a1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d/topic/11111111-2222-4333-8444-555555555555')
+    let stop = startRum(t())
+    window.dispatchEvent(new Event('pagehide'))
+    stop()
+    expect(localStorage.getItem('rum:alive')).toBeNull()
+    takeBatch(1000)
+    stop = startRum(t())
+    expect(labels().filter(l => l.startsWith('crash'))).toEqual([])
+    stop()
+  })
+
+  it('отметка осталась (вкладку убили, pagehide не было) — nav «crash <маршрут>»', () => {
+    localStorage.setItem('rum:alive', '/my-course/:id/topic/:id')
+    const stop = startRum(t())
+    expect(labels()).toContain('crash /my-course/:id/topic/:id')
+    expect(localStorage.getItem('rum:alive')).not.toBeNull()
+    stop()
+  })
+
+  it('смена маршрута двигает отметку; уход в фон — nav «hide <маршрут>»', () => {
+    const stop = startRum(t())
+    window.history.replaceState(null, '', '/my-homework')
+    routeChanged('/my-homework')
+    expect(localStorage.getItem('rum:alive')).toBe('/my-homework')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    expect(labels()).toContain('hide /my-homework')
+    stop()
+  })
+
+  it('nav «play <маршрут>» — запуск плеера', () => {
+    noteNav('play', '/my-course/abc/topic/11111111-2222-4333-8444-555555555555')
+    expect(labels()).toEqual(['play /my-course/abc/topic/:id'])
   })
 })

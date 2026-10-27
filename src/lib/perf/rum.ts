@@ -123,6 +123,7 @@ export function routeChanged(pathname: string): void {
   routeLabelNow = routeLabel(pathname)
   sawRequest = false
   scheduleRouteDone()
+  markAlive()
 }
 
 /** Обёртка над fetch клиента Supabase: меряет, ничего не меняет в запросе. */
@@ -195,6 +196,44 @@ export function noteReload(reason: string): void {
   } catch { /* RUM молчит */ }
 }
 
+/**
+ * Событие навигации без длительности: `play` (создан плеер видео), `hide`
+ * (вкладка ушла в фон), `restore` (после выгрузки вкладки восстановили раздел
+ * и прокрутку), `crash` (прошлую загрузку убили — см. ALIVE_KEY). Письма 27.10
+ * про телефон: так видно, после чего вкладку убивает браузер.
+ */
+export function noteNav(kind: string, path: string = typeof location !== 'undefined' ? location.pathname : ''): void {
+  record('nav', `${kind} ${routeLabel(path)}`.slice(0, 120), now())
+}
+
+/**
+ * «Сессия жива»: при старте страницы пишем маршрут, на `pagehide` снимаем.
+ * Осталась отметка с прошлого раза — страницу убили, не дав ей закрыться
+ * (телефон выгрузил вкладку по памяти) → `crash <маршрут>`.
+ */
+const ALIVE_KEY = 'rum:alive'
+
+function checkCrash(): void {
+  try {
+    const prev = localStorage.getItem(ALIVE_KEY)
+    if (prev) record('nav', `crash ${prev}`.slice(0, 120), now())
+  } catch { /* RUM молчит */ }
+  markOpen()
+}
+
+function markOpen(): void {
+  try { localStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
+}
+
+function markClosed(): void {
+  try { localStorage.removeItem(ALIVE_KEY) } catch { /* RUM молчит */ }
+}
+
+/** Маршрут сменился внутри приложения — отметка жизни на новом маршруте. */
+function markAlive(): void {
+  try { if (localStorage.getItem(ALIVE_KEY)) localStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
+}
+
 /** Ошибка страницы — коротко, без стека; не больше 20 на загрузку. */
 export function noteError(message: unknown): void {
   if (errorsThisPage >= MAX_ERRORS) return
@@ -242,17 +281,25 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
       /* RUM молчит */
     }
   }
-  const onVisibility = () => { if (document.visibilityState === 'hidden') flushOnExit() }
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') { noteNav('hide'); flushOnExit() }
+  }
+  const onPageHide = () => { markClosed(); flushOnExit() }
+  // Вернулись из bfcache — страница та же и живая: отметку ставим заново.
+  const onPageShow = (e: PageTransitionEvent) => { if (e.persisted) markOpen() }
+  checkCrash()
 
   const timer = setInterval(flush, opts.intervalMs ?? 30_000)
   document.addEventListener('visibilitychange', onVisibility)
-  window.addEventListener('pagehide', flushOnExit)
+  window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pageshow', onPageShow)
   recordNavigationTiming()
 
   return () => {
     clearInterval(timer)
     document.removeEventListener('visibilitychange', onVisibility)
-    window.removeEventListener('pagehide', flushOnExit)
+    window.removeEventListener('pagehide', onPageHide)
+    window.removeEventListener('pageshow', onPageShow)
     window.removeEventListener('error', onError)
     window.removeEventListener('unhandledrejection', onRejection)
     activeTransport = null
@@ -307,4 +354,5 @@ export function __resetRumForTests(): void {
   quietTimer = null
   sampled = true
   started = false
+  try { localStorage.removeItem(ALIVE_KEY) } catch { /* нет хранилища */ }
 }

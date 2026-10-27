@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { TopicMaterial } from '@/lib/topicMaterialItems'
 
@@ -47,9 +47,12 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-vi.mock('@/store/authStore', () => ({
-  useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: { id: 'u1', role: 'student' } }),
-}))
+// Профиль — один объект, как в настоящем сторе: новый на каждый рендер
+// перезапускал загрузку темы и снимал нажатый плеер.
+vi.mock('@/store/authStore', () => {
+  const state = { profile: { id: 'u1', role: 'student' } }
+  return { useAuthStore: (sel: (s: unknown) => unknown) => sel(state) }
+})
 vi.mock('@/hooks/useTopicMaterialItems', () => ({
   useTopicMaterialItems: () => ({ materials, loading: false, error: null }),
 }))
@@ -92,8 +95,9 @@ beforeEach(() => {
 describe('Вкладка «Видео» темы (§204)', () => {
   it('видео Bunny показывается плеером, а не ссылкой наружу', async () => {
     renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Видео темы' }))
     const frame = await screen.findByTitle('Видео темы')
-    expect(frame).toHaveAttribute('src', BUNNY_EMBED)
+    expect(frame.getAttribute('src')).toContain(`${BUNNY_EMBED}?`)
     expect(screen.queryByText('Смотреть видео')).not.toBeInTheDocument()
   })
 
@@ -140,13 +144,13 @@ describe('видео урока — один плеер (письмо 19.10: в�
   it('ролик в «Теории» не повторяется: рубрике велено скрыть ролик плеера, iframe один', async () => {
     materials = [{ ...bunnyVideo, section: 'theory' } as TopicMaterial]
     renderPage()
-    await screen.findByTitle('Видео темы')
-    expect(document.querySelectorAll('iframe')).toHaveLength(1)
+    expect(await screen.findAllByTestId('video-facade')).toHaveLength(1)
     expect(await screen.findByTestId('rubric-theory')).toHaveAttribute('data-hide', 'v1')
   })
 
-  it('плеер грузится лениво', async () => {
+  it('до нажатия ▶ iframe нет вовсе — только обложка (письмо 27.10)', async () => {
     renderPage()
-    expect(await screen.findByTitle('Видео темы')).toHaveAttribute('loading', 'lazy')
+    expect(await screen.findByTestId('video-facade')).toBeInTheDocument()
+    expect(document.querySelector('iframe')).toBeNull()
   })
 })
