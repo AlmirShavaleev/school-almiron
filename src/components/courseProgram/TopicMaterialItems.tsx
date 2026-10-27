@@ -162,6 +162,7 @@ function MaterialCard({
             title={material.title || 'Видео темы'}
             countWatch={countView}
             watchMark={watchMark}
+            thumbFile={material.thumbFile}
           />
         ) : (
           <a href={material.url} target="_blank" rel="noopener noreferrer"

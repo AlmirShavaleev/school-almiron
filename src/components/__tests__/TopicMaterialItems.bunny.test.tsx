@@ -83,7 +83,9 @@ describe('Форма видео темы — адрес Bunny (§168)', () => {
 
   it('сохранённое видео сразу показывается плеером, а не голой ссылкой', async () => {
     await addVideoThroughForm(`https://player.mediadelivery.net/play/726880/${GUID}`)
-    await waitFor(() => expect(screen.getByTitle('Видео темы')).toHaveAttribute('src', EMBED))
+    // Фасад (письмо 27.10): плеер появляется по нажатию ▶, с автозапуском.
+    fireEvent.click(await screen.findByRole('button', { name: 'Смотреть: Видео темы' }))
+    await waitFor(() => expect(screen.getByTitle('Видео темы').getAttribute('src')).toContain(`${EMBED}?`))
   })
 
   it('внешняя ссылка (не Bunny) сохраняется как есть', async () => {

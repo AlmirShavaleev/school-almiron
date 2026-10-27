@@ -280,7 +280,7 @@ export interface TopicMaterialItemRow {
  */
 export type TopicMaterial =
   | { kind: 'text'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; content: string }
-  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; url: string }
+  | { kind: 'video'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; url: string; thumbFile?: string | null }
   | { kind: 'link'; id: string; title: string | null; position: number; isVisible: boolean; section: TopicMaterialSection | null; fromTemplate?: boolean; url: string }
   | {
       kind: 'file'
@@ -309,7 +309,8 @@ export function toTopicMaterial(row: TopicMaterialItemRow): TopicMaterial | null
     case 'text':
       return row.content ? { ...base, kind: 'text', content: row.content } : null
     case 'video':
-      return row.url ? { ...base, kind: 'video', url: row.url } : null
+      // §283: имя своей обложки Bunny лежит в file_name строки видео — для фасада плеера.
+      return row.url ? { ...base, kind: 'video', url: row.url, thumbFile: row.file_name ?? null } : null
     case 'link':
       return row.url ? { ...base, kind: 'link', url: row.url } : null
     case 'file':

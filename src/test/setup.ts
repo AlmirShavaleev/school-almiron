@@ -61,7 +61,8 @@ afterEach(() => {
 // Общие кэши «на сессию» (свой students.id, «что моё» персонала — письмо 27.10):
 // между тестами сбрасываем, иначе ответ одного теста перетекает в другой.
 afterEach(() => {
-  const g = globalThis as { __resetOwnStudentCache?: () => void; __resetTeachingScopeCache?: () => void }
+  const g = globalThis as { __resetOwnStudentCache?: () => void; __resetTeachingScopeCache?: () => void; __resetActiveVideo?: () => void }
   g.__resetOwnStudentCache?.()
   g.__resetTeachingScopeCache?.()
+  g.__resetActiveVideo?.()
 })
