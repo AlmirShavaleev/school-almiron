@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 /**
- * Письмо ЛК_СРОЧНО_iPhone_видео_отдельная_страница.md (27.10): на телефоне ▶
- * в уроке ведёт на лёгкую страницу `/watch/:id` с одним плеером; «назад» —
- * в урок на то же место. На компьютере — плеер в уроке, как был.
+ * Страница `/watch/:id` (письмо 27.10) — один плеер для прямых ссылок.
+ * С 28.10 (письмо ЛК_видео_на_телефоне_снова_в_уроке.md) из урока на неё не
+ * ведём: на любом устройстве ▶ создаёт один iframe прямо в уроке.
  */
 
 const GUID = '0016b4df-58da-4ba4-b94a-cdc2d4584d86'
@@ -73,26 +73,20 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia
 })
 
-describe('▶ на телефоне — отдельная страница видео', () => {
-  it('телефон: iframe в уроке не создаётся, переход на /watch/:id, прокрутка урока запомнена', async () => {
-    setPhone(true)
-    Object.defineProperty(window, 'scrollY', { configurable: true, value: 640 })
-    renderApp(LESSON)
-    fireEvent.click(screen.getByRole('button', { name: 'Смотреть: Видеоразбор' }))
-    expect(await screen.findByTestId('watch-iframe')).toBeInTheDocument()
-    expect(screen.getByTestId('where')).toHaveTextContent('/watch/v1')
-    expect(document.querySelectorAll('iframe')).toHaveLength(1)
-    expect(JSON.parse(sessionStorage.getItem(`page-pos:${window.location.pathname}`) ?? '{}').y).toBe(640)
-    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
-  })
-
-  it('компьютер: плеер в уроке, как был', () => {
-    setPhone(false)
-    renderApp(LESSON)
-    fireEvent.click(screen.getByRole('button', { name: 'Смотреть: Видеоразбор' }))
-    expect(screen.getByTestId('video-iframe')).toBeInTheDocument()
-    expect(screen.getByTestId('where')).toHaveTextContent(LESSON)
-  })
+describe('▶ в уроке на любом устройстве — плеер прямо в уроке', () => {
+  for (const phone of [true, false]) {
+    it(`${phone ? 'телефон' : 'компьютер'}: один iframe в уроке, перехода на /watch нет`, () => {
+      setPhone(phone)
+      if (phone) Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+      renderApp(LESSON)
+      expect(document.querySelector('iframe')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Смотреть: Видеоразбор' }))
+      expect(screen.getByTestId('video-iframe')).toBeInTheDocument()
+      expect(document.querySelectorAll('iframe')).toHaveLength(1)
+      expect(screen.getByTestId('where')).toHaveTextContent(LESSON)
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+    })
+  }
 })
 
 describe('страница /watch/:id', () => {

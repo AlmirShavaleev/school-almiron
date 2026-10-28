@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useInRouterContext, useNavigate } from 'react-router-dom'
 import { Check, Play } from 'lucide-react'
 import { useVideoWatch } from '@/hooks/useVideoWatch'
 import type { VideoWatchMark } from '@/hooks/useVideoWatchMarks'
 import { isVideoWatched } from '@/lib/videoWatch'
 import { bunnyThumbnailUrl } from '@/lib/lessonCard'
-import { bunnyGuidOf, isPhoneViewport, mountVideo, playUrl, setActiveVideo, useIsActiveVideo } from '@/lib/videoPlayback'
+import { bunnyGuidOf, mountVideo, playUrl, setActiveVideo, useIsActiveVideo } from '@/lib/videoPlayback'
 import { noteUrgentNav } from '@/lib/perf/rum'
-import { savePagePosition } from '@/lib/pagePosition'
-import type { WatchVideoState } from '@/pages/WatchVideoPage'
 
 /**
  * Плеер темы со счётчиком просмотра (§204).
@@ -24,10 +21,11 @@ import type { WatchVideoState } from '@/pages/WatchVideoPage'
  * запуск второго ролика снимает первый, его просмотр перед этим дописывается.
  * В уроке до 8 видео, и восемь плееров Bunny разом роняли вкладку на телефоне.
  *
- * С 27.10 (письмо ЛК_СРОЧНО_iPhone_видео_отдельная_страница.md) на телефоне
- * ▶ не создаёт iframe вовсе, а ведёт на лёгкую страницу `/watch/:id`: даже
- * один плеер поверх урока ронял вкладку в Safari на iPhone. Перед переходом
- * запоминаем прокрутку — «назад» возвращает в урок на то же место.
+ * С 27.10 на телефоне ▶ вёл на отдельную страницу `/watch/:id`; 28.10
+ * (письмо ЛК_видео_на_телефоне_снова_в_уроке.md) вернули плеер в урок на
+ * любом устройстве: вкладку на iPhone убивал цикл `ready` в мосте плеера
+ * (`videoPlayerBridge.ts`), а не тяжесть страницы. `/watch/:id` остался для
+ * прямых ссылок.
  *
  * Минуты ученику не показываются (решение владельца): ему видно только, дошёл
  * он до конца или нет. Отметка — из записанного в базе просмотра и того, что
@@ -97,8 +95,7 @@ export function WatchedVideo({
             data-testid="video-iframe"
           />
         ) : (
-          <VideoFacade title={title} poster={poster} onPosterError={() => setPosterFailed(true)}
-            materialId={materialId} onStart={start} />
+          <FacadeButton title={title} poster={poster} onPosterError={() => setPosterFailed(true)} onClick={start} />
         )}
       </div>
       {watched && (
@@ -114,32 +111,13 @@ export function WatchedVideo({
   )
 }
 
-interface FacadeProps {
+/** Обложка с ▶ (письмо 27.10): до нажатия iframe нет. */
+function FacadeButton({ title, poster, onPosterError, onClick }: {
   title: string
   poster: string | null
   onPosterError: () => void
-  materialId: string
-  onStart: () => void
-}
-
-/** Обложка с ▶. Внутри роутера на телефоне — переход на `/watch/:id`. */
-function VideoFacade(props: FacadeProps) {
-  return useInRouterContext() ? <RoutedFacade {...props} /> : <FacadeButton {...props} onClick={props.onStart} />
-}
-
-function RoutedFacade(props: FacadeProps) {
-  const navigate = useNavigate()
-  function onClick() {
-    if (!isPhoneViewport()) { props.onStart(); return }
-    noteUrgentNav('play')
-    const from = location.pathname + location.search
-    savePagePosition(location.pathname, { y: window.scrollY })
-    navigate(`/watch/${props.materialId}`, { state: { from } satisfies WatchVideoState })
-  }
-  return <FacadeButton {...props} onClick={onClick} />
-}
-
-function FacadeButton({ title, poster, onPosterError, onClick }: FacadeProps & { onClick: () => void }) {
+  onClick: () => void
+}) {
   return (
     <button
       type="button"
