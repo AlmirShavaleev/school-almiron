@@ -1,8 +1,7 @@
 /**
- * iPhone (WebKit, `devices['iPhone 13']`): ▶ в уроке ведёт на отдельную
- * страницу видео, там ровно один iframe Bunny, документ остаётся visible;
- * «← К уроку» возвращает в урок на ту же прокрутку. Письма 27.10
- * ЛК_СРОЧНО_iPhone_видео_всё_ещё_роняет.md и …_отдельная_страница.md.
+ * iPhone (WebKit, `devices['iPhone 13']`): ▶ играет прямо в уроке (письмо
+ * 28.10 ЛК_видео_на_телефоне_снова_в_уроке.md) — ровно один iframe Bunny,
+ * документ visible, нет цикла `ready`; прямая ссылка `/watch/:id` жива.
  * Печатает и важные события RUM, ушедшие в `perf_ingest`.
  *
  *   HARNESS_PORT=5231 node e2e/harness/iphoneWatch.mjs
@@ -58,40 +57,36 @@ check('в уроке до нажатия iframe Bunny нет', await page.locato
 
 const facade = page.getByTestId('video-facade').first()
 await facade.scrollIntoViewIfNeeded()
-await page.mouse.wheel(0, 200).catch(() => {})
 await page.evaluate(() => window.scrollBy(0, 150))
 const yBefore = await page.evaluate(() => Math.round(window.scrollY))
 await facade.tap()
-await page.waitForURL(/\/watch\//, { timeout: 10000 }).catch(() => {})
 await page.waitForTimeout(1200)
-const watch = await page.evaluate(() => ({
+const inLesson = await page.evaluate(() => ({
   path: location.pathname,
   visibility: document.visibilityState,
-  iframes: document.querySelectorAll('iframe').length,
-  src: document.querySelector('iframe')?.src ?? '',
-  nodes: document.getElementsByTagName('*').length,
+  iframes: document.querySelectorAll('iframe[src*="mediadelivery.net"]').length,
+  src: document.querySelector('iframe[src*="mediadelivery.net"]')?.src ?? '',
+  y: Math.round(window.scrollY),
 }))
-check('▶ открыл /watch/:id', watch.path.startsWith('/watch/'), watch.path)
-check('на странице видео ровно один iframe', watch.iframes === 1, String(watch.iframes))
+check('▶ играет прямо в уроке, перехода на /watch нет', inLesson.path === lesson, inLesson.path)
+check('в уроке ровно один iframe Bunny', inLesson.iframes === 1, String(inLesson.iframes))
 check('адрес плеера: autoplay, preload=false, playsinline, disableIosPlayer',
-  /autoplay=true/.test(watch.src) && /preload=false/.test(watch.src) && /playsinline=true/.test(watch.src) && /disableIosPlayer=true/.test(watch.src),
-  watch.src.replace(/^https?:\/\//, '').slice(0, 140))
-check('документ остался visible', watch.visibility === 'visible')
+  /autoplay=true/.test(inLesson.src) && /preload=false/.test(inLesson.src) && /playsinline=true/.test(inLesson.src) && /disableIosPlayer=true/.test(inLesson.src),
+  inLesson.src.replace(/^https?:\/\//, '').slice(0, 140))
+check('документ остался visible', inLesson.visibility === 'visible')
+check('прокрутка урока не сбилась', Math.abs(inLesson.y - yBefore) <= 40, `было ${yBefore}, стало ${inLesson.y}`)
 await page.waitForTimeout(3000)
 const playerFrame = page.frames().find(f => f.url().includes('mediadelivery.net'))
 const cmds = playerFrame ? await playerFrame.evaluate(() => window.__cmds) : -1
 check('нет цикла ready ↔ addEventListener: команд плееру за 4 с меньше 30', cmds >= 0 && cmds < 30, String(cmds))
-console.log(`     узлов DOM на /watch: ${watch.nodes}`)
-
-await page.getByTestId('watch-back').tap()
-await page.waitForURL(u => u.pathname === lesson, { timeout: 10000 }).catch(() => {})
-await page.waitForTimeout(1500)
-const back = await page.evaluate(() => ({ path: location.pathname, y: Math.round(window.scrollY) }))
-check('«← К уроку» вернул в урок', back.path === lesson, back.path)
-check('прокрутка урока та же', Math.abs(back.y - yBefore) <= 40, `было ${yBefore}, стало ${back.y}`)
-await page.waitForTimeout(500)
 check('RUM: play ушёл сразу', sent.includes('play'), JSON.stringify(sent))
 check('RUM: play-ready ровно один', sent.filter(x => x === 'play-ready').length === 1, String(sent.filter(x => x === 'play-ready').length))
+
+// /watch/:id остался для прямых ссылок.
+const materialId = IDS.material(2)
+await page.goto(`${BASE}/watch/${materialId}`, { waitUntil: 'networkidle', timeout: 60000 })
+await page.waitForTimeout(800)
+check('прямая ссылка /watch/:id — один iframe', await page.locator('iframe[src*="mediadelivery.net"]').count() === 1)
 
 console.log(failed ? `ИТОГ: НЕ ОК (${failed} из ${checks})` : `ИТОГ: ок (${checks} из ${checks})`)
 await browser.close()
