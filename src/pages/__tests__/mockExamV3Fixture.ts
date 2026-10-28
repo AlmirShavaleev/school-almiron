@@ -14,7 +14,7 @@ export function examRow(startOffsetMin: number | null) {
   }
 }
 
-const stu = (id: string, name: string) => ({ student_id: id, students: { id, profile_id: `p-${id}`, profiles: { full_name: name } } })
+export const stu = (id: string, name: string) => ({ student_id: id, students: { id, profile_id: `p-${id}`, profiles: { full_name: name } } })
 export const ROSTER = [stu('a', 'Гарипов Тимур'), stu('b', 'Белов Артём'), stu('c', 'Зайцев Роман'), stu('d', 'Каримова Алсу')]
 
 const cells = (id: string, pts: (number | null)[], auto: boolean[] = []) =>
@@ -56,6 +56,8 @@ export interface Db {
   /** §222b. Вызовы edge-функций (check-mock-exam-ai) и что они «сделали» с таблицами. */
   invokes?: { name: string; body: Record<string, unknown> }[]
   onInvoke?: (name: string, body: Record<string, unknown>) => void
+  /** Ответ функции ждёт этого обещания — для проверки очереди (сколько вызовов разом). */
+  invokeGate?: () => Promise<void>
 }
 
 /** Узкий поддельный клиент: select/eq/maybeSingle/then по таблице, rpc — в журнал. */
@@ -84,8 +86,10 @@ export function fakeSupabase(db: () => Db) {
       invoke: (name: string, opts: { body: Record<string, unknown> }) => {
         const d = db()
         ;(d.invokes ??= []).push({ name, body: opts.body })
-        d.onInvoke?.(name, opts.body)
-        return Promise.resolve({ data: { checked: 1, failed: 0, results: [], skipped: [] }, error: null })
+        return (d.invokeGate?.() ?? Promise.resolve()).then(() => {
+          d.onInvoke?.(name, opts.body)
+          return { data: { checked: 1, failed: 0, results: [], skipped: [] }, error: null }
+        })
       },
     },
     storage: { from: () => ({ createSignedUrl: () => Promise.resolve({ data: { signedUrl: 'https://x/y' }, error: null }) }) },
