@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { MockExamForm } from '@/components/mockExams/MockExamForm'
 import { ExamStepper, LiveHead, WorksTable } from '@/components/mockExams/MockExamWorks'
 import { MockExamAiBar } from '@/components/mockExams/MockExamAiBar'
+import { MockExamAiTab } from '@/components/mockExams/MockExamAiTab'
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
 import { useMockExamWorks } from '@/hooks/useMockExamWorks'
 import { useMockExamAi } from '@/hooks/useMockExamAi'
@@ -17,6 +18,7 @@ import {
   defaultTab, examStage, nextToReview, notifyCheckedIds, shortName, workRows, worksSummary, type ExamTab,
 } from '@/lib/mockExamV3'
 import { worksVariantLabels } from '@/lib/mockExamVariants'
+import { aiProgress, aiTabRows } from '@/lib/mockExamAi'
 import { cn } from '@/utils/cn'
 
 /**
@@ -54,7 +56,9 @@ export function MockExamPage() {
   const next = nextToReview(rows, null)
   const pendingNotify = notifyCheckedIds(rows).length
   const tabParam = params.get('tab')
-  const tab: ExamTab = tabParam === 'works' || tabParam === 'table' || tabParam === 'setup' ? tabParam : defaultTab(stage, !!win)
+  // «Проверка ИИ» — у пробника со второй частью, когда таблицы ИИ доступны.
+  const hasAiTab = ai.available && !!exam?.template && exam.template.part1_last < exam.template.max_points.length
+  const tab: ExamTab = tabParam === 'works' || tabParam === 'table' || tabParam === 'setup' || (tabParam === 'ai' && hasAiTab) ? tabParam : defaultTab(stage, !!win)
   const pickTab = (t: ExamTab) => { const nx = new URLSearchParams(params); nx.set('tab', t); setParams(nx, { replace: true }); setConfirmAll(false) }
 
   const created = (location.state as { created?: { id: string; groupName: string }[]; problems?: string[]; warning?: string | null; draft?: boolean } | null) ?? null
@@ -79,6 +83,12 @@ export function MockExamPage() {
   const summary = worksSummary(stage, rows, win, exam.groupName)
   // §230. Метка варианта у строки «Работ» (и монитора — это те же строки) — только если вариантов больше одного.
   const variantById = worksVariantLabels(students, works.variants.length)
+  // Значок ИИ в строке «Работ» — у учеников с фото, ведёт во вкладку «Проверка ИИ».
+  const aiWaiting = hasAiTab ? aiProgress(students, ai.suggestions, ai.runs, ai.now).toCheck.length : 0
+  const aiBadgeById = hasAiTab && exam.template
+    ? Object.fromEntries(aiTabRows(students.filter(s => s.photos > 0), ai.suggestions, ai.runs, ai.now, exam.template.part1_last, exam.template.max_points)
+      .map(r => [r.id, { badge: r.badge, title: r.error ?? undefined }]))
+    : undefined
   // Главная кнопка — у проверки; пока пробник идёт, главное — монитор, а не «следующая».
   const primary = next && (stage === 'checking' || stage === 'sent')
     ? { label: `Проверить следующую · ${shortName(next.name)}`, onClick: () => navigate(`/mock-exams/${exam.id}/review/${next.id}`), testid: 'mock-page-next' }
@@ -123,6 +133,9 @@ export function MockExamPage() {
           <TabButton on={tab === 'works'} onClick={() => pickTab('works')} testid="mock-tab-works">Работы · {rows.length}</TabButton>
           <TabButton on={tab === 'table'} onClick={() => pickTab('table')} testid="mock-tab-table">Таблица баллов</TabButton>
           <TabButton on={tab === 'setup'} onClick={() => pickTab('setup')} testid="mock-tab-setup">Настройка</TabButton>
+          {hasAiTab && (
+            <TabButton on={tab === 'ai'} onClick={() => pickTab('ai')} testid="mock-tab-ai">Проверка ИИ{aiWaiting > 0 ? ` · ${aiWaiting}` : ''}</TabButton>
+          )}
         </div>
         <div role="tabpanel" className="min-w-0">
           {tab === 'works' && (
@@ -139,15 +152,19 @@ export function MockExamPage() {
                   }))} />
                 )}
                 {(stage === 'checking' || stage === 'sent') && exam.template.part1_last < exam.template.max_points.length && (
-                  <MockExamAiBar ai={ai} students={students} />
+                  <MockExamAiBar ai={ai} students={students} onOpenTab={hasAiTab ? () => pickTab('ai') : undefined} />
                 )}
-                <WorksTable examId={exam.id} rows={rows} liveById={liveLabels} variantById={variantById} onNotify={async ids => { const r = await works.notify(ids); if (!r.error) reload(); return r }}
+                <WorksTable examId={exam.id} rows={rows} liveById={liveLabels} variantById={variantById} aiBadgeById={aiBadgeById} aiTabHref={hasAiTab ? '?tab=ai' : undefined} onNotify={async ids => { const r = await works.notify(ids); if (!r.error) reload(); return r }}
                   confirmOpen={confirmAll} setConfirmOpen={setConfirmAll} />
               </>
             )
           )}
           {tab === 'table' && <div className="pt-4"><MockExamGridPage embedded onChanged={reload} /></div>}
           {tab === 'setup' && <div className="py-4"><MockExamForm mode={{ kind: 'edit', examId: exam.id, onSaved: reload }} /></div>}
+          {tab === 'ai' && exam.template && (
+            <MockExamAiTab examId={exam.id} ai={ai} students={students} part1Last={exam.template.part1_last} maxPoints={exam.template.max_points}
+              examSolutionPath={exam.solution_path} variants={works.variants} variantById={variantById} />
+          )}
         </div>
       </div>
     </div>

@@ -10,6 +10,8 @@ import { liveCounts, liveCountsLine, liveHeadline, livePhase, liveRows, type Liv
 import { notifyCheckedIds, statusLook, STAGES, type ExamStage, type ExamWindow, type WorkRow } from '@/lib/mockExamV3'
 import { plural } from '@/lib/plural'
 import { cn } from '@/utils/cn'
+import { AiBadge } from '@/components/mockExams/MockExamAiTab'
+import type { AiTabRow } from '@/lib/mockExamAi'
 
 /**
  * §228. Статус пробника: Черновик → Назначен → Идёт → Проверка → Результаты
@@ -82,12 +84,15 @@ const LIVE_MARK: Record<string, 'ok' | 'part' | 'bad' | 'none' | 'unk'> = { live
  * «Уведомить» одному, когда все номера оценены. Внизу — «Уведомить всех
  * проверенных · N» с подтверждением внутри страницы, без `confirm()`.
  */
-export function WorksTable({ examId, rows, liveById, variantById, onNotify, confirmOpen, setConfirmOpen }: {
+export function WorksTable({ examId, rows, liveById, variantById, aiBadgeById, aiTabHref, onNotify, confirmOpen, setConfirmOpen }: {
   examId: string
   rows: WorkRow[]
   liveById?: Record<string, { label: string; tone: string }>
   /** §230. Вариант ученика словами («Вариант 2», «Резерв»); только при нескольких вариантах. */
   variantById?: Record<string, string>
+  /** Письмо 28.10: статус ИИ у ученика с фото — значок со ссылкой во вкладку «Проверка ИИ». */
+  aiBadgeById?: Record<string, { badge: AiTabRow['badge']; title?: string }>
+  aiTabHref?: string
   onNotify: (ids: string[]) => Promise<{ error: string | null; summary: NotifySummary | null }>
   confirmOpen: boolean
   setConfirmOpen: (v: boolean) => void
@@ -162,6 +167,11 @@ export function WorksTable({ examId, rows, liveById, variantById, onNotify, conf
                           {variantById[r.id]}
                         </span>
                       )}
+                      {aiBadgeById?.[r.id] && (aiTabHref ? (
+                        <Link to={aiTabHref} onClick={e => e.stopPropagation()} data-testid="mock-works-ai" aria-label="Проверка ИИ этого ученика">
+                          <AiBadge badge={aiBadgeById[r.id].badge} title={aiBadgeById[r.id].title} />
+                        </Link>
+                      ) : <AiBadge badge={aiBadgeById[r.id].badge} title={aiBadgeById[r.id].title} />)}
                     </span>
                   </td>
                   <td className="border-b border-graphite-200 px-2.5 py-3">

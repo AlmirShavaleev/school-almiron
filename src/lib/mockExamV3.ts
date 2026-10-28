@@ -292,7 +292,8 @@ export function worksSummary(stage: ExamStage, rows: WorkRow[], win: ExamWindow 
 }
 
 /** Вкладка по умолчанию: после начала — «Работы»; черновик и назначенный — «Настройка». */
-export type ExamTab = 'works' | 'table' | 'setup'
+// 'ai' — «Проверка ИИ» (письмо 28.10), только у пробника со второй частью.
+export type ExamTab = 'works' | 'table' | 'setup' | 'ai'
 export function defaultTab(stage: ExamStage, hasWindow: boolean): ExamTab {
   if (!hasWindow) return stage === 'draft' ? 'setup' : 'table'
   return stage === 'draft' || stage === 'scheduled' ? 'setup' : 'works'

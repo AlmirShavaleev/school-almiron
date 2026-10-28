@@ -12,7 +12,7 @@ import { cn } from '@/utils/cn'
  * ещё нет предложений и проверка не идёт. Баллы ИИ — только предложения: их
  * принимают на экране проверки работы; ученик ничего не видит и не получает.
  */
-export function MockExamAiBar({ ai, students }: { ai: MockExamAi; students: AiProgressStudent[] }) {
+export function MockExamAiBar({ ai, students, onOpenTab }: { ai: MockExamAi; students: AiProgressStudent[]; onOpenTab?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const p = aiProgress(students, ai.suggestions, ai.runs, ai.now)
@@ -43,6 +43,11 @@ export function MockExamAiBar({ ai, students }: { ai: MockExamAi; students: AiPr
           Проверить вторую часть ИИ — у всех{p.toCheck.length > 0 ? ` · ${p.toCheck.length}` : ''}
         </Button>
       </div>
+      {onOpenTab && (
+        <button type="button" onClick={onOpenTab} className="self-start text-sm font-semibold text-primary-700 hover:underline" data-testid="mock-ai-open-tab">
+          Подробно по ученикам — вкладка «Проверка ИИ» →
+        </button>
+      )}
       {status && (
         <p role="status" data-testid="mock-ai-status" className={cn('flex items-start gap-2 text-sm', status.kind === 'error' ? 'text-verdict-bad-ink' : 'text-verdict-ok-ink')}>
           {status.kind === 'error' && <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />}{status.text}

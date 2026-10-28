@@ -185,3 +185,100 @@ export function aiProgress(
   }
   return { of: withPhotos.length, checked, active, failed, toCheck }
 }
+
+// ── Вкладка «Проверка ИИ» (письмо ЛК_пробник_вкладка_Проверка_ИИ.md, 28.10) ──
+// Полосу над «Работами» не замечали — по пробнику с пятью работами на фото ИИ
+// не запускали ни разу. Вкладка собирает всё про ИИ в одном месте.
+
+/** Статус ИИ коротким словом — значок в «Работах» и столбец вкладки. */
+export function aiStateBadge(state: AiRunState, hasSuggestions: boolean): { tone: 'muted' | 'busy' | 'ok' | 'error'; label: string } {
+  switch (state) {
+    case 'queued': return { tone: 'busy', label: 'в очереди' }
+    case 'running': return { tone: 'busy', label: 'идёт' }
+    case 'error':
+    case 'stale': return { tone: 'error', label: 'ошибка' }
+    case 'done': return { tone: 'ok', label: 'готово' }
+    default: return hasSuggestions ? { tone: 'ok', label: 'готово' } : { tone: 'muted', label: 'не проверял' }
+  }
+}
+
+export interface AiTabStudent { id: string; name: string; photos: number }
+
+export interface AiTabRow {
+  id: string
+  name: string
+  photos: number
+  state: AiRunState
+  badge: { tone: 'muted' | 'busy' | 'ok' | 'error'; label: string }
+  /** Текст ошибки (state error/stale), иначе null. */
+  error: string | null
+  /** Предложения по номерам второй части, по порядку номеров; null — нет. */
+  tasks: { task: number; max: number; suggestion: AiSuggestion | null }[]
+  /** Можно запустить: есть фото и проверка не идёт. */
+  canRun: boolean
+  /** «Проверить ИИ» — впервые, «Повторить» — уже проверял или ошибся. */
+  runLabel: string
+}
+
+export function aiTabRows(
+  students: readonly AiTabStudent[],
+  suggestions: readonly AiSuggestion[],
+  runs: readonly AiRun[],
+  nowMs: number,
+  part1Last: number,
+  maxPoints: readonly number[],
+): AiTabRow[] {
+  const runOf = new Map(runs.map(r => [r.student_id, r]))
+  return students.map(s => {
+    const run = runOf.get(s.id)
+    const state = aiRunState(run, nowMs)
+    const byTask = suggestionsByTask(suggestions, s.id)
+    const tasks = maxPoints.slice(part1Last).map((max, i) => {
+      const task = part1Last + i + 1
+      const sg = byTask.get(task) ?? null
+      return { task, max, suggestion: aiUsable(sg, max) ? sg : null }
+    })
+    const has = tasks.some(t => t.suggestion)
+    return {
+      id: s.id,
+      name: s.name,
+      photos: s.photos,
+      state,
+      badge: aiStateBadge(state, has),
+      error: state === 'error' ? (run?.last_error || 'причина не записана') : state === 'stale' ? 'проверка оборвалась — запустите ещё раз' : null,
+      tasks,
+      canRun: s.photos > 0 && !isAiActive(state),
+      runLabel: has || state === 'done' || state === 'error' || state === 'stale' ? 'Повторить' : 'Проверить ИИ',
+    }
+  })
+}
+
+export interface AiRefVariant { id: string; position: number; label?: string | null; solution_path: string | null; criteria_path: string | null }
+
+/**
+ * Чего не хватает эталону ИИ. Функция `check-mock-exam-ai` берёт решение и
+ * критерии варианта ученика, а без вариантов — решение пробника (критериев у
+ * пробника без вариантов нет). Смотрим только варианты учеников с фото: о
+ * варианте, которого никто не писал, говорить незачем.
+ */
+export function aiReferenceWarnings(input: {
+  examSolutionPath: string | null
+  variants: readonly AiRefVariant[]
+  /** Варианты учеников с фото (id); пусто у пробника без вариантов. */
+  usedVariantIds: ReadonlySet<string>
+  anyPhotos: boolean
+}): string[] {
+  if (!input.anyPhotos) return []
+  if (input.variants.length === 0) {
+    return input.examSolutionPath ? [] : ['ИИ проверит хуже: у пробника нет решения — загрузите его в «Настройке».']
+  }
+  const out: string[] = []
+  for (const v of input.variants) {
+    if (!input.usedVariantIds.has(v.id)) continue
+    const miss = [!v.solution_path && 'решения', !v.criteria_path && 'критериев'].filter(Boolean)
+    if (miss.length === 0) continue
+    const name = (v.label ?? '').trim() || `Вариант ${v.position}`
+    out.push(`ИИ проверит хуже: у «${name}» нет ${miss.join(' и ')} — загрузите в «Настройке».`)
+  }
+  return out
+}
