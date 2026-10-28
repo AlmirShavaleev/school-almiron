@@ -2,7 +2,8 @@
  * Видео в уроке у ученика (письмо ЛК_СРОЧНО_видео_на_телефоне_роняет_страницу.md, 27.10):
  * урок с 8 роликами Bunny — сколько iframe плеера до нажатия ▶ (должно быть 0),
  * после нажатия (ровно 1) и после запуска второго ролика (снова 1). Плюс узлы
- * DOM и JS heap (Chromium). Мобильная эмуляция 390×844.
+ * DOM и JS heap (Chromium). Компьютер 1280×800: на телефоне ▶ с 27.10 ведёт на
+ * отдельную страницу `/watch/:id` — её проверяет `iphoneWatch.mjs`.
  *
  *   HARNESS_PORT=5231 node e2e/harness/videoFacade.mjs
  */
@@ -15,7 +16,7 @@ const assetsDir = path.resolve('screenshots/harness/assets')
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 const session = makeSession(personas.student.user)
 const context = await browser.newContext({
-  viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  viewport: { width: 1280, height: 800 },
   locale: 'ru-RU', timezoneId: 'Europe/Moscow',
 })
 await context.addInitScript(({ session }) => {

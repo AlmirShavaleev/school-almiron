@@ -45,13 +45,17 @@ export interface UseVideoWatchOptions {
   iframeRef: RefObject<HTMLIFrameElement | null>
   /** Докуда дошёл прямо сейчас — чтобы отметка «просмотрено» не ждала перезагрузки. */
   onProgress?: (progress: VideoWatchProgress) => void
+  /** Плеер ответил `ready` (письмо 27.10, iPhone: на каком шаге умирает вкладка). */
+  onReady?: () => void
 }
 
-export function useVideoWatch({ itemId, embedUrl, enabled, iframeRef, onProgress }: UseVideoWatchOptions): void {
+export function useVideoWatch({ itemId, embedUrl, enabled, iframeRef, onProgress, onReady }: UseVideoWatchOptions): void {
   // Через ref, а не напрямую: иначе смена обработчика пересобирала бы подписку
   // на плеер, и накопленные секунды терялись бы на каждом рендере родителя.
   const onProgressRef = useRef(onProgress)
   useEffect(() => { onProgressRef.current = onProgress }, [onProgress])
+  const onReadyRef = useRef(onReady)
+  useEffect(() => { onReadyRef.current = onReady }, [onReady])
 
   useEffect(() => {
     if (!enabled || !itemId || !supportsWatchTracking(embedUrl)) return
@@ -97,6 +101,9 @@ export function useVideoWatch({ itemId, embedUrl, enabled, iframeRef, onProgress
       onEvent: event => {
         if (closed) return
         switch (event.event) {
+          case 'ready':
+            onReadyRef.current?.()
+            break
           case 'play':
             playing = true
             state = resetWatchClock(state)

@@ -46,6 +46,7 @@ const LessonLibraryPage = lazyPage('LessonLibraryPage', () => import('@/pages/Le
 const MyCoursesPage = lazyPage('MyCoursesPage', () => import('@/pages/MyCoursesPage').then(m => ({ default: m.MyCoursesPage })))
 const StudentCoursePage = lazyPage('StudentCoursePage', () => import('@/pages/StudentCoursePage').then(m => ({ default: m.StudentCoursePage })))
 const TopicPage = lazyPage('TopicPage', () => import('@/pages/TopicPage').then(m => ({ default: m.TopicPage })))
+const WatchVideoPage = lazyPage('WatchVideoPage', () => import('@/pages/WatchVideoPage').then(m => ({ default: m.WatchVideoPage })))
 // §282. Подписка: оформление, возврат из ЮKassa, «Моя подписка».
 const SubscriptionCheckoutPage = lazyPage('SubscriptionCheckoutPage', () => import('@/pages/subscription/SubscriptionCheckoutPage').then(m => ({ default: m.SubscriptionCheckoutPage })))
 const SubscriptionResultPage = lazyPage('SubscriptionResultPage', () => import('@/pages/subscription/SubscriptionResultPage').then(m => ({ default: m.SubscriptionResultPage })))
@@ -140,6 +141,9 @@ export default function AppRoutes() {
     <SchoolPresencePublisher />
     <Suspense fallback={<RouteFallback />}>
     <Routes>
+      {/* Просмотр одного ролика на телефоне (письмо 27.10, iPhone): вне каркаса
+          кабинета — без меню и его запросов, только плеер. Доступ к ролику — RLS. */}
+      <Route path="/watch/:materialId" element={<RoleGuard allow={['student','teacher','curator','admin','owner']} preview="allow"><WatchVideoPage /></RoleGuard>} />
       {/* Protected — dashboard layout */}
       <Route element={<DashboardLayout />}>
         {/* Доступно всем авторизованным */}

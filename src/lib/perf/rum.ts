@@ -161,17 +161,6 @@ const MAX_ERRORS = 20
 let errorsThisPage = 0
 let activeTransport: RumTransport | null = null
 
-function readPending(): PerfEvent[] {
-  try {
-    const raw = localStorage.getItem(PENDING_KEY)
-    localStorage.removeItem(PENDING_KEY)
-    const list = raw ? JSON.parse(raw) : []
-    return Array.isArray(list) ? list.slice(-50) : []
-  } catch {
-    return []
-  }
-}
-
 function keepPending(events: PerfEvent[]): void {
   try {
     const raw = localStorage.getItem(PENDING_KEY)
@@ -181,19 +170,43 @@ function keepPending(events: PerfEvent[]): void {
 }
 
 /**
- * Перед любой программной перезагрузкой: пишем причину и сразу отправляем
- * keepalive-запросом. Нет входа или запрос не ушёл — событие лежит в
- * localStorage и уйдёт при следующем старте страницы.
+ * Важное событие, которое обязано пережить смерть вкладки: сначала в
+ * localStorage, потом сразу keepalive-запросом. Нет входа или запрос не ушёл —
+ * событие лежит и уйдёт при ближайшей возможности (`sendPending`) или при
+ * следующем старте страницы. Письма 21.10 (перезагрузки) и 27.10 (iPhone:
+ * `play` шёл обычной пачкой раз в 30 с и умирал вместе со страницей).
  */
-export function noteReload(reason: string): void {
+function noteUrgent(label: string): void {
   try {
-    const ev: PerfEvent = { k: 'nav', l: `reload ${reason} ${routeLabel(location.pathname)}`.slice(0, 120), ms: Math.round(now()), d: device }
-    keepPending([ev])
-    if (activeTransport?.signedIn()) {
-      activeTransport.sendOnExit([ev])
-      try { localStorage.removeItem(PENDING_KEY) } catch { /* RUM молчит */ }
-    }
+    keepPending([{ k: 'nav', l: label.slice(0, 120), ms: Math.round(now()), d: device }])
+    sendPending()
   } catch { /* RUM молчит */ }
+}
+
+/** Отправить отложенные важные события, если есть вход. */
+function sendPending(): void {
+  try {
+    if (!activeTransport?.signedIn()) return
+    const raw = localStorage.getItem(PENDING_KEY)
+    const list = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(list) || list.length === 0) return
+    localStorage.removeItem(PENDING_KEY)
+    activeTransport.sendOnExit(list.slice(-50))
+  } catch { /* RUM молчит */ }
+}
+
+/** Перед любой программной перезагрузкой: причина — важным событием. */
+export function noteReload(reason: string): void {
+  noteUrgent(`reload ${reason} ${typeof location !== 'undefined' ? routeLabel(location.pathname) : ''}`)
+}
+
+/**
+ * Шаги запуска видео — важными событиями, чтобы было видно, на каком шаге
+ * умирает вкладка: `play` (нажали ▶), `play-load` (iframe загрузился),
+ * `play-ready` (плеер ответил `ready`).
+ */
+export function noteUrgentNav(kind: string, path: string = typeof location !== 'undefined' ? location.pathname : ''): void {
+  noteUrgent(`${kind} ${routeLabel(path)}`)
 }
 
 /**
@@ -213,10 +226,18 @@ export function noteNav(kind: string, path: string = typeof location !== 'undefi
  */
 const ALIVE_KEY = 'rum:alive'
 
+// Один раз на загрузку документа: повторный `startRum` (StrictMode в деве,
+// перемонтирование трекера) видел бы свою же отметку и сообщал ложный `crash`.
+let crashChecked = false
+
 function checkCrash(): void {
+  if (crashChecked) return
+  crashChecked = true
   try {
     const prev = localStorage.getItem(ALIVE_KEY)
-    if (prev) record('nav', `crash ${prev}`.slice(0, 120), now())
+    // Важным событием: вкладка, которую убили раз, часто убивают и второй —
+    // раньше, чем уйдёт обычная пачка.
+    if (prev) noteUrgent(`crash ${prev}`)
   } catch { /* RUM молчит */ }
   markOpen()
 }
@@ -261,19 +282,22 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
   started = true
   sampled = Math.random() < (opts.sampleRate ?? 1)
   activeTransport = t
-  // Перезагрузки прошлой страницы, которые не успели уйти (21.10).
-  for (const ev of readPending()) queue.push(ev)
+  // Важные события прошлой страницы, которые не успели уйти (21.10, 27.10),
+  // лежат в localStorage до первой отправки — `sendPending`, не в общей пачке:
+  // вкладку, которую убили раз, часто убивают и второй.
   const onError = (e: ErrorEvent) => noteError(e.error ?? e.message)
   const onRejection = (e: PromiseRejectionEvent) => noteError(e.reason)
   window.addEventListener('error', onError)
   window.addEventListener('unhandledrejection', onRejection)
 
   const flush = () => {
+    sendPending()
     if (!t.signedIn() || queue.length === 0) return
     const batch = takeBatch()
     t.send(batch).catch(() => { /* RUM молчит */ })
   }
   const flushOnExit = () => {
+    sendPending()
     if (!t.signedIn() || queue.length === 0) return
     try {
       t.sendOnExit(takeBatch())
@@ -290,6 +314,9 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
   checkCrash()
 
   const timer = setInterval(flush, opts.intervalMs ?? 30_000)
+  // Сессия supabase-js поднимается асинхронно: важные события старта
+  // (`crash`) уходят, как только появился вход, а не через 30 с.
+  const pendingTimers = [1500, 5000].map(ms => setTimeout(sendPending, ms))
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
@@ -297,6 +324,7 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
 
   return () => {
     clearInterval(timer)
+    pendingTimers.forEach(clearTimeout)
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pagehide', onPageHide)
     window.removeEventListener('pageshow', onPageShow)
@@ -354,5 +382,6 @@ export function __resetRumForTests(): void {
   quietTimer = null
   sampled = true
   started = false
+  crashChecked = false
   try { localStorage.removeItem(ALIVE_KEY) } catch { /* нет хранилища */ }
 }
