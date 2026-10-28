@@ -240,3 +240,16 @@ describe('ложный crash (харнесс 27.10)', () => {
     stop()
   })
 })
+
+describe('защита от шторма важных событий (письмо 28.10)', () => {
+  it('одинаковое событие — один раз за загрузку, всего не больше 20 отправок', () => {
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    ;(tr.sendOnExit as ReturnType<typeof vi.fn>).mockClear()
+    for (let i = 0; i < 950; i++) noteUrgentNav('play-ready', '/watch/v1')
+    expect(tr.sendOnExit).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 100; i++) noteUrgentNav(`step-${i}`, '/watch/v1')
+    expect((tr.sendOnExit as ReturnType<typeof vi.fn>).mock.calls.length).toBeLessThanOrEqual(20)
+    stop()
+  })
+})
