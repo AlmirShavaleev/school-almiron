@@ -86,15 +86,6 @@ export function bunnyGuidOf(embed: string): string | null {
   return m ? m[1] : null
 }
 
-/** Телефон: тач-экран или узкий экран — там плеер открывается отдельной страницей. */
-export function isPhoneViewport(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    if (window.matchMedia?.('(pointer: coarse)').matches) return true
-  } catch { /* старые браузеры */ }
-  return window.innerWidth < 768
-}
-
 /** Для тестов. */
 export function resetActiveVideo(): void { active = null; mounted.clear(); emit() }
 ;(globalThis as { __resetActiveVideo?: () => void }).__resetActiveVideo = resetActiveVideo
