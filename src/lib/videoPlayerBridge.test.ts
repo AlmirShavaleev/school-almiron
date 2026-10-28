@@ -140,12 +140,13 @@ describe('Подписка на события конкретного iframe (§
     expect(events).toEqual([])
   })
 
-  it('подписка уходит на все нужные события протокола', () => {
+  it('до готовности — подписка только на ready; на ready — одна серия на остальные события', () => {
     const iframe = makeIframe()
     const sent: Array<[unknown, string]> = []
-    Object.defineProperty(iframe, 'contentWindow', {
+    const win = iframe.contentWindow!
+    Object.defineProperty(win, 'postMessage', {
       configurable: true,
-      value: { postMessage: (message: unknown, origin: string) => { sent.push([message, origin]) } },
+      value: (message: unknown, origin: string) => { sent.push([message, origin]) },
     })
 
     const detach = attachPlayerJs({ iframe, onEvent: () => {} })
@@ -155,11 +156,32 @@ describe('Подписка на события конкретного iframe (§
       expect(JSON.parse(String(message)).context).toBe('player.js')
       expect(JSON.parse(String(message)).method).toBe('addEventListener')
     }
-    const events = sent.map(([m]) => JSON.parse(String(m)).value)
-    for (const name of ['ready', 'play', 'pause', 'ended', 'timeupdate']) {
-      expect(events).toContain(name)
-    }
+    const values = () => sent.map(([m]) => JSON.parse(String(m)).value)
+    expect(new Set(values())).toEqual(new Set(['ready']))
+
+    post(win, { context: 'player.js', event: 'ready', value: null })
+    const after = values().slice(values().indexOf('play'))
+    expect(after).toEqual(['play', 'pause', 'ended', 'timeupdate'])
     detach()
+  })
+
+  it('плеер так и не ответил ready — после всех повторов одна полная серия, дальше тишина', () => {
+    vi.useFakeTimers()
+    const iframe = makeIframe()
+    const values: string[] = []
+    Object.defineProperty(iframe, 'contentWindow', {
+      configurable: true,
+      value: { postMessage: (m: unknown) => { values.push(JSON.parse(String(m)).value) } },
+    })
+    const detach = attachPlayerJs({ iframe, onEvent: () => {} })
+    vi.advanceTimersByTime(20_000)
+    expect(values.filter(v => v === 'timeupdate')).toHaveLength(1)
+    expect(values.filter(v => v === 'ready').length).toBeLessThanOrEqual(21)
+    const n = values.length
+    vi.advanceTimersByTime(10_000)
+    expect(values).toHaveLength(n)
+    detach()
+    vi.useRealTimers()
   })
 
   it('пока плеер не ответил, команды повторяются; после ready — перестают', () => {
@@ -189,5 +211,56 @@ describe('Подписка на события конкретного iframe (§
     vi.advanceTimersByTime(5000)
     expect(sent).toBe(afterDetach)
     vi.useRealTimers()
+  })
+})
+
+describe('цикл ready ↔ addEventListener (письмо 28.10: iPhone убивал вкладку)', () => {
+  /**
+   * Плеер «как Bunny»: на подписку `ready`, если уже готов, сразу отвечает
+   * `ready`; остальные подписки копит. Без защиты мост на каждый `ready`
+   * подписывался заново — 950 `ready` за 3 секунды, и iOS убивал страницу.
+   */
+  function bunnyLikePlayer(iframe: HTMLIFrameElement) {
+    const win = iframe.contentWindow!
+    const listens: string[] = []
+    let sendsWithTimeupdate = 0
+    Object.defineProperty(win, 'postMessage', {
+      configurable: true,
+      value: (message: unknown) => {
+        const cmd = JSON.parse(String(message))
+        if (cmd.method !== 'addEventListener') return
+        listens.push(cmd.value)
+        if (cmd.value === 'timeupdate') sendsWithTimeupdate += 1
+        if (cmd.value === 'ready') queueMicrotask(() => post(win, { context: 'player.js', event: 'ready', value: null }))
+      },
+    })
+    return { listens, series: () => sendsWithTimeupdate }
+  }
+
+  it('за 2 с не больше одного ready наверх и не больше двух серий подписок', async () => {
+    vi.useFakeTimers()
+    const iframe = makeIframe()
+    const player = bunnyLikePlayer(iframe)
+    const events: PlayerJsEvent[] = []
+    const detach = attachPlayerJs({ iframe, onEvent: e => events.push(e) })
+    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(100)
+    expect(events.filter(e => e.event === 'ready')).toHaveLength(1)
+    expect(player.series()).toBeLessThanOrEqual(2)
+    expect(player.listens.length).toBeLessThan(20)
+    detach()
+    vi.useRealTimers()
+  })
+
+  it('после ready события плеера доходят по-прежнему, повторный ready — нет', async () => {
+    const iframe = makeIframe()
+    bunnyLikePlayer(iframe)
+    const events: string[] = []
+    const detach = attachPlayerJs({ iframe, onEvent: e => events.push(e.event) })
+    await new Promise(r => setTimeout(r, 0))
+    post(iframe.contentWindow, { context: 'player.js', event: 'ready', value: null })
+    post(iframe.contentWindow, { context: 'player.js', event: 'timeupdate', value: { seconds: 3, duration: 60 } })
+    expect(events.filter(e => e === 'ready')).toHaveLength(1)
+    expect(events).toContain('timeupdate')
+    detach()
   })
 })

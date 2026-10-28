@@ -23,9 +23,22 @@ await context.addInitScript(({ session }) => {
 const fixtures = baseFixtures('student')
 const inner = makeHandler({ fixtures, session, assetsDir, log: () => {} })
 const bunny = []
+// Заглушка плеера «как Bunny» (письмо 28.10): объявляет `ready`, на подписку
+// `ready` отвечает `ready` снова, считает входящие команды — так виден цикл.
+const PLAYER_STUB = `<html><body style="background:#000"><script>
+  window.__cmds = 0
+  const say = (event, value) => parent.postMessage(JSON.stringify({ context: 'player.js', version: '0.0.11', event, value }), '*')
+  addEventListener('message', e => {
+    let c; try { c = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+    if (!c || c.method !== 'addEventListener') return
+    window.__cmds++
+    if (c.value === 'ready') say('ready', null)
+  })
+  setTimeout(() => say('ready', null), 300)
+</script></body></html>`
 await context.route(u => u.href.includes('mediadelivery.net'), r => {
   bunny.push(r.request().url())
-  return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body style="background:#000"></body></html>' })
+  return r.fulfill({ status: 200, contentType: 'text/html', body: PLAYER_STUB })
 })
 await context.route(u => !u.href.startsWith(BASE) && !u.href.includes('mediadelivery.net'), inner)
 const sent = []
@@ -64,6 +77,10 @@ check('адрес плеера: autoplay, preload=false, playsinline, disableIos
   /autoplay=true/.test(watch.src) && /preload=false/.test(watch.src) && /playsinline=true/.test(watch.src) && /disableIosPlayer=true/.test(watch.src),
   watch.src.replace(/^https?:\/\//, '').slice(0, 140))
 check('документ остался visible', watch.visibility === 'visible')
+await page.waitForTimeout(3000)
+const playerFrame = page.frames().find(f => f.url().includes('mediadelivery.net'))
+const cmds = playerFrame ? await playerFrame.evaluate(() => window.__cmds) : -1
+check('нет цикла ready ↔ addEventListener: команд плееру за 4 с меньше 30', cmds >= 0 && cmds < 30, String(cmds))
 console.log(`     узлов DOM на /watch: ${watch.nodes}`)
 
 await page.getByTestId('watch-back').tap()
@@ -74,6 +91,7 @@ check('«← К уроку» вернул в урок', back.path === lesson, ba
 check('прокрутка урока та же', Math.abs(back.y - yBefore) <= 40, `было ${yBefore}, стало ${back.y}`)
 await page.waitForTimeout(500)
 check('RUM: play ушёл сразу', sent.includes('play'), JSON.stringify(sent))
+check('RUM: play-ready ровно один', sent.filter(x => x === 'play-ready').length === 1, String(sent.filter(x => x === 'play-ready').length))
 
 console.log(failed ? `ИТОГ: НЕ ОК (${failed} из ${checks})` : `ИТОГ: ок (${checks} из ${checks})`)
 await browser.close()

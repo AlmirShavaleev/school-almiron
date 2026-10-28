@@ -176,9 +176,17 @@ function keepPending(events: PerfEvent[]): void {
  * следующем старте страницы. Письма 21.10 (перезагрузки) и 27.10 (iPhone:
  * `play` шёл обычной пачкой раз в 30 с и умирал вместе со страницей).
  */
+// Защита от штормов (письмо 28.10: 950 `play-ready` за 3 с): одинаковое важное
+// событие — один раз за загрузку, всего — не больше MAX_URGENT.
+const MAX_URGENT = 20
+const urgentSeen = new Set<string>()
+
 function noteUrgent(label: string): void {
+  const l = label.slice(0, 120)
+  if (urgentSeen.has(l) || urgentSeen.size >= MAX_URGENT) return
+  urgentSeen.add(l)
   try {
-    keepPending([{ k: 'nav', l: label.slice(0, 120), ms: Math.round(now()), d: device }])
+    keepPending([{ k: 'nav', l, ms: Math.round(now()), d: device }])
     sendPending()
   } catch { /* RUM молчит */ }
 }
@@ -383,5 +391,6 @@ export function __resetRumForTests(): void {
   sampled = true
   started = false
   crashChecked = false
+  urgentSeen.clear()
   try { localStorage.removeItem(ALIVE_KEY) } catch { /* нет хранилища */ }
 }

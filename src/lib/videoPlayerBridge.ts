@@ -134,6 +134,16 @@ export interface PlayerJsBridgeOptions {
  * Команды повторяются, пока плеер не ответит `ready`: момент готовности
  * iframe'а со стороны страницы не виден, а одна команда в пустоту означала бы
  * «событий нет» — то есть тихую потерю всех просмотров.
+ *
+ * Письмо 28.10 (iPhone убивал вкладку): плеер по player.js на подписку `ready`,
+ * если уже готов, сразу отвечает `ready`. Раньше мост на каждый `ready`
+ * подписывался заново на всё, включая `ready`, — бесконечный пинг-понг
+ * postMessage, да ещё с прибавкой подписок на `timeupdate` каждый круг
+ * (950 `ready` за 3 с). Теперь: до готовности повторяется только подписка на
+ * `ready`; на первый `ready` — одна серия подписок на остальные события, без
+ * `ready`; повторные `ready` не доходят ни наверх, ни до команд. Плеер, так и
+ * не ответивший `ready`, после всех повторов получает полную серию один раз —
+ * как раньше, чтобы не потерять просмотры у плеера без этого события.
  */
 export function attachPlayerJs({ iframe, listener = 'almiron-watch', onEvent, win }: PlayerJsBridgeOptions): () => void {
   const target = win ?? (typeof window !== 'undefined' ? window : undefined)
@@ -144,10 +154,10 @@ export function attachPlayerJs({ iframe, listener = 'almiron-watch', onEvent, wi
   let timer: ReturnType<typeof setInterval> | null = null
   let stopped = false
 
-  function send() {
+  function listen(events: readonly string[]) {
     const contentWindow = iframe.contentWindow
     if (!contentWindow) return
-    for (const event of PLAYERJS_EVENTS) {
+    for (const event of events) {
       try {
         contentWindow.postMessage(playerJsListenCommand(event, listener), '*')
       } catch {
@@ -156,17 +166,25 @@ export function attachPlayerJs({ iframe, listener = 'almiron-watch', onEvent, wi
     }
   }
 
+  const LISTEN_AFTER_READY = PLAYERJS_EVENTS.filter(e => e !== 'ready')
+
+  /** До готовности — только «скажи, когда будешь готов». */
+  function askReady() {
+    if (!ready && !stopped) listen(['ready'])
+  }
+
   function handleMessage(raw: Event) {
     const message = raw as MessageEvent
     if (message.source !== iframe.contentWindow) return
     const parsed = parsePlayerJsMessage(message.data)
     if (!parsed) return
     if (parsed.event === 'ready') {
+      // Повторный `ready` — ответ плеера на нашу же подписку: молчим, иначе цикл.
+      if (ready) return
       ready = true
       stopRetries()
-      // На `ready` подписываемся ещё раз: плееры, поднявшиеся позже наших
-      // первых команд, до этого момента подписок не видели.
-      send()
+      // Одна серия подписок на события — без `ready`.
+      listen(LISTEN_AFTER_READY)
     }
     onEvent(parsed)
   }
@@ -179,22 +197,28 @@ export function attachPlayerJs({ iframe, listener = 'almiron-watch', onEvent, wi
   }
 
   target.addEventListener('message', handleMessage)
-  iframe.addEventListener('load', send)
-  send()
+  iframe.addEventListener('load', askReady)
+  askReady()
 
   timer = setInterval(() => {
     attempts += 1
-    if (stopped || ready || attempts > 20) {
+    if (stopped || ready) {
       stopRetries()
       return
     }
-    send()
+    if (attempts > 20) {
+      stopRetries()
+      // Плеер без `ready`: полная серия один раз, без повторов.
+      listen(LISTEN_AFTER_READY)
+      return
+    }
+    askReady()
   }, 500)
 
   return () => {
     stopped = true
     stopRetries()
     target.removeEventListener('message', handleMessage)
-    iframe.removeEventListener('load', send)
+    iframe.removeEventListener('load', askReady)
   }
 }
