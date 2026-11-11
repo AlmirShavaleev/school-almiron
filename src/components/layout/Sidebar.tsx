@@ -42,6 +42,8 @@ const navItems: NavItem[] = [
   // Student navigation (grouped)
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
 
+  { label: 'Личный разбор', path: '/tutoring', icon: <Calendar size={18} />, roles: ['student'], section: 'Учёба' },
+  { label: 'Личные занятия', path: '/admin/tutoring', icon: <Calendar size={18} />, roles: ['admin', 'owner'] },
   { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Домашние задания',  path: '/my-homework',    icon: <ClipboardCheck size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },

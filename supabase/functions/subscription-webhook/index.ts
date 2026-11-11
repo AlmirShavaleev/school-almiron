@@ -20,6 +20,7 @@
  * ENV: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUBSCRIPTION_YK_SHOP_ID, SUBSCRIPTION_YK_SECRET_KEY
  */
 
+import { verifiedTutoringPayment } from '../tutoring-payment/verify.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   YOOKASSA_API,
@@ -78,6 +79,19 @@ Deno.serve(async (req: Request) => {
     return text('retry', 500)
   }
   const obj = await res.json().catch(() => null)
+
+  // Личные разборы используют тот же магазин и тот же URL уведомлений.
+  // Новая ветка затрагивает только платежи с отдельной меткой tutoring_v1.
+  if (ref.kind === 'payment' && obj?.metadata?.origin === 'tutoring_v1') {
+    const { data: booking, error: lookupError } = await admin.from('tutoring_bookings')
+      .select('id,yookassa_id,amount_rub').eq('id', obj.metadata.booking_id).eq('yookassa_id', obj.id).maybeSingle()
+    if (lookupError) return text('retry', 500)
+    if (!booking || !verifiedTutoringPayment(obj, booking)) return text('ignored')
+    const { error: applyError } = await admin.rpc('tutoring_apply_payment', {
+      p_id: booking.id, p_yookassa_id: obj.id, p_status: obj.status, p_amount: Number(obj.amount.value),
+    })
+    return text(applyError ? 'retry' : 'ok', applyError ? 500 : 200)
+  }
 
   if (ref.kind === 'refund') {
     const f = refundFacts(obj)

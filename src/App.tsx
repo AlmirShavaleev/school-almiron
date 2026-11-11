@@ -69,6 +69,7 @@ import { CatalogImageLightbox } from '@/components/catalog/CatalogImageLightbox'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
+import { getPendingTutoringPath } from '@/lib/tutoring/intent'
 import { LANDING_PREVIEW_PATH, landingV3Enabled } from '@/lib/landingFlag'
 import { SubscriptionsOnly } from '@/components/subscription/SubscriptionsOnly'
 
@@ -92,6 +93,7 @@ const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/Joi
 // (src/pages/LandingPage.tsx, components/landing) не удалён, просто не
 // подключён — его чанка в сборке нет. Лендинг v3 (ЛЕНДИНГ_ТЗ.md, 11.10) — за
 // флагом сборки VITE_LANDING_V3 и на скрытом `/preview/landing` (src/lib/landingFlag.ts).
+const TutoringPreview = lazyPage('TutoringPreview', () => import('@/pages/tutoring/TutoringPage').then(m => ({ default: m.TutoringPage })))
 const LandingV3Page     = lazyPage('LandingV3Page', () => import('@/pages/LandingV3Page').then(m => ({ default: m.LandingV3Page })))
 const PaymentResultPage = lazyPage('PaymentResultPage', () => import('@/pages/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 const SubscribePage     = lazyPage('SubscribePage', () => import('@/pages/subscription/SubscribePage').then(m => ({ default: m.SubscribePage })))
@@ -137,7 +139,7 @@ function RootRedirect() {
     // роль читается как «ещё не знаем» и приглашение не трогает (у только что
     // зарегистрировавшегося профиль едет позже, а вести его надо как раз туда).
     const role = profile?.role ?? null
-    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role) || getPendingSubscribePath(role)
+    const pendingPath = getPendingInvitePath(role) || getPendingTeacherJoinLinkPath(role) || getPendingSubscribePath(role) || getPendingTutoringPath(role)
     if (pendingPath && (profile || user)) {
       navigate(pendingPath, { replace: true })
       return
@@ -419,6 +421,8 @@ export default function App() {
             сломал бы вступление в курс. Трогать список только осознанно. */}
         <Route path="/"               element={<RootRedirect />} />
         <Route path="/about"          element={landingV3Enabled() ? <LandingV3Page /> : <KeepQueryToLogin />} />
+        <Route path="/tutoring" element={<TutoringPreview />} />
+        <Route path="/preview/tutoring" element={<TutoringPreview demo />} />
         <Route path={LANDING_PREVIEW_PATH} element={<LandingV3Preview />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         {/* §282. Витрина подписки: гость выбирает тариф до регистрации. */}

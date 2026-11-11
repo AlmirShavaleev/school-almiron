@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Clock, ExternalLink,
   Loader2, Lock, Play, AlertCircle,
@@ -732,6 +732,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           </span>
         )}
         <h1 className="text-2xl font-bold text-gray-900">{topic.title}</h1>
+        {!preview && profile?.role === 'student' && <Link to={`/tutoring?topic=${encodeURIComponent(topic.title)}`} className="mt-3 inline-flex rounded-xl border border-primary-200 px-4 py-2 text-sm font-semibold text-primary-600">Не получается? Разобрать с преподавателем · 45 минут</Link>}
       </div>
 
       {/* §250. Полоса учителя — только во встроенном виде («Курс» у персонала). */}

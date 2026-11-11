@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
+import { getPendingTutoringPath } from '@/lib/tutoring/intent'
 import { SchoolMark } from '@/components/brand/SchoolMark'
 import { ReadOnlyBanner } from '@/components/layout/ReadOnlyBanner'
 
@@ -50,7 +51,7 @@ export function LoginPage() {
         setError('Неверный email или пароль')
       }
     } else {
-      navigate(getPendingInvitePath() || getPendingTeacherJoinLinkPath() || getPendingSubscribePath() || '/dashboard')
+      navigate(getPendingInvitePath() || getPendingTeacherJoinLinkPath() || getPendingSubscribePath() || getPendingTutoringPath() || '/dashboard')
     }
   }
 
@@ -70,7 +71,7 @@ export function LoginPage() {
   // в ту же ловушку, что и главная: персонал с чужим сохранённым приглашением
   // уезжал бы на `/join` вместо своего кабинета.
   if (profile) {
-    const pendingPath = getPendingInvitePath(profile.role) || getPendingTeacherJoinLinkPath(profile.role) || getPendingSubscribePath(profile.role)
+    const pendingPath = getPendingInvitePath(profile.role) || getPendingTeacherJoinLinkPath(profile.role) || getPendingSubscribePath(profile.role) || getPendingTutoringPath(profile.role)
     return <Navigate to={pendingPath || '/dashboard'} replace />
   }
 
