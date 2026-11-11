@@ -13,6 +13,7 @@ import { Screens } from './landing/Screens'
 import { Prices } from './landing/Prices'
 import { FinalCta, Footer } from './landing/Final'
 import { Faq } from './landing/Faq'
+import { PersonalHelp } from './landing/PersonalHelp'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 
 type Theme = 'light' | 'dark'
@@ -77,6 +78,7 @@ export function LandingV3Page() {
           <ArgAi />
           <ArgForecast />
           <Screens />
+          <PersonalHelp />
           {subs && <Prices />}
           <FinalCta subs={subs} />
           <Faq subs={subs} />

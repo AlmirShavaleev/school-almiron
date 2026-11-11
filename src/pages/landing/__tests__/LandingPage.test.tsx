@@ -53,6 +53,7 @@ describe('лендинг: структура и ссылки', () => {
       'Вторая часть — проверка с помощью ИИ',
       'Ты знаешь свой балл ещё до экзамена',
       'Так выглядит платформа',
+      'Не получается самостоятельно?Разберём вместе один на один.',
       'Сколько стоит месяц подготовки',
       'Частые вопросы',
     ])
@@ -210,7 +211,8 @@ describe('лендинг без подписки (гость; подписка �
     expect(screen.queryByText(/3 дня бесплатно|3 бесплатных дней|без карты/)).toBeNull()
     expect(screen.queryByRole('link', { name: 'Пройти диагностику' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Как отменить подписку/ })).toBeNull()
-    expect(screen.queryByText(/₽/)).toBeNull()
+    expect(document.querySelector('#personal-help')).toHaveTextContent('1500 ₽')
+    expect(screen.getByRole('link', { name: 'Выбрать дату и время →' })).toHaveAttribute('href', '/tutoring')
     expect(screen.queryByRole('link', { name: 'Цена' })).toBeNull()
     expect(screen.getAllByRole('link', { name: 'Регистрация' }).every(a => a.getAttribute('href') === '/register')).toBe(true)
   })
