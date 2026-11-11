@@ -85,9 +85,9 @@ const navItems: NavItem[] = [
   // Заливка картинок в бакет каталога (§195). Роли ровно те, кому это
   // разрешает политика бакета (`is_admin_or_owner()`): преподавателю пункт не
   // показываем — он бы привёл на экран, где Storage откажет на каждой кнопке.
-  { label: 'Картинки каталога', path: '/catalog/assets', icon: <Images size={18} />,        roles: ['admin', 'owner'] },
+  { label: 'Картинки каталога', path: '/catalog/assets', icon: <Images size={18} />,        roles: ['admin', 'owner'], hidden: true },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
   // темам курса. Переименована, чтобы два разных раздела не звались одинаково.
   { label: 'Банк тестов',       path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
