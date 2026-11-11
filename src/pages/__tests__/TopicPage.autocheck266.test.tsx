@@ -203,6 +203,17 @@ describe('Тренировочный урок (§266)', () => {
     await waitFor(() => expect(rpcCalls.some(c => c.fn === 'my_topic_rating' && c.args.p_topic_id === TOPIC)).toBe(true))
   })
 
+  it('опрос по уроку — только в разделе «Отзыв», в остальных разделах его нет (владелец 11.11)', async () => {
+    lesson.format = 'training'
+    renderPage()
+    await screen.findByRole('tablist', { name: 'Разделы темы' })
+    expect(screen.queryByTestId('topic-feedback')).toBeNull()
+    fireEvent.click(await screen.findByTestId('topic-seg-homework'))
+    expect(screen.queryByTestId('topic-feedback')).toBeNull()
+    fireEvent.click(await screen.findByTestId('topic-seg-review'))
+    expect(await screen.findByTestId('topic-feedback')).toBeInTheDocument()
+  })
+
   it('урок без пометки — как до §266: ни метки, ни автопроверки', async () => {
     lesson.format = null
     renderPage()
