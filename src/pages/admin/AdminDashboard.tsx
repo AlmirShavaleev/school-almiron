@@ -10,7 +10,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { StaffTab } from '@/components/admin/StaffTab'
 import { CreateUserModal } from '@/components/modals/CreateUserModal'
-import { QuickLogin } from '@/components/demo/QuickLogin'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { useAdminDashboard, type AdminCourse } from '@/hooks/useAdminDashboard'
@@ -231,8 +230,6 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      {/* ── Быстрый вход (демо impersonation) ─────────────────────── */}
-      <QuickLogin />
 
       {/* ── Tabs ─────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap">
