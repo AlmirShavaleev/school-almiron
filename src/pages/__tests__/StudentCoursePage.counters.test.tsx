@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StudentWeekCourse } from '@/hooks/useStudentWeekPlan'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -9,6 +9,14 @@ import type { ModuleProgress } from '@/hooks/useStudentCourseProgram'
  * §141. Фикстура — ровно прод на 06.09: часть тем открыта, часть закрыта,
  * опубликованных ДЗ ноль. До правки страница показывала «0 из 0 заданий».
  */
+
+
+const access = vi.hoisted(() => ({ data: null as { paid: boolean; has_access: boolean } | null }))
+vi.mock('@/hooks/useSubscription', async (original) => ({
+  ...(await original<object>()),
+  useCourseAccess: () => access,
+}))
+beforeEach(() => { access.data = null })
 
 const TODAY = '2026-09-06'
 
@@ -117,5 +125,28 @@ describe('StudentCoursePage — склонение', () => {
     const note = tiles.parentElement!.textContent ?? ''
     expect(note).toMatch(/1 раздел · 2 урока с ДЗ/)
     expect(note).not.toMatch(/2 уроков/)
+  })
+})
+
+
+describe('программа курса и подписка', () => {
+  it('без доступа скрывает разделы, сохраняя карточку курса', async () => {
+    access.data = { paid: true, has_access: false }
+    renderPage()
+    expect(await screen.findByTestId('course-topics-counter')).toBeInTheDocument()
+    expect(screen.queryByText('Программа курса')).toBeNull()
+    expect(screen.queryByTestId('module-card')).toBeNull()
+  })
+
+  it('с действующим доступом показывает разделы', async () => {
+    access.data = { paid: true, has_access: true }
+    renderPage()
+    expect((await screen.findAllByTestId('module-card')).length).toBeGreaterThan(0)
+  })
+
+  it('бесплатный курс не требует подписки для просмотра программы', async () => {
+    access.data = { paid: false, has_access: false }
+    renderPage()
+    expect((await screen.findAllByTestId('module-card')).length).toBeGreaterThan(0)
   })
 })

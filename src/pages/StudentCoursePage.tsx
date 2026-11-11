@@ -27,7 +27,7 @@ import { CourseAssessmentsSection } from '@/components/student/CourseAssessments
 import { CourseHero, LessonTiles, PeopleRow, SectionHero, SectionTiles } from '@/components/student/course/CourseScreen'
 import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
-import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
+import { useCourseAccess, useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { loadCourseExtras, loadOpenByModule, type CourseExtras } from '@/lib/courseMeta'
 import { accessLine, courseLadder, publicTitle } from '@/lib/myCourses'
 import { hwChips, lessonTile, sectionOpenLine, sectionTiles } from '@/lib/courseScreen'
@@ -453,6 +453,8 @@ export function StudentCoursePage() {
   const homeCourses = useStudentHomeCourses(preview ? null : profileId)
   const homeProgress = course?.id ? homeCourses.courses?.find(c => c.courseId === course.id) ?? null : null
   const subscriptionsOn = useSubscriptionsEnabled()
+  const subscriptionAccess = useCourseAccess(preview ? null : course?.id)
+  const programLocked = !preview && !!subscriptionAccess.data?.paid && !subscriptionAccess.data.has_access
   const pathHome = useStudentPathHome(profileId, subscriptionsOn.enabled && !preview)
   const [extras, setExtras] = useState<CourseExtras | null>(null)
   const [openByModule, setOpenByModule] = useState<Map<string, number> | null>(null)
@@ -577,7 +579,7 @@ export function StudentCoursePage() {
   )
 
   // ── Find current module data (keep live) ─────────────────────────────────────
-  const activeMod = selectedModule
+  const activeMod = !programLocked && selectedModule
     ? modules.find(m => m.id === selectedModule.id) ?? selectedModule
     : null
   // §259. Внутри модуля работ — без «тем» и прогресса: только работы.
@@ -733,6 +735,7 @@ export function StudentCoursePage() {
       {/* ══ STAFF CARDS ══ */}
       {!activeMod && <PeopleRow teacher={course.teacher} curator={course.curator} />}
 
+      {!programLocked && <>
       {/* ══ LEVEL 1: MODULE CARDS ══ */}
       {!activeMod && tiles.length > 0 && (
         <SectionTiles
@@ -786,6 +789,8 @@ export function StudentCoursePage() {
           )}
         </div>
       )}
+
+      </>}
 
       {/* Блок «Задания» (Не сдано / На проверке / Проверено / Тестов ждёт) со
           страницы курса убран (владелец 15.10): ДЗ — в шапке словами и в
