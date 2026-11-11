@@ -82,7 +82,8 @@ export function useSubscriptionsEnabled() {
 }
 
 export function usePublicTariffs() {
-  return useQuery({ queryKey: ['subscription', 'tariffs'], queryFn: fetchPublicTariffs, staleTime: 60_000 })
+  const uid = useAuthStore((s) => s.profile?.id ?? 'anon')
+  return useQuery({ queryKey: ['subscription', 'tariffs', uid], queryFn: fetchPublicTariffs, staleTime: 60_000 })
 }
 
 export function useSubscriptionSettings() {

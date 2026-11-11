@@ -126,6 +126,28 @@ describe('витрина /subscribe', () => {
 describe('оформление', () => {
   const route = <Route path="/subscribe/checkout/:tariffId" element={<SubscriptionCheckoutPage />} />
 
+  it('продление выключенного тарифа предлагает действующий тариф того же курса', async () => {
+    api.fetchMySubscriptions.mockResolvedValue([{ ...SUB, tariff_id: 'retired-tariff' }])
+    renderAt('/subscribe/checkout/retired-tariff', route)
+    expect(await screen.findByTestId('checkout-email')).toBeInTheDocument()
+    expect(screen.queryByText('Тариф недоступен.')).toBeNull()
+    api.beginCheckout.mockRejectedValue(new Error('Тестовая остановка'))
+    fireEvent.click(screen.getByTestId('checkout-offer'))
+    fireEvent.click(screen.getByTestId('checkout-pay'))
+    await waitFor(() => expect(api.beginCheckout).toHaveBeenCalledWith(TARIFF.id, expect.any(Object), null))
+  })
+
+  it('ошибка загрузки не выдаётся за недоступный тариф', async () => {
+    api.fetchPublicTariffs.mockRejectedValue(new Error('network'))
+    renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить')
+    expect(screen.queryByText('Тариф недоступен.')).toBeNull()
+    api.fetchPublicTariffs.mockResolvedValue([TARIFF])
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByTestId('checkout-email')).toBeInTheDocument()
+  })
+
+
   it('без согласия с офертой не платим; карта по умолчанию НЕ сохраняется', async () => {
     renderAt(`/subscribe/checkout/${TARIFF.id}`, route)
     expect(await screen.findByTestId('checkout-save-card')).not.toBeChecked()

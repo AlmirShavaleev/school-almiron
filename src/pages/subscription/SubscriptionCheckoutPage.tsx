@@ -88,7 +88,16 @@ export function SubscriptionCheckoutPage() {
   const tariffs = usePublicTariffs()
   const settings = useSubscriptionSettings()
   const mine = useMySubscriptions()
-  const tariff = useMemo(() => (tariffs.data ?? []).find((t) => t.id === tariffId) ?? null, [tariffs.data, tariffId])
+  const tariff = useMemo(() => {
+    const list = tariffs.data ?? []
+    const exact = list.find((t) => t.id === tariffId)
+    if (exact) return exact
+    // Продление старой подписки может ссылаться на уже выключенный тариф.
+    // Предлагаем действующий тариф того же курса; цену показываем до оплаты.
+    const previous = (mine.data ?? []).find((s) => s.tariff_id === tariffId)
+    return previous ? list.find((t) => t.course_id === previous.course_id && t.period_months === 1)
+      ?? list.find((t) => t.course_id === previous.course_id) ?? null : null
+  }, [tariffs.data, mine.data, tariffId])
   const existing = useMemo(
     () => (mine.data ?? []).find((s) => tariff && s.course_id === tariff.course_id) ?? null,
     [mine.data, tariff],
@@ -113,6 +122,15 @@ export function SubscriptionCheckoutPage() {
   const set = <K extends keyof CheckoutForm>(k: K, v: CheckoutForm[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   if (tariffs.isLoading || mine.isLoading) return <p className="p-6 text-graphite-500">Загружаем…</p>
+  if (tariffs.isError || mine.isError) {
+    return (
+      <div className="p-6" role="alert">
+        <p>Не удалось загрузить данные подписки. Попробуйте ещё раз.</p>
+        <Button onClick={() => { void tariffs.refetch(); void mine.refetch() }}>Повторить</Button>
+        <Link to="/subscription" className="mt-2 block text-primary-600 underline">К курсам</Link>
+      </div>
+    )
+  }
   if (!tariff) {
     return (
       <div className="p-6">
