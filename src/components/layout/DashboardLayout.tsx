@@ -13,6 +13,7 @@ import { PREVIEW_ROLE_LABEL, ROLE_LABELS, useMobilePreview, useStaffMode } from 
 import { StaffModeSwitch } from './StaffModeSwitch'
 import { StaffModeGate } from './StaffModeGate'
 import { StudentPreviewBanner } from './StudentPreviewBanner'
+import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { MobilePreviewFrame } from './MobilePreviewFrame'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
@@ -240,6 +241,7 @@ export function DashboardLayout() {
         {/* Полоса предпросмотра «глазами ученика» (§178): под шапкой, на всю
             ширину содержимого, на любой странице, пока режим включён. */}
         <StudentPreviewBanner />
+        <ReadOnlyBanner />
 
         {/* overflow-x-clip — защита от переполнения на телефоне (§158). Любой
             элемент шире экрана (строка без пробелов, длинный чип, ряд кнопок)

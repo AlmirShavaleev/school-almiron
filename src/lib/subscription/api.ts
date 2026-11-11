@@ -1,3 +1,4 @@
+import { READ_ONLY_MODE } from '@/lib/readOnlyMode'
 /**
  * §282. Вызовы базы и edge-функции подписки. Имена RPC не входят в
  * сгенерированные типы (`src/types/database.ts` отстаёт от прода) — отсюда
@@ -104,6 +105,8 @@ export type CheckoutResult =
  * бесплатный период — сразу { free: true } без оплаты.
  */
 export async function beginCheckout(tariffId: string, f: CheckoutForm, promoCode?: string | null): Promise<CheckoutResult> {
+  // Режим только просмотра: оплата не проходит — вебхук ЮKassa смотрит на свой сервер, платёж бы потерялся.
+  if (READ_ONLY_MODE) throw new Error('Оплата временно недоступна: на платформе идут технические работы.')
   const { data, error } = await supabase.functions.invoke('subscription-checkout', {
     body: {
       tariff_id: tariffId,

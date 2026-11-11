@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { READ_ONLY_MODE, READ_ONLY_MESSAGE } from '@/lib/readOnlyMode'
 import { supabase } from '@/lib/supabase'
 import { uploadToStorage } from '@/lib/storageUpload'
 import { compressImageFile, HOMEWORK_PHOTO_PRESET } from '@/lib/imageCompression'
@@ -69,6 +70,7 @@ export function useMockExamLesson(examId: string | undefined) {
   /** Один ответ бланка. Ответ базы — только поле и время записи. */
   const saveAnswer = useCallback(async (task: number, value: string): Promise<{ savedAt: string | null; error: string | null }> => {
     if (!examId) return { savedAt: null, error: 'Пробник не загружен' }
+    if (READ_ONLY_MODE) return { savedAt: null, error: READ_ONLY_MESSAGE }
     const { data, error: err } = await db.rpc<{ task: number; answer: string | null; saved_at: string }>('save_mock_exam_answer', {
       p_mock_exam_id: examId, p_task: task, p_answer: value,
     })
@@ -85,6 +87,7 @@ export function useMockExamLesson(examId: string | undefined) {
 
   const submit = useCallback(async (): Promise<{ error: string | null }> => {
     if (!examId) return { error: 'Пробник не загружен' }
+    if (READ_ONLY_MODE) return { error: READ_ONLY_MESSAGE }
     const { data, error: err } = await db.rpc<{ submitted_at: string }>('submit_mock_exam', { p_mock_exam_id: examId })
     if (err) return { error: err.message || 'Не удалось сдать' }
     setState(prev => (prev ? { ...prev, submitted_at: data?.submitted_at ?? new Date().toISOString() } : prev))
@@ -106,6 +109,7 @@ export function useMockExamLesson(examId: string | undefined) {
   ): Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }> => {
     const st = stateRef.current
     if (!examId || !st) return { rejected: [], error: 'Пробник не загружен' }
+    if (READ_ONLY_MODE) return { rejected: [], error: READ_ONLY_MESSAGE }
     const { accepted, rejected } = await prepareWorkFiles(files)
     if (accepted.length === 0) return { rejected, error: null }
     const studentId = st.student_id

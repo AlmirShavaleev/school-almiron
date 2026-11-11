@@ -5,6 +5,7 @@ import { uploadToStorage } from '@/lib/storageUpload'
 import { useAuthStore } from '@/store/authStore'
 import { PREVIEW_NOOP_MESSAGE } from '@/store/staffModeStore'
 import { toast } from '@/store/toastStore'
+import { READ_ONLY_MODE, READ_ONLY_MESSAGE } from '@/lib/readOnlyMode'
 import { HOMEWORK_PHOTO_PRESET, MATERIAL_IMAGE_PRESET, compressImageFile } from '@/lib/imageCompression'
 import {
   TOPIC_HOMEWORK_ATTEMPTS_BUCKET,
@@ -486,7 +487,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
     createHomework, updateHomework, uploadHomeworkFile, deleteHomeworkFile,
     ...(preview
       ? PREVIEW_STUDENT_ACTIONS
-      : { startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, reorderAttemptFiles, submitAttempt }),
+      : READ_ONLY_MODE && profile?.role === 'student'
+        ? READ_ONLY_STUDENT_ACTIONS
+        : { startAttempt, uploadAttemptFiles, uploadAttemptFile, removeAttemptFile, reorderAttemptFiles, submitAttempt }),
     reviewAttempt, notifyStudents, loadNotifyTargets,
   }
 }
@@ -513,6 +516,16 @@ const PREVIEW_STUDENT_ACTIONS: PreviewStudentActions = {
   removeAttemptFile: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
   reorderAttemptFiles: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
   submitAttempt: async () => { toast.info(PREVIEW_NOOP_MESSAGE) },
+}
+
+/** Режим только просмотра (src/lib/readOnlyMode.ts): сдача ДЗ закрыта, только тост. */
+const READ_ONLY_STUDENT_ACTIONS: PreviewStudentActions = {
+  startAttempt: async () => { toast.info(READ_ONLY_MESSAGE); return '' },
+  uploadAttemptFiles: async () => { toast.info(READ_ONLY_MESSAGE); return [] },
+  uploadAttemptFile: async () => { toast.info(READ_ONLY_MESSAGE) },
+  removeAttemptFile: async () => { toast.info(READ_ONLY_MESSAGE) },
+  reorderAttemptFiles: async () => { toast.info(READ_ONLY_MESSAGE) },
+  submitAttempt: async () => { toast.info(READ_ONLY_MESSAGE) },
 }
 
 /** Строка списка получателей оповещения. Никаких данных самой связки с ТГ. */
