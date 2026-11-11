@@ -12,6 +12,7 @@ import { getPendingInvitePath } from '@/lib/studentInviteSession'
 import { getPendingTeacherJoinLinkPath } from '@/lib/teacherJoinLinkSession'
 import { getPendingSubscribePath } from '@/lib/subscription/pendingSubscribe'
 import { SchoolMark } from '@/components/brand/SchoolMark'
+import { ReadOnlyBanner } from '@/components/layout/ReadOnlyBanner'
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -84,6 +85,8 @@ export function LoginPage() {
           <h1 className="text-2xl font-bold text-gray-900">Школа Almiron</h1>
           <p className="text-gray-500 mt-1">Подготовка к ЕГЭ и ОГЭ</p>
         </div>
+
+        <ReadOnlyBanner variant="card" />
 
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
