@@ -814,9 +814,11 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       {/* §271. «Оцените урок» — раздел «Отзыв» переключателя (владелец 15.10).
           В предпросмотре виден, но выключен. */}
       {reviewOpen && <TopicRatingBlock topicId={topic.id} preview={preview} />}
-      {/* Опрос по уроку (письмо 16.10) — своя карточка рядом с оценкой, видна в
-          любом разделе, пока не пройден; у работы по времени опроса нет. */}
-      {!timed && <TopicFeedbackCard topicId={topic.id} preview={preview} />}
+      {/* Опрос по уроку (письмо 16.10) — своя карточка сразу под оценкой.
+          Владелец 11.11: только в разделе «Отзыв», а не под каждым разделом
+          урока — опрос грузится, лишь когда ученик сам открыл «Отзыв».
+          У работы по времени опроса нет. */}
+      {reviewOpen && !timed && <TopicFeedbackCard topicId={topic.id} preview={preview} />}
     </div>
   )
 }
