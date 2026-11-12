@@ -177,7 +177,7 @@ export function CoursesPage({ embedded = false }: { embedded?: boolean } = {}) {
     (mine.data ?? []).find((s) => s.course_id === courseId)?.group_id ?? null
 
   return (
-    <div className={embedded ? 'flex flex-col gap-6' : 'mx-auto flex max-w-[1140px] flex-col gap-6 pb-10 pt-2'} data-testid="courses-page">
+    <div className={embedded ? 'flex w-full min-w-0 flex-col gap-6' : 'mx-auto flex w-full min-w-0 max-w-[1140px] flex-col gap-6 pb-10 pt-2'} data-testid="courses-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           {embedded ? (

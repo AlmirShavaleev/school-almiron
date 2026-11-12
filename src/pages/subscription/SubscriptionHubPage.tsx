@@ -6,7 +6,7 @@ import { CoursesPage } from '@/pages/subscription/CoursesPage'
 export function SubscriptionHubPage({ tab = 'payments' }: { tab?: 'courses' | 'payments' }) {
   const { search } = useLocation()
   return (
-    <div className="mx-auto flex max-w-[1140px] flex-col gap-6 pb-10 pt-2" data-testid="subscription-hub">
+    <div className="mx-auto flex w-full min-w-0 max-w-[1140px] flex-col gap-6 pb-10 pt-2" data-testid="subscription-hub">
       <div>
         <span className="stu-kicker">Аккаунт</span>
         <h1 className="stu-h2">{tab === 'courses' ? 'Витрина курсов' : 'Оплата'}</h1>

@@ -35,17 +35,15 @@ describe('меню ученика', () => {
     expect(within(rail).getByTestId('student-nav-bank')).toHaveAttribute('href', '/catalog')
   })
 
-  it('прямая ссылка оплаты активна; «Ещё» содержит выход без дублей', () => {
+  it('прямая ссылка оплаты активна, выход доступен без «Ещё»', () => {
     renderAt('/my-subscription')
+    const rail = screen.getByTestId('student-rail')
     expect(screen.getByTestId('student-nav-subscription')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByTestId('student-nav-storefront')).toHaveAttribute('href', '/courses')
-    expect(screen.getByTestId('student-nav-settings')).toHaveAttribute('href', '/settings')
-    fireEvent.click(screen.getByTestId('student-nav-more'))
-    const pop = screen.getByTestId('student-more-pop')
-    expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Выйти'])
+    expect(within(rail).queryByRole('button', { name: 'Ещё' })).toBeNull()
+    expect(within(rail).getByRole('button', { name: 'Выйти' })).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('student-nav-settings'))
     expect(screen.getByTestId('where')).toHaveTextContent('/settings')
-    expect(screen.queryByTestId('student-more-pop')).toBeNull()
   })
 
   it('телефон: панель на 5 мест (без «Пробников»), «Пробники» — в листе «Ещё»', () => {

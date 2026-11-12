@@ -4,17 +4,8 @@ import { Menu, Timer, X } from 'lucide-react'
 import { Mark } from '@/pages/landing/Brand'
 import { useStudentNav, type MoreItem } from '@/hooks/useStudentNav'
 
-/**
- * Меню ученика, вариант В (письмо ЛК_стиль_меню_ученика.md, 16.10; макет
- * TdwJzGAuvpGXAFJxvQQ8PM): 5 пунктов + «Ещё».
- *  · компьютер — узкая колонка 96px: иконка и подпись под ней, «Ещё» внизу
- *    списка, меню «Ещё» открывается вправо поверх содержимого;
- *  · телефон — нижняя панель на 5 мест (Главная · Курсы · ДЗ · Банк · Ещё),
- *    «Ещё» — лист снизу; «Пробники» — там.
- * Уведомления — колокольчик в шапке; настройки и выход — в «Ещё» и по аватару.
- * Только навигация: разделы и данные не меняются. Кабинет преподавателя — свой.
- */
-/** Содержимое «Ещё»: список строк. Общий для колонки, листа на телефоне и меню аватара. */
+/** Общий список для мобильного меню и меню профиля. На компьютере ссылки
+ * находятся прямо в боковой панели, выход — отдельная кнопка внизу. */
 export function MoreList({ items, onDone }: { items: MoreItem[]; onDone: () => void }) {
   const navigate = useNavigate()
   return (
@@ -58,17 +49,12 @@ function Badge({ n }: { n?: number | null }) {
 export function StudentNav() {
   const { main, more } = useStudentNav()
   const { pathname } = useLocation()
-  const [railMore, setRailMore] = useState(false)
   const [sheet, setSheet] = useState(false)
-  const railRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
-  useDismiss(railMore, () => setRailMore(false), railRef)
   useDismiss(sheet, () => setSheet(false), sheetRef)
 
-  const railKeys = new Set(['storefront', 'subscription', 'settings'])
-  const railLinks = more.filter(i => railKeys.has(i.key) && i.to)
-  const railMoreItems = more.filter(i => !railKeys.has(i.key))
-  const railMoreActive = railMoreItems.some(i => i.to && pathname.startsWith(i.to))
+  const railLinks = more.filter(i => i.to)
+  const logout = more.find(i => i.key === 'logout')
 
   const mobileMain = main.filter(i => i.key !== 'mocks')
   const mobileMore: MoreItem[] = [
@@ -84,32 +70,25 @@ export function StudentNav() {
         <span className="stu-rail-logo"><Mark size={34} /></span>
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {main.map(i => (
-          <NavLink key={i.key} to={i.to} onClick={() => setRailMore(false)} className="stu-rail-item stu-focus" data-active={i.match.test(pathname) || undefined}
+          <NavLink key={i.key} to={i.to} className="stu-rail-item stu-focus" data-active={i.match.test(pathname) || undefined}
             aria-current={i.match.test(pathname) ? 'page' : undefined} data-testid={`student-nav-${i.key}`}>
             <span className="relative">{i.icon}<Badge n={i.badge} /></span>
             <span>{i.label}</span>
           </NavLink>
         ))}
         {railLinks.map(i => (
-          <NavLink key={i.key} to={i.to!} onClick={() => setRailMore(false)} className="stu-rail-item stu-focus"
+          <NavLink key={i.key} to={i.to!} className="stu-rail-item stu-focus"
             data-active={pathname.startsWith(i.to!) || undefined} aria-current={pathname.startsWith(i.to!) ? 'page' : undefined}
             title={i.tag ? `${i.label} · ${i.tag}` : i.label} data-testid={`student-nav-${i.key}`}>
             {i.icon}<span>{i.label}</span>
           </NavLink>
         ))}
         </div>
-        <div className="relative shrink-0" ref={railRef}>
-          <button type="button" className="stu-rail-item stu-focus w-full" aria-haspopup="menu" aria-expanded={railMore}
-            data-active={railMoreActive || undefined}
-            onClick={() => setRailMore(o => !o)} data-testid="student-nav-more">
-            <Menu size={22} aria-hidden /><span>Ещё</span>
+        {logout && (
+          <button type="button" className="stu-rail-item stu-focus w-full shrink-0" onClick={logout.onClick} data-testid="student-nav-logout">
+            {logout.icon}<span>Выйти</span>
           </button>
-          {railMore && (
-            <div className="stu-more-pop" data-testid="student-more-pop">
-              <MoreList items={railMoreItems} onDone={() => setRailMore(false)} />
-            </div>
-          )}
-        </div>
+        )}
       </nav>
 
       {/* Телефон: нижняя панель */}
@@ -123,14 +102,14 @@ export function StudentNav() {
         ))}
         <button type="button" className="stu-tab stu-focus" aria-haspopup="menu" aria-expanded={sheet}
           data-active={moreActive || undefined} onClick={() => setSheet(true)} data-testid="student-tab-more">
-          <Menu size={22} aria-hidden /><span>Ещё</span>
+          <Menu size={22} aria-hidden /><span>Меню</span>
         </button>
       </nav>
       {sheet && (
         <div className="stu-sheet-scrim" data-testid="student-more-sheet">
-          <div className="stu-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Ещё">
+          <div className="stu-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Меню">
             <div className="flex items-center justify-between px-2 pb-1">
-              <b className="text-[16px]">Ещё</b>
+              <b className="text-[16px]">Меню</b>
               <button type="button" className="stu-icon-btn" aria-label="Закрыть" onClick={() => setSheet(false)}><X size={18} /></button>
             </div>
             <MoreList items={mobileMore} onDone={() => setSheet(false)} />
