@@ -109,7 +109,6 @@ function SubscriberRow({ r, onDone }: { r: AdminSubscriptionRow; onDone: () => v
         {r.auto_renew ? `автопродление ${formatShortDateMsk(r.next_charge_at) ?? ''}` : 'без автопродления'}
         {r.charge_attempts > 0 && <div className="text-verdict-part-ink">попыток: {r.charge_attempts}{r.last_charge_error ? ` · ${cancelReasonText(r.last_charge_error)}` : ''}</div>}
       </td>
-      <td className="py-2 pr-3 text-right tabular-nums">{formatRub(r.paid_total_rub)}</td>
       <td className="py-2 text-right">
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="secondary" loading={busy} onClick={() => act('extend')}>Продлить</Button>
@@ -167,16 +166,19 @@ function GrantForm({ tariffs, onDone }: { tariffs: TariffRow[]; onDone: () => vo
   )
 }
 
-function SubscribersTab() {
+function SubscribersTab({ initialSearch = '' }: { initialSearch?: string }) {
   const qc = useQueryClient()
   const [status, setStatus] = useState<string>('')
+  const [search, setSearch] = useState(initialSearch)
   const list = useQuery({ queryKey: ['admin-subs', status], queryFn: () => fetchAdminSubscriptions(status || null) })
   const tariffs = useQuery({ queryKey: ['admin-tariffs'], queryFn: fetchTariffs })
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['admin-subs'] })
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ['admin-subs'] }); void qc.invalidateQueries({ queryKey: ['admin-finance'] }) }
+  const filtered = (list.data ?? []).filter(r => `${r.full_name} ${r.email} ${r.course_title}`.toLocaleLowerCase('ru').includes(search.trim().toLocaleLowerCase('ru')))
 
   return (
     <div>
       <div className="flex flex-wrap items-end gap-3">
+        <label className="grid gap-1 text-sm">Найти подписчика<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Имя, email или курс" className="min-h-11 rounded-xl border border-graphite-200 bg-white px-3" /></label>
         <Select label="Статус" value={status} onChange={(e) => setStatus(e.target.value)}
           options={[{ value: '', label: 'Все' }, ...(Object.keys(STATUS_LABEL) as SubscriptionStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />
         {list.data && <p className="pb-2 text-[13px] text-graphite-500">Подписок: {list.data.length}, с доступом: {list.data.filter((r) => r.has_access).length}</p>}
@@ -190,14 +192,15 @@ function SubscribersTab() {
             <thead>
               <tr className="border-b border-graphite-200 text-left text-xs font-semibold uppercase tracking-[.03em] text-graphite-500">
                 <th className="py-2 pr-3">Ученик</th><th className="py-2 pr-3">Курс</th><th className="py-2 pr-3">Статус</th>
-                <th className="py-2 pr-3">Списание</th><th className="py-2 pr-3 text-right">Оплачено</th><th />
+                <th className="py-2 pr-3">Списание</th><th />
               </tr>
             </thead>
-            <tbody>{list.data.map((r) => <SubscriberRow key={r.id} r={r} onDone={refresh} />)}</tbody>
+            <tbody>{filtered.map((r) => <SubscriberRow key={r.id} r={r} onDone={refresh} />)}</tbody>
           </table>
         </div>
       )}
-      <GrantForm tariffs={tariffs.data ?? []} onDone={refresh} />
+      {!!list.data?.length && filtered.length === 0 && <p className="py-5 text-sm text-graphite-500">Подписчики не найдены. Измените поиск.</p>}
+      <details className="mt-6 rounded-2xl border border-graphite-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">Выдать доступ вручную</summary><GrantForm tariffs={tariffs.data ?? []} onDone={refresh} /></details>
     </div>
   )
 }
@@ -208,14 +211,13 @@ function PaymentsTab() {
   const pays = useQuery({ queryKey: ['admin-payments'], queryFn: () => fetchAdminPayments() })
   const subs = useQuery({ queryKey: ['admin-subs', ''], queryFn: () => fetchAdminSubscriptions(null) })
   const bySub = useMemo(() => new Map((subs.data ?? []).map((s) => [s.id, s])), [subs.data])
-  const total = (pays.data ?? []).filter((p) => p.status === 'succeeded').reduce((a, p) => a + Number(p.amount_rub), 0)
 
   if (pays.isLoading) return <p className="text-graphite-500">Загружаем…</p>
   if (pays.error) return <p className="text-verdict-bad-ink">✕ {errText(pays.error)}</p>
   if ((pays.data ?? []).length === 0) return <p className="text-graphite-500">Платежей пока нет.</p>
   return (
     <div>
-      <p className="text-[17px] text-graphite-900">Успешных платежей на {formatRub(total)} <span className="text-[13px] text-graphite-500">(последние {pays.data!.length})</span></p>
+      <p className="text-sm text-graphite-500">Последние {pays.data!.length} попыток оплаты: успешные, отменённые и ожидающие. Финансовые итоги с разделением реальных и тестовых платежей — во вкладке «Обзор».</p>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[680px] text-[15px]">
           <thead>
@@ -508,6 +510,11 @@ function LogTab() {
       ))}
     </ul>
   )
+}
+
+/** Shared panels in the unified billing section; legacy page retained for isolated use. */
+export function SubscriptionAdminPanel({ tab, search = '' }: { tab: Tab; search?: string }) {
+  return <>{tab === 'subs' && <SubscribersTab key={search} initialSearch={search} />}{tab === 'payments' && <PaymentsTab />}{tab === 'tariffs' && <TariffsTab />}{tab === 'promo' && <PromoCodesTab />}{tab === 'settings' && <SettingsTab />}{tab === 'log' && <LogTab />}</>
 }
 
 export function SubscriptionsAdminPage() {

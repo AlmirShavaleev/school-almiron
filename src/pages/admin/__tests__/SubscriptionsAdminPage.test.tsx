@@ -69,13 +69,13 @@ beforeEach(() => {
 })
 
 describe('админка подписки', () => {
-  it('подписчик: статус, причина отказа по-русски, оплачено', async () => {
+  it('подписчик: статус и причина отказа; финансовые суммы остаются в обзоре', async () => {
     renderPage()
     const row = await screen.findByTestId('admin-sub-row')
     expect(row).toHaveTextContent('Аня Петрова')
     expect(row).toHaveTextContent('Не удалось списать')
     expect(row).toHaveTextContent('недостаточно средств на карте')
-    expect(row).toHaveTextContent('2 900')
+    expect(row).not.toHaveTextContent('2 900')
   })
 
   it('ручное продление: дни и причина уходят в admin_subscription_extend', async () => {

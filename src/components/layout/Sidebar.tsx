@@ -70,8 +70,7 @@ const navItems: NavItem[] = [
   { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
   // §282. Без флага: тарифы и тексты заводятся ДО включения подписки.
-  { label: 'Подписка',          path: '/admin/subscriptions', icon: <CreditCard size={18} />, roles: ['admin', 'owner'] },
-  { label: 'Финансы', path: '/admin/finance', icon: <BarChart3 size={18} />, roles: ['admin', 'owner'] },
+  { label: 'Финансы и подписки', path: '/admin/finance', icon: <BarChart3 size={18} />, roles: ['admin', 'owner'] },
   { label: 'Скорость',          path: '/admin/perf',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
