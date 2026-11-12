@@ -1,3 +1,4 @@
+import '@/components/charts/schoolCharts.css'
 import { useCallback, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { GraduationCap, Plus } from 'lucide-react'
@@ -199,13 +200,10 @@ function SectionHead({ title, hint }: { title: string; hint?: string }) {
 /** Строка раскладки: слева имя (над карточками на телефоне), справа карточки. */
 function Row({ name, sub, children, testId }: { name: string; sub: string; children: ReactNode; testId: string }) {
   return (
-    <div data-testid={testId} className="grid gap-2.5 border-t border-gray-200 pt-3.5 first:border-t-0 first:pt-0 md:grid-cols-[150px_minmax(0,1fr)] md:gap-4">
-      <div className="grid content-start gap-0.5 md:pt-1.5">
-        <b data-testid="row-name" className="break-words text-xl font-extrabold text-gray-900">{name}</b>
-        <span className="text-xs text-gray-500">{sub}</span>
-      </div>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
-    </div>
+    <details data-testid={testId} className="school-course-disclosure">
+      <summary><span className="grid min-w-0 flex-1 gap-1"><b data-testid="row-name" className="break-words text-lg font-extrabold text-gray-900">{name}</b><span className="text-xs text-gray-500">{sub}</span></span></summary>
+      <div className="school-course-content grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
+    </details>
   )
 }
 
@@ -251,6 +249,14 @@ export function CoursesOverview({
   canAddClass: boolean
   onAddClass: (template: Course) => void
 }) {
+  const [query, setQuery] = useState('')
+  const allCourses = [...new Map([
+    ...layout.programs.flatMap(p => [p.template, ...p.cards.map(c => c.course)]),
+    ...layout.other.map(c => c.course), ...layout.archived,
+    ...layout.classes.flatMap(row => row.slots.flatMap(s => s.kind === 'course' ? [s.card.course] : [])),
+  ].map(c => [c.id, c])).values()]
+  const needle = query.trim().toLocaleLowerCase('ru')
+  const matches = allCourses.filter(c => `${c.title} ${ownerLabelFor(c) ?? ''}`.toLocaleLowerCase('ru').includes(needle))
   const today = mskToday()
   const attention = buildAttention(layout, stats)
   const hasLive = layout.classes.length > 0 || layout.other.length > 0
@@ -259,6 +265,8 @@ export function CoursesOverview({
     <div className="grid min-w-0 gap-7">
       {attention && hasLive && <AttentionStrip a={attention} today={today} />}
 
+      <input type="search" aria-label="Поиск курсов и классов" placeholder="Найти курс, класс или преподавателя" value={query} onChange={e => setQuery(e.target.value)} className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:ring-2 focus:ring-primary-400" />
+      {needle ? <section className="grid gap-3"><p className="text-sm text-gray-500">Найдено: {matches.length}</p>{matches.map(c => <CompactCourse key={c.id} course={c} program={null} sub={null} ownerLabel={ownerLabelFor(c)} />)}</section> : <>
       {view === 'classes' && layout.classes.length > 0 && (
         <section data-testid="courses-by-class" className="grid gap-3.5">
           <SectionHead title="Классы" hint="курсы с учениками" />
@@ -302,8 +310,8 @@ export function CoursesOverview({
       )}
 
       {layout.programs.length > 0 && (
-        <section data-testid="courses-templates" className="grid gap-3.5">
-          <SectionHead title="Шаблоны программ" hint="правки здесь уходят во все классы" />
+        <details data-testid="courses-templates" className="school-course-disclosure">
+          <summary><span className="grid flex-1 gap-1"><b>Шаблоны программ</b><span className="text-xs text-gray-500">правки здесь уходят во все классы</span></span><span className="school-chart-pill">{layout.programs.length}</span></summary><div className="school-course-content">
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {layout.programs.map(row => (
               <div key={row.template.id} data-testid="template-card" className="grid min-w-0 content-start gap-2.5 rounded-2xl border border-gray-200 bg-white px-4 py-3.5">
@@ -358,18 +366,18 @@ export function CoursesOverview({
               </div>
             ))}
           </div>
-        </section>
+        </div></details>
       )}
 
       {layout.other.length > 0 && (
-        <section data-testid="courses-other" className="grid gap-3.5">
-          <SectionHead title="Другие курсы" hint="без шаблона" />
+        <details data-testid="courses-other" className="school-course-disclosure">
+          <summary><span className="grid flex-1 gap-1"><b>Другие курсы</b><span className="text-xs text-gray-500">без шаблона</span></span><span className="school-chart-pill">{layout.other.length}</span></summary><div className="school-course-content">
           <div className="flex flex-wrap gap-2.5">
             {layout.other.map(o => (
               <CompactCourse key={o.course.id} course={o.course} program={o.program} sub={otherCourseLabel(o)} ownerLabel={ownerLabelFor(o.course)} />
             ))}
           </div>
-        </section>
+        </div></details>
       )}
 
       {/* Архив — под спойлером, как было: его не открывают каждый день. */}
@@ -385,6 +393,7 @@ export function CoursesOverview({
           </div>
         </details>
       )}
+      </>}
     </div>
   )
 }

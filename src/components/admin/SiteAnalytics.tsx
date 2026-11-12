@@ -1,3 +1,4 @@
+import { SchoolAreaPlot } from '@/components/charts/SchoolAreaPlot'
 import { RefreshCw, Globe, Monitor, Link2, FileText } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { SiteAnalyticsData, SiteBreakdown } from '@/hooks/useVercelAnalytics'
@@ -135,16 +136,7 @@ function DaysChart({ days }: { days: SiteAnalyticsData['days'] }) {
       ) : (
         // Дни без просмотров рисуются нулевой полоской, а не пропускаются:
         // иначе провал выглядел бы как отсутствие данных.
-        <div className="flex h-24 items-end gap-[2px]" role="img" aria-label="Просмотры по дням">
-          {days.map(d => (
-            <div
-              key={d.day}
-              title={`${formatDay(d.day)} — ${d.pageviews}`}
-              className={cn('flex-1 rounded-t-sm', d.pageviews > 0 ? 'bg-primary-500' : 'bg-slate-100')}
-              style={{ height: `${d.pageviews > 0 ? Math.max((d.pageviews / max) * 100, 8) : 3}%` }}
-            />
-          ))}
-        </div>
+        <div className="school-chart-card"><strong className="school-chart-value">{days.reduce((sum, d) => sum + d.pageviews, 0).toLocaleString('ru-RU')}</strong><p className="school-chart-caption">Просмотров за период</p><SchoolAreaPlot points={days.map(d => ({label: formatDay(d.day), value: d.pageviews}))} title="Просмотры по дням" /></div>
       )}
     </Shell>
   )

@@ -1,0 +1,21 @@
+/* Shared chart language: school blue/orange, quiet axes, generous readable surfaces. */
+.school-chart-card{min-width:0;padding:24px;border:1px solid #e8edf8;border-radius:28px;background:#fff;color:#17284d;overflow:hidden}
+.school-chart-value{display:block;font-size:clamp(28px,3vw,36px);line-height:1.2;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;margin:6px 0 4px}
+.school-chart-caption{font-size:12px;line-height:1.6;color:#8995ac}
+.school-chart-plot{min-width:0;margin-top:16px}
+.school-chart-pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 10px;background:#edf2ff;color:#315af4;font-size:12px;font-weight:700}
+.school-chart-bars{padding:16px 8px 0;background:linear-gradient(180deg,#edf2ff80,transparent);border-radius:18px}
+.school-chart-bars svg{overflow:visible}
+.school-chart-bars rect:not([fill="transparent"]){transition:fill .2s}
+.school-course-disclosure{min-width:0;border:1px solid #e8edf8;border-radius:22px;background:#fff;overflow:hidden}
+.school-course-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;cursor:pointer;list-style:none;min-height:64px}
+.school-course-disclosure>summary::-webkit-details-marker{display:none}
+.school-course-disclosure>summary:after{content:'⌄';color:#8995ac;font-size:22px;transition:transform .2s}
+.school-course-disclosure[open]>summary:after{transform:rotate(180deg)}
+.school-course-disclosure>summary:focus-visible{outline:2px solid #315af4;outline-offset:-3px;border-radius:20px}
+.school-course-disclosure[open]>summary{border-bottom:1px solid #edf1f9}
+.school-course-content{padding:18px 20px;min-width:0}
+.school-course-disclosure[open]>.school-course-content{animation:school-chart-enter .18s ease-out}
+@keyframes school-chart-enter{from{opacity:.5;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:480px){.school-chart-card{padding:18px;border-radius:24px}.school-course-disclosure>summary,.school-course-content{padding:16px}}
+@media(prefers-reduced-motion:reduce){.school-chart-card *,.school-course-disclosure *{animation:none!important;transition:none!important}}

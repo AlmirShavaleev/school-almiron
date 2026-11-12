@@ -1,6 +1,7 @@
+import './homeworkMotion.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Camera, ChevronDown, ChevronLeft, ChevronRight, FileText, Images, Loader2, Upload,
+  Check, Camera, ChevronDown, ChevronLeft, ChevronRight, FileText, Images, Loader2, Upload,
 } from 'lucide-react'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { useCoarsePointer } from '@/hooks/useCoarsePointer'
@@ -717,16 +718,23 @@ export function TopicHomeworkStudent({
               {/* Дропзона — перетаскивание и Ctrl+V нужны только там, где есть мышь/трекпад */}
               <label
                 data-testid="hw-dropzone"
-                onDragOver={e => { e.preventDefault(); if (!uploadingFiles) setDragOver(true) }}
+                data-dragging={dragOver}
+                role="button"
+                tabIndex={uploadingFiles || busy ? -1 : 0}
+                aria-label="Прикрепить фото или PDF работы"
+                aria-disabled={uploadingFiles || busy}
+                aria-busy={uploadingFiles}
+                onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !uploadingFiles && !busy) { e.preventDefault(); e.currentTarget.querySelector('input')?.click() } }}
+                onDragOver={e => { e.preventDefault(); if (!uploadingFiles && !busy) setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={async e => {
                   e.preventDefault()
                   setDragOver(false)
-                  if (uploadingFiles) return
+                  if (uploadingFiles || busy) return
                   await uploadPicked(active.id, Array.from(e.dataTransfer.files ?? []))
                 }}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors mt-4',
+                  'hw-file-drop flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors mt-4',
                   uploadingFiles
                     ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
                     : dragOver
@@ -736,12 +744,12 @@ export function TopicHomeworkStudent({
               >
                 {uploadingFiles ? (
                   <>
-                    <Loader2 size={24} className="animate-spin text-gray-400" />
+                    <span className="hw-upload-mark" data-busy="true"><Loader2 size={26} className="animate-spin" /></span>
                     <span className="text-sm text-gray-500">Загрузка…</span>
                   </>
                 ) : (
                   <>
-                    <span className="text-2xl">📷</span>
+                    <span className="hw-upload-mark" data-ready={draftFiles.length > 0}>{draftFiles.length > 0 ? <FileText /> : <Upload />}</span>
                     <div className="text-sm font-semibold text-gray-700">Перетащите фото или PDF — или нажмите, чтобы выбрать</div>
                     <div className="text-xs text-gray-400">Скриншот можно просто вставить: Ctrl+V</div>
                   </>
@@ -751,7 +759,7 @@ export function TopicHomeworkStudent({
                   type="file"
                   accept={HOMEWORK_FILE_ACCEPT}
                   multiple
-                  disabled={uploadingFiles}
+                  disabled={uploadingFiles || busy}
                   aria-label="Файлы работы"
                   onChange={async e => {
                     const picked = Array.from(e.target.files ?? [])
@@ -796,8 +804,9 @@ export function TopicHomeworkStudent({
 
       {/* ── Сообщение "ждёт проверки" ── */}
       {active && active.status === 'submitted' && (
-        <div className="mt-4 text-sm text-gray-500">
-          Работа отправлена, ждёт проверки преподавателя.
+        <div className="hw-submitted mt-4" role="status">
+          <span className="hw-upload-mark" aria-hidden="true"><Check /></span>
+          <div><b className="block text-sm">Работа сдана</b><span className="text-sm text-gray-500">Работа отправлена, ждёт проверки преподавателя.</span></div>
         </div>
       )}
 

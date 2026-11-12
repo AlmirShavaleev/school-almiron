@@ -1,3 +1,4 @@
+import '@/components/charts/schoolCharts.css'
 /**
  * §291. Админка → «Скорость»: сколько ученик ждёт вкладки и какие запросы к
  * базе медленные — за час / сегодня / 7 дней; по часам; по ученику.
@@ -40,19 +41,22 @@ function HourBars({ points, value, format, title, testId }: {
   testId: string
 }) {
   const [hover, setHover] = useState<number | null>(null)
-  const max = Math.max(1, ...points.map(value))
+  const observedMax = Math.max(0, ...points.map(value))
+  const max = Math.max(1, observedMax)
   const W = 640, H = 120, gap = 2
   const bw = points.length ? Math.max(2, (W - gap * (points.length - 1)) / points.length) : 0
   const h = hover != null ? points[hover] : null
   return (
-    <figure className="space-y-1" data-testid={testId}>
+    <figure className="school-chart-card space-y-3" data-testid={testId}>
       <figcaption className="flex items-baseline justify-between text-[13px] text-graphite-700">
         <span className="font-semibold">{title}</span>
-        <span className="text-graphite-500">
-          {h ? `${hourLabel(h.hour)} · ${format(value(h))}` : `макс. ${format(max)}`}
+        <span className="school-chart-pill">
+          {h ? `${hourLabel(h.hour)} · ${format(value(h))}` : `макс. ${format(observedMax)}`}
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-28 w-full" role="img" aria-label={title} preserveAspectRatio="none">
+      <strong className="school-chart-value">{points.length ? format(observedMax) : '—'}</strong>
+      <p className="school-chart-caption">Максимум за выбранный период</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-36 w-full" role="img" aria-label={title} preserveAspectRatio="none">
         <line x1="0" y1={H - 0.5} x2={W} y2={H - 0.5} className="stroke-graphite-200" strokeWidth="1" />
         {points.map((p, i) => {
           const bh = Math.max(1, (value(p) / max) * (H - 4))

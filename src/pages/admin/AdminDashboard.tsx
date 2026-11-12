@@ -1,3 +1,4 @@
+import { AdminCourseBrowser } from '@/components/admin/AdminCourseBrowser'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -674,8 +675,7 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {courses.map(c => {
+          <AdminCourseBrowser courses={courses} renderCourse={c => {
               const av = getCourseAvailability(c)
               const enrollClosed = c.enrollment_open_until
                 ? new Date().toISOString().slice(0, 10) > c.enrollment_open_until
@@ -740,14 +740,7 @@ export function AdminDashboard() {
                   </button>
                 </div>
               )
-            })}
-            {courses.length === 0 && (
-              <div className="col-span-3 text-center py-12 text-gray-400">
-                <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
-                <p>Курсов пока нет</p>
-              </div>
-            )}
-          </div>
+            }} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[

@@ -1,3 +1,4 @@
+import '@/components/charts/schoolCharts.css'
 import { Fragment, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BarChart3, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
@@ -232,7 +233,9 @@ export function ActivityChart({ days, max }: { days: { day: string; active: numb
   const label = days.map(d => `${formatDayShort(d.day)}: ${d.active}`).join(', ')
 
   return (
-    <div className="relative" data-testid="activity-chart" onMouseLeave={() => setTip(null)}>
+    <div className="school-chart-card school-chart-bars relative" data-testid="activity-chart" onMouseLeave={() => setTip(null)}>
+      <strong className="school-chart-value">{days.at(-1)?.active ?? '—'}</strong>
+      <p className="school-chart-caption">{days.length ? `Активны ${formatDayShort(days[days.length - 1].day)} · всего учеников: ${max}` : 'Нет данных об активности'}</p>
       <svg viewBox={`0 0 ${CH.W} 120`} className="block h-auto w-full" role="img" aria-label={`Активные ученики по дням за ${days.length} дней: ${label}`}>
         {ticks.map(v => (
           <g key={v}>
@@ -251,7 +254,7 @@ export function ActivityChart({ days, max }: { days: { day: string; active: numb
               width={Math.max(1, bw - 4)}
               height={h}
               rx={3}
-              fill={recent ? '#1f55e0' : '#93b4ff'}
+              fill={recent ? '#315af4' : '#adc0ff'}
               data-testid="activity-bar"
               data-active={d.active}
             />

@@ -78,8 +78,10 @@ function Chart() {
   const run = useInView(ref, { once: true, amount: 0.4 }) || !anim
   const last = DATA.length - 1
   return (
-    <Reveal className="card chart">
+    <Reveal className="card chart school-landing-chart">
       <div className="chart-top"><h3>Пробник каждый месяц</h3><span className="tag t-or">цель — 90+</span></div>
+      <div className="school-landing-value">91 <span>балл</span></div>
+      <p className="school-landing-caption">Пример роста с 48 баллов · октябрь — май</p>
       <svg ref={ref} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Пример: рост баллов за пробники с октября по май — с 48 до 91, цель 90">
         <defs>
           <linearGradient id="lnd-ga" x1="0" y1="0" x2="0" y2="1">

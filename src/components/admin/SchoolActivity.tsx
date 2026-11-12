@@ -1,3 +1,4 @@
+import { SchoolAreaPlot } from '@/components/charts/SchoolAreaPlot'
 import { UserX, Activity, EyeOff, Filter } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import {
@@ -152,19 +153,7 @@ function ActivityBlock({ days }: { days: ActivityDay[] }) {
         // Столбики обычным флексом: ради одного графика тянуть тяжёлую
         // отрисовку незачем, а нули должны рисоваться нулями — иначе провал
         // выглядит как отсутствие данных.
-        <div className="flex h-24 items-end gap-[2px]" role="img" aria-label="Заходы по дням за 30 дней">
-          {days.map(d => (
-            <div
-              key={d.day}
-              title={`${formatDay(d.day)} — ${d.people}`}
-              className={cn(
-                'flex-1 rounded-t-sm',
-                d.people > 0 ? 'bg-primary-500' : 'bg-slate-100',
-              )}
-              style={{ height: `${d.people > 0 ? Math.max((d.people / max) * 100, 8) : 3}%` }}
-            />
-          ))}
-        </div>
+        <div className="school-chart-card"><strong className="school-chart-value">{days.reduce((sum, d) => sum + d.people, 0).toLocaleString('ru-RU')}</strong><p className="school-chart-caption">Заходов за период · один ученик в разные дни учитывается повторно</p><SchoolAreaPlot points={days.map(d => ({label: formatDay(d.day), value: d.people}))} title="Заходы по дням за 30 дней" /></div>
       )}
     </Shell>
   )

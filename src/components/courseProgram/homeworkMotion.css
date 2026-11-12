@@ -1,0 +1,14 @@
+.hw-file-drop{position:relative;overflow:hidden;border-radius:28px!important;transition:background .2s,border-color .2s,box-shadow .2s,transform .2s!important}
+.hw-file-drop[data-dragging=true]{transform:translateY(-3px);box-shadow:0 8px 28px #315af418}
+.hw-upload-mark{display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:#edf2ff;color:#315af4;transition:background .25s,color .25s,transform .25s}
+.hw-upload-mark svg{width:28px;height:28px}
+.hw-file-drop[data-dragging=true] .hw-upload-mark{transform:translateY(-4px) scale(1.06)}
+.hw-upload-mark[data-ready=true]{background:#fff1e3;color:#c2660a;animation:hw-arrive .35s ease-out}
+.hw-upload-mark[data-busy=true]{animation:hw-breathe 1.4s ease-in-out infinite}
+.hw-submitted{display:flex;align-items:center;gap:12px;padding:18px;border:1px solid #dce6ff;border-radius:22px;background:#f3f6ff;color:#17284d;animation:hw-arrive .35s ease-out}
+.hw-submitted .hw-upload-mark{flex:none;width:44px;height:44px;background:#315af4;color:white}
+.hw-submitted svg{stroke-dasharray:55;stroke-dashoffset:0;animation:hw-check .45s ease-out}
+@keyframes hw-arrive{from{opacity:.3;transform:translateY(7px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes hw-breathe{50%{transform:scale(.95);background:#dfe8ff}}
+@keyframes hw-check{from{stroke-dashoffset:55}to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.hw-file-drop,.hw-file-drop *,.hw-submitted,.hw-submitted *{animation:none!important;transition:none!important;transform:none!important}}

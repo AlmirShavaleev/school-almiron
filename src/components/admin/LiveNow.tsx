@@ -4,9 +4,7 @@ import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Clock, Minus,
   Radio, Send, UserPlus, Users,
 } from 'lucide-react'
-import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from 'recharts'
+import { SchoolAreaPlot } from '@/components/charts/SchoolAreaPlot'
 import { cn } from '@/utils/cn'
 import { useLivePulse } from '@/hooks/useLivePulse'
 import { useOnlinePeople } from '@/hooks/useSchoolPresence'
@@ -134,7 +132,7 @@ export function LiveNow(props: LiveNowProps) {
           // совпадать с источником.
           statusText={presenceOk ? `${people.length} сейчас на платформе` : 'присутствие не прочиталось'}
           live={presenceOk}
-          color="#6366f1"
+          color="#315af4"
           animate={!reducedMotion}
           testId="card-visits"
         />
@@ -144,7 +142,7 @@ export function LiveNow(props: LiveNowProps) {
           kind="flow"
           tone="more-is-good"
           statusText={`сегодня: ${lastValue(pulse?.submitsDaily)}`}
-          color="#10b981"
+          color="#f28c28"
           // Обе карточки считают `topic_homework_attempts` — значит и вести
           // обязаны в очередь этого же контура. До §197 здесь стоял `/inbox`
           // (очередь подборок): число было из одних данных, а экран из других.
@@ -162,7 +160,7 @@ export function LiveNow(props: LiveNowProps) {
           // дезинформацией.
           tone="more-is-bad"
           statusText="работ ждут разбора"
-          color="#f59e0b"
+          color="#f28c28"
           onOpen={() => navigate('/homework-queue')}
           openLabel="Открыть очередь проверки"
           animate={!reducedMotion}
@@ -177,7 +175,7 @@ export function LiveNow(props: LiveNowProps) {
           // группы плюс принятое ДЗ. Считать по отметкам рубрик значило бы
           // разойтись с собственной подписью.
           statusText="строго: обе группы и принятое ДЗ"
-          color="#8b5cf6"
+          color="#315af4"
           animate={!reducedMotion}
           testId="card-marks"
         />
@@ -219,7 +217,7 @@ export function LiveNow(props: LiveNowProps) {
           title="Заходы по дням"
           hint="За 14 дней. День без заходов — нулевой столбик, а не пропуск."
           points={pulse?.visitsDaily ?? []}
-          color="#6366f1"
+          color="#315af4"
           animate={!reducedMotion}
           testId="live-visits-chart"
         />
@@ -227,7 +225,7 @@ export function LiveNow(props: LiveNowProps) {
           title="Сдачи по дням"
           hint="За 14 дней."
           points={pulse?.submitsDaily ?? []}
-          color="#10b981"
+          color="#f28c28"
           animate={!reducedMotion}
           testId="live-submits-chart"
         />
@@ -452,7 +450,7 @@ function WeekCard({ title, current, previous }: { title: string; current: number
 
 function Shell({ children, testId }: { children: React.ReactNode; testId?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={testId}>
+    <div className={cn('rounded-2xl border border-slate-200 bg-white p-4', testId && ['live-visits-chart', 'live-submits-chart', 'live-hours'].includes(testId) && 'school-chart-card')} data-testid={testId}>
       {children}
     </div>
   )
@@ -495,15 +493,8 @@ function ChartBlock({
           {total === 0 && (
             <p className="mb-2 text-xs text-slate-400">За две недели ни одного события.</p>
           )}
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={28} />
-              <Tooltip cursor={{ fill: '#f8fafc' }} labelStyle={{ fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
-              <Bar dataKey="value" name="сколько" fill={color} radius={[3, 3, 0, 0]} isAnimationActive={animate} />
-            </BarChart>
-          </ResponsiveContainer>
+          <strong className="school-chart-value">{total.toLocaleString('ru-RU')}</strong>
+          <SchoolAreaPlot points={data} title={title} color={color} animate={animate} />
         </>
       )}
     </Shell>
@@ -535,15 +526,8 @@ function HourBlock({ hours, animate }: { hours: HourPoint[]; animate: boolean })
               ? `Чаще всего — в ${formatHour(peak.hour)}. Всего событий: ${total}.`
               : `Всего событий: ${total}.`}
           </p>
-          <ResponsiveContainer width="100%" height={170}>
-            <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" interval={2} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={28} />
-              <Tooltip cursor={{ fill: '#f8fafc' }} labelStyle={{ fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
-              <Bar dataKey="value" name="событий" fill="#f59e0b" radius={[3, 3, 0, 0]} isAnimationActive={animate} />
-            </BarChart>
-          </ResponsiveContainer>
+          <strong className="school-chart-value">{total.toLocaleString('ru-RU')}</strong>
+          <SchoolAreaPlot points={data} title="Учебные события по часам" color="#f28c28" animate={animate} />
         </>
       )}
     </Shell>

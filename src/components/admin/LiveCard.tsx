@@ -1,3 +1,5 @@
+import { useReducedMotion } from 'framer-motion'
+import '@/components/charts/schoolCharts.css'
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Minus } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { cn } from '@/utils/cn'
@@ -52,6 +54,7 @@ export function LiveCard(props: LiveCardProps) {
     onOpen, openLabel, animate, testId,
   } = props
 
+  const reduce = useReducedMotion()
   const summary = kind === 'flow' ? flowSummary(points) : levelSummary(points)
   const direction = weekDirection(summary.current, summary.previous)
   const change = weekChange(summary.current, summary.previous)
@@ -62,7 +65,7 @@ export function LiveCard(props: LiveCardProps) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4"
+      className="school-chart-card relative"
       data-testid={testId}
     >
       {onOpen && (
@@ -81,7 +84,7 @@ export function LiveCard(props: LiveCardProps) {
       {/* Число и бейдж в одной строке и НЕ переносятся: на 390 px перенос
           разрывал бы величину и её изменение на две строки. */}
       <div className="mt-1 flex flex-nowrap items-baseline gap-2">
-        <span className="text-3xl font-bold leading-none text-graphite-950" data-testid={`${testId}-value`}>
+        <span className="school-chart-value" data-testid={`${testId}-value`}>
           {summary.current}
         </span>
         <span
@@ -89,7 +92,7 @@ export function LiveCard(props: LiveCardProps) {
           data-mood={mood}
           className={cn(
             'inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
-            mood === 'good' && 'bg-green-50 text-green-700',
+            mood === 'good' && 'bg-primary-50 text-primary-700',
             mood === 'bad'  && 'bg-orange-50 text-orange-700',
             mood === 'flat' && 'bg-slate-100 text-slate-500',
           )}
@@ -119,11 +122,11 @@ export function LiveCard(props: LiveCardProps) {
         <span className="truncate">{statusText}</span>
       </div>
 
-      <div className="-mx-4 -mb-4 mt-3">
+      <div className="mt-5">
         {data.length === 0 ? (
           <p className="px-4 pb-4 text-xs text-slate-400">Данных за период нет.</p>
         ) : (
-          <ResponsiveContainer width="100%" height={64}>
+          <ResponsiveContainer width="100%" height={96}>
             <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={`fill-${testId}`} x1="0" y1="0" x2="0" y2="1">
@@ -142,7 +145,7 @@ export function LiveCard(props: LiveCardProps) {
                     ? 'день ещё идёт'
                     : 'за день',
                 ]}
-                contentStyle={{ fontSize: 12 }}
+                contentStyle={{ fontSize: 12, borderRadius: 16, border: '1px solid #e8edf8' }}
               />
               {/* Завершённые дни — сплошной линией. */}
               <Area
@@ -151,7 +154,7 @@ export function LiveCard(props: LiveCardProps) {
                 stroke={color}
                 strokeWidth={2}
                 fill={`url(#fill-${testId})`}
-                isAnimationActive={animate}
+                isAnimationActive={animate && !reduce}
                 connectNulls={false}
                 dot={false}
               />
@@ -164,7 +167,7 @@ export function LiveCard(props: LiveCardProps) {
                 strokeWidth={2}
                 strokeDasharray="3 3"
                 fill="none"
-                isAnimationActive={animate}
+                isAnimationActive={animate && !reduce}
                 connectNulls={false}
                 dot={false}
               />
