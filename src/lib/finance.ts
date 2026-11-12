@@ -52,6 +52,11 @@ export function financeReport(data:FinanceSnapshot,month:string,course:string,mo
  }
  return {gross,refunds,net:gross-refunds,previous,change:previous>0?Math.round((gross-previous)/previous*100):null,newCount:fresh.length,newRevenue:sum(fresh),renewCount:renew.length,renewRevenue:sum(renew),automaticRenewals:renew.filter(p=>p.kind==='renewal').length,manualRenewals:renew.filter(p=>p.kind!=='renewal').length,activeStudents:new Set(active.map(s=>s.student_id)).size,activeSubscriptions:active.length,average:selected.length?gross/selected.length:0,monthly,daily,byCourse,attention:{ending,expired,unpaid,pending:[...pendingByPair.values()]}}
 }
+export function financePurchases(data:FinanceSnapshot,month:string,course:string,mode:FinanceMode){
+ return data.payments.filter(p=>(!course||p.course_id===course)&&p.is_test===(mode==='test')&&p.paid_at&&mskMonth(p.paid_at)===month&&['succeeded','refunded'].includes(p.status))
+  .map(p=>{const sub=data.subscriptions.find(s=>s.id===p.subscription_id);return {...p,full_name:sub?.full_name??'Без имени',email:sub?.email??'',course_title:data.courses.find(c=>c.id===p.course_id)?.title??'Курс'}})
+  .sort((a,b)=>Date.parse(b.paid_at!)-Date.parse(a.paid_at!)||b.id.localeCompare(a.id))
+}
 export async function fetchFinance(month:string):Promise<FinanceSnapshot>{
  const {data,error}=await supabase.rpc('admin_finance_snapshot' as never,{p_month:`${month}-01`} as never)
  if(error)throw new Error(error.message)

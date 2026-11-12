@@ -38,3 +38,18 @@ describe('Финансы',()=>{
   await waitFor(()=>expect(api.fetchFinance).toHaveBeenCalledWith('2025-12'))
  })
 })
+
+it('показывает имя, сумму и тип оплаты; поиск скрывает других учеников',async()=>{
+ const data={...snapshot(),subscriptions:[{id:'sub1',student_id:'s1',course_id:'c1',status:'active',access_until:null,auto_renew:false,source:'purchase',full_name:'Иван Петров',email:'ivan@example.ru',is_test:true},{id:'sub2',student_id:'s2',course_id:'c1',status:'active',access_until:null,auto_renew:false,source:'purchase',full_name:'Анна Иванова',email:'anna@example.ru',is_test:true}]}
+ data.payments.push({...data.payments[0],id:'p2',student_id:'s2',subscription_id:'sub2',amount_rub:1500,is_first:false})
+ api.fetchFinance.mockResolvedValue(data);show();await screen.findByText('Кто оплатил')
+ fireEvent.click(screen.getByRole('button',{name:'Тестовые'}))
+ const table=screen.getByRole('table',{name:'Успешные оплаты учеников'})
+ expect(within(table).getByText('Иван Петров')).toBeInTheDocument()
+ expect(within(table).getByText(/^500\s*₽$/)).toBeInTheDocument()
+ expect(within(table).getByText(/1\s*500\s*₽/)).toBeInTheDocument()
+ expect(within(table).getByText('Продление вручную')).toBeInTheDocument()
+ fireEvent.change(screen.getByLabelText('Найти ученика'),{target:{value:'ivan@example'}})
+ expect(within(table).queryByText('Анна Иванова')).toBeNull()
+ expect(within(table).getByText('Иван Петров')).toBeInTheDocument()
+})
