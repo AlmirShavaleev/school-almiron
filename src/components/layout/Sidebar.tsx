@@ -75,7 +75,6 @@ const navItems: NavItem[] = [
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
   { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
-  { label: 'Качество уроков',   path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Библиотека уроков', path: '/lesson-library', icon: <LibraryBig size={18} />,    roles: ['teacher', 'admin', 'owner'], hidden: true },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   // Рядом с каталогом намеренно: подборка рождается в его корзине, там же её и
@@ -88,9 +87,6 @@ const navItems: NavItem[] = [
   { label: 'Картинки каталога', path: '/catalog/assets', icon: <Images size={18} />,        roles: ['admin', 'owner'], hidden: true },
   { label: 'Проверка ДЗ',       path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
-  // «Банк тестов» — отдельная система (topic_tests), тесты в ней привязаны к
-  // темам курса. Переименована, чтобы два разных раздела не звались одинаково.
-  { label: 'Банк тестов',       path: '/tests', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
@@ -117,7 +113,6 @@ const CURATOR_ITEMS: NavItem[] = [
   { label: 'Проверка ДЗ',     path: '/homework-queue', icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Программа курса', path: '/course-program', icon: <BookOpen size={18} />,       roles: [], section: 'Курирую' },
   { label: 'Оценки уроков',   path: '/topic-ratings',  icon: <Star size={18} />,           roles: [], section: 'Курирую' },
-  { label: 'Качество уроков', path: '/topic-quality',  icon: <ClipboardCheck size={18} />, roles: [], section: 'Курирую' },
   { label: 'Ученики',         path: '/students',       icon: <Users size={18} />,          roles: [], section: 'Курирую' },
 ]
 
