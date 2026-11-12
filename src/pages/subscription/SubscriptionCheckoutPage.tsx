@@ -204,6 +204,11 @@ export function SubscriptionCheckoutPage() {
         </p>
       )}
 
+      <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-[15px] text-amber-900" role="note">
+        <p className="font-semibold">Тестовая оплата</p>
+        <p className="mt-1">Оплата тестовая — реальные деньги не списываются. Она нужна исключительно для тестирования функции оплаты. Используйте тестовые платёжные данные ЮKassa.</p>
+      </div>
+
       <div className="platform-surface mt-6 space-y-5 rounded-card p-5 sm:p-6">
         <Input
           label="Email для чека"
