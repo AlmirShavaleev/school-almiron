@@ -187,3 +187,14 @@ describe('список', () => {
     expect(within(empty).queryByRole('link')).toBeNull()
   })
 })
+
+
+it('школьный курс без карточки витрины: оформление ведёт на тариф этого курса', async () => {
+  db.subsOn = true
+  db.groups = [group('school-group', 'school-course', 'Физика ЕГЭ 11А')]
+  db.rpc.my_course_access = { paid: true, has_access: false, status: null, access_until: null, tariff_id: 'school-tariff' }
+  renderPage()
+  const payment = await screen.findByTestId('course-subscribe')
+  expect(payment).toHaveAttribute('href', '/subscribe/checkout/school-tariff')
+  expect(payment).toHaveTextContent('Оформить подписку')
+})

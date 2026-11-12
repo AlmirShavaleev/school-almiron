@@ -11,7 +11,7 @@ import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { mockAlert, type MockLessonListRow } from '@/lib/mockExamLesson'
 import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
-import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
+import { useCourseAccess, useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { type HomeCourseProgress } from '@/lib/studentHomeCourses'
 import { loadCourseExtras as loadExtras, loadOpenByModule, type CourseExtras as Extras } from '@/lib/courseMeta'
 import { accessLine, courseLadder, publicTitle, visibleSteps, type AccessLine, type LadderStep } from '@/lib/myCourses'
@@ -120,7 +120,7 @@ function Ladder({ steps }: { steps: LadderStep[] }) {
   )
 }
 
-function CourseItem({ card, title, mode, progress, progressNote, openByModule, access, mockExams, wide }: {
+function CourseItem({ card, title, mode, progress, progressNote, openByModule, access, mockExams, wide, paymentEnabled }: {
   card: CourseCard
   title: string
   mode: 'progress' | 'schedule'
@@ -132,7 +132,10 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
   access: AccessLine
   mockExams: MockLessonListRow[]
   wide: boolean
+  paymentEnabled: boolean
 }) {
+  const { data: paymentAccess } = useCourseAccess(paymentEnabled ? card.courseId : null)
+  const checkoutTariff = paymentAccess?.paid && !paymentAccess.has_access ? paymentAccess.tariff_id : null
   const done = progress?.done ?? 0
   const total = progress?.total ?? 0
   const ladder = progress ? courseLadder(progress.modules, openByModule, done, total) : null
@@ -177,7 +180,11 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
       <div className="stu-mc-access" data-testid="course-access" data-kind={access.kind}>
         <span className="min-w-0">{access.text}</span>
         {/* «Моя подписка» не выводим — ссылка; оплата (оформить / продлить) остаётся. */}
-        {access.action && access.kind !== 'subscription' && (
+        {checkoutTariff ? (
+          <Link to={`/subscribe/checkout/${checkoutTariff}`} className="stu-btn stu-btn-o stu-btn-sm" data-testid="course-subscribe">
+            {paymentAccess?.status && paymentAccess.status !== 'pending' ? 'Продлить подписку' : 'Оформить подписку'}
+          </Link>
+        ) : access.action && access.kind !== 'subscription' && (
           <Link to={access.action.to} className={access.action.primary ? 'stu-btn stu-btn-o stu-btn-sm' : 'stu-link'}>
             {access.action.label}
           </Link>
@@ -296,6 +303,7 @@ export function MyCoursesPage() {
             access={accessLine(subByCourse.get(card.courseId), { teacher: card.teacher, group: card.groupName })}
             mockExams={mocksByGroup[card.groupId] ?? []}
             wide={cards.length === 1}
+            paymentEnabled={subscriptionsOn.enabled && !preview}
           />
         ))}
       </div>
