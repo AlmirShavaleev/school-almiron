@@ -20,6 +20,7 @@ const path = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   fetchSubscriptionsEnabled: vi.fn(),
   fetchMySubscriptions: vi.fn(),
+  fetchEnrolledCourseIds: vi.fn(),
 }))
 vi.mock('@/lib/studentPath', async (orig) => ({ ...(await orig<object>()), ...path }))
 vi.mock('@/lib/subscription/api', async (orig) => ({ ...(await orig<object>()), ...api }))
@@ -63,6 +64,7 @@ beforeEach(() => {
   } as never)
   api.fetchSubscriptionsEnabled.mockResolvedValue(true)
   api.fetchMySubscriptions.mockResolvedValue([])
+  api.fetchEnrolledCourseIds.mockResolvedValue([])
 })
 
 describe('анкета /start', () => {
@@ -121,6 +123,16 @@ const CARDS: ShowcaseCard[] = [
 ]
 
 describe('«Курсы»', () => {
+  it('зачисленный курс не попадает в витрину, даже если не оплачен', async () => {
+    path.fetchShowcase.mockResolvedValue(CARDS)
+    api.fetchEnrolledCourseIds.mockResolvedValue(['c1'])
+    renderAt('/courses', <Route path="/courses" element={<CoursesPage />} />)
+    const cards = await screen.findAllByTestId('course-card')
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toHaveAttribute('data-slug', 'math-ege-part1')
+    expect(screen.queryByText('Физика ЕГЭ')).toBeNull()
+  })
+
   const route = <Route path="/courses" element={<CoursesPage />} />
 
   it('после анкеты курс предмета первым; цены месяц/год и −20 %; переключатель периода ведёт на нужный тариф', async () => {

@@ -70,7 +70,7 @@ export function StudentNav() {
     { key: 'mocks', label: 'Пробники', icon: <Timer size={18} aria-hidden />, to: '/my-mock-exams' },
     ...more,
   ]
-  const moreActive = /^\/(subscription|settings|my-mock-exams)/.test(pathname)
+  const moreActive = /^\/(subscription|my-subscription|courses|settings|my-mock-exams)/.test(pathname)
 
   return (
     <>

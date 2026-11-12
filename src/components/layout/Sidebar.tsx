@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
   // Student navigation (grouped)
   { label: 'Мой кабинет',       path: '/student',        icon: <GraduationCap size={18} />, roles: ['student'],  section: '' },
 
-  { label: 'Мой курс',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
+  { label: 'Мои курсы',          path: '/my-course',      icon: <BookOpen size={18} />,      roles: ['student'],  section: 'Учёба' },
   { label: 'Домашние задания',  path: '/my-homework',    icon: <ClipboardCheck size={18} />, roles: ['student'], section: 'Учёба' },
   { label: 'Каталог заданий',   path: '/catalog',        icon: <ClipboardList size={18} />, roles: ['student'],  section: 'Учёба' },
   // §228. Все пробники ученика по всем его группам. Прежний скрытый пункт вёл на
@@ -50,7 +50,7 @@ const navItems: NavItem[] = [
   // не читает (§215/§221), то есть на пустой экран. Новый — `my_mock_exams`.
   { label: 'Пробники',          path: '/my-mock-exams',  icon: <Timer size={18} />, roles: ['student'],  section: 'Учёба' },
   // §290-B. Витрина подписочных курсов — только тем, кому подписка открыта.
-  { label: 'Курсы',             path: '/courses',        icon: <Store size={18} />,         roles: ['student'],  section: 'Учёба', flag: 'subscriptions' },
+  { label: 'Витрина курсов',    path: '/courses',        icon: <Store size={18} />,         roles: ['student'],  section: 'Учёба', flag: 'subscriptions' },
 
   // 13.10, владелец: у ученика пункта «Конструктор вариантов» нет (был с §124).
   // Страница и маршрут остались — вход по прямой ссылке и у персонала ниже.
@@ -60,7 +60,7 @@ const navItems: NavItem[] = [
   // 14.10, владелец: «Достижения» (и раздел «Успехи») убраны — баллы школы и
   // награды выключены совсем; /achievements ведёт на главную.
 
-  { label: 'Моя подписка',      path: '/my-subscription', icon: <CreditCard size={18} />,   roles: ['student'],  section: 'Аккаунт', flag: 'subscriptions' },
+  { label: 'Оплата',            path: '/my-subscription', icon: <CreditCard size={18} />,   roles: ['student'],  section: 'Аккаунт', flag: 'subscriptions' },
   { label: 'Уведомления',       path: '/notifications',  icon: <Bell size={18} />,          roles: ['student'],  section: 'Аккаунт' },
   { label: 'Настройки',         path: '/settings',       icon: <Settings size={18} />,      roles: ['student'],  section: 'Аккаунт' },
 

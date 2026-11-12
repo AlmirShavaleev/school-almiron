@@ -387,13 +387,13 @@ describe('меню ученика', () => {
     render(<MemoryRouter initialEntries={['/student']}><Sidebar open onClose={() => {}} /></MemoryRouter>)
     await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve() })
   }
-  it('флаг включён — пункт «Моя подписка»', async () => {
+  it('флаг включён — пункт «Оплата»', async () => {
     await renderMenu()
-    expect(screen.getByRole('link', { name: /Моя подписка/ })).toHaveAttribute('href', '/my-subscription')
+    expect(screen.getByRole('link', { name: /^Оплата$/ })).toHaveAttribute('href', '/my-subscription')
   })
   it('флаг выключен — пункта нет', async () => {
     api.fetchSubscriptionsEnabled.mockResolvedValue(false)
     await renderMenu()
-    expect(screen.queryByRole('link', { name: /Моя подписка/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^Оплата$/ })).toBeNull()
   })
 })

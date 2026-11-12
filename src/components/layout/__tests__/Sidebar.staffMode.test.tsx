@@ -84,7 +84,7 @@ describe('Sidebar в режимах представления', () => {
     localStorage.setItem(`almiron:staff-mode:${OWNER_PROFILE_ID}`, 'student')
     renderSidebar()
 
-    expect(await screen.findByText('Мой курс')).toBeInTheDocument()
+    expect(await screen.findByText('Мои курсы')).toBeInTheDocument()
     expect(screen.getByText('Домашние задания')).toBeInTheDocument()
     expect(screen.getByText('Ученик · предпросмотр')).toBeInTheDocument()
     expect(screen.queryByText('Панель админа')).not.toBeInTheDocument()

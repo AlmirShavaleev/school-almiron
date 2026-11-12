@@ -424,3 +424,18 @@ export function setPromoActive(id: string, on: boolean): Promise<void> {
 export function fetchPromoRedemptions(codeId: string | null = null): Promise<PromoRedemptionRow[]> {
   return rpc<PromoRedemptionRow[]>('admin_promo_redemptions', { p_code_id: codeId }).then((d) => d ?? [])
 }
+
+
+/** Витрина не смешивается с курсами, в группы которых ученик уже зачислен. */
+export async function fetchEnrolledCourseIds(profileId: string): Promise<string[]> {
+  const { data: student, error: studentError } = await supabase.from('students').select('id').eq('profile_id', profileId).maybeSingle()
+  if (studentError) fail(studentError)
+  if (!student) return []
+  const { data, error } = await supabase.from('group_students').select('groups(course_id)').eq('student_id', student.id)
+  if (error) fail(error)
+  const rows = (data ?? []) as unknown as Array<{ groups: { course_id: string | null } | Array<{ course_id: string | null }> | null }>
+  return [...new Set(rows.flatMap(row => {
+    const groups = Array.isArray(row.groups) ? row.groups : row.groups ? [row.groups] : []
+    return groups.flatMap(group => group.course_id ? [group.course_id] : [])
+  }))]
+}

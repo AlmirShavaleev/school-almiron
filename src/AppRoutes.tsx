@@ -300,12 +300,12 @@ export default function AppRoutes() {
             SubscriptionsOnly: без флага подписки (не тестировщик) — на главную, без цен и оплаты. */}
         <Route path="/subscribe/checkout/:tariffId" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionCheckoutPage /></SubscriptionsOnly></RoleGuard>} />
         <Route path="/subscribe/result" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionResultPage /></SubscriptionsOnly></RoleGuard>} />
-        {/* Меню ученика (письмо 16.10): «Курсы» и «Моя подписка» — один экран «Подписка и курсы».
-            Старые адреса — редирект с сохранением параметров (?started=…, ?from=start…). */}
-        <Route path="/subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionHubPage /></SubscriptionsOnly></RoleGuard>} />
-        <Route path="/my-subscription" element={<KeepQueryRedirect to="/subscription" />} />
+        {/* Витрина и оплата разделены. Старый общий адрес сохраняет параметры
+            и ведёт на оплату; зачисленные группы находятся в /my-course. */}
+        <Route path="/subscription" element={<KeepQueryRedirect to="/my-subscription" />} />
+        <Route path="/my-subscription" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionHubPage tab="payments" /></SubscriptionsOnly></RoleGuard>} />
         {/* §290-B. Витрина «Курсы» и анкета ученика «с улицы». */}
-        <Route path="/courses" element={<KeepQueryRedirect to="/subscription" />} />
+        <Route path="/courses" element={<RoleGuard allow={['student']} preview="stub"><SubscriptionsOnly><SubscriptionHubPage tab="courses" /></SubscriptionsOnly></RoleGuard>} />
         <Route path="/start" element={<RoleGuard allow={['student']} preview="stub"><OnboardingPage /></RoleGuard>} />
         {/* §289. Стартовая диагностика и её результат. */}
         <Route path="/diagnostic" element={<RoleGuard allow={['student']} preview="stub"><DiagnosticPage /></RoleGuard>} />

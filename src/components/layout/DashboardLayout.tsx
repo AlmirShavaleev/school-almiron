@@ -79,7 +79,9 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/my-journal$/, 'Журнал занятий и заданий'],
   [/^\/notifications$/, 'Уведомления'],
   [/^\/settings$/, 'Настройки'],
-  [/^\/subscription$/, 'Подписка и курсы'],
+  [/^\/subscription$/, 'Оплата'],
+  [/^\/my-subscription$/, 'Оплата'],
+  [/^\/courses$/, 'Витрина курсов'],
 ]
 
 export function DashboardLayout() {

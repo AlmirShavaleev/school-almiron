@@ -24,9 +24,11 @@ export function subscriptionTag(subs: readonly SubLike[], now: Date = new Date()
 /** Названия страниц в шапке у ученика — по пунктам нового меню. */
 const STUDENT_TITLES: Array<[RegExp, string]> = [
   [/^\/student\/?$/, 'Главная'],
-  [/^\/my-course\/?$/, 'Курсы'],
+  [/^\/my-course\/?$/, 'Мои курсы'],
   [/^\/catalog/, 'Банк задач'],
-  [/^\/subscription\/?$/, 'Подписка и курсы'],
+  [/^\/subscription\/?$/, 'Оплата'],
+  [/^\/my-subscription\/?$/, 'Оплата'],
+  [/^\/courses\/?$/, 'Витрина курсов'],
 ]
 
 export function studentPageTitle(pathname: string): string | null {

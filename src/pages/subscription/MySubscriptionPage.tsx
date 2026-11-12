@@ -192,10 +192,10 @@ export function MySubscriptionPage({ embedded = false }: { embedded?: boolean } 
       )}
       {isLoading && <p className="stu-muted">Загружаем…</p>}
       {error && <p className="text-[var(--redInk)]">Не удалось загрузить подписку. Обновите страницу.</p>}
-      {!embedded && !isLoading && !error && (data ?? []).length === 0 && (
+      {!isLoading && !error && (data ?? []).length === 0 && (
         <div className="stu-card flex flex-col items-start gap-3 p-6">
           <p className="text-[17px] font-bold">Подписки пока нет.</p>
-          <Link to="/subscription" className="stu-btn stu-btn-p">Выбрать курс</Link>
+          <Link to="/courses" className="stu-btn stu-btn-p">Выбрать курс</Link>
         </div>
       )}
       {(data ?? []).map((s) => (

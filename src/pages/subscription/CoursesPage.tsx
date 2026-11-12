@@ -14,6 +14,9 @@
  * согласия, промокод, ЮKassa; пробный — там же главной кнопкой.
  * После анкеты (`?from=start&subject=…`) курс выбранного предмета — первым.
  */
+import { useQuery } from '@tanstack/react-query'
+import { useAuthStore } from '@/store/authStore'
+import { fetchEnrolledCourseIds } from '@/lib/subscription/api'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check } from 'lucide-react'
@@ -156,15 +159,17 @@ export function CoursesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const subject = params.get('subject')
   const { data, isLoading, error } = useShowcase()
   const mine = useMySubscriptions()
+  const profileId = useAuthStore(s => s.profile?.id)
+  const enrolled = useQuery({ queryKey: ['subscription', 'enrolled', profileId], queryFn: () => fetchEnrolledCourseIds(profileId!), enabled: !!profileId, staleTime: 30_000 })
   const [period, setPeriod] = useState<Period>(1)
 
   const cards = useMemo(() => {
-    const list = [...(data ?? [])]
+    const own = new Set(enrolled.data ?? [])
+    const list = (data ?? []).filter(card => !card.course_id || !own.has(card.course_id))
     // курс предмета из анкеты — первым (сортировка устойчивая)
     if (subject) list.sort((a, b) => Number(b.subject === subject && b.status === 'live') - Number(a.subject === subject && a.status === 'live'))
     return embedded ? list.filter((c) => !isSubscribed(c)) : list
-  }, [data, subject, embedded])
-  const hasSubscribed = (data ?? []).some(isSubscribed)
+  }, [data, subject, embedded, enrolled.data])
   // переключатель нужен, только если есть что выбирать: курс без подписки с годовым тарифом
   const hasYear = cards.some((c) => c.status === 'live' && c.year_price != null && !isSubscribed(c))
   const maxDiscount = Math.max(0, ...cards.map((c) => c.year_discount_pct ?? 0))
@@ -176,7 +181,7 @@ export function CoursesPage({ embedded = false }: { embedded?: boolean } = {}) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           {embedded ? (
-            <h2 className="stu-h3">{hasSubscribed ? 'Другие курсы' : 'Курсы'}</h2>
+            <h2 className="stu-h3">Доступные курсы</h2>
           ) : (<>
             <span className="stu-kicker">Подписка</span>
             <h1 className="stu-h2">Курсы</h1>
@@ -203,18 +208,19 @@ export function CoursesPage({ embedded = false }: { embedded?: boolean } = {}) {
         )}
       </div>
 
-      {isLoading && <p className="stu-muted">Загружаем курсы…</p>}
-      {error && <p className="text-[var(--redInk)]">Не удалось загрузить курсы. Обновите страницу.</p>}
-      {!isLoading && !error && cards.length === 0 && (
+      {(isLoading || enrolled.isLoading) && <p className="stu-muted">Загружаем курсы…</p>}
+      {(error || enrolled.error) && <p className="text-[var(--redInk)]">Не удалось загрузить курсы. Обновите страницу.</p>}
+      {!isLoading && !enrolled.isLoading && !error && !enrolled.error && cards.length === 0 && (
         <div className="stu-card flex flex-col gap-2 p-6" data-testid="courses-unavailable">
-          <p className="text-[17px] font-bold">Оформление подписки пока недоступно.</p>
-          <p className="stu-muted text-[14.5px]">Если вам дали ссылку или код курса — вступите по ним.</p>
+          <p className="text-[17px] font-bold">Новых курсов пока нет.</p>
+          <p className="stu-muted text-[14.5px]">Курсы, в которые вы уже зачислены, находятся в разделе «Мои курсы».</p>
           <Link to="/join" className="stu-link">Вступить по коду</Link>
         </div>
       )}
 
       <div className="stu-mc-grid">
-        {cards.map((c, i) => (
+        {!enrolled.isLoading && !enrolled.error &&
+        cards.map((c, i) => (
           <CourseCard
             key={c.id}
             card={c}

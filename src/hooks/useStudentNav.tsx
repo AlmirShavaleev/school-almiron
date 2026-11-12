@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, ClipboardCheck, House, LibraryBig, LogOut, Settings, ShoppingBag, Star, Timer } from 'lucide-react'
+import { BookOpen, ClipboardCheck, House, CreditCard, LibraryBig, LogOut, Settings, ShoppingBag, Star, Timer } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHomeworkToDoCount } from '@/hooks/useMyTopicHomework'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
@@ -27,17 +27,17 @@ export function useStudentNav() {
 
   const main: Item[] = [
     { key: 'home', label: 'Главная', to: '/student', icon: <House size={22} aria-hidden />, match: /^\/student\/?$/ },
-    { key: 'courses', label: 'Курсы', to: '/my-course', icon: <BookOpen size={22} aria-hidden />, match: /^\/my-course/ },
+    { key: 'courses', label: 'Мои курсы', to: '/my-course', icon: <BookOpen size={22} aria-hidden />, match: /^\/my-course/ },
     { key: 'hw', label: 'ДЗ', to: '/my-homework', icon: <ClipboardCheck size={22} aria-hidden />, match: /^\/my-homework/, badge: todo },
     { key: 'bank', label: 'Банк', to: '/catalog', icon: <LibraryBig size={22} aria-hidden />, match: /^\/catalog/ },
     { key: 'mocks', label: 'Пробники', to: '/my-mock-exams', icon: <Timer size={22} aria-hidden />, match: /^\/my-mock-exams/ },
   ]
 
   const more: MoreItem[] = useMemo(() => [
-    ...(subs.enabled ? [{
-      key: 'subscription', label: 'Подписка и курсы', icon: <ShoppingBag size={18} aria-hidden />, to: '/subscription',
-      tag: subscriptionTag(mine ?? []),
-    }] : []),
+    ...(subs.enabled ? [
+      { key: 'storefront', label: 'Витрина курсов', icon: <ShoppingBag size={18} aria-hidden />, to: '/courses' },
+      { key: 'subscription', label: 'Оплата', icon: <CreditCard size={18} aria-hidden />, to: '/my-subscription', tag: subscriptionTag(mine ?? []) },
+    ] : []),
     { key: 'settings', label: 'Настройки', icon: <Settings size={18} aria-hidden />, to: '/settings' },
     // Ученик-куратор (§курирую): его разделы — здесь, чтобы не потерять доступ.
     ...(curator.isCurator ? [

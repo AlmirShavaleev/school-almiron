@@ -127,7 +127,7 @@ export function SubscriptionCheckoutPage() {
       <div className="p-6" role="alert">
         <p>Не удалось загрузить данные подписки. Попробуйте ещё раз.</p>
         <Button onClick={() => { void tariffs.refetch(); void mine.refetch() }}>Повторить</Button>
-        <Link to="/subscription" className="mt-2 block text-primary-600 underline">К курсам</Link>
+        <Link to="/courses" className="mt-2 block text-primary-600 underline">К курсам</Link>
       </div>
     )
   }

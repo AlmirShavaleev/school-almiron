@@ -30,7 +30,7 @@ describe('меню ученика', () => {
   it('компьютер: 5 пунктов и «Ещё»; активный — ДЗ со счётчиком «сдать»', () => {
     renderAt('/my-homework')
     const rail = screen.getByTestId('student-rail')
-    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Курсы', '3ДЗ', 'Банк', 'Пробники'])
+    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Мои курсы', '3ДЗ', 'Банк', 'Пробники'])
     expect(within(rail).getByTestId('student-nav-hw')).toHaveAttribute('aria-current', 'page')
     expect(within(rail).getByTestId('student-nav-bank')).toHaveAttribute('href', '/catalog')
   })
@@ -40,16 +40,16 @@ describe('меню ученика', () => {
     fireEvent.click(screen.getByTestId('student-nav-more'))
     const pop = screen.getByTestId('student-more-pop')
     // метка приходит из my_subscriptions (тот же access_until, что на карточке)
-    await waitFor(() => expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Подписка и курсыдо 18 нояб', 'Настройки', 'Выйти']))
+    await waitFor(() => expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Витрина курсов', 'Оплатадо 18 нояб', 'Настройки', 'Выйти']))
     fireEvent.click(within(pop).getByTestId('student-more-subscription'))
-    expect(screen.getByTestId('where')).toHaveTextContent('/subscription')
+    expect(screen.getByTestId('where')).toHaveTextContent('/my-subscription')
     expect(screen.queryByTestId('student-more-pop')).toBeNull()
   })
 
   it('телефон: панель на 5 мест (без «Пробников»), «Пробники» — в листе «Ещё»', () => {
     renderAt('/student')
     const bar = screen.getByTestId('student-tabbar')
-    expect(within(bar).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Курсы', '3ДЗ', 'Банк'])
+    expect(within(bar).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Мои курсы', '3ДЗ', 'Банк'])
     fireEvent.click(within(bar).getByTestId('student-tab-more'))
     const sheet = screen.getByTestId('student-more-sheet')
     expect(within(sheet).getAllByRole('menuitem')[0]).toHaveTextContent('Пробники')
@@ -71,9 +71,11 @@ describe('правила меню', () => {
 
   it('названия страниц ученика по пунктам меню', () => {
     expect(studentPageTitle('/student')).toBe('Главная')
-    expect(studentPageTitle('/my-course')).toBe('Курсы')
+    expect(studentPageTitle('/my-course')).toBe('Мои курсы')
     expect(studentPageTitle('/catalog/abc')).toBe('Банк задач')
-    expect(studentPageTitle('/subscription')).toBe('Подписка и курсы')
+    expect(studentPageTitle('/subscription')).toBe('Оплата')
+    expect(studentPageTitle('/courses')).toBe('Витрина курсов')
+    expect(studentPageTitle('/my-subscription')).toBe('Оплата')
     expect(studentPageTitle('/my-course/g1')).toBeNull()
   })
 })
