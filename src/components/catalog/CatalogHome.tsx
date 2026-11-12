@@ -7,10 +7,9 @@ import { useCatalogOverview } from '@/hooks/useCatalogOverview'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { CATALOG_SUBSCRIBE_HREF } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
-import { DIRECTIONS } from '@/hooks/useCatalog'
 import {
   examBars, examChips, examHref, examSubtitle, formatCount, isDimmed, numberRange, overallRank,
-  solvedCaption, subjectGlyph, subjectRows, subjectTone, summaryChips, summaryState, tasksWord,
+  solvedCaption, subjectRows, subjectTone, summaryChips, summaryState, tasksWord,
   BAR_MAX_PX,
   type CatalogOverview, type Chip, type OverviewExam, type SubjectTone,
 } from '@/lib/catalogOverview'
@@ -25,9 +24,8 @@ import {
  * решённое; сравнение со школой — только ученику (`compare`).
  *
  * Раскладку и тексты считает `lib/catalogOverview`, здесь только отрисовка.
- * Пока цифры грузятся (или не загрузились), карточки экзаменов стоят сразу —
- * с числами задач из DIRECTIONS, как было на лендинге (§ 2026-07-30: лендинг
- * не должен ничего ждать, чтобы в каталог можно было войти).
+ * Направления показывает только после ответа БД с проверкой подписки.
+ * При загрузке или ошибке чужие предметы не появляются даже временно.
  */
 
 const LEAD = 'Решай по номерам и отмечай «Выполнено» — здесь видно, где ты уже силён, а какие номера ещё не трогал'
@@ -85,7 +83,7 @@ export function CatalogHome() {
           {loading && <SummarySkeleton />}
           {error && !loading && (
             <div role="status" data-testid="catalog-home-error" className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
-              <span>Не удалось загрузить статистику — разделы открываются как обычно.</span>
+              <span>Не удалось загрузить доступные разделы каталога. Попробуйте ещё раз.</span>
               <button
                 type="button"
                 onClick={retry}
@@ -96,7 +94,7 @@ export function CatalogHome() {
               </button>
             </div>
           )}
-          <FallbackRows loading={loading} />
+
         </>
       )}
     </div>
@@ -334,44 +332,3 @@ function Bars({ e, tone }: { e: OverviewExam; tone: SubjectTone }) {
   )
 }
 
-// ─── Пока цифр нет ───────────────────────────────────────────────────────────
-
-/**
- * Четыре карточки из DIRECTIONS — сразу, без ожидания: вход в номера работает
- * и до ответа функции, и если она упала. Столбиков нет — только число задач.
- */
-function FallbackRows({ loading }: { loading: boolean }) {
-  const subjects = [...new Set(DIRECTIONS.map(d => d.subject))]
-  return (
-    <>
-      {subjects.map(subject => {
-        const tone = subjectTone(subject)
-        return (
-          <SubjectBlock key={subject} subject={subject} tone={tone} glyph={subjectGlyph(subject)} solved={0}>
-            {DIRECTIONS.filter(d => d.subject === subject).map(d => (
-              <article
-                key={d.key}
-                data-testid="exam-card"
-                data-exam={`${d.subject} ${d.examType}`}
-                className={cn('relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3.5 rounded-card border border-gray-200 bg-white px-[18px] pb-3.5 pt-[18px] transition-shadow hover:shadow-card', TONE_HOVER[tone])}
-              >
-                <ExamHead subject={d.subject} examType={d.examType}>
-                  <b className="block text-2xl font-extrabold leading-none tabular-nums text-gray-900">{formatCount(d.taskCount)}</b>
-                  <span className="text-xs text-gray-500">{tasksWord(d.taskCount)}</span>
-                </ExamHead>
-                {loading && <div aria-hidden="true" className="h-[88px] animate-pulse rounded-xl bg-gray-100" />}
-                <Link
-                  to={examHref(d.subject, d.examType)}
-                  className="flex items-center justify-between border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-900 after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-400"
-                >
-                  <span>Открыть номера</span>
-                  <span aria-hidden="true" className={TONE_GO[tone]}>→</span>
-                </Link>
-              </article>
-            ))}
-          </SubjectBlock>
-        )
-      })}
-    </>
-  )
-}

@@ -58,12 +58,7 @@ describe('Catalog error states', () => {
     })
   })
 
-  it('лендинг каталога: статистика не загрузилась — карточки с числами на месте, «Повторить» есть', () => {
-    // До §246 здесь проверялось, что лендинг ничего не грузит: числа зафиксированы
-    // в DIRECTIONS (RPC счётчиков занимала 2645 мс на проде). С §246 главная
-    // рисует столбики из catalog_my_overview(); если функция упала (или ещё не
-    // применена), карточки экзаменов с числами из DIRECTIONS всё равно стоят и
-    // ведут в номера, а сверху — строка с «Повторить».
+  it('лендинг каталога: ошибка доступа — направления скрыты, «Повторить» есть', () => {
     mocks.useCatalogOverview.mockReturnValue({ overview: null, loading: false, error: 'overview failed', retry: vi.fn() })
     render(
       <MemoryRouter initialEntries={['/catalog']}>
@@ -73,9 +68,8 @@ describe('Catalog error states', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId('exam-card')).toBeInTheDocument()
-    expect(screen.getByText('9 515')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Открыть номера/ })).toHaveAttribute('href', '/catalog?subject=math&exam=ege')
+    expect(screen.queryByTestId('exam-card')).toBeNull()
+    expect(screen.queryByRole('link', { name: /Открыть номера/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(document.querySelector('.animate-pulse')).toBeNull()
   })

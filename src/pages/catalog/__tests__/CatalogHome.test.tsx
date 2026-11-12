@@ -178,14 +178,12 @@ describe('CatalogHome — персонал (§246.1)', () => {
 })
 
 describe('CatalogHome — пока цифр нет', () => {
-  it('загрузка: карточки экзаменов и вход в номера сразу, с числами из DIRECTIONS', () => {
+  it('загрузка: направления скрыты до ответа БД', () => {
     state.role = 'student'
     state.hook = { overview: null, loading: true, error: null, retry: vi.fn() }
     render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
     expect(screen.getByTestId('summary-skeleton')).toBeInTheDocument()
-    expect(screen.getAllByTestId('exam-card')).toHaveLength(4)
-    expect(within(card('Математика ЕГЭ')).getByText('9 515')).toBeInTheDocument()
-    expect(within(card('Физика ОГЭ')).getByRole('link')).toHaveAttribute('href', '/catalog?subject=physics&exam=oge')
+    expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
   })
 
   it('§292: предмет без подписки — замок «Откроется с подпиской», номера и карточка не ссылки; остальные — как были', () => {
@@ -217,8 +215,8 @@ describe('CatalogHome — пока цифр нет', () => {
     state.role = 'student'
     state.hook = { overview: null, loading: false, error: 'function catalog_my_overview does not exist', retry }
     render(<MemoryRouter initialEntries={['/catalog']}><CatalogPage /></MemoryRouter>)
-    expect(screen.getByTestId('catalog-home-error')).toHaveTextContent('Не удалось загрузить статистику')
-    expect(screen.getAllByTestId('exam-card')).toHaveLength(4)
+    expect(screen.getByTestId('catalog-home-error')).toHaveTextContent('Не удалось загрузить доступные разделы')
+    expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
@@ -230,5 +228,19 @@ describe('CatalogHome — пока цифр нет', () => {
     // CATALOG_SUBSCRIBE_HREF = null в этой ветке — кнопки оформления нет
     expect(screen.queryByTestId('catalog-locked-subscribe')).toBeNull()
     expect(screen.queryAllByTestId('exam-card')).toHaveLength(0)
+  })
+})
+
+
+describe('CatalogHome — направления из проверки подписки БД', () => {
+  it.each([['Физика'], ['Математика'], ['Физика', 'Математика']])('показывает только разрешённые ЕГЭ: %j', (...subjects) => {
+    state.role = 'student'
+    const data = raw('active')
+    data.exams = data.exams.filter(e => e.exam_type === 'ЕГЭ' && subjects.includes(e.subject))
+    state.hook = { overview: normalizeCatalogOverview(data), loading: false, error: null, retry: vi.fn() }
+    render(<MemoryRouter><CatalogPage /></MemoryRouter>)
+    expect(screen.getAllByTestId('exam-card')).toHaveLength(subjects.length)
+    expect(screen.getAllByTestId('exam-card').map(c => c.dataset.exam).sort()).toEqual(subjects.map(s => `${s} ЕГЭ`).sort())
+    expect(screen.queryByText('ОГЭ')).toBeNull()
   })
 })
