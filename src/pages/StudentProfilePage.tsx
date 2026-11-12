@@ -1,3 +1,4 @@
+import { StudentBillingSummary } from '@/components/student/StudentBillingSummary'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { StudentGoalsStaffBlock } from '@/components/student/StudentGoalsStaffBlock'
 import {
@@ -62,6 +63,7 @@ export function StudentProfilePage() {
   const tab = searchParams.get('tab') === 'report' ? 'report' : 'card'
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner'
   const [groupsExpanded, setGroupsExpanded] = useState(false)
   const openReport = () => navigate(`/students/${id}?tab=report`, { replace: true })
 
@@ -222,6 +224,17 @@ export function StudentProfilePage() {
 
       {tab === 'card' && (
       <>
+      {isAdmin && s.student_id && <StudentBillingSummary key={s.student_id} studentId={s.student_id} email={s.email} />}
+      {/* Enrolled courses */}
+      {s.student_id && (
+        <EnrolledCoursesSection
+          studentId={s.student_id}
+          studentFullName={s.full_name}
+          currentRole={currentUserRole}
+          focusCourseId={focusCourseId}
+        />
+      )}
+
       {/*
         Плитки посещаемости, ДЗ и пробников сняты 2026-08-09 (§111, решение
         оркестратора): они стояли на мёртвых таблицах — `attendance` 0
@@ -257,15 +270,6 @@ export function StudentProfilePage() {
           здесь секция без них (сигналы внимания, слабые темы, обратная связь — на месте). */}
       {s.student_id && <StudentInsightSection studentId={s.student_id} profileId={s.profile_id ?? null} showNumbers={false} />}
 
-      {/* Enrolled courses */}
-      {s.student_id && (
-        <EnrolledCoursesSection
-          studentId={s.student_id}
-          studentFullName={s.full_name}
-          currentRole={currentUserRole}
-          focusCourseId={focusCourseId}
-        />
-      )}
       </>
       )}
 

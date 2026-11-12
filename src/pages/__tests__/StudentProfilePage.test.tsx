@@ -82,8 +82,10 @@ vi.mock('@/components/report/StudentReportTab', () => ({
   ),
 }))
 
+const authRole = vi.hoisted(() => ({ value: 'teacher' }))
+beforeEach(() => { authRole.value = 'teacher' })
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector: any) => selector({ profile: { role: 'teacher' } }),
+  useAuthStore: (selector: any) => selector({ profile: { role: authRole.value } }),
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -392,5 +394,25 @@ describe('StudentProfilePage — «Ученик целиком» (§261)', () =>
   it('во вкладке отчёта кнопки «Отчёт родителю» нет — она уже открыта', () => {
     renderPage('/students/student-1?tab=report')
     expect(screen.queryByTestId('student-open-report')).not.toBeInTheDocument()
+  })
+})
+
+vi.mock('@/components/student/StudentBillingSummary', () => ({ StudentBillingSummary: () => <div data-testid="student-billing" /> }))
+
+describe('финансы в карточке', () => {
+  beforeEach(() => {
+    useStudentProfileMock.mockReturnValue({ data: baseProfile, loading: false })
+    useStudentCourseMembershipsMock.mockReturnValue({ courses: [], loading: false, reload: vi.fn() })
+  })
+  it('учитель не получает финансовый блок', () => {
+    renderPage()
+    expect(screen.queryByTestId('student-billing')).not.toBeInTheDocument()
+  })
+  it('администратор видит финансы вместе с курсами и учебной сводкой', () => {
+    authRole.value = 'admin'
+    renderPage()
+    expect(screen.getByTestId('student-billing')).toBeInTheDocument()
+    expect(screen.getByText('Курсы ученика')).toBeInTheDocument()
+    expect(screen.getByTestId('student-overview')).toBeInTheDocument()
   })
 })
