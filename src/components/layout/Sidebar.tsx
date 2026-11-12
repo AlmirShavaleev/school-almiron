@@ -71,6 +71,7 @@ const navItems: NavItem[] = [
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
   // §282. Без флага: тарифы и тексты заводятся ДО включения подписки.
   { label: 'Подписка',          path: '/admin/subscriptions', icon: <CreditCard size={18} />, roles: ['admin', 'owner'] },
+  { label: 'Финансы', path: '/admin/finance', icon: <BarChart3 size={18} />, roles: ['admin', 'owner'] },
   { label: 'Скорость',          path: '/admin/perf',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
@@ -136,7 +137,7 @@ function activeNavPath(paths: readonly string[], pathname: string): string | nul
 }
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/perf'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/finance', '/admin/perf'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы

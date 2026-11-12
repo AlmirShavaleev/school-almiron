@@ -20,6 +20,7 @@ const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teac
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const SubscriptionsAdminPage = lazyPage('SubscriptionsAdminPage', () => import('@/pages/admin/SubscriptionsAdminPage').then(m => ({ default: m.SubscriptionsAdminPage })))
+const FinancePage = lazyPage('FinancePage', () => import('@/pages/admin/FinancePage').then(m => ({ default: m.FinancePage })))
 const PerfAdminPage = lazyPage('PerfAdminPage', () => import('@/pages/admin/PerfAdminPage').then(m => ({ default: m.PerfAdminPage })))
 const SupportRequestsPage = lazyPage('SupportRequestsPage', () => import('@/pages/admin/SupportRequestsPage').then(m => ({ default: m.SupportRequestsPage })))
 const CartPage = lazyPage('CartPage', () => import('@/pages/CartPage').then(m => ({ default: m.CartPage })))
@@ -177,6 +178,7 @@ export default function AppRoutes() {
         <Route path="/admin/support" element={<RoleGuard allow={['admin','owner']}><SupportRequestsPage /></RoleGuard>} />
         {/* §282. Подписка: тарифы, подписчики, платежи, флаг. Доступна до включения флага — тарифы заводят заранее. */}
         <Route path="/admin/subscriptions" element={<RoleGuard allow={['admin','owner']}><SubscriptionsAdminPage /></RoleGuard>} />
+        <Route path="/admin/finance" element={<RoleGuard allow={['admin','owner']}><FinancePage /></RoleGuard>} />
         <Route path="/admin/perf" element={<RoleGuard allow={['admin','owner']}><PerfAdminPage /></RoleGuard>} />
 
         {/* Только персонал (teacher/curator/admin/owner) */}

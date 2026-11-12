@@ -34,6 +34,7 @@ import '@/components/student/skin/student.css'
  * с «Программой курса», «Тестами» и всеми ученическими страницами.
  */
 const PAGE_TITLES: Array<[RegExp, string]> = [
+  [/^\/admin\/finance/, 'Финансы'],
   [/^\/dashboard$/, 'Главная'],
   [/^\/student\/variants\/generate$/, 'Конструктор вариантов'],
   [/^\/student\/variants\/stats$/, 'Статистика по номерам'],
@@ -41,6 +42,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/student\/variants/, 'Тренировочные варианты'],
   [/^\/student$/, 'Мой кабинет'],
   [/^\/teacher$/, 'Кабинет учителя'],
+  [/^\/admin\/finance/, 'Финансы'],
   [/^\/admin\/telegram/, 'Журнал Telegram'],
   [/^\/admin$/, 'Панель админа'],
   [/^\/groups\/[^/]+$/, 'Панель группы'],
