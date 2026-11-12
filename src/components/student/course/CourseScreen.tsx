@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BookOpen, ClipboardCheck, FileText, Lock, Play, ListChecks } from 'lucide-react'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { plural } from '@/lib/plural'
 import { Sticker } from '@/components/student/skin/Sticker'
@@ -8,6 +8,7 @@ import type { StickerName } from '@/components/student/skin/skin'
 import { DualRing } from '@/components/student/course/DualRing'
 import type { CourseLadder, AccessLine } from '@/lib/myCourses'
 import type { HwChips, LessonTile, SectionTile } from '@/lib/courseScreen'
+import type { TopicProgress } from '@/hooks/useStudentCourseProgram'
 
 /**
  * Страница курса ученика в стиле ЛК (письмо ЛК_стиль_страница_курса.md, 15.10;
@@ -220,21 +221,36 @@ export function SectionHero({ tile, chips, courseTitle, onBack, openLine }: {
   )
 }
 
-const LESSON_CLASS: Record<LessonTile['state'], string> = {
-  done: 'stu-lt', review: 'stu-lt', hw: 'stu-lt is-hw', open: 'stu-lt', nohw: 'stu-lt', locked: 'stu-lt is-locked',
-}
-const FOOT: Record<LessonTile['state'], string> = {
-  done: 'f-ok', review: 'f-rev', hw: 'f-hw', open: 'f-open', nohw: 'f-open', locked: 'f-lock',
+/** Detailed lesson cards. Availability and homework state still come from lessonTile. */
+type LessonDetails = Pick<TopicProgress, 'sections' | 'hw_id' | 'hw_status' | 'hw_due_at' | 'hw_score' | 'hw_max' | 'tasks_total' | 'tasks_closed' | 'lesson_format'>
+
+function lessonResources(details?: LessonDetails) {
+  const sections = details?.sections
+  if (!sections) return []
+  return [
+    sections.has('video') && { label: 'Видео', icon: Play },
+    sections.has('notes') && { label: 'Конспект', icon: FileText },
+    sections.has('theory') && { label: 'Теория', icon: BookOpen },
+    (sections.has('tasks') || (details?.tasks_total ?? 0) > 0) && { label: 'Задания', icon: ListChecks },
+    sections.has('worksheet_tasks') && { label: 'Рабочий лист', icon: FileText },
+    sections.has('test') && { label: 'Тест', icon: ClipboardCheck },
+  ].filter((x): x is { label: string; icon: typeof Play } => !!x)
 }
 
-/**
- * Плитки уроков раздела (вариант Б, письмо ЛК_стиль_открытие_урока_в_плитке.md,
- * 16.10): внизу плитки — одна строка: статус открытого урока или условие
- * открытия закрытого. Открытый урок — ссылка в урок; закрытый — приглушён,
- * по нажатию подсказка с тем же условием, без перехода.
- */
+function lessonBadge(tile: LessonTile, details?: LessonDetails) {
+  if (tile.state === 'locked') return 'Закрыт'
+  if (details?.lesson_format === 'training') return tile.state === 'done' ? 'Задачи решены' : 'Тренировка'
+  if (tile.state === 'done') return 'ДЗ принято'
+  if (tile.state === 'review') return 'ДЗ на проверке'
+  if (details?.hw_status === 'returned') return 'Нужна доработка'
+  if (details?.hw_status === 'draft') return 'Черновик ДЗ'
+  if (tile.overdue) return 'ДЗ просрочено'
+  if (tile.state === 'hw') return 'Нужно сдать ДЗ'
+  return 'Урок открыт'
+}
+
 export function LessonTiles({ lessons, hrefFor }: {
-  lessons: Array<{ id: string; title: string; tile: LessonTile }>
+  lessons: Array<{ id: string; title: string; tile: LessonTile; details?: LessonDetails }>
   hrefFor: (id: string) => string
 }) {
   const [tip, setTip] = useState<string | null>(null)
@@ -244,28 +260,57 @@ export function LessonTiles({ lessons, hrefFor }: {
     return () => window.clearTimeout(t)
   }, [tip])
   return (
-    <ul className="stu-lgrid" data-testid="lesson-tiles">
+    <ul className="stu-lesson-grid" data-testid="lesson-tiles">
       {lessons.map((l, i) => {
+        const locked = l.tile.state === 'locked'
+        const resources = locked ? [] : lessonResources(l.details)
+        const hasHomework = !locked && (l.details ? !!l.details.hw_id : ['hw', 'review', 'done'].includes(l.tile.state))
+        const training = l.details?.lesson_format === 'training'
+        const due = l.details?.hw_due_at
+        const dueLabel = !locked && hasHomework && due && Number.isFinite(Date.parse(due))
+          ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(due)) : null
         const body = (
           <>
-            <span className="stu-muted text-[12px] font-bold">Урок {i + 1}</span>
-            <b className="text-[14.5px] leading-snug break-words">{l.title}</b>
-            <span className={`stu-lt-foot ${l.tile.overdue ? 'f-bad' : FOOT[l.tile.state]}`} data-testid="lesson-tile-pill">
-              {l.tile.compact
-                ? <><span className="stu-lt-full">{l.tile.pill}</span><span className="stu-lt-compact" aria-hidden>{l.tile.compact}</span></>
-                : l.tile.pill}
+            <span className="stu-lesson-head">
+              <span className="stu-lesson-number">Урок {i + 1}</span>
+              <span className="stu-lesson-badge" data-testid="lesson-status">{lessonBadge(l.tile, l.details)}</span>
+            </span>
+            <span className="stu-lesson-title">{l.title}</span>
+            {resources.length > 0 && (
+              <span className="stu-lesson-resources" data-testid="lesson-resources">
+                {resources.map(({ label, icon: Icon }) => <span key={label}><Icon size={16} aria-hidden />{label}</span>)}
+              </span>
+            )}
+            {!locked && (l.details?.tasks_total ?? 0) > 0 && (
+              <span className="stu-muted text-[13px]">Задачи: {l.details?.tasks_closed ?? 0} из {l.details?.tasks_total} выполнено</span>
+            )}
+            <span className="stu-lesson-bottom">
+              <span className="stu-lesson-homework" data-testid="lesson-homework">
+                {locked ? <Lock size={20} aria-hidden /> : <ClipboardCheck size={20} aria-hidden />}
+                <span className="min-w-0 flex-1">
+                  <strong>{locked ? 'Доступ к уроку' : hasHomework ? (training ? 'Задачи с автопроверкой' : 'Домашнее задание') : 'Материалы урока'}</strong>
+                  {dueLabel && <small>Срок: {dueLabel} (МСК)</small>}
+                </span>
+                <span className="stu-lesson-homework-state" data-testid="lesson-tile-pill">{l.tile.pill}</span>
+              </span>
+              {!locked && l.tile.state === 'done' && l.details?.hw_score != null && l.details.hw_max != null && (
+                <span className="stu-muted text-[13px]">Результат: {l.details.hw_score} из {l.details.hw_max} баллов</span>
+              )}
+              <span className={locked ? 'stu-lesson-cta is-locked' : 'stu-lesson-cta'}>
+                {locked ? <><Lock size={17} aria-hidden />Условие открытия</> : <>{l.tile.state === 'done' ? 'Повторить урок' : 'Перейти к уроку'}<ArrowRight size={18} aria-hidden /></>}
+              </span>
             </span>
           </>
         )
         return (
-          <li key={l.id} className="relative flex" data-testid="lesson-tile" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>
-            {l.tile.state === 'locked' ? (
-              <button type="button" className={`${LESSON_CLASS.locked} stu-focus text-left`} onClick={() => setTip(tip === l.id ? null : l.id)}
-                aria-describedby={tip === l.id ? `tip-${l.id}` : undefined}>
+          <li key={l.id} className="relative flex min-w-0" data-testid="lesson-tile" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>
+            {locked ? (
+              <button type="button" className="stu-lesson-card stu-focus" data-state="locked" onClick={() => setTip(tip === l.id ? null : l.id)}
+                aria-describedby={tip === l.id ? `tip-${l.id}` : undefined} aria-expanded={tip === l.id}>
                 {body}
               </button>
             ) : (
-              <Link to={hrefFor(l.id)} className={`${LESSON_CLASS[l.tile.state]} stu-focus`}>{body}</Link>
+              <Link to={hrefFor(l.id)} className="stu-lesson-card stu-focus" data-state={l.tile.state} data-overdue={l.tile.overdue || undefined}>{body}</Link>
             )}
             {tip === l.id && l.tile.tip && (
               <span role="tooltip" id={`tip-${l.id}`} className="stu-lt-tip" data-testid="lesson-tile-tip">{l.tile.tip}</span>

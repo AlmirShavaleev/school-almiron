@@ -782,7 +782,7 @@ export function StudentCoursePage() {
             <LessonTiles
               lessons={(() => {
                 const no = new Map(activeMod.topics.map((t, i) => [t.id, i + 1]))
-                return activeMod.topics.map(t => ({ id: t.id, title: t.title, tile: lessonTile(t, undefined, undefined, no, demo ? DEMO_LOCK_NOTE : undefined) }))
+                return activeMod.topics.map(t => ({ id: t.id, title: t.title, details: t, tile: lessonTile(t, undefined, undefined, no, demo ? DEMO_LOCK_NOTE : undefined) }))
               })()}
               hrefFor={id => `/my-course/${groupId}/topic/${id}`}
             />
