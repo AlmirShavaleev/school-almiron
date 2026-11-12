@@ -11,7 +11,6 @@ import {
   Home, Users, BookOpen, ClipboardList, CreditCard, Settings,
   GraduationCap, BarChart3, Calendar, Bell, LogOut,
   ChevronRight, ClipboardCheck, X, ListChecks,
-  Send,
   LibraryBig, Shield, Wand2, LifeBuoy, Layers, Images, Timer, Star,
   Gauge, Store,
 } from 'lucide-react'
@@ -67,11 +66,10 @@ const navItems: NavItem[] = [
   // Other roles (flat)
   { label: 'Кабинет учителя',   path: '/teacher',        icon: <GraduationCap size={18} />, roles: ['teacher'] },
   { label: 'Панель админа',     path: '/admin',          icon: <Shield size={18} />,        roles: ['admin', 'owner'] },
-  { label: 'Журнал Telegram',   path: '/admin/telegram', icon: <Send size={18} />,          roles: ['admin', 'owner'] },
   { label: 'Обращения',         path: '/admin/support',  icon: <LifeBuoy size={18} />,      roles: ['admin', 'owner'] },
   // §282. Без флага: тарифы и тексты заводятся ДО включения подписки.
   { label: 'Финансы и подписки', path: '/admin/finance', icon: <BarChart3 size={18} />, roles: ['admin', 'owner'] },
-  { label: 'Скорость',          path: '/admin/perf',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
+  { label: 'Статистика и диагностика', path: '/admin/diagnostics',          icon: <Gauge size={18} />,      roles: ['admin', 'owner'] },
   { label: 'Программа курса',   path: '/course-program', icon: <BookOpen size={18} />,      roles: ['teacher', 'curator', 'admin', 'owner'] },
   // §271. Сводка оценок уроков учениками: где непонятно, что переработать.
   { label: 'Оценки уроков',     path: '/topic-ratings',  icon: <Star size={18} />,          roles: ['teacher', 'curator', 'admin', 'owner'] },
@@ -136,7 +134,7 @@ function activeNavPath(paths: readonly string[], pathname: string): string | nul
 }
 
 const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
-  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/finance', '/admin/perf'] },
+  { title: 'Центр управления', paths: ['/dashboard', '/teacher', '/admin', '/admin/telegram', '/admin/support', '/admin/subscriptions', '/admin/finance', '/admin/perf', '/admin/diagnostics'] },
   // Занятия, расписание и посещаемость сняты 2026-08-08: владелец ведёт
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы

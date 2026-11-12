@@ -17,6 +17,7 @@ const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardP
 // Role dashboards
 const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })))
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
+const DiagnosticsPage = lazyPage('DiagnosticsPage', () => import('@/pages/admin/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
 const BillingPage = lazyPage('BillingPage', () => import('@/pages/admin/BillingPage').then(m => ({ default: m.BillingPage })))
@@ -165,6 +166,7 @@ export default function AppRoutes() {
             кабинет не имеет: куратор работает на общих страницах проверки
             ДЗ, программы и учеников. Страница CuratorDashboard.tsx лежала на
             диске без роута и удалена в §185 вместе со старым контуром ДЗ. */}
+        <Route path="/admin/diagnostics" element={<RoleGuard allow={['admin','owner']}><DiagnosticsPage /></RoleGuard>} />
         <Route path="/admin" element={<RoleGuard allow={['admin','owner']}><AdminDashboard /></RoleGuard>} />
         {/* Журнал отправок Telegram. Страница существовала с 08.07, но не была
             подключена ни маршрутом, ни импортом — быстрая ссылка на неё в

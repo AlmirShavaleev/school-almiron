@@ -2,7 +2,7 @@ import { AdminCourseBrowser } from '@/components/admin/AdminCourseBrowser'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Users, BookOpen, BarChart3, Search, ArrowRight,
+  Users, BookOpen, Search, ArrowRight,
   CheckCircle, RefreshCw, Calendar, Activity, Bell, ListChecks,
   GraduationCap, Plus, Pencil, Lock, UserX, UserPlus,
   Loader2, ShieldAlert, ClipboardList, Send, LifeBuoy,
@@ -17,9 +17,6 @@ import { useAdminDashboard, type AdminCourse } from '@/hooks/useAdminDashboard'
 import { useSchoolStats, telegramLinkingBroken } from '@/hooks/useSchoolStats'
 import { useSchoolAnalytics, DORMANT_DAYS } from '@/hooks/useSchoolAnalytics'
 import { DormantPanel, LearningPanel } from '@/components/admin/SchoolActivity'
-import { useVercelAnalytics } from '@/hooks/useVercelAnalytics'
-import { VideoStatsTab } from '@/components/admin/VideoStats'
-import { SiteAnalytics } from '@/components/admin/SiteAnalytics'
 import { AiCheckAccuracy } from '@/components/admin/AiCheckAccuracy'
 import { LiveNow } from '@/components/admin/LiveNow'
 import { EditCourseModal } from '@/components/modals/EditCourseModal'
@@ -44,37 +41,13 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
-// Вкладки собраны по вопросам, которые владелец задаёт, а не по таблицам базы.
-// «Обзор» отвечает «что делать сегодня», «Ученики» — «что с людьми», «Учёба» —
-// «как идёт процесс», три последних — три независимых источника чисел.
-//
-// Девять плиток, висевших НАД вкладками, разъехались по ним: общая полка над
-// содержимым заставляла читать все девять чисел на любой вкладке, а отвечали
-// они на разные вопросы. Числа те же и считает их та же RPC — сменилось только
-// место.
-//
-// Вкладки «Группы» и «Подписки» убраны по решению владельца 2026-08-04:
-// группы — потому что действует закон «один курс = одна группа» (§61/§64) и
-// слово «группа» уходит из интерфейса; подписки — потому что денежный контур
-// не запущен, в `subscriptions` ноль строк. Обе решения продуктовые, а не
-// технические: код удалён, данные не тронуты.
-type Tab = 'now' | 'overview' | 'students' | 'learning' | 'site' | 'video' | 'staff'
+// Основные рабочие разделы. Диагностика вынесена в /admin/diagnostics.
+type Tab = 'overview' | 'students' | 'learning' | 'staff'
 const TABS: { key: Tab; label: string }[] = [
-  // «Сейчас» — место под живую панель школы, её делает отдельная работа. Место
-  // занято намеренно: порядок вкладок утверждён владельцем целиком, и вставлять
-  // первую вкладку позже значило бы двигать все остальные.
-  { key: 'now',      label: 'Сейчас' },
   { key: 'overview', label: 'Обзор' },
-  { key: 'students', label: 'Ученики' },
+  { key: 'students', label: 'Пользователи' },
   { key: 'learning', label: 'Учёба' },
-  // «Сайт» отдельной вкладкой, а не блоком в «Обзоре»: рядом живут школьные
-  // срезы §107, и «сколько заходов» там и здесь — разные числа из разных
-  // источников. На одном экране их спутают.
-  { key: 'site',     label: 'Сайт' },
-  // «Видео» — по тому же доводу третий независимый источник чисел: просмотры
-  // роликов у Bunny, и с посещениями сайта они не складываются.
-  { key: 'video',    label: 'Видео' },
-  { key: 'staff',    label: 'Команда' },
+  { key: 'staff', label: 'Команда' },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -93,7 +66,6 @@ export function AdminDashboard() {
   const { profiles, groups, courses, stats, loading, reload } = useAdminDashboard()
   const { stats: school, error: schoolError, fetchedAt: schoolAt, reload: reloadSchool } = useSchoolStats()
   const analytics = useSchoolAnalytics()
-  const site = useVercelAnalytics()
 
   async function changeRole(profileId: string, newRole: string) {
     setSavingRole(profileId)
@@ -254,17 +226,6 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {/* ══ СЕЙЧАС ══════════════════════════════════════════════ */}
-      {tab === 'now' && (
-        <LiveNow
-          pendingReview={school?.homework_pending ?? null}
-          submittedToday={school?.homework_submitted_today ?? null}
-          dormant={analytics.dormant}
-          profiles={profiles}
-          schoolError={schoolError}
-        />
-      )}
-
       {/* ══ ОБЗОР ════════════════════════════════════════════════
           Не витрина, а список дел: «что сделать → сколько → куда идти».
           Все числа читаются из уже существующих источников, ни одно не
@@ -305,22 +266,13 @@ export function AdminDashboard() {
             </div>
           )}
 
-          {/* Пульс дня — не дело, а справка: сколько сдали и сколько зашли
-              сегодня. Ноль здесь ноль и есть, а не «нет данных». */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Сегодня</CardTitle>
-            </CardHeader>
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-              <span className="text-sm text-gray-600">
-                Сдано работ: <b className="text-lg text-gray-900 tabular-nums">{school?.homework_submitted_today ?? 0}</b>
-              </span>
-              <span className="text-sm text-gray-600">
-                Заходили: <b className="text-lg text-gray-900 tabular-nums">{school?.visits_today ?? 0}</b>
-              </span>
-            </div>
-            <SourceNote at={schoolAt} />
-          </Card>
+          <LiveNow
+            pendingReview={school?.homework_pending ?? null}
+            submittedToday={school?.homework_submitted_today ?? null}
+            dormant={analytics.dormant}
+            profiles={profiles}
+            schoolError={schoolError}
+          />
         </div>
       )}
 
@@ -592,11 +544,6 @@ export function AdminDashboard() {
             </div>
           </Card>
           <p className="text-xs text-gray-400">Показано: {filteredProfiles.length} из {profiles.length}</p>
-
-          <button onClick={() => navigate('/admin/telegram')}
-            className="flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all text-sky-600 bg-sky-50 border-sky-200">
-            <Send size={16} />Telegram-журнал<ArrowRight size={13} className="ml-auto opacity-50" />
-          </button>
         </div>
       )}
 
@@ -742,25 +689,8 @@ export function AdminDashboard() {
               )
             }} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {[
-              { label: 'Пробники',         icon: <BarChart3 size={16} />,     path: '/mock-exams', color: 'text-purple-600 bg-purple-50 border-purple-200' },
-              { label: 'Домашние задания', icon: <ClipboardList size={16} />, path: '/homeworks',  color: 'text-orange-600 bg-orange-50 border-orange-200' },
-            ].map(l => (
-              <button key={l.path} onClick={() => navigate(l.path)}
-                className={cn('flex items-center gap-2 p-3 rounded-xl border text-sm font-medium hover:shadow-sm transition-all', l.color)}>
-                {l.icon}{l.label}<ArrowRight size={13} className="ml-auto opacity-50" />
-              </button>
-            ))}
-          </div>
         </div>
       )}
-
-      {/* ══ САЙТ ════════════════════════════════════════════════ */}
-      {tab === 'site' && <SiteAnalytics {...site} />}
-
-      {/* ══ ВИДЕО ═══════════════════════════════════════════════ */}
-      {tab === 'video' && <VideoStatsTab />}
 
       {/* ══ КОМАНДА ═════════════════════════════════════════════ */}
       {tab === 'staff' && (

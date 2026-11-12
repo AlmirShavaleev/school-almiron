@@ -109,6 +109,7 @@ vi.mock('@/components/admin/LiveNow', () => ({
 }))
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
+import { DiagnosticsPage } from '../DiagnosticsPage'
 
 const EMPTY_STATS = {
   lessons: [], unattachedInLibrary: 0, libraryTotalItems: 0,
@@ -141,16 +142,16 @@ function open(label: string) {
 }
 
 describe('перечень вкладок', () => {
-  it('семь вкладок в утверждённом порядке', () => {
+  it('четыре рабочие вкладки', () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    const labels = ['Сейчас', 'Обзор', 'Ученики', 'Учёба', 'Сайт', 'Видео', 'Команда']
+    const labels = ['Обзор', 'Пользователи', 'Учёба', 'Команда']
     labels.forEach(l => expect(screen.getByRole('button', { name: l })).toBeInTheDocument())
   })
 
   it('«Сейчас» открывает живую панель, а не заглушку', () => {
     // Место, оставленное §147, занято настоящей панелью.
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    open('Сейчас')
+    open('Обзор')
     expect(screen.getByTestId('live-now-stub')).toBeInTheDocument()
     expect(screen.queryByText(/Живая панель школы готовится/)).not.toBeInTheDocument()
   })
@@ -161,7 +162,7 @@ describe('перечень вкладок', () => {
     schoolStats = { ...QUIET_SCHOOL, homework_pending: 9, homework_submitted_today: 4 }
     dormantRows = [{ student_id: 's-1' }, { student_id: 's-2' }]
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    open('Сейчас')
+    open('Обзор')
 
     const panel = screen.getByTestId('live-now-stub')
     expect(panel).toHaveAttribute('data-pending', '9')
@@ -169,11 +170,12 @@ describe('перечень вкладок', () => {
     expect(panel).toHaveAttribute('data-dormant', '2')
   })
 
-  it('живая панель не монтируется, пока вкладку не открыли', () => {
+  it('живая панель отключается при уходе из обзора', () => {
     // На ней висят подписка присутствия и подписка на изменения таблиц.
     // Смонтированная заранее, она держала бы сокеты у того, кто на «Сейчас» не
     // заглядывает.
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    open('Команда')
     expect(screen.queryByTestId('live-now-stub')).not.toBeInTheDocument()
   })
 
@@ -242,19 +244,14 @@ describe('«Обзор» как список дел', () => {
     expect(screen.getByRole('button', { name: /Встретить новичков/ })).toHaveTextContent('3')
   })
 
-  it('«сегодня» показывает нули честно и подписан источником', () => {
+  it('обзор передаёт дневное число в единственную живую панель', () => {
+    schoolStats = { ...QUIET_SCHOOL, homework_submitted_today: 5 }
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    expect(screen.getByText('Сегодня')).toBeInTheDocument()
-    expect(screen.getByText(/Сдано работ/)).toBeInTheDocument()
-    expect(screen.getAllByTestId('source-note')[0]).toHaveTextContent('Наша база')
+    expect(screen.getByTestId('live-now-stub')).toHaveAttribute('data-today', '5')
+    expect(screen.queryByText('Сдано работ:')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Сейчас' })).not.toBeInTheDocument()
   })
 
-  it('сданное сегодня приходит из той же RPC, а не считается на клиенте', () => {
-    schoolStats = { ...QUIET_SCHOOL, homework_submitted_today: 5, visits_today: 23 }
-    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
-    expect(screen.getByText('5')).toBeInTheDocument()
-    expect(screen.getByText('23')).toBeInTheDocument()
-  })
 })
 
 describe('§169: обращения и воронка Telegram на «Обзоре»', () => {
@@ -340,12 +337,12 @@ describe('§169: обращения и воронка Telegram на «Обзор
 
 describe('вкладка «Видео» в панели админа', () => {
   it('вкладка есть в списке', () => {
-    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    render(<MemoryRouter><DiagnosticsPage /></MemoryRouter>)
     expect(screen.getByRole('button', { name: 'Видео' })).toBeInTheDocument()
   })
 
   it('пока вкладку не открыли, в bunny-video-stats не ходим', async () => {
-    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    render(<MemoryRouter><DiagnosticsPage /></MemoryRouter>)
 
     // Дать всем смонтированным эффектам отработать — если бы хук висел на
     // странице, запрос ушёл бы именно здесь.
@@ -354,11 +351,21 @@ describe('вкладка «Видео» в панели админа', () => {
   })
 
   it('по клику вкладка открывается и запрашивает статистику', async () => {
-    render(<MemoryRouter><AdminDashboard /></MemoryRouter>)
+    render(<MemoryRouter><DiagnosticsPage /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: 'Видео' }))
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('bunny-video-stats', { body: {} }))
     await waitFor(() => expect(screen.getByTestId('video-stats')).toBeInTheDocument())
+  })
+})
+
+describe('технический блок', () => {
+  it('открывает прямые ссылки и не загружает видео', () => {
+    render(<MemoryRouter initialEntries={['/admin/diagnostics?tab=technical']}><DiagnosticsPage /></MemoryRouter>)
+    expect(screen.getByRole('link', { name: /Журнал Telegram/ })).toHaveAttribute('href', '/admin/telegram')
+    expect(screen.getByRole('link', { name: /Скорость сайта/ })).toHaveAttribute('href', '/admin/perf')
+    expect(invoke).not.toHaveBeenCalledWith('bunny-video-stats', expect.anything())
+    expect(screen.queryByTestId('video-stats')).not.toBeInTheDocument()
   })
 })
