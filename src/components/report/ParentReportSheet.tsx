@@ -1,3 +1,4 @@
+import '@/components/charts/schoolCharts.css'
 import { useMemo } from 'react'
 import {
   DASH,
@@ -264,7 +265,7 @@ function MocksChart({ report }: { report: ProgressReport }) {
   const x = (i: number) => left + 30 + span * i
 
   return (
-    <figure className="report-chart m-0 mt-4">
+    <figure className="report-chart school-report-chart m-0 mt-4">
       <figcaption className="mb-1.5 text-[11px] text-graphite-500">Баллы пробников</figcaption>
       <svg
         width="100%"
@@ -285,7 +286,7 @@ function MocksChart({ report }: { report: ProgressReport }) {
           if (rows.length === 0) return null
           const line = rows.map(r => `${x(r.i)},${y(r.m.score)}`).join(' ')
           return (
-            <g key={subj || si}>
+            <g key={subj || si} className={si === 0 ? 'school-report-blue' : 'school-report-orange'}>
               {rows.length > 1 && (
                 <polyline
                   points={line}
@@ -312,7 +313,7 @@ function MocksChart({ report }: { report: ProgressReport }) {
           </text>
         ))}
         {subjects.map((subj, si) => (
-          <g key={`l${subj || si}`}>
+          <g key={`l${subj || si}`} className={si === 0 ? 'school-report-blue' : 'school-report-orange'}>
             <line
               x1={left + si * 110}
               y1={height - 7}

@@ -19,3 +19,6 @@
 @keyframes school-chart-enter{from{opacity:.5;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:480px){.school-chart-card{padding:18px;border-radius:24px}.school-course-disclosure>summary,.school-course-content{padding:16px}}
 @media(prefers-reduced-motion:reduce){.school-chart-card *,.school-course-disclosure *{animation:none!important;transition:none!important}}
+
+/* Printable reports retain their monochrome, dashed-series encoding on paper. */
+@media screen{.school-report-chart{padding:22px;border:1px solid #e8edf8;border-radius:28px;background:#fff;color:#17284d}.school-report-chart .school-report-blue{color:#315af4}.school-report-chart .school-report-orange{color:#c2660a}}

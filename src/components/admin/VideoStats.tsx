@@ -1,3 +1,4 @@
+import { SchoolAreaPlot } from '@/components/charts/SchoolAreaPlot'
 import { useState } from 'react'
 import { RefreshCw, Play, EyeOff, Activity, AlertTriangle, KeyRound } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -506,16 +507,7 @@ function HeatmapBlock({
           {/* Отрезки без внимания рисуются нулевой полоской, а не пропускаются:
               Bunny не присылает пустые отрезки вовсе, и без заполнения график
               соединил бы соседей линией поверх провала. */}
-          <div className="flex h-24 items-end gap-px" role="img" aria-label="Внимание по ходу ролика">
-            {points.map(p => (
-              <div
-                key={p.index}
-                title={`${formatClock(p.atSec)} — ${p.value}`}
-                className={cn('flex-1 rounded-t-sm', p.value > 0 ? 'bg-primary-500' : 'bg-slate-100')}
-                style={{ height: `${p.value > 0 ? Math.max(p.value, 4) : 3}%` }}
-              />
-            ))}
-          </div>
+          <div className="school-chart-card"><SchoolAreaPlot points={points.map(p => ({label: formatClock(p.atSec), value: p.value}))} title="Внимание по ходу ролика" unit="Относительное внимание" /></div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-500">
             <span data-testid="video-heatmap-halves">
               {halves
