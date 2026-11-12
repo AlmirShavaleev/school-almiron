@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { subscriptionTag, studentPageTitle } from '@/lib/studentNav'
 
@@ -27,22 +27,24 @@ function renderAt(path: string) {
 }
 
 describe('меню ученика', () => {
-  it('компьютер: 5 пунктов и «Ещё»; активный — ДЗ со счётчиком «сдать»', () => {
+  it('компьютер: витрина, оплата и настройки доступны прямо в панели', () => {
     renderAt('/my-homework')
     const rail = screen.getByTestId('student-rail')
-    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Мои курсы', '3ДЗ', 'Банк', 'Пробники'])
+    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Мои курсы', '3ДЗ', 'Банк', 'Пробники', 'Витрина курсов', 'Оплата', 'Настройки'])
     expect(within(rail).getByTestId('student-nav-hw')).toHaveAttribute('aria-current', 'page')
     expect(within(rail).getByTestId('student-nav-bank')).toHaveAttribute('href', '/catalog')
   })
 
-  it('«Ещё»: Подписка и курсы «до 18 нояб», Настройки, Выйти; переход закрывает меню', async () => {
-    renderAt('/student')
+  it('прямая ссылка оплаты активна; «Ещё» содержит выход без дублей', () => {
+    renderAt('/my-subscription')
+    expect(screen.getByTestId('student-nav-subscription')).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('student-nav-storefront')).toHaveAttribute('href', '/courses')
+    expect(screen.getByTestId('student-nav-settings')).toHaveAttribute('href', '/settings')
     fireEvent.click(screen.getByTestId('student-nav-more'))
     const pop = screen.getByTestId('student-more-pop')
-    // метка приходит из my_subscriptions (тот же access_until, что на карточке)
-    await waitFor(() => expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Витрина курсов', 'Оплатадо 18 нояб', 'Настройки', 'Выйти']))
-    fireEvent.click(within(pop).getByTestId('student-more-subscription'))
-    expect(screen.getByTestId('where')).toHaveTextContent('/my-subscription')
+    expect(within(pop).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Выйти'])
+    fireEvent.click(screen.getByTestId('student-nav-settings'))
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings')
     expect(screen.queryByTestId('student-more-pop')).toBeNull()
   })
 

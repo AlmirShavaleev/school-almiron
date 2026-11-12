@@ -65,6 +65,11 @@ export function StudentNav() {
   useDismiss(railMore, () => setRailMore(false), railRef)
   useDismiss(sheet, () => setSheet(false), sheetRef)
 
+  const railKeys = new Set(['storefront', 'subscription', 'settings'])
+  const railLinks = more.filter(i => railKeys.has(i.key) && i.to)
+  const railMoreItems = more.filter(i => !railKeys.has(i.key))
+  const railMoreActive = railMoreItems.some(i => i.to && pathname.startsWith(i.to))
+
   const mobileMain = main.filter(i => i.key !== 'mocks')
   const mobileMore: MoreItem[] = [
     { key: 'mocks', label: 'Пробники', icon: <Timer size={18} aria-hidden />, to: '/my-mock-exams' },
@@ -77,6 +82,7 @@ export function StudentNav() {
       {/* Компьютер: узкая колонка */}
       <nav className="stu-rail" aria-label="Меню ученика" data-testid="student-rail">
         <span className="stu-rail-logo"><Mark size={34} /></span>
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {main.map(i => (
           <NavLink key={i.key} to={i.to} onClick={() => setRailMore(false)} className="stu-rail-item stu-focus" data-active={i.match.test(pathname) || undefined}
             aria-current={i.match.test(pathname) ? 'page' : undefined} data-testid={`student-nav-${i.key}`}>
@@ -84,15 +90,23 @@ export function StudentNav() {
             <span>{i.label}</span>
           </NavLink>
         ))}
-        <div className="relative" ref={railRef}>
+        {railLinks.map(i => (
+          <NavLink key={i.key} to={i.to!} onClick={() => setRailMore(false)} className="stu-rail-item stu-focus"
+            data-active={pathname.startsWith(i.to!) || undefined} aria-current={pathname.startsWith(i.to!) ? 'page' : undefined}
+            title={i.tag ? `${i.label} · ${i.tag}` : i.label} data-testid={`student-nav-${i.key}`}>
+            {i.icon}<span>{i.label}</span>
+          </NavLink>
+        ))}
+        </div>
+        <div className="relative shrink-0" ref={railRef}>
           <button type="button" className="stu-rail-item stu-focus w-full" aria-haspopup="menu" aria-expanded={railMore}
-            data-active={moreActive && !/^\/my-mock-exams/.test(pathname) || undefined}
+            data-active={railMoreActive || undefined}
             onClick={() => setRailMore(o => !o)} data-testid="student-nav-more">
             <Menu size={22} aria-hidden /><span>Ещё</span>
           </button>
           {railMore && (
             <div className="stu-more-pop" data-testid="student-more-pop">
-              <MoreList items={more} onDone={() => setRailMore(false)} />
+              <MoreList items={railMoreItems} onDone={() => setRailMore(false)} />
             </div>
           )}
         </div>
