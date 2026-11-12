@@ -4,7 +4,7 @@ import { QueryClient,QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 const api=vi.hoisted(()=>({fetchFinance:vi.fn(),verifyFinancePayments:vi.fn()}))
 vi.mock('@/lib/finance',async orig=>({...await orig<object>(),...api}))
-vi.mock('recharts',()=>Object.fromEntries(['ResponsiveContainer','BarChart','Bar','LineChart','Line','XAxis','YAxis','CartesianGrid','Tooltip','Legend'].map(k=>[k,()=>null])))
+vi.mock('recharts',()=>Object.fromEntries(['ResponsiveContainer','AreaChart','Area','XAxis','YAxis','Tooltip'].map(k=>[k,()=>null])))
 import { FinancePage } from '../FinancePage'
 const now=new Date().toISOString()
 const snapshot=()=>({now,courses:[{id:'c1',title:'Физика'}],unknown_payments:0,refunds:[],enrollments:[],subscriptions:[],payments:[{id:'p1',student_id:'s1',subscription_id:'sub1',course_id:'c1',kind:'initial',status:'succeeded',amount_rub:500,is_test:true,paid_at:now,created_at:now,refunded_at:null,period_end:null,is_first:true}]})
@@ -14,7 +14,7 @@ describe('Финансы',()=>{
  it('сначала сверяет режимы, показывает реальную статистику без тестовых сумм',async()=>{
   show();await screen.findByText('В выбранном месяце и режиме успешных оплат пока нет. Графики показывают фактические данные, без демонстрационных значений.')
   expect(api.verifyFinancePayments).toHaveBeenCalledTimes(1)
-  const card=screen.getByText('Поступления',{selector:'span'}).closest('section')!
+  const card=screen.getByRole('region',{name:'Поступления'})
   expect(within(card).getByText(/0\s*₽/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button',{name:'Тестовые'}))
   expect(await screen.findByText(/Тестовые платежи: эти суммы/)).toBeInTheDocument()

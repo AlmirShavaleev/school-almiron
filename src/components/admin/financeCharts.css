@@ -1,0 +1,22 @@
+/* School palette, scoped to financial charts. No global theme or animation loop. */
+.finance-trend-card{height:100%;min-width:0;display:flex;flex-direction:column;padding:24px;border-radius:28px;background:#fff;color:#17284d;border:1px solid #e8edf8;font-family:inherit;overflow:hidden}
+.finance-trend-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.finance-trend-top h2{font-size:14px;line-height:1.5;font-weight:600;color:#77849d}
+.finance-trend-value{display:block;margin-top:5px;font-size:clamp(27px,3vw,36px);line-height:1.2;letter-spacing:-.035em;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.finance-trend-delta{flex:none;display:inline-flex;align-items:center;justify-content:center;margin-top:3px;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.finance-trend-delta.is-up{background:#edf2ff;color:#315af4}.finance-trend-delta.is-down{background:#fff1e3;color:#a8560c}.finance-trend-delta.is-neutral{background:#f2f4f9;color:#8995ac}
+.finance-trend-caption{margin:9px 0 0;color:#8995ac;font-size:12px;line-height:1.5}
+.finance-trend-plot{height:174px;min-width:0;margin:16px -5px 8px}
+.finance-trend-legend{display:flex;flex-wrap:wrap;gap:7px 17px;margin:0 0 17px;font-size:12px;color:#77849d}
+.finance-trend-legend>span{display:inline-flex;align-items:center;gap:6px}.finance-trend-legend i,.finance-trend-tooltip i{display:block;width:7px;height:7px;border-radius:50%;flex:none}
+.finance-trend-segments{display:flex;position:relative;gap:3px;margin-top:auto;padding:4px;border-radius:999px;background:#f3f5fb;isolation:isolate}
+.finance-trend-segments button{position:relative;flex:1;min-width:0;min-height:38px;padding:7px 8px;border:0;border-radius:999px;background:transparent;color:#8995ac;font:inherit;font-size:12px;line-height:1.4;font-weight:600;cursor:pointer}
+.finance-trend-segments button[aria-pressed=true]{color:#315af4}.finance-trend-segments button:focus-visible{outline:2px solid #315af4;outline-offset:2px}
+.finance-trend-pill{position:absolute;inset:0;border-radius:999px;background:#e4ebff;z-index:0}.finance-trend-segment-label{position:relative;z-index:1}
+.finance-trend-tooltip{padding:12px 14px;border-radius:16px;background:#fff;border:1px solid #e8edf8;font-size:12px;color:#17284d;box-shadow:0 8px 25px #243c7012}
+.finance-trend-tooltip>strong{display:block;margin-bottom:7px}.finance-trend-tooltip>div{display:flex;align-items:center;gap:7px;margin-top:5px}.finance-trend-tooltip b{margin-left:10px;font-variant-numeric:tabular-nums}
+.finance-trend-note{margin:12px 0 0;color:#8995ac;font-size:11px;line-height:1.6}
+.finance-course-trends{display:grid;gap:22px;margin-top:28px;padding-bottom:8px}.finance-course-trend-label{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:9px;font-size:13px;line-height:1.5}.finance-course-trend-label>span{min-width:0;overflow-wrap:anywhere}.finance-course-trend-label>b{flex:none;font-size:13px;font-variant-numeric:tabular-nums}
+.finance-course-track{height:8px;border-radius:999px;background:#f0f3fa;overflow:hidden}.finance-course-track>div{height:100%;border-radius:999px}
+@media(max-width:480px){.finance-trend-card{padding:19px;border-radius:24px}.finance-trend-plot{height:154px}.finance-trend-value{font-size:29px}.finance-course-trend-label{flex-wrap:wrap;gap:4px}}
+@media(prefers-reduced-motion:reduce){.finance-trend-card *{animation:none!important;transition:none!important}}
