@@ -19,6 +19,7 @@ import type { TopicHomeworkReviewRow } from '@/lib/topicHomework'
  */
 export function useStudentInsights(studentId: string | null) {
   const [insights, setInsights] = useState<StudentInsights | null>(null)
+  const [reviews, setReviews] = useState<TopicHomeworkReviewRow[]>([])
   const [works, setWorks] = useState<QueueRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,13 +31,14 @@ export function useStudentInsights(studentId: string | null) {
 
     let cancelled = false
     setLoading(true)
+    setInsights(null); setWorks([]); setReviews([])
     setError(null)
 
     async function load(id: string) {
       const { data, error: err } = await supabase
         .from('topic_homework_attempts')
         .select(
-          '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, module:modules!inner(id, course:courses!inner(id, title))))',
+          '*, homework:topic_homework!inner(id, title, grade_scale, due_at, topic:topics!inner(id, title, kind, module:modules!inner(id, course:courses!inner(id, title, subject))))',
         )
         .eq('student_id', id)
         .in('status', QUEUE_STATUSES)
@@ -54,15 +56,17 @@ export function useStudentInsights(studentId: string | null) {
       const attemptIds = collapsed.flatMap(w => [w.attempt.id, ...w.history.map(h => h.id)])
       let reviews: TopicHomeworkReviewRow[] = []
       if (attemptIds.length > 0) {
-        const { data: rev } = await supabase
+        const { data: rev, error: reviewError } = await supabase
           .from('topic_homework_reviews')
           .select('*')
           .in('attempt_id', attemptIds)
           .order('created_at')
         if (cancelled) return
+        if (reviewError) { setError(reviewError.message); setLoading(false); return }
         reviews = (rev ?? []) as TopicHomeworkReviewRow[]
       }
 
+      setReviews(reviews)
       setWorks(collapsed)
       setInsights(buildStudentInsights({ works: collapsed, reviews }))
       setLoading(false)
@@ -72,5 +76,5 @@ export function useStudentInsights(studentId: string | null) {
     return () => { cancelled = true }
   }, [studentId, tick])
 
-  return { insights, works, loading, error, reload }
+  return { insights, works, reviews, loading, error, reload }
 }

@@ -85,6 +85,7 @@ export interface QueueRow {
   topicKind?: TopicKind
   courseId: string
   courseTitle: string
+  subject?: string
 }
 
 /**
@@ -146,6 +147,7 @@ export function toQueueRows(raw: unknown[]): QueueRow[] {
       topicKind: normalizeTopicKind(topic.kind),
       courseId: course.id,
       courseTitle: course.title ?? 'Курс',
+      ...(course.subject ? { subject: course.subject } : {}),
     })
   }
   return rows

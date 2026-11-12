@@ -1,3 +1,4 @@
+import { StudentHomeworkCharts } from './StudentHomeworkCharts'
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle, ChevronDown, ChevronUp, Clock, Loader2, RefreshCw, Sparkles, TrendingDown, TrendingUp, Video,
@@ -238,7 +239,7 @@ export function StudentInsightSection({ studentId, profileId = null, showNumbers
   /** §261: в карточке ученика плитки «Работы / Средний балл / …» показывает сводка «Ученик целиком» — здесь их нет. */
   showNumbers?: boolean
 }) {
-  const { insights, loading, error, reload } = useStudentInsights(studentId)
+  const { insights, works = [], reviews = [], loading, error, reload } = useStudentInsights(studentId)
   const feedback = useStudentFeedback(studentId)
   const attention = useAttentionSignals(studentId)
 
@@ -321,6 +322,7 @@ export function StudentInsightSection({ studentId, profileId = null, showNumbers
         </p>
       ) : (
         <div className="space-y-3">
+          <StudentHomeworkCharts works={works} reviews={reviews} />
           {showNumbers && <Numbers insights={insights} />}
           <AttentionSignals signals={signals} comparable={attention.comparable} />
           <WeakTopics insights={insights} />
