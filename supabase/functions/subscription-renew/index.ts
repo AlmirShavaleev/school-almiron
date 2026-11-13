@@ -67,6 +67,13 @@ Deno.serve(async (req: Request) => {
   // ── 1. Автосписание ─────────────────────────────────────────────────────
   const shopId = Deno.env.get('SUBSCRIPTION_YK_SHOP_ID')
   const secretKey = Deno.env.get('SUBSCRIPTION_YK_SECRET_KEY')
+  // Test-only until the owner explicitly enables real billing.
+  if (!shopId || !secretKey?.startsWith('test_')) {
+    return json({ error: 'TEST_SHOP_REQUIRED' }, 503)
+  }
+  if (new URL(req.url).searchParams.get('health') === '1') {
+    return json({ ready: true, testOnly: true })
+  }
   if (shopId && secretKey) {
     const { data: due, error } = await admin.rpc('subscription_renewal_due', { p_limit: RENEW_BATCH })
     if (error) console.error('subscription-renew: renewal_due', error.message)
@@ -76,6 +83,9 @@ Deno.serve(async (req: Request) => {
   } else {
     console.warn('subscription-renew: YooKassa secrets not configured — renewal skipped')
   }
+
+  // Renewal scheduling must not flush historical mail.
+  return json(report)
 
   // ── 2. Письма ───────────────────────────────────────────────────────────
   const { data: mails, error: mailErr } = await admin.rpc('subscription_mail_claim', { p_limit: MAIL_BATCH })
