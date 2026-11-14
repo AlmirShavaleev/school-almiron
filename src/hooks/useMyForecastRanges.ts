@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchMyScoreForecast } from '@/lib/scoreForecast'
+import { fetchMyScoreForecast, type StoredForecast } from '@/lib/scoreForecast'
 import { buildForecastView, normalizeForecastResponse } from '@/lib/egeForecast'
 import { activeSpec } from '@/lib/egeScales'
 
@@ -19,13 +19,19 @@ export function rangeText(r: ForecastRange | null | undefined): string {
  * `student_exam_forecast_evidence()` той же моделью; сбой — пусто (виджет
  * покажет «0»). null — ещё грузится.
  */
-export function useMyForecastRanges(enabled: boolean): ForecastRange[] | null {
+/**
+ * The dashboard already reads my_score_forecast for the goal caption.
+ * When provided, reuse that result instead of sending the same RPC twice.
+ * undefined = fetch independently (for other consumers); null = no stored
+ * forecast, so use the legacy evidence fallback without retrying the RPC.
+ */
+export function useMyForecastRanges(enabled: boolean, storedForecast?: StoredForecast[] | null): ForecastRange[] | null {
   const [rows, setRows] = useState<ForecastRange[] | null>(null)
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) { setRows(null); return }
     let alive = true
     void (async () => {
-      const stored = await fetchMyScoreForecast()
+      const stored = storedForecast === undefined ? await fetchMyScoreForecast() : storedForecast
       if (stored) {
         if (alive) setRows(stored.map(r => ({ subject: r.subject, low: r.ready ? r.low : null, high: r.ready ? r.high : null })))
         return
@@ -45,6 +51,6 @@ export function useMyForecastRanges(enabled: boolean): ForecastRange[] | null {
       }
     })()
     return () => { alive = false }
-  }, [enabled])
+  }, [enabled, storedForecast])
   return rows
 }
