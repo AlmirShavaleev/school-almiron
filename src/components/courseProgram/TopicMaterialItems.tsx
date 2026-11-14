@@ -45,6 +45,8 @@ function formatBytes(bytes: number | null): string | null {
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
 }
 
+const isTheoryMaterial = (m: TopicMaterial) => m.kind === 'text' && isTheoryMarkdown(m.content)
+
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
@@ -679,6 +681,11 @@ export function TopicMaterialItems({
     filtered = visible.filter(m => m.section === section)
   } else if (section === 'video') {
     filtered = visible.filter(m => m.kind === 'video')
+  }
+  // Теория страницей — всегда первой, PDF для печати под ней. Порядок в базе
+  // у старых загрузок обратный (PDF положен раньше, позиции равны).
+  if (filtered.some(isTheoryMaterial)) {
+    filtered = [...filtered.filter(isTheoryMaterial), ...filtered.filter(m => !isTheoryMaterial(m))]
   }
 
   /**

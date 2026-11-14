@@ -304,3 +304,18 @@ describe('Материал из каркаса курса (§172)', () => {
     expect(screen.queryByText('из шаблона')).not.toBeInTheDocument()
   })
 })
+
+describe('Теория страницей', () => {
+  it('идёт первой, PDF под ней — даже если PDF положен раньше', () => {
+    materials = [
+      fileMat('pdf', null),
+      { kind: 'text', id: 'th', title: 'Теория', position: 0, isVisible: true, section: null,
+        content: '<!--theory-->\n## Т1. Раздел\n\nТекст теории.' },
+    ]
+    renderItems(false)
+    const article = screen.getByTestId('theory-article')
+    const pdf = screen.getByText('конспект.pdf')
+    expect(article.compareDocumentPosition(pdf) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Раздел' })).toBeInTheDocument()
+  })
+})
