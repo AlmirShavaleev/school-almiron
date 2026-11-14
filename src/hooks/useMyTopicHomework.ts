@@ -33,9 +33,13 @@ async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; pro
     const acTopics = [...new Set(hwRows.map(h => h.topic_id))]
     const tasksRes = await db.from('topic_autocheck_tasks').select('id, topic_id').in('topic_id', acTopics)
     const tasks = (tasksRes.error ? [] : tasksRes.data ?? []) as Array<{ id: string; topic_id: string }>
-    const answers = await loadAutocheckAnswersBatched(tasks.map(t => t.id), (ids) =>
-      db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', ids),
-    )
+    const answers = await loadAutocheckAnswersBatched(tasks.map(t => t.id), async (ids) => {
+      const result = await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', ids)
+      return {
+        data: result.data as Array<{ task_id: string; is_correct: boolean }> | null,
+        error: result.error,
+      }
+    })
     // A partial answer set is not reliable: keep journal status, not false "to do".
     if (answers === null) return empty
     return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, answers) }
