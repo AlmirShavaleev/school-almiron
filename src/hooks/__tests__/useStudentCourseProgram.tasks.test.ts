@@ -41,6 +41,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     rpc: (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args })
+      if (name === 'my_course_topic_locks') return Promise.resolve({ data: { mode: 'progress', topics: [] }, error: null })
       if (name === 'course_topic_tasks_progress_for_student') {
         return rpcFails
           ? Promise.resolve({ data: null, error: { message: 'function public.course_topic_tasks_progress_for_student(uuid) does not exist' } })
@@ -86,6 +87,8 @@ describe('useStudentCourseProgram — задачи к уроку (§182)', () =>
 
     const progressCalls = rpcCalls.filter(c => c.name === 'course_topic_tasks_progress_for_student')
     expect(progressCalls).toHaveLength(1)
+    expect(rpcCalls.filter(c => c.name === 'my_course_topic_locks')).toHaveLength(1)
+    expect(result.current.courseLocks?.mode).toBe('progress')
     expect(progressCalls[0].args).toEqual({ p_course_id: COURSE })
 
     expect(topicsOf(result.current.modules)).toEqual({
