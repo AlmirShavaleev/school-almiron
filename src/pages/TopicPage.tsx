@@ -703,7 +703,8 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   return (
     // §239. На вкладке ДЗ разбор проверенной работы с 1024 идёт в две колонки
     // (страницы с рамками | задания) — в 768 px им тесно, вкладке дана ширина.
-    <div className={cn('max-w-3xl space-y-6 pb-10', activeSeg?.tabs.includes('homework') && 'lg:max-w-5xl')}>
+    // На компьютере колонка по центру экрана, а не прижата влево (просьба владельца 14.11).
+    <div className={cn('mx-auto max-w-3xl space-y-6 pb-10', activeSeg?.tabs.includes('homework') && 'lg:max-w-5xl')}>
 
       {groupId && <MockExamAlert exams={mockExams} groupId={groupId} />}
 

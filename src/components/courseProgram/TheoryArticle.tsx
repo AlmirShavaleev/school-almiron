@@ -45,7 +45,7 @@ function Figures({ items }: { items: { caption: string; path: string }[] }) {
                   className="mx-auto h-auto max-w-full" />
               : <span className="text-sm text-gray-400">Рисунок не найден</span>}
             {f.caption && (
-              <figcaption className="mt-1 text-[13px] leading-snug text-gray-500"
+              <figcaption className="mt-1 text-sm leading-snug text-gray-500"
                 dangerouslySetInnerHTML={{ __html: escapeHtml(f.caption) }} />
             )}
           </figure>
@@ -65,7 +65,7 @@ function Block({ block }: { block: TheoryBlock }) {
       const label = boxLabel(block.box, block.md)
       return (
         <div className={cn('my-3 rounded-xl px-4 py-3', BOX_STYLE[block.box])} data-box={block.box}>
-          {label && <div className={cn('mb-1 text-xs font-semibold uppercase tracking-wide', LABEL_STYLE[block.box])}>{label}</div>}
+          {label && <div className={cn('mb-1 text-[13px] font-semibold uppercase tracking-wide', LABEL_STYLE[block.box])}>{label}</div>}
           <Html html={renderCatalogContent(block.md)} />
         </div>
       )
@@ -82,12 +82,12 @@ function CheckBlock({ question, answer }: { question: string; answer: string }) 
   useEffect(() => { if (open) void upgradeMathIn(ref.current) }, [open])
   return (
     <div ref={ref} className="my-3 rounded-xl border border-gray-200 bg-white px-4 py-3" data-box="check">
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary-700">Проверь себя</div>
+      <div className="mb-1 text-[13px] font-semibold uppercase tracking-wide text-primary-700">Проверь себя</div>
       <Html html={renderCatalogContent(question)} />
       {answer && (
         <>
           <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
-            className="mt-2 rounded-lg border border-primary-200 px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-50">
+            className="mt-2 rounded-lg border border-primary-200 px-3 py-1.5 text-[15px] font-medium text-primary-700 hover:bg-primary-50">
             {open ? 'Скрыть ответ' : 'Показать ответ'}
           </button>
           {open && <Html html={renderCatalogContent(answer)} className="mt-2 rounded-lg bg-gray-50 px-3 py-2" />}
@@ -104,10 +104,10 @@ export function TheoryArticle({ source }: { source: string }) {
 
   if (!sections.length) return null
   return (
-    <article ref={ref} className="theory-article text-[15px] leading-relaxed text-gray-800" data-testid="theory-article">
+    <article ref={ref} className="theory-article text-base leading-relaxed text-gray-800 sm:text-[17px]" data-testid="theory-article">
       {sections.map((s, i) => (
         <section key={i} className={cn(i > 0 && 'mt-6 border-t border-gray-100 pt-5')}>
-          {s.title && <h3 className="mb-2 text-lg font-semibold text-gray-900">{s.title}</h3>}
+          {s.title && <h3 className="mb-3 text-xl font-semibold text-gray-900 sm:text-[22px]">{s.title}</h3>}
           {s.blocks.map((b, j) => <Block key={j} block={b} />)}
         </section>
       ))}
