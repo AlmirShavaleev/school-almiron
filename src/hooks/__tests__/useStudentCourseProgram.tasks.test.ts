@@ -65,7 +65,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-const PROFILE = { id: 'p-1', role: 'student' }
+let PROFILE = { id: 'p-1', role: 'student' }
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: PROFILE }),
 }))
@@ -78,6 +78,20 @@ const topicsOf = (modules: { topics: { id: string; tasks_total: number; tasks_cl
 beforeEach(() => {
   rpcCalls.length = 0
   rpcFails = false
+  PROFILE = { id: 'p-1', role: 'student' }
+})
+
+describe('загрузка курса при обновлении профиля', () => {
+  it('не перечитывает группу, если поменялся объект профиля с тем же id и ролью', async () => {
+    const { result, rerender } = renderHook(() => useStudentCourseProgram(GROUP))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const before = rpcCalls.filter(c => c.name === 'my_course_topic_locks').length
+    expect(before).toBe(1)
+
+    PROFILE = { id: 'p-1', role: 'student' }
+    rerender()
+    expect(rpcCalls.filter(c => c.name === 'my_course_topic_locks')).toHaveLength(before)
+  })
 })
 
 describe('useStudentCourseProgram — задачи к уроку (§182)', () => {
