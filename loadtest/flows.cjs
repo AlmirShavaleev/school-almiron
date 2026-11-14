@@ -3,32 +3,38 @@
 // upload controls, answer fields or enrollment widgets.
 const { URL } = require('node:url')
 
-const blockedWrites = [
-  /\/(rest\/v1\/rpc\/(?:submit_|save_|accept_|course_join|onboarding_|topic_autocheck_check)|functions\/v1\/(?:subscription|payment|checkout))/i,
-  /\/(rest\/v1\/(?:topic_homework_attempts|subscription_payments|payment_transactions))/i,
-]
-const allowedRpcWrites = new Set(['school_presence_touch', 'perf_ingest', 'record_app_visit'])
-const readOnlyMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
-const protectedWritePrefixes = ['/rest/v1/', '/functions/v1/']
+// Explicit allowlist: a missing/new RPC must be reviewed, not assumed read-only.
+// State writes permitted ONLY in the isolated environment: presence and telemetry.
+const allowedRpc = new Set([
+  'school_presence_touch','record_app_visit','perf_ingest',
+  'my_work_mode','my_mock_exams','my_course_access','my_course_topic_locks',
+  'my_course_assessments','my_course_demo','my_score_forecast',
+  'my_subscriptions','my_topic_feedback','my_topic_rating',
+  'my_weekly_goals','my_live_timed_works',
+  'student_home_courses','student_path_home','student_home_activity',
+  'student_visible_topics','student_exam_forecast_evidence',
+  'subscription_enabled','subscription_tariffs_public',
+  'course_topic_tasks_progress_for_student','courses_showcase',
+  'topic_autocheck_state','topic_solution_state','topic_student_variants',
+  'topic_tasks_for_student','get_student_topic_journal',
+])
 function safelyAllowedRequest(request, expectedOrigin, expectedSupabase) {
   const u = new URL(request.url())
   if (u.protocol !== 'https:') return false
   if (u.origin !== expectedOrigin && u.origin !== expectedSupabase) return false
   const method = request.method().toUpperCase()
-  if (u.origin === expectedOrigin) return readOnlyMethods.has(method)
+  if (u.origin === expectedOrigin) return ['GET','HEAD','OPTIONS'].includes(method)
   if (u.pathname.startsWith('/auth/v1/')) {
-    // login + refresh token permitted ONLY on the verified isolated test Supabase
-    return ['/auth/v1/token', '/auth/v1/user', '/auth/v1/authorize', '/auth/v1/logout']
-      .some(p => u.pathname === p) || method === 'GET'
+    // Only tested isolated backend, no account sign-up or user mutation.
+    return (method === 'POST' && u.pathname === '/auth/v1/token') ||
+      (['GET','HEAD','OPTIONS'].includes(method) &&
+       ['/auth/v1/user','/auth/v1/authorize','/auth/v1/settings'].includes(u.pathname))
   }
-  if (readOnlyMethods.has(method)) return true
-  if (blockedWrites.some(r => r.test(u.pathname))) return false
+  if (['GET','HEAD','OPTIONS'].includes(method)) return true
   const rpc = /^\/rest\/v1\/rpc\/([^/]+)$/.exec(u.pathname)
-  if (rpc && method === 'POST') return !/^(?:submit|save|set|delete|insert|update|accept|join|upload|purchase|pay|add|remove|mark|complete|assign|toggle|cancel|renew|checkout)_/i.test(rpc[1]) &&
-    (allowedRpcWrites.has(rpc[1]) || !/^(?:admin|staff|teacher|course_join|topic_autocheck_check)/i.test(rpc[1]))
-  if (protectedWritePrefixes.some(p => u.pathname.startsWith(p))) return false
-  return false
+  return method === 'POST' && !!rpc && allowedRpc.has(rpc[1])
 }
+
 function track(emitter, key, started) {
   emitter.emit('histogram', 'almiron.' + key + '.ms', Date.now() - started)
 }
