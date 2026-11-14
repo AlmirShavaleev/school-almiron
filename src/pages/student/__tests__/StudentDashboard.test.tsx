@@ -210,7 +210,7 @@ describe('главная ученика «как в Notion»', () => {
 
   it('виджет «Прогноз ЕГЭ»: только диапазон; данных мало — «0»', async () => {
     await renderHome()
-    expect(await screen.findByTestId('forecast-physics-value')).toHaveTextContent('58–70')
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent('58–70'))
     expect(screen.getByTestId('forecast-physics')).toHaveTextContent('Прогноз ЕГЭ · физика')
     expect(screen.getByTestId('home-w-forecast').textContent).not.toMatch(/обновлено|задач|цель/i)
   })
