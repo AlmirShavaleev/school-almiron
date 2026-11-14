@@ -11,6 +11,7 @@ import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
 import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { loadAutocheckAnswersBatched } from '@/lib/autocheckAnswerBatches'
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
@@ -32,10 +33,15 @@ async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; pro
     const acTopics = [...new Set(hwRows.map(h => h.topic_id))]
     const tasksRes = await db.from('topic_autocheck_tasks').select('id, topic_id').in('topic_id', acTopics)
     const tasks = (tasksRes.error ? [] : tasksRes.data ?? []) as Array<{ id: string; topic_id: string }>
-    const answersRes = tasks.length
-      ? await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', tasks.map(t => t.id))
-      : { data: [], error: null }
-    const answers = (answersRes.error ? [] : answersRes.data ?? []) as Array<{ task_id: string; is_correct: boolean }>
+    const answers = await loadAutocheckAnswersBatched(tasks.map(t => t.id), async (ids) => {
+      const result = await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', ids)
+      return {
+        data: result.data as Array<{ task_id: string; is_correct: boolean }> | null,
+        error: result.error,
+      }
+    })
+    // A partial answer set is not reliable: keep journal status, not false "to do".
+    if (answers === null) return empty
     return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, answers) }
   } catch {
     return empty
