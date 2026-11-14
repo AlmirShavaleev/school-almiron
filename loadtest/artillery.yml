@@ -1,0 +1,32 @@
+# Artillery + built-in Playwright engine. ONLY invoke through runner.cjs.
+# 1 new VU/sec * 20 sec = 20 unique test accounts; max concurrency 20.
+# All VUs dwell on the topic long enough to overlap and exercise presence timers.
+config:
+  target: "{{ $env.LOADTEST_TARGET_URL }}"
+  phases:
+    - name: "20 isolated students, read-only navigation"
+      duration: 20
+      arrivalRate: 1
+      maxVusers: 20
+  payload:
+    path: "./students.local.csv"
+    fields: [email, password, groupId, topicId]
+    order: sequence
+    skipHeader: true
+    cast: false
+  engines:
+    playwright:
+      defaultNavigationTimeout: 45
+      extendedMetrics: true
+      contextOptions:
+        serviceWorkers: block
+        viewport:
+          width: 1365
+          height: 768
+      trace:
+        enabled: false
+  processor: "./flows.cjs"
+scenarios:
+  - name: "student-read-only-course-flow"
+    engine: playwright
+    testFunction: "studentReadOnlyCourseFlow"
