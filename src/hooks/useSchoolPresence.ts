@@ -23,15 +23,15 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown'] as const
  * конспект, пропадал из «Сейчас в школе» через 45 секунд. Панель показывала,
  * у кого вкладка на переднем плане, а не кто занимается.
  *
- * ТЕПЕРЬ — льготный период. Вкладка видна: такт 20 с. Вкладка в фоне: такт
+ * ТЕПЕРЬ — льготный период. Вкладка видна: такт 60 с. Вкладка в фоне: такт
  * 60 с, но только пока с последнего действия прошло меньше получаса. Дальше
  * молчим — вкладка, забытая на ночь, ресурсы не жжёт.
  *
  * Решение вынесено в `shouldTouch`, чтобы правило проверялось без часов.
  */
-/** Отметка присутствия: не дольше 5 с и не чаще раза в 10 с (письмо 27.10). */
+/** Отметка присутствия: не дольше 5 с и не чаще раза в минуту. */
 export const TOUCH_TIMEOUT_MS = 5_000
-export const TOUCH_MIN_GAP_MS = 10_000
+export const TOUCH_MIN_GAP_MS = PRESENCE_TOUCH_MS
 
 export function useSchoolPresence() {
   const profile = useAuthStore(s => s.profile)
@@ -45,12 +45,12 @@ export function useSchoolPresence() {
     let lastTouchAt = 0
     let inFlight = false
 
-    function sendTouch(now: number, fromActivity = false) {
+    function sendTouch(now: number) {
       // 27.10 (письмо ЛК_СРОЧНО_шторм_запросов_программа_курса.md): отметка
       // уходила на КАЖДЫЙ клик и нажатие клавиши, а при плохой сети висела
-      // ~21 с. Теперь — не чаще раза в TOUCH_MIN_GAP_MS, не пока предыдущая
+      // ~21 с. Теперь — не чаще раза в минуту, не пока предыдущая
       // в пути, и обрыв через TOUCH_TIMEOUT_MS без повтора.
-      if (inFlight || (fromActivity && now - lastTouchAt < TOUCH_MIN_GAP_MS)) return
+      if (inFlight || now - lastTouchAt < TOUCH_MIN_GAP_MS) return
       lastTouchAt = now
       inFlight = true
       // Ошибку глушим намеренно: отметка присутствия не должна мешать работе,
@@ -90,9 +90,9 @@ export function useSchoolPresence() {
       if (stopped) return
       const now = Date.now()
       noteActivity(now)
-      // Действие — повод отметиться сразу: иначе первые секунды после
-      // возвращения человек числился бы ушедшим. Но не чаще раза в 10 с.
-      sendTouch(now, true)
+      // Действие продлевает льготный период, но не создаёт лишних
+      // запросов: повторная отметка допустима только через минуту.
+      sendTouch(now)
     }
 
     function onVisibility() {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentTopicJournal } from '@/hooks/useStudentTopicJournal'
@@ -11,6 +11,8 @@ import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
 import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { loadAutocheckAnswersBatched } from '@/lib/autocheckAnswerBatches'
+import { invalidateSharedAutocheckLoads, shareAutocheckLoad } from '@/lib/sharedAutocheckLoad'
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
@@ -32,10 +34,15 @@ async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; pro
     const acTopics = [...new Set(hwRows.map(h => h.topic_id))]
     const tasksRes = await db.from('topic_autocheck_tasks').select('id, topic_id').in('topic_id', acTopics)
     const tasks = (tasksRes.error ? [] : tasksRes.data ?? []) as Array<{ id: string; topic_id: string }>
-    const answersRes = tasks.length
-      ? await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', tasks.map(t => t.id))
-      : { data: [], error: null }
-    const answers = (answersRes.error ? [] : answersRes.data ?? []) as Array<{ task_id: string; is_correct: boolean }>
+    const answers = await loadAutocheckAnswersBatched(tasks.map(t => t.id), async (ids) => {
+      const result = await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', ids)
+      return {
+        data: result.data as Array<{ task_id: string; is_correct: boolean }> | null,
+        error: result.error,
+      }
+    })
+    // A partial answer set is not reliable: keep journal status, not false "to do".
+    if (answers === null) return empty
     return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, answers) }
   } catch {
     return empty
@@ -96,8 +103,13 @@ export function useMyStudentId(enabled = true) {
  * счётчики в переключателях считаются по неотфильтрованным строкам.
  */
 export function useMyTopicHomework(courseId: string | null = null) {
+  const profileId = useAuthStore(s => s.profile?.id)
   const { studentId, loading: resolvingStudent } = useMyStudentId()
-  const { journal, loading: loadingJournal, error, reload } = useStudentTopicJournal(studentId)
+  const { journal, loading: loadingJournal, error, reload: reloadJournal } = useStudentTopicJournal(studentId)
+  const reload = useCallback(() => {
+    invalidateSharedAutocheckLoads([profileId ?? '', studentId ?? ''].join('|') + '|')
+    reloadJournal()
+  }, [profileId, studentId, reloadJournal])
   const { courses, loading: loadingCourses } = useMyCourseMemberships()
 
   // Группа для ссылки — из членства, а не из зачислений: `useMyCourseMemberships`
@@ -137,9 +149,13 @@ export function useMyTopicHomework(courseId: string | null = null) {
   const [autocheck, setAutocheck] = useState<{ key: string; hw: Set<string>; progress: Map<string, AutocheckProgress> } | null>(null)
   useEffect(() => {
     let alive = true
-    loadAutocheck(topicKey ? topicKey.split(',') : []).then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
+    // The page and its navigation badge both mount this hook. Reuse one read
+    // per authenticated student + exact visible topic set.
+    const cacheKey = [profileId ?? '', studentId ?? '', topicKey].join('|')
+    shareAutocheckLoad(cacheKey, () => loadAutocheck(topicKey ? topicKey.split(',') : []))
+      .then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
     return () => { alive = false }
-  }, [topicKey])
+  }, [topicKey, profileId, studentId])
   const autocheckReady = !!autocheck && autocheck.key === topicKey
   const rows = useMemo<BoardRow[]>(
     () => withAutocheck(openRows, autocheckReady ? autocheck!.hw : new Set(), autocheckReady ? autocheck!.progress : new Map()),

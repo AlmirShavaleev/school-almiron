@@ -201,9 +201,16 @@ describe('главная ученика «как в Notion»', () => {
     }
   })
 
+  it('главная не повторяет запрос хранимого прогноза для виджета', async () => {
+    await renderHome()
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent('58–70'))
+    expect(calls.filter(c => c === 'rpc:my_score_forecast')).toHaveLength(1)
+    expect(calls).not.toContain('rpc:student_exam_forecast_evidence')
+  })
+
   it('виджет «Прогноз ЕГЭ»: только диапазон; данных мало — «0»', async () => {
     await renderHome()
-    expect(await screen.findByTestId('forecast-physics-value')).toHaveTextContent('58–70')
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent('58–70'))
     expect(screen.getByTestId('forecast-physics')).toHaveTextContent('Прогноз ЕГЭ · физика')
     expect(screen.getByTestId('home-w-forecast').textContent).not.toMatch(/обновлено|задач|цель/i)
   })

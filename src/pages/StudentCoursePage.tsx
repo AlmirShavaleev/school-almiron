@@ -38,7 +38,6 @@ import {
 } from '@/lib/courseAssessments'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { SubscriptionLockBanner } from '@/components/subscription/SubscriptionLockBanner'
-import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
 import { Button } from '@/components/ui/Button'
 import { useCourseDemo } from '@/hooks/useStudentPath'
 import { DEMO_LOCK_NOTE, withDemoLocks } from '@/lib/studentPath'
@@ -420,11 +419,9 @@ export function StudentCoursePage() {
   const { groupId }  = useParams<{ groupId?: string }>()
   const navigate     = useNavigate()
   const preview      = usePreviewMode()
-  const { course, modules: programModules, mockExams = [], loading, error } = useStudentCourseProgram(groupId)
-  // §288. Курс «по прохождению»: замки уроков и счётчики — уже в программе
-  // (useStudentCourseProgram). Здесь — только «Открыт урок «…»» с прошлого визита.
+  const { course, modules: programModules, mockExams = [], courseLocks, loading, error } = useStudentCourseProgram(groupId)
+  // §288. Замки уже загружены программой курса, не запрашиваем RPC дважды.
   const profileId = useAuthStore(s => s.profile?.id ?? null)
-  const locks = useCourseTopicLocks(course?.id, preview ? null : profileId)
   // «Открыт урок «…»» — теперь модалкой «Урок пройден / открыт следующий» (письмо 16.10).
   // 15.10, владелец: в «урочном» курсе (раздел «Мой курс») блок «Задания» —
   // только ДЗ уроков, открытых ученику сейчас (src/lib/lessonCourses.ts).
@@ -523,7 +520,7 @@ export function StudentCoursePage() {
   // ── Шапка и плитки (ЛК, письмо 15.10) ────────────────────────────────────
   const lessonModules = modules.filter(m => !isWorksOnlyModule(m))
   const courseMode: 'progress' | 'schedule' =
-    locks.data?.mode ?? (course?.id && extras?.progressMode.has(course.id) ? 'progress' : 'schedule')
+    courseLocks?.mode ?? (course?.id && extras?.progressMode.has(course.id) ? 'progress' : 'schedule')
   const courseTitle = course ? publicTitle(course.title, course.id ? extras?.showcase.get(course.id) : null) : ''
   // Прогресса с сервера нет (предпросмотр персонала, сбой RPC) — по программе:
   // те же счётчики §280, что и прежде (пройдено / темы в счёт / открыто).
