@@ -92,3 +92,9 @@ test_doc.doc
 # Выводы `npx tsc -b > tsc.log 2>&1` — рабочие логи, не исходники (§191)
 tsc.log
 log
+
+# Isolated Artillery load-test credentials and output (NEVER commit)
+loadtest/targets.local.json
+loadtest/students.local.csv
+loadtest/results/
+loadtest/node_modules/
