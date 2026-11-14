@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
-import { fetchCourseTopicLocks, progressNote } from '@/lib/progressUnlock'
+import { fetchCourseTopicLocks, progressNote, type CourseTopicLocks } from '@/lib/progressUnlock'
 import { isSelfMarkable, topicGroups, type TopicGroupKey } from '@/lib/topicProgress'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -194,6 +194,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
   const [mockExams, setMockExams] = useState<MockLessonListRow[]>([])
+  const [courseLocks, setCourseLocks] = useState<CourseTopicLocks | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -209,6 +210,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
     setLoading(true)
     setError(null)
     setMockExams([])
+    setCourseLocks(null)
     try {
       // Форма группы одна на обе ветки — вложенный курс и персонал; типы
       // PostgREST для embed здесь, как и раньше, не выводятся.
@@ -331,6 +333,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         // расчёт «ученик без прогресса» для превью). Курс по датам — 'schedule'.
         fetchCourseTopicLocks(course.id),
       ])
+      setCourseLocks(topicLocks)
       const lockById = topicLocks?.mode === 'progress'
         ? new Map(topicLocks.topics.map(l => [l.topic_id, l]))
         : null
@@ -515,5 +518,5 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
     }
   }
 
-  return { course, modules, mockExams, loading, error, reload }
+  return { course, modules, mockExams, courseLocks, loading, error, reload }
 }
