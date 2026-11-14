@@ -211,11 +211,12 @@ export function MyCoursesPage() {
 
   useEffect(() => {
     if (!profileId) return
+    const stableProfileId = profileId
     let cancelled = false
     async function load() {
       setLoading(true)
       try {
-        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(profileId)
+        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(stableProfileId)
         if (cancelled) return
         const list: CourseCard[] = (groups ?? []).map(g => ({
           groupId:     g.id,
