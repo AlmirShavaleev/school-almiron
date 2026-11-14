@@ -239,7 +239,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         // 2. Reuse the fresh membership just loaded by "My courses".
         // On a direct URL, expired cache, or manual reload, use the original
         // RLS-scoped database query (never allow cached membership to grant access).
-        const cachedGroup = targetGroupId
+        const cachedGroup = targetGroupId && tick === 0
           ? getCachedStudentCourseGroup(profileId!, student.id, targetGroupId)
           : null
         if (cachedGroup) {
