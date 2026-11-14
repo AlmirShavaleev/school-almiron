@@ -12,6 +12,7 @@ import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
 import { ownStudentRow } from '@/lib/ownStudent'
 import { loadAutocheckAnswersBatched } from '@/lib/autocheckAnswerBatches'
+import { shareAutocheckLoad } from '@/lib/sharedAutocheckLoad'
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
@@ -102,6 +103,7 @@ export function useMyStudentId(enabled = true) {
  * счётчики в переключателях считаются по неотфильтрованным строкам.
  */
 export function useMyTopicHomework(courseId: string | null = null) {
+  const profileId = useAuthStore(s => s.profile?.id)
   const { studentId, loading: resolvingStudent } = useMyStudentId()
   const { journal, loading: loadingJournal, error, reload } = useStudentTopicJournal(studentId)
   const { courses, loading: loadingCourses } = useMyCourseMemberships()
@@ -143,9 +145,13 @@ export function useMyTopicHomework(courseId: string | null = null) {
   const [autocheck, setAutocheck] = useState<{ key: string; hw: Set<string>; progress: Map<string, AutocheckProgress> } | null>(null)
   useEffect(() => {
     let alive = true
-    loadAutocheck(topicKey ? topicKey.split(',') : []).then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
+    // The page and its navigation badge both mount this hook. Reuse one read
+    // per authenticated student + exact visible topic set.
+    const cacheKey = [profileId ?? '', studentId ?? '', topicKey].join('|')
+    shareAutocheckLoad(cacheKey, () => loadAutocheck(topicKey ? topicKey.split(',') : []))
+      .then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
     return () => { alive = false }
-  }, [topicKey])
+  }, [topicKey, profileId, studentId])
   const autocheckReady = !!autocheck && autocheck.key === topicKey
   const rows = useMemo<BoardRow[]>(
     () => withAutocheck(openRows, autocheckReady ? autocheck!.hw : new Set(), autocheckReady ? autocheck!.progress : new Map()),
