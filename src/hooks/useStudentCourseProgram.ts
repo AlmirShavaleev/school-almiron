@@ -189,7 +189,9 @@ const GROUP_WITH_COURSE_SELECT = `
 `
 
 export function useStudentCourseProgram(targetGroupId?: string | null) {
-  const profile = useAuthStore(s => s.profile)
+  // Depend only on access identity: profile object updates must not reload the whole course.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
+  const profileRole = useAuthStore(s => s.profile?.role ?? null)
   const preview = usePreviewMode()
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
@@ -201,10 +203,10 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    if (!profile) return
-    if (profile.role !== 'student' && !preview) return
+    if (!profileId) return
+    if (profileRole !== 'student' && !preview) return
     load()
-  }, [profile, tick, targetGroupId, preview])
+  }, [profileId, profileRole, tick, targetGroupId, preview])
 
   async function load() {
     setLoading(true)
@@ -229,7 +231,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         group = row
       } else {
         // 1. Get student id
-        const { data: student } = await ownStudentRow(profile!.id)
+        const { data: student } = await ownStudentRow(profileId!)
         if (!student) return
         studentId = student.id
 
