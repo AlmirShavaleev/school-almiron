@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useAuth } from '@/hooks/useAuth'
 import { clearPendingInvite, formatInviteCode, normalizeInviteCode, readPendingInvite, savePendingInvite } from '@/lib/studentInviteSession'
 import { acceptStudentInvite, acceptStudentInviteByCode, acceptCourseJoin, ensureStudentProfile, InvitationAcceptanceError } from '@/lib/studentInvitationAcceptance'
+import { resetStudentGroupMembershipsCache } from '@/lib/studentGroupMemberships'
 
 type JoinMode = 'token' | 'code'
 type AcceptState = 'idle' | 'success'
@@ -105,6 +106,9 @@ export function JoinPage() {
     setError(null)
     try {
       const accepted = await acceptAny(token || normalizedCode, !!token)
+      // A successful join must be visible immediately, even if the student
+      // visited their course list seconds earlier.
+      resetStudentGroupMembershipsCache()
       clearPendingInvite()
       // Профиль мог появиться только что: курсовой путь создаёт его в
       // ensureStudentProfile, легаси — внутри _accept_invite_core. В сторе он
