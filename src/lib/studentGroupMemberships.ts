@@ -36,6 +36,7 @@ export interface StudentMembershipRow {
 const MEMBERSHIP_CACHE_MS = 8_000
 interface CacheEntry {
   expiresAt: number
+  inFlight: boolean
   rows: StudentMembershipRow[] | null
   promise: Promise<StudentMembershipRow[] | null>
 }
@@ -46,8 +47,9 @@ const keyFor = (profileId: string, studentId: string) => `${profileId}:${student
 export function loadStudentGroupMemberships(profileId: string, studentId: string): Promise<StudentMembershipRow[] | null> {
   const key = keyFor(profileId, studentId)
   const old = cache.get(key)
-  if (old && Date.now() < old.expiresAt) return old.promise
-  const entry: CacheEntry = { expiresAt: Date.now() + MEMBERSHIP_CACHE_MS, rows: null, promise: Promise.resolve(null) }
+  // While the backend is slow, keep deduplicating even after the TTL.
+  if (old && (old.inFlight || Date.now() < old.expiresAt)) return old.promise
+  const entry: CacheEntry = { expiresAt: Date.now() + MEMBERSHIP_CACHE_MS, inFlight: true, rows: null, promise: Promise.resolve(null) }
   entry.promise = (async () => {
     try {
       const { data, error } = await supabase
@@ -56,6 +58,7 @@ export function loadStudentGroupMemberships(profileId: string, studentId: string
         .eq('student_id', studentId)
       if (error) throw new Error(error.message)
       const rows = (data ?? []) as unknown as StudentMembershipRow[]
+      entry.inFlight = false
       // Do not keep a negative cache: students may just have joined their first course.
       if (cache.get(key) === entry) {
         if (rows.length) { entry.rows = rows; entry.expiresAt = Date.now() + MEMBERSHIP_CACHE_MS }
@@ -63,6 +66,7 @@ export function loadStudentGroupMemberships(profileId: string, studentId: string
       }
       return rows
     } catch {
+      entry.inFlight = false
       if (cache.get(key) === entry) cache.delete(key)
       return null
     }
