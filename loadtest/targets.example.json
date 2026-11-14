@@ -2,11 +2,17 @@
   "main": {
     "url": "https://REPLACE-main-unique-preview.vercel.app",
     "supabaseUrl": "https://REPLACE-isolated-test-project.supabase.co",
-    "expectedCommit": "6f6e1a849d844dba3d6ed498cf22327b728d4893"
+    "expectedCommit": "6f6e1a849d844dba3d6ed498cf22327b728d4893",
+    "isolatedDbVerified": false,
+    "previewBuildVerified": false,
+    "readOnlyFixtureConfirmed": false
   },
   "pr4": {
     "url": "https://REPLACE-pr4-unique-preview.vercel.app",
     "supabaseUrl": "https://REPLACE-isolated-test-project.supabase.co",
-    "expectedCommit": "d0eeee0dd990ce062515ee5311866997c6444fc4"
+    "expectedCommit": "d0eeee0dd990ce062515ee5311866997c6444fc4",
+    "isolatedDbVerified": false,
+    "previewBuildVerified": false,
+    "readOnlyFixtureConfirmed": false
   }
 }
