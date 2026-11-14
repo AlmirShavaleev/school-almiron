@@ -213,6 +213,12 @@ body::before {
 .catalog-md .catalog-md-figure { margin: 0.6em 0; }
 .catalog-md .catalog-md-figure img.catalog-condition-figure { max-width: min(100%, 520px) !important; }
 
+/* Теория темы страницей (TheoryArticle, theoryMarkdown.ts). Абзацы плотнее
+   задачных, первый и последний абзац рамки без внешних отступов. */
+.theory-article .theory-md .catalog-md > :first-child { margin-top: 0; }
+.theory-article .theory-md .catalog-md > :last-child { margin-bottom: 0; }
+.theory-article figure img { max-height: 340px; width: auto; }
+
 /*
  * Math (ЕГЭ/ОГЭ) only, screen catalog only: real figures (geometry, graphs,
  * diagrams) in statement/solution shrunk ~30% further (50% -> 35%). Applied
