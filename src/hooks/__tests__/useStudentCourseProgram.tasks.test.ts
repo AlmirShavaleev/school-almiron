@@ -41,6 +41,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     rpc: (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args })
+      if (name === 'my_course_topic_locks') return Promise.resolve({ data: { mode: 'progress', topics: [] }, error: null })
       if (name === 'course_topic_tasks_progress_for_student') {
         return rpcFails
           ? Promise.resolve({ data: null, error: { message: 'function public.course_topic_tasks_progress_for_student(uuid) does not exist' } })
@@ -64,7 +65,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-const PROFILE = { id: 'p-1', role: 'student' }
+let PROFILE = { id: 'p-1', role: 'student' }
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: PROFILE }),
 }))
@@ -77,6 +78,20 @@ const topicsOf = (modules: { topics: { id: string; tasks_total: number; tasks_cl
 beforeEach(() => {
   rpcCalls.length = 0
   rpcFails = false
+  PROFILE = { id: 'p-1', role: 'student' }
+})
+
+describe('загрузка курса при обновлении профиля', () => {
+  it('не перечитывает группу, если поменялся объект профиля с тем же id и ролью', async () => {
+    const { result, rerender } = renderHook(() => useStudentCourseProgram(GROUP))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const before = rpcCalls.filter(c => c.name === 'my_course_topic_locks').length
+    expect(before).toBe(1)
+
+    PROFILE = { id: 'p-1', role: 'student' }
+    rerender()
+    expect(rpcCalls.filter(c => c.name === 'my_course_topic_locks')).toHaveLength(before)
+  })
 })
 
 describe('useStudentCourseProgram — задачи к уроку (§182)', () => {
@@ -86,6 +101,8 @@ describe('useStudentCourseProgram — задачи к уроку (§182)', () =>
 
     const progressCalls = rpcCalls.filter(c => c.name === 'course_topic_tasks_progress_for_student')
     expect(progressCalls).toHaveLength(1)
+    expect(rpcCalls.filter(c => c.name === 'my_course_topic_locks')).toHaveLength(1)
+    expect(result.current.courseLocks?.mode).toBe('progress')
     expect(progressCalls[0].args).toEqual({ p_course_id: COURSE })
 
     expect(topicsOf(result.current.modules)).toEqual({
