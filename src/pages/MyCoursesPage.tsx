@@ -20,6 +20,7 @@ import { Sticker } from '@/components/student/skin/Sticker'
 import { DualRing } from '@/components/student/course/DualRing'
 import type { StickerName } from '@/components/student/skin/skin'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { loadStudentGroupMemberships } from '@/lib/studentGroupMemberships'
 
 /**
  * «Мои курсы» в стиле лендинга (письмо ЛК_стиль_мои_курсы.md, 15.10):
@@ -74,10 +75,7 @@ async function loadPreviewGroups(): Promise<GroupWithCourse[]> {
 async function loadStudentGroups(profileId: string): Promise<GroupWithCourse[] | null> {
   const { data: student } = await ownStudentRow(profileId)
   if (!student) return null
-  const { data: gs } = await supabase
-    .from('group_students')
-    .select(`group_id, groups(${GROUP_SELECT})`)
-    .eq('student_id', student.id)
+  const gs = await loadStudentGroupMemberships(profileId, student.id)
   return ((gs || []) as unknown as Array<{ groups: GroupWithCourse | null }>)
     .filter(g => g.groups?.course_id && g.groups.courses)
     .map(g => g.groups as GroupWithCourse)
@@ -196,11 +194,12 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
 }
 
 export function MyCoursesPage() {
-  const profile  = useAuthStore(s => s.profile)
+  // Profile refresh (e.g. a name change) must not refetch all group memberships.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
   const preview  = usePreviewMode()
   const subscriptionsOn = useSubscriptionsEnabled()
-  const path = useStudentPathHome(profile?.id, subscriptionsOn.enabled && !preview)
-  const home = useStudentHomeCourses(preview ? null : profile?.id)
+  const path = useStudentPathHome(profileId, subscriptionsOn.enabled && !preview)
+  const home = useStudentHomeCourses(preview ? null : profileId)
   const [cards,   setCards]   = useState<CourseCard[]>([])
   const [extras,  setExtras]  = useState<Extras>({ showcase: new Map(), progressMode: new Set() })
   const [loading, setLoading] = useState(true)
@@ -209,12 +208,13 @@ export function MyCoursesPage() {
   const mocksByGroup = useMyMockExams(cards.map(c => c.groupId))
 
   useEffect(() => {
-    if (!profile) return
+    if (!profileId) return
+    const stableProfileId = profileId
     let cancelled = false
     async function load() {
       setLoading(true)
       try {
-        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(profile!.id)
+        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(stableProfileId)
         if (cancelled) return
         const list: CourseCard[] = (groups ?? []).map(g => ({
           groupId:     g.id,
@@ -237,7 +237,7 @@ export function MyCoursesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [profile, preview])
+  }, [profileId, preview])
 
   const subByCourse = useMemo(
     () => new Map((path.data?.subscriptions ?? []).map(s => [s.course_id, s] as [string, PathSubscription])),

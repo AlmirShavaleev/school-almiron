@@ -112,7 +112,7 @@ describe('Locked topic cannot be opened', () => {
 
 describe('Teacher/admin: no student progress', () => {
   it('hook only loads for student role', () => {
-    expect(HOOK_SRC).toContain("profile.role !== 'student'")
+    expect(HOOK_SRC).toContain("profileRole !== 'student'")
   })
 
   it('StudentCoursePage renders empty state when no course', () => {

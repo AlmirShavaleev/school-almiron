@@ -89,17 +89,18 @@ describe('Доступ к экрану картинок каталога (§195)
     sessionStorage.clear()
   })
 
-  it('владелец видит пункт меню и попадает на экран', async () => {
+  it('владелец не видит скрытый пункт меню, но прямой маршрут доступен', async () => {
     signIn('owner')
     renderSidebar()
-    const label = await screen.findByText('Картинки каталога')
-    expect(label.closest('a')).toHaveAttribute('href', '/catalog/assets')
+    expect(screen.queryByText('Картинки каталога')).not.toBeInTheDocument()
+    renderRoute()
+    expect(await screen.findByText('экран картинок каталога')).toBeInTheDocument()
   })
 
-  it('админ видит пункт меню', async () => {
+  it('админ тоже не видит скрытый пункт меню', () => {
     signIn('admin')
     renderSidebar()
-    expect(await screen.findByText('Картинки каталога')).toBeInTheDocument()
+    expect(screen.queryByText('Картинки каталога')).not.toBeInTheDocument()
   })
 
   it('преподавателю пункта меню нет, хотя каталог ему виден', async () => {
@@ -116,11 +117,11 @@ describe('Доступ к экрану картинок каталога (§195)
     expect(screen.queryByText('Картинки каталога')).not.toBeInTheDocument()
   })
 
-  it('на экране картинок подсвечен один пункт меню, а не он и «Каталог заданий»', async () => {
+  it('на скрытом экране картинок подсвечен только видимый родительский каталог', () => {
     signIn('owner')
     const { container } = renderSidebar('/catalog/assets')
-    await screen.findByText('Картинки каталога')
-    expect(highlighted(container)).toEqual(['Картинки каталога'])
+    expect(screen.queryByText('Картинки каталога')).not.toBeInTheDocument()
+    expect(highlighted(container)).toEqual(['Каталог заданий'])
   })
 
   it('внутри каталога по-прежнему горит «Каталог заданий»', async () => {

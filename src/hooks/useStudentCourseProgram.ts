@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countTopics, type CourseCounters } from '@/lib/studentCourseCounters'
-import { fetchCourseTopicLocks, progressNote } from '@/lib/progressUnlock'
+import { fetchCourseTopicLocks, progressNote, type CourseTopicLocks } from '@/lib/progressUnlock'
 import { isSelfMarkable, topicGroups, type TopicGroupKey } from '@/lib/topicProgress'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -18,6 +18,7 @@ import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
 import { onlyEgeTrack } from '@/lib/training'
 import { firstVideoGuidByTopic, firstVideoThumbByTopic } from '@/lib/lessonCard'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { getCachedStudentCourseGroup } from '@/lib/studentGroupMemberships'
 
 /**
  * Программа курса глазами ученика.
@@ -189,26 +190,30 @@ const GROUP_WITH_COURSE_SELECT = `
 `
 
 export function useStudentCourseProgram(targetGroupId?: string | null) {
-  const profile = useAuthStore(s => s.profile)
+  // Depend only on access identity: profile object updates must not reload the whole course.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
+  const profileRole = useAuthStore(s => s.profile?.role ?? null)
   const preview = usePreviewMode()
   const [course,   setCourse]   = useState<CourseInfo | null>(null)
   const [modules,  setModules]  = useState<ModuleProgress[]>([])
   const [mockExams, setMockExams] = useState<MockLessonListRow[]>([])
+  const [courseLocks, setCourseLocks] = useState<CourseTopicLocks | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    if (!profile) return
-    if (profile.role !== 'student' && !preview) return
+    if (!profileId) return
+    if (profileRole !== 'student' && !preview) return
     load()
-  }, [profile, tick, targetGroupId, preview])
+  }, [profileId, profileRole, tick, targetGroupId, preview])
 
   async function load() {
     setLoading(true)
     setError(null)
     setMockExams([])
+    setCourseLocks(null)
     try {
       // Форма группы одна на обе ветки — вложенный курс и персонал; типы
       // PostgREST для embed здесь, как и раньше, не выводятся.
@@ -227,23 +232,32 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         group = row
       } else {
         // 1. Get student id
-        const { data: student } = await ownStudentRow(profile!.id)
+        const { data: student } = await ownStudentRow(profileId!)
         if (!student) return
         studentId = student.id
 
-        // 2. Get student's groups with courses
-        const gsQuery = supabase
-          .from('group_students')
-          .select(`group_id, groups(${GROUP_WITH_COURSE_SELECT})`)
-          .eq('student_id', student.id)
+        // 2. Reuse the fresh membership just loaded by "My courses".
+        // On a direct URL, expired cache, or manual reload, use the original
+        // RLS-scoped database query (never allow cached membership to grant access).
+        const cachedGroup = targetGroupId && tick === 0
+          ? getCachedStudentCourseGroup(profileId!, student.id, targetGroupId)
+          : null
+        if (cachedGroup) {
+          group = cachedGroup
+        } else {
+          const gsQuery = supabase
+            .from('group_students')
+            .select(`group_id, groups(${GROUP_WITH_COURSE_SELECT})`)
+            .eq('student_id', student.id)
 
-        const { data: gs } = targetGroupId
-          ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
-          : await gsQuery.limit(20)
+          const { data: gs } = targetGroupId
+            ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
+            : await gsQuery.limit(20)
 
-        const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
-        if (!groupWithCourse) { setLoading(false); return }
-        group = (groupWithCourse as any).groups
+          const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
+          if (!groupWithCourse) { setLoading(false); return }
+          group = (groupWithCourse as any).groups
+        }
       }
 
       const course  = group.courses
@@ -331,6 +345,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         // расчёт «ученик без прогресса» для превью). Курс по датам — 'schedule'.
         fetchCourseTopicLocks(course.id),
       ])
+      setCourseLocks(topicLocks)
       const lockById = topicLocks?.mode === 'progress'
         ? new Map(topicLocks.topics.map(l => [l.topic_id, l]))
         : null
@@ -515,5 +530,5 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
     }
   }
 
-  return { course, modules, mockExams, loading, error, reload }
+  return { course, modules, mockExams, courseLocks, loading, error, reload }
 }
