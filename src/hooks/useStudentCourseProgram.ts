@@ -18,6 +18,7 @@ import { loadMyMockExams, loadPreviewMockExams } from '@/lib/myMockExams'
 import { onlyEgeTrack } from '@/lib/training'
 import { firstVideoGuidByTopic, firstVideoThumbByTopic } from '@/lib/lessonCard'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { getCachedStudentCourseGroup } from '@/lib/studentGroupMemberships'
 
 /**
  * Программа курса глазами ученика.
@@ -235,19 +236,28 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
         if (!student) return
         studentId = student.id
 
-        // 2. Get student's groups with courses
-        const gsQuery = supabase
-          .from('group_students')
-          .select(`group_id, groups(${GROUP_WITH_COURSE_SELECT})`)
-          .eq('student_id', student.id)
+        // 2. Reuse the fresh membership just loaded by "My courses".
+        // On a direct URL, expired cache, or manual reload, use the original
+        // RLS-scoped database query (never allow cached membership to grant access).
+        const cachedGroup = targetGroupId
+          ? getCachedStudentCourseGroup(profileId!, student.id, targetGroupId)
+          : null
+        if (cachedGroup) {
+          group = cachedGroup
+        } else {
+          const gsQuery = supabase
+            .from('group_students')
+            .select(`group_id, groups(${GROUP_WITH_COURSE_SELECT})`)
+            .eq('student_id', student.id)
 
-        const { data: gs } = targetGroupId
-          ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
-          : await gsQuery.limit(20)
+          const { data: gs } = targetGroupId
+            ? await gsQuery.eq('group_id', targetGroupId).single().then(r => ({ data: r.data ? [r.data] : [] }))
+            : await gsQuery.limit(20)
 
-        const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
-        if (!groupWithCourse) { setLoading(false); return }
-        group = (groupWithCourse as any).groups
+          const groupWithCourse = (gs || []).find((g: any) => g.groups?.course_id)
+          if (!groupWithCourse) { setLoading(false); return }
+          group = (groupWithCourse as any).groups
+        }
       }
 
       const course  = group.courses
