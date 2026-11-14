@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:half1": "vitest run --reporter=dot src/components src/hooks",
+    "test:half1": "vitest run --reporter=dot src/components src/hooks src/__tests__",
     "test:half2": "vitest run --reporter=dot src/pages src/utils src/lib",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
