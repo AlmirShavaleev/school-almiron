@@ -100,7 +100,10 @@ export function StudentDashboard() {
     () => [...new Set(courses.filter(c => c.examType === 'ege').map(c => c.subject ?? ''))].filter(s => s === 'physics' || s === 'math'),
     [courses],
   )
-  const ranges = useMyForecastRanges(forecastSubjects.length > 0)
+  // Goal caption and forecast widget share the same stored-forecast result.
+  // Wait for the noncritical goals batch instead of firing a duplicate RPC
+  // during the initial student-home request burst.
+  const ranges = useMyForecastRanges(forecastSubjects.length > 0 && goals !== null, goals?.forecast)
 
   const mySubs = useMySubscriptionsLite(subscriptionsOn.enabled)
   const hw = useMyTopicHomework(null)

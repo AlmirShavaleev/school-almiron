@@ -25,8 +25,8 @@ describe('согласованность сроков', () => {
     expect(PRESENCE_POLL_MS).toBeLessThanOrEqual(PRESENCE_TOUCH_MS)
   })
 
-  it('в фоне такт реже, чем на переднем плане', () => {
-    expect(PRESENCE_BACKGROUND_TOUCH_MS).toBeGreaterThan(PRESENCE_TOUCH_MS)
+  it('фоновый такт не чаще такта видимой вкладки', () => {
+    expect(PRESENCE_BACKGROUND_TOUCH_MS).toBeGreaterThanOrEqual(PRESENCE_TOUCH_MS)
   })
 
   it('окно свежести много шире такта — потерянный удар не выкидывает из списка', () => {
@@ -37,10 +37,10 @@ describe('согласованность сроков', () => {
 describe('shouldTouch — когда отмечаться', () => {
   const T0 = 1_000_000
 
-  it('видимая вкладка: такт 20 секунд', () => {
+  it('видимая вкладка: такт 60 секунд', () => {
     const base = { hidden: false, lastTouchAt: T0, lastActivityAt: T0 }
-    expect(shouldTouch(T0 + 19_000, base)).toBe(false)
-    expect(shouldTouch(T0 + 20_000, base)).toBe(true)
+    expect(shouldTouch(T0 + 59_000, base)).toBe(false)
+    expect(shouldTouch(T0 + 60_000, base)).toBe(true)
   })
 
   it('фон в льготный период: такт 60 секунд, а не 20', () => {
@@ -71,7 +71,7 @@ describe('shouldTouch — когда отмечаться', () => {
   it('видимая вкладка отмечается даже без свежих действий', () => {
     // Человек смотрит видео на странице и ничего не нажимает — он всё равно
     // здесь. Льготный период сторожит ТОЛЬКО фон.
-    expect(shouldTouch(T0 + 20_000, {
+    expect(shouldTouch(T0 + 60_000, {
       hidden: false, lastTouchAt: T0, lastActivityAt: T0 - PRESENCE_GRACE_MS * 10,
     })).toBe(true)
   })
