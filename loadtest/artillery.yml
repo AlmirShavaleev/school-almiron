@@ -11,7 +11,7 @@ config:
   payload:
     path: "./students.local.csv"
     fields: [email, password, groupId, topicId]
-    order: sequence
+    random: sequence
     skipHeader: true
     cast: false
   engines:
