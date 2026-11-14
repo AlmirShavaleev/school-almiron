@@ -5,7 +5,7 @@
  * Completed results are reused briefly during navigation, then reloaded.
  * Never persist answers to storage. On failure callers should retry quickly.
  */
-const FINISHED_TTL_MS = 3000
+const FINISHED_TTL_MS = 1000
 const MAX_ENTRIES = 32
 
 type CacheEntry<T> = {
