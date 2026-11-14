@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { previewMockRows, type MockLessonListRow, type MockScheduleRow } from '@/lib/mockExamLesson'
+import { shareInflight } from '@/lib/sharedInflight'
+import { useAuthStore } from '@/store/authStore'
 
 /**
  * §224.2. Пробники группы для ученика — одно место, откуда их берут все
@@ -17,7 +19,25 @@ import { previewMockRows, type MockLessonListRow, type MockScheduleRow } from '@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
-export async function loadMyMockExams(groupId: string): Promise<MockLessonListRow[]> {
+export function loadMyMockExams(groupId: string): Promise<MockLessonListRow[]> {
+  // 15.11: меню, плашка и раздел курса зовут это одновременно — один запрос на всех.
+  // Ключ с id входа: чужой ответ другому человеку не достанется даже в пути.
+  const uid = currentUserId()
+  // Каждому — своя копия списка: экран, отсортировавший его на месте, не трогает соседа.
+  return shareInflight(`my_mock_exams:${uid}:${groupId}`, () => fetchMyMockExams(groupId)).then(rows => rows.slice())
+}
+
+/** id входа; подменённый в тестах стор без getState — «anon». */
+function currentUserId(): string {
+  try {
+    const get = (useAuthStore as unknown as { getState?: () => { user?: { id?: string } | null } }).getState
+    return get?.().user?.id ?? 'anon'
+  } catch {
+    return 'anon'
+  }
+}
+
+async function fetchMyMockExams(groupId: string): Promise<MockLessonListRow[]> {
   try {
     const { data, error } = await db.rpc('my_mock_exams', { p_group_id: groupId })
     if (error) throw new Error(error.message ?? 'Не удалось загрузить пробники')

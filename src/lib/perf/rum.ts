@@ -285,10 +285,24 @@ export interface RumTransport {
 
 let started = false
 
-export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalMs?: number } = {}): () => void {
+/**
+ * Уход в фон чаще, чем раз в эту паузу, пачку не шлёт (15.11, утро 14.11:
+ * телефон ученика при каждом переключении на калькулятор/Telegram отправлял
+ * `perf_ingest` — по 2–3 запроса за несколько секунд; под нагрузкой это был
+ * самый дорогой по суммарному времени вызов школы). Закрытие страницы
+ * (`pagehide`) шлёт всегда.
+ */
+export const MIN_HIDE_FLUSH_GAP_MS = 60_000
+
+export function startRum(
+  t: RumTransport,
+  opts: { sampleRate?: number; intervalMs?: number; minHideFlushGapMs?: number } = {},
+): () => void {
   if (started || typeof window === 'undefined') return () => {}
   started = true
   sampled = Math.random() < (opts.sampleRate ?? 1)
+  let lastSentAt = 0
+  const minHideGap = opts.minHideFlushGapMs ?? MIN_HIDE_FLUSH_GAP_MS
   activeTransport = t
   // Важные события прошлой страницы, которые не успели уйти (21.10, 27.10),
   // лежат в localStorage до первой отправки — `sendPending`, не в общей пачке:
@@ -302,19 +316,24 @@ export function startRum(t: RumTransport, opts: { sampleRate?: number; intervalM
     sendPending()
     if (!t.signedIn() || queue.length === 0) return
     const batch = takeBatch()
+    lastSentAt = Date.now()
     t.send(batch).catch(() => { /* RUM молчит */ })
   }
   const flushOnExit = () => {
     sendPending()
     if (!t.signedIn() || queue.length === 0) return
     try {
+      lastSentAt = Date.now()
       t.sendOnExit(takeBatch())
     } catch {
       /* RUM молчит */
     }
   }
   const onVisibility = () => {
-    if (document.visibilityState === 'hidden') { noteNav('hide'); flushOnExit() }
+    if (document.visibilityState !== 'hidden') return
+    noteNav('hide')
+    // Частые уходы в фон копят события до обычной пачки, а не шлют каждый раз.
+    if (Date.now() - lastSentAt >= minHideGap) flushOnExit()
   }
   const onPageHide = () => { markClosed(); flushOnExit() }
   // Вернулись из bfcache — страница та же и живая: отметку ставим заново.
