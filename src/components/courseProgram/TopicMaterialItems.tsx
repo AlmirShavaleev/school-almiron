@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
+import { TheoryArticle } from '@/components/courseProgram/TheoryArticle'
 import { useVideoWatchMarks, type VideoWatchMark } from '@/hooks/useVideoWatchMarks'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -26,6 +27,7 @@ import {
   type TopicMaterialKind,
   type TopicMaterialSection,
 } from '@/lib/topicMaterialItems'
+import { isTheoryMarkdown } from '@/lib/theoryMarkdown'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 
@@ -148,10 +150,12 @@ function MaterialCard({
       </div>
       )}
 
-      {material.kind === 'text' && (
+      {material.kind === 'text' && (isTheoryMarkdown(material.content)
+        // Теория страницей: тот же исходник, что у PDF темы (theoryMarkdown.ts).
+        ? <TheoryArticle source={material.content} />
         // break-words: ссылка или формула без пробелов иначе раздвигает
         // страницу шире экрана телефона (§158, аудит №5).
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
+        : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
       )}
 
       {material.kind === 'video' &&
