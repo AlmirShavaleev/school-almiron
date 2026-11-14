@@ -1,0 +1,27 @@
+name: Loadtest configuration safety (no load)
+on:
+  push:
+    paths:
+      - 'loadtest/**'
+      - '.github/workflows/loadtest-guard.yml'
+  pull_request:
+    paths:
+      - 'loadtest/**'
+      - '.github/workflows/loadtest-guard.yml'
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static checks — NO Artillery workload
+        run: |
+          node --check loadtest/runner.cjs
+          node --check loadtest/flows.cjs
+          node --check loadtest/compare.cjs
+          node --test loadtest/guard.test.cjs
