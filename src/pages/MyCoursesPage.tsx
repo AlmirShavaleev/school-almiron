@@ -20,6 +20,7 @@ import { Sticker } from '@/components/student/skin/Sticker'
 import { DualRing } from '@/components/student/course/DualRing'
 import type { StickerName } from '@/components/student/skin/skin'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { loadStudentGroupMemberships } from '@/lib/studentGroupMemberships'
 
 /**
  * «Мои курсы» в стиле лендинга (письмо ЛК_стиль_мои_курсы.md, 15.10):
@@ -74,10 +75,7 @@ async function loadPreviewGroups(): Promise<GroupWithCourse[]> {
 async function loadStudentGroups(profileId: string): Promise<GroupWithCourse[] | null> {
   const { data: student } = await ownStudentRow(profileId)
   if (!student) return null
-  const { data: gs } = await supabase
-    .from('group_students')
-    .select(`group_id, groups(${GROUP_SELECT})`)
-    .eq('student_id', student.id)
+  const gs = await loadStudentGroupMemberships(profileId, student.id)
   return ((gs || []) as unknown as Array<{ groups: GroupWithCourse | null }>)
     .filter(g => g.groups?.course_id && g.groups.courses)
     .map(g => g.groups as GroupWithCourse)
