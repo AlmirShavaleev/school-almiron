@@ -1,0 +1,19 @@
+{
+  "name": "almiron-isolated-loadtest",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Isolated read-only 20 VU browser load comparison; never run against production",
+  "scripts": {
+    "check:guard": "node --test guard.test.cjs",
+    "preflight": "node runner.cjs preflight",
+    "run:main": "node runner.cjs main",
+    "run:pr4": "node runner.cjs pr4",
+    "compare": "node compare.cjs"
+  },
+  "dependencies": {
+    "artillery": "2.0.32"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
