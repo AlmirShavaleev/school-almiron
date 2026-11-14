@@ -348,7 +348,8 @@ function AutocheckTaskCard({
  * §278. Условие или решение текстом — тот же безопасный рендер, что у каталога
  * (§269): Markdown экранируется, формулы — KaTeX (догружается лениво и
  * дорисовывается на месте), рисунки — только из бакета рисунков каталога.
- * Текст подстраивается под ширину экрана — увеличивать нечего.
+ * Текст подстраивается под ширину экрана — увеличивать нечего. Размер — как у
+ * теории страницей (16 px на телефоне, 17 px на компьютере), а не мелкий 14 px.
  */
 function TaskText({ md, testid }: { md: string; testid: string }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -358,7 +359,7 @@ function TaskText({ md, testid }: { md: string; testid: string }) {
     <div
       ref={ref}
       data-testid={testid}
-      className="prose prose-sm max-w-none break-words text-graphite-900 catalog-html [&_img]:max-w-full [&_img]:h-auto"
+      className="prose prose-base max-w-none break-words text-[16px] leading-relaxed text-graphite-900 sm:text-[17px] catalog-html [&_img]:max-w-full [&_img]:h-auto"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )
