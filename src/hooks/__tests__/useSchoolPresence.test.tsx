@@ -75,8 +75,26 @@ describe('отметка присутствия', () => {
 
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
     expect(rpc).toHaveBeenCalledTimes(2)
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
     expect(rpc).toHaveBeenCalledTimes(3)
+  })
+
+  it('частые клики не вызывают повторных отметок раньше минуты', async () => {
+    vi.useFakeTimers()
+    renderHook(() => useSchoolPresence())
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    for (let i = 0; i < 30; i++) {
+      await act(async () => {
+        document.dispatchEvent(new Event('pointerdown'))
+        document.dispatchEvent(new Event('keydown'))
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+    }
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+    expect(rpc).toHaveBeenCalledTimes(2)
   })
 
   it('в фоне отметки ИДУТ — раз в 60 секунд, ровно полчаса после действия', async () => {
@@ -90,7 +108,7 @@ describe('отметка присутствия', () => {
     // Первые полчаса: по отметке в минуту.
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
     expect(rpc).toHaveBeenCalledTimes(1)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(40_000) })
     expect(rpc).toHaveBeenCalledTimes(2)
 
     const afterFirstMinute = rpc.mock.calls.length
@@ -123,7 +141,7 @@ describe('отметка присутствия', () => {
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(rpc).toHaveBeenCalledTimes(asleep + 1)
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
     expect(rpc).toHaveBeenCalledTimes(asleep + 2)
   })
 
