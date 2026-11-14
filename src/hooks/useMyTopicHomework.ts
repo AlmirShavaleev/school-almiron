@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useStudentTopicJournal } from '@/hooks/useStudentTopicJournal'
@@ -12,7 +12,7 @@ import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
 import { ownStudentRow } from '@/lib/ownStudent'
 import { loadAutocheckAnswersBatched } from '@/lib/autocheckAnswerBatches'
-import { shareAutocheckLoad } from '@/lib/sharedAutocheckLoad'
+import { invalidateSharedAutocheckLoads, shareAutocheckLoad } from '@/lib/sharedAutocheckLoad'
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
@@ -105,7 +105,11 @@ export function useMyStudentId(enabled = true) {
 export function useMyTopicHomework(courseId: string | null = null) {
   const profileId = useAuthStore(s => s.profile?.id)
   const { studentId, loading: resolvingStudent } = useMyStudentId()
-  const { journal, loading: loadingJournal, error, reload } = useStudentTopicJournal(studentId)
+  const { journal, loading: loadingJournal, error, reload: reloadJournal } = useStudentTopicJournal(studentId)
+  const reload = useCallback(() => {
+    invalidateSharedAutocheckLoads([profileId ?? '', studentId ?? ''].join('|') + '|')
+    reloadJournal()
+  }, [profileId, studentId, reloadJournal])
   const { courses, loading: loadingCourses } = useMyCourseMemberships()
 
   // Группа для ссылки — из членства, а не из зачислений: `useMyCourseMemberships`
