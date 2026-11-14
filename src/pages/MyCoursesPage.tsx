@@ -196,7 +196,8 @@ function CourseItem({ card, title, mode, progress, progressNote, openByModule, a
 }
 
 export function MyCoursesPage() {
-  const profile  = useAuthStore(s => s.profile)
+  // Profile refresh (e.g. a name change) must not refetch all group memberships.
+  const profileId = useAuthStore(s => s.profile?.id ?? null)
   const preview  = usePreviewMode()
   const subscriptionsOn = useSubscriptionsEnabled()
   const path = useStudentPathHome(profile?.id, subscriptionsOn.enabled && !preview)
@@ -209,12 +210,12 @@ export function MyCoursesPage() {
   const mocksByGroup = useMyMockExams(cards.map(c => c.groupId))
 
   useEffect(() => {
-    if (!profile) return
+    if (!profileId) return
     let cancelled = false
     async function load() {
       setLoading(true)
       try {
-        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(profile!.id)
+        const groups = preview ? await loadPreviewGroups() : await loadStudentGroups(profileId)
         if (cancelled) return
         const list: CourseCard[] = (groups ?? []).map(g => ({
           groupId:     g.id,
@@ -237,7 +238,7 @@ export function MyCoursesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [profile, preview])
+  }, [profileId, preview])
 
   const subByCourse = useMemo(
     () => new Map((path.data?.subscriptions ?? []).map(s => [s.course_id, s] as [string, PathSubscription])),
