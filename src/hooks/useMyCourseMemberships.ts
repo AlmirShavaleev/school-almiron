@@ -41,8 +41,10 @@ export function useMyCourseMemberships() {
     setError(null)
 
     async function load() {
-      const { data: authData } = await supabase.auth.getUser()
-      const uid = authData?.user?.id
+      // 15.11: getSession — из памяти браузера, без запроса к серверу авторизации
+      // (getUser на каждом экране давал лишний GET /auth/v1/user; права всё равно проверяет RLS).
+      const { data: authData } = await supabase.auth.getSession()
+      const uid = authData?.session?.user?.id
       if (!uid) {
         if (!cancelled) { setCourses([]); setLoading(false) }
         return

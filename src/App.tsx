@@ -4,6 +4,7 @@ import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { freshUrl, isChunkLoadError, lazyPage } from '@/lib/lazyPage'
 import { noteError, noteReload } from '@/lib/perf/rum'
 import { claimDailyVisit, shouldReloadProfile, type LoadedProfileMark } from '@/lib/authRefreshPolicy'
+import { clearReadCache } from '@/lib/perf/readCoalesce'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -338,6 +339,7 @@ export function AppAuth() {
         setTimeout(() => { if (!cancelled) void loadProfileOnce(user) }, 0)
       } else if (event === 'SIGNED_OUT') {
         loaded.profileId = null
+        clearReadCache()
         reset()
         setLoading(false)
       } else {
