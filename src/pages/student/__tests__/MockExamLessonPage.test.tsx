@@ -57,6 +57,10 @@ vi.mock('@/lib/imageCompression', async importOriginal => ({
   compressImageFile: async (file: File) => file,
 }))
 
+// В этих тестах проверяется штатная сдача пробника; аварийный read-only
+// режим production здесь отключён только в моках.
+vi.mock('@/lib/readOnlyMode', () => ({ READ_ONLY_MODE: false, READ_ONLY_MESSAGE: 'Технические работы' }))
+
 import { MockExamLessonPage } from '@/pages/student/MockExamLessonPage'
 
 function mount() {

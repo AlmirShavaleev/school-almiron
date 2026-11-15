@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { timedFetch } from '@/lib/perf/rum'
+import { skipMissingRpc } from '@/lib/perf/missingRpc'
 import { CLOUD_SUPABASE_URL } from '@/lib/cloudProject'
 
 // ВРЕМЕННО (авария self-hosted, ноябрь 2026): сайт смотрит в старый облачный
@@ -23,8 +24,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient<Database>(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-key',
-  // §291: длительность каждого запроса — в RUM (только путь, метод, статус, мс)
-  { global: { fetch: timedFetch((input, init) => fetch(input, init)) } },
+  // §291: длительность каждого запроса — в RUM (только путь, метод, статус, мс).
+  // 15.11: RPC, которой нет в базе (PGRST202), 10 минут не зовём повторно.
+  { global: { fetch: timedFetch(skipMissingRpc((input, init) => fetch(input, init))) } },
 )
 
 export const SUPABASE_URL = supabaseUrl || 'https://placeholder.supabase.co'

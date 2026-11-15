@@ -55,6 +55,10 @@ vi.mock('@/lib/imageCompression', async importOriginal => ({
   compressImageFile: (file: File, preset: unknown) => compressImageFile(file, preset),
 }))
 
+// Проверяем именно загрузку, поэтому отключаем аварийный read-only режим только в этом тесте.
+// Production-константа и доступ учеников не меняются.
+vi.mock('@/lib/readOnlyMode', () => ({ READ_ONLY_MODE: false, READ_ONLY_MESSAGE: 'Технические работы' }))
+
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: { id: 'stu', role: 'student' } }),
 }))

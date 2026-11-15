@@ -5,7 +5,7 @@ import { useWorkModeStore } from '@/store/workModeStore'
 import { useServerNow } from '@/hooks/useTimedWork'
 import { formatCountdown, formatMoscowTime, isTimerWarning } from '@/lib/timedWork'
 import {
-  WORK_MODE_POLL_MS, closedTitle, msUntilEnd, workGenitive, workHeadline, workPath, type WorkMode,
+  WORK_MODE_POLL_MS, WORK_MODE_VISIBLE_GAP_MS, closedTitle, msUntilEnd, workGenitive, workHeadline, workPath, type WorkMode,
 } from '@/lib/workMode'
 import { cn } from '@/utils/cn'
 
@@ -26,9 +26,17 @@ export function useWorkModeSync(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) { reset(); return }
+    // 15.11: возврат на вкладку перечитывает режим не чаще раза в
+    // WORK_MODE_VISIBLE_GAP_MS — телефон, на котором ученик переключается на
+    // калькулятор и обратно, звал `my_work_mode` каждые несколько секунд.
+    // Сервер свои замки держит сам; минутный опрос и «конец окна» как были.
+    let lastAt = Date.now()
+    const tick = () => { lastAt = Date.now(); void refresh() }
     void refresh()
-    const id = window.setInterval(() => { if (document.visibilityState !== 'hidden') void refresh() }, WORK_MODE_POLL_MS)
-    const onVisible = () => { if (document.visibilityState === 'visible') void refresh() }
+    const id = window.setInterval(() => { if (document.visibilityState !== 'hidden') tick() }, WORK_MODE_POLL_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastAt >= WORK_MODE_VISIBLE_GAP_MS) tick()
+    }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.clearInterval(id)

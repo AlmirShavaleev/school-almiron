@@ -111,6 +111,8 @@ export function closedTitle(section: string | null | undefined, w: Pick<WorkMode
 
 /** Когда перечитывать режим: раз в минуту, плюс ровно в момент конца окна. */
 export const WORK_MODE_POLL_MS = 60_000
+/** 15.11: возврат на вкладку раньше этой паузы с прошлого чтения режим не перечитывает. */
+export const WORK_MODE_VISIBLE_GAP_MS = 30_000
 export function msUntilEnd(w: Pick<WorkMode, 'closesAt'>, serverNowMs: number): number {
   return Math.max(0, Date.parse(w.closesAt) - serverNowMs)
 }

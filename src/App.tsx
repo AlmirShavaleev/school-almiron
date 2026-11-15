@@ -3,6 +3,7 @@ import { RumTracker } from '@/components/perf/RumTracker'
 import { useEffect, Component, Suspense, type ReactNode } from 'react'
 import { freshUrl, isChunkLoadError, lazyPage } from '@/lib/lazyPage'
 import { noteError, noteReload } from '@/lib/perf/rum'
+import { claimDailyVisit, shouldReloadProfile, type LoadedProfileMark } from '@/lib/authRefreshPolicy'
 import { LoadingGate } from '@/components/shared/LoadingGate'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -227,6 +228,8 @@ export function AppAuth() {
      * перечитает профиль, как и раньше.
      */
     const inflight = new Map<string, Promise<void>>()
+    // 15.11: чей профиль и когда загружен — чтобы возврат на вкладку не перечитывал его каждый раз.
+    const loaded: LoadedProfileMark = { profileId: null, loadedAt: 0 }
 
     function loadProfileOnce(user: { id: string; email?: string; user_metadata?: any }) {
       const running = inflight.get(user.id)
@@ -296,12 +299,14 @@ export function AppAuth() {
       }
       if (!cancelled && !data) setProfile(null)
       if (!cancelled) setLoading(false)
+      if (!cancelled && data) { loaded.profileId = user.id; loaded.loadedAt = Date.now() }
 
       // Отметка «человек заходил сегодня» для дашборда школы. Одна строка на
-      // человека в сутки, повтор гасит первичный ключ на стороне базы, поэтому
-      // звать можно сколько угодно раз. Ошибку намеренно проглатываем: счётчик
-      // активности не должен ломать вход, если запрос не прошёл.
-      if (!cancelled && data) {
+      // человека в сутки, повтор гасит первичный ключ на стороне базы. 15.11:
+      // раньше уходила на каждое событие авторизации (у телефона — на каждое
+      // возвращение во вкладку); теперь раз в сутки по Москве на устройство.
+      // Ошибку намеренно проглатываем: счётчик не должен ломать вход.
+      if (!cancelled && data && claimDailyVisit(user.id)) {
         void (supabase as any).rpc('record_app_visit').then(() => {}, () => {})
       }
     }
@@ -328,8 +333,11 @@ export function AppAuth() {
       setUser(session?.user ?? null)
       if (session?.user) {
         const user = session.user
+        // 15.11: тот же человек, профиль свежий — не перечитываем (возврат на вкладку, обновление токена).
+        if (!shouldReloadProfile(event, user.id, loaded)) return
         setTimeout(() => { if (!cancelled) void loadProfileOnce(user) }, 0)
       } else if (event === 'SIGNED_OUT') {
+        loaded.profileId = null
         reset()
         setLoading(false)
       } else {

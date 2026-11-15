@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { loadStudentGroupMemberships } from '@/lib/studentGroupMemberships'
 
 export interface StudentCourseCard {
   groupId: string
@@ -40,11 +40,9 @@ export function useStudentDashboard(profileId: string | undefined): StudentDashb
         if (cancelled) return
         if (!student) { setData({ courses: [], studentId: null, loading: false }); return }
 
-        // Курсы — через group_students → groups → courses.
-        const { data: groupStudentsData } = await supabase
-          .from('group_students')
-          .select('group_id, groups!inner(id, course_id, courses!inner(id, title, subject, exam_type))')
-          .eq('student_id', student.id)
+        // Reuse the same RLS-scoped membership request as "My courses".
+        // Concurrent readers share a promise; short navigation reuses a snapshot.
+        const groupStudentsData = await loadStudentGroupMemberships(profileId!, student.id)
 
         type Row = { groups: { id: string; courses: { id: string; title: string; subject: string | null; exam_type?: string | null } | null } | null }
         const seen = new Map<string, StudentCourseCard>()

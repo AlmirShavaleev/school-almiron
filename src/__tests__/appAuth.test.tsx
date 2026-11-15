@@ -78,9 +78,18 @@ import { useAuthStore } from '@/store/authStore'
 
 const sessionUser = { user: { id: 'u1', email: 'a@a.com' } }
 
-async function fireAuthEvent() {
+/**
+ * 15.11: тот же человек со свежим профилем (моложе 10 минут) больше не
+ * перечитывается на каждое событие. Тесты «пришла изменённая строка»
+ * сдвигают часы через `later()` — как и было бы в жизни: обновление токена
+ * раз в час, не каждую секунду.
+ */
+let clock = Date.parse('2026-11-15T09:00:00Z')
+function later(ms = 11 * 60_000) { clock += ms }
+
+async function fireAuthEvent(event = 'TOKEN_REFRESHED') {
   await act(async () => {
-    await authCallback!('TOKEN_REFRESHED', sessionUser)
+    await authCallback!(event, sessionUser)
     // §272: профиль грузится после колбэка (setTimeout 0) — даём таймеру и цепочке промисов пройти.
     await new Promise(r => setTimeout(r, 0))
     for (let i = 0; i < 10; i++) await Promise.resolve()
@@ -98,6 +107,8 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     authCallback = null
     localStorage.clear()
     sessionStorage.clear()
+    clock = Date.parse('2026-11-15T09:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
   })
 
   it('sets the profile once on the first event, then ignores N same-data TOKEN_REFRESHED events', async () => {
@@ -128,6 +139,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     })
 
     profileRow = { ...profileRow, role: 'admin' }
+    later()
     await fireAuthEvent()
 
     expect(setProfileCalls).toBe(1)
@@ -145,6 +157,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     })
 
     profileRow = { ...profileRow, full_name: 'Anna' }
+    later()
     await fireAuthEvent()
 
     expect(setProfileCalls).toBe(1)
@@ -161,6 +174,7 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     })
 
     profileRow = { ...profileRow, avatar_url: 'https://example.com/a.png' }
+    later()
     await fireAuthEvent()
 
     expect(setProfileCalls).toBe(1)
@@ -224,6 +238,37 @@ describe('AppAuth — skips setProfile on a content-identical profile row', () =
     await fireAuthEvent()
 
     expect(rpcSpy).not.toHaveBeenCalledWith('record_app_visit')
+  })
+
+  it('15.11: возврат на вкладку (событие того же человека) в первые 10 минут не перечитывает профиль', async () => {
+    render(<AppAuth />)
+    await fireAuthEvent('SIGNED_IN')
+    const reads = () => fromSpy.mock.calls.filter(c => c[0] === 'profiles').length
+    expect(reads()).toBe(1)
+    for (let i = 0; i < 5; i++) { later(60_000); await fireAuthEvent('SIGNED_IN') }
+    await fireAuthEvent('TOKEN_REFRESHED')
+    expect(reads()).toBe(1)
+    later(6 * 60_000)
+    await fireAuthEvent('TOKEN_REFRESHED')
+    expect(reads()).toBe(2)
+  })
+
+  it('15.11: USER_UPDATED перечитывает профиль сразу', async () => {
+    render(<AppAuth />)
+    await fireAuthEvent()
+    await fireAuthEvent('USER_UPDATED')
+    expect(fromSpy.mock.calls.filter(c => c[0] === 'profiles').length).toBe(2)
+  })
+
+  it('15.11: отметка визита — раз в сутки по Москве, а не на каждое событие', async () => {
+    render(<AppAuth />)
+    await fireAuthEvent()
+    later(); await fireAuthEvent()
+    later(); await fireAuthEvent()
+    expect(rpcSpy.mock.calls.filter(c => c[0] === 'record_app_visit')).toHaveLength(1)
+    later(24 * 60 * 60_000)
+    await fireAuthEvent()
+    expect(rpcSpy.mock.calls.filter(c => c[0] === 'record_app_visit')).toHaveLength(2)
   })
 })
 
