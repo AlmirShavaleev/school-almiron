@@ -3,7 +3,7 @@
  * токен — часть ключа; отмена одного потребителя не обрывает других.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { READ_TTL_MS, __readCacheSizeForTests, clearReadCache, coalesceReads, configureReadCache } from '../perf/readCoalesce'
+import { CONTENT_TTL_MS, READ_TTL_MS, __readCacheSizeForTests, clearReadCache, coalesceReads, configureReadCache } from '../perf/readCoalesce'
 
 const BASE = 'https://p.supabase.co'
 const auth = (token: string) => ({ Authorization: `Bearer ${token}`, apikey: 'anon' })
@@ -61,6 +61,22 @@ describe('coalesceReads', () => {
     clock += 2
     await f(url, { headers: auth('t1') })
     expect(base).toHaveBeenCalledTimes(2)
+  })
+
+  it('справочные данные курса — минуту, личный прогресс — 5 с', async () => {
+    const base = vi.fn(async () => new Response('[]', { status: 200 }))
+    const f = coalesceReads(base as unknown as typeof fetch, now)
+    const program = `${BASE}/rest/v1/modules?select=id,topics(*)&course_id=eq.c1`
+    const progress = `${BASE}/rest/v1/topic_homework_attempts?student_id=eq.s1`
+    await f(program, { headers: auth('t1') })
+    await f(progress, { headers: auth('t1') })
+    clock += READ_TTL_MS + 1
+    await f(program, { headers: auth('t1') })
+    await f(progress, { headers: auth('t1') })
+    expect(base).toHaveBeenCalledTimes(3) // программа из памяти, прогресс — заново
+    clock += CONTENT_TTL_MS
+    await f(program, { headers: auth('t1') })
+    expect(base).toHaveBeenCalledTimes(4)
   })
 
   it('без включённого кэша (персонал) — только объединение одновременных', async () => {

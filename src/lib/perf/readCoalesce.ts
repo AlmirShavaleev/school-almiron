@@ -12,7 +12,8 @@
  *  • одновременные одинаковые чтения (тот же метод, адрес, тело и заголовки,
  *    включая токен) уходят одним запросом, ответ получает каждый — своей копией;
  *  • ученику (не персоналу: у персонала есть живые обновления по realtime)
- *    удачный ответ ещё READ_TTL_MS отдаётся из памяти;
+ *    удачный ответ ещё READ_TTL_MS отдаётся из памяти, справочные данные
+ *    курса (CONTENT_TABLES) — CONTENT_TTL_MS;
  *  • любая запись (ответ на задачу, сдача ДЗ, загрузка, функция, правка
  *    таблицы) сразу очищает память — после действия экран читает свежее.
  *
@@ -23,7 +24,25 @@
  */
 
 export const READ_TTL_MS = 5_000
+/**
+ * Справочные данные курса: разделы, уроки, материалы, список ДЗ и тестов,
+ * курсы и группы. Меняются, только когда преподаватель правит курс, — ученику
+ * их можно держать минуту. Из-за этого программа курса, загруженная кабинетом
+ * («Продолжить»), не грузится заново на странице курса и уроке (тест 15.11:
+ * 4 раза за 16 секунд). Личный прогресс, режим работы, доступ — 5 секунд.
+ */
+export const CONTENT_TTL_MS = 60_000
+export const CONTENT_TABLES = new Set([
+  'modules', 'topics', 'topic_material_items', 'topic_homework', 'topic_test_assignments',
+  'topic_autocheck_tasks', 'topic_subtopic_hidden', 'courses', 'groups', 'course_unlock_modes',
+  'course_showcase', 'course_curators',
+])
 const MAX_ENTRIES = 300
+
+function ttlFor(pathname: string): number {
+  const m = pathname.match(/^\/rest\/v1\/([\w-]+)$/)
+  return m && CONTENT_TABLES.has(m[1]) ? CONTENT_TTL_MS : READ_TTL_MS
+}
 
 /** RPC только для чтения, которые экраны ученика зовут чаще всего. */
 export const READ_RPC = new Set([
@@ -136,7 +155,7 @@ export function coalesceReads(base: typeof fetch, now: () => number = Date.now):
     entry.promise.then(
       res => {
         if (entries.get(key) !== entry) return
-        if (res.ok && ttlEnabled()) entry.expiresAt = now() + READ_TTL_MS
+        if (res.ok && ttlEnabled()) entry.expiresAt = now() + ttlFor(pathname)
         else entries.delete(key)
       },
       () => { if (entries.get(key) === entry) entries.delete(key) },
