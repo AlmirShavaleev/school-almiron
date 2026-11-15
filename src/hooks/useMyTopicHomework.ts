@@ -11,22 +11,32 @@ import { fetchGroupIdByCourse, myTopicHref } from '@/lib/studentTopicAccess'
 import { keepLessonItem, useLessonHomeworkFilter } from '@/lib/lessonCourses'
 import { autocheckLeft, withAutocheck, type AutocheckProgress, type BoardRow } from '@/lib/homeworkBoard'
 import { ownStudentRow } from '@/lib/ownStudent'
-import { loadAutocheckAnswersBatched } from '@/lib/autocheckAnswerBatches'
 import { invalidateSharedAutocheckLoads, shareAutocheckLoad } from '@/lib/sharedAutocheckLoad'
+
+/** Предел строк PostgREST: столько ответов и больше — ответ мог обрезаться. */
+export const AUTOCHECK_ANSWERS_ROW_CAP = 1000
 
 /**
  * ДЗ с автопроверкой среди открытых: какие ДЗ (`topic_homework.autocheck`) и
  * сколько задач осталось по урокам. Ученику база отдаёт только ДЗ и задачи
  * открытых ему тем (политики §282.2) и только свои ответы. Сбой — пусто:
  * такие ДЗ остаются со статусом журнала.
+ *
+ * 15.11: свои ответы — одним запросом по `profile_id` (индекс
+ * `topic_autocheck_answers_profile_idx`), а не пачками по 40 id задач.
+ * Пачки (PR #8) на курсе с ~900 задачами давали 20–25 запросов подряд на
+ * каждое открытие «Домашних заданий» — 2–3 с даже без нагрузки. Ответов у
+ * ученика единицы–сотни; лишние (других тем) отбрасываем по набору задач.
+ * Упёрлись в предел строк PostgREST — ответ неполный: статус журнала, а не
+ * ложное «осталось решить».
  */
-async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; progress: Map<string, AutocheckProgress> }> {
+export async function loadAutocheck(topicIds: string[], profileId: string | null): Promise<{ hw: Set<string>; progress: Map<string, AutocheckProgress> }> {
   const empty = { hw: new Set<string>(), progress: new Map<string, AutocheckProgress>() }
-  if (topicIds.length === 0) return empty
+  if (topicIds.length === 0 || !profileId) return empty
   try {
-    const db = supabase as unknown as {
-      from: (t: string) => { select: (c: string) => { in: (c: string, v: string[]) => { eq: (c: string, v: unknown) => PromiseLike<{ data: unknown[] | null; error: unknown }> } & PromiseLike<{ data: unknown[] | null; error: unknown }> } }
-    }
+    type Res = PromiseLike<{ data: unknown[] | null; error: unknown }>
+    type Q = Res & { in: (c: string, v: string[]) => Q; eq: (c: string, v: unknown) => Q; limit: (n: number) => Q }
+    const db = supabase as unknown as { from: (t: string) => { select: (c: string) => Q } }
     const hwRes = await db.from('topic_homework').select('id, topic_id').in('topic_id', topicIds).eq('autocheck', true)
     if (hwRes.error) return empty
     const hwRows = (hwRes.data ?? []) as Array<{ id: string; topic_id: string }>
@@ -34,15 +44,13 @@ async function loadAutocheck(topicIds: string[]): Promise<{ hw: Set<string>; pro
     const acTopics = [...new Set(hwRows.map(h => h.topic_id))]
     const tasksRes = await db.from('topic_autocheck_tasks').select('id, topic_id').in('topic_id', acTopics)
     const tasks = (tasksRes.error ? [] : tasksRes.data ?? []) as Array<{ id: string; topic_id: string }>
-    const answers = await loadAutocheckAnswersBatched(tasks.map(t => t.id), async (ids) => {
-      const result = await db.from('topic_autocheck_answers').select('task_id, is_correct').in('task_id', ids)
-      return {
-        data: result.data as Array<{ task_id: string; is_correct: boolean }> | null,
-        error: result.error,
-      }
-    })
-    // A partial answer set is not reliable: keep journal status, not false "to do".
-    if (answers === null) return empty
+    if (tasks.length === 0) return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, []) }
+    const ansRes = await db.from('topic_autocheck_answers').select('task_id, is_correct').eq('profile_id', profileId).limit(AUTOCHECK_ANSWERS_ROW_CAP)
+    if (ansRes.error) return empty
+    const all = (ansRes.data ?? []) as Array<{ task_id: string; is_correct: boolean }>
+    if (all.length >= AUTOCHECK_ANSWERS_ROW_CAP) return empty
+    const taskIds = new Set(tasks.map(t => t.id))
+    const answers = all.filter(a => taskIds.has(a.task_id))
     return { hw: new Set(hwRows.map(h => h.id)), progress: autocheckLeft(tasks, answers) }
   } catch {
     return empty
@@ -152,7 +160,7 @@ export function useMyTopicHomework(courseId: string | null = null) {
     // The page and its navigation badge both mount this hook. Reuse one read
     // per authenticated student + exact visible topic set.
     const cacheKey = [profileId ?? '', studentId ?? '', topicKey].join('|')
-    shareAutocheckLoad(cacheKey, () => loadAutocheck(topicKey ? topicKey.split(',') : []))
+    shareAutocheckLoad(cacheKey, () => loadAutocheck(topicKey ? topicKey.split(',') : [], profileId ?? null))
       .then(r => { if (alive) setAutocheck({ key: topicKey, ...r }) })
     return () => { alive = false }
   }, [topicKey, profileId, studentId])
