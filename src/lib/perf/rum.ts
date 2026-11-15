@@ -37,6 +37,13 @@ export function deviceClass(ua: string = typeof navigator !== 'undefined' ? navi
   return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'desktop'
 }
 
+/** Расширение файла для телеметрии (`file-open:pdf`): буквы/цифры, иначе `other`. */
+export function fileExtLabel(url: string): string {
+  const name = url.split('?')[0].split('#')[0].split('/').pop() ?? ''
+  const ext = name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
+  return /^[a-z0-9]{1,5}$/.test(ext) ? ext : 'other'
+}
+
 /** Путь вкладки без id: uuid и числа → `:id`, хвостовой «/» убран. */
 export function routeLabel(pathname: string): string {
   const p = pathname
@@ -181,12 +188,12 @@ function keepPending(events: PerfEvent[]): void {
 const MAX_URGENT = 20
 const urgentSeen = new Set<string>()
 
-function noteUrgent(label: string): void {
+function noteUrgent(label: string, ms: number = now()): void {
   const l = label.slice(0, 120)
   if (urgentSeen.has(l) || urgentSeen.size >= MAX_URGENT) return
   urgentSeen.add(l)
   try {
-    keepPending([{ k: 'nav', l, ms: Math.round(now()), d: device }])
+    keepPending([{ k: 'nav', l, ms: Math.round(ms), d: device }])
     sendPending()
   } catch { /* RUM молчит */ }
 }
@@ -229,10 +236,25 @@ export function noteNav(kind: string, path: string = typeof location !== 'undefi
 
 /**
  * «Сессия жива»: при старте страницы пишем маршрут, на `pagehide` снимаем.
- * Осталась отметка с прошлого раза — страницу убили, не дав ей закрыться
- * (телефон выгрузил вкладку по памяти) → `crash <маршрут>`.
+ * Осталась отметка с прошлого раза — страницу убили, не дав ей закрыться.
+ *
+ * С 15.11 два случая различаются (у 16 из 17 учеников с телефона 14.11 был
+ * `crash`, и по одному слову нельзя было понять, где беда):
+ *   `evicted <маршрут>` — вкладку убили, пока она была в фоне (ученик ушёл в
+ *       калькулятор/Telegram/PDF в соседней вкладке, телефон забрал память).
+ *       Рядом три числа в поле ms: `evicted-away-s` — сколько секунд вкладка
+ *       пробыла в фоне до возврата (верхняя граница: когда именно убили,
+ *       не видно); `evicted-dom` — элементов на странице в момент ухода;
+ *       `evicted-media` — картинок + canvas + iframe в момент ухода.
+ *       Вытеснили через 10 с с лёгкой страницы — повод смотреть на соседа
+ *       (PDF во второй вкладке); через полчаса — обычная жизнь телефона.
+ *   `crash <маршрут>` — убили, пока ученик смотрел на страницу: это уже
+ *       наша тяжесть или падение браузера.
  */
 const ALIVE_KEY = 'rum:alive'
+const HIDDEN_KEY = 'rum:hidden'
+
+interface HiddenMark { at: number; dom: number; media: number }
 
 // Один раз на загрузку документа: повторный `startRum` (StrictMode в деве,
 // перемонтирование трекера) видел бы свою же отметку и сообщал ложный `crash`.
@@ -243,11 +265,50 @@ function checkCrash(): void {
   crashChecked = true
   try {
     const prev = localStorage.getItem(ALIVE_KEY)
+    const hidden = readHidden()
+    localStorage.removeItem(HIDDEN_KEY)
     // Важным событием: вкладка, которую убили раз, часто убивают и второй —
     // раньше, чем уйдёт обычная пачка.
-    if (prev) noteUrgent(`crash ${prev}`)
+    if (prev && hidden) {
+      noteUrgent(`evicted ${prev}`)
+      noteUrgent(`evicted-away-s ${prev}`, Math.max(0, Math.round((Date.now() - hidden.at) / 1000)))
+      noteUrgent(`evicted-dom ${prev}`, hidden.dom)
+      noteUrgent(`evicted-media ${prev}`, hidden.media)
+    } else if (prev) {
+      noteUrgent(`crash ${prev}`)
+    }
   } catch { /* RUM молчит */ }
   markOpen()
+}
+
+function readHidden(): HiddenMark | null {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as Partial<HiddenMark>
+    if (typeof v?.at !== 'number' || !Number.isFinite(v.at)) return null
+    return { at: v.at, dom: Number(v.dom) || 0, media: Number(v.media) || 0 }
+  } catch { return null }
+}
+
+/** Ушли в фон: запомнить когда и насколько тяжёлой была страница. */
+function markHidden(): void {
+  try {
+    if (!localStorage.getItem(ALIVE_KEY)) return
+    const mark: HiddenMark = {
+      at: Date.now(),
+      dom: document.getElementsByTagName('*').length,
+      media: document.images.length
+        + document.getElementsByTagName('canvas').length
+        + document.getElementsByTagName('iframe').length,
+    }
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(mark))
+  } catch { /* RUM молчит */ }
+}
+
+/** Вернулись на живую вкладку — она не умирала. */
+function markVisible(): void {
+  try { localStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
 }
 
 function markOpen(): void {
@@ -255,7 +316,7 @@ function markOpen(): void {
 }
 
 function markClosed(): void {
-  try { localStorage.removeItem(ALIVE_KEY) } catch { /* RUM молчит */ }
+  try { localStorage.removeItem(ALIVE_KEY); localStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
 }
 
 /** Маршрут сменился внутри приложения — отметка жизни на новом маршруте. */
@@ -330,7 +391,8 @@ export function startRum(
     }
   }
   const onVisibility = () => {
-    if (document.visibilityState !== 'hidden') return
+    if (document.visibilityState !== 'hidden') { markVisible(); return }
+    markHidden()
     noteNav('hide')
     // Частые уходы в фон копят события до обычной пачки, а не шлют каждый раз.
     if (Date.now() - lastSentAt >= minHideGap) flushOnExit()
@@ -411,5 +473,5 @@ export function __resetRumForTests(): void {
   started = false
   crashChecked = false
   urgentSeen.clear()
-  try { localStorage.removeItem(ALIVE_KEY) } catch { /* нет хранилища */ }
+  try { localStorage.removeItem(ALIVE_KEY); localStorage.removeItem(HIDDEN_KEY) } catch { /* нет хранилища */ }
 }

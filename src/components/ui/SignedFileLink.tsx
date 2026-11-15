@@ -4,6 +4,7 @@ import {
   SHORT_SIGNED_URL_TTL_S, SIGNED_URL_TTL_S,
   type PrivateBucket,
 } from '@/lib/storage'
+import { fileExtLabel, noteUrgentNav } from '@/lib/perf/rum'
 
 interface Props {
   bucket: PrivateBucket
@@ -55,6 +56,10 @@ export function SignedFileLink({ bucket, url, className, title, children, onClic
       )
       if (!signed) return
       if (!downloadName) {
+        // 15.11: на телефоне файл во второй вкладке (PDF теории) — главный
+        // подозреваемый в выгрузке урока из памяти; рядом с `evicted` видно,
+        // открывали ли перед этим файл и какой.
+        noteUrgentNav(`file-open:${fileExtLabel(url)}`)
         window.open(signed, '_blank', 'noopener,noreferrer')
         return
       }
