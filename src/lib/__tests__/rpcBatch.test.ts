@@ -38,7 +38,7 @@ describe('batchRpc', () => {
   })
 
   it('JSON null и скаляры отдаются как у PostgREST', async () => {
-    const base = vi.fn(async () => new Response(JSON.stringify([{ status: 200, body: null }, { status: 200, body: true }]), { status: 200 }))
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response(JSON.stringify([{ status: 200, body: null }, { status: 200, body: true }]), { status: 200 }))
     const f = batchRpc(base as unknown as typeof fetch)
     const a = f(rpc('my_topic_rating'), { method: 'POST', headers: hdr(), body: '{"p_topic_id":"t"}' })
     const b = f(rpc('subscription_enabled'), { method: 'POST', headers: hdr(), body: '{}' })
@@ -48,7 +48,7 @@ describe('batchRpc', () => {
   })
 
   it('один вызов в окне — уходит как есть, без пакета', async () => {
-    const base = vi.fn(async () => new Response('{}', { status: 200 }))
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{}', { status: 200 }))
     const f = batchRpc(base as unknown as typeof fetch)
     const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
     await settle()
@@ -57,7 +57,7 @@ describe('batchRpc', () => {
   })
 
   it('разные входы (токены) не попадают в один пакет', async () => {
-    const base = vi.fn(async () => new Response('{}', { status: 200 }))
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{}', { status: 200 }))
     const f = batchRpc(base as unknown as typeof fetch)
     const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr('t1'), body: '{}' })
     const b = f(rpc('my_work_mode'), { method: 'POST', headers: hdr('t2'), body: '{}' })
@@ -68,7 +68,7 @@ describe('batchRpc', () => {
   })
 
   it('не из списка чтения, single() и записи — мимо пакета сразу', async () => {
-    const base = vi.fn(async () => new Response('{}', { status: 200 }))
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{}', { status: 200 }))
     const f = batchRpc(base as unknown as typeof fetch)
     await f(rpc('topic_autocheck_check'), { method: 'POST', headers: hdr(), body: '{}' })
     await f(rpc('my_work_mode'), { method: 'POST', headers: { ...hdr(), Accept: 'application/vnd.pgrst.object+json' }, body: '{}' })
@@ -94,7 +94,7 @@ describe('batchRpc', () => {
   })
 
   it('ошибка пакета целиком (504 пула) — каждому тот же ответ', async () => {
-    const base = vi.fn(async () => new Response('{"code":"PGRST003"}', { status: 504 }))
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{"code":"PGRST003"}', { status: 504 }))
     const f = batchRpc(base as unknown as typeof fetch)
     const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
     const b = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
