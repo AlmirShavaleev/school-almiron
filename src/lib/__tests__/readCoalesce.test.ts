@@ -53,7 +53,7 @@ describe('coalesceReads', () => {
   it('удачный ответ отдаётся из памяти READ_TTL_MS, потом снова идёт в базу', async () => {
     const base = vi.fn(async () => new Response('[]', { status: 200 }))
     const f = coalesceReads(base as unknown as typeof fetch, now)
-    const url = `${BASE}/rest/v1/courses?id=in.(c1)`
+    const url = `${BASE}/rest/v1/student_exam_goals?profile_id=eq.me`
     await f(url, { headers: auth('t1') })
     clock += READ_TTL_MS - 1
     await f(url, { headers: auth('t1') })
