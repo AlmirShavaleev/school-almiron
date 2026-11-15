@@ -9,6 +9,12 @@ import './index.css'
 import App from './App.tsx'
 import { installCatalogMathObserver } from './lib/katexLoader'
 import { stripBustParam } from './lib/lazyPage'
+import { configureReadCache } from './lib/perf/readCoalesce'
+import { useAuthStore } from './store/authStore'
+
+// 15.11: ученику одинаковые чтения 5 с отдаются из памяти (у персонала —
+// realtime, ему только объединение одновременных запросов).
+configureReadCache({ ttlEnabled: () => useAuthStore.getState().profile?.role === 'student' })
 
 const queryClient = new QueryClient({
   defaultOptions: {
