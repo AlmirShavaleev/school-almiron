@@ -7,6 +7,7 @@ import {
   __resetRumForTests,
   apiLabel,
   deviceClass,
+  fileExtLabel,
   noteError,
   noteNav,
   noteUrgentNav,
@@ -225,6 +226,76 @@ describe('диагностика падений вкладки (письмо 27.
   it('nav «play <маршрут>» — запуск плеера', () => {
     noteNav('play', '/my-course/abc/topic/11111111-2222-4333-8444-555555555555')
     expect(labels()).toEqual(['play /my-course/abc/topic/:id'])
+  })
+})
+
+describe('выгрузка в фоне против падения на экране (15.11)', () => {
+  beforeEach(() => { localStorage.clear() })
+  const sent = (tr: RumTransport) =>
+    (tr.sendOnExit as ReturnType<typeof vi.fn>).mock.calls.flat(2) as Array<{ l: string; ms: number }>
+  const setVisibility = (v: 'hidden' | 'visible') => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+  afterEach(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }) })
+
+  it('ушла в фон и не вернулась — следующая загрузка: evicted + сколько была в фоне + тяжесть страницы', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-16T05:00:00Z'))
+    window.history.replaceState(null, '', '/my-course/0b0a1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d/topic/11111111-2222-4333-8444-555555555555')
+    document.body.innerHTML = '<div><img src="a.png"><canvas></canvas><iframe></iframe><p>текст</p></div>'
+    const off: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(off)
+    setVisibility('hidden')                                // ученик ушёл в калькулятор…
+    stop()                                                 // …и телефон убил вкладку: pagehide не было
+    const alive = localStorage.getItem('rum:alive')
+    const hidden = localStorage.getItem('rum:hidden')
+    expect(alive).toBe('/my-course/:id/topic/:id')
+    expect(JSON.parse(hidden ?? 'null')).toMatchObject({ media: 3 })
+    __resetRumForTests()                                   // новая загрузка документа
+    localStorage.setItem('rum:alive', alive!)
+    localStorage.setItem('rum:hidden', hidden!)
+
+    vi.setSystemTime(new Date('2026-11-16T05:01:30Z'))     // вернулся через 90 с
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop2 = startRum(tr)
+    const ev = sent(tr)
+    const by = (l: string) => ev.find(e => e.l === l)
+    expect(ev.some(e => e.l.startsWith('crash'))).toBe(false)
+    expect(by('evicted /my-course/:id/topic/:id')).toBeTruthy()
+    expect(by('evicted-away-s /my-course/:id/topic/:id')?.ms).toBe(90)
+    expect(by('evicted-dom /my-course/:id/topic/:id')?.ms).toBeGreaterThanOrEqual(7)
+    expect(by('evicted-media /my-course/:id/topic/:id')?.ms).toBe(3)
+    expect(localStorage.getItem('rum:hidden')).toBeNull()
+    stop2()
+    document.body.innerHTML = ''
+  })
+
+  it('ушла в фон и вернулась живой — отметка фона снята, при смерти на экране будет crash', () => {
+    const tr: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    setVisibility('hidden')
+    expect(localStorage.getItem('rum:hidden')).not.toBeNull()
+    setVisibility('visible')
+    expect(localStorage.getItem('rum:hidden')).toBeNull()
+    stop()
+  })
+
+  it('обычное закрытие (pagehide) снимает и отметку фона', () => {
+    const tr: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    setVisibility('hidden')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(localStorage.getItem('rum:hidden')).toBeNull()
+    expect(localStorage.getItem('rum:alive')).toBeNull()
+    stop()
+  })
+
+  it('расширение открытого файла — коротко и без лишнего', () => {
+    expect(fileExtLabel('topic-materials/abc/Теория.PDF')).toBe('pdf')
+    expect(fileExtLabel('https://x/storage/v1/object/sign/b/a.docx?token=1')).toBe('docx')
+    expect(fileExtLabel('a/без-расширения')).toBe('other')
+    expect(fileExtLabel('a/x.<script>')).toBe('other')
   })
 })
 
