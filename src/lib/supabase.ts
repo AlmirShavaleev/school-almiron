@@ -3,6 +3,7 @@ import type { Database } from '@/types/database'
 import { timedFetch } from '@/lib/perf/rum'
 import { skipMissingRpc } from '@/lib/perf/missingRpc'
 import { coalesceReads } from '@/lib/perf/readCoalesce'
+import { batchRpc } from '@/lib/perf/rpcBatch'
 import { CLOUD_SUPABASE_URL } from '@/lib/cloudProject'
 
 // ВРЕМЕННО (авария self-hosted, ноябрь 2026): сайт смотрит в старый облачный
@@ -27,8 +28,9 @@ export const supabase = createClient<Database>(
   supabaseAnonKey || 'placeholder-key',
   // §291: длительность каждого запроса — в RUM (только путь, метод, статус, мс).
   // 15.11: RPC, которой нет в базе (PGRST202), 10 минут не зовём повторно;
-  // одинаковые чтения — один запрос (readCoalesce.ts).
-  { global: { fetch: timedFetch(skipMissingRpc(coalesceReads((input, init) => fetch(input, init)))) } },
+  // одинаковые чтения — один запрос (readCoalesce.ts); одновременные чтения RPC —
+  // одним rpc_batch (rpcBatch.ts).
+  { global: { fetch: timedFetch(skipMissingRpc(coalesceReads(batchRpc((input, init) => fetch(input, init))))) } },
 )
 
 export const SUPABASE_URL = supabaseUrl || 'https://placeholder.supabase.co'
