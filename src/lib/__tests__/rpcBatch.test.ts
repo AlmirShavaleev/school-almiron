@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BATCH_WINDOW_MS, __resetRpcBatchForTests, batchRpc } from '../perf/rpcBatch'
+import { BATCH_WINDOW_MS, MAX_BATCH, SLOW_PAUSE_MS, __resetRpcBatchForTests, batchRpc } from '../perf/rpcBatch'
 import { READ_RPC } from '../perf/readCoalesce'
 
 const BASE = 'https://p.supabase.co'
@@ -102,6 +102,63 @@ describe('batchRpc', () => {
     expect((await a).status).toBe(504)
     expect((await (await b).json()).code).toBe('PGRST003')
     expect(base).toHaveBeenCalledTimes(1)
+  })
+
+  it('пакет упёрся в statement_timeout (500, 57014) — вызовы по одному, минуту без пакетов', async () => {
+    let clock = 1_000_000
+    const base = vi.fn(async (u: RequestInfo | URL, _i?: RequestInit) =>
+      String(u).endsWith('/rpc_batch')
+        ? new Response('{"code":"57014","message":"canceling statement due to statement timeout"}', { status: 500 })
+        : new Response(`"${String(u).split('/').pop()}"`, { status: 200 }))
+    const f = batchRpc(base as unknown as typeof fetch, () => clock)
+    const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
+    const b = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
+    await settle()
+    expect((await a).status).toBe(200)
+    expect(await (await b).json()).toBe('my_subscriptions')
+    expect(base.mock.calls.map(c => String(c[0]).split('/').pop())).toEqual(['rpc_batch', 'my_work_mode', 'my_subscriptions'])
+
+    base.mockClear()                                      // в течение минуты — без пакета
+    clock += SLOW_PAUSE_MS - 1
+    const c = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
+    const d = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
+    await settle()
+    await Promise.all([c, d])
+    expect(base.mock.calls.some(x => String(x[0]).endsWith('/rpc_batch'))).toBe(false)
+
+    base.mockClear()                                      // через минуту — снова пакетом
+    clock += 2
+    const e = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
+    const g = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
+    await settle()
+    await Promise.allSettled([e, g])
+    expect(String(base.mock.calls[0][0])).toBe(rpc('rpc_batch'))
+  })
+
+  it('прочая 500 пакета (не таймаут) — каждому тот же ответ, без повторов', async () => {
+    const base = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => new Response('{"code":"XX000"}', { status: 500 }))
+    const f = batchRpc(base as unknown as typeof fetch)
+    const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
+    const b = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
+    await settle()
+    expect((await a).status).toBe(500)
+    expect((await (await b).json()).code).toBe('XX000')
+    expect(base).toHaveBeenCalledTimes(1)
+  })
+
+  it(`в пакете не больше ${MAX_BATCH} вызовов`, async () => {
+    const base = vi.fn(async (_u: RequestInfo | URL, init?: RequestInit) => {
+      const n = JSON.parse(String(init?.body)).p_calls.length
+      return new Response(JSON.stringify(Array.from({ length: n }, () => ({ status: 200, body: 1 }))), { status: 200 })
+    })
+    const f = batchRpc(base as unknown as typeof fetch)
+    const all = Array.from({ length: MAX_BATCH + 2 }, (_, i) =>
+      f(rpc('my_course_access'), { method: 'POST', headers: hdr(), body: `{"p_course_id":"c${i}"}` }))
+    await settle()
+    await Promise.all(all)
+    const sizes = base.mock.calls.map(c => JSON.parse(String(c[1]?.body)).p_calls.length)
+    expect(sizes).toEqual([MAX_BATCH, 2])
+    expect(MAX_BATCH).toBeLessThanOrEqual(6)
   })
 
   it('список функций на клиенте совпадает со списком в миграции rpc_batch', () => {
