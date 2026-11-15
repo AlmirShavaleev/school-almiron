@@ -15,12 +15,24 @@
  *
  * Если rpc_batch нет (404) или сеть оборвалась — вызовы уходят по одному, как
  * раньше. Пакет без функции в базе выключается на 10 минут.
+ *
+ * Функции внутри пакета выполняются друг за другом в одном операторе, и
+ * statement_timeout (8 с) у них общий. Когда база тормозит (нагрузочный тест
+ * 15.11, 18:03 МСК: исчерпан запас процессора Nano), пакет упирается в лимит
+ * и PostgREST отвечает 500 с кодом 57014 — без этой развилки ошибку получали
+ * все вызовы пакета разом. Поэтому при 57014 те же вызовы уходят по одному
+ * (параллельно, у каждого свой лимит), а пакет на SLOW_PAUSE_MS выключается.
+ * Остальные ошибки пакета целиком (504 пула и т. п.) по-прежнему отдаются
+ * всем как есть: повтор в переполненный пул только добавил бы очереди.
  */
 import { READ_RPC } from './readCoalesce'
 
 export const BATCH_WINDOW_MS = 8
-export const MAX_BATCH = 10
+// 6, а не 10: функции пакета делят один лимит 8 с — длинный пакет на
+// медленной базе первым упирается в него.
+export const MAX_BATCH = 6
 const DISABLE_MS = 10 * 60_000
+export const SLOW_PAUSE_MS = 60_000
 
 interface Pending {
   fn: string
@@ -67,6 +79,10 @@ function groupKey(origin: string, init: RequestInit | undefined): string {
   return `${origin}\n${h.get('authorization') ?? ''}\n${h.get('apikey') ?? ''}`
 }
 
+function isStatementTimeout(text: string): boolean {
+  try { return (JSON.parse(text) as { code?: unknown })?.code === '57014' } catch { return false }
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(status === 204 ? null : JSON.stringify(body ?? null), {
     status,
@@ -106,8 +122,14 @@ export function batchRpc(base: typeof fetch, now: () => number = Date.now): type
       return
     }
     if (!res.ok) {
-      // Ошибка пакета целиком (504 пула, 500): каждому — тот же ответ, как пришёл бы ему.
       const text = await res.text().catch(() => '')
+      if (res.status === 500 && isStatementTimeout(text)) {
+        // Пакет не уложился в общий лимит — по одному, и пока база медленная, без пакетов.
+        disabledUntil = now() + SLOW_PAUSE_MS
+        sendSingly(calls)
+        return
+      }
+      // Ошибка пакета целиком (504 пула и т. п.): каждому — тот же ответ, как пришёл бы ему.
       for (const c of calls) c.resolve(new Response(text, { status: res.status, headers: res.headers }))
       return
     }
