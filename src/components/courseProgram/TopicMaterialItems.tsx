@@ -8,6 +8,7 @@ import {
 import { useTopicMaterialItems } from '@/hooks/useTopicMaterialItems'
 import { WatchedVideo } from '@/components/courseProgram/WatchedVideo'
 import { TheoryArticle } from '@/components/courseProgram/TheoryArticle'
+import { TheoryPdfPages } from '@/components/courseProgram/TheoryPdfPages'
 import { useVideoWatchMarks, type VideoWatchMark } from '@/hooks/useVideoWatchMarks'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -46,11 +47,22 @@ function formatBytes(bytes: number | null): string | null {
 }
 
 const isTheoryMaterial = (m: TopicMaterial) => m.kind === 'text' && isTheoryMarkdown(m.content)
+const isPdfFile = (m: TopicMaterial) => m.kind === 'file' && /\.pdf$/i.test(m.fileName || m.storagePath)
+
+/**
+ * Учёт просмотров для аналитики (врезка §107). Ошибку глушим намеренно и
+ * молча: подсчёт не должен мешать ученику открыть файл — ни отказом прав, ни
+ * отсутствием самой функции, пока её не завели.
+ */
+function recordMaterialView(materialId: string) {
+  void supabase.rpc('record_material_view', { p_item_id: materialId } as never)
+    .then(() => undefined, () => undefined)
+}
 
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, countView, watchMark, isFirst, isLast,
+  material, topicId, canManage, countView, watchMark, isFirst, isLast, inlinePdf = false,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
@@ -62,6 +74,8 @@ function MaterialCard({
   watchMark?: VideoWatchMark
   isFirst: boolean
   isLast: boolean
+  /** PDF теории показать страницами над плиткой: у темы нет текстовой теории. */
+  inlinePdf?: boolean
   onDelete: (id: string) => void
   onToggleVisibility: (id: string, next: boolean) => void
   onMove: (id: string, direction: 'up' | 'down') => void
@@ -184,6 +198,14 @@ function MaterialCard({
         </a>
       )}
 
+      {material.kind === 'file' && inlinePdf && (
+        <TheoryPdfPages
+          bucket={bucketForMaterialPath(material.storagePath, topicId)}
+          storagePath={material.storagePath}
+          onShown={countView ? () => recordMaterialView(material.id) : undefined}
+        />
+      )}
+
       {material.kind === 'file' && (
         <FileTile
           materialId={material.id}
@@ -223,15 +245,8 @@ function FileTile({
   const isImage = /^(PNG|JPG|JPEG|WEBP|GIF|HEIC|HEIF)$/.test(ext)
   const bucket = bucketForMaterialPath(storagePath, topicId)
 
-  /**
-   * Учёт просмотров для аналитики (врезка §107). Ошибку глушим намеренно и
-   * молча: подсчёт не должен мешать ученику открыть файл — ни отказом прав, ни
-   * отсутствием самой функции, пока её не завели.
-   */
   function recordView() {
-    if (!countView) return
-    void supabase.rpc('record_material_view', { p_item_id: materialId } as never)
-      .then(() => undefined, () => undefined)
+    if (countView) recordMaterialView(materialId)
   }
 
   // Картинку показываем прямо в теме, а не предлагаем скачать «как документ»:
@@ -688,6 +703,14 @@ export function TopicMaterialItems({
     filtered = [...filtered.filter(isTheoryMaterial), ...filtered.filter(m => !isTheoryMaterial(m))]
   }
 
+  // Теории страницей у темы нет, есть только PDF (старые темы планиметрии и
+  // векторов) — ученик видит первый PDF рубрики листами прямо во вкладке, а не
+  // плиткой «скачать». Только в ученическом списке: у персонала рубрика —
+  // место правки, листы там мешали бы.
+  const inlinePdfId = !canManage && section === 'theory' && !filtered.some(isTheoryMaterial)
+    ? filtered.find(isPdfFile)?.id ?? null
+    : null
+
   /**
    * Пустое «Решение ДЗ» у ученика — почти всегда не пустота, а гейт: база
    * отдаёт ноль строк, пока его работа не принята (§95). Пустая рубрика без
@@ -734,6 +757,7 @@ export function TopicMaterialItems({
           watchMark={watchMarks[m.id]}
           isFirst={i === 0}
           isLast={i === filtered.length - 1}
+          inlinePdf={m.id === inlinePdfId}
           onDelete={guard(deleteMaterial)}
           onToggleVisibility={guard(toggleVisibility)}
           onMove={guard(moveMaterial)}
