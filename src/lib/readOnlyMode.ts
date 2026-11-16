@@ -7,10 +7,10 @@
  * Авторские решения ДЗ открыты всем ученикам — флаг read_only_mode в
  * app_feature_flags, функция topic_solution_unlocked (миграция 20261111072107).
  *
- * Выключить: READ_ONLY_MODE = false и флаг read_only_mode в базе.
- * Вместе с этим вернуть адрес Supabase в src/lib/supabase.ts.
+ * Аварийный режим выключен 16.11.2026: текущий облачный Supabase уже принимает ДЗ.
+ * При будущей аварии блокировку необходимо согласовывать с флагом в базе.
  */
-export const READ_ONLY_MODE: boolean = true
+export const READ_ONLY_MODE: boolean = false
 
 /** Короткий текст для тостов и ошибок при попытке сдать работу. */
 export const READ_ONLY_MESSAGE =
