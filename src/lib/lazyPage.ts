@@ -23,7 +23,8 @@ import { noteError, noteReload } from '@/lib/perf/rum'
  * Теперь:
  *  · автоперезагрузка — не чаще одной за RELOAD_COOLDOWN_MS на вкладку, отметка
  *    времени — в `window.name` (переживает перезагрузку без всякого хранилища)
- *    и дублем в localStorage; удачная загрузка её НЕ снимает;
+ *    и дублем в sessionStorage; удачная загрузка её НЕ снимает;
+ *    localStorage не подходит: ограничение одной вкладки не должно блокировать другую;
  *  · перезагрузка — переходом на тот же адрес с `?_r=<время>`: так браузер
  *    обязан взять index.html из сети, а не из кэша; параметр потом убирается;
  *  · перед перезагрузкой — событие в RUM (`reload chunk:<имя>`), после отказа —
@@ -33,7 +34,7 @@ import { noteError, noteReload } from '@/lib/perf/rum'
  */
 export const RELOAD_COOLDOWN_MS = 120_000
 const MARK = 'almiron-chunk-reload:'
-const LS_KEY = 'almiron:chunk-reload-at'
+const SS_KEY = 'almiron:chunk-reload-at'
 export const BUST_PARAM = '_r'
 
 export function lazyPage<T extends ComponentType<any>>(
@@ -77,7 +78,7 @@ export function lastAutoReload(): number {
     if (m) at = Number(m[1])
   } catch { /* нет window.name — смотрим хранилище */ }
   try {
-    at = Math.max(at, Number(window.localStorage.getItem(LS_KEY)) || 0)
+    at = Math.max(at, Number(window.sessionStorage.getItem(SS_KEY)) || 0)
   } catch { /* хранилище недоступно — хватит window.name */ }
   return at
 }
@@ -91,7 +92,7 @@ export function markAutoReload(now: number): void {
     const rest = window.name.replace(new RegExp(`${MARK}\\d+`, 'g'), '')
     window.name = `${rest}${MARK}${now}`
   } catch { /* не критично */ }
-  try { window.localStorage.setItem(LS_KEY, String(now)) } catch { /* не критично */ }
+  try { window.sessionStorage.setItem(SS_KEY, String(now)) } catch { /* не критично */ }
 }
 
 /** Тот же адрес с `?_r=<время>`: index.html — из сети, не из кэша браузера. */
