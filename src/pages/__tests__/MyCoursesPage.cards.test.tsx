@@ -82,10 +82,11 @@ beforeEach(() => {
 
 describe('карточка курса', () => {
   it('прогресс — student_home_courses: «пройдено 6 из 108», а не «108 / 108 открыто»; модулей и тем не считает', async () => {
-    db.groups = [group('g1', 'c1', 'Физика ЕГЭ — подписка (тест)')]
-    db.rpc.student_home_courses = [progress('c1', 6, 108, { topic_id: 't7', title: 'Равноускоренное движение' })]
-    db.tables.course_unlock_modes = [{ course_id: 'c1', mode: 'progress' }]
-    db.tables.course_showcase = [{ course_id: 'c1', title: 'Физика ЕГЭ' }]
+    const courseId = '00000000-0000-0000-0000-000000000001'
+    db.groups = [group('g1', courseId, 'Физика ЕГЭ — подписка (тест)')]
+    db.rpc.student_home_courses = [progress(courseId, 6, 108, { topic_id: 't7', title: 'Равноускоренное движение' })]
+    db.tables.course_unlock_modes = [{ course_id: courseId, mode: 'progress' }]
+    db.tables.course_showcase = [{ course_id: courseId, title: 'Физика ЕГЭ' }]
     renderPage()
     const card = await screen.findByTestId('course-card')
     expect(await within(card).findByText('пройдено 6 из 108')).toBeInTheDocument()

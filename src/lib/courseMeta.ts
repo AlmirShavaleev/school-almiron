@@ -22,10 +22,14 @@ export interface CourseExtras {
 }
 
 export async function loadCourseExtras(courseIds: string[]): Promise<CourseExtras> {
+  // PostgREST casts the whole IN list to uuid[]: one invalid ID rejects both reads.
+  const ids = [...new Set(courseIds.filter(id => typeof id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))]
+  if (!ids.length) return { showcase: new Map(), progressMode: new Set() }
   const db = supabase as unknown as Db
   const [show, modes] = await Promise.all([
-    db.from('course_showcase').select('course_id, title').in('course_id', courseIds).eq('is_active', true),
-    db.from('course_unlock_modes').select('course_id, mode').in('course_id', courseIds),
+    db.from('course_showcase').select('course_id, title').in('course_id', ids).eq('is_active', true),
+    db.from('course_unlock_modes').select('course_id, mode').in('course_id', ids),
   ])
   return {
     showcase: new Map(((show.error ? [] : show.data) ?? []).map(r => [String(r.course_id), String(r.title)])),
