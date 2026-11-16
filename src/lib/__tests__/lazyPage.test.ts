@@ -40,7 +40,15 @@ import { beforeEach, vi } from 'vitest'
 import { RELOAD_COOLDOWN_MS, freshUrl, lastAutoReload, markAutoReload, mayAutoReload, stripBustParam } from '@/lib/lazyPage'
 
 describe('lazyPage — не больше одной автоперезагрузки за окно', () => {
-  beforeEach(() => { window.name = ''; localStorage.clear() })
+  beforeEach(() => { window.name = ''; localStorage.clear(); sessionStorage.clear() })
+
+  it('перезагрузка в другой вкладке не блокирует текущую', () => {
+    localStorage.setItem('almiron:chunk-reload-at', '1000000')
+    expect(mayAutoReload(1000001)).toBe(true)
+    markAutoReload(1000001)
+    expect(sessionStorage.getItem('almiron:chunk-reload-at')).toBe('1000001')
+    expect(mayAutoReload(1001001)).toBe(false)
+  })
 
   it('после отметки повторная автоперезагрузка запрещена 2 минуты, потом снова можно', () => {
     expect(mayAutoReload(1_000_000)).toBe(true)

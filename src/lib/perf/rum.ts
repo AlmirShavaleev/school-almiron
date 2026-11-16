@@ -237,6 +237,8 @@ export function noteNav(kind: string, path: string = typeof location !== 'undefi
 /**
  * «Сессия жива»: при старте страницы пишем маршрут, на `pagehide` снимаем.
  * Осталась отметка с прошлого раза — страницу убили, не дав ей закрыться.
+ * Эти две отметки храним в sessionStorage текущей вкладки: localStorage общий
+ * для всех вкладок сайта и давал ложные crash при параллельной работе.
  *
  * С 15.11 два случая различаются (у 16 из 17 учеников с телефона 14.11 был
  * `crash`, и по одному слову нельзя было понять, где беда):
@@ -264,9 +266,9 @@ function checkCrash(): void {
   if (crashChecked) return
   crashChecked = true
   try {
-    const prev = localStorage.getItem(ALIVE_KEY)
+    const prev = sessionStorage.getItem(ALIVE_KEY)
     const hidden = readHidden()
-    localStorage.removeItem(HIDDEN_KEY)
+    sessionStorage.removeItem(HIDDEN_KEY)
     // Важным событием: вкладка, которую убили раз, часто убивают и второй —
     // раньше, чем уйдёт обычная пачка.
     if (prev && hidden) {
@@ -283,7 +285,7 @@ function checkCrash(): void {
 
 function readHidden(): HiddenMark | null {
   try {
-    const raw = localStorage.getItem(HIDDEN_KEY)
+    const raw = sessionStorage.getItem(HIDDEN_KEY)
     if (!raw) return null
     const v = JSON.parse(raw) as Partial<HiddenMark>
     if (typeof v?.at !== 'number' || !Number.isFinite(v.at)) return null
@@ -294,7 +296,7 @@ function readHidden(): HiddenMark | null {
 /** Ушли в фон: запомнить когда и насколько тяжёлой была страница. */
 function markHidden(): void {
   try {
-    if (!localStorage.getItem(ALIVE_KEY)) return
+    if (!sessionStorage.getItem(ALIVE_KEY)) return
     const mark: HiddenMark = {
       at: Date.now(),
       dom: document.getElementsByTagName('*').length,
@@ -302,26 +304,26 @@ function markHidden(): void {
         + document.getElementsByTagName('canvas').length
         + document.getElementsByTagName('iframe').length,
     }
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify(mark))
+    sessionStorage.setItem(HIDDEN_KEY, JSON.stringify(mark))
   } catch { /* RUM молчит */ }
 }
 
 /** Вернулись на живую вкладку — она не умирала. */
 function markVisible(): void {
-  try { localStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
+  try { sessionStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
 }
 
 function markOpen(): void {
-  try { localStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
+  try { sessionStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
 }
 
 function markClosed(): void {
-  try { localStorage.removeItem(ALIVE_KEY); localStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
+  try { sessionStorage.removeItem(ALIVE_KEY); sessionStorage.removeItem(HIDDEN_KEY) } catch { /* RUM молчит */ }
 }
 
 /** Маршрут сменился внутри приложения — отметка жизни на новом маршруте. */
 function markAlive(): void {
-  try { if (localStorage.getItem(ALIVE_KEY)) localStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
+  try { if (sessionStorage.getItem(ALIVE_KEY)) sessionStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
 }
 
 /** Ошибка страницы — коротко, без стека; не больше 20 на загрузку. */
@@ -473,5 +475,5 @@ export function __resetRumForTests(): void {
   started = false
   crashChecked = false
   urgentSeen.clear()
-  try { localStorage.removeItem(ALIVE_KEY); localStorage.removeItem(HIDDEN_KEY) } catch { /* нет хранилища */ }
+  try { sessionStorage.removeItem(ALIVE_KEY); sessionStorage.removeItem(HIDDEN_KEY) } catch { /* нет хранилища */ }
 }

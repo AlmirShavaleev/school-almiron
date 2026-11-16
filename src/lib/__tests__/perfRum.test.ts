@@ -23,7 +23,7 @@ import {
 } from '../perf/rum'
 import { formatMs, periodRange } from '../perf/perfAdmin'
 
-beforeEach(() => __resetRumForTests())
+beforeEach(() => { __resetRumForTests(); sessionStorage.clear() })
 afterEach(() => { vi.useRealTimers(); __resetRumForTests() })
 
 describe('метки', () => {
@@ -179,12 +179,24 @@ describe('диагностика падений вкладки (письмо 27.
   const t = (): RumTransport => ({ signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() })
   const labels = () => takeBatch(1000).filter(e => e.k === 'nav').map(e => e.l)
 
+  it('старая отметка из localStorage другой вкладки не считается падением', () => {
+    localStorage.setItem('rum:alive', '/my-course/:id/topic/:id')
+    localStorage.setItem('rum:hidden', JSON.stringify({ at: Date.now() - 5000, dom: 300, media: 2 }))
+    const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
+    const stop = startRum(tr)
+    const labels = (tr.sendOnExit as ReturnType<typeof vi.fn>).mock.calls.flat(2)
+      .map((e: { l: string }) => e.l)
+    expect(labels.some((l: string) => l.startsWith('crash ') || l.startsWith('evicted '))).toBe(false)
+    expect(sessionStorage.getItem('rum:alive')).not.toBeNull()
+    stop()
+  })
+
   it('страница закрылась сама (pagehide) — при следующем старте падения нет', () => {
     window.history.replaceState(null, '', '/my-course/0b0a1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d/topic/11111111-2222-4333-8444-555555555555')
     let stop = startRum(t())
     window.dispatchEvent(new Event('pagehide'))
     stop()
-    expect(localStorage.getItem('rum:alive')).toBeNull()
+    expect(sessionStorage.getItem('rum:alive')).toBeNull()
     takeBatch(1000)
     stop = startRum(t())
     expect(labels().filter(l => l.startsWith('crash'))).toEqual([])
@@ -192,11 +204,11 @@ describe('диагностика падений вкладки (письмо 27.
   })
 
   it('отметка осталась (вкладку убили, pagehide не было) — nav «crash <маршрут>» важным событием', () => {
-    localStorage.setItem('rum:alive', '/my-course/:id/topic/:id')
+    sessionStorage.setItem('rum:alive', '/my-course/:id/topic/:id')
     const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
     const stop = startRum(tr)
     expect(tr.sendOnExit).toHaveBeenCalledWith([expect.objectContaining({ k: 'nav', l: 'crash /my-course/:id/topic/:id' })])
-    expect(localStorage.getItem('rum:alive')).not.toBeNull()
+    expect(sessionStorage.getItem('rum:alive')).not.toBeNull()
     stop()
   })
 
@@ -204,7 +216,7 @@ describe('диагностика падений вкладки (письмо 27.
     const stop = startRum(t())
     window.history.replaceState(null, '', '/my-homework')
     routeChanged('/my-homework')
-    expect(localStorage.getItem('rum:alive')).toBe('/my-homework')
+    expect(sessionStorage.getItem('rum:alive')).toBe('/my-homework')
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
     document.dispatchEvent(new Event('visibilitychange'))
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
@@ -248,13 +260,13 @@ describe('выгрузка в фоне против падения на экра
     const stop = startRum(off)
     setVisibility('hidden')                                // ученик ушёл в калькулятор…
     stop()                                                 // …и телефон убил вкладку: pagehide не было
-    const alive = localStorage.getItem('rum:alive')
-    const hidden = localStorage.getItem('rum:hidden')
+    const alive = sessionStorage.getItem('rum:alive')
+    const hidden = sessionStorage.getItem('rum:hidden')
     expect(alive).toBe('/my-course/:id/topic/:id')
     expect(JSON.parse(hidden ?? 'null')).toMatchObject({ media: 3 })
     __resetRumForTests()                                   // новая загрузка документа
-    localStorage.setItem('rum:alive', alive!)
-    localStorage.setItem('rum:hidden', hidden!)
+    sessionStorage.setItem('rum:alive', alive!)
+    sessionStorage.setItem('rum:hidden', hidden!)
 
     vi.setSystemTime(new Date('2026-11-16T05:01:30Z'))     // вернулся через 90 с
     const tr: RumTransport = { signedIn: () => true, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
@@ -266,7 +278,7 @@ describe('выгрузка в фоне против падения на экра
     expect(by('evicted-away-s /my-course/:id/topic/:id')?.ms).toBe(90)
     expect(by('evicted-dom /my-course/:id/topic/:id')?.ms).toBeGreaterThanOrEqual(7)
     expect(by('evicted-media /my-course/:id/topic/:id')?.ms).toBe(3)
-    expect(localStorage.getItem('rum:hidden')).toBeNull()
+    expect(sessionStorage.getItem('rum:hidden')).toBeNull()
     stop2()
     document.body.innerHTML = ''
   })
@@ -275,9 +287,9 @@ describe('выгрузка в фоне против падения на экра
     const tr: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
     const stop = startRum(tr)
     setVisibility('hidden')
-    expect(localStorage.getItem('rum:hidden')).not.toBeNull()
+    expect(sessionStorage.getItem('rum:hidden')).not.toBeNull()
     setVisibility('visible')
-    expect(localStorage.getItem('rum:hidden')).toBeNull()
+    expect(sessionStorage.getItem('rum:hidden')).toBeNull()
     stop()
   })
 
@@ -286,8 +298,8 @@ describe('выгрузка в фоне против падения на экра
     const stop = startRum(tr)
     setVisibility('hidden')
     window.dispatchEvent(new Event('pagehide'))
-    expect(localStorage.getItem('rum:hidden')).toBeNull()
-    expect(localStorage.getItem('rum:alive')).toBeNull()
+    expect(sessionStorage.getItem('rum:hidden')).toBeNull()
+    expect(sessionStorage.getItem('rum:alive')).toBeNull()
     stop()
   })
 
@@ -307,7 +319,7 @@ describe('ложный crash (харнесс 27.10)', () => {
     stop = startRum(tr)
     const sentLabels = (tr.sendOnExit as ReturnType<typeof vi.fn>).mock.calls.flat(2).map((e: { l: string }) => e.l)
     expect(sentLabels.filter(l => l.startsWith('crash'))).toEqual([])
-    expect(localStorage.getItem('rum:alive')).not.toBeNull()
+    expect(sessionStorage.getItem('rum:alive')).not.toBeNull()
     stop()
   })
 })
