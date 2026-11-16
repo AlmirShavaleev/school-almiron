@@ -19,9 +19,8 @@
  * Функции внутри пакета выполняются друг за другом в одном операторе, и
  * statement_timeout (8 с) у них общий. Когда база тормозит (нагрузочный тест
  * 15.11, 18:03 МСК: исчерпан запас процессора Nano), пакет упирается в лимит
- * и PostgREST отвечает 500 с кодом 57014 — без этой развилки ошибку получали
- * все вызовы пакета разом. Поэтому при 57014 те же вызовы уходят по одному
- * (параллельно, у каждого свой лимит), а пакет на SLOW_PAUSE_MS выключается.
+ * и PostgREST отвечает 500 с кодом 57014. Всем вызовам отдаём исходную ошибку без автоматического
+ * повторения: параллельная отправка тех же вычислений усиливает перегрузку.
  * Остальные ошибки пакета целиком (504 пула и т. п.) по-прежнему отдаются
  * всем как есть: повтор в переполненный пул только добавил бы очереди.
  */
@@ -32,7 +31,6 @@ export const BATCH_WINDOW_MS = 8
 // медленной базе первым упирается в него.
 export const MAX_BATCH = 6
 const DISABLE_MS = 10 * 60_000
-export const SLOW_PAUSE_MS = 60_000
 
 interface Pending {
   fn: string
@@ -79,10 +77,6 @@ function groupKey(origin: string, init: RequestInit | undefined): string {
   return `${origin}\n${h.get('authorization') ?? ''}\n${h.get('apikey') ?? ''}`
 }
 
-function isStatementTimeout(text: string): boolean {
-  try { return (JSON.parse(text) as { code?: unknown })?.code === '57014' } catch { return false }
-}
-
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(status === 204 ? null : JSON.stringify(body ?? null), {
     status,
@@ -123,12 +117,6 @@ export function batchRpc(base: typeof fetch, now: () => number = Date.now): type
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      if (res.status === 500 && isStatementTimeout(text)) {
-        // Пакет не уложился в общий лимит — по одному, и пока база медленная, без пакетов.
-        disabledUntil = now() + SLOW_PAUSE_MS
-        sendSingly(calls)
-        return
-      }
       // Ошибка пакета целиком (504 пула и т. п.): каждому — тот же ответ, как пришёл бы ему.
       for (const c of calls) c.resolve(new Response(text, { status: res.status, headers: res.headers }))
       return

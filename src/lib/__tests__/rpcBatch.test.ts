@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BATCH_WINDOW_MS, MAX_BATCH, SLOW_PAUSE_MS, __resetRpcBatchForTests, batchRpc } from '../perf/rpcBatch'
+import { BATCH_WINDOW_MS, MAX_BATCH, __resetRpcBatchForTests, batchRpc } from '../perf/rpcBatch'
 import { READ_RPC } from '../perf/readCoalesce'
 
 const BASE = 'https://p.supabase.co'
@@ -104,34 +104,27 @@ describe('batchRpc', () => {
     expect(base).toHaveBeenCalledTimes(1)
   })
 
-  it('пакет упёрся в statement_timeout (500, 57014) — вызовы по одному, минуту без пакетов', async () => {
-    let clock = 1_000_000
+  it('таймаут пакета не повторяет вычисления; следующий запрос может восстановиться', async () => {
     const base = vi.fn(async (u: RequestInfo | URL, _i?: RequestInit) =>
       String(u).endsWith('/rpc_batch')
         ? new Response('{"code":"57014","message":"canceling statement due to statement timeout"}', { status: 500 })
         : new Response(`"${String(u).split('/').pop()}"`, { status: 200 }))
-    const f = batchRpc(base as unknown as typeof fetch, () => clock)
+    const f = batchRpc(base as unknown as typeof fetch)
     const a = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
     const b = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
     await settle()
-    expect((await a).status).toBe(200)
-    expect(await (await b).json()).toBe('my_subscriptions')
-    expect(base.mock.calls.map(c => String(c[0]).split('/').pop())).toEqual(['rpc_batch', 'my_work_mode', 'my_subscriptions'])
+    expect((await a).status).toBe(500)
+    expect((await (await b).json()).code).toBe('57014')
+    expect(base.mock.calls.map(c => String(c[0]).split('/').pop())).toEqual(['rpc_batch'])
 
-    base.mockClear()                                      // в течение минуты — без пакета
-    clock += SLOW_PAUSE_MS - 1
+    base.mockClear()
+    base.mockImplementation(async () => new Response(JSON.stringify([{ status: 200, body: 1 }, { status: 200, body: 2 }])))
     const c = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
     const d = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
     await settle()
-    await Promise.all([c, d])
-    expect(base.mock.calls.some(x => String(x[0]).endsWith('/rpc_batch'))).toBe(false)
-
-    base.mockClear()                                      // через минуту — снова пакетом
-    clock += 2
-    const e = f(rpc('my_work_mode'), { method: 'POST', headers: hdr(), body: '{}' })
-    const g = f(rpc('my_subscriptions'), { method: 'POST', headers: hdr(), body: '{}' })
-    await settle()
-    await Promise.allSettled([e, g])
+    expect(await (await c).json()).toBe(1)
+    expect(await (await d).json()).toBe(2)
+    expect(base).toHaveBeenCalledTimes(1)
     expect(String(base.mock.calls[0][0])).toBe(rpc('rpc_batch'))
   })
 

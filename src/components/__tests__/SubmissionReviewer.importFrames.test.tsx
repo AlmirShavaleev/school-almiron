@@ -231,6 +231,7 @@ describe('SubmissionReviewer — уборка накопленных повто�
     }]
     const { dedupe, onDuplicateFramesChange } = renderReviewer()
     await waitFor(() => expect(onDuplicateFramesChange).toHaveBeenCalledWith(2))
+    await waitFor(() => expect(dedupe.current).toBeTypeOf('function'))
 
     let removed = 0
     await act(async () => { removed = await dedupe.current!() })
@@ -256,6 +257,7 @@ describe('SubmissionReviewer — уборка накопленных повто�
     const { dedupe, onDuplicateFramesChange } = renderReviewer()
     await waitFor(() => expect(screen.getAllByTestId('comment-list-item')).toHaveLength(2))
     expect(onDuplicateFramesChange).toHaveBeenLastCalledWith(0)
+    await waitFor(() => expect(dedupe.current).toBeTypeOf('function'))
 
     let removed = 0
     await act(async () => { removed = await dedupe.current!() })
