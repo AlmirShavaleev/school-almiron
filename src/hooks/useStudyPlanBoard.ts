@@ -64,6 +64,7 @@ export function useStudyPlanBoard(courseId: string | undefined) {
     },
     setTopicWeek: async (topicId, week) => {
       if (!courseId) return
+      // @ts-expect-error SQL принимает null для снятия недели; генератор описывает integer как number.
       await run(() => supabase.rpc('study_plan_set_topic_week', { p_course_id: courseId, p_topic_id: topicId, p_week_no: week }))
     },
     setOverride: async (studentId, topicId, next) => {
@@ -72,7 +73,7 @@ export function useStudyPlanBoard(courseId: string | undefined) {
         p_course_id: courseId,
         p_student_id: studentId,
         p_topic_id: topicId,
-        p_week_no: next && 'week' in next ? next.week : null,
+        p_week_no: next && 'week' in next ? next.week : undefined,
         p_removed: !!(next && 'removed' in next),
       }))
     },
