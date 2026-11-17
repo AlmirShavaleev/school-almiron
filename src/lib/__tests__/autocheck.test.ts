@@ -107,6 +107,12 @@ const RAW_STATE = {
 }
 
 describe('parseAutocheckState', () => {
+  it('сохраняет режим решений после всего ДЗ, по умолчанию оставляет прежний', () => {
+    expect(parseAutocheckState(RAW_STATE)?.solutionsAfterFinish).toBe(false)
+    const gated = parseAutocheckState({ ...RAW_STATE, solutions_after_finish: true })!
+    expect(gated.solutionsAfterFinish).toBe(true)
+    expect(asFreshStudent(gated).solutionsAfterFinish).toBe(true)
+  })
   it('задачи по порядку, эталон и решение — только где пришли', () => {
     const s = parseAutocheckState(RAW_STATE)!
     expect(s.tasks.map(t => t.code)).toEqual(['1.4.1-Д-01', '1.4.1-Д-02'])
@@ -178,3 +184,4 @@ describe('результаты класса', () => {
     expect(sortResults(r.students, 'name').map(s => s.name)).toEqual(['Аня', 'Борис', 'Яна'])
   })
 })
+
